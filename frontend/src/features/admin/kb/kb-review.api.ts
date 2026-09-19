@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
+import axios from 'axios';
 import {
     adminKbReviewApi,
     type KbApproveResult,
@@ -36,8 +36,15 @@ export const KB_REVIEW_KEY = ['admin', 'kb', 'review'] as const;
  */
 const REVIEW_DISABLED_MESSAGE_MARKER = 'Digitization Review is disabled';
 
+/**
+ * Copilot review PR #497 (pullrequestreview-5257132403) — `error instanceof
+ * AxiosError` can be unreliable with bundlers or multiple axios copies in
+ * the dependency tree; the rest of the codebase (routes/guards.tsx,
+ * lib/laravel-errors.ts) consistently uses the `axios.isAxiosError()` type
+ * guard instead, so this file now matches.
+ */
 export function isReviewDisabledError(error: unknown): boolean {
-    if (!(error instanceof AxiosError) || error.response?.status !== 404) {
+    if (!axios.isAxiosError(error) || error.response?.status !== 404) {
         return false;
     }
 

@@ -111,46 +111,70 @@ final class EnforceMcpScope
         if ($headerTenant !== '' && $headerTenant !== $tokenTenant) {
             return response()->json(['error' => 'mcp_tenant_mismatch'], 403);
         }
-        app(TenantContext::class)->set($tokenTenant);
 
-        // Copilot review PR #497 (pullrequestreview-5256772155) — `mcp:read`
-        // is the baseline scope for the MCP transport as a whole, not just
-        // for `tools/call`. Before this check, a token carrying ONLY an
-        // elevated scope (`mcp:tools:propose`/`mcp:tools:write`, minted
-        // without `mcp:read`) — or, more subtly, a valid but entirely
-        // empty/misconfigured `scopes_json` — could still reach
-        // `initialize`/`tools/list`/every other protocol method, because
-        // those methods never consulted `scopes_json` at all.
-        $scopes = is_array($token->scopes_json) ? $token->scopes_json : [];
-        if (! in_array(self::SCOPE_READ, $scopes, true)) {
-            return response()->json([
-                'error' => 'mcp_scope_missing',
-                'required_scope' => self::SCOPE_READ,
-            ], 403);
-        }
+        // Copilot review PR #497 (pullrequestreview-5257132403,
+        // discussion_r4054304571) — TenantContext is a process-scoped
+        // singleton (see the round-7/8 comments above and
+        // AppServiceProvider::registerRateLimiters — `$this->app->
+        // singleton(TenantContext::class)`). This bare route has no
+        // `tenant.resolve` middleware to overwrite it on the NEXT request,
+        // unlike every tenant-aware web/API route (ResolveTenant always
+        // calls set() unconditionally). Setting it here without restoring
+        // means a long-running worker (Octane, or any container reused
+        // across requests) would leak this MCP token's tenant into
+        // whatever request that same process handles next, until
+        // something else happens to reset it — risking cross-tenant reads
+        // and mis-attributed audit rows in the meantime. Save/restore the
+        // PRE-request value (not a hardcoded 'default') via try/finally so
+        // every return path below — including the early-return branches
+        // for scope checks — restores it, not just the happy path.
+        $tenantContext = app(TenantContext::class);
+        $previousTenant = $tenantContext->current();
+        $tenantContext->set($tokenTenant);
 
-        $payload = $request->json()->all();
-        if (($payload['method'] ?? null) !== 'tools/call') {
+        try {
+            // Copilot review PR #497 (pullrequestreview-5256772155) —
+            // `mcp:read` is the baseline scope for the MCP transport as a
+            // whole, not just for `tools/call`. Before this check, a token
+            // carrying ONLY an elevated scope (`mcp:tools:propose`/
+            // `mcp:tools:write`, minted without `mcp:read`) — or, more
+            // subtly, a valid but entirely empty/misconfigured
+            // `scopes_json` — could still reach `initialize`/`tools/list`/
+            // every other protocol method, because those methods never
+            // consulted `scopes_json` at all.
+            $scopes = is_array($token->scopes_json) ? $token->scopes_json : [];
+            if (! in_array(self::SCOPE_READ, $scopes, true)) {
+                return response()->json([
+                    'error' => 'mcp_scope_missing',
+                    'required_scope' => self::SCOPE_READ,
+                ], 403);
+            }
+
+            $payload = $request->json()->all();
+            if (($payload['method'] ?? null) !== 'tools/call') {
+                return $next($request);
+            }
+
+            $toolName = (string) data_get($payload, 'params.name', '');
+            if ($toolName === '') {
+                return response()->json(['error' => 'tool_name_required'], 422);
+            }
+
+            $requiredScope = $this->requiredScopeForTool($toolName);
+            if (! in_array($requiredScope, $scopes, true)) {
+                return response()->json([
+                    'error' => 'mcp_scope_missing',
+                    'required_scope' => $requiredScope,
+                ], 403);
+            }
+
+            $token->forceFill(['last_used_at' => now()])->save();
+            $this->auditInvocation($toolName, data_get($payload, 'params.arguments'));
+
             return $next($request);
+        } finally {
+            $tenantContext->set($previousTenant);
         }
-
-        $toolName = (string) data_get($payload, 'params.name', '');
-        if ($toolName === '') {
-            return response()->json(['error' => 'tool_name_required'], 422);
-        }
-
-        $requiredScope = $this->requiredScopeForTool($toolName);
-        if (! in_array($requiredScope, $scopes, true)) {
-            return response()->json([
-                'error' => 'mcp_scope_missing',
-                'required_scope' => $requiredScope,
-            ], 403);
-        }
-
-        $token->forceFill(['last_used_at' => now()])->save();
-        $this->auditInvocation($toolName, data_get($payload, 'params.arguments'));
-
-        return $next($request);
     }
 
     private function requiredScopeForTool(string $toolName): string

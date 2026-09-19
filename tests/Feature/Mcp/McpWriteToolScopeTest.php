@@ -295,6 +295,77 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5257132403,
+     * discussion_r4054304571) — TenantContext is a process-scoped
+     * singleton; this bare route has no `tenant.resolve` middleware to
+     * overwrite it on whatever request runs next in the same process.
+     * EnforceMcpScope sets it from the token's tenant but must restore
+     * the pre-request value before returning, on EVERY return path — not
+     * only the happy one — or a long-running worker (Octane) would leak
+     * the MCP tenant into whatever it handles next. Proves both halves:
+     * downstream code sees the token's tenant WHILE the request runs, and
+     * the pre-request tenant is back once it's done.
+     */
+    public function test_tenant_context_is_restored_after_a_successful_request(): void
+    {
+        app(TenantContext::class)->set('pre-existing-tenant');
+
+        McpTenantToken::query()->create([
+            'tenant_id' => 'mcp-token-tenant',
+            'label' => 'test',
+            'token_hash' => hash('sha256', 'restore-success-token'),
+            'token_last4' => 'oken',
+            'scopes_json' => ['mcp:read'],
+        ]);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer restore-success-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $seenTenantDuringRequest = null;
+        app(EnforceMcpScope::class)->handle($request, function () use (&$seenTenantDuringRequest) {
+            $seenTenantDuringRequest = app(TenantContext::class)->current();
+
+            return response('ok', 200);
+        });
+
+        $this->assertSame('mcp-token-tenant', $seenTenantDuringRequest);
+        $this->assertSame('pre-existing-tenant', app(TenantContext::class)->current());
+    }
+
+    /**
+     * Same fix as above, but exercises the scope-denied 403 EARLY-RETURN
+     * branch specifically (before `$next($request)` is ever reached) —
+     * not the happy path. A naive fix that restores the tenant only right
+     * before the final `return $next($request)` at the end of handle()
+     * would pass a happy-path-only test while still leaking the tenant on
+     * every rejected request, which is most of what an attacker sends.
+     */
+    public function test_tenant_context_is_restored_after_an_early_return_denial(): void
+    {
+        app(TenantContext::class)->set('pre-existing-tenant');
+
+        McpTenantToken::query()->create([
+            'tenant_id' => 'mcp-token-tenant',
+            'label' => 'test',
+            'token_hash' => hash('sha256', 'restore-denial-token'),
+            'token_last4' => 'oken',
+            'scopes_json' => ['mcp:tools:propose'],
+        ]);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer restore-denial-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('unreached', 500));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('pre-existing-tenant', app(TenantContext::class)->current());
+    }
+
+    /**
      * Copilot review PR #497 (pullrequestreview-5256955613) — `throttle:mcp`
      * used to run AFTER `mcp.scope` in routes/ai.php, so a request
      * `EnforceMcpScope` rejects (invalid token here) short-circuited the
