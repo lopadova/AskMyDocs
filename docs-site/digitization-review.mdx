@@ -47,6 +47,14 @@ serve it while the feature is off. The design rationale is
 [ADR 0031](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0031-v837-digitization-review-and-auto-tier-mapping.md).
 </Note>
 
+### Configuration
+
+| Variable | Default | Controls |
+|---|---|---|
+| `KB_DIGITIZATION_REVIEW_ENABLED` | `false` | The feature flag above — every mutating entry point and every read surface (R43). |
+| `KB_REVIEW_LOW_CONFIDENCE_THRESHOLD` | `0.70` | The OCR confidence (chunk metadata, W1) below which a span is highlighted in the review UI's heat-map, once it ships (see [Gotchas](#gotchas)). A visual aid only — it never gates approval. |
+| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The per-user rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6). Reserved: the tool itself has not shipped yet, so this knob currently has no effect. |
+
 ## Theory & background
 
 Two ideas from earlier ADRs meet here, and neither is new — this cycle wires
