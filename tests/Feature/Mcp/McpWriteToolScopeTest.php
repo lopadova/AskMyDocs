@@ -247,6 +247,31 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5256772155) — before this
+     * fix, `mcp:read` was checked ONLY inside the `tools/call` branch, so a
+     * token minted with an elevated-but-not-baseline scope (or an empty/
+     * misconfigured scopes_json that happened to still be a valid row)
+     * could reach `initialize`/`tools/list`/every other protocol method
+     * regardless of its scopes. `mcp:read` is now the baseline for the
+     * transport as a whole.
+     */
+    public function test_a_token_without_mcp_read_scope_is_denied_a_non_tools_call_protocol_method(): void
+    {
+        $this->mintToken(['mcp:tools:propose']);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer plain-test-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('unreached', 500));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('mcp_scope_missing', (string) $response->getContent());
+        $this->assertStringContainsString('mcp:read', (string) $response->getContent());
+    }
+
+    /**
      * McpConnectCommand sends an explicit X-Tenant-Id header alongside the
      * bearer token (its `--tenant=` option) — kept as a defense-in-depth
      * sanity check: a caller pointed at the wrong token/tenant pairing is
@@ -267,6 +292,202 @@ class McpWriteToolScopeTest extends TestCase
 
         $this->assertSame(403, $response->getStatusCode());
         $this->assertStringContainsString('mcp_tenant_mismatch', (string) $response->getContent());
+    }
+
+    /**
+     * Copilot review PR #497 (pullrequestreview-5257132403,
+     * discussion_r4054304571) — TenantContext is a process-scoped
+     * singleton; this bare route has no `tenant.resolve` middleware to
+     * overwrite it on whatever request runs next in the same process.
+     * EnforceMcpScope sets it from the token's tenant but must restore
+     * the pre-request value before returning, on EVERY return path — not
+     * only the happy one — or a long-running worker (Octane) would leak
+     * the MCP tenant into whatever it handles next. Proves both halves:
+     * downstream code sees the token's tenant WHILE the request runs, and
+     * the pre-request tenant is back once it's done.
+     */
+    public function test_tenant_context_is_restored_after_a_successful_request(): void
+    {
+        app(TenantContext::class)->set('pre-existing-tenant');
+
+        McpTenantToken::query()->create([
+            'tenant_id' => 'mcp-token-tenant',
+            'label' => 'test',
+            'token_hash' => hash('sha256', 'restore-success-token'),
+            'token_last4' => 'oken',
+            'scopes_json' => ['mcp:read'],
+        ]);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer restore-success-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $seenTenantDuringRequest = null;
+        app(EnforceMcpScope::class)->handle($request, function () use (&$seenTenantDuringRequest) {
+            $seenTenantDuringRequest = app(TenantContext::class)->current();
+
+            return response('ok', 200);
+        });
+
+        $this->assertSame('mcp-token-tenant', $seenTenantDuringRequest);
+        $this->assertSame('pre-existing-tenant', app(TenantContext::class)->current());
+    }
+
+    /**
+     * Same fix as above, but exercises the scope-denied 403 EARLY-RETURN
+     * branch specifically (before `$next($request)` is ever reached) —
+     * not the happy path. A naive fix that restores the tenant only right
+     * before the final `return $next($request)` at the end of handle()
+     * would pass a happy-path-only test while still leaking the tenant on
+     * every rejected request, which is most of what an attacker sends.
+     */
+    public function test_tenant_context_is_restored_after_an_early_return_denial(): void
+    {
+        app(TenantContext::class)->set('pre-existing-tenant');
+
+        McpTenantToken::query()->create([
+            'tenant_id' => 'mcp-token-tenant',
+            'label' => 'test',
+            'token_hash' => hash('sha256', 'restore-denial-token'),
+            'token_last4' => 'oken',
+            'scopes_json' => ['mcp:tools:propose'],
+        ]);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer restore-denial-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('unreached', 500));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('pre-existing-tenant', app(TenantContext::class)->current());
+    }
+
+    /**
+     * Copilot review PR #497 (pullrequestreview-5256955613) — `throttle:mcp`
+     * used to run AFTER `mcp.scope` in routes/ai.php, so a request
+     * `EnforceMcpScope` rejects (invalid token here) short-circuited the
+     * pipeline before the rate limiter middleware ever executed —
+     * unthrottled token-guessing against this route. Drives real HTTP
+     * requests through the actual route (`postJson`, not `EnforceMcpScope`
+     * invoked standalone like every other test in this file) so the
+     * middleware ORDER itself is what's under test, not just the handler.
+     */
+    public function test_rejected_requests_are_rate_limited_not_bypassed(): void
+    {
+        config(['mcp.server.rate_limit_per_minute' => 2]);
+
+        $makeRequest = fn () => $this->withHeader('Authorization', 'Bearer definitely-not-a-real-token')
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'initialize',
+                'params' => [],
+            ]);
+
+        $first = $makeRequest();
+        $second = $makeRequest();
+        $third = $makeRequest();
+
+        $this->assertSame(401, $first->getStatusCode());
+        $this->assertStringContainsString('mcp_token_invalid', (string) $first->getContent());
+        $this->assertSame(401, $second->getStatusCode());
+
+        // Same bearer token on every call -> same rate-limit bucket. If
+        // throttle:mcp ran AFTER mcp.scope (the pre-fix order), this 3rd
+        // request would still be 401 — EnforceMcpScope rejecting it before
+        // the limiter middleware ever got a chance to count it, let alone
+        // block it.
+        $this->assertSame(429, $third->getStatusCode());
+    }
+
+    /**
+     * Copilot review PR #497 (pullrequestreview-5257033036,
+     * discussion_r4054237132) — the `mcp` limiter's key used to append a
+     * `TenantContext::current()` segment. Because `throttle:mcp` runs
+     * before `mcp.scope` (this route sets the tenant, nothing upstream
+     * does), and `TenantContext` is a process singleton, that segment
+     * could carry state left over from a DIFFERENT prior request handled
+     * by the same worker — so the same bearer token could land in a
+     * different bucket than its own previous requests, resetting its
+     * throttle count. Simulates exactly that drift (mutate TenantContext
+     * mid-test, standing in for "another request touched this process")
+     * and asserts the SAME token is still throttled: the fix keys on the
+     * token hash alone, which cannot be perturbed by tenant-context state
+     * it never reads.
+     */
+    public function test_rate_limit_bucket_is_stable_across_tenant_context_drift(): void
+    {
+        config(['mcp.server.rate_limit_per_minute' => 2]);
+
+        $makeRequest = fn () => $this->withHeader('Authorization', 'Bearer definitely-not-a-real-token')
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'initialize',
+                'params' => [],
+            ]);
+
+        app(TenantContext::class)->set('tenant-a');
+        $first = $makeRequest();
+        $second = $makeRequest();
+
+        // Stand in for a different request having run on this same worker
+        // between $second and $third and left TenantContext pointing at a
+        // different tenant — the pre-fix key would hash this 3rd request
+        // into a brand-new "tenant-b" bucket with zero prior hits.
+        app(TenantContext::class)->set('tenant-b');
+        $third = $makeRequest();
+
+        $this->assertSame(401, $first->getStatusCode());
+        $this->assertSame(401, $second->getStatusCode());
+
+        // Same bearer token, only TenantContext drifted -> must still be
+        // the SAME rate-limit bucket. A 401 here would mean the tenant
+        // segment reset the count, exactly the bypass this fix closes.
+        $this->assertSame(429, $third->getStatusCode());
+    }
+
+    /**
+     * Copilot review PR #497 (pullrequestreview-5257061609,
+     * discussion_r4054262640) — after round 8 the `mcp` limiter keyed
+     * ONLY on the bearer token hash, which is bypassable: a caller
+     * sending a DIFFERENT token value on every request lands each one in
+     * a fresh, empty bucket, so the per-token limit never trips no
+     * matter how many requests it sends. The fix adds a second limit
+     * keyed by source IP. This test rotates the token on every request
+     * (so the per-token limit alone — set generous here — never fires)
+     * and asserts the IP-keyed limit still throttles by the 3rd request.
+     */
+    public function test_rate_limit_still_applies_when_bearer_token_is_rotated_every_request(): void
+    {
+        config([
+            'mcp.server.rate_limit_per_minute' => 1000,
+            'mcp.server.rate_limit_ip_per_minute' => 2,
+        ]);
+
+        $makeRequest = fn (string $token) => $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'initialize',
+                'params' => [],
+            ]);
+
+        $first = $makeRequest('token-one-never-reused');
+        $second = $makeRequest('token-two-never-reused');
+        $third = $makeRequest('token-three-never-reused');
+
+        $this->assertSame(401, $first->getStatusCode());
+        $this->assertSame(401, $second->getStatusCode());
+
+        // Every request used a DIFFERENT token, so the per-token limit
+        // (1000/min) never comes close to tripping. Only the IP-keyed
+        // limit (2/min, same test client IP for all three) can explain a
+        // 429 here — proving token rotation no longer bypasses throttling.
+        $this->assertSame(429, $third->getStatusCode());
     }
 
     /**

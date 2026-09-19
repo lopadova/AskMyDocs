@@ -672,8 +672,13 @@ curl -X POST /api/admin/kb/corrections/7/approve
   (the sync attempt can fail AFTER its own INSERT actually committed) and
   only falls back to `Log::critical()` once its OWN retries are exhausted
   too — a true last resort, not the first one.
-- **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
-  confidence heat-map — propose/approve/reject above are HTTP + MCP only
-  today, with no dedicated frontend), and the CER/WER quality metrics. These
+- **Review tab**: the admin KB document detail pane has a `Review` tab
+  (`ReviewTab`) wired to the HTTP surfaces above — per-page
+  reviewed/unreviewed toggle with Prev/Next navigation (degrades to an
+  explanatory message when the document has no recorded `page_count`), the
+  document-level Approve action, and the pending correction-candidate queue
+  with approve/reject.
+- **Not yet shipped**: the *advanced* review UI (original ↔ Markdown
+  side-by-side, confidence heat-map) and the CER/WER quality metrics. These
   land in later W3 sub-branches before the v8.37 GA tag; this page will be
   extended, not replaced, when they do.

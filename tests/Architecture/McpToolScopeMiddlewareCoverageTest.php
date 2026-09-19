@@ -25,7 +25,12 @@ final class McpToolScopeMiddlewareCoverageTest extends TestCase
         // defined". `mcp` is a dedicated, registered limiter
         // (AppServiceProvider::registerRateLimiters, config/mcp.php).
         $this->assertStringNotContainsString("throttle:api", $src, 'the "api" rate limiter is never registered in this app; use the dedicated "mcp" limiter');
-        $this->assertStringContainsString("->middleware(['mcp.scope', 'throttle:mcp'])", $src);
+        // Copilot review PR #497 (pullrequestreview-5256955613) — throttle
+        // MUST run before scope: a rejected request (invalid/expired/
+        // revoked token, tenant mismatch) short-circuits the pipeline, so
+        // if scope ran first the limiter middleware after it would never
+        // execute for that request at all — unthrottled token-guessing.
+        $this->assertStringContainsString("->middleware(['throttle:mcp', 'mcp.scope'])", $src);
     }
 
     /**

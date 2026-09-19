@@ -625,3 +625,127 @@ export const adminKbGraphApi = {
         return response.data as Blob;
     },
 };
+
+/*
+ * v8.37/W3c — Digitization Review frontend (ADR 0031). Every read here
+ * 404s when `kb.review.enabled` is off (`KbReviewDisabledException`,
+ * ADR 0031 §1's "clean 404 when off" contract) — `useKbReviewSummary`
+ * treats that 404 as the disabled state, not an error (R43 both-states).
+ *
+ * `total === 0` on the summary is the ONLY signal the frontend needs
+ * to know whether per-page review is available at all: `pageCount()`
+ * server-side treats 0/negative/missing `metadata.converter.page_count`
+ * as unknown and returns `null`, and `total` is `pageCount` itself when
+ * known (so always >= 1) — `total === 0` can only happen when page_count
+ * is unknown, in which case `setPageReviewStatus()`/`pageReviewStatus()`
+ * refuse every page number outright (see the doc-site gotcha "a document
+ * with no recorded page_count cannot be reviewed OR page-read at all").
+ * Approving is independent of page-review progress by design (same doc)
+ * so the Approve action is never gated on `reviewed === total`.
+ */
+export type KbPageReviewStatusValue = 'reviewed' | 'unreviewed';
+
+export interface KbReviewSummary {
+    total: number;
+    reviewed: number;
+    unreviewed: number;
+}
+
+export interface KbPageReviewStatus {
+    page_number: number;
+    status: KbPageReviewStatusValue;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+}
+
+export interface KbApproveResult {
+    approved: boolean;
+    reason?: string;
+}
+
+export interface KbCorrectionCandidate {
+    id: number;
+    page_number: number;
+    old_text: string;
+    new_text: string;
+    rationale: string | null;
+    proposed_by: string;
+    created_at: string | null;
+}
+
+export interface KbCorrectionsMeta {
+    limit: number;
+    offset: number;
+    has_more: boolean;
+}
+
+export interface KbCorrectionsResponse {
+    data: KbCorrectionCandidate[];
+    meta: KbCorrectionsMeta;
+}
+
+export interface KbCorrectionOutcome {
+    applied?: boolean;
+    rejected?: boolean;
+    reason?: string;
+    document_id?: number;
+}
+
+export const adminKbReviewApi = {
+    async summary(id: number): Promise<KbReviewSummary> {
+        const { data } = await api.get<{ data: KbReviewSummary }>(
+            `/api/admin/kb/documents/${id}/review-summary`,
+        );
+        return data.data;
+    },
+    async pageStatus(id: number, page: number): Promise<KbPageReviewStatus> {
+        const { data } = await api.get<{ data: KbPageReviewStatus }>(
+            `/api/admin/kb/documents/${id}/pages/${page}`,
+        );
+        return data.data;
+    },
+    async setPageStatus(
+        id: number,
+        page: number,
+        status: KbPageReviewStatusValue,
+    ): Promise<KbPageReviewStatus> {
+        const { data } = await api.patch<{ data: KbPageReviewStatus }>(
+            `/api/admin/kb/documents/${id}/pages/${page}/review-status`,
+            { status },
+        );
+        return data.data;
+    },
+    async approve(id: number): Promise<KbApproveResult> {
+        const { data } = await api.post<{ data: KbApproveResult }>(
+            `/api/admin/kb/documents/${id}/approve`,
+        );
+        return data.data;
+    },
+    async corrections(id: number, limit: number, offset: number): Promise<KbCorrectionsResponse> {
+        const { data } = await api.get<KbCorrectionsResponse>(
+            `/api/admin/kb/documents/${id}/corrections`,
+            { params: { limit, offset } },
+        );
+        return data;
+    },
+    // approveCorrection/rejectCorrection return 200 OR 409 (already_consumed,
+    // ADR 0031 §6) — both are a decided OUTCOME of a well-formed request,
+    // never a thrown error, so the hook reads `error.response.data.data`
+    // on 409 rather than treating it as a network/validation failure.
+    async approveCorrection(candidateId: number): Promise<KbCorrectionOutcome> {
+        const { data } = await api.post<{ data: KbCorrectionOutcome }>(
+            `/api/admin/kb/corrections/${candidateId}/approve`,
+            {},
+            { validateStatus: (status) => status === 200 || status === 409 },
+        );
+        return data.data;
+    },
+    async rejectCorrection(candidateId: number): Promise<KbCorrectionOutcome> {
+        const { data } = await api.post<{ data: KbCorrectionOutcome }>(
+            `/api/admin/kb/corrections/${candidateId}/reject`,
+            {},
+            { validateStatus: (status) => status === 200 || status === 409 },
+        );
+        return data.data;
+    },
+};
