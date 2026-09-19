@@ -151,7 +151,13 @@ function ApprovalSection({
                 <div data-testid="kb-review-summary" style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
                     {summary.total > 0
                         ? `${summary.reviewed} of ${summary.total} pages reviewed`
-                        : 'No per-page review progress recorded for this document.'}
+                        : // Copilot review PR #497 (pullrequestreview-5257179199,
+                          // discussion on ReviewTab.tsx:154) — total === 0 means
+                          // per-page review is UNAVAILABLE for this document (no
+                          // recorded page count — see the module docblock and
+                          // PageReviewSection's matching copy below), not that
+                          // review simply hasn't started yet.
+                          'Per-page review is unavailable for this document (no recorded page count).'}
                 </div>
                 <button
                     type="button"

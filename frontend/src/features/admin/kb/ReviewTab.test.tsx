@@ -97,8 +97,19 @@ const rejectCorrectionMutation = {
 };
 
 vi.mock('./kb-review.api', () => ({
-    isReviewDisabledError: (error: unknown) =>
-        error instanceof AxiosError && error.response?.status === 404,
+    // Copilot review PR #497 (pullrequestreview-5257179199) — this mock used
+    // to treat ANY 404 as "feature disabled", a weaker contract than the
+    // real isReviewDisabledError() (kb-review.api.ts) that let tests pass
+    // even when the UI would show a generic error for an unrelated 404 in
+    // production (R16). Mirrors the production check exactly: status 404
+    // AND the KbReviewDisabledException message marker.
+    isReviewDisabledError: (error: unknown) => {
+        if (!(error instanceof AxiosError) || error.response?.status !== 404) {
+            return false;
+        }
+        const data = error.response.data as { message?: unknown } | undefined;
+        return typeof data?.message === 'string' && data.message.includes('Digitization Review is disabled');
+    },
     useKbReviewSummary: () => ({
         data: summaryState.data,
         isLoading: summaryState.isLoading,
@@ -185,13 +196,18 @@ describe('ReviewTab', () => {
         expect(screen.getByTestId('kb-review')).toHaveAttribute('data-state', 'loading');
     });
 
-    it('renders the disabled panel on a 404 (feature flag off), not a generic error', () => {
+    it('renders the disabled panel on a 404 carrying the KbReviewDisabledException marker, not a generic error', () => {
         summaryState.isLoading = false;
         summaryState.isError = true;
         summaryState.data = undefined;
         summaryState.error = new AxiosError('Not Found', '404', undefined, undefined, {
             status: 404,
-            data: {},
+            // Copilot review PR #497 (pullrequestreview-5257179199) — the
+            // real backend response body for the disabled-feature case
+            // (app/Exceptions/KbReviewDisabledException.php); an empty body
+            // would no longer trigger the mocked isReviewDisabledError()
+            // now that it mirrors production's message-marker check.
+            data: { message: 'Digitization Review is disabled (set KB_DIGITIZATION_REVIEW_ENABLED=true).' },
             statusText: 'Not Found',
             headers: {},
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -205,6 +221,29 @@ describe('ReviewTab', () => {
         expect(screen.getByTestId('kb-review')).toHaveAttribute('data-feature', 'disabled');
         expect(screen.getByTestId('kb-review-disabled')).toBeInTheDocument();
         expect(screen.queryByTestId('kb-review-error')).not.toBeInTheDocument();
+    });
+
+    it('renders a generic error state on an UNRELATED 404 (e.g. document not found), not the disabled panel', () => {
+        // Copilot review PR #497 (pullrequestreview-5257179199) — this is
+        // the regression the mock alignment fix closes: before it, ANY 404
+        // — including a document that genuinely doesn't exist — rendered
+        // the "Digitization Review is disabled" panel instead of a real
+        // error, hiding the actual failure from the operator.
+        summaryState.isLoading = false;
+        summaryState.isError = true;
+        summaryState.data = undefined;
+        summaryState.error = new AxiosError('Not Found', '404', undefined, undefined, {
+            status: 404,
+            data: { message: 'Document not found.' },
+            statusText: 'Not Found',
+            headers: {},
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            config: {} as any,
+        });
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review')).toHaveAttribute('data-state', 'error');
+        expect(screen.getByTestId('kb-review-error')).toBeInTheDocument();
+        expect(screen.queryByTestId('kb-review-disabled')).not.toBeInTheDocument();
     });
 
     it('renders a generic error state on a non-404 failure', () => {
@@ -229,6 +268,13 @@ describe('ReviewTab', () => {
         wrap(<ReviewTab documentId={7} />);
         expect(screen.getByTestId('kb-review-no-pages')).toBeInTheDocument();
         expect(screen.queryByTestId('kb-review-page-nav')).not.toBeInTheDocument();
+        // Copilot review PR #497 (pullrequestreview-5257179199) — total === 0
+        // means per-page review is UNAVAILABLE for this document (no recorded
+        // page count), not that review simply hasn't started; the summary
+        // copy must say so, matching PageReviewSection's own "unavailable"
+        // wording for the same condition rather than implying zero progress.
+        expect(screen.getByTestId('kb-review-summary')).toHaveTextContent('unavailable');
+        expect(screen.getByTestId('kb-review-summary')).not.toHaveTextContent('0 of 0 pages reviewed');
     });
 
     it('shows the page summary and disables Prev on page 1', () => {
