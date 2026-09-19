@@ -108,13 +108,13 @@ flowchart TD
     PROMOTE --> AUDIT[(kb_canonical_audit\nevent_type=promoted)]
     FLIP --> AUDIT
 
-    PROP -->|"Cache::lock, existing-check + rate-limit atomic"| CAND[(kb_text_correction_candidates\nstatus=pending, UNIQUE idempotency_key)]
+    PROP -->|"Cache::lock(tenant+actor) + currentVersionFor(lock:true)"| CAND[(kb_text_correction_candidates\nstatus=pending, UNIQUE idempotency_key)]
     PROP --> AUDIT
-    APC -->|"lockForUpdate + currentVersionFor(lock:true), R21"| CAND
+    APC -->|"phase 1: lockForUpdate + currentVersionFor(lock:true)\nclaims status=applied, R21"| CAND
     REJ -->|"lockForUpdate, R21"| CAND
-    APC -->|"old_text still matches CURRENT live version's page"| REEMBED["DocumentIngestor::reembedFromMarkdown(live, corrected)"]
-    REEMBED -->|"stages corrected text as a NEW version's ARTIFACT\n(never touches source_path); mints new version_hash;\nchunks+embeds synchronously in a nested transaction"| NEWDOC[(knowledge_documents\nnew active row, prior archived)]
-    APC --> AUDIT
+    APC -->|"phase 2 (no ambient tx): old_text still matches\nCURRENT live version's page, !is_canonical"| REEMBED["DocumentIngestor::reembedFromMarkdown(live, corrected)"]
+    REEMBED -->|"stages corrected text as a NEW version's ARTIFACT\n(never touches source_path); mints new version_hash;\nchunks+embeds in its OWN top-level transaction"| NEWDOC[(knowledge_documents\nnew active row, prior archived)]
+    APC -->|"phase 3"| AUDIT
 
     RANK[Reranker::canonicalAdjustment] -->|reads| DOC[(knowledge_documents\ngeneration_source)]
 ```
@@ -505,39 +505,83 @@ curl -X POST /api/admin/kb/corrections/7/approve
   removed that text in the meantime, approval REJECTS the now-stale
   candidate (`stale_old_text_not_found_or_ambiguous`) rather than silently
   applying a correction to text that may no longer mean what the proposer
-  thought — ADR 0031 §6's explicit requirement. A document that has been
-  archived out from under the candidate (e.g. by a race that slipped past
-  the lock) surfaces as a distinct `stale_version_no_longer_active` outcome
-  instead, via `DocumentIngestor::reembedFromMarkdown()`'s own internal
-  `assertDocumentStillActive()` check.
-- **Approving a correction mints a genuinely NEW version, never mutates
-  `source_path` on disk, and never queues a job.** Applying the correction
-  goes through `DocumentIngestor::reembedFromMarkdown($live, $corrected)` —
-  the SAME core `ReembedDocumentJob`'s artifact-fallback path uses — not a
-  manual `Storage::put()` write to the family's `source_path`: for the vast
-  majority of documents this feature exists for (OCR/PDF/image-origin),
-  `source_path` names the ORIGINAL BINARY, and overwriting it with corrected
-  Markdown text would destroy the source the next re-OCR needs.
-  `reembedFromMarkdown()` instead stages the corrected text as the NEW
-  version's ARTIFACT, mints a fresh `version_hash` (and therefore a new
-  `knowledge_documents` row — the prior one is archived, not deleted), and
-  chunks + embeds SYNCHRONOUSLY inside its own `DB::transaction()` (which
-  nests as a savepoint of `approveCorrection()`'s own transaction) — no
-  `IngestDocumentJob` dispatch, so there is no `after_commit=false` queue
-  race to reason about. `EmbeddingCacheService` means pages whose text did
-  not change cost no new provider call, but every chunk is re-derived.
-- **Proposing a correction is itself audited, and the check-then-act
-  sequence is race-protected.** ADR 0031 §6 requires an audit row for every
-  `proposeCorrection()` outcome — accepted, denied (rate-limited), and
-  replayed — `event_type = 'correction_proposed'`, `metadata_json.outcome`
-  names which. The accepted path writes the candidate and its audit row in
-  ONE transaction (an audit-write failure rolls the candidate back too —
-  never a silently unaudited candidate). The existing-check + rate-limit
-  check-and-hit + insert sequence runs under a `Cache::lock()` keyed on the
-  idempotency key: without it, two genuinely concurrent calls carrying the
-  IDENTICAL 7-tuple could both miss the existing-check and both spend the
-  actor's rate-limit budget before the DB `UNIQUE` constraint collapsed them
-  to one row — a replay that should cost nothing debiting two units.
+  thought — ADR 0031 §6's explicit requirement. `proposeCorrection()` locks
+  the SAME way, for the SAME reason, before its own old_text validation.
+- **Approving a correction refuses a CANONICAL document outright, never
+  mints a NEW version from chunk-reconstructed content, and never mutates
+  `source_path` on disk.** A canonical document's Markdown carries YAML
+  frontmatter that `DocumentVersionService::contentFor()`'s chunk-
+  reconstruction fallback (used when no artifact is retained) explicitly
+  drops — feeding that frontmatter-less body into `reembedFromMarkdown()`
+  would silently demote the document out of canonical status. This feature
+  targets the ordinary OCR/PDF scan (ADR 0031: "non-canonical OCR documents
+  ... canonical frontmatter keeps its own say"); a canonical document's own
+  approval path is `approve()`'s `WikiExplorerService::promote()` branch, so
+  `approveCorrection()` on a canonical `$live` returns
+  `{applied: false, reason: 'canonical_document_not_supported'}` (Copilot
+  PR #496 round 2) rather than risk it. For the ordinary non-canonical case,
+  applying the correction goes through
+  `DocumentIngestor::reembedFromMarkdown($live, $corrected)` — the SAME core
+  `ReembedDocumentJob`'s artifact-fallback path uses — not a manual
+  `Storage::put()` write to `source_path`, which for an OCR/PDF/image-origin
+  document names the ORIGINAL BINARY. `reembedFromMarkdown()` stages the
+  corrected text as the NEW version's ARTIFACT, mints a fresh `version_hash`
+  (and therefore a new `knowledge_documents` row — the prior one is
+  archived, not deleted), and chunks + embeds SYNCHRONOUSLY inside its own
+  top-level `DB::transaction()`. `EmbeddingCacheService` means pages whose
+  text did not change cost no new provider call, but every chunk is
+  re-derived.
+- **Approval is a THREE-PHASE flow, not one giant transaction (Copilot
+  PR #496 round 2).** Round 1 nested the ENTIRE `approveCorrection()` flow —
+  including `reembedFromMarkdown()` — inside one ambient transaction; that
+  call publishes its artifact and dispatches its canonical-graph job right
+  after its OWN inner commit, still inside round 1's outer one, so a LATER
+  failure rolling that outer transaction back would undo the new
+  `knowledge_documents` row while the artifact/job side effects had already
+  happened. **Phase 1** (own transaction) locks the candidate + the live
+  row, validates, and — on success — ATOMICALLY marks the candidate
+  `applied` right there (the R21 single-use guarantee: a concurrent second
+  approval sees `status != pending` immediately, with no lock held across
+  phase 2). **Phase 2** (no ambient transaction, exactly like every other
+  `DocumentIngestor` caller) calls `reembedFromMarkdown()`; a failure
+  reverts the phase-1 claim (REJECTED for a decided staleness, PENDING +
+  re-thrown for any other failure — an infra blip a reviewer can retry)
+  rather than leaving the candidate stranded `applied` with no version.
+  **Phase 3** (own transaction) writes the `kb_canonical_audit` row.
+- **Proposing a correction is itself audited — EVERY denied outcome, not
+  only rate-limiting — and the check-then-act sequence is race-protected on
+  TWO axes (Copilot PR #496 round 2).** ADR 0031 §6 requires an audit row
+  for every `proposeCorrection()` outcome — accepted, denied, and replayed
+  — `event_type = 'correction_proposed'`, `metadata_json.outcome` names
+  which and `metadata_json.reason` names why for a denial (bad input,
+  `old_text_not_found_or_ambiguous`, `rate_limited`). A per-TENANT+ACTOR
+  `Cache::lock()` wraps the whole check-then-act sequence: round 1's lock
+  was keyed on the idempotency key, so it only serialized IDENTICAL
+  proposals — two concurrent DIFFERENT proposals from the SAME actor could
+  both pass the rate-limit check before either recorded a hit, over-
+  spending the actor's hourly budget; a per-actor lock closes that
+  entirely. Inside it, `currentVersionFor($document, lock: true)` locks the
+  family's live row before its content is read, closing the propose-time
+  analogue of approval's row-locking fix. The accepted path still writes
+  the candidate and its audit row in ONE transaction (an audit-write
+  failure rolls the candidate back too — never a silently unaudited
+  candidate); every DENIED branch returns a result instead of throwing
+  from inside that transaction, so it always commits, and the audit-then-
+  throw happens after, outside it — a denial audited inside a transaction
+  that then rolls back would lose the very audit row it was writing.
+- **MCP proposals share ONE identity per tenant, honestly — not a
+  fictitious per-user one.** The deployed MCP connection authenticates a
+  TENANT-scoped token (`EnforceMcpScope`), never a per-user Sanctum
+  session/token, so `auth()->user()` is genuinely `null` on every real MCP
+  call. `KbProposeTextCorrectionTool` uses a fixed, explicitly-scoped
+  service identity, `'mcp:kb-propose-text-correction'` (mirroring
+  `KbWikiPromoteTool`'s `'mcp:kb-wiki-promote'`), rather than
+  `'user:'.(auth()->user()?->id ?? 'unknown')` — which never actually
+  resolved to a real user and only ever produced the single shared bucket
+  `user:unknown` (Copilot PR #496 round 2). The rate-limit budget,
+  idempotency tuple, `proposed_by` and audit actor are therefore shared per
+  TENANT for MCP-originated proposals; the HTTP surface's future review UI
+  will carry a real per-user identity once it ships.
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
   confidence heat-map — propose/approve/reject above are HTTP + MCP only
   today, with no dedicated frontend), and the CER/WER quality metrics. These

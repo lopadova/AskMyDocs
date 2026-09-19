@@ -135,6 +135,11 @@ final class KbReviewController extends Controller
             ->where('knowledge_document_id', $document->id)
             ->pending()
             ->orderBy('created_at')
+            // A unique tie-breaker (Copilot PR #496 round 2): without it,
+            // pagination over candidates sharing a created_at timestamp
+            // (common with batch inserts) is nondeterministic — rows can
+            // be duplicated or skipped between pages.
+            ->orderBy('id')
             ->offset($offset)
             ->limit($limit + 1)
             ->get();

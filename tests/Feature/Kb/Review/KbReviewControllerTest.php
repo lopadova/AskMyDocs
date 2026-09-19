@@ -424,6 +424,40 @@ final class KbReviewControllerTest extends TestCase
         $page2->assertJsonPath('meta.has_more', false);
     }
 
+    /**
+     * Copilot PR #496 round 2 — `orderBy('created_at')` alone is
+     * nondeterministic when rows share a timestamp (a batch insert); `id`
+     * as a unique tie-breaker makes the queue order stable across pages.
+     */
+    public function test_api_corrections_orders_deterministically_when_candidates_share_a_timestamp(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc();
+        $sameInstant = now();
+        $first = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'tie-1')]);
+        $second = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'tie-2')]);
+        $third = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'tie-3')]);
+        foreach ([$first, $second, $third] as $c) {
+            $c->forceFill(['created_at' => $sameInstant])->save();
+        }
+
+        $page1 = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=2&offset=0")
+            ->assertOk();
+        $page2 = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=2&offset=2")
+            ->assertOk();
+
+        $page1Ids = array_column($page1->json('data'), 'id');
+        $page2Ids = array_column($page2->json('data'), 'id');
+        $this->assertCount(2, $page1Ids);
+        $this->assertCount(1, $page2Ids);
+        // The 3 ids across both pages, with no duplicate and no gap — the
+        // exact failure mode of a non-unique, non-deterministic order.
+        $this->assertEqualsCanonicalizing([$first->id, $second->id, $third->id], array_merge($page1Ids, $page2Ids));
+        $this->assertEmpty(array_intersect($page1Ids, $page2Ids), 'no candidate id must appear on both pages');
+    }
+
     /** `?limit=` is capped by `kb.review.corrections_page_size`, never client-inflatable. */
     public function test_api_corrections_limit_is_capped_by_the_configured_page_size(): void
     {

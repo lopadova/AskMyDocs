@@ -102,11 +102,15 @@ final class KbReviewCorrectionTest extends TestCase
         ], $over));
     }
 
-    /** A document whose content is readable via chunk-reconstruction: one
-     *  chunk whose text is the whole `## Page N`-delimited document. */
-    private function docWithContent(): KnowledgeDocument
+    /**
+     * A document whose content is readable via chunk-reconstruction: one
+     * chunk whose text is the whole `## Page N`-delimited document.
+     *
+     * @param  array<string,mixed>  $over
+     */
+    private function docWithContent(array $over = []): KnowledgeDocument
     {
-        $doc = $this->doc();
+        $doc = $this->doc($over);
         $markdown = "# scan\n\n## Page 1\n\n".self::PAGE_1."\n\n## Page 2\n\n".self::PAGE_2."\n";
         KnowledgeChunk::create([
             'tenant_id' => 'default',
@@ -162,11 +166,57 @@ final class KbReviewCorrectionTest extends TestCase
 
     public function test_propose_correction_refuses_old_text_not_found_on_the_page(): void
     {
-        config(['kb.review.enabled' => true]);
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
         $doc = $this->docWithContent();
 
-        $this->expectException(\InvalidArgumentException::class);
-        $this->svc->proposeCorrection($doc, 1, 'never appears anywhere', 'x', null, 'user:1');
+        try {
+            $this->svc->proposeCorrection($doc, 1, 'never appears anywhere', 'x', null, 'user:1');
+            $this->fail('expected InvalidArgumentException');
+        } catch (\InvalidArgumentException) {
+            // expected
+        }
+
+        // ADR 0031 §6 — every DENIED outcome is audited (Copilot PR #496
+        // round 2 finding), including old_text-not-found/ambiguous — not
+        // only rate-limit denials.
+        $audit = KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->sole();
+        $this->assertSame('denied', $audit->metadata_json['outcome']);
+        $this->assertSame('old_text_not_found_or_ambiguous', $audit->metadata_json['reason']);
+    }
+
+    /** Every basic-input-shape refusal is audited too — not only content-validation denials. */
+    public function test_propose_correction_invalid_page_number_is_audited(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+
+        try {
+            $this->svc->proposeCorrection($doc, 0, 'Bod', 'Bob', null, 'user:1');
+            $this->fail('expected InvalidArgumentException');
+        } catch (\InvalidArgumentException) {
+            // expected
+        }
+
+        $audit = KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->sole();
+        $this->assertSame('denied', $audit->metadata_json['outcome']);
+        $this->assertSame('invalid_page_number', $audit->metadata_json['reason']);
+    }
+
+    public function test_propose_correction_empty_old_text_is_audited(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+
+        try {
+            $this->svc->proposeCorrection($doc, 1, '   ', 'Bob', null, 'user:1');
+            $this->fail('expected InvalidArgumentException');
+        } catch (\InvalidArgumentException) {
+            // expected
+        }
+
+        $audit = KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->sole();
+        $this->assertSame('denied', $audit->metadata_json['outcome']);
+        $this->assertSame('empty_old_text', $audit->metadata_json['reason']);
     }
 
     /**
@@ -571,11 +621,14 @@ final class KbReviewCorrectionTest extends TestCase
      * re-ingest, or here directly) between the proposal and the approval,
      * with the family left holding NO active row —
      * `currentVersionFor()`'s own documented fallback returns the (now
-     * stale) `$document` unlocked. `reembedFromMarkdown()`'s own
-     * `assertDocumentStillActive()` re-check — inside the SAME
-     * transaction, under `lockForUpdate()` — catches it: the approval
-     * fails safely rather than silently reviving or overwriting an
-     * archived row.
+     * stale) `$document` unlocked. Phase 1 (round 2's redesign) still
+     * validates and CLAIMS the candidate on that stale read (nothing there
+     * changed), but phase 2's `reembedFromMarkdown()` re-checks under its
+     * OWN `assertDocumentStillActive()`/`lockForUpdate()` that the row is
+     * STILL active at write time, throws
+     * `ReembedTargetNoLongerActiveException`, and the phase-1 claim is
+     * reverted to REJECTED rather than left stranded `applied` with no
+     * version.
      */
     public function test_approve_correction_rejects_a_candidate_whose_document_is_no_longer_active(): void
     {
@@ -595,6 +648,79 @@ final class KbReviewCorrectionTest extends TestCase
         $this->assertSame(KbTextCorrectionCandidate::STATUS_REJECTED, $candidate->status);
         $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count(), 'a no-longer-active rejection must never write a new audit row');
         $this->assertSame($docsBeforeApprove, KnowledgeDocument::count(), 'a no-longer-active rejection must never mint a new version');
+    }
+
+    /**
+     * v8.37/W3b round 2 (Copilot PR #496 finding) — a CANONICAL document's
+     * Markdown carries YAML frontmatter that chunk-reconstruction
+     * (`contentFor()`'s fallback when no artifact is retained) explicitly
+     * drops; applying a correction through `reembedFromMarkdown()` on such
+     * a document would silently demote it out of canonical status. This
+     * feature targets ordinary OCR/PDF scans — a canonical document's own
+     * approval path is `approve()`'s `WikiExplorerService::promote()`
+     * branch — so approveCorrection refuses outright rather than risk it.
+     */
+    public function test_approve_correction_refuses_a_canonical_document(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent(['is_canonical' => true]);
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $auditsBeforeApprove = KbCanonicalAudit::count();
+        $docsBeforeApprove = KnowledgeDocument::count();
+
+        $result = $this->svc->approveCorrection($candidate, 'user:1', null);
+
+        $this->assertFalse($result['applied']);
+        $this->assertSame('canonical_document_not_supported', $result['reason']);
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_REJECTED, $candidate->status);
+        $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count());
+        $this->assertSame($docsBeforeApprove, KnowledgeDocument::count());
+    }
+
+    /**
+     * v8.37/W3b round 2 (Copilot PR #496 finding — "defer reembedding side
+     * effects until the outer transaction commits") — approveCorrection now
+     * calls `reembedFromMarkdown()` OUTSIDE any ambient transaction (phase
+     * 2). If that call throws for a reason OTHER than staleness (an infra
+     * failure — embedding provider down, artifact publish failure, ...),
+     * the phase-1 claim (already committed `applied`) must be REVERTED to
+     * `pending` — never left stranded `applied` with no corresponding
+     * version — and the failure must propagate loudly (R14), not be
+     * swallowed.
+     */
+    public function test_approve_correction_reverts_the_claim_to_pending_on_a_generic_reembed_failure(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $auditsBeforeApprove = KbCanonicalAudit::count();
+        $docsBeforeApprove = KnowledgeDocument::count();
+
+        $ingestor = Mockery::mock(\App\Services\Kb\DocumentIngestor::class);
+        $ingestor->shouldReceive('reembedFromMarkdown')->once()->andThrow(new \RuntimeException('embedding provider unreachable'));
+        $this->app->instance(\App\Services\Kb\DocumentIngestor::class, $ingestor);
+        $svc = app(KbReviewService::class);
+
+        try {
+            $svc->approveCorrection($candidate, 'user:1', null);
+            $this->fail('expected the generic reembed failure to propagate');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('embedding provider unreachable', $e->getMessage());
+        }
+
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_PENDING, $candidate->status, 'the phase-1 claim must be reverted to pending, not left stranded applied');
+        $this->assertNull($candidate->consumed_at);
+        $this->assertNull($candidate->consumed_by);
+        $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count());
+        $this->assertSame($docsBeforeApprove, KnowledgeDocument::count());
+
+        // The reverted candidate is retryable: a fresh attempt with the
+        // REAL DocumentIngestor (this test's own $this->svc, wired to the
+        // faked EmbeddingCacheService from setUp()) succeeds.
+        $result = $this->svc->approveCorrection($candidate->fresh(), 'user:1', null);
+        $this->assertTrue($result['applied']);
     }
 
     // --- rejectCorrection -------------------------------------------------

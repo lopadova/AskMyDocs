@@ -97,10 +97,19 @@ class KbProposeTextCorrectionTool extends Tool
             return Response::error("Document {$documentId} not found.");
         }
 
-        // The immutable initiating identity, never trusted from request
-        // input — the same 'user:{id}' shape KbReviewController::actor()
-        // stamps for the HTTP surface.
-        $actor = 'user:'.(string) (auth()->user()?->id ?? 'unknown');
+        // v8.37/W3b round 2 (Copilot PR #496) — the deployed MCP connection
+        // authenticates a TENANT-scoped token (EnforceMcpScope), never a
+        // per-user Sanctum session/token, so `auth()->user()` is genuinely
+        // null on every real MCP call — `'user:'.(auth()->user()?->id ??
+        // 'unknown')` was not a per-user identity at all, only ever
+        // resolving to the single shared bucket `user:unknown` for every
+        // caller in the tenant. A fixed, explicitly-scoped SERVICE identity
+        // (mirroring KbWikiPromoteTool's `'mcp:kb-wiki-promote'`) makes that
+        // sharing honest instead of implying a per-user distinction MCP
+        // calls do not actually carry today — the rate-limit bucket,
+        // idempotency tuple, `proposed_by` and audit actor are shared per
+        // TENANT, not per fictitious "user".
+        $actor = 'mcp:kb-propose-text-correction';
 
         try {
             $candidate = $reviews->proposeCorrection($document, $page, $oldText, $newText, $rationale, $actor);

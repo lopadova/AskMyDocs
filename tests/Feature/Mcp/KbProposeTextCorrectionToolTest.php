@@ -114,7 +114,12 @@ final class KbProposeTextCorrectionToolTest extends TestCase
         $candidate = KbTextCorrectionCandidate::query()->findOrFail($payload['candidate_id']);
         $this->assertSame('Bod', $candidate->old_text);
         $this->assertSame('Bob', $candidate->new_text);
-        $this->assertStringStartsWith('user:', $candidate->proposed_by);
+        // v8.37/W3b round 2 — the deployed MCP connection carries a
+        // tenant-scoped token with no per-user identity, so the tool uses a
+        // fixed, explicitly-scoped service identity (mirrors
+        // KbWikiPromoteTool's 'mcp:kb-wiki-promote'), not a fictitious
+        // per-user one.
+        $this->assertSame('mcp:kb-propose-text-correction', $candidate->proposed_by);
     }
 
     public function test_a_replayed_proposal_returns_the_same_candidate(): void
