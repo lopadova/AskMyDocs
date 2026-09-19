@@ -4,22 +4,23 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Kb\Review;
 
+use App\Ai\EmbeddingsResponse;
 use App\Exceptions\KbReviewDisabledException;
 use App\Exceptions\KbReviewRateLimitedException;
-use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbTextCorrectionCandidate;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
+use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\Review\KbReviewService;
 use App\Support\Canonical\GenerationSource;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -31,9 +32,12 @@ use Tests\TestCase;
  * Documents in this file carry real Markdown content readable via
  * DocumentVersionService::contentFor() through the chunk-reconstruction
  * fallback (a single chunk whose text IS the whole `## Page N`-delimited
- * document) — no artifact/Storage setup needed for the READ path;
- * approveCorrection()'s WRITE path needs Storage::fake('kb') (R4/R14,
- * mirrors KbDocumentControllerTest::test_update_raw_*).
+ * document) — no artifact/Storage setup needed for the READ path.
+ * approveCorrection()'s WRITE path runs the REAL DocumentIngestor::
+ * reembedFromMarkdown() (v8.37/W3b round 1 findings #2/#3) — needs
+ * Storage::fake('kb') for the artifact write AND a faked
+ * EmbeddingCacheService so the chunk/embed step never reaches a real
+ * provider (mirrors ConversionArtifactsIngestTest's setUp()).
  */
 final class KbReviewCorrectionTest extends TestCase
 {
@@ -44,10 +48,35 @@ final class KbReviewCorrectionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->svc = app(KbReviewService::class);
         app(TenantContext::class)->set('default');
         config(['kb.sources.disk' => 'kb', 'kb.sources.path_prefix' => '']);
         Storage::fake('kb');
+
+        // Bound BEFORE KbReviewService is resolved below: the container
+        // builds DocumentIngestor's EmbeddingCacheService dependency
+        // eagerly at construction time, so binding the mock any later
+        // leaves $this->svc holding a DocumentIngestor wired to the REAL
+        // service (and a real outbound HTTP call on the first approval
+        // that actually reaches reembedFromMarkdown()).
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturnUsing(
+            fn (array $texts) => new EmbeddingsResponse(
+                embeddings: array_map(fn () => array_fill(0, 8, 0.0), $texts),
+                provider: 'fake',
+                model: 'fake-8',
+            ),
+        );
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+
+        $this->svc = app(KbReviewService::class);
+    }
+
+    protected function tearDown(): void
+    {
+        // R41 — rollback first, Mockery::close() after: a throw here must
+        // never skip the RefreshDatabase rollback.
+        parent::tearDown();
+        Mockery::close();
     }
 
     private const PAGE_1 = "Bod is the contractor's chosen supplier for all steel deliveries.";
@@ -250,6 +279,93 @@ final class KbReviewCorrectionTest extends TestCase
         $this->assertSame('user:2', $candidate->proposed_by);
     }
 
+    /**
+     * ADR 0031 §6 — "every accepted, denied, and replayed call writes an
+     * audit row" (Copilot PR #496 round 1 finding #8). Three separate
+     * proposeCorrection() outcomes, one audit row per outcome.
+     */
+    public function test_propose_correction_accepted_call_writes_an_audit_row(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        $audit = KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->sole();
+        $this->assertSame('accepted', $audit->metadata_json['outcome']);
+        $this->assertSame('user:1', $audit->actor);
+        $this->assertSame($candidate->id, $audit->after_json['candidate_id']);
+    }
+
+    public function test_propose_correction_replayed_call_writes_an_audit_row(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        $this->assertSame(1, KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->where('metadata_json->outcome', 'accepted')->count());
+        $this->assertSame(1, KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->where('metadata_json->outcome', 'replayed')->count());
+    }
+
+    public function test_propose_correction_rate_limited_denial_writes_an_audit_row(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true, 'kb.review.candidates_per_hour' => 1]);
+        $doc = $this->docWithContent();
+        $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        try {
+            $this->svc->proposeCorrection($doc, 2, 'unrelated', 'other', null, 'user:1');
+            $this->fail('expected KbReviewRateLimitedException');
+        } catch (KbReviewRateLimitedException) {
+            // expected
+        }
+
+        $denied = KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->where('metadata_json->outcome', 'denied')->sole();
+        $this->assertSame('rate_limited', $denied->metadata_json['reason']);
+        $this->assertNull($denied->after_json);
+    }
+
+    /**
+     * R21 — the check-then-act sequence (existing-check, rate-limit
+     * check-and-hit, insert) is race-protected: a `Cache::lock()`, keyed on
+     * the idempotency key, serializes it (Copilot PR #496 round 1 finding
+     * #7). Not stageable as a true two-thread race in PHPUnit (mirrors
+     * KbReviewCorrectionTest's own R21 precedent for approveCorrection's
+     * lockForUpdate() below, and KbReviewServiceTest's for
+     * setPageReviewStatus()); what IS directly testable, and proves the
+     * fix, is the outcome the lock exists to guarantee: a replay — even
+     * one that races the FIRST insert closely enough that both calls see
+     * the same "before" state if unlocked — costs the actor's rate-limit
+     * budget exactly ONCE, never twice, across N calls with the identical
+     * 7-tuple.
+     */
+    public function test_propose_correction_n_identical_calls_spend_the_rate_limit_budget_exactly_once(): void
+    {
+        // Budget of 2: the identical batch below must spend exactly 1 unit
+        // (the first, genuinely-new proposal) — leaving exactly 1 unit for
+        // the later genuinely-different proposal. If any of the 4 replays
+        // in the batch had ALSO spent a unit, the budget would already be
+        // exhausted and the fresh proposal below would throw.
+        config(['kb.review.enabled' => true, 'kb.review.candidates_per_hour' => 2]);
+        $doc = $this->docWithContent();
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        }
+
+        $this->assertDatabaseCount('kb_text_correction_candidates', 1);
+        $fresh = $this->svc->proposeCorrection($doc, 2, 'unrelated', 'other', null, 'user:1');
+        $this->assertSame('user:1', $fresh->proposed_by);
+
+        // The budget is now exhausted (2/2 spent: 1 for the batch's genuine
+        // insert, 1 for the fresh proposal) — a THIRD genuinely different
+        // proposal must be refused.
+        $this->expectException(KbReviewRateLimitedException::class);
+        $this->svc->proposeCorrection($doc, 2, 'unrelated', 'yet another', null, 'user:1');
+    }
+
     // --- approveCorrection ----------------------------------------------
 
     public function test_approve_correction_throws_when_disabled(): void
@@ -272,9 +388,16 @@ final class KbReviewCorrectionTest extends TestCase
         $this->svc->approveCorrection($candidate, 'user:2', null);
     }
 
-    public function test_approve_correction_writes_the_corrected_markdown_dispatches_ingest_and_audits(): void
+    /**
+     * v8.37/W3b round 1 (Copilot findings #2/#3) — approval no longer
+     * overwrites `source_path` and queues a job; it creates a genuinely
+     * NEW version through `DocumentIngestor::reembedFromMarkdown()`. The
+     * ORIGINAL row is archived (never mutated), `source_path` never
+     * touched on disk, and the corrected text lives in the new version's
+     * own chunks.
+     */
+    public function test_approve_correction_creates_a_new_version_and_audits(): void
     {
-        Queue::fake();
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
         $doc = $this->docWithContent();
         $reviewer = $this->user();
@@ -283,53 +406,71 @@ final class KbReviewCorrectionTest extends TestCase
         $result = $this->svc->approveCorrection($candidate, "user:{$reviewer->id}", (int) $reviewer->id);
 
         $this->assertTrue($result['applied']);
+        $this->assertArrayHasKey('document_id', $result);
+        $this->assertNotSame($doc->id, $result['document_id'], 'approval must create a NEW version, never mutate the proposed-against row');
+
         $candidate->refresh();
         $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->status);
         $this->assertNotNull($candidate->consumed_at);
         $this->assertSame((int) $reviewer->id, $candidate->consumed_by);
 
-        // The corrected byte replaced "Bod" -> "Bob" ONLY within page 1's
-        // section, page 2's unrelated text is untouched, and page 2's own
-        // heading survives (proving the replacement did not shift/clobber
-        // the rest of the document).
-        $onDisk = (string) Storage::disk('kb')->get($doc->source_path);
-        $this->assertStringContainsString('Bob', $onDisk);
-        $this->assertStringNotContainsString('Bod ', $onDisk);
-        $this->assertStringContainsString(self::PAGE_2, $onDisk);
-        $this->assertStringContainsString('## Page 2', $onDisk);
+        // The original row is archived, never mutated in place; its
+        // source_path binary on disk is untouched (finding #2 — approval
+        // must never overwrite the original source with corrected text).
+        $doc->refresh();
+        $this->assertSame('archived', $doc->status);
+        $this->assertFalse(Storage::disk('kb')->exists($doc->source_path), 'approval must never write to the original source_path on disk');
 
-        Queue::assertPushed(IngestDocumentJob::class, 1);
+        /** @var KnowledgeDocument $newVersion */
+        $newVersion = KnowledgeDocument::query()->findOrFail($result['document_id']);
+        $this->assertSame('active', $newVersion->status);
+        $this->assertSame($doc->source_path, $newVersion->source_path);
+        $this->assertNotSame($doc->version_hash, $newVersion->version_hash);
+
+        // The corrected byte replaced "Bod" -> "Bob" ONLY within page 1's
+        // section; page 2's unrelated text is untouched (proving the
+        // replacement did not shift/clobber the rest of the document).
+        // PdfPageChunker slices per `## Page N` boundary into one chunk per
+        // page (heading tracked in `heading_path`/`metadata.page`, not
+        // inlined into `chunk_text`), so the page split is asserted
+        // directly on the new version's own chunk rows.
+        $newChunks = KnowledgeChunk::query()->where('knowledge_document_id', $newVersion->id)->orderBy('chunk_order')->get();
+        $this->assertCount(2, $newChunks, 'one chunk per page');
+        $this->assertSame(1, $newChunks[0]->metadata['page'] ?? null);
+        $this->assertStringContainsString('Bob', $newChunks[0]->chunk_text);
+        $this->assertStringNotContainsString('Bod ', $newChunks[0]->chunk_text);
+        $this->assertSame(2, $newChunks[1]->metadata['page'] ?? null);
+        $this->assertSame(self::PAGE_2, trim($newChunks[1]->chunk_text));
 
         $this->assertDatabaseHas('kb_canonical_audit', [
             'event_type' => 'updated',
             'actor' => "user:{$reviewer->id}",
         ]);
-        $audit = KbCanonicalAudit::query()->latest('id')->first();
+        $audit = KbCanonicalAudit::query()->where('event_type', 'updated')->latest('id')->first();
         $this->assertSame('kb_review_correction_candidate', $audit->metadata_json['source']);
         $this->assertSame($candidate->id, $audit->metadata_json['candidate_id']);
     }
 
     /**
      * R21 — single-use. A second approval attempt on an already-applied
-     * candidate must be a safe no-op: no second disk write, no second
-     * job, no second audit row.
+     * candidate must be a safe no-op: no second version, no second audit
+     * row.
      */
     public function test_approve_correction_on_an_already_applied_candidate_is_a_safe_no_op(): void
     {
-        Queue::fake();
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
         $doc = $this->docWithContent();
         $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
         $this->svc->approveCorrection($candidate, 'user:1', null);
-        Queue::assertPushed(IngestDocumentJob::class, 1);
         $auditsAfterFirst = KbCanonicalAudit::count();
+        $docsAfterFirst = KnowledgeDocument::count();
 
         $result = $this->svc->approveCorrection($candidate->fresh(), 'user:2', null);
 
         $this->assertFalse($result['applied']);
         $this->assertSame('already_consumed', $result['reason']);
-        Queue::assertPushed(IngestDocumentJob::class, 1); // still exactly one
         $this->assertSame($auditsAfterFirst, KbCanonicalAudit::count());
+        $this->assertSame($docsAfterFirst, KnowledgeDocument::count(), 'a no-op approval must never mint a second version');
     }
 
     /**
@@ -342,13 +483,26 @@ final class KbReviewCorrectionTest extends TestCase
      * reviewer already approved this candidate" by flipping the DB row
      * directly (bypassing the in-memory $candidate, which still reports
      * pending), then call approveCorrection() with that stale instance.
+     *
+     * Copilot PR #496 round 1 finding #9 — this test alone proves the
+     * FRESH-READ decision but not "exactly one disk/version/audit effect"
+     * under a genuine two-caller race (which SQLite cannot stage). That
+     * second half of the invariant is proven — with REAL sequential
+     * transactions, no DB bypass — by
+     * {@see test_approve_correction_on_an_already_applied_candidate_is_a_safe_no_op()}
+     * just above: it calls approveCorrection() twice for real and asserts
+     * the document count and audit count are IDENTICAL before and after
+     * the second call, i.e. exactly one version and one audit row survive
+     * two callers racing the same candidate, regardless of which one
+     * "wins" the lock first.
      */
     public function test_approve_correction_decides_from_a_fresh_read_not_the_callers_stale_instance(): void
     {
-        Queue::fake();
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
         $doc = $this->docWithContent();
         $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $auditsBeforeApprove = KbCanonicalAudit::count();
+        $docsBeforeApprove = KnowledgeDocument::count();
 
         DB::table('kb_text_correction_candidates')->where('id', $candidate->id)->update([
             'status' => KbTextCorrectionCandidate::STATUS_APPLIED,
@@ -366,8 +520,8 @@ final class KbReviewCorrectionTest extends TestCase
 
         $this->assertFalse($result['applied']);
         $this->assertSame('already_consumed', $result['reason']);
-        Queue::assertNothingPushed();
-        $this->assertDatabaseCount('kb_canonical_audit', 0);
+        $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count(), 'a rejected already_consumed attempt must never write a new audit row');
+        $this->assertSame($docsBeforeApprove, KnowledgeDocument::count(), 'a rejected already_consumed attempt must never mint a new version');
     }
 
     /**
@@ -380,10 +534,11 @@ final class KbReviewCorrectionTest extends TestCase
      */
     public function test_approve_correction_rejects_a_candidate_whose_old_text_no_longer_matches(): void
     {
-        Queue::fake();
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
         $doc = $this->docWithContent();
         $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $auditsBeforeApprove = KbCanonicalAudit::count();
+        $docsBeforeApprove = KnowledgeDocument::count();
 
         // Page 1 was edited since the proposal: "Bod" no longer appears.
         KnowledgeChunk::where('knowledge_document_id', $doc->id)->delete();
@@ -404,8 +559,42 @@ final class KbReviewCorrectionTest extends TestCase
         $this->assertSame('stale_old_text_not_found_or_ambiguous', $result['reason']);
         $candidate->refresh();
         $this->assertSame(KbTextCorrectionCandidate::STATUS_REJECTED, $candidate->status);
-        Queue::assertNothingPushed();
-        $this->assertDatabaseCount('kb_canonical_audit', 0);
+        $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count(), 'a stale-text rejection must never write a new audit row');
+        $this->assertSame($docsBeforeApprove, KnowledgeDocument::count(), 'a stale-text rejection must never mint a new version');
+    }
+
+    /**
+     * v8.37/W3b round 1 (Copilot PR #496 finding #1) — the row locked and
+     * written to must be the family's ACTUAL live row, not a bare lock on
+     * whatever row the candidate happens to name. Simulate the exact gap
+     * the fix closes: the document is archived (e.g. by a concurrent
+     * re-ingest, or here directly) between the proposal and the approval,
+     * with the family left holding NO active row —
+     * `currentVersionFor()`'s own documented fallback returns the (now
+     * stale) `$document` unlocked. `reembedFromMarkdown()`'s own
+     * `assertDocumentStillActive()` re-check — inside the SAME
+     * transaction, under `lockForUpdate()` — catches it: the approval
+     * fails safely rather than silently reviving or overwriting an
+     * archived row.
+     */
+    public function test_approve_correction_rejects_a_candidate_whose_document_is_no_longer_active(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $auditsBeforeApprove = KbCanonicalAudit::count();
+        $docsBeforeApprove = KnowledgeDocument::count();
+
+        DB::table('knowledge_documents')->where('id', $doc->id)->update(['status' => 'archived']);
+
+        $result = $this->svc->approveCorrection($candidate, 'user:1', null);
+
+        $this->assertFalse($result['applied']);
+        $this->assertSame('stale_version_no_longer_active', $result['reason']);
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_REJECTED, $candidate->status);
+        $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count(), 'a no-longer-active rejection must never write a new audit row');
+        $this->assertSame($docsBeforeApprove, KnowledgeDocument::count(), 'a no-longer-active rejection must never mint a new version');
     }
 
     // --- rejectCorrection -------------------------------------------------

@@ -109,8 +109,16 @@ final class KbReviewController extends Controller
      * §6) — the review UI's counterpart to `KbProposeTextCorrectionTool`'s
      * writes. Same "whole capability inert when off" posture as the other
      * reads above.
+     *
+     * R3 (Copilot PR #496 round 1, finding #5) — bounded + paginated: an
+     * unbounded `->get()` on a document with a large pending queue (a
+     * misbehaving or adversarial agent proposing repeatedly) loads every
+     * row into memory on every call. `?limit=` is capped by
+     * `kb.review.corrections_page_size` (default 50); `?offset=` pages
+     * through the rest. `has_more` tells the caller whether another page
+     * exists without a second COUNT query.
      */
-    public function corrections(int $id): JsonResponse
+    public function corrections(Request $request, int $id): JsonResponse
     {
         if (! (bool) config('kb.review.enabled', false)) {
             throw new KbReviewDisabledException();
@@ -118,12 +126,21 @@ final class KbReviewController extends Controller
 
         $document = $this->find($id);
 
+        $pageSize = max(1, (int) config('kb.review.corrections_page_size', 50));
+        $limit = min($pageSize, max(1, (int) $request->integer('limit', $pageSize)));
+        $offset = max(0, (int) $request->integer('offset', 0));
+
         $candidates = KbTextCorrectionCandidate::query()
             ->forTenant($this->tenants->current())
             ->where('knowledge_document_id', $document->id)
             ->pending()
             ->orderBy('created_at')
+            ->offset($offset)
+            ->limit($limit + 1)
             ->get();
+
+        $hasMore = $candidates->count() > $limit;
+        $candidates = $candidates->take($limit);
 
         return response()->json(['data' => $candidates->map(fn (KbTextCorrectionCandidate $c): array => [
             'id' => $c->id,
@@ -133,37 +150,52 @@ final class KbReviewController extends Controller
             'rationale' => $c->rationale,
             'proposed_by' => $c->proposed_by,
             'created_at' => $c->created_at?->toIso8601String(),
-        ])->values()]);
+        ])->values(), 'meta' => ['limit' => $limit, 'offset' => $offset, 'has_more' => $hasMore]]);
     }
 
     /**
      * POST /api/admin/kb/corrections/{id}/approve
      *
      * Applies a correction candidate through {@see KbReviewService::approveCorrection()}
-     * (ADR 0031 §6, R21). `already_consumed` / `document_not_found` /
-     * `stale_old_text_not_found_or_ambiguous` all return 200 with
-     * `applied: false` — they are decided outcomes, not request errors.
+     * (ADR 0031 §6, R21). `already_consumed` is a genuine conflict — a
+     * concurrent request already resolved this SAME candidate — and returns
+     * HTTP **409** per ADR 0031 §6 ("the second transaction's
+     * `lockForUpdate()` sees `status != 'pending'` and the caller receives
+     * 409 `already_consumed`", Copilot PR #496 round 1 finding #6).
+     * `document_not_found` / `stale_old_text_not_found_or_ambiguous` /
+     * `stale_version_no_longer_active` stay 200 with `applied: false` —
+     * they are decided outcomes of a request that itself was well-formed,
+     * not a conflict with another request.
      */
     public function approveCorrection(Request $request, int $id): JsonResponse
     {
         $candidate = $this->findCandidate($id);
         $result = $this->reviews->approveCorrection($candidate, $this->actor($request), $request->user()?->id);
 
-        return response()->json(['data' => $result]);
+        return response()->json(['data' => $result], $this->correctionOutcomeStatus($result));
     }
 
     /**
      * POST /api/admin/kb/corrections/{id}/reject
      *
      * Denies a correction candidate without applying it
-     * ({@see KbReviewService::rejectCorrection()}, R21).
+     * ({@see KbReviewService::rejectCorrection()}, R21). Same 409-on-conflict
+     * mapping as {@see approveCorrection()}.
      */
     public function rejectCorrection(Request $request, int $id): JsonResponse
     {
         $candidate = $this->findCandidate($id);
         $result = $this->reviews->rejectCorrection($candidate, $request->user()?->id);
 
-        return response()->json(['data' => $result]);
+        return response()->json(['data' => $result], $this->correctionOutcomeStatus($result));
+    }
+
+    /**
+     * @param  array{applied?: bool, rejected?: bool, reason?: string}  $result
+     */
+    private function correctionOutcomeStatus(array $result): int
+    {
+        return ($result['reason'] ?? null) === 'already_consumed' ? 409 : 200;
     }
 
     private function findCandidate(int $id): KbTextCorrectionCandidate

@@ -6,21 +6,19 @@ namespace App\Services\Kb\Review;
 
 use App\Exceptions\KbReviewDisabledException;
 use App\Exceptions\KbReviewRateLimitedException;
-use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbDocumentPageReview;
 use App\Models\KbTextCorrectionCandidate;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\AutoWiki\WikiExplorerService;
+use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Versioning\DocumentVersionService;
+use App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException;
 use App\Support\Canonical\GenerationSource;
-use App\Support\Kb\StorageNamespace;
-use App\Support\KbDiskResolver;
-use App\Support\KbPath;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * v8.37/W3 (ADR 0031) — the shared core (R44) behind Digitization Review:
@@ -48,6 +46,7 @@ class KbReviewService
     public function __construct(
         private readonly WikiExplorerService $wikiExplorer,
         private readonly DocumentVersionService $versions,
+        private readonly DocumentIngestor $ingestor,
     ) {}
 
     /**
@@ -390,9 +389,25 @@ class KbReviewService
      * Idempotent via the DB-enforced `idempotency_key`: a replayed call
      * (identical 7-tuple of tenant/actor/document/version/page/old/new)
      * returns the SAME existing row, checked BEFORE the rate limiter is
-     * touched — a replay never spends the actor's budget. A genuinely
-     * concurrent double-call is resolved by the `UNIQUE` constraint to
-     * exactly one row: the loser's insert fails and re-reads the winner's.
+     * touched — a replay never spends the actor's budget. This whole
+     * check-then-act sequence (existing-check, rate-limit check-and-hit,
+     * insert) runs under a `Cache::lock()` keyed on the idempotency key
+     * (Copilot PR #496 round 1, finding #7): without it, two genuinely
+     * CONCURRENT calls carrying the IDENTICAL 7-tuple both miss the
+     * existing-check (the row doesn't exist yet), both spend the actor's
+     * rate-limit budget, and only THEN does the DB `UNIQUE` constraint
+     * collapse them to one row — a replay that should cost nothing debited
+     * two units. The lock serializes that window so the second caller's
+     * existing-check runs AFTER the first has committed, finding the row
+     * and never touching the limiter. The DB `UNIQUE` constraint on
+     * `idempotency_key` stays as defense-in-depth for a degraded lock store
+     * (an uncontended cache store is not a correctness dependency here —
+     * see the `catch (QueryException)` branch below).
+     *
+     * ADR 0031 §6 — "every accepted, denied, and replayed call writes an
+     * audit row". The accepted path writes the candidate and its audit row
+     * in ONE transaction (finding #8): an audit-write failure rolls the
+     * candidate insert back too — never a silently unaudited candidate.
      *
      * @throws \InvalidArgumentException  bad page number, oversize
      *     new_text/rationale, empty old_text, or old_text not found /
@@ -436,80 +451,127 @@ class KbReviewService
         $versionHash = (string) $live->version_hash;
         $key = KbTextCorrectionCandidate::idempotencyKeyFor($tenantId, $actor, (int) $live->id, $versionHash, $pageNumber, $oldText, $newText);
 
-        // forTenant() here is defense-in-depth, not the correctness
-        // mechanism: idempotency_key already hashes tenantId in, so a
-        // cross-tenant collision is cryptographically infeasible — but
-        // every query against a tenant-aware table funnels through
-        // forTenant() regardless (R30).
-        $existing = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->first();
-        if ($existing !== null) {
-            return $existing;
-        }
+        return Cache::lock("kb-review-propose:{$key}", 10)->block(5, function () use (
+            $tenantId, $live, $pageNumber, $versionHash, $oldText, $newText, $rationale, $actor, $key,
+        ): KbTextCorrectionCandidate {
+            // forTenant() here is defense-in-depth, not the correctness
+            // mechanism: idempotency_key already hashes tenantId in, so a
+            // cross-tenant collision is cryptographically infeasible — but
+            // every query against a tenant-aware table funnels through
+            // forTenant() regardless (R30).
+            $existing = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->first();
+            if ($existing !== null) {
+                $this->auditProposal($tenantId, $live, $actor, $existing, 'replayed');
 
-        $limit = max(0, (int) config('kb.review.candidates_per_hour', 60));
-        $limiterKey = "kb-review-candidates:{$tenantId}:{$actor}";
-        if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
-            throw new KbReviewRateLimitedException($actor, $limit);
-        }
-        if ($limit > 0) {
-            RateLimiter::hit($limiterKey, 3600);
-        }
-
-        try {
-            return KbTextCorrectionCandidate::create([
-                'tenant_id' => $tenantId,
-                'knowledge_document_id' => $live->id,
-                'page_number' => $pageNumber,
-                'version_hash' => $versionHash,
-                'old_text' => $oldText,
-                'new_text' => $newText,
-                'rationale' => $rationale,
-                'idempotency_key' => $key,
-                'status' => KbTextCorrectionCandidate::STATUS_PENDING,
-                'proposed_by' => $actor,
-            ]);
-        } catch (QueryException $e) {
-            if (! $this->isIdempotencyKeyConflict($e)) {
-                throw $e;
+                return $existing;
             }
-            // A concurrent proposer won the race on the SAME idempotency_key
-            // between our SELECT above and this INSERT — the loser re-reads
-            // the winner's row rather than surfacing a uniqueness violation
-            // (ADR 0031 §6: "resolved by the unique constraint to exactly
-            // one row").
-            return KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->firstOrFail();
+
+            $limit = max(0, (int) config('kb.review.candidates_per_hour', 60));
+            $limiterKey = "kb-review-candidates:{$tenantId}:{$actor}";
+            if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
+                $this->auditProposal($tenantId, $live, $actor, null, 'denied', [
+                    'reason' => 'rate_limited', 'limit_per_hour' => $limit, 'page_number' => $pageNumber,
+                ]);
+
+                throw new KbReviewRateLimitedException($actor, $limit);
+            }
+            if ($limit > 0) {
+                RateLimiter::hit($limiterKey, 3600);
+            }
+
+            try {
+                return DB::transaction(function () use ($tenantId, $live, $pageNumber, $versionHash, $oldText, $newText, $rationale, $actor, $key): KbTextCorrectionCandidate {
+                    $candidate = KbTextCorrectionCandidate::create([
+                        'tenant_id' => $tenantId,
+                        'knowledge_document_id' => $live->id,
+                        'page_number' => $pageNumber,
+                        'version_hash' => $versionHash,
+                        'old_text' => $oldText,
+                        'new_text' => $newText,
+                        'rationale' => $rationale,
+                        'idempotency_key' => $key,
+                        'status' => KbTextCorrectionCandidate::STATUS_PENDING,
+                        'proposed_by' => $actor,
+                    ]);
+
+                    $this->auditProposal($tenantId, $live, $actor, $candidate, 'accepted');
+
+                    return $candidate;
+                });
+            } catch (QueryException $e) {
+                if (! $this->isIdempotencyKeyConflict($e)) {
+                    throw $e;
+                }
+                // A concurrent proposer won the race on the SAME
+                // idempotency_key despite the lock above (a degraded/
+                // unavailable lock store falls back to a no-op lock rather
+                // than failing the request) — the loser re-reads the
+                // winner's row rather than surfacing a uniqueness
+                // violation (ADR 0031 §6: "resolved by the unique
+                // constraint to exactly one row").
+                return KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->firstOrFail();
+            }
+        });
+    }
+
+    /**
+     * ADR 0031 §6 — one `kb_canonical_audit` row per propose outcome
+     * (`accepted` / `denied` / `replayed`). `event_type = 'correction_proposed'`
+     * (no DB-level CHECK constraint on that column — see the migration —
+     * so a new value needs no migration). Gated by the same
+     * `kb.canonical.audit_enabled` killswitch {@see approveCorrection()}
+     * honours, for one consistent audit on/off knob across the feature.
+     *
+     * @param  array<string,mixed>  $extra
+     */
+    private function auditProposal(string $tenantId, KnowledgeDocument $live, string $actor, ?KbTextCorrectionCandidate $candidate, string $outcome, array $extra = []): void
+    {
+        if (! (bool) config('kb.canonical.audit_enabled', true)) {
+            return;
         }
+
+        KbCanonicalAudit::create([
+            'tenant_id' => $tenantId,
+            'project_key' => (string) $live->project_key,
+            'doc_id' => $live->doc_id,
+            'slug' => $live->slug,
+            'event_type' => 'correction_proposed',
+            'actor' => $actor,
+            'before_json' => null,
+            'after_json' => $candidate !== null
+                ? ['candidate_id' => $candidate->id, 'page_number' => $candidate->page_number, 'old_text' => $candidate->old_text, 'new_text' => $candidate->new_text]
+                : null,
+            'metadata_json' => array_merge(['source' => 'kb_review_propose_correction', 'outcome' => $outcome], $extra),
+        ]);
     }
 
     /**
      * ADR 0031 §6 — the reviewer's approval, single-use and atomic (R21).
      * ONE transaction: `lockForUpdate()`s the candidate row (refusing any
-     * row whose status is no longer `pending`) TOGETHER WITH the document
-     * row, re-validates `old_text` still occurs exactly once on the CURRENT
-     * live version's page (a correction proposed against version N must not
-     * silently apply to version N+1's different text — a stale mismatch
-     * REJECTS the candidate rather than leaving it pending forever), applies
-     * it by writing the corrected Markdown to the same disk path the family
-     * already lives at and queuing `IngestDocumentJob` (the identical
-     * re-ingest path `KbDocumentController::updateRaw()` takes — CLAUDE.md
-     * §6's single ingestion execution path), writes the `kb_canonical_audit`
-     * row, and marks the candidate `applied` + `consumed_at`. Two reviewers
-     * approving the SAME candidate concurrently: the second transaction's
-     * `lockForUpdate()` blocks until the first commits, then sees
-     * `status != 'pending'` and returns `{applied: false, reason:
-     * 'already_consumed'}` — never a duplicate version, never a silent
-     * second no-op.
+     * row whose status is no longer `pending`), then resolves and LOCKS the
+     * family's ACTUAL live row via
+     * {@see DocumentVersionService::currentVersionFor()}`(lock: true)` —
+     * NOT a bare lock on `$document` (the row the candidate happens to
+     * name, which per that method's own docblock may be an OLDER version
+     * than the family's current live one; Copilot PR #496 round 1 finding
+     * #1 flagged locking the wrong row as no lock at all against a
+     * concurrent re-ingest of this family). Re-validates `old_text` still
+     * occurs exactly once on the CURRENT live version's page (a correction
+     * proposed against version N must not silently apply to version N+1's
+     * different text — a stale mismatch REJECTS the candidate rather than
+     * leaving it pending forever), applies it through
+     * {@see DocumentIngestor::reembedFromMarkdown()} (finding #2 + #3 —
+     * see that call site's own comment for why this replaces a manual
+     * `Storage::put()` + `IngestDocumentJob::dispatch()`), writes the
+     * `kb_canonical_audit` row, and marks the candidate `applied` +
+     * `consumed_at`. Two reviewers approving the SAME candidate
+     * concurrently: the second transaction's `lockForUpdate()` blocks until
+     * the first commits, then sees `status != 'pending'` and returns
+     * `{applied: false, reason: 'already_consumed'}` (mapped to HTTP 409 by
+     * the controller, per ADR 0031 §6) — never a duplicate version, never a
+     * silent second no-op.
      *
-     * The Markdown write to disk happens INSIDE this transaction but is not
-     * itself transactional (no filesystem two-phase commit exists) — a
-     * throw AFTER a successful write but before the transaction commits
-     * leaves the corrected bytes on disk while the candidate stays
-     * `pending`. The write is idempotent (retrying reproduces the same
-     * bytes), so a retried approval self-heals; this is the same residual
-     * risk `KbDocumentController::updateRaw()` already accepts for its own
-     * disk-write-then-audit-then-job sequence.
-     *
-     * @return array{applied: bool, reason?: string}
+     * @return array{applied: bool, reason?: string, document_id?: int}
      */
     public function approveCorrection(KbTextCorrectionCandidate $candidate, string $actor, ?int $reviewerUserId): array
     {
@@ -532,7 +594,6 @@ class KbReviewService
             /** @var KnowledgeDocument|null $document */
             $document = KnowledgeDocument::query()
                 ->forTenant($tenantId)
-                ->lockForUpdate()
                 ->find($locked->knowledge_document_id);
 
             if ($document === null) {
@@ -545,7 +606,11 @@ class KbReviewService
                 return ['applied' => false, 'reason' => 'document_not_found'];
             }
 
-            $live = $this->versions->currentVersionFor($document);
+            // R21 (finding #1) — the row actually written to (and later
+            // re-checked by reembedFromMarkdown()'s own assertion) is
+            // LOCKED here, in this same transaction, before its content is
+            // read for the old_text re-validation below.
+            $live = $this->versions->currentVersionFor($document, lock: true);
             $content = $this->versions->contentFor($live);
             $markdown = (string) $content['content'];
 
@@ -562,43 +627,56 @@ class KbReviewService
 
             $corrected = substr($markdown, 0, $located['start']).$locked->new_text.substr($markdown, $located['start'] + $located['length']);
 
-            $sourcePath = KbPath::normalize((string) $live->source_path);
-            $metadata = is_array($live->metadata) ? $live->metadata : [];
-            $disk = StorageNamespace::recordedDisk($metadata) ?? KbDiskResolver::forProject($live->project_key);
-            $prefix = trim(StorageNamespace::recordedPrefix($metadata), '/');
-            $fullPath = $prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath;
+            // v8.37/W3b round 1 (findings #2 + #3) — apply the correction
+            // through the SAME core `ReembedDocumentJob`'s artifact-fallback
+            // path uses, never a manual Storage::put() at `source_path` +
+            // IngestDocumentJob::dispatch(): `source_path` is the ORIGINAL
+            // BINARY for an OCR/PDF/image-origin document (the vast
+            // majority of documents this feature exists for) — writing
+            // corrected Markdown text there would destroy the source the
+            // next re-OCR needs, and dispatching a re-ingest job INSIDE
+            // this DB transaction races the queue's `after_commit=false`
+            // default (every connection in config/queue.php), which can run
+            // the job before — or entirely independent of — this
+            // transaction's outcome. reembedFromMarkdown() instead stages
+            // the corrected text as a NEW version's ARTIFACT (never touches
+            // `source_path`), mints a genuinely new `version_hash` + row
+            // (preserving `mime_type`/`source_type`), and chunks + embeds
+            // SYNCHRONOUSLY inside its OWN `DB::transaction()` — which
+            // nests as a savepoint of this one — so there is no queue
+            // dispatch to race at all. Its own `assertDocumentStillActive()`
+            // re-checks under `lockForUpdate()`, inside that savepoint, that
+            // `$live` is STILL the active row at write time; a concurrent
+            // re-ingest that raced past the lock above (or a stale `$live`
+            // returned by currentVersionFor()'s own fallback — see that
+            // method's docblock) surfaces as
+            // ReembedTargetNoLongerActiveException rather than silently
+            // overwriting or resurrecting anything.
+            try {
+                $newVersion = $this->ingestor->reembedFromMarkdown($live, $corrected);
+            } catch (ReembedTargetNoLongerActiveException) {
+                $locked->forceFill([
+                    'status' => KbTextCorrectionCandidate::STATUS_REJECTED,
+                    'consumed_at' => now(),
+                    'consumed_by' => $reviewerUserId,
+                ])->save();
 
-            if (Storage::disk($disk)->put($fullPath, $corrected) === false) {
-                // R4/R14: a load-bearing write failure must not proceed to
-                // audit + dispatch as though the correction had landed.
-                throw new \RuntimeException("Failed to write corrected markdown for document {$live->id} (candidate {$candidateId}) to disk {$disk}:{$fullPath}.");
+                return ['applied' => false, 'reason' => 'stale_version_no_longer_active'];
             }
 
             if ((bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
                     'tenant_id' => $tenantId,
-                    'project_key' => (string) $live->project_key,
-                    'doc_id' => $live->doc_id,
-                    'slug' => $live->slug,
+                    'project_key' => (string) $newVersion->project_key,
+                    'doc_id' => $newVersion->doc_id,
+                    'slug' => $newVersion->slug,
                     'event_type' => 'updated',
                     'actor' => $actor,
-                    'before_json' => ['version_hash' => $live->version_hash, 'old_text' => $locked->old_text],
-                    'after_json' => ['new_text' => $locked->new_text, 'page_number' => $locked->page_number],
+                    'before_json' => ['document_id' => $live->id, 'version_hash' => $live->version_hash, 'old_text' => $locked->old_text],
+                    'after_json' => ['document_id' => $newVersion->id, 'version_hash' => $newVersion->version_hash, 'new_text' => $locked->new_text, 'page_number' => $locked->page_number],
                     'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidateId],
                 ]);
             }
-
-            // Single ingestion execution path (CLAUDE.md §6) — the queued
-            // job re-reads from this same disk+prefix combination, chunks,
-            // embeds and refreshes graph edges, exactly like
-            // KbDocumentController::updateRaw()'s manual-edit path.
-            IngestDocumentJob::dispatchForCurrentTenant(
-                projectKey: $live->project_key,
-                relativePath: $sourcePath,
-                disk: $disk,
-                title: $live->title,
-                metadata: $metadata,
-            );
 
             $locked->forceFill([
                 'status' => KbTextCorrectionCandidate::STATUS_APPLIED,
@@ -606,7 +684,7 @@ class KbReviewService
                 'consumed_by' => $reviewerUserId,
             ])->save();
 
-            return ['applied' => true];
+            return ['applied' => true, 'document_id' => $newVersion->id];
         });
     }
 

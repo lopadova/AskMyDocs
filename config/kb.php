@@ -641,6 +641,8 @@ return [
         'low_confidence_threshold' => (float) env('KB_REVIEW_LOW_CONFIDENCE_THRESHOLD', 0.70),
         // Rate cap on KbProposeTextCorrectionTool (ADR 0031 §6), per user.
         'candidates_per_hour' => (int) env('KB_REVIEW_CANDIDATES_PER_HOUR', 60),
+        // R3 — page size cap for GET /api/admin/kb/documents/{id}/corrections.
+        'corrections_page_size' => (int) env('KB_REVIEW_CORRECTIONS_PAGE_SIZE', 50),
     ],
 
     /*

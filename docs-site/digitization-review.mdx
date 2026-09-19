@@ -108,11 +108,12 @@ flowchart TD
     PROMOTE --> AUDIT[(kb_canonical_audit\nevent_type=promoted)]
     FLIP --> AUDIT
 
-    PROP --> CAND[(kb_text_correction_candidates\nstatus=pending, UNIQUE idempotency_key)]
-    APC -->|"lockForUpdate, R21"| CAND
+    PROP -->|"Cache::lock, existing-check + rate-limit atomic"| CAND[(kb_text_correction_candidates\nstatus=pending, UNIQUE idempotency_key)]
+    PROP --> AUDIT
+    APC -->|"lockForUpdate + currentVersionFor(lock:true), R21"| CAND
     REJ -->|"lockForUpdate, R21"| CAND
-    APC -->|"old_text still matches CURRENT page"| DISK["Storage::put(source_path)"]
-    DISK --> INGEST[IngestDocumentJob]
+    APC -->|"old_text still matches CURRENT live version's page"| REEMBED["DocumentIngestor::reembedFromMarkdown(live, corrected)"]
+    REEMBED -->|"stages corrected text as a NEW version's ARTIFACT\n(never touches source_path); mints new version_hash;\nchunks+embeds synchronously in a nested transaction"| NEWDOC[(knowledge_documents\nnew active row, prior archived)]
     APC --> AUDIT
 
     RANK[Reranker::canonicalAdjustment] -->|reads| DOC[(knowledge_documents\ngeneration_source)]
@@ -431,23 +432,32 @@ writes a CANDIDATE only, zero effect on the corpus:
 // -> {"candidate_id": 7, "document_id": 42, "page_number": 1, "status": "pending", "idempotency_key": "..."}
 ```
 
-A human reviewer lists the pending queue and approves it — this is the ONLY
-action that touches the corpus, via `DocumentIngestor`:
+A human reviewer lists the pending queue (bounded — `?limit=`/`?offset=`,
+capped by `kb.review.corrections_page_size`, default 50) and approves it —
+this is the ONLY action that touches the corpus, via
+`DocumentIngestor::reembedFromMarkdown()`:
 
 ```bash
-curl /api/admin/kb/documents/42/corrections
+curl /api/admin/kb/documents/42/corrections?limit=50
 # {"data": [{"id": 7, "page_number": 1, "old_text": "Bod Construction Ltd",
 #            "new_text": "Bob Construction Ltd", "rationale": "...",
-#            "proposed_by": "user:unknown", "created_at": "..."}]}
+#            "proposed_by": "user:unknown", "created_at": "..."}],
+#  "meta": {"limit": 50, "offset": 0, "has_more": false}}
 
 curl -X POST /api/admin/kb/corrections/7/approve
-# {"data": {"applied": true}}
-# -> page 1's text is corrected on disk, IngestDocumentJob re-chunks +
-#    re-embeds the WHOLE document (not just page 1 — a full re-ingest,
-#    same as every other correction), a kb_canonical_audit row records it.
+# {"data": {"applied": true, "document_id": 108}}
+# -> a NEW version (id 108) is minted: the corrected text is staged as
+#    its ARTIFACT (never written to the original document's source_path —
+#    that stays the untouched original binary for a PDF/OCR/image doc),
+#    chunked + embedded SYNCHRONOUSLY inside the same DB transaction as
+#    the candidate's status flip (no queued job, no after-commit race),
+#    the prior version is archived, and a kb_canonical_audit row records
+#    it (event_type=updated, before/after carry both document ids).
 
-# Calling approve again on the same candidate is a safe no-op (R21):
+# Calling approve again on the SAME candidate is a safe no-op (R21) and a
+# genuine CONFLICT — HTTP 409, per ADR 0031 §6:
 curl -X POST /api/admin/kb/corrections/7/approve
+# HTTP/1.1 409 Conflict
 # {"data": {"applied": false, "reason": "already_consumed"}}
 ```
 
@@ -485,18 +495,49 @@ curl -X POST /api/admin/kb/corrections/7/approve
   round 5 closed the gap; they now share the same "no page count, no page
   number is valid" posture.
 - **A correction candidate's approval re-validates against the CURRENT
-  version, not the one it was proposed against.** `proposeCorrection()`
-  records `version_hash`, but `approveCorrection()` re-reads the document
-  family's LIVE version and re-checks that `old_text` still occurs exactly
-  once there. If a later edit changed or removed that text in the meantime,
-  approval REJECTS the now-stale candidate (`stale_old_text_not_found_or_ambiguous`)
-  rather than silently applying a correction to text that may no longer
-  mean what the proposer thought — ADR 0031 §6's explicit requirement.
-- **Approving a correction re-ingests the WHOLE document, not just the
-  corrected page.** Same path `KbDocumentController::updateRaw()`'s manual
-  edits take (CLAUDE.md §6's single ingestion execution path) —
-  `EmbeddingCacheService` means pages whose text did not change cost no new
-  provider call, but every chunk is re-derived.
+  version, not the one it was proposed against — and LOCKS that exact row.**
+  `proposeCorrection()` records `version_hash`, but `approveCorrection()`
+  re-reads the document family's LIVE version via
+  `DocumentVersionService::currentVersionFor($document, lock: true)` (never
+  a bare lock on `$document` — that row may be an OLDER version than the
+  family's current live one, Copilot PR #496 round 1) and re-checks that
+  `old_text` still occurs exactly once there. If a later edit changed or
+  removed that text in the meantime, approval REJECTS the now-stale
+  candidate (`stale_old_text_not_found_or_ambiguous`) rather than silently
+  applying a correction to text that may no longer mean what the proposer
+  thought — ADR 0031 §6's explicit requirement. A document that has been
+  archived out from under the candidate (e.g. by a race that slipped past
+  the lock) surfaces as a distinct `stale_version_no_longer_active` outcome
+  instead, via `DocumentIngestor::reembedFromMarkdown()`'s own internal
+  `assertDocumentStillActive()` check.
+- **Approving a correction mints a genuinely NEW version, never mutates
+  `source_path` on disk, and never queues a job.** Applying the correction
+  goes through `DocumentIngestor::reembedFromMarkdown($live, $corrected)` —
+  the SAME core `ReembedDocumentJob`'s artifact-fallback path uses — not a
+  manual `Storage::put()` write to the family's `source_path`: for the vast
+  majority of documents this feature exists for (OCR/PDF/image-origin),
+  `source_path` names the ORIGINAL BINARY, and overwriting it with corrected
+  Markdown text would destroy the source the next re-OCR needs.
+  `reembedFromMarkdown()` instead stages the corrected text as the NEW
+  version's ARTIFACT, mints a fresh `version_hash` (and therefore a new
+  `knowledge_documents` row — the prior one is archived, not deleted), and
+  chunks + embeds SYNCHRONOUSLY inside its own `DB::transaction()` (which
+  nests as a savepoint of `approveCorrection()`'s own transaction) — no
+  `IngestDocumentJob` dispatch, so there is no `after_commit=false` queue
+  race to reason about. `EmbeddingCacheService` means pages whose text did
+  not change cost no new provider call, but every chunk is re-derived.
+- **Proposing a correction is itself audited, and the check-then-act
+  sequence is race-protected.** ADR 0031 §6 requires an audit row for every
+  `proposeCorrection()` outcome — accepted, denied (rate-limited), and
+  replayed — `event_type = 'correction_proposed'`, `metadata_json.outcome`
+  names which. The accepted path writes the candidate and its audit row in
+  ONE transaction (an audit-write failure rolls the candidate back too —
+  never a silently unaudited candidate). The existing-check + rate-limit
+  check-and-hit + insert sequence runs under a `Cache::lock()` keyed on the
+  idempotency key: without it, two genuinely concurrent calls carrying the
+  IDENTICAL 7-tuple could both miss the existing-check and both spend the
+  actor's rate-limit budget before the DB `UNIQUE` constraint collapsed them
+  to one row — a replay that should cost nothing debiting two units.
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
   confidence heat-map — propose/approve/reject above are HTTP + MCP only
   today, with no dedicated frontend), and the CER/WER quality metrics. These
