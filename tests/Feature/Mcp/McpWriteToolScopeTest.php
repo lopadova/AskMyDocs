@@ -247,6 +247,31 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5256772155) — before this
+     * fix, `mcp:read` was checked ONLY inside the `tools/call` branch, so a
+     * token minted with an elevated-but-not-baseline scope (or an empty/
+     * misconfigured scopes_json that happened to still be a valid row)
+     * could reach `initialize`/`tools/list`/every other protocol method
+     * regardless of its scopes. `mcp:read` is now the baseline for the
+     * transport as a whole.
+     */
+    public function test_a_token_without_mcp_read_scope_is_denied_a_non_tools_call_protocol_method(): void
+    {
+        $this->mintToken(['mcp:tools:propose']);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer plain-test-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('unreached', 500));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('mcp_scope_missing', (string) $response->getContent());
+        $this->assertStringContainsString('mcp:read', (string) $response->getContent());
+    }
+
+    /**
      * McpConnectCommand sends an explicit X-Tenant-Id header alongside the
      * bearer token (its `--tenant=` option) — kept as a defense-in-depth
      * sanity check: a caller pointed at the wrong token/tenant pairing is

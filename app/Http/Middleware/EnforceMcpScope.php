@@ -113,6 +113,22 @@ final class EnforceMcpScope
         }
         app(TenantContext::class)->set($tokenTenant);
 
+        // Copilot review PR #497 (pullrequestreview-5256772155) — `mcp:read`
+        // is the baseline scope for the MCP transport as a whole, not just
+        // for `tools/call`. Before this check, a token carrying ONLY an
+        // elevated scope (`mcp:tools:propose`/`mcp:tools:write`, minted
+        // without `mcp:read`) — or, more subtly, a valid but entirely
+        // empty/misconfigured `scopes_json` — could still reach
+        // `initialize`/`tools/list`/every other protocol method, because
+        // those methods never consulted `scopes_json` at all.
+        $scopes = is_array($token->scopes_json) ? $token->scopes_json : [];
+        if (! in_array(self::SCOPE_READ, $scopes, true)) {
+            return response()->json([
+                'error' => 'mcp_scope_missing',
+                'required_scope' => self::SCOPE_READ,
+            ], 403);
+        }
+
         $payload = $request->json()->all();
         if (($payload['method'] ?? null) !== 'tools/call') {
             return $next($request);
@@ -124,7 +140,6 @@ final class EnforceMcpScope
         }
 
         $requiredScope = $this->requiredScopeForTool($toolName);
-        $scopes = is_array($token->scopes_json) ? $token->scopes_json : [];
         if (! in_array($requiredScope, $scopes, true)) {
             return response()->json([
                 'error' => 'mcp_scope_missing',
