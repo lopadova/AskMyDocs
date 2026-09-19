@@ -119,6 +119,18 @@ export function KbView() {
         treeQuery.refetch();
     }
 
+    // Copilot review PR #497 (pullrequestreview-5257901128) — an applied
+    // correction candidate can mint a NEW document version; ReviewTab
+    // forwards its id here via DocumentDetail. Switching selection also
+    // updates the `doc` URL param through the existing syncUrl effect
+    // below (keyed on selectedDocId), so a deep-link to this document
+    // now points at the live version too. Mirrors handleDeleted's tree
+    // refetch so the tree reflects the version swap as well.
+    function handleDocumentReplaced(nextDocumentId: number) {
+        setSelectedDocId(nextDocumentId);
+        treeQuery.refetch();
+    }
+
     return (
         <AdminShell section="kb">
             <div
@@ -285,6 +297,7 @@ export function KbView() {
                                 activeTab={activeTab}
                                 onTabChange={setActiveTab}
                                 onDeleted={handleDeleted}
+                                onDocumentReplaced={handleDocumentReplaced}
                             />
                         )}
                     </div>

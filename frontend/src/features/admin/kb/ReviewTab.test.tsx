@@ -654,4 +654,81 @@ describe('ReviewTab', () => {
 
         expect(screen.queryByTestId('kb-review-approve-result')).not.toBeInTheDocument();
     });
+
+    // Copilot review PR #497 (pullrequestreview-5257901128) — `total` can
+    // shrink WITHOUT a documentId change too: an applied correction can
+    // re-embed the document family into a version with fewer recorded
+    // pages. Without clamping, the page cursor would keep pointing past
+    // the new total and PageReviewNavigator would keep requesting an
+    // out-of-range page (404) until the operator manually navigated back.
+    it('clamps the page cursor when the review summary total shrinks on the same document', async () => {
+        summaryState.data = { total: 3, reviewed: 1, unreviewed: 2 };
+        const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { rerender } = render(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={7} />
+            </QueryClientProvider>,
+        );
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-page-next'));
+        });
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-page-next'));
+        });
+        expect(screen.getByTestId('kb-review-page-number')).toHaveTextContent('Page 3 of 3');
+        expect(pageStatusState.lastRequestedPage).toBe(3);
+
+        // Same document (no documentId change) — total shrinks from a
+        // fresh review-summary refetch, e.g. after an applied correction.
+        summaryState.data = { total: 1, reviewed: 1, unreviewed: 0 };
+        rerender(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={7} />
+            </QueryClientProvider>,
+        );
+
+        expect(screen.getByTestId('kb-review-page-number')).toHaveTextContent('Page 1 of 1');
+        expect(pageStatusState.lastRequestedPage).toBe(1);
+    });
+
+    // Copilot review PR #497 (pullrequestreview-5257901128) — an applied
+    // correction can mint a NEW document version (KbReviewService::
+    // approveCorrection returns it as `document_id`). Without switching,
+    // the operator would keep reviewing the now-archived document.
+    it('calls onDocumentReplaced with the minted document_id after an applied correction', async () => {
+        const onDocumentReplaced = vi.fn();
+        approveCorrectionMutation.mutate.mockImplementation((_id, opts) => {
+            opts.onSuccess({ applied: true, document_id: 99 });
+        });
+        render(
+            <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+                <ReviewTab documentId={7} onDocumentReplaced={onDocumentReplaced} />
+            </QueryClientProvider>,
+        );
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-correction-51-approve'));
+        });
+
+        expect(onDocumentReplaced).toHaveBeenCalledWith(99);
+    });
+
+    it('does not call onDocumentReplaced when the applied correction keeps the same document_id', async () => {
+        const onDocumentReplaced = vi.fn();
+        approveCorrectionMutation.mutate.mockImplementation((_id, opts) => {
+            opts.onSuccess({ applied: true, document_id: 7 });
+        });
+        render(
+            <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+                <ReviewTab documentId={7} onDocumentReplaced={onDocumentReplaced} />
+            </QueryClientProvider>,
+        );
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-correction-51-approve'));
+        });
+
+        expect(onDocumentReplaced).not.toHaveBeenCalled();
+    });
 });

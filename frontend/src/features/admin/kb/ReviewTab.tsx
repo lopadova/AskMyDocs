@@ -38,11 +38,22 @@ import {
 
 export interface ReviewTabProps {
     documentId: number;
+    /**
+     * Copilot review PR #497 (pullrequestreview-5257901128) — approving a
+     * correction candidate can mint a NEW KnowledgeDocument version and
+     * return its id as `document_id` (see KbReviewService::approveCorrection).
+     * Without this callback the operator silently kept reviewing the
+     * now-archived version — page reviews and remaining corrections would
+     * apply to a doc that's no longer live. Optional: callers that don't
+     * wire it (or intentionally want to stay pinned to one version) are
+     * unaffected.
+     */
+    onDocumentReplaced?: (nextDocumentId: number) => void;
 }
 
 const CORRECTIONS_PAGE_SIZE = 20;
 
-export function ReviewTab({ documentId }: ReviewTabProps) {
+export function ReviewTab({ documentId, onDocumentReplaced }: ReviewTabProps) {
     const summary = useKbReviewSummary(documentId);
 
     if (summary.isLoading) {
@@ -99,7 +110,7 @@ export function ReviewTab({ documentId }: ReviewTabProps) {
         >
             <ApprovalSection documentId={documentId} summary={summary.data} />
             <PageReviewSection documentId={documentId} total={summary.data.total} />
-            <CorrectionsSection documentId={documentId} />
+            <CorrectionsSection documentId={documentId} onDocumentReplaced={onDocumentReplaced} />
         </div>
     );
 }
@@ -199,6 +210,16 @@ function PageReviewSection({ documentId, total }: { documentId: number; total: n
     useEffect(() => {
         setPage(1);
     }, [documentId]);
+
+    // Copilot review PR #497 (pullrequestreview-5257901128) — `total` can
+    // shrink WITHOUT a documentId change too: e.g. an applied correction
+    // re-embeds the document family and the review summary refetches with
+    // a smaller page_count. Without clamping, `page` can point past the
+    // new `total` and PageReviewNavigator keeps requesting an out-of-range
+    // page status (404) until the operator manually navigates back.
+    useEffect(() => {
+        setPage((current) => (total > 0 && current > total ? total : current));
+    }, [total]);
 
     if (total === 0) {
         return (
@@ -365,7 +386,13 @@ function StatusPill({ status }: { status: 'reviewed' | 'unreviewed' }) {
     );
 }
 
-function CorrectionsSection({ documentId }: { documentId: number }) {
+function CorrectionsSection({
+    documentId,
+    onDocumentReplaced,
+}: {
+    documentId: number;
+    onDocumentReplaced?: (nextDocumentId: number) => void;
+}) {
     const [offset, setOffset] = useState(0);
 
     // Same reasoning as PageReviewSection: a stale offset from the
@@ -385,6 +412,20 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
             onSuccess: (result) => {
                 if (result.applied) {
                     toast.success('Correction applied.', 'toast-success');
+                    // Copilot review PR #497 (pullrequestreview-5257901128) —
+                    // an applied correction can re-embed the document family
+                    // into a NEW live version (KbReviewService::approveCorrection
+                    // returns it as `document_id`). Without switching, the
+                    // operator would keep reviewing the now-archived version:
+                    // remaining page reviews/corrections would target a doc
+                    // that's no longer live.
+                    if (
+                        typeof result.document_id === 'number' &&
+                        result.document_id !== documentId &&
+                        onDocumentReplaced
+                    ) {
+                        onDocumentReplaced(result.document_id);
+                    }
                 } else if (result.reason === 'already_consumed') {
                     toast.info('Already resolved by another reviewer.', 'toast-info');
                 } else {
