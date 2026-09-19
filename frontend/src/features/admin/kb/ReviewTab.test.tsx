@@ -606,4 +606,35 @@ describe('ReviewTab', () => {
 
         expect(correctionsState.lastOffset).toBe(0);
     });
+
+    // Copilot review PR #497 (pullrequestreview-5257613629) — same class of
+    // bug as the page cursor / corrections offset above: the previous
+    // document's approve outcome (kb-review-approve-result) must not remain
+    // visible after switching to a different document on the same tab.
+    it('clears the approve result when the selected document changes', async () => {
+        approveDocMutation.mutate.mockImplementation((_v, opts) => {
+            opts.onSuccess({ approved: true });
+        });
+        const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { rerender } = render(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={7} />
+            </QueryClientProvider>,
+        );
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-approve'));
+        });
+        expect(screen.getByTestId('kb-review-approve-result')).toHaveTextContent(
+            'Approved — promoted to human-reviewed.',
+        );
+
+        rerender(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={8} />
+            </QueryClientProvider>,
+        );
+
+        expect(screen.queryByTestId('kb-review-approve-result')).not.toBeInTheDocument();
+    });
 });

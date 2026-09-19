@@ -115,6 +115,16 @@ function ApprovalSection({
     const toast = useToast();
     const [lastResult, setLastResult] = useState<{ approved: boolean; reason?: string } | null>(null);
 
+    // Copilot review PR #497 (pullrequestreview-5257613629) — same class of
+    // bug already fixed for the page-review cursor (PageReviewSection) and
+    // the corrections offset (CorrectionsSection): lastResult was keyed only
+    // by user interaction, not by documentId. Selecting a different document
+    // while staying on the Review tab (no key-prop remount) left the
+    // previous document's approve outcome visible on the new one.
+    useEffect(() => {
+        setLastResult(null);
+    }, [documentId]);
+
     function handleApprove() {
         approveMut.mutate(undefined, {
             onSuccess: (result) => {
