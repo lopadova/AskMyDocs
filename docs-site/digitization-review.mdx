@@ -53,7 +53,8 @@ serve it while the feature is off. The design rationale is
 |---|---|---|
 | `KB_DIGITIZATION_REVIEW_ENABLED` | `false` | The feature flag above — every mutating entry point and every read surface (R43). |
 | `KB_REVIEW_LOW_CONFIDENCE_THRESHOLD` | `0.70` | The OCR confidence (chunk metadata, W1) below which a span is highlighted in the review UI's heat-map, once it ships (see [Gotchas](#gotchas)). A visual aid only — it never gates approval. |
-| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The per-user rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6). A replayed (idempotent) proposal never spends this budget — only a genuinely new candidate does. |
+| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6), shared **per tenant**, not per user — the MCP connection carries a tenant-scoped token, not a per-user one, so every caller in the tenant spends the same hourly budget (see [Gotchas](#gotchas)). A replayed (idempotent) proposal never spends this budget — only a genuinely new candidate does. |
+| `KB_REVIEW_CORRECTIONS_PAGE_SIZE` | `50` | The cap on `GET .../documents/{id}/corrections`'s pending-candidate queue (R3 — memory-safe bulk operations); a caller's `?limit=` is clamped to this value. |
 
 ## Theory & background
 

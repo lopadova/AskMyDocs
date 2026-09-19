@@ -126,6 +126,39 @@ final class KbReviewCorrectionTest extends TestCase
         return $doc;
     }
 
+    /**
+     * v8.37/W3b round 4 (Copilot PR #496, H-A) — a document with NO
+     * retained conversion artifact, chunked the way
+     * {@see \App\Services\Kb\Chunkers\PdfPageChunker} really produces it:
+     * one chunk PER page, the page number carried out-of-band in
+     * `metadata['page']`, and NO `## Page N` heading baked into
+     * `chunk_text` itself. `docWithContent()` above bakes the header text
+     * into a single chunk, which is exactly what
+     * `DocumentVersionService::reconstructContent()`'s `implode("\n\n")`
+     * over `chunk_text` CANNOT do for a real PdfPageChunker-chunked
+     * document — this fixture exists so a test can exercise that gap.
+     *
+     * @param  array<string,mixed>  $over
+     */
+    private function docWithPageMetadataContent(array $over = []): KnowledgeDocument
+    {
+        $doc = $this->doc($over);
+        foreach ([1 => self::PAGE_1, 2 => self::PAGE_2] as $page => $text) {
+            KnowledgeChunk::create([
+                'tenant_id' => 'default',
+                'knowledge_document_id' => $doc->id,
+                'project_key' => $doc->project_key,
+                'chunk_order' => $page - 1,
+                'chunk_hash' => hash('sha256', $text.$page),
+                'heading_path' => "Page {$page}",
+                'chunk_text' => $text,
+                'metadata' => ['filename' => $doc->source_path, 'strategy' => 'pdf-page', 'page' => $page],
+            ]);
+        }
+
+        return $doc;
+    }
+
     private function user(): User
     {
         return User::create([
@@ -506,6 +539,157 @@ final class KbReviewCorrectionTest extends TestCase
         $audit = KbCanonicalAudit::query()->where('event_type', 'updated')->latest('id')->first();
         $this->assertSame('kb_review_correction_candidate', $audit->metadata_json['source']);
         $this->assertSame($candidate->id, $audit->metadata_json['candidate_id']);
+    }
+
+    /**
+     * v8.37/W3b round 4 (Copilot PR #496, H-A) — the end-to-end propose +
+     * approve flow against a document with NO retained conversion artifact,
+     * chunked the way {@see \App\Services\Kb\Chunkers\PdfPageChunker} really
+     * produces it (`docWithPageMetadataContent()` — one chunk per page, the
+     * page number only in `metadata['page']`, never baked into
+     * `chunk_text`). Before this fix, `locatePageOccurrence()` would find
+     * ZERO `## Page N` headers in the chunk-reconstructed content and
+     * refuse every proposal against such a document with
+     * `old_text_not_found_or_ambiguous`, regardless of whether old_text
+     * genuinely occurred on that page — this is the exact scenario every
+     * OTHER test in this file (built on `docWithContent()`'s single,
+     * header-baked chunk) never exercised.
+     */
+    public function test_propose_and_approve_correction_against_page_metadata_reconstructed_content(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithPageMetadataContent();
+        $reviewer = $this->user();
+
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        $result = $this->svc->approveCorrection($candidate, "user:{$reviewer->id}", (int) $reviewer->id);
+
+        $this->assertTrue($result['applied']);
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->status);
+
+        /** @var KnowledgeDocument $newVersion */
+        $newVersion = KnowledgeDocument::query()->findOrFail($result['document_id']);
+        $newChunks = KnowledgeChunk::query()->where('knowledge_document_id', $newVersion->id)->orderBy('chunk_order')->get();
+        $this->assertStringContainsString('Bob', (string) $newChunks->firstWhere(fn ($c) => ($c->metadata['page'] ?? null) === 1)?->chunk_text);
+        $this->assertSame(self::PAGE_2, trim((string) $newChunks->firstWhere(fn ($c) => ($c->metadata['page'] ?? null) === 2)?->chunk_text), 'page 2 must be untouched by a correction proposed against page 1');
+    }
+
+    /**
+     * v8.37/W3b round 4 (H-A) — when even ONE chunk lacks an integer `page`
+     * in its metadata, `pageAwareContentFor()` cannot reason about page
+     * boundaries at all and falls back to the plain (headerless) content —
+     * exactly `reconstructContent()`'s pre-fix behaviour. A propose call
+     * against such a document degrades gracefully to the ordinary
+     * `old_text_not_found_or_ambiguous` denial (no `## Page N` header
+     * exists anywhere for `locatePageOccurrence()` to anchor on), never an
+     * exception or a silently wrong match.
+     */
+    public function test_propose_correction_falls_back_to_plain_content_when_a_chunk_lacks_page_metadata(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc();
+        KnowledgeChunk::create([
+            'tenant_id' => 'default',
+            'knowledge_document_id' => $doc->id,
+            'project_key' => $doc->project_key,
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', self::PAGE_1),
+            'chunk_text' => self::PAGE_1,
+            'metadata' => [], // no 'page' key — a non-PdfPageChunker chunk
+        ]);
+
+        try {
+            $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+            $this->fail('expected InvalidArgumentException: no ## Page N headers exist in the fallback content');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('does not occur exactly once on page 1', $e->getMessage());
+        }
+    }
+
+    /**
+     * v8.37/W3b round 4 (Copilot PR #496, H-C) — {@see ArtifactPublishFailedException}'s
+     * own docblock documents it as a POST-COMMIT failure: by the time
+     * `reembedFromMarkdown()` throws it, the new `knowledge_documents` row
+     * genuinely exists. Unlike the generic-failure test above, the phase-1
+     * claim must NOT be reverted — the correction really did apply, and
+     * `approveCorrection()` must recognise that and treat it as a success
+     * (mirroring `ReembedDocumentJob::logArtifactNotPublished()`'s posture
+     * for the same exception on its own call path).
+     */
+    public function test_approve_correction_treats_a_post_commit_artifact_publish_failure_as_applied(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        // The stand-in row must be created ONLY once the mock is actually
+        // invoked (inside phase 2) — not beforehand: creating it earlier
+        // would make it visible to phase 1's OWN currentVersionFor() call
+        // (same project_key/source_path, status='active', a higher id),
+        // which would then pick IT as $live instead of $doc.
+        $newVersion = null;
+        $ingestor = Mockery::mock(\App\Services\Kb\DocumentIngestor::class);
+        $ingestor->shouldReceive('reembedFromMarkdown')->once()->andReturnUsing(function () use ($doc, &$newVersion) {
+            // Mirrors what reembedFromMarkdown() really does before its
+            // post-commit artifact-publish step fails: archive the old
+            // row, commit a new active one.
+            $doc->forceFill(['status' => 'archived'])->save();
+            $newVersion = $this->doc([
+                'source_path' => $doc->source_path,
+                'version_hash' => bin2hex(random_bytes(16)),
+            ]);
+
+            throw new \App\Services\Kb\Versioning\ArtifactPublishFailedException(
+                (int) $newVersion->id,
+                'kb',
+                'irrelevant/artifact-path.md',
+                'disk unavailable',
+            );
+        });
+        $this->app->instance(\App\Services\Kb\DocumentIngestor::class, $ingestor);
+        $svc = app(KbReviewService::class);
+
+        $result = $svc->approveCorrection($candidate, 'user:1', null);
+
+        $this->assertTrue($result['applied'], 'a post-commit artifact-publish failure must still report the correction as applied');
+        $this->assertSame($newVersion->id, $result['document_id']);
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->status, 'must NOT be reverted to pending/rejected — the new version genuinely exists');
+        $this->assertNotNull($candidate->consumed_at);
+
+        $audit = KbCanonicalAudit::query()->where('event_type', 'updated')->latest('id')->first();
+        $this->assertNotNull($audit, 'the audit row must still be written for a candidate treated as applied');
+        $this->assertSame($newVersion->id, $audit->after_json['document_id']);
+        $this->assertSame($candidate->id, $audit->metadata_json['candidate_id']);
+    }
+
+    /**
+     * v8.37/W3b round 4 (previously-missed MEDIUM finding) —
+     * `currentVersionFor()`'s own documented fallback (`->first() ??
+     * $document`) hands back the passed-in `$document` unchanged when the
+     * family has no row with `status='active'` at all — a document that
+     * was never activated, or whose whole family has since been archived.
+     * Proposing a correction against it must be refused explicitly rather
+     * than silently validated against content that may never go live.
+     */
+    public function test_propose_correction_refuses_a_document_with_no_active_version(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent(['status' => 'archived']);
+
+        try {
+            $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+            $this->fail('expected InvalidArgumentException');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('has no active version', $e->getMessage());
+        }
+
+        $audit = KbCanonicalAudit::query()->where('event_type', 'correction_proposed')->sole();
+        $this->assertSame('denied', $audit->metadata_json['outcome']);
+        $this->assertSame('document_not_active', $audit->metadata_json['reason']);
+        $this->assertSame(0, KbTextCorrectionCandidate::count(), 'no candidate must be created against a document with no active version');
     }
 
     /**

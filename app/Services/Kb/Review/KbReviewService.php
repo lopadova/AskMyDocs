@@ -9,15 +9,18 @@ use App\Exceptions\KbReviewRateLimitedException;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbDocumentPageReview;
 use App\Models\KbTextCorrectionCandidate;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\AutoWiki\WikiExplorerService;
 use App\Services\Kb\DocumentIngestor;
+use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException;
 use App\Support\Canonical\GenerationSource;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
@@ -486,9 +489,30 @@ class KbReviewService
                     $document, $tenantId, $pageNumber, $oldText, $newText, $rationale, $actor, &$conflictLive, &$conflictKey,
                 ): array {
                     $live = $this->versions->currentVersionFor($document, lock: true);
-                    $content = $this->versions->contentFor($live);
 
-                    $located = $this->locatePageOccurrence((string) $content['content'], $pageNumber, $oldText);
+                    // Copilot PR #496 round 4 (previously-missed finding) —
+                    // currentVersionFor()'s own documented fallback is
+                    // `->first() ?? $document`: when the family has NO row
+                    // with status='active' (e.g. every version archived, or
+                    // the passed-in $document itself is a dead-end that was
+                    // never indexed), it silently hands back whatever
+                    // (possibly non-active) $document was passed in rather
+                    // than throwing. Proposing — and later approving — a
+                    // correction against that row would validate old_text
+                    // against content that may already be stale, and
+                    // approveCorrection's own `stale_version_no_longer_active`
+                    // guard only catches a version that WAS active and
+                    // became archived mid-flight, not one that was never
+                    // active to begin with. Refuse and audit it here,
+                    // exactly like the old_text-not-found denial below.
+                    if ($live->status !== 'active') {
+                        return [
+                            'ok' => false, 'live' => $live, 'reason' => 'document_not_active',
+                            'exception' => new \InvalidArgumentException("Document {$live->id} has no active version to propose a correction against (status: {$live->status})."),
+                        ];
+                    }
+
+                    $located = $this->locatePageOccurrence($this->pageAwareContentFor($live), $pageNumber, $oldText);
                     if ($located === null) {
                         return [
                             'ok' => false, 'live' => $live, 'reason' => 'old_text_not_found_or_ambiguous',
@@ -673,10 +697,36 @@ class KbReviewService
      *    leaving the candidate stranded `applied` with no version.
      * 3. **Record** (own transaction) — the `kb_canonical_audit` row for
      *    the now-successful correction. The candidate's `status`/
-     *    `consumed_at`/`consumed_by` are already committed from phase 1;
-     *    an audit-write failure here is a narrow, honestly-accepted gap
-     *    (a successful correction with a missing audit row) rather than
-     *    reopening the R21 race phase 1 closes.
+     *    `consumed_at`/`consumed_by` are already committed from phase 1, and
+     *    phase 2's new document version is already committed too, so a
+     *    failure writing THIS row is caught and `Log::critical()`'d rather
+     *    than propagated (a narrow, honestly-accepted gap — a successful
+     *    correction whose audit row must be hand-reconstructed from the log
+     *    — rather than telling the caller the approval failed when it
+     *    didn't, or reopening the R21 race phase 1 closes).
+     *
+     * Accepted residual risk (Copilot PR #496 round 4, H-B) — phases 1 and 2
+     * are each individually atomic (a DB transaction, and `reembedFromMarkdown()`'s
+     * own top-level transaction, respectively), but there is no cross-process
+     * atomicity BETWEEN them: this whole method runs synchronously inside one
+     * HTTP/MCP request, not as a queued, retryable job. If the PHP process
+     * handling that request is killed (OOM, SIGKILL, host failure) at any
+     * point between phase 1's commit and phase 2's `reembedFromMarkdown()`
+     * call returning, the candidate is left committed `applied` with NO
+     * corresponding new document version ever created — indistinguishable
+     * from a normal success without cross-referencing `kb_canonical_audit`
+     * for a matching `metadata_json.candidate_id`. Closing this properly
+     * needs a lease/outbox + reconciliation-job pattern (detect stuck
+     * `applied` candidates with no matching audit row past some staleness
+     * threshold, and either finalize or revert them) — a distinct, larger-
+     * scope piece of infrastructure than this propose/approve/reject flow,
+     * deliberately left as documented future work rather than folded in
+     * here. Until then, manual recovery: find candidates with
+     * `status='applied'` and no `kb_canonical_audit` row whose
+     * `metadata_json->candidate_id` matches; if no corresponding new
+     * `knowledge_documents` row exists for that document's family either,
+     * the reembed itself never ran — reset the candidate to `pending` via a
+     * direct update so a reviewer can retry.
      *
      * @return array{applied: bool, reason?: string, document_id?: int}
      */
@@ -729,8 +779,7 @@ class KbReviewService
                 return ['done' => true, 'result' => ['applied' => false, 'reason' => 'canonical_document_not_supported']];
             }
 
-            $content = $this->versions->contentFor($live);
-            $markdown = (string) $content['content'];
+            $markdown = $this->pageAwareContentFor($live);
 
             $located = $this->locatePageOccurrence($markdown, (int) $locked->page_number, (string) $locked->old_text);
             if ($located === null) {
@@ -793,13 +842,43 @@ class KbReviewService
                 ->update(['status' => KbTextCorrectionCandidate::STATUS_REJECTED]));
 
             return ['applied' => false, 'reason' => 'stale_version_no_longer_active'];
+        } catch (ArtifactPublishFailedException $e) {
+            // Copilot PR #496 round 4 (H-C) — this exception's own docblock
+            // documents it as a POST-COMMIT failure: reembedFromMarkdown()'s
+            // internal DB::transaction() has ALREADY committed the new
+            // knowledge_documents row + its chunks by the time this is
+            // thrown — only the artifact publish step afterwards failed.
+            // $e->documentId genuinely exists. Treating this the same as the
+            // generic \Throwable branch below (revert phase 1's claim to
+            // `pending`) would be wrong twice over: it would mark a
+            // correction that DID apply back as unapplied, and a reviewer's
+            // retry would then find $live no longer active (superseded by
+            // the very row this catch is looking at) and get rejected with
+            // `stale_version_no_longer_active` — losing a correction that
+            // actually succeeded. Instead: log and carry on as a success,
+            // exactly the posture ReembedDocumentJob::logArtifactNotPublished()
+            // already takes for the same exception on its own call path —
+            // the pointer stays set and an identical re-ingest or
+            // `kb:artifacts-backfill` repairs the artifact later.
+            Log::warning('KbReviewService::approveCorrection — artifact publish failed after the new version committed; treating the candidate as applied (self-repairing)', [
+                'candidate_id' => $candidateId,
+                'document_id' => $e->documentId,
+                'disk' => $e->disk,
+                'markdown_path' => $e->markdownPath,
+                'exception' => $e->getMessage(),
+            ]);
+
+            $newVersion = KnowledgeDocument::query()->forTenant($tenantId)->findOrFail($e->documentId);
         } catch (\Throwable $e) {
-            // R14/R4 — an infra failure here (embedding provider down,
-            // artifact publish failure, ...) must not leave the candidate
-            // stranded `applied` with no corresponding version: revert the
-            // phase-1 claim to `pending` (a transient failure, not a
-            // decided rejection — a reviewer can simply retry) and surface
-            // the failure loudly rather than swallowing it.
+            // R14/R4 — any OTHER infra failure here (embedding provider
+            // down, DB unavailable, ...) — everything except
+            // ArtifactPublishFailedException, caught above, which is a
+            // POST-commit failure and must NOT be reverted — must not leave
+            // the candidate stranded `applied` with no corresponding
+            // version: revert the phase-1 claim to `pending` (a transient
+            // failure, not a decided rejection — a reviewer can simply
+            // retry) and surface the failure loudly rather than swallowing
+            // it.
             DB::transaction(fn () => KbTextCorrectionCandidate::query()
                 ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
                 ->update(['status' => KbTextCorrectionCandidate::STATUS_PENDING, 'consumed_at' => null, 'consumed_by' => null]));
@@ -808,18 +887,53 @@ class KbReviewService
         }
 
         // Phase 3 — the audit row for the now-successful correction.
+        //
+        // Copilot PR #496 round 4 (previously-missed MEDIUM finding) — this
+        // write is caught and logged rather than left to propagate. By this
+        // point the correction has ALREADY applied: phase 1 committed the
+        // candidate as `applied` and phase 2 committed the new document
+        // version. Letting an audit-write failure (e.g. a momentary DB
+        // outage) bubble up as an uncaught exception would tell the caller
+        // the approval FAILED when it in fact SUCCEEDED — and a client that
+        // reacts to that by retrying the same approve call would then hit
+        // `already_consumed` (409) on a candidate that isn't pending
+        // anymore, which reads as corruption, not as "it actually worked".
+        // A durable outbox/reconciliation path for the audit row itself
+        // (so a dropped write is automatically re-materialized rather than
+        // only loggable) is deliberately out of scope here — it is the same
+        // class of larger-scope work as the phase-1/phase-2 crash window
+        // documented on this method's own docblock, and this PR's target is
+        // the propose/approve/reject flow, not a general audit-durability
+        // subsystem. `Log::critical()` keeps every field needed to hand-
+        // reconstruct the row (mirrors `ChatLogManager::log()`'s established
+        // "never let logging/auditing failure break an already-successful
+        // user-facing outcome" posture, CLAUDE.md §6).
         if ((bool) config('kb.canonical.audit_enabled', true)) {
-            KbCanonicalAudit::create([
-                'tenant_id' => $tenantId,
-                'project_key' => (string) $newVersion->project_key,
-                'doc_id' => $newVersion->doc_id,
-                'slug' => $newVersion->slug,
-                'event_type' => 'updated',
-                'actor' => $actor,
-                'before_json' => ['document_id' => $live->id, 'version_hash' => $live->version_hash, 'old_text' => $candidate->old_text],
-                'after_json' => ['document_id' => $newVersion->id, 'version_hash' => $newVersion->version_hash, 'new_text' => $candidate->new_text, 'page_number' => $candidate->page_number],
-                'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidateId],
-            ]);
+            try {
+                KbCanonicalAudit::create([
+                    'tenant_id' => $tenantId,
+                    'project_key' => (string) $newVersion->project_key,
+                    'doc_id' => $newVersion->doc_id,
+                    'slug' => $newVersion->slug,
+                    'event_type' => 'updated',
+                    'actor' => $actor,
+                    'before_json' => ['document_id' => $live->id, 'version_hash' => $live->version_hash, 'old_text' => $candidate->old_text],
+                    'after_json' => ['document_id' => $newVersion->id, 'version_hash' => $newVersion->version_hash, 'new_text' => $candidate->new_text, 'page_number' => $candidate->page_number],
+                    'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidateId],
+                ]);
+            } catch (\Throwable $e) {
+                Log::critical('KbReviewService::approveCorrection — the correction applied successfully but its audit row failed to write; reconstruct manually from these fields', [
+                    'candidate_id' => $candidateId,
+                    'tenant_id' => $tenantId,
+                    'actor' => $actor,
+                    'before_document_id' => $live->id,
+                    'before_version_hash' => $live->version_hash,
+                    'after_document_id' => $newVersion->id,
+                    'after_version_hash' => $newVersion->version_hash,
+                    'page_number' => $candidate->page_number,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
         }
 
         return ['applied' => true, 'document_id' => $newVersion->id];
@@ -860,6 +974,66 @@ class KbReviewService
 
             return ['rejected' => true];
         });
+    }
+
+    /**
+     * Copilot PR #496 round 4 (H-A): `DocumentVersionService::contentFor()`
+     * falls back to chunk reconstruction (`implode("\n\n")` over
+     * `chunk_text`) whenever the version has no retained conversion
+     * artifact — e.g. `markdown_only`/`reference_only` retention, or a
+     * version ingested before artifact retention existed. For a document
+     * chunked by {@see \App\Services\Kb\Chunkers\PdfPageChunker}, the page
+     * number lives OUT-OF-BAND on each chunk (`heading_path = "Page N"`,
+     * `metadata['page'] = N`) and is never written into `chunk_text`
+     * itself — so the reconstructed markdown has NO `## Page N` headers at
+     * all, and {@see self::locatePageOccurrence()} unconditionally fails
+     * to locate any page section.
+     *
+     * This re-synthesizes those headers from chunk metadata when the
+     * artifact-backed content doesn't already carry them, so a text
+     * correction can still be proposed/applied against an artifactless
+     * document. It degrades to the plain (headerless) content — the exact
+     * previous behaviour, still correct for non-paginated documents — the
+     * moment any chunk lacks an integer `page` in its metadata, since that
+     * signals a non-`PdfPageChunker` chunking strategy this method cannot
+     * reason about.
+     */
+    private function pageAwareContentFor(KnowledgeDocument $live): string
+    {
+        $content = (string) $this->versions->contentFor($live)['content'];
+
+        if (preg_match('/^## Page \d+\s*$/m', $content) === 1) {
+            return $content;
+        }
+
+        $chunks = KnowledgeChunk::query()
+            ->forTenant((string) $live->tenant_id)
+            ->where('knowledge_document_id', $live->id)
+            ->orderBy('chunk_order')
+            ->get(['chunk_text', 'metadata']);
+
+        $pages = [];
+        foreach ($chunks as $chunk) {
+            $metadata = is_array($chunk->metadata) ? $chunk->metadata : [];
+            $page = $metadata['page'] ?? null;
+            if (! is_int($page)) {
+                return $content;
+            }
+            $pages[$page] = ($pages[$page] ?? '').$chunk->chunk_text."\n\n";
+        }
+
+        if ($pages === []) {
+            return $content;
+        }
+
+        ksort($pages);
+
+        $rebuilt = '';
+        foreach ($pages as $number => $body) {
+            $rebuilt .= "## Page {$number}\n\n".trim($body)."\n\n";
+        }
+
+        return $rebuilt;
     }
 
     /**
