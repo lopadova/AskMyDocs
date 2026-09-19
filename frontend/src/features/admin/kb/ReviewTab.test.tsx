@@ -29,6 +29,7 @@ type PageStatusState = {
     data: { page_number: number; status: 'reviewed' | 'unreviewed'; reviewed_by: string | null; reviewed_at: string | null } | undefined;
     isLoading: boolean;
     isError: boolean;
+    isFetching: boolean;
     lastRequestedPage: number | null;
 };
 
@@ -36,6 +37,7 @@ const pageStatusState: PageStatusState = {
     data: { page_number: 1, status: 'unreviewed', reviewed_by: null, reviewed_at: null },
     isLoading: false,
     isError: false,
+    isFetching: false,
     lastRequestedPage: null,
 };
 
@@ -124,6 +126,7 @@ vi.mock('./kb-review.api', () => ({
             data: pageStatusState.data,
             isLoading: pageStatusState.isLoading,
             isError: pageStatusState.isError,
+            isFetching: pageStatusState.isFetching,
         };
     },
     useSetKbPageReviewStatus: () => toggleMutation,
@@ -168,6 +171,7 @@ beforeEach(() => {
     pageStatusState.data = { page_number: 1, status: 'unreviewed', reviewed_by: null, reviewed_at: null };
     pageStatusState.isLoading = false;
     pageStatusState.isError = false;
+    pageStatusState.isFetching = false;
     pageStatusState.lastRequestedPage = null;
     toggleMutation.isPending = false;
     approveDocMutation.isPending = false;
@@ -316,6 +320,19 @@ describe('ReviewTab', () => {
         wrap(<ReviewTab documentId={7} />);
         expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('data-state', 'ready');
         expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    // Copilot review PR #497 (pullrequestreview-5257728388, discussion on
+    // ReviewTab.tsx:264/323) — a successful toggle invalidates the page-status
+    // query, which refetches with isFetching=true while isLoading stays false
+    // (stale data still shown). aria-busy and the toggle button's disabled
+    // state were keyed only on isLoading/isPending and missed that window,
+    // letting a second click race the in-flight refetch against stale data.
+    it('exposes aria-busy=true and disables the toggle button while the page status is refetching', () => {
+        pageStatusState.isFetching = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('aria-busy', 'true');
+        expect(screen.getByTestId('kb-review-page-toggle')).toBeDisabled();
     });
 
     it('advances to page 2 when Next is clicked, actually re-requesting that page', async () => {

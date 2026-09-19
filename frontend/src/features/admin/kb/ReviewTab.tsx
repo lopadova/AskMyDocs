@@ -255,12 +255,19 @@ function PageReviewNavigator({
     // waits onto inner text elements instead of the shared data-state/aria-busy
     // contract every other async region in this file uses.
     const navState = status.isLoading ? 'loading' : status.isError || !status.data ? 'error' : 'ready';
+    // Copilot review PR #497 (pullrequestreview-5257728388) — a successful
+    // toggle invalidates the page-status query, which refetches with
+    // isFetching=true while isLoading stays false (stale data is still
+    // shown). aria-busy keyed only on isLoading missed that window; the
+    // toggle button below shares the same isFetching check so a second
+    // click can't race the still-in-flight refetch against stale data.
+    const navBusy = status.isLoading || status.isFetching || toggleMut.isPending;
 
     return (
         <section
             data-testid="kb-review-page-nav"
             data-state={navState}
-            aria-busy={status.isLoading || toggleMut.isPending}
+            aria-busy={navBusy}
             style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -319,8 +326,8 @@ function PageReviewNavigator({
                             type="button"
                             data-testid="kb-review-page-toggle"
                             onClick={handleToggle}
-                            disabled={toggleMut.isPending}
-                            style={secondaryBtnStyle(toggleMut.isPending)}
+                            disabled={navBusy}
+                            style={secondaryBtnStyle(navBusy)}
                         >
                             {toggleMut.isPending
                                 ? 'Working…'

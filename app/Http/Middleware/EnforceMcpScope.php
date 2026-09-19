@@ -151,25 +151,37 @@ final class EnforceMcpScope
             }
 
             $payload = $request->json()->all();
-            if (($payload['method'] ?? null) !== 'tools/call') {
-                return $next($request);
+            $isToolsCall = ($payload['method'] ?? null) === 'tools/call';
+
+            $toolName = '';
+            if ($isToolsCall) {
+                $toolName = (string) data_get($payload, 'params.name', '');
+                if ($toolName === '') {
+                    return response()->json(['error' => 'tool_name_required'], 422);
+                }
+
+                $requiredScope = $this->requiredScopeForTool($toolName);
+                if (! in_array($requiredScope, $scopes, true)) {
+                    return response()->json([
+                        'error' => 'mcp_scope_missing',
+                        'required_scope' => $requiredScope,
+                    ], 403);
+                }
             }
 
-            $toolName = (string) data_get($payload, 'params.name', '');
-            if ($toolName === '') {
-                return response()->json(['error' => 'tool_name_required'], 422);
-            }
-
-            $requiredScope = $this->requiredScopeForTool($toolName);
-            if (! in_array($requiredScope, $scopes, true)) {
-                return response()->json([
-                    'error' => 'mcp_scope_missing',
-                    'required_scope' => $requiredScope,
-                ], 403);
-            }
-
+            // Copilot review PR #497 (pullrequestreview-5257728388) —
+            // `last_used_at` used to update only on `tools/call`, but every
+            // protocol method is now fully authenticated and scope-checked
+            // (round 8 above). A caller that only ever calls
+            // `initialize`/`tools/list` would never update its token's
+            // `last_used_at`, under-reporting real traffic in the admin
+            // token list. Update it for every authenticated request that
+            // reaches this point, regardless of method.
             $token->forceFill(['last_used_at' => now()])->save();
-            $this->auditInvocation($toolName, data_get($payload, 'params.arguments'));
+
+            if ($isToolsCall) {
+                $this->auditInvocation($toolName, data_get($payload, 'params.arguments'));
+            }
 
             return $next($request);
         } finally {

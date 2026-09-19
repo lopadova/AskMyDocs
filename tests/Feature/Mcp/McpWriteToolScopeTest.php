@@ -247,6 +247,36 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5257728388) — last_used_at
+     * used to update only inside the tools/call branch. Since round 8 made
+     * every protocol method fully authenticated and scope-checked, a caller
+     * that only ever calls initialize/tools/list would never update its
+     * token's last_used_at, under-reporting real traffic in the admin token
+     * list.
+     */
+    public function test_last_used_at_is_updated_for_a_non_tools_call_method(): void
+    {
+        $token = McpTenantToken::query()->create([
+            'tenant_id' => app(TenantContext::class)->current(),
+            'label' => 'test',
+            'token_hash' => hash('sha256', 'plain-test-token'),
+            'token_last4' => 'oken',
+            'scopes_json' => ['mcp:read'],
+        ]);
+        $this->assertNull($token->last_used_at);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer plain-test-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('ok', 200));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertNotNull($token->fresh()->last_used_at);
+    }
+
+    /**
      * Copilot review PR #497 (pullrequestreview-5256772155) — before this
      * fix, `mcp:read` was checked ONLY inside the `tools/call` branch, so a
      * token minted with an elevated-but-not-baseline scope (or an empty/
