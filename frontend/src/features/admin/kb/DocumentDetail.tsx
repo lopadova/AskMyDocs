@@ -12,6 +12,7 @@ import { SourceTab } from './SourceTab';
 import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
 import { GraphTab } from './GraphTab';
+import { ReviewTab } from './ReviewTab';
 import { useToast } from '../shared/Toast';
 
 /*
@@ -29,7 +30,7 @@ import { useToast } from '../shared/Toast';
  * for Playwright.
  */
 
-export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history' | 'graph';
+export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history' | 'graph' | 'review';
 
 export interface DocumentDetailProps {
     documentId: number;
@@ -186,6 +187,7 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
                 {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
                 {activeTab === 'graph' ? <GraphTab documentId={doc.id} /> : null}
+                {activeTab === 'review' ? <ReviewTab documentId={doc.id} /> : null}
             </div>
 
             {confirm !== null ? (
@@ -334,6 +336,7 @@ function TabStrip({
         { key: 'meta', label: 'Meta' },
         { key: 'history', label: 'History' },
         { key: 'graph', label: 'Graph' },
+        { key: 'review', label: 'Review' },
     ];
     return (
         <div

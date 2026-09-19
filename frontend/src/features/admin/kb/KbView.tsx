@@ -28,7 +28,7 @@ import { UploadModal } from './upload/UploadModal';
  * 500 errors as toasts.
  */
 
-const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history', 'graph'];
+const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history', 'graph', 'review'];
 
 function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
     if (typeof window === 'undefined') {
