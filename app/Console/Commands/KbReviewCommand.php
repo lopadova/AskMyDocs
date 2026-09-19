@@ -53,13 +53,26 @@ final class KbReviewCommand extends Command
             return self::FAILURE;
         }
 
+        // Copilot PR #494 round 7 — TenantContext::set('') silently
+        // normalizes an explicitly empty --tenant= to 'default'
+        // (KbOcrCommand established this same guard). Without it,
+        // `kb:review 42 --tenant= --approve` would review/approve
+        // document 42 in the default tenant instead of rejecting the
+        // malformed scope input.
+        $tenantId = trim((string) $this->option('tenant'));
+        if ($tenantId === '') {
+            $this->error('--tenant must be a non-empty tenant id.');
+
+            return self::FAILURE;
+        }
+
         // Copilot PR #494 round 2 — TenantContext is a process-wide
         // singleton (KbOcrCommand established this restore pattern). Save
         // the caller's tenant and restore it in finally, on every return
         // path, so a second command invocation in the same Artisan/test
         // process never inherits this command's requested tenant.
         $previous = $tenants->current();
-        $tenants->set((string) $this->option('tenant'));
+        $tenants->set($tenantId);
 
         try {
             $document = KnowledgeDocument::query()

@@ -188,23 +188,30 @@ review queue is therefore its own query against `knowledge_documents`,
 sharing the scopes (`forTenant()`, the auto/ocr filter) but not the slug
 requirement.
 
-### 5. The reranker gap — `generation_source` adjustment for non-canonical rows too
+### 5. The reranker gap — `generation_source` adjustment for non-canonical **OCR** rows
 
 `Reranker::canonicalAdjustment()` currently returns `{delta: 0, boost: 0,
 penalty: 0}` for any non-canonical chunk before reaching the
 `autoTierPenalty()` call that reads `generation_source`. W3 moves that one
 read outside the `is_canonical` early-return — the **canonical boost/status
 penalty stay canonical-only** (a `retrieval_priority` or
-`canonical_status` reads meaningless on a non-canonical row), but the
-auto-tier penalty is computed and applied regardless:
+`canonical_status` reads meaningless on a non-canonical row) — but the
+auto-tier penalty is scoped to **non-canonical rows that are OCR output**,
+not to every non-canonical `generation_source = 'auto'` row:
 
 ```php
 private function canonicalAdjustment(array $chunk, float $priorityWeight): array
 {
     $doc = $chunk['document'] ?? [];
-    $penalty = $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'));
+    $isCanonical = (bool) ($doc['is_canonical'] ?? false);
+    $isOcrOrigin = (bool) ($doc['ocr_origin'] ?? false);
 
-    if (! (bool) ($doc['is_canonical'] ?? false)) {
+    $applyAutoPenalty = $isCanonical || $isOcrOrigin;
+    $penalty = $applyAutoPenalty
+        ? $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'))
+        : 0.0;
+
+    if (! $isCanonical) {
         return ['delta' => -$penalty, 'boost' => 0.0, 'penalty' => $penalty];
     }
 
@@ -216,10 +223,29 @@ private function canonicalAdjustment(array $chunk, float $priorityWeight): array
 }
 ```
 
-**Why this changes nothing for existing content.** The existing firewall
-test's notion of "raw" is a non-canonical row, which today defaults to
-`generation_source = 'human'` (only canonical frontmatter, or W1's OCR
-write, can ask for `'auto'`). A `'human'`-default non-canonical row pays
+`ocr_origin` is not raw document metadata forwarded verbatim — it is derived
+in `KbSearchService`'s chunk-mapping (`metadata.converter.provenance ===
+'ocr'`) and added to the chunk's document array alongside
+`generation_source`, so the reranker never re-parses metadata itself.
+
+**Why the scoping is OCR-only, not "every non-canonical `auto` row."**
+`generation_source = 'auto'` on a non-canonical row is written by two
+different producers: `DocumentIngestor` for genuinely OCR-originated
+documents (W1's OCR write, §3), and `AutoWikiCompiler::apply()`, which
+enriches raw / already-auto documents and is unrelated to Digitization
+Review — that ranking behaviour predates this ADR (ADR 0014) and this ADR
+must not silently re-order it. Penalizing every non-canonical `auto` row
+would demote AutoWiki-enriched raw content that was never awaiting a human
+review pass, reversing an established ranking outside this ADR's scope. The
+penalty therefore applies only when the row is canonical (unchanged,
+pre-W3 firewall behaviour) **or** its `ocr_origin` flag is true — i.e. only
+to the unreviewed OCR text Digitization Review actually gates.
+
+**Why this changes nothing for pre-existing (non-OCR) content.** The
+existing firewall test's notion of "raw" is a non-canonical row, which
+today defaults to `generation_source = 'human'` (only canonical
+frontmatter, or W1's OCR write, can ask for `'auto'`). A `'human'`-default
+non-canonical row pays
 `autoTierPenalty('human') === 0.0` — identical to before this change. The
 **only** rows this re-orders are non-canonical `'auto'` rows — which, before
 W1, did not exist at all (nothing wrote `generation_source = 'auto'` on a
@@ -255,12 +281,19 @@ carries the full mutating-tool control set:
   chars. All three are stored verbatim as candidate data — never
   interpolated into a prompt, a query, or executed.
 - **Idempotency, DB-enforced**: the key is
-  `sha256(tenant · user · document · version_hash · page · old · new)`, a
-  `UNIQUE` column on `kb_text_correction_candidates`. `version_hash` is part
-  of the identity deliberately — a candidate validated against one OCR pass
-  must never be silently handed back as "the same candidate" for a later,
-  different pass over the same page. A replayed call (identical key) returns
-  the existing candidate; a genuinely concurrent double call is resolved by
+  `sha256(sha256(tenant) · sha256(user) · sha256(document) · sha256(version_hash)
+  · sha256(page) · sha256(old) · sha256(new))` — each of the 7 fields hashed to
+  a fixed-length digest BEFORE concatenation (`KbTextCorrectionCandidate::idempotencyKeyFor()`),
+  not a plain delimiter-joined string. A delimiter-joined key is not injective
+  when `old`/`new` are arbitrary OCR text: a delimiter character can shift
+  across a field boundary and reproduce the same preimage for a legitimately
+  different proposal, which would make the `UNIQUE` constraint reject it as a
+  spurious replay. Stored as a `UNIQUE` column on `kb_text_correction_candidates`.
+  `version_hash` is part of the identity deliberately — a candidate validated
+  against one OCR pass must never be silently handed back as "the same
+  candidate" for a later, different pass over the same page. A replayed call
+  (identical key) returns the existing candidate; a genuinely concurrent
+  double call is resolved by
   the unique constraint to exactly one row (the loser's insert fails and
   re-reads the winner's row — never two rows for one proposal).
 - **Approval is single-use and atomic (R21)**: the candidate carries a

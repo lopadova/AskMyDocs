@@ -345,4 +345,28 @@ final class KbReviewCommandTest extends TestCase
 
         $this->assertSame('pre-existing-tenant', $tenants->current());
     }
+
+    /**
+     * Copilot PR #494 round 7 (must-fix) — `TenantContext::set('')`
+     * silently normalizes an explicitly empty --tenant= to 'default'
+     * (KbOcrCommand established this same guard). Without validating the
+     * raw option first, `--tenant=` would review/approve a document in the
+     * DEFAULT tenant instead of rejecting the malformed scope input — and
+     * it must never even switch TenantContext before rejecting.
+     */
+    public function test_rejects_an_empty_tenant_option_without_switching_context(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $tenants = app(TenantContext::class);
+        $tenants->set('pre-existing-tenant');
+        $doc = $this->doc(['tenant_id' => 'default']);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--approve' => true, '--tenant' => ''])
+            ->expectsOutputToContain('--tenant must be a non-empty tenant id')
+            ->assertExitCode(1);
+
+        $this->assertSame('pre-existing-tenant', $tenants->current(), 'a rejected empty --tenant must never switch TenantContext');
+        $doc->refresh();
+        $this->assertSame(GenerationSource::Auto->value, $doc->generation_source, 'a rejected empty --tenant must never approve any document');
+    }
 }

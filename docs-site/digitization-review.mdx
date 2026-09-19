@@ -189,15 +189,22 @@ produces a second audit row.
 `Reranker::canonicalAdjustment()` used to compute the auto-tier penalty
 **after** an early return for non-canonical chunks — meaning it never ran for
 them at all. The fix moves that computation ahead of the `is_canonical`
-branch, so it applies uniformly:
+branch, but it does **not** apply to every non-canonical `auto` row
+uniformly — it is scoped to rows that are actually OCR output:
 
 ```php
 private function canonicalAdjustment(array $chunk, float $priorityWeight): array
 {
     $doc = $chunk['document'] ?? [];
-    $penalty = $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'));
+    $isCanonical = (bool) ($doc['is_canonical'] ?? false);
+    $isOcrOrigin = (bool) ($doc['ocr_origin'] ?? false);
 
-    if (! (bool) ($doc['is_canonical'] ?? false)) {
+    $applyAutoPenalty = $isCanonical || $isOcrOrigin;
+    $penalty = $applyAutoPenalty
+        ? $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'))
+        : 0.0;
+
+    if (! $isCanonical) {
         return ['delta' => -$penalty, 'boost' => 0.0, 'penalty' => $penalty];
     }
 
@@ -211,12 +218,21 @@ private function canonicalAdjustment(array $chunk, float $priorityWeight): array
 
 `retrieval_priority` and the accepted/pending status penalty stay
 **canonical-only** — those are properties of the promotion pipeline, and a
-non-canonical row has no `canonical_status` to penalize. Only the auto-tier
-penalty — "is this generation_source `auto`?" — applies to both. Content that
-never went through OCR (`generation_source` defaults to `human` everywhere
-else, unaffected by this fix at all) sees zero change: the fix only changes
-ranking for rows where `generation_source = 'auto'`, which since
-[v8.36/W1](/documents-and-ocr) means specifically non-reviewed OCR output.
+non-canonical row has no `canonical_status` to penalize. The auto-tier
+penalty is **not** "is this generation_source `auto`?" for every
+non-canonical row: `generation_source = 'auto'` on a non-canonical row is
+also written by `AutoWikiCompiler::apply()` when it enriches raw content,
+a ranking behaviour that predates this ADR (ADR 0014) and that this fix
+must not silently re-order. So the penalty applies only when the row is
+canonical (unchanged) **or** `ocr_origin` is true — a flag
+`KbSearchService`'s chunk-mapping derives from
+`metadata.converter.provenance === 'ocr'`, not from `generation_source`
+alone. Content that never went through OCR (`generation_source` defaults
+to `human` everywhere else, unaffected by this fix at all) sees zero
+change: the fix only changes ranking for rows where `generation_source =
+'auto'` **and** `ocr_origin` is true, which since
+[v8.36/W1](/documents-and-ocr) means specifically non-reviewed OCR output —
+never AutoWiki-enriched raw content.
 
 ## Data model & contract
 
