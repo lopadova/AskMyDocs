@@ -110,6 +110,121 @@ final class WikiExplorerServiceTest extends TestCase
         $this->assertSame('human', $doc->generation_source);
     }
 
+    /**
+     * Copilot PR #494 round 6 (must-fix) — the numeric-ID HTTP/CLI Wiki
+     * Explorer adapters resolve a tenant-scoped document WITHOUT requiring
+     * `is_canonical`, so an auto OCR'd scan or AutoWiki-enriched raw
+     * document could reach this method and receive a FALSE canonical fact
+     * (`canonical_status: 'accepted'`) it was never meant to carry. A
+     * non-canonical `auto` document must refuse, exactly like the
+     * `not_auto` case, and leave BOTH columns untouched.
+     */
+    public function test_promote_refuses_a_non_canonical_auto_doc(): void
+    {
+        $doc = $this->doc([
+            'slug' => null,
+            'doc_id' => null,
+            'canonical_type' => null,
+            'canonical_status' => null,
+            'is_canonical' => false,
+            'generation_source' => 'auto',
+        ]);
+
+        $result = $this->svc->promote($doc, 'admin:1');
+
+        $this->assertFalse($result['promoted']);
+        $this->assertSame('not_canonical', $result['reason']);
+        $doc->refresh();
+        $this->assertSame('auto', $doc->generation_source, 'a non-canonical doc must never be silently flipped to human');
+        $this->assertNull($doc->canonical_status, 'a non-canonical doc must never receive a false canonical_status');
+        // a refused promotion must never write an audit row
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
+    /**
+     * Copilot PR #494 round 5 (must-fix) — save() returns false when a model
+     * event vetoes the write. Before this fix, the ignored return value let
+     * the transaction still write the 'promoted' audit row and this method
+     * return promoted=true while generation_source/canonical_status stayed
+     * untouched on disk. A `saving` listener scoped to THIS document's id
+     * simulates the veto; the whole transaction must roll back, so neither
+     * the flip nor its audit row survives.
+     */
+    public function test_promote_throws_and_writes_nothing_when_the_save_is_vetoed(): void
+    {
+        $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto', 'canonical_status' => 'review']);
+
+        KnowledgeDocument::saving(fn (KnowledgeDocument $model): bool => $model->getKey() !== $doc->id);
+
+        $thrown = null;
+
+        try {
+            try {
+                $this->svc->promote($doc, 'admin:1');
+            } catch (\RuntimeException $e) {
+                $thrown = $e;
+            }
+        } finally {
+            \Illuminate\Support\Facades\Event::forget('eloquent.saving: '.KnowledgeDocument::class);
+        }
+
+        $this->assertNotNull($thrown, 'a vetoed save must surface as a thrown exception, not a silent promoted:true');
+        $doc->refresh();
+        $this->assertSame('auto', $doc->generation_source, 'a vetoed save must leave generation_source untouched');
+        $this->assertSame('review', $doc->canonical_status, 'a vetoed save must leave canonical_status untouched');
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
+    /**
+     * Copilot PR #494 round 9 (must-fix, 2 findings) — promote() now locks
+     * the document row INSIDE its transaction and re-reads
+     * is_canonical/generation_source from that locked row rather than the
+     * CALLER'S copy. Mirrors
+     * `KbReviewServiceTest::test_approve_decides_from_a_fresh_read_not_the_callers_stale_document_instance`
+     * (SQLite cannot enforce real `lockForUpdate()` blocking, so a true
+     * two-connection interleaving isn't stageable here — see that test's
+     * docblock for the full rationale): simulate "a concurrent promote
+     * already committed" by updating the DB directly, bypassing the `$doc`
+     * instance in memory (which still reports the stale 'auto' value), and
+     * writing that winner's audit row. Pre-fix, promote() decided from
+     * `$doc->generation_source` (the stale in-memory 'auto') and would
+     * flip the row AGAIN, producing a second `promoted` audit row for
+     * exactly the race the direct Wiki Explorer HTTP/CLI/MCP adapters and
+     * `KbReviewService::approve()`'s canonical branch can hit concurrently.
+     * Post-fix, promote() re-queries inside its own transaction, sees the
+     * DB's 'human', and returns the safe not_auto no-op.
+     */
+    public function test_promote_decides_from_a_fresh_read_not_the_callers_stale_document_instance(): void
+    {
+        $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto', 'canonical_status' => 'review']);
+
+        // A concurrent promote() call that already committed, bypassing
+        // the in-memory $doc instance entirely.
+        \Illuminate\Support\Facades\DB::table('knowledge_documents')
+            ->where('id', $doc->id)
+            ->update(['generation_source' => GenerationSource::Human->value, 'canonical_status' => 'accepted']);
+        KbCanonicalAudit::create([
+            'tenant_id' => 'default',
+            'project_key' => (string) $doc->project_key,
+            'doc_id' => $doc->doc_id,
+            'slug' => $doc->slug,
+            'event_type' => 'promoted',
+            'actor' => 'admin:2',
+            'before_json' => ['generation_source' => 'auto', 'canonical_status' => 'review'],
+            'after_json' => ['generation_source' => 'human', 'canonical_status' => 'accepted'],
+            'metadata_json' => ['source' => 'concurrent_winner'],
+        ]);
+
+        $this->assertSame('auto', $doc->generation_source, 'the in-memory $doc instance must still report the stale value — the concurrent write bypassed it');
+
+        $result = $this->svc->promote($doc, 'admin:1');
+
+        $this->assertFalse($result['promoted'], 'a fresh read must see the concurrent winner\'s human state');
+        $this->assertSame('not_auto', $result['reason']);
+        // exactly the concurrent winner's audit row must exist, never a second one
+        $this->assertDatabaseCount('kb_canonical_audit', 1);
+    }
+
     public function test_discard_soft_deletes_an_auto_doc_and_audits(): void
     {
         $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto']);

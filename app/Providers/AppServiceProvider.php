@@ -974,6 +974,9 @@ class AppServiceProvider extends ServiceProvider
             // v8.22/Ciclo 3 — runtime config governance PHP surface (R44).
             \App\Console\Commands\AppSettingsListCommand::class,
             \App\Console\Commands\AppSettingsSetCommand::class,
+            // v8.37/W3 — Digitization Review PHP surface (R44): mark a page
+            // reviewed, approve a document, report review status.
+            \App\Console\Commands\KbReviewCommand::class,
         ]);
     }
 

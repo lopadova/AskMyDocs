@@ -1,0 +1,226 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Exceptions\KbReviewDisabledException;
+use App\Models\KnowledgeDocument;
+use App\Services\Kb\Review\KbReviewService;
+use App\Support\TenantContext;
+use Illuminate\Console\Command;
+
+/**
+ * v8.37/W3 (ADR 0031 §2/§4/§9) — PHP/CLI surface (R44) of Digitization
+ * Review: set a page's review status, approve the document
+ * (`auto -> human`), or report its review summary. All three delegate to
+ * {@see KbReviewService}, the shared core every surface adapts. Tri-surface
+ * for read/status + approve: {@see \App\Http\Controllers\Api\Admin\KbReviewController}
+ * (HTTP) and {@see \App\Mcp\Tools\KbReviewStatusTool} (MCP, read-only by
+ * ADR 0031 §8). The text-correction-CANDIDATE flow (ADR 0031 §6-7 —
+ * KbProposeTextCorrectionTool + its full SEC-AI-ACT-001 control set:
+ * idempotency, rate limiting, R21 atomic single-use consumption) is a
+ * separately-scoped capability that does not exist in KbReviewService yet
+ * — there is no surface to add for a method that is not written — and
+ * lands in its own W3 sub-branch.
+ */
+final class KbReviewCommand extends Command
+{
+    protected $signature = 'kb:review
+        {document : knowledge_documents id}
+        {--page= : with --report, read this page\'s status (no mutation); otherwise set it (use with --status)}
+        {--status=reviewed : status to set the page to when --page is given without --report (reviewed|unreviewed)}
+        {--approve : approve the document (auto -> human transition)}
+        {--report : print the document review summary, or (combined with --page) a single page\'s status; no mutation}
+        {--tenant=default : tenant to scope to}';
+
+    protected $description = 'Set a page\'s review status, approve a document, or report review status (ADR 0031).';
+
+    public function handle(KbReviewService $reviews, TenantContext $tenants): int
+    {
+        // Copilot PR #494 round 4 — `(int) $raw` silently truncates
+        // malformed input: `kb:review 12.5 --approve` would become document
+        // 12 and could approve the WRONG document. A real CLI invocation
+        // always hands arguments/options as strings, so validating the
+        // string shape here (not the already-narrowed int) is what
+        // actually catches "12.5" / "abc" / "-1" before anything acts on
+        // it.
+        $documentIdRaw = (string) $this->argument('document');
+        $documentId = $this->parsePositiveInteger($documentIdRaw);
+        if ($documentId === null) {
+            $this->error("document must be a positive integer, got '{$documentIdRaw}'.");
+
+            return self::FAILURE;
+        }
+
+        // Copilot PR #494 round 7 — TenantContext::set('') silently
+        // normalizes an explicitly empty --tenant= to 'default'
+        // (KbOcrCommand established this same guard). Without it,
+        // `kb:review 42 --tenant= --approve` would review/approve
+        // document 42 in the default tenant instead of rejecting the
+        // malformed scope input.
+        $tenantId = trim((string) $this->option('tenant'));
+        if ($tenantId === '') {
+            $this->error('--tenant must be a non-empty tenant id.');
+
+            return self::FAILURE;
+        }
+
+        // Copilot PR #494 round 2 — TenantContext is a process-wide
+        // singleton (KbOcrCommand established this restore pattern). Save
+        // the caller's tenant and restore it in finally, on every return
+        // path, so a second command invocation in the same Artisan/test
+        // process never inherits this command's requested tenant.
+        $previous = $tenants->current();
+        $tenants->set($tenantId);
+
+        try {
+            $document = KnowledgeDocument::query()
+                ->forTenant($tenants->current())
+                ->find($documentId);
+            if ($document === null) {
+                $this->error('Document not found in tenant '.$this->option('tenant').'.');
+
+                return self::FAILURE;
+            }
+
+            $actor = 'cli:kb:review';
+            $didAnything = false;
+            $report = (bool) $this->option('report');
+
+            // Copilot PR #494 round 6 (must-fix) — `--report` is documented
+            // as read-only. Before this fix, `--report --approve` (no
+            // --page) still executed the approval THEN printed the report
+            // — mutating a document under a flag whose whole contract is
+            // "no mutation" — while `--page=N --report --approve` returned
+            // early from the read branch above and silently SKIPPED the
+            // approval. Same two flags, two different mutation outcomes.
+            // Reject the combination outright rather than picking a side.
+            if ($report && (bool) $this->option('approve')) {
+                $this->error('--report cannot be combined with --approve; run them as separate invocations.');
+
+                return self::FAILURE;
+            }
+
+            try {
+                $pageRaw = $this->option('page');
+                if ($pageRaw !== null) {
+                    $page = $this->parsePositiveInteger((string) $pageRaw);
+                    if ($page === null) {
+                        $this->error("--page must be a positive integer, got '{$pageRaw}'.");
+
+                        return self::FAILURE;
+                    }
+
+                    // ADR 0031 §9's `GET .../pages/{n}` read contract, over
+                    // the CLI: `--page=N --report` READS page N's status
+                    // without mutating it (docs previously claimed this
+                    // combo existed — Copilot PR #494 round 5 — before it
+                    // was actually implemented). `--page=N` alone (no
+                    // --report) keeps mutating, unchanged.
+                    if ($report) {
+                        if (! $this->reviewEnabled()) {
+                            $this->error('Digitization Review is disabled (kb.review.enabled).');
+
+                            return self::FAILURE;
+                        }
+
+                        $status = $reviews->pageReviewStatus($document, $page);
+                        $this->table(
+                            ['page_number', 'status', 'reviewed_by', 'reviewed_at'],
+                            [[
+                                $status['page_number'],
+                                $status['status'],
+                                $status['reviewed_by'] ?? '-',
+                                optional($status['reviewed_at'])->toIso8601String() ?? '-',
+                            ]],
+                        );
+
+                        return self::SUCCESS;
+                    }
+
+                    $didAnything = true;
+                    $status = (string) $this->option('status');
+                    $reviewed = $reviews->setPageReviewStatus($document, $page, $status, $actor);
+                    $this->info("Page {$reviewed->page_number} set to '{$reviewed->status}'.");
+                }
+
+                if ((bool) $this->option('approve')) {
+                    $didAnything = true;
+                    $result = $reviews->approve($document, $actor);
+                    if (($result['approved'] ?? false) !== true) {
+                        $this->warn('Not approved: '.($result['reason'] ?? 'unknown').'.');
+                    } else {
+                        $this->info('Document approved (auto -> human).');
+                    }
+                }
+            } catch (KbReviewDisabledException $e) {
+                // ADR 0031 §1 — a friendly disabled message, never an
+                // uncaught exception bubbling out of the console command.
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            } catch (\InvalidArgumentException $e) {
+                // KbReviewService's page_number / page_count / status
+                // guards (Copilot PR #494) — same friendly-message posture.
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            }
+
+            if ($report || ! $didAnything) {
+                // Copilot PR #494 round 5 — a report is a READ, but this CLI
+                // never gated it behind kb.review.enabled while the HTTP
+                // surface explicitly 404s the same read when disabled
+                // ({@see \App\Http\Controllers\Api\Admin\KbReviewController::summary()}).
+                // A disabled deployment printed a summary the HTTP contract
+                // says does not exist; the CLI must refuse the same way.
+                if (! $this->reviewEnabled()) {
+                    $this->error('Digitization Review is disabled (kb.review.enabled).');
+
+                    return self::FAILURE;
+                }
+
+                $summary = $reviews->documentReviewSummary($document);
+                $this->table(
+                    ['total', 'reviewed', 'unreviewed'],
+                    [[$summary['total'], $summary['reviewed'], $summary['unreviewed']]],
+                );
+            }
+
+            return self::SUCCESS;
+        } finally {
+            $tenants->set($previous);
+        }
+    }
+
+    /**
+     * ADR 0031 §1's kill switch, read the same way the HTTP surface reads
+     * it ({@see \App\Http\Controllers\Api\Admin\KbReviewController}) —
+     * gating every REPORT output (doc-wide and per-page), never the
+     * write paths (those already throw {@see KbReviewDisabledException}
+     * from inside the service).
+     */
+    private function reviewEnabled(): bool
+    {
+        return (bool) config('kb.review.enabled', false);
+    }
+
+    /**
+     * Accepts only a bare non-negative-looking integer string ("1", "12"),
+     * never "1.5" / "-1" / "1e3" / "" / "abc" / a leading-plus-signed value
+     * — `filter_var(..., FILTER_VALIDATE_INT)` alone would still accept
+     * " 1" or "+1"; the regex keeps this to exactly what a positive
+     * Eloquent primary key or page number can look like.
+     */
+    private function parsePositiveInteger(string $raw): ?int
+    {
+        if (preg_match('/^\d+$/', $raw) !== 1) {
+            return null;
+        }
+
+        $value = (int) $raw;
+
+        return $value >= 1 ? $value : null;
+    }
+}
