@@ -417,7 +417,7 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
                     <button
                         type="button"
                         data-testid="kb-review-corrections-prev"
-                        onClick={() => setOffset((o) => Math.max(0, o - CORRECTIONS_PAGE_SIZE))}
+                        onClick={() => setOffset((o) => Math.max(0, o - (meta.limit || CORRECTIONS_PAGE_SIZE)))}
                         disabled={offset <= 0}
                         style={pagerBtnStyle(offset <= 0)}
                     >
@@ -426,7 +426,7 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
                     <button
                         type="button"
                         data-testid="kb-review-corrections-next"
-                        onClick={() => setOffset((o) => o + CORRECTIONS_PAGE_SIZE)}
+                        onClick={() => setOffset((o) => o + (meta.limit || CORRECTIONS_PAGE_SIZE))}
                         disabled={!meta.has_more}
                         style={pagerBtnStyle(!meta.has_more)}
                     >

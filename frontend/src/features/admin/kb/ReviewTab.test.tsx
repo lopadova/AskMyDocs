@@ -377,6 +377,40 @@ describe('ReviewTab', () => {
         expect(correctionsState.lastOffset).toBe(20);
     });
 
+    // Copilot finding on PR #497: the server can cap the effective page size
+    // below the requested CORRECTIONS_PAGE_SIZE (KB_REVIEW_CORRECTIONS_PAGE_SIZE),
+    // and returns the applied value as meta.limit. Stepping by the hard-coded
+    // constant instead of meta.limit desyncs the offset from what the server
+    // actually returned.
+    it('advances/retreats the corrections offset by the server-effective meta.limit, not the requested page size', async () => {
+        correctionsState.data = {
+            data: [
+                {
+                    id: 51,
+                    page_number: 2,
+                    old_text: 'Bod',
+                    new_text: 'Bob',
+                    rationale: null,
+                    proposed_by: 'mcp:kb-propose-text-correction',
+                    created_at: null,
+                },
+            ],
+            meta: { limit: 5, offset: 0, has_more: true },
+        };
+        wrap(<ReviewTab documentId={7} />);
+        expect(correctionsState.lastOffset).toBe(0);
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-corrections-next'));
+        });
+        expect(correctionsState.lastOffset).toBe(5);
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-corrections-prev'));
+        });
+        expect(correctionsState.lastOffset).toBe(0);
+    });
+
     // Copilot finding on PR #497: switching the selected document must not
     // carry over the previous document's page cursor / corrections offset.
     it('resets the page cursor to 1 when the selected document changes', async () => {
