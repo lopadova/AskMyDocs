@@ -20,6 +20,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
@@ -617,6 +618,56 @@ final class KbReviewCorrectionTest extends TestCase
     }
 
     /**
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix, "Handle fallback dispatch
+     * failures after successful correction") — round 7's own fallback
+     * (dispatch a durable {@see WriteKbTextCorrectionAuditJob} retry when
+     * the synchronous audit write fails) was itself a bare, un-guarded
+     * `dispatch()` call: a queue outage or a `sync` connection re-throwing
+     * the job's own exception inline would make THAT throw too, escaping
+     * the outer catch and turning an already-applied correction into a
+     * reported approval FAILURE — a regression of the exact "the correction
+     * genuinely applied, never lie to the caller" guarantee the round-7 test
+     * above exists to prove. This test forces BOTH failures at once: the
+     * table drop fails the synchronous write (same technique as round 7),
+     * and mocking `Queue::connection()` to throw fails the dispatch() call
+     * that would otherwise be its fallback (same technique
+     * `ConversionArtifactsIngestTest::test_a_failing_indexer_dispatch_propagates_and_discards_the_staged_temp()`
+     * uses to force a real dispatch() to throw instead of merely faking it
+     * away with `Queue::fake()`, which would hide the exact code path this
+     * test needs to exercise).
+     */
+    public function test_approve_correction_still_reports_success_when_both_the_audit_write_and_its_retry_dispatch_fail(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $reviewer = $this->user();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', 'ocr misread', 'user:1');
+
+        Schema::dropIfExists('kb_canonical_audit');
+        Queue::shouldReceive('connection')->andThrow(new \RuntimeException('queue connection down'));
+        Log::spy();
+
+        $result = $this->svc->approveCorrection($candidate, "user:{$reviewer->id}", (int) $reviewer->id);
+
+        $this->assertTrue($result['applied'], 'the correction genuinely applied — a failed audit write AND a failed retry dispatch must still not be reported to the caller as a failed approval');
+        $this->assertIsInt($result['document_id']);
+
+        $candidate->refresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->status, 'the candidate must still reach its terminal state even when both audit-recovery paths failed');
+
+        Log::shouldHaveReceived('critical')
+            ->once()
+            ->withArgs(function (string $message, array $context) use ($candidate): bool {
+                return str_contains($message, 'BOTH the synchronous audit write AND the durable retry dispatch failed')
+                    && $context['candidate_id'] === $candidate->id
+                    && ($context['before_json']['old_text'] ?? null) === 'Bod'
+                    && ($context['after_json']['new_text'] ?? null) === 'Bob'
+                    && is_string($context['write_exception'] ?? null) && $context['write_exception'] !== ''
+                    && is_string($context['dispatch_exception'] ?? null) && $context['dispatch_exception'] !== '';
+            });
+    }
+
+    /**
      * v8.37/W3b round 4 (Copilot PR #496, H-A) — the end-to-end propose +
      * approve flow against a document with NO retained conversion artifact,
      * chunked the way {@see \App\Services\Kb\Chunkers\PdfPageChunker} really
@@ -738,6 +789,70 @@ final class KbReviewCorrectionTest extends TestCase
         $this->assertNotNull($audit, 'the audit row must still be written for a candidate treated as applied');
         $this->assertSame($newVersion->id, $audit->after_json['document_id']);
         $this->assertSame($candidate->id, $audit->metadata_json['candidate_id']);
+    }
+
+    /**
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix, "Use claim tokens to
+     * prevent stale approval completion") — simulates a SLOW (not crashed)
+     * reembedFromMarkdown() outliving the stuck-applying threshold: while
+     * it "runs" (inside the mock's callback), the candidate is reconciled
+     * back to `pending` and re-claimed by a SECOND, genuine reviewer —
+     * exactly what `kb:review-reconcile-stuck-corrections` +
+     * `approveCorrection()` would really do concurrently. Without the
+     * consumed_at fencing this PR adds, the ORIGINAL (slow) call's flip
+     * would blindly overwrite that second claim once it finally returns.
+     */
+    public function test_approve_correction_does_not_overwrite_a_candidate_reclaimed_while_it_was_still_running(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $secondReviewer = $this->user();
+        $secondReviewerConsumedAt = null;
+
+        $newVersion = null;
+        $ingestor = Mockery::mock(\App\Services\Kb\DocumentIngestor::class);
+        $ingestor->shouldReceive('reembedFromMarkdown')->once()->andReturnUsing(function () use ($doc, $candidate, $secondReviewer, &$newVersion, &$secondReviewerConsumedAt) {
+            // Simulates the reconciler + a second, genuine reviewer racing
+            // in WHILE this call's own reembedFromMarkdown() is still
+            // "running" — bypassing approveCorrection() entirely, the same
+            // DB-bypass technique this file's concurrency tests already use.
+            $secondReviewerConsumedAt = now()->addSecond();
+            KbTextCorrectionCandidate::query()->whereKey($candidate->id)->update([
+                'status' => KbTextCorrectionCandidate::STATUS_APPLIED,
+                'consumed_at' => $secondReviewerConsumedAt,
+                'consumed_by' => $secondReviewer->id,
+            ]);
+
+            $doc->forceFill(['status' => 'archived'])->save();
+            $newVersion = $this->doc([
+                'source_path' => $doc->source_path,
+                'version_hash' => bin2hex(random_bytes(16)),
+            ]);
+
+            return $newVersion;
+        });
+        $this->app->instance(\App\Services\Kb\DocumentIngestor::class, $ingestor);
+        $svc = app(KbReviewService::class);
+
+        $result = $svc->approveCorrection($candidate, 'user:1', 1);
+
+        // This call's OWN correction genuinely applied — it still reports
+        // success and its own document/audit row.
+        $this->assertTrue($result['applied']);
+        $this->assertSame($newVersion->id, $result['document_id']);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'updated')->where('metadata_json->candidate_id', $candidate->id)->first();
+        $this->assertNotNull($audit, "this call's own correction must still be audited even though its flip lost the fencing race");
+        $this->assertSame($newVersion->id, $audit->after_json['document_id']);
+
+        // The candidate row itself is untouched by this call — the second
+        // reviewer's claim (status/consumed_at/consumed_by) stands exactly
+        // as it was, proven by comparing DateTimeString (SQLite rounds to
+        // whole seconds on round-trip).
+        $fresh = $candidate->fresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $fresh->status);
+        $this->assertSame($secondReviewerConsumedAt->toDateTimeString(), $fresh->consumed_at?->toDateTimeString());
+        $this->assertSame((int) $secondReviewer->id, $fresh->consumed_by, "the original (slow) call's flip must never overwrite the second reviewer's claim");
     }
 
     /**

@@ -225,6 +225,11 @@ final class KbProposeTextCorrectionToolTest extends TestCase
      * `McpWriteToolScopeTest::callTool()` does) with a real, persisted
      * `McpTenantToken`, proving the full stack — routing, auth, scope
      * enforcement, and the tool itself — actually works end-to-end.
+     *
+     * Scopes mirror `McpTenantTokenController::store()`'s actual DEFAULT
+     * (`['mcp:read', 'mcp:tools:propose']`, round 8 — the tool is a
+     * PROPOSE_TOOL_NAMES entry, not `mcp:tools:write`; a token minted
+     * without an explicit scope override could otherwise never reach it).
      */
     public function test_a_real_http_request_with_a_tenant_token_reaches_the_tool_end_to_end(): void
     {
@@ -237,7 +242,7 @@ final class KbProposeTextCorrectionToolTest extends TestCase
             'label' => 'e2e test',
             'token_hash' => hash('sha256', $plainToken),
             'token_last4' => substr($plainToken, -4),
-            'scopes_json' => ['mcp:read', 'mcp:tools:write'],
+            'scopes_json' => ['mcp:read', 'mcp:tools:propose'],
         ]);
 
         $toolName = (new KbProposeTextCorrectionTool())->name();

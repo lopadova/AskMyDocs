@@ -762,6 +762,35 @@ class KbReviewService
      * lower-frequency, explicitly-triggered operation (R44 — a scheduler-
      * only maintenance sweep with no caller-facing read, so CLI-only).
      *
+     * Claim-token fencing (round 8, Copilot PR #496 must-fix) — a DIFFERENT
+     * race than the crash above: a legitimately SLOW (not crashed)
+     * `reembedFromMarkdown()` call can outlast `kb.review.stuck_applying_minutes`.
+     * Without fencing, the reconciler would then revert the row to
+     * `pending` while it is still genuinely in-flight, a second reviewer
+     * could claim and apply it for real, and the ORIGINAL slow call's own
+     * post-phase-2 writes (the applied-flip, and either failure-path
+     * revert) would blindly overwrite that second, genuine outcome once it
+     * finally returns. Every one of those three writes is now conditioned
+     * on `consumed_at` still equalling the exact value phase 1 set — a
+     * call whose claim was superseded becomes a safe no-op (logged), never
+     * an overwrite. This closes a race distinct from (and orthogonal to)
+     * the process-crash recovery above.
+     *
+     * A remaining, narrower gap (round 8, Copilot PR #496, "Recover applied
+     * candidates missing audit records") — the process crashing in the
+     * split-second between the `applied`-flip transaction committing and
+     * phase 3 even beginning is still unrecoverable: `WriteKbTextCorrectionAuditJob`
+     * (phase 3's durable retry) is only dispatched if phase 3 actually
+     * runs, and `kb:review-reconcile-stuck-corrections` only scans
+     * `applying` rows, never `applied` ones missing their audit. Safely
+     * backfilling that gap needs either a breadcrumb on the produced
+     * version (threading a `produced_by_candidate_id` through
+     * `reembedFromMarkdown()`'s signature) or accepting the reconstruction
+     * risk of resolving "the current family version" after the fact, which
+     * can drift if another change lands on the same document family in the
+     * meantime — a genuine design commitment deliberately deferred rather
+     * than rushed into this same round.
+     *
      * @return array{applied: bool, reason?: string, document_id?: int}
      */
     public function approveCorrection(KbTextCorrectionCandidate $candidate, string $actor, ?int $reviewerUserId): array
@@ -791,7 +820,7 @@ class KbReviewService
         $tenantId = (string) $candidate->tenant_id;
         $candidateId = (int) $candidate->id;
 
-        /** @var array{done: bool, result?: array{applied: bool, reason?: string}, live?: KnowledgeDocument, corrected?: string} $claim */
+        /** @var array{done: bool, result?: array{applied: bool, reason?: string}, live?: KnowledgeDocument, corrected?: string, claimedAt?: \Illuminate\Support\Carbon} $claim */
         $claim = DB::transaction(function () use ($tenantId, $candidateId, $reviewerUserId): array {
             /** @var KbTextCorrectionCandidate $locked */
             $locked = KbTextCorrectionCandidate::query()
@@ -861,13 +890,28 @@ class KbReviewService
             // covers it the same as any other non-pending status) — that
             // would risk a double-apply race; reconciliation is a
             // deliberately separate, lower-frequency operation.
+            // v8.37/W3b round 8 (Copilot PR #496 must-fix, "Use claim
+            // tokens to prevent stale approval completion") — $claimedAt is
+            // this call's fencing token. A legitimately slow (not crashed)
+            // reembedFromMarkdown() below can outlast
+            // kb.review.stuck_applying_minutes; the reconciler would then
+            // revert this row to `pending` while it is still genuinely
+            // in-flight, and a second reviewer could claim + apply it for
+            // real. Without a fencing check, this original call's own
+            // post-phase-2 writes (the applied-flip below, and the two
+            // failure-path reverts in the catch blocks) would then
+            // unconditionally overwrite that second, GENUINE claim —
+            // finalizing over it or reverting an approval that actually
+            // succeeded. Every write after this point must therefore only
+            // take effect if `consumed_at` still equals exactly this value.
+            $claimedAt = now();
             $locked->forceFill([
                 'status' => KbTextCorrectionCandidate::STATUS_APPLYING,
-                'consumed_at' => now(),
+                'consumed_at' => $claimedAt,
                 'consumed_by' => $reviewerUserId,
             ])->save();
 
-            return ['done' => false, 'live' => $live, 'corrected' => $corrected];
+            return ['done' => false, 'live' => $live, 'corrected' => $corrected, 'claimedAt' => $claimedAt];
         });
 
         if ($claim['done']) {
@@ -877,6 +921,8 @@ class KbReviewService
         /** @var KnowledgeDocument $live */
         $live = $claim['live'];
         $corrected = $claim['corrected'];
+        /** @var \Illuminate\Support\Carbon $claimedAt */
+        $claimedAt = $claim['claimedAt'];
 
         // Phase 2 — v8.37/W3b round 1 (findings #2 + #3), now OUTSIDE any
         // ambient transaction (round 2): apply the correction through the
@@ -905,9 +951,24 @@ class KbReviewService
             // reviewer who resolved it); this one, reached from phase 2,
             // must do the same — otherwise a candidate that can no longer
             // ever be approved still LOOKS unresolved in audit/history.
-            DB::transaction(fn () => KbTextCorrectionCandidate::query()
+            //
+            // Round 8 (claim-token fencing, see phase 1) — this write ONLY
+            // takes effect if `consumed_at` still matches THIS call's own
+            // claim. If it doesn't, the reconciler already reverted this
+            // row (this reembedFromMarkdown() call ran long enough to be
+            // treated as stuck) and a second reviewer's fresh claim/outcome
+            // is what's on the row now — overwriting it here would destroy
+            // real, later state with this call's stale outcome.
+            $fenced = DB::transaction(fn () => KbTextCorrectionCandidate::query()
                 ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
+                ->where('consumed_at', $claimedAt)
                 ->update(['status' => KbTextCorrectionCandidate::STATUS_REJECTED, 'consumed_at' => now(), 'consumed_by' => $reviewerUserId]));
+            if ($fenced === 0) {
+                Log::warning('KbReviewService::approveCorrection — stale-version rejection lost its fencing race (the candidate was reclaimed while reembedFromMarkdown() ran); not overwriting the newer claim', [
+                    'candidate_id' => $candidateId,
+                    'tenant_id' => $tenantId,
+                ]);
+            }
 
             return ['applied' => false, 'reason' => 'stale_version_no_longer_active'];
         } catch (ArtifactPublishFailedException $e) {
@@ -947,9 +1008,20 @@ class KbReviewService
             // failure, not a decided rejection — a reviewer can simply
             // retry) and surface the failure loudly rather than swallowing
             // it.
-            DB::transaction(fn () => KbTextCorrectionCandidate::query()
+            //
+            // Round 8 (claim-token fencing, see phase 1) — same fencing as
+            // the stale-version branch above: only revert if this call's
+            // own claim is still the one on the row.
+            $fenced = DB::transaction(fn () => KbTextCorrectionCandidate::query()
                 ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
+                ->where('consumed_at', $claimedAt)
                 ->update(['status' => KbTextCorrectionCandidate::STATUS_PENDING, 'consumed_at' => null, 'consumed_by' => null]));
+            if ($fenced === 0) {
+                Log::warning('KbReviewService::approveCorrection — infra-failure revert lost its fencing race (the candidate was reclaimed while reembedFromMarkdown() ran); not overwriting the newer claim', [
+                    'candidate_id' => $candidateId,
+                    'tenant_id' => $tenantId,
+                ]);
+            }
 
             throw $e;
         }
@@ -966,9 +1038,29 @@ class KbReviewService
         // distinguishable from `applied` — is exactly what makes a stuck
         // row detectable and safe for `kb:review-reconcile-stuck-corrections`
         // to resolve rather than silently indistinguishable from success.
-        DB::transaction(fn () => KbTextCorrectionCandidate::query()
+        //
+        // Round 8 (claim-token fencing) — fenced by `consumed_at` like the
+        // two failure-path reverts above. If this SPECIFIC call's claim is
+        // no longer on the row (a slow reembedFromMarkdown() outlasted the
+        // stuck threshold, the reconciler reverted it, and a second
+        // reviewer already claimed and applied it for real), this flip is
+        // a deliberate no-op: overwriting would stamp `applied` over
+        // whatever the SECOND, genuine approval already decided. The
+        // correction THIS call produced (`$newVersion`) is still real and
+        // still gets its own audit row below regardless of who "won" the
+        // candidate row.
+        $flipped = DB::transaction(fn () => KbTextCorrectionCandidate::query()
             ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
+            ->where('status', KbTextCorrectionCandidate::STATUS_APPLYING)
+            ->where('consumed_at', $claimedAt)
             ->update(['status' => KbTextCorrectionCandidate::STATUS_APPLIED]));
+        if ($flipped === 0) {
+            Log::warning('KbReviewService::approveCorrection — applied-flip lost its fencing race (the candidate was reclaimed and resolved while reembedFromMarkdown() ran); this call\'s own version and audit row still stand on their own', [
+                'candidate_id' => $candidateId,
+                'tenant_id' => $tenantId,
+                'document_id' => $newVersion->id,
+            ]);
+        }
 
         // Phase 3 — the audit row for the now-successful correction.
         //
@@ -1019,23 +1111,43 @@ class KbReviewService
                     'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidateId],
                 ]);
             } catch (\Throwable $e) {
-                Log::critical('KbReviewService::approveCorrection — the correction applied successfully but its synchronous audit write failed; a durable retry job was dispatched', [
-                    'candidate_id' => $candidateId,
-                    'tenant_id' => $tenantId,
-                    'actor' => $actor,
-                    'exception' => $e->getMessage(),
-                ]);
-
-                WriteKbTextCorrectionAuditJob::dispatch(
-                    tenantId: $tenantId,
-                    candidateId: $candidateId,
-                    actor: $actor,
-                    projectKey: (string) $newVersion->project_key,
-                    docId: $newVersion->doc_id,
-                    slug: $newVersion->slug,
-                    beforeJson: $beforeJson,
-                    afterJson: $afterJson,
-                );
+                // v8.37/W3b round 8 (Copilot PR #496 must-fix, "Handle
+                // fallback dispatch failures after successful correction")
+                // — dispatch() itself is now wrapped in its OWN try/catch.
+                // A queue outage, a serialization failure, or a `sync`
+                // queue connection re-throwing the job's own exception
+                // inline can all make dispatch() throw — uncaught, that
+                // would escape this outer catch and turn an already-
+                // successful correction into a reported approval failure,
+                // exactly the bug this whole mechanism exists to prevent.
+                try {
+                    WriteKbTextCorrectionAuditJob::dispatch(
+                        tenantId: $tenantId,
+                        candidateId: $candidateId,
+                        actor: $actor,
+                        projectKey: (string) $newVersion->project_key,
+                        docId: $newVersion->doc_id,
+                        slug: $newVersion->slug,
+                        beforeJson: $beforeJson,
+                        afterJson: $afterJson,
+                    );
+                    Log::critical('KbReviewService::approveCorrection — the correction applied successfully but its synchronous audit write failed; a durable retry job was dispatched', [
+                        'candidate_id' => $candidateId,
+                        'tenant_id' => $tenantId,
+                        'actor' => $actor,
+                        'exception' => $e->getMessage(),
+                    ]);
+                } catch (\Throwable $dispatchException) {
+                    Log::critical('KbReviewService::approveCorrection — the correction applied successfully but BOTH the synchronous audit write AND the durable retry dispatch failed; reconstruct manually from these fields', [
+                        'candidate_id' => $candidateId,
+                        'tenant_id' => $tenantId,
+                        'actor' => $actor,
+                        'before_json' => $beforeJson,
+                        'after_json' => $afterJson,
+                        'write_exception' => $e->getMessage(),
+                        'dispatch_exception' => $dispatchException->getMessage(),
+                    ]);
+                }
             }
         }
 
