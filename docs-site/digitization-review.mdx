@@ -41,7 +41,8 @@ Everything on this page is **off by default**
 (`KbReviewDisabledException`, HTTP 404) rather than a silent no-op; the one
 read `documentReviewSummary()`/`pageReviewStatus()` exposes is deliberately
 **not** gated at the service layer (see [Gotchas](#gotchas)), but every
-external surface — HTTP and the CLI's default report mode — still refuses to
+external surface — HTTP, the CLI's report display (`--report`, and the
+`--page=N --report` combo), and `KbReviewStatusTool` — still refuses to
 serve it while the feature is off. The design rationale is
 [ADR 0031](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0031-v837-digitization-review-and-auto-tier-mapping.md).
 </Note>
@@ -241,8 +242,8 @@ The R44 tri-surface, all three adapting the same `KbReviewService`:
 |---|---|---|---|
 | Set a page's status | `kb:review {document} --page={n} --status=reviewed\|unreviewed` | `PATCH /api/admin/kb/documents/{id}/pages/{n}/review-status` | — ([documented exception](#no-mcp-write-a-documented-exception)) |
 | Approve a document | `KbReviewService::approve()` | `POST /api/admin/kb/documents/{id}/approve` | — (same exception) |
-| Read a page's status | `kb:review {document} --page={n}` (report mode) | `GET /api/admin/kb/documents/{id}/pages/{n}` | `KbReviewStatusTool` |
-| Read the document summary | `kb:review {document} --report` | `GET /api/admin/kb/documents/{id}/review-summary` | `KbReviewStatusTool` |
+| Read a page's status | `kb:review {document} --page={n} --report` | `GET /api/admin/kb/documents/{id}/pages/{n}` | `KbReviewStatusTool` (`page` argument) |
+| Read the document summary | `kb:review {document} --report` | `GET /api/admin/kb/documents/{id}/review-summary` | `KbReviewStatusTool` (no `page`) |
 
 `KbReviewStatusTool` answers `{disabled: true, flag:
 'KB_DIGITIZATION_REVIEW_ENABLED'}` rather than a 500 or vanishing from the
@@ -303,6 +304,14 @@ php artisan kb:review 42 --page=1 --status=unreviewed
 php artisan kb:review 42 --page=2
 # Page 2 set to 'reviewed'.
 
+# Read page 2's status without mutating it — the --page + --report combo:
+php artisan kb:review 42 --page=2 --report
+# +-------------+----------+-------------+---------------+
+# | page_number | status   | reviewed_by | reviewed_at   |
+# +-------------+----------+-------------+---------------+
+# | 2           | reviewed | 7           | 2026-...      |
+# +-------------+----------+-------------+---------------+
+
 # Approve the document once satisfied — this is the action that changes
 # retrieval ranking, independent of how many pages were individually marked:
 php artisan kb:review 42 --approve
@@ -330,14 +339,18 @@ curl -X POST /api/admin/kb/documents/42/approve
 ## Gotchas
 
 - **The summary/page-status reads are ungated at the service layer, on
-  purpose — but gated at the HTTP layer, also on purpose.**
+  purpose — but every EXTERNAL surface gates them, also on purpose.**
   `documentReviewSummary()` and `pageReviewStatus()` don't check
   `kb.review.enabled` themselves (a future internal caller might legitimately
-  want the numbers regardless), but `KbReviewController` explicitly checks
-  the flag before calling either one and returns a clean 404 when off. Don't
-  assume "the service doesn't gate it" means "the HTTP surface doesn't
-  either" — verify both, independently, the way
-  `test_api_summary_returns_404_when_the_feature_is_disabled` does.
+  want the numbers regardless); `KbReviewController` explicitly checks the
+  flag before calling either one and returns a clean 404 when off, and
+  `kb:review`'s own report display (both `--report` and the
+  `--page=N --report` combo) checks the same flag and refuses with a
+  friendly message rather than printing a summary the HTTP contract says
+  does not exist. Don't assume "the service doesn't gate it" means "no
+  surface does" — verify each surface independently, the way
+  `test_api_summary_returns_404_when_the_feature_is_disabled` and
+  `test_report_mode_is_gated_behind_the_disabled_flag` do.
 - **A page can be reverted.** `--status=unreviewed` is a real, supported
   operation, not a theoretical inverse of "mark reviewed" — a reviewer who
   clicks the wrong page needs a way back, and reverting clears
@@ -347,10 +360,15 @@ curl -X POST /api/admin/kb/documents/42/approve
   correct document without individually touching each page, and per-page
   tracking exists to show *progress*, not to gate the one action that
   actually changes retrieval.
-- **A document with no recorded `page_count` cannot be reviewed at all**,
-  not even page 1 — if a document predates page-count tracking or was never
-  converted through OCR/PDF processing, `setPageReviewStatus()` refuses it
-  outright rather than accepting an unbounded page number.
+- **A document with no recorded `page_count` cannot be reviewed OR
+  page-read at all**, not even page 1 — if a document predates page-count
+  tracking or was never converted through OCR/PDF processing,
+  `setPageReviewStatus()` AND `pageReviewStatus()` both refuse it outright
+  rather than accepting (or reporting on) an unbounded page number. The two
+  methods used to disagree here — `pageReviewStatus()` would happily answer
+  `unreviewed` for `pages/999` on such a document — until Copilot PR #494
+  round 5 closed the gap; they now share the same "no page count, no page
+  number is valid" posture.
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
   confidence heat-map), the agent-proposed text-correction-candidate flow
   (`KbProposeTextCorrectionTool`, backed by its own `kb_text_correction_candidates`

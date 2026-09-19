@@ -240,6 +240,38 @@ final class KbReviewServiceTest extends TestCase
         $this->assertSame(['total' => 10, 'reviewed' => 0, 'unreviewed' => 10], $summary);
     }
 
+    /**
+     * Copilot PR #494 round 5 (must-fix) — when a correction re-chunks a
+     * document into FEWER pages, the reviewed-row query must exclude rows
+     * for pages that no longer exist. Pre-fix, `min($reviewedCount,
+     * $pageCount)` only clamped the TOTAL after counting every reviewed
+     * row unconditionally — so page 10's now-obsolete reviewed row
+     * survived a re-chunk down to 2 pages and was misattributed onto a
+     * document whose 2 real pages were never touched, reporting
+     * `reviewed: 1` instead of `reviewed: 0`.
+     */
+    public function test_document_review_summary_excludes_reviewed_rows_beyond_a_reduced_page_count(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc(pageCount: 10);
+        $reviewer = $this->user();
+        $this->svc->setPageReviewStatus($doc, 10, KbDocumentPageReview::STATUS_REVIEWED, "user:{$reviewer->id}");
+
+        // A correction re-chunks the document down to 2 pages — page 10's
+        // review row is now obsolete, but it is never deleted; the fix
+        // excludes it from the COUNT, not the row itself.
+        $doc->forceFill(['metadata' => ['converter' => ['page_count' => 2]]])->save();
+        $this->assertDatabaseHas('kb_document_page_reviews', [
+            'knowledge_document_id' => $doc->id,
+            'page_number' => 10,
+            'status' => KbDocumentPageReview::STATUS_REVIEWED,
+        ]);
+
+        $summary = $this->svc->documentReviewSummary($doc);
+
+        $this->assertSame(['total' => 2, 'reviewed' => 0, 'unreviewed' => 2], $summary);
+    }
+
     public function test_page_review_status_reports_unreviewed_for_a_never_touched_page(): void
     {
         $doc = $this->convertedDoc(pageCount: 3);
@@ -272,6 +304,24 @@ final class KbReviewServiceTest extends TestCase
 
         $this->expectException(\InvalidArgumentException::class);
         $this->svc->pageReviewStatus($doc, 999);
+    }
+
+    /**
+     * Copilot PR #494 round 5 (must-fix) — a document with no recorded
+     * page_count (never converted) used to skip the upper-bound check
+     * entirely, so `pageReviewStatus($doc, 999)` returned 200 `unreviewed`
+     * for a page number with no basis to exist — even though
+     * `setPageReviewStatus()` already refuses the SAME document on the
+     * write side. The read side must refuse it too, for any page number,
+     * including 1 — there is no "safe" page to report on an unconverted
+     * document.
+     */
+    public function test_page_review_status_rejects_a_document_with_no_recorded_page_count(): void
+    {
+        $doc = $this->doc(); // no metadata.converter.page_count
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->svc->pageReviewStatus($doc, 1);
     }
 
     public function test_approve_on_a_non_canonical_auto_document_flips_generation_source_and_audits(): void

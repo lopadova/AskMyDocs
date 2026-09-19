@@ -28,10 +28,10 @@ final class KbReviewCommand extends Command
 {
     protected $signature = 'kb:review
         {document : knowledge_documents id}
-        {--page= : set this page number\'s review status (use with --status)}
-        {--status=reviewed : status to set the page to when --page is given (reviewed|unreviewed)}
+        {--page= : with --report, read this page\'s status (no mutation); otherwise set it (use with --status)}
+        {--status=reviewed : status to set the page to when --page is given without --report (reviewed|unreviewed)}
         {--approve : approve the document (auto -> human transition)}
-        {--report : print the document review summary; no mutation}
+        {--report : print the document review summary, or (combined with --page) a single page\'s status; no mutation}
         {--tenant=default : tenant to scope to}';
 
     protected $description = 'Set a page\'s review status, approve a document, or report review status (ADR 0031).';
@@ -73,6 +73,7 @@ final class KbReviewCommand extends Command
 
             $actor = 'cli:kb:review';
             $didAnything = false;
+            $report = (bool) $this->option('report');
 
             try {
                 $pageRaw = $this->option('page');
@@ -82,6 +83,33 @@ final class KbReviewCommand extends Command
                         $this->error("--page must be a positive integer, got '{$pageRaw}'.");
 
                         return self::FAILURE;
+                    }
+
+                    // ADR 0031 §9's `GET .../pages/{n}` read contract, over
+                    // the CLI: `--page=N --report` READS page N's status
+                    // without mutating it (docs previously claimed this
+                    // combo existed — Copilot PR #494 round 5 — before it
+                    // was actually implemented). `--page=N` alone (no
+                    // --report) keeps mutating, unchanged.
+                    if ($report) {
+                        if (! $this->reviewEnabled()) {
+                            $this->error('Digitization Review is disabled (kb.review.enabled).');
+
+                            return self::FAILURE;
+                        }
+
+                        $status = $reviews->pageReviewStatus($document, $page);
+                        $this->table(
+                            ['page_number', 'status', 'reviewed_by', 'reviewed_at'],
+                            [[
+                                $status['page_number'],
+                                $status['status'],
+                                $status['reviewed_by'] ?? '-',
+                                optional($status['reviewed_at'])->toIso8601String() ?? '-',
+                            ]],
+                        );
+
+                        return self::SUCCESS;
                     }
 
                     $didAnything = true;
@@ -113,7 +141,19 @@ final class KbReviewCommand extends Command
                 return self::FAILURE;
             }
 
-            if ((bool) $this->option('report') || ! $didAnything) {
+            if ($report || ! $didAnything) {
+                // Copilot PR #494 round 5 — a report is a READ, but this CLI
+                // never gated it behind kb.review.enabled while the HTTP
+                // surface explicitly 404s the same read when disabled
+                // ({@see \App\Http\Controllers\Api\Admin\KbReviewController::summary()}).
+                // A disabled deployment printed a summary the HTTP contract
+                // says does not exist; the CLI must refuse the same way.
+                if (! $this->reviewEnabled()) {
+                    $this->error('Digitization Review is disabled (kb.review.enabled).');
+
+                    return self::FAILURE;
+                }
+
                 $summary = $reviews->documentReviewSummary($document);
                 $this->table(
                     ['total', 'reviewed', 'unreviewed'],
@@ -125,6 +165,18 @@ final class KbReviewCommand extends Command
         } finally {
             $tenants->set($previous);
         }
+    }
+
+    /**
+     * ADR 0031 §1's kill switch, read the same way the HTTP surface reads
+     * it ({@see \App\Http\Controllers\Api\Admin\KbReviewController}) —
+     * gating every REPORT output (doc-wide and per-page), never the
+     * write paths (those already throw {@see KbReviewDisabledException}
+     * from inside the service).
+     */
+    private function reviewEnabled(): bool
+    {
+        return (bool) config('kb.review.enabled', false);
     }
 
     /**

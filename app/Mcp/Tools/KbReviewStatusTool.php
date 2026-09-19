@@ -36,7 +36,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
  * KB_DIGITIZATION_REVIEW_ENABLED is off answers `{disabled: true, flag:
  * 'KB_DIGITIZATION_REVIEW_ENABLED'}`, never a 500 or a silent success.
  */
-#[Description('Report a knowledge document\'s Digitization Review progress: total/reviewed/unreviewed page counts. Read-only; tenant-scoped. Answers {disabled: true} when the Digitization Review feature is off.')]
+#[Description('Report a knowledge document\'s Digitization Review progress: total/reviewed/unreviewed page counts, or (with the optional page argument) a single page\'s status. Read-only; tenant-scoped. Answers {disabled: true} when the Digitization Review feature is off.')]
 #[IsReadOnly]
 #[IsIdempotent]
 class KbReviewStatusTool extends Tool
@@ -49,6 +49,13 @@ class KbReviewStatusTool extends Tool
             'document_id' => $schema->integer()
                 ->description('The knowledge_documents id.')
                 ->required(),
+            // Copilot PR #494 round 5 — ADR 0031 §9's `GET .../pages/{n}`
+            // read contract, over MCP: an optional page argument switches
+            // the read from the document-wide summary to that one page's
+            // status (docs previously claimed this argument existed before
+            // it was actually implemented).
+            'page' => $schema->integer()
+                ->description('Optional. When given, report only this page\'s status instead of the document-wide summary.'),
         ];
     }
 
@@ -63,9 +70,23 @@ class KbReviewStatusTool extends Tool
             return Response::error('document_id must be a positive integer.');
         }
 
+        $pageRaw = $request->get('page');
+        $page = self::integerArgument($pageRaw);
+        if ($page === false || ($page !== null && $page < 1)) {
+            return Response::error('page must be a positive integer.');
+        }
+
         $document = KnowledgeDocument::query()->forTenant($tenants->current())->find($id);
         if ($document === null) {
             return Response::error("Document {$id} not found.");
+        }
+
+        if ($page !== null) {
+            try {
+                return Response::json($reviews->pageReviewStatus($document, $page));
+            } catch (\InvalidArgumentException $e) {
+                return Response::error($e->getMessage());
+            }
         }
 
         return Response::json($reviews->documentReviewSummary($document));

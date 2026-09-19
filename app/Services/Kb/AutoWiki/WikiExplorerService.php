@@ -97,10 +97,21 @@ class WikiExplorerService
         $before = ['generation_source' => (string) $doc->generation_source, 'canonical_status' => (string) ($doc->canonical_status ?? '')];
 
         DB::transaction(function () use ($doc, $tenantId, $actor, $before): void {
-            $doc->forceFill([
+            // Copilot PR #494 round 5 — save() returns false when a model
+            // event vetoes the write. Ignoring that let the transaction
+            // fall through to writing the 'promoted' audit row (and this
+            // method returning promoted=true) while generation_source/
+            // canonical_status stayed untouched on disk. Throwing here
+            // rolls back the whole transaction, audit row included, for
+            // every caller of promote() (the Wiki Explorer HTTP/CLI/MCP
+            // surface and, via delegation, KbReviewService::approve()'s
+            // canonical branch).
+            if (! $doc->forceFill([
                 'generation_source' => GenerationSource::Human->value,
                 'canonical_status' => 'accepted',
-            ])->save();
+            ])->save()) {
+                throw new \RuntimeException("Failed to persist promotion for document {$doc->id} (tenant {$tenantId}); a model event vetoed the save.");
+            }
 
             if ((bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([

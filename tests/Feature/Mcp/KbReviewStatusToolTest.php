@@ -63,6 +63,17 @@ final class KbReviewStatusToolTest extends TestCase
         return json_decode((string) $response->content(), true, flags: JSON_THROW_ON_ERROR);
     }
 
+    private function callToolForPage(int $id, mixed $page): array
+    {
+        $response = (new KbReviewStatusTool())->handle(
+            new Request(['document_id' => $id, 'page' => $page]),
+            app(KbReviewService::class),
+            app(TenantContext::class),
+        );
+
+        return json_decode((string) $response->content(), true, flags: JSON_THROW_ON_ERROR);
+    }
+
     public function test_it_answers_disabled_when_the_feature_flag_is_off(): void
     {
         config(['kb.review.enabled' => false]);
@@ -120,6 +131,72 @@ final class KbReviewStatusToolTest extends TestCase
 
         $response = (new KbReviewStatusTool())->handle(
             new Request(['document_id' => $other->id]),
+            app(KbReviewService::class),
+            app(TenantContext::class),
+        );
+
+        $this->assertTrue($response->isError());
+    }
+
+    /**
+     * Copilot PR #494 round 5 (must-fix) — the optional `page` argument
+     * switches the read from the document-wide summary to a single page's
+     * status (ADR 0031 §9's `GET .../pages/{n}` contract, over MCP).
+     */
+    public function test_page_argument_reports_a_single_pages_status_instead_of_the_summary(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc(['metadata' => ['converter' => ['page_count' => 3]]]);
+        KbDocumentPageReview::create([
+            'tenant_id' => (string) $doc->tenant_id,
+            'knowledge_document_id' => $doc->id,
+            'page_number' => 2,
+            'status' => KbDocumentPageReview::STATUS_REVIEWED,
+        ]);
+
+        $payload = $this->callToolForPage($doc->id, 2);
+
+        $this->assertSame(2, $payload['page_number']);
+        $this->assertSame(KbDocumentPageReview::STATUS_REVIEWED, $payload['status']);
+    }
+
+    /** Without the `page` argument, the tool keeps answering the document-wide summary. */
+    public function test_omitting_page_still_reports_the_document_wide_summary(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc(['metadata' => ['converter' => ['page_count' => 2]]]);
+
+        $payload = $this->callTool($doc->id);
+
+        $this->assertSame(['total' => 2, 'reviewed' => 0, 'unreviewed' => 2], $payload);
+    }
+
+    public function test_a_non_integer_page_argument_is_refused_not_truncated(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc(['metadata' => ['converter' => ['page_count' => 3]]]);
+
+        $response = (new KbReviewStatusTool())->handle(
+            new Request(['document_id' => $doc->id, 'page' => '1.5']),
+            app(KbReviewService::class),
+            app(TenantContext::class),
+        );
+
+        $this->assertTrue($response->isError(), 'a non-integer page must be refused, never truncated');
+        $this->assertStringContainsString('positive integer', (string) $response->content());
+    }
+
+    /**
+     * A page beyond the document's recorded page count is refused, mirroring
+     * {@see KbReviewService::pageReviewStatus()}'s own guard.
+     */
+    public function test_a_page_beyond_the_documents_page_count_is_refused(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc(['metadata' => ['converter' => ['page_count' => 1]]]);
+
+        $response = (new KbReviewStatusTool())->handle(
+            new Request(['document_id' => $doc->id, 'page' => 999]),
             app(KbReviewService::class),
             app(TenantContext::class),
         );

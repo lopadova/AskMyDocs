@@ -163,6 +163,68 @@ final class KbReviewCommandTest extends TestCase
      * recorded page count is a defined failure, not a silently-created
      * phantom row.
      */
+    /**
+     * Copilot PR #494 round 5 (must-fix) — `--page=N --report` is the CLI's
+     * read of ADR 0031 §9's per-page contract: it prints page N's status
+     * and mutates nothing. Before this fix the combo did not exist — every
+     * `--page` invocation always mutated, contradicting the documented
+     * contract table.
+     */
+    public function test_page_and_report_together_read_a_page_without_mutating(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc(pageCount: 3);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 2, '--report' => true])
+            ->assertExitCode(0);
+
+        $this->assertSame(0, KbDocumentPageReview::where('knowledge_document_id', $doc->id)->count(), '--page + --report must never create a row');
+    }
+
+    /**
+     * The `--page --report` read must reflect an already-reviewed page's
+     * real status, not just prove it does not mutate.
+     */
+    public function test_page_and_report_together_reflect_a_reviewed_pages_status(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc(pageCount: 3);
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 2])->assertExitCode(0);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 2, '--report' => true])
+            ->expectsOutputToContain('reviewed')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * Copilot PR #494 round 5 (must-fix) — the report display (doc-wide
+     * AND per-page) must be gated behind kb.review.enabled, mirroring the
+     * HTTP surface (which explicitly 404s a read when disabled). Before
+     * this fix, only the MUTATING options threw when disabled — a report
+     * (a read) printed happily on a deployment where the HTTP contract
+     * says the same read does not exist.
+     */
+    public function test_report_mode_is_gated_behind_the_disabled_flag(): void
+    {
+        config(['kb.review.enabled' => false]);
+        $doc = $this->doc();
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--report' => true])
+            ->expectsOutputToContain('Digitization Review is disabled')
+            ->assertExitCode(1);
+    }
+
+    /** Same gate, for the `--page --report` combo specifically. */
+    public function test_page_report_combo_is_gated_behind_the_disabled_flag(): void
+    {
+        config(['kb.review.enabled' => false]);
+        $doc = $this->convertedDoc(pageCount: 3);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1, '--report' => true])
+            ->expectsOutputToContain('Digitization Review is disabled')
+            ->assertExitCode(1);
+    }
+
     public function test_fails_cleanly_when_the_page_exceeds_the_documents_page_count(): void
     {
         config(['kb.review.enabled' => true]);
@@ -206,6 +268,11 @@ final class KbReviewCommandTest extends TestCase
      */
     public function test_restores_the_previous_tenant_context_after_running(): void
     {
+        // Copilot PR #494 round 5 — the report display is now gated behind
+        // kb.review.enabled (mirroring the HTTP surface); this test's
+        // concern is tenant-context restoration, not the gate itself, so
+        // enable it here rather than let an unrelated default trip it.
+        config(['kb.review.enabled' => true]);
         $tenants = app(TenantContext::class);
         $tenants->set('pre-existing-tenant');
         $doc = $this->doc(['tenant_id' => 'other-tenant']);

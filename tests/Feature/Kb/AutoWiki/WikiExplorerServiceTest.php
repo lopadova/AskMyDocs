@@ -110,6 +110,40 @@ final class WikiExplorerServiceTest extends TestCase
         $this->assertSame('human', $doc->generation_source);
     }
 
+    /**
+     * Copilot PR #494 round 5 (must-fix) — save() returns false when a model
+     * event vetoes the write. Before this fix, the ignored return value let
+     * the transaction still write the 'promoted' audit row and this method
+     * return promoted=true while generation_source/canonical_status stayed
+     * untouched on disk. A `saving` listener scoped to THIS document's id
+     * simulates the veto; the whole transaction must roll back, so neither
+     * the flip nor its audit row survives.
+     */
+    public function test_promote_throws_and_writes_nothing_when_the_save_is_vetoed(): void
+    {
+        $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto', 'canonical_status' => 'review']);
+
+        KnowledgeDocument::saving(fn (KnowledgeDocument $model): bool => $model->getKey() !== $doc->id);
+
+        $thrown = null;
+
+        try {
+            try {
+                $this->svc->promote($doc, 'admin:1');
+            } catch (\RuntimeException $e) {
+                $thrown = $e;
+            }
+        } finally {
+            \Illuminate\Support\Facades\Event::forget('eloquent.saving: '.KnowledgeDocument::class);
+        }
+
+        $this->assertNotNull($thrown, 'a vetoed save must surface as a thrown exception, not a silent promoted:true');
+        $doc->refresh();
+        $this->assertSame('auto', $doc->generation_source, 'a vetoed save must leave generation_source untouched');
+        $this->assertSame('review', $doc->canonical_status, 'a vetoed save must leave canonical_status untouched');
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
     public function test_discard_soft_deletes_an_auto_doc_and_audits(): void
     {
         $doc = $this->doc(['slug' => 'auto-a', 'generation_source' => 'auto']);

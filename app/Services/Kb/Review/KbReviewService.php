@@ -138,10 +138,18 @@ class KbReviewService
      * {@see setPageReviewStatus()}'s write-side guard, so a caller cannot
      * probe for a "phantom" page that could never legitimately exist.
      *
+     * Copilot PR #494 round 5 — a document with NO recorded page count
+     * (never converted) used to skip the upper-bound check entirely,
+     * so `pages/999` on such a document returned 200 `unreviewed` for a
+     * page number that has no basis to exist. `setPageReviewStatus()`
+     * already refuses that same document on the write side; the read
+     * side must refuse it too, or the two methods disagree about what a
+     * "valid page" is for the exact same document.
+     *
      * @return array{page_number: int, status: string, reviewed_by: ?int, reviewed_at: ?\Illuminate\Support\Carbon}
      *
-     * @throws \InvalidArgumentException  page_number < 1, or exceeds the
-     *     document's recorded page_count.
+     * @throws \InvalidArgumentException  page_number < 1, the document has
+     *     no recorded page_count, or page_number exceeds it.
      */
     public function pageReviewStatus(KnowledgeDocument $document, int $pageNumber): array
     {
@@ -150,7 +158,10 @@ class KbReviewService
         }
 
         $pageCount = $this->pageCount($document);
-        if ($pageCount !== null && $pageNumber > $pageCount) {
+        if ($pageCount === null) {
+            throw new \InvalidArgumentException("document {$document->id} has no recorded page_count; page-level review status is unavailable until it is converted.");
+        }
+        if ($pageNumber > $pageCount) {
             throw new \InvalidArgumentException("page_number {$pageNumber} exceeds document {$document->id}'s recorded page_count ({$pageCount}).");
         }
 
@@ -186,25 +197,37 @@ class KbReviewService
      * document review is never falsely reported as 0/0/0 once conversion
      * metadata exists.
      *
+     * Copilot PR #494 round 5 — when the page count is known, the
+     * reviewed-row query is now scoped to `page_number <= $pageCount`.
+     * Before this fix a correction that re-chunked a document into fewer
+     * pages left the reviewed rows for the pages that no longer exist
+     * still in the table, and this method counted ALL of them, only
+     * clamping the reported TOTAL with `min()` — so page 10's stale
+     * `reviewed` row survived a re-chunk to 2 pages and misattributed
+     * itself onto a page that never got reviewed, reporting `reviewed: 1`
+     * out of a genuinely-untouched document. Excluding rows beyond the
+     * current page count at the query itself (not after counting) is the
+     * only way the summary reflects the document as it stands today.
+     *
      * @return array{total: int, reviewed: int, unreviewed: int}
      */
     public function documentReviewSummary(KnowledgeDocument $document): array
     {
         $tenantId = (string) $document->tenant_id;
+        $pageCount = $this->pageCount($document);
+
         $reviewedCount = KbDocumentPageReview::query()
             ->where('tenant_id', $tenantId)
             ->where('knowledge_document_id', $document->id)
             ->where('status', KbDocumentPageReview::STATUS_REVIEWED)
+            ->when($pageCount !== null, fn ($query) => $query->where('page_number', '<=', $pageCount))
             ->count();
 
-        $pageCount = $this->pageCount($document);
         if ($pageCount !== null) {
-            $reviewed = min($reviewedCount, $pageCount);
-
             return [
                 'total' => $pageCount,
-                'reviewed' => $reviewed,
-                'unreviewed' => max($pageCount - $reviewed, 0),
+                'reviewed' => $reviewedCount,
+                'unreviewed' => max($pageCount - $reviewedCount, 0),
             ];
         }
 
