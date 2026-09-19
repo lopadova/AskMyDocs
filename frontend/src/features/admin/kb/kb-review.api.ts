@@ -19,7 +19,13 @@ import { KB_DOC_KEY } from './kb-document.api';
  * `enabled: false` on the disabled-feature 404 is handled by the
  * QUERY itself surfacing `isError` — the component reads that as the
  * "Digitization Review is disabled" state (R43), not a generic error,
- * by checking the response status in `isDisabled()` below.
+ * via `isReviewDisabledError()` below.
+ *
+ * Copilot review PR #497 (pullrequestreview-5258159759) — that check is
+ * NOT a bare status-404 check (an unrelated 404 would then be
+ * misclassified as "feature disabled" too): it also requires the
+ * `KbReviewDisabledException` message marker, per
+ * REVIEW_DISABLED_MESSAGE_MARKER below.
  */
 
 export const KB_REVIEW_KEY = ['admin', 'kb', 'review'] as const;

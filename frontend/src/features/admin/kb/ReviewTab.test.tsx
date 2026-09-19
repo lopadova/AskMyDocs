@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
+import axios, { AxiosError } from 'axios';
 
 /*
  * v8.37/W3c — ReviewTab Vitest scenarios. Mirrors SourceTab.test.tsx's
@@ -107,8 +107,14 @@ vi.mock('./kb-review.api', () => ({
     // even when the UI would show a generic error for an unrelated 404 in
     // production (R16). Mirrors the production check exactly: status 404
     // AND the KbReviewDisabledException message marker.
+    //
+    // Copilot review PR #497 (pullrequestreview-5258159759) — also mirrors
+    // production's use of axios.isAxiosError() rather than `instanceof
+    // AxiosError`, which can fail when multiple axios copies/bundlers are
+    // involved (kb-review.api.ts already made this switch in an earlier
+    // round of this same PR).
     isReviewDisabledError: (error: unknown) => {
-        if (!(error instanceof AxiosError) || error.response?.status !== 404) {
+        if (!axios.isAxiosError(error) || error.response?.status !== 404) {
             return false;
         }
         const data = error.response.data as { message?: unknown } | undefined;
