@@ -295,6 +295,44 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5256955613) — `throttle:mcp`
+     * used to run AFTER `mcp.scope` in routes/ai.php, so a request
+     * `EnforceMcpScope` rejects (invalid token here) short-circuited the
+     * pipeline before the rate limiter middleware ever executed —
+     * unthrottled token-guessing against this route. Drives real HTTP
+     * requests through the actual route (`postJson`, not `EnforceMcpScope`
+     * invoked standalone like every other test in this file) so the
+     * middleware ORDER itself is what's under test, not just the handler.
+     */
+    public function test_rejected_requests_are_rate_limited_not_bypassed(): void
+    {
+        config(['mcp.server.rate_limit_per_minute' => 2]);
+
+        $makeRequest = fn () => $this->withHeader('Authorization', 'Bearer definitely-not-a-real-token')
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'initialize',
+                'params' => [],
+            ]);
+
+        $first = $makeRequest();
+        $second = $makeRequest();
+        $third = $makeRequest();
+
+        $this->assertSame(401, $first->getStatusCode());
+        $this->assertStringContainsString('mcp_token_invalid', (string) $first->getContent());
+        $this->assertSame(401, $second->getStatusCode());
+
+        // Same bearer token on every call -> same rate-limit bucket. If
+        // throttle:mcp ran AFTER mcp.scope (the pre-fix order), this 3rd
+        // request would still be 401 — EnforceMcpScope rejecting it before
+        // the limiter middleware ever got a chance to count it, let alone
+        // block it.
+        $this->assertSame(429, $third->getStatusCode());
+    }
+
+    /**
      * @param  array<int, string>  $scopes
      */
     private function mintToken(array $scopes): void
