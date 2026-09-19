@@ -338,4 +338,249 @@ final class KbReviewControllerTest extends TestCase
             ->postJson("/api/admin/kb/documents/{$doc->id}/approve")
             ->assertForbidden();
     }
+
+    // --- v8.37/W3b correction-candidate queue (ADR 0031 §6) --------------
+
+    private function candidate(KnowledgeDocument $doc, array $over = []): \App\Models\KbTextCorrectionCandidate
+    {
+        return \App\Models\KbTextCorrectionCandidate::create(array_merge([
+            'tenant_id' => (string) $doc->tenant_id,
+            'knowledge_document_id' => $doc->id,
+            'page_number' => 1,
+            'version_hash' => $doc->version_hash,
+            'old_text' => 'Bod',
+            'new_text' => 'Bob',
+            'rationale' => 'likely OCR misread',
+            'idempotency_key' => hash('sha256', 'k-'.bin2hex(random_bytes(8))),
+            'status' => \App\Models\KbTextCorrectionCandidate::STATUS_PENDING,
+            'proposed_by' => 'user:1',
+        ], $over));
+    }
+
+    /**
+     * `corrections()` reads `kb_text_correction_candidates` directly (there
+     * is no dedicated KbReviewService read method to mock) — a real DB
+     * scenario, not a mocked one.
+     */
+    public function test_api_corrections_lists_only_pending_candidates_for_the_document(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc();
+        $other = $this->doc();
+        $pending = $this->candidate($doc);
+        $this->candidate($doc, ['status' => \App\Models\KbTextCorrectionCandidate::STATUS_APPLIED, 'idempotency_key' => hash('sha256', 'applied')]);
+        $this->candidate($other, ['idempotency_key' => hash('sha256', 'other-doc')]);
+
+        $response = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections")
+            ->assertOk();
+
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $pending->id);
+        $response->assertJsonPath('data.0.old_text', 'Bod');
+        $response->assertJsonPath('data.0.new_text', 'Bob');
+    }
+
+    public function test_api_corrections_returns_404_when_the_feature_is_disabled(): void
+    {
+        config(['kb.review.enabled' => false]);
+        $doc = $this->doc();
+
+        $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections")
+            ->assertNotFound();
+    }
+
+    /**
+     * v8.37/W3b round 1 (Copilot PR #496 finding #5) — `?limit=`/`?offset=`
+     * bound the query (never a plain `->get()` on an unbounded queue), and
+     * `meta.has_more` reports whether a further page exists.
+     */
+    public function test_api_corrections_paginates_with_limit_offset_and_has_more(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.review.corrections_page_size' => 50]);
+        $doc = $this->doc();
+        $first = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'c1')]);
+        $second = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'c2')]);
+        $third = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'c3')]);
+        // created_at is the sort key: stamp them apart so ordering is deterministic.
+        $first->forceFill(['created_at' => now()->subMinutes(3)])->save();
+        $second->forceFill(['created_at' => now()->subMinutes(2)])->save();
+        $third->forceFill(['created_at' => now()->subMinute()])->save();
+
+        $page1 = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=2&offset=0")
+            ->assertOk();
+        $page1->assertJsonCount(2, 'data');
+        $page1->assertJsonPath('data.0.id', $first->id);
+        $page1->assertJsonPath('data.1.id', $second->id);
+        $page1->assertJsonPath('meta.has_more', true);
+
+        $page2 = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=2&offset=2")
+            ->assertOk();
+        $page2->assertJsonCount(1, 'data');
+        $page2->assertJsonPath('data.0.id', $third->id);
+        $page2->assertJsonPath('meta.has_more', false);
+    }
+
+    /**
+     * Copilot PR #496 round 2 — `orderBy('created_at')` alone is
+     * nondeterministic when rows share a timestamp (a batch insert); `id`
+     * as a unique tie-breaker makes the queue order stable across pages.
+     */
+    public function test_api_corrections_orders_deterministically_when_candidates_share_a_timestamp(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc();
+        $sameInstant = now();
+        $first = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'tie-1')]);
+        $second = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'tie-2')]);
+        $third = $this->candidate($doc, ['idempotency_key' => hash('sha256', 'tie-3')]);
+        foreach ([$first, $second, $third] as $c) {
+            $c->forceFill(['created_at' => $sameInstant])->save();
+        }
+
+        $page1 = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=2&offset=0")
+            ->assertOk();
+        $page2 = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=2&offset=2")
+            ->assertOk();
+
+        $page1Ids = array_column($page1->json('data'), 'id');
+        $page2Ids = array_column($page2->json('data'), 'id');
+        $this->assertCount(2, $page1Ids);
+        $this->assertCount(1, $page2Ids);
+        // The 3 ids across both pages, with no duplicate and no gap — the
+        // exact failure mode of a non-unique, non-deterministic order.
+        $this->assertEqualsCanonicalizing([$first->id, $second->id, $third->id], array_merge($page1Ids, $page2Ids));
+        $this->assertEmpty(array_intersect($page1Ids, $page2Ids), 'no candidate id must appear on both pages');
+    }
+
+    /** `?limit=` is capped by `kb.review.corrections_page_size`, never client-inflatable. */
+    public function test_api_corrections_limit_is_capped_by_the_configured_page_size(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.review.corrections_page_size' => 1]);
+        $doc = $this->doc();
+        $this->candidate($doc, ['idempotency_key' => hash('sha256', 'c1')]);
+        $this->candidate($doc, ['idempotency_key' => hash('sha256', 'c2')]);
+
+        $response = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections?limit=999")
+            ->assertOk();
+
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('meta.limit', 1);
+    }
+
+    public function test_api_approve_correction_delegates_to_the_service(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('approveCorrection')->once()
+            ->with(Mockery::type(\App\Models\KbTextCorrectionCandidate::class), Mockery::type('string'), Mockery::type('int'))
+            ->andReturn(['applied' => true]);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/approve")
+            ->assertOk()
+            ->assertJsonPath('data.applied', true);
+    }
+
+    public function test_api_approve_correction_404_for_unknown_candidate(): void
+    {
+        $this->bind();
+
+        $this->actingAs($this->admin())
+            ->postJson('/api/admin/kb/corrections/999999/approve')
+            ->assertNotFound();
+    }
+
+    /**
+     * v8.37/W3b round 1 (Copilot PR #496 finding #6) — `already_consumed`
+     * is a genuine conflict (ADR 0031 §6: "the caller receives 409
+     * already_consumed"), not a decided-but-successful outcome.
+     */
+    public function test_api_approve_correction_returns_409_for_already_consumed(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('approveCorrection')->once()
+            ->andReturn(['applied' => false, 'reason' => 'already_consumed']);
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/approve")
+            ->assertStatus(409)
+            ->assertJsonPath('data.reason', 'already_consumed');
+    }
+
+    /** Every OTHER decided outcome (stale text, missing document, ...) stays 200. */
+    public function test_api_approve_correction_stays_200_for_a_non_conflict_decided_outcome(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('approveCorrection')->once()
+            ->andReturn(['applied' => false, 'reason' => 'stale_old_text_not_found_or_ambiguous']);
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/approve")
+            ->assertOk()
+            ->assertJsonPath('data.reason', 'stale_old_text_not_found_or_ambiguous');
+    }
+
+    public function test_api_reject_correction_delegates_to_the_service(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('rejectCorrection')->once()
+            ->with(Mockery::type(\App\Models\KbTextCorrectionCandidate::class), Mockery::type('int'))
+            ->andReturn(['rejected' => true]);
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/reject")
+            ->assertOk()
+            ->assertJsonPath('data.rejected', true);
+    }
+
+    public function test_api_reject_correction_returns_409_for_already_consumed(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('rejectCorrection')->once()
+            ->andReturn(['rejected' => false, 'reason' => 'already_consumed']);
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/reject")
+            ->assertStatus(409)
+            ->assertJsonPath('data.reason', 'already_consumed');
+    }
+
+    public function test_api_correction_endpoints_do_not_see_another_tenants_candidate(): void
+    {
+        app(TenantContext::class)->set('other-tenant');
+        $foreignDoc = $this->doc(['tenant_id' => 'other-tenant']);
+        $foreign = $this->candidate($foreignDoc, ['tenant_id' => 'other-tenant']);
+        app(TenantContext::class)->set('test-tenant');
+        $this->bind();
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$foreign->id}/approve")
+            ->assertNotFound();
+    }
+
+    public function test_api_corrections_viewer_is_forbidden(): void
+    {
+        $doc = $this->doc();
+
+        $this->actingAs($this->viewer())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections")
+            ->assertForbidden();
+    }
 }

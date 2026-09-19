@@ -139,6 +139,137 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix) — KbProposeTextCorrectionTool
+     * was reachable ONLY with `mcp:tools:write` (absent #[IsReadOnly] and not
+     * in PROPOSE_TOOL_NAMES), but a newly-minted McpTenantToken defaults to
+     * `['mcp:read', 'mcp:tools:propose']` (McpTenantTokenController::store())
+     * — never `mcp:tools:write`. A default token could never call it.
+     */
+    public function test_propose_scoped_token_passes_the_scope_gate_for_kb_propose_text_correction_tool(): void
+    {
+        $this->mintToken(['mcp:read', 'mcp:tools:propose']);
+
+        $passed = false;
+        $response = $this->callTool((new \App\Mcp\Tools\KbProposeTextCorrectionTool())->name(), function () use (&$passed) {
+            $passed = true;
+
+            return response('ok', 200);
+        });
+
+        $this->assertTrue($passed, 'a propose-scoped token must clear the scope gate for the propose tool');
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    /**
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix) — proves the OTHER 4
+     * pre-existing PROPOSE_TOOL_NAMES entries are genuinely enforced now,
+     * not just this PR's new one. Before the "Tool" suffix fix, none of the
+     * 4 keys ever matched a real tool name, so a read-only-scoped token
+     * (which should be REFUSED — proposing is an elevated capability) was
+     * silently accepted for every one of them.
+     */
+    public function test_read_scoped_token_is_denied_an_existing_propose_tool(): void
+    {
+        $this->mintToken(['mcp:read']);
+
+        $response = $this->callTool((new \App\Mcp\Tools\KbListDanglingWikilinksTool())->name());
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('mcp_scope_missing', (string) $response->getContent());
+        $this->assertStringContainsString('mcp:tools:propose', (string) $response->getContent());
+    }
+
+    public function test_propose_scoped_token_passes_the_scope_gate_for_an_existing_propose_tool(): void
+    {
+        $this->mintToken(['mcp:read', 'mcp:tools:propose']);
+
+        $passed = false;
+        $response = $this->callTool((new \App\Mcp\Tools\KbListDanglingWikilinksTool())->name(), function () use (&$passed) {
+            $passed = true;
+
+            return response('ok', 200);
+        });
+
+        $this->assertTrue($passed);
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    /**
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix) — the previous handle()
+     * only validated the bearer token for `tools/call`. Any OTHER MCP
+     * protocol method (`initialize`, `tools/list`, ...) passed through
+     * completely unauthenticated once `auth:sanctum` was removed from
+     * routes/ai.php in round 7 — the token is now required for every
+     * method.
+     */
+    public function test_a_non_tools_call_method_still_requires_a_valid_token(): void
+    {
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('unreached', 500));
+
+        $this->assertSame(401, $response->getStatusCode());
+        $this->assertStringContainsString('mcp_token_required', (string) $response->getContent());
+    }
+
+    /**
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix) — this bare route has no
+     * tenant.resolve middleware, so TenantContext::current() was ALWAYS
+     * 'default' before this middleware ran; comparing a real token's tenant
+     * against that meant every non-default-tenant token was rejected with
+     * mcp_tenant_mismatch. The token itself must establish tenant identity.
+     */
+    public function test_a_non_default_tenant_token_establishes_that_tenant_context(): void
+    {
+        McpTenantToken::query()->create([
+            'tenant_id' => 'other-tenant',
+            'label' => 'test',
+            'token_hash' => hash('sha256', 'other-tenant-token'),
+            'token_last4' => 'oken',
+            'scopes_json' => ['mcp:read'],
+        ]);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer other-tenant-token',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $seenTenant = null;
+        app(EnforceMcpScope::class)->handle($request, function () use (&$seenTenant) {
+            $seenTenant = app(TenantContext::class)->current();
+
+            return response('ok', 200);
+        });
+
+        $this->assertSame('other-tenant', $seenTenant);
+    }
+
+    /**
+     * McpConnectCommand sends an explicit X-Tenant-Id header alongside the
+     * bearer token (its `--tenant=` option) — kept as a defense-in-depth
+     * sanity check: a caller pointed at the wrong token/tenant pairing is
+     * rejected outright rather than silently proceeding under the token's
+     * tenant.
+     */
+    public function test_a_mismatched_x_tenant_id_header_is_rejected(): void
+    {
+        $this->mintToken(['mcp:read']);
+
+        $request = Request::create('/mcp/kb', 'POST', [], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer plain-test-token',
+            'HTTP_X_TENANT_ID' => 'a-different-tenant',
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['method' => 'initialize', 'params' => []]));
+
+        $response = app(EnforceMcpScope::class)->handle($request, fn () => response('unreached', 500));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('mcp_tenant_mismatch', (string) $response->getContent());
+    }
+
+    /**
      * @param  array<int, string>  $scopes
      */
     private function mintToken(array $scopes): void

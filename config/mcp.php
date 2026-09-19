@@ -41,4 +41,20 @@ return [
         'hash_results' => (bool) env('AI_MCP_AUDIT_HASH_RESULTS', true),
     ],
 
+    /*
+    |-----------------------------------------------------------------------
+    | Inbound MCP server (v8.37/W3b round 7, SEC-THROTTLE-001)
+    |-----------------------------------------------------------------------
+    |
+    | POST /mcp/kb (routes/ai.php, Mcp::web) is the HTTP transport this app
+    | HOSTS for external MCP clients calling KnowledgeBaseServer's tools —
+    | the reverse direction of the `tool_calling` config above. Keyed by
+    | the McpTenantToken bearer hash + tenant (there is no Sanctum user on
+    | this route — see EnforceMcpScope), never IP alone. A zero/invalid
+    | config cannot silently disable it — it floors at 1/min.
+    */
+    'server' => [
+        'rate_limit_per_minute' => (int) env('MCP_SERVER_RATE_LIMIT_PER_MINUTE', 60),
+    ],
+
 ];

@@ -20,13 +20,32 @@ final class EnforceMcpScope
      * Read-only "propose" tools that still require an elevated scope because
      * they surface editorial suggestions. Disjoint from the write set below.
      *
+     * v8.37/W3b round 8 (Copilot PR #496 must-fix) — every key here is the
+     * NORMALIZED tool name, i.e. `Tool::name()` (which defaults to
+     * `Str::kebab(class_basename($this))` — the FULL class basename,
+     * "...Tool" suffix included) stripped of non-alphanumerics. The
+     * original 4 entries below were missing that trailing `tool`: e.g.
+     * `KbListDanglingWikilinksTool::name()` is
+     * `kb-list-dangling-wikilinks-tool`, normalizing to
+     * `kblistdanglingwikilinkstool`, not `kblistdanglingwikilinks`. Since
+     * none of the 4 ever matched, and all 4 ARE `#[IsReadOnly]` (so
+     * {@see writeToolNames()} excludes them too), `requiredScopeForTool()`
+     * silently fell through to the SCOPE_READ default for every one of
+     * them — the intended `mcp:tools:propose` elevation was dead code, not
+     * enforced. Discovered while adding this PR's own entry (which had the
+     * SAME bug, but for a #[IsReadOnly]-absent tool that fell to
+     * SCOPE_WRITE instead — unreachable by the default
+     * `['mcp:read', 'mcp:tools:propose']` token minted by
+     * McpTenantTokenController::store(), rather than merely under-gated).
+     *
      * @var array<string, true>
      */
     private const PROPOSE_TOOL_NAMES = [
-        'kblistdanglingwikilinks' => true,
-        'kbdetectdecisiondebt' => true,
-        'kbsuggestsupersessionchain' => true,
-        'kbproposecanonicaledit' => true,
+        'kblistdanglingwikilinkstool' => true,
+        'kbdetectdecisiondebttool' => true,
+        'kbsuggestsupersessionchaintool' => true,
+        'kbproposecanonicaledittool' => true,
+        'kbproposetextcorrectiontool' => true,
     ];
 
     public const SCOPE_READ = 'mcp:read';
@@ -47,16 +66,16 @@ final class EnforceMcpScope
 
     public function handle(Request $request, Closure $next): Response
     {
-        $payload = $request->json()->all();
-        if (($payload['method'] ?? null) !== 'tools/call') {
-            return $next($request);
-        }
-
-        $toolName = (string) data_get($payload, 'params.name', '');
-        if ($toolName === '') {
-            return response()->json(['error' => 'tool_name_required'], 422);
-        }
-
+        // v8.37/W3b round 8 (Copilot PR #496 must-fix) — the token is now
+        // validated for EVERY protocol method, not only `tools/call`. The
+        // previous early-return before any bearer-token check let
+        // `initialize`/`tools/list`/etc. reach the MCP handler completely
+        // unauthenticated once `auth:sanctum` was removed from routes/ai.php
+        // (round 7) — that removal was correct (auth:sanctum rejected the
+        // only real caller's McpTenantToken bearer before this middleware
+        // ever ran), but it left `mcp.scope` as this route's SOLE auth
+        // layer, and this middleware only ever gated the one method it
+        // needed a tool NAME for.
         $plainToken = (string) $request->bearerToken();
         if ($plainToken === '') {
             return response()->json(['error' => 'mcp_token_required'], 401);
@@ -75,9 +94,33 @@ final class EnforceMcpScope
             return response()->json(['error' => 'mcp_token_expired'], 403);
         }
 
-        $activeTenant = app(TenantContext::class)->current();
-        if ((string) $token->tenant_id !== $activeTenant) {
+        // v8.37/W3b round 8 (Copilot PR #496 must-fix) — this bare route
+        // carries no `tenant.resolve` middleware and nothing else ever sets
+        // TenantContext here, so the PREVIOUS "activeTenant === token's
+        // tenant" comparison was comparing the token against a context
+        // that was ALWAYS the untouched 'default' — rejecting every real,
+        // valid token for a non-default tenant with `mcp_tenant_mismatch`.
+        // The bearer token itself is what establishes tenant identity on
+        // this route (mirrors how it establishes auth identity); an
+        // explicit `X-Tenant-Id` header (McpConnectCommand sends one from
+        // its `--tenant=` option) is honoured as a defense-in-depth sanity
+        // check — a caller pointed at the wrong token/tenant pairing is
+        // rejected outright — but is never itself the source of truth.
+        $tokenTenant = (string) $token->tenant_id;
+        $headerTenant = trim((string) $request->header('X-Tenant-Id', ''));
+        if ($headerTenant !== '' && $headerTenant !== $tokenTenant) {
             return response()->json(['error' => 'mcp_tenant_mismatch'], 403);
+        }
+        app(TenantContext::class)->set($tokenTenant);
+
+        $payload = $request->json()->all();
+        if (($payload['method'] ?? null) !== 'tools/call') {
+            return $next($request);
+        }
+
+        $toolName = (string) data_get($payload, 'params.name', '');
+        if ($toolName === '') {
+            return response()->json(['error' => 'tool_name_required'], 422);
         }
 
         $requiredScope = $this->requiredScopeForTool($toolName);

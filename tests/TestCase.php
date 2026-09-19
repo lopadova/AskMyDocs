@@ -122,6 +122,21 @@ abstract class TestCase extends OrchestraTestCase
         // SearchKnowledgeBaseTool.
         $app->register(\App\Providers\WidgetServiceProvider::class);
 
+        // v8.37/W3b round 7 — laravel/mcp's own McpServiceProvider (manual
+        // registration, same reason as every vendor SP above: Testbench
+        // skips package auto-discovery). In PRODUCTION this SP is auto-
+        // discovered via Composer and its boot() already loads
+        // routes/ai.php (`/mcp/kb`) via `Route::group([], $path)` — no
+        // extra wiring needed there. Under Testbench, without this
+        // registration two things are missing: (1) the route itself, and
+        // (2) the `resolving(Request::class, ...)` container callback
+        // that copies the JSON-RPC `params.arguments` into the
+        // `Laravel\Mcp\Request` a tool's `handle()` receives — without
+        // it, a REAL HTTP request through `/mcp/kb` resolves an empty
+        // Request and every tool argument validation fails, even though
+        // routing/auth/scope all pass.
+        $app->register(\Laravel\Mcp\Server\McpServiceProvider::class);
+
         // v4.2/W3 — padosoft/eval-harness service provider. Manual
         // registration because Testbench skips package auto-discovery.
         // Provides EvalEngine, MetricResolver, YamlDatasetLoader, and
@@ -609,6 +624,14 @@ abstract class TestCase extends OrchestraTestCase
         // alias TokenTest's enforcement cases throw "Target class
         // [token.ability] does not exist". Keep in sync with bootstrap/app.php.
         $router->aliasMiddleware('token.ability', \App\Http\Middleware\EnforceTokenAbility::class);
+        // v8.37/W3b round 7 — MCP tenant-token scope gate. Mirrors
+        // bootstrap/app.php (not executed under Testbench). routes/ai.php's
+        // `/mcp/kb` route references `mcp.scope`; without this alias every
+        // real HTTP request through that route (e.g.
+        // KbProposeTextCorrectionToolTest's end-to-end case) throws "Target
+        // class [mcp.scope] does not exist". Keep in sync with
+        // bootstrap/app.php.
+        $router->aliasMiddleware('mcp.scope', \App\Http\Middleware\EnforceMcpScope::class);
     }
 
     /**
@@ -634,6 +657,16 @@ abstract class TestCase extends OrchestraTestCase
         $router->prefix('api')
             ->middleware('api')
             ->group(__DIR__.'/../routes/api.php');
+        // v8.37/W3b round 7 — `laravel/mcp`'s own McpServiceProvider
+        // (registered above in getEnvironmentSetUp) normally loads
+        // routes/ai.php itself via `Route::group([], base_path('routes/ai.php'))`
+        // in production. Under Testbench, `base_path()` resolves to
+        // Testbench's OWN skeleton app (vendor/orchestra/testbench-core/laravel),
+        // not this project — so that file_exists() check is false and the
+        // package silently no-ops. Load it explicitly here, the same way
+        // web.php/api.php are loaded above, so `/mcp/kb` is reachable by
+        // real HTTP requests in tests too.
+        require __DIR__.'/../routes/ai.php';
     }
 
     protected function defineDatabaseMigrations(): void

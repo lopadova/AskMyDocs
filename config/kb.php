@@ -639,8 +639,17 @@ return [
         // ocr_confidence (chunk metadata, W1) falls under this is highlighted
         // in the review UI. A visual aid only; nothing here gates approval.
         'low_confidence_threshold' => (float) env('KB_REVIEW_LOW_CONFIDENCE_THRESHOLD', 0.70),
-        // Rate cap on KbProposeTextCorrectionTool (ADR 0031 §6), per user.
+        // Rate cap on KbProposeTextCorrectionTool (ADR 0031 §6), shared PER
+        // TENANT: the MCP connection carries a tenant-scoped token, not a
+        // per-user one, so every caller in the tenant spends this budget.
         'candidates_per_hour' => (int) env('KB_REVIEW_CANDIDATES_PER_HOUR', 60),
+        // R3 — page size cap for GET /api/admin/kb/documents/{id}/corrections.
+        'corrections_page_size' => (int) env('KB_REVIEW_CORRECTIONS_PAGE_SIZE', 50),
+        // v8.37/W3b round 5 (Copilot PR #496, H-B) — a candidate left in
+        // STATUS_APPLYING longer than this is considered stuck (the
+        // approving process crashed between claiming it and completing
+        // phase 2/3), and is picked up by `kb:review-reconcile-stuck-corrections`.
+        'stuck_applying_minutes' => (int) env('KB_REVIEW_STUCK_APPLYING_MINUTES', 15),
     ],
 
     /*

@@ -70,12 +70,28 @@ class RouteExposureTest extends TestCase
         'api/auth/register-token',
         'api/widget/user-token',
         'csp-report',
+        // v8.37/W3b round 7 — Laravel\Mcp\Server\Registrar::web() registers
+        // a stub DELETE /mcp/kb (spec-mandated 405 "Allow: POST" responder
+        // for the MCP HTTP transport's session-close semantics) with NO
+        // middleware — it touches no data and mutates nothing, it only
+        // ever returns a static 405. The real POST /mcp/kb carries
+        // mcp.scope (already in AUTH_EXACT below).
+        'mcp/kb',
     ];
 
     protected function defineRoutes($router): void
     {
         require __DIR__.'/../../routes/web.php';
         $router->prefix('api')->middleware('api')->group(__DIR__.'/../../routes/api.php');
+        // v8.37/W3b round 7 — POST /mcp/kb (routes/ai.php) is a real
+        // mutating route and belongs in this inventory. `laravel/mcp`'s
+        // own McpServiceProvider (registered in the parent TestCase's
+        // getEnvironmentSetUp) would normally load it, but under
+        // Testbench its base_path() points at Testbench's own skeleton
+        // app, not this project, so that auto-load silently no-ops here
+        // — same reason Tests\TestCase::defineRoutes() requires it
+        // explicitly. `mcp.scope` is already in AUTH_EXACT below.
+        require __DIR__.'/../../routes/ai.php';
     }
 
     private function routeHasAuth(Route $route): bool

@@ -53,7 +53,9 @@ serve it while the feature is off. The design rationale is
 |---|---|---|
 | `KB_DIGITIZATION_REVIEW_ENABLED` | `false` | The feature flag above — every mutating entry point and every read surface (R43). |
 | `KB_REVIEW_LOW_CONFIDENCE_THRESHOLD` | `0.70` | The OCR confidence (chunk metadata, W1) below which a span is highlighted in the review UI's heat-map, once it ships (see [Gotchas](#gotchas)). A visual aid only — it never gates approval. |
-| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The per-user rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6). Reserved: the tool itself has not shipped yet, so this knob currently has no effect. |
+| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6), shared **per tenant**, not per user — the MCP connection carries a tenant-scoped token, not a per-user one, so every caller in the tenant spends the same hourly budget (see [Gotchas](#gotchas)). A replayed (idempotent) proposal never spends this budget — only a genuinely new candidate does. |
+| `KB_REVIEW_CORRECTIONS_PAGE_SIZE` | `50` | The cap on `GET .../documents/{id}/corrections`'s pending-candidate queue (R3 — memory-safe bulk operations); a caller's `?limit=` is clamped to this value. |
+| `KB_REVIEW_STUCK_APPLYING_MINUTES` | `15` | Staleness threshold for `kb:review-reconcile-stuck-corrections` — a candidate left in the intermediate `applying` state (a crashed approval) longer than this is eligible for reconciliation (see [Gotchas](#gotchas)). |
 
 ## Theory & background
 
@@ -89,10 +91,15 @@ flowchart TD
         APR[approve]
     end
 
+    PROP[proposeCorrection]
+    APC[approveCorrection]
+    REJ[rejectCorrection]
+
     CLI["kb:review {doc} --page=N --status=reviewed|unreviewed / --approve / --report"] --> core
-    HTTP["PATCH .../pages/{n}/review-status\nGET .../pages/{n}\nGET .../review-summary\nPOST .../approve"] --> core
+    HTTP["PATCH .../pages/{n}/review-status\nGET .../pages/{n}\nGET .../review-summary\nPOST .../approve\nGET .../documents/{id}/corrections\nPOST .../corrections/{id}/approve\nPOST .../corrections/{id}/reject"] --> core
     MCP["KbReviewStatusTool (read-only)"] --> PAGE
     MCP --> SUM
+    MCPW["KbProposeTextCorrectionTool (write, candidate only)"] --> PROP
 
     SET --> ROW[(kb_document_page_reviews\nupsert on tenant+doc+page)]
     PAGE --> ROW
@@ -102,6 +109,14 @@ flowchart TD
     APR -->|"! is_canonical, generation_source=auto"| FLIP["generation_source: auto -> human"]
     PROMOTE --> AUDIT[(kb_canonical_audit\nevent_type=promoted)]
     FLIP --> AUDIT
+
+    PROP -->|"Cache::lock(tenant+actor) + currentVersionFor(lock:true)"| CAND[(kb_text_correction_candidates\nstatus=pending, UNIQUE idempotency_key)]
+    PROP --> AUDIT
+    APC -->|"phase 1: lockForUpdate + currentVersionFor(lock:true)\nclaims status=applied, R21"| CAND
+    REJ -->|"lockForUpdate, R21"| CAND
+    APC -->|"phase 2 (no ambient tx): old_text still matches\nCURRENT live version's page, !is_canonical"| REEMBED["DocumentIngestor::reembedFromMarkdown(live, corrected)"]
+    REEMBED -->|"stages corrected text as a NEW version's ARTIFACT\n(never touches source_path); mints new version_hash;\nchunks+embeds in its OWN top-level transaction"| NEWDOC[(knowledge_documents\nnew active row, prior archived)]
+    APC -->|"phase 3"| AUDIT
 
     RANK[Reranker::canonicalAdjustment] -->|reads| DOC[(knowledge_documents\ngeneration_source)]
 ```
@@ -268,7 +283,34 @@ UNIQUE (tenant_id, knowledge_document_id, page_number)   -- the upsert key
 INDEX  (knowledge_document_id)                            -- cascade-delete scan path
 ```
 
-The R44 tri-surface, all three adapting the same `KbReviewService`:
+```
+kb_text_correction_candidates
+  id                     bigint PK
+  tenant_id              string(50), default 'default', indexed        (R31)
+  knowledge_document_id  bigint FK -> knowledge_documents, cascade delete
+  page_number            int
+  version_hash           string(64) — the version this candidate was validated against
+  old_text               text
+  new_text               text (<= 4000 chars, app-enforced)
+  rationale              string(500) nullable
+  idempotency_key        string(64) — sha256 of the CONCATENATION of the
+                         per-field sha256 digests of (tenant, user,
+                         document, version_hash, page, old, new); hashing
+                         each field first keeps the key injective
+  status                 string: pending | applying | applied | rejected
+                         (`applying` = phase 1's claim, before phase 2
+                         confirms success — see the crash-recovery gotcha)
+  proposed_by            string — the MCP caller's immutable identity
+  consumed_at            nullable timestamp
+  consumed_by            nullable FK -> users (the reviewer who approved/rejected)
+  created_at / updated_at
+
+UNIQUE (idempotency_key)                                  -- the replay/dedup mechanism
+INDEX  (tenant_id, knowledge_document_id, status)          -- the pending queue
+INDEX  (knowledge_document_id)                             -- cascade-delete scan path
+```
+
+The R44 tri-surface, all adapting the same `KbReviewService`:
 
 | Capability | PHP / CLI | HTTP | MCP |
 |---|---|---|---|
@@ -276,12 +318,26 @@ The R44 tri-surface, all three adapting the same `KbReviewService`:
 | Approve a document | `KbReviewService::approve()` | `POST /api/admin/kb/documents/{id}/approve` | — (same exception) |
 | Read a page's status | `kb:review {document} --page={n} --report` | `GET /api/admin/kb/documents/{id}/pages/{n}` | `KbReviewStatusTool` (`page` argument) |
 | Read the document summary | `kb:review {document} --report` | `GET /api/admin/kb/documents/{id}/review-summary` | `KbReviewStatusTool` (no `page`) |
+| Propose a text correction | `KbReviewService::proposeCorrection()` | — (MCP-only, see below) | `KbProposeTextCorrectionTool` (write — a CANDIDATE only) |
+| List pending correction candidates | `KbReviewService::pendingCorrections()` | `GET /api/admin/kb/documents/{id}/corrections` | — |
+| Approve a correction candidate | `KbReviewService::approveCorrection()` | `POST /api/admin/kb/corrections/{id}/approve` | — (documented exception, [§8](#no-mcp-write-a-documented-exception)) |
+| Reject a correction candidate | `KbReviewService::rejectCorrection()` | `POST /api/admin/kb/corrections/{id}/reject` | — (same exception) |
+| Reconcile stuck approvals (H-B) | `kb:review-reconcile-stuck-corrections` | — | — (R44 documented single-surface exception: a scheduler-only maintenance sweep with no caller-facing read, same posture as `kb:artifacts-backfill`) |
 
 `KbReviewStatusTool` answers `{disabled: true, flag:
 'KB_DIGITIZATION_REVIEW_ENABLED'}` rather than a 500 or vanishing from the
 MCP manifest when the feature is off — tool **registration** stays
 flag-independent (the registration test derives the roster from the files in
 `app/Mcp/Tools/`, not from config), only the *behaviour* is gated.
+`KbProposeTextCorrectionTool` follows the identical posture: registration is
+flag-independent, the write itself is gated.
+
+The propose/approve split is deliberately **asymmetric across surfaces**: an
+agent may only ever *propose* a correction (MCP, never HTTP — there is no
+"propose" HTTP endpoint at all), and a human may only ever *approve or
+reject* one (HTTP, never MCP). Neither surface can do the other's half of
+the transaction — the split itself is the enforcement of ADR 0003's
+boundary, not a policy check layered on top of a symmetric capability.
 
 ## Decision rationale (ADR 0031)
 
@@ -289,13 +345,16 @@ flag-independent (the registration test derives the roster from the files in
 
 [R44](https://github.com/lopadova/AskMyDocs) normally requires PHP + HTTP +
 MCP for every capability. Review status and approval are the deliberate
-exception, restated from [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-human-gated-promotion.md)'s
-boundary: an agent may point at a probable transcription error (the
-not-yet-shipped `KbProposeTextCorrectionTool`, ADR 0031 §6-7) but can never
-be the one that marks anything "reviewed" or "approved" — that is a human
-vouching for content the platform did not author. `KbReviewStatusTool` is
-read-only by construction: it has no path to `setPageReviewStatus()` or
-`approve()` at all, not a gate that could be misconfigured open.
+exception, restated from [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s
+boundary: an agent may point at a probable transcription error
+(`KbProposeTextCorrectionTool`, ADR 0031 §6-7) but can never be the one that
+marks anything "reviewed" or "approved" — that is a human vouching for
+content the platform did not author. `KbReviewStatusTool` is read-only by
+construction: it has no path to `setPageReviewStatus()` or `approve()` at
+all, not a gate that could be misconfigured open.
+`KbProposeTextCorrectionTool` mirrors this from the other side — it has no
+path to `approveCorrection()` or `rejectCorrection()` either, only to
+`proposeCorrection()`, which by itself has zero effect on the corpus.
 
 ### Why canonicity branches the approval, not a config flag
 
@@ -368,6 +427,50 @@ curl -X POST /api/admin/kb/documents/42/approve
 # {"data": {"approved": true}}
 ```
 
+An agent, via MCP, points at a probable transcription error on page 1 — this
+writes a CANDIDATE only, zero effect on the corpus:
+
+```json
+// tools/call KbProposeTextCorrectionTool
+{"document_id": 42, "page": 1, "old_text": "Bod Construction Ltd",
+ "new_text": "Bob Construction Ltd", "rationale": "likely OCR misread of a handwritten signature block"}
+// -> {"candidate_id": 7, "document_id": 42, "page_number": 1, "status": "pending", "idempotency_key": "..."}
+```
+
+A human reviewer lists the pending queue (bounded — `?limit=`/`?offset=`,
+capped by `kb.review.corrections_page_size`, default 50) and approves it —
+this is the ONLY action that touches the corpus, via
+`DocumentIngestor::reembedFromMarkdown()`:
+
+```bash
+curl /api/admin/kb/documents/42/corrections?limit=50
+# {"data": [{"id": 7, "page_number": 1, "old_text": "Bod Construction Ltd",
+#            "new_text": "Bob Construction Ltd", "rationale": "...",
+#            "proposed_by": "mcp:kb-propose-text-correction", "created_at": "..."}],
+#  "meta": {"limit": 50, "offset": 0, "has_more": false}}
+
+curl -X POST /api/admin/kb/corrections/7/approve
+# {"data": {"applied": true, "document_id": 108}}
+# -> a three-phase flow (phase 1 claims the candidate `applied` in its own
+#    transaction; phase 2, OUTSIDE any ambient transaction, mints a NEW
+#    version (id 108) via DocumentIngestor::reembedFromMarkdown() — the
+#    corrected text is staged as its ARTIFACT (conditional on the
+#    document's retention/artifact-store policy: e.g. reference_only can
+#    omit it) and never written to the original document's source_path,
+#    which stays the untouched original binary for a PDF/OCR/image doc —
+#    chunked + embedded SYNCHRONOUSLY inside reembedFromMarkdown()'s OWN
+#    top-level transaction, no queued job, no after-commit race; phase 3,
+#    its own transaction, writes the kb_canonical_audit row
+#    (event_type=updated, before/after carry both document ids)); the
+#    prior version is archived, not deleted.
+
+# Calling approve again on the SAME candidate is a safe no-op (R21) and a
+# genuine CONFLICT — HTTP 409, per ADR 0031 §6:
+curl -X POST /api/admin/kb/corrections/7/approve
+# HTTP/1.1 409 Conflict
+# {"data": {"applied": false, "reason": "already_consumed"}}
+```
+
 ## Gotchas
 
 - **The summary/page-status reads are ungated at the service layer, on
@@ -401,10 +504,176 @@ curl -X POST /api/admin/kb/documents/42/approve
   `unreviewed` for `pages/999` on such a document — until Copilot PR #494
   round 5 closed the gap; they now share the same "no page count, no page
   number is valid" posture.
+- **A correction candidate's approval re-validates against the CURRENT
+  version, not the one it was proposed against — and LOCKS that exact row.**
+  `proposeCorrection()` records `version_hash`, but `approveCorrection()`
+  re-reads the document family's LIVE version via
+  `DocumentVersionService::currentVersionFor($document, lock: true)` (never
+  a bare lock on `$document` — that row may be an OLDER version than the
+  family's current live one, Copilot PR #496 round 1) and re-checks that
+  `old_text` still occurs exactly once there. If a later edit changed or
+  removed that text in the meantime, approval REJECTS the now-stale
+  candidate (`stale_old_text_not_found_or_ambiguous`) rather than silently
+  applying a correction to text that may no longer mean what the proposer
+  thought — ADR 0031 §6's explicit requirement. `proposeCorrection()` locks
+  the SAME way, for the SAME reason, before its own old_text validation.
+- **Approving a correction refuses a CANONICAL document outright, never
+  mints a NEW version from chunk-reconstructed content, and never mutates
+  `source_path` on disk.** A canonical document's Markdown carries YAML
+  frontmatter that `DocumentVersionService::contentFor()`'s chunk-
+  reconstruction fallback (used when no artifact is retained) explicitly
+  drops — feeding that frontmatter-less body into `reembedFromMarkdown()`
+  would silently demote the document out of canonical status. This feature
+  targets the ordinary OCR/PDF scan (ADR 0031: "non-canonical OCR documents
+  ... canonical frontmatter keeps its own say"); a canonical document's own
+  approval path is `approve()`'s `WikiExplorerService::promote()` branch, so
+  `approveCorrection()` on a canonical `$live` returns
+  `{applied: false, reason: 'canonical_document_not_supported'}` (Copilot
+  PR #496 round 2) rather than risk it. For the ordinary non-canonical case,
+  applying the correction goes through
+  `DocumentIngestor::reembedFromMarkdown($live, $corrected)` — the SAME core
+  `ReembedDocumentJob`'s artifact-fallback path uses — not a manual
+  `Storage::put()` write to `source_path`, which for an OCR/PDF/image-origin
+  document names the ORIGINAL BINARY. `reembedFromMarkdown()` stages the
+  corrected text as the NEW version's ARTIFACT, mints a fresh `version_hash`
+  (and therefore a new `knowledge_documents` row — the prior one is
+  archived, not deleted), and chunks + embeds SYNCHRONOUSLY inside its own
+  top-level `DB::transaction()`. `EmbeddingCacheService` means pages whose
+  text did not change cost no new provider call, but every chunk is
+  re-derived.
+- **Approval is a THREE-PHASE flow, not one giant transaction (Copilot
+  PR #496 round 2).** Round 1 nested the ENTIRE `approveCorrection()` flow —
+  including `reembedFromMarkdown()` — inside one ambient transaction; that
+  call publishes its artifact and dispatches its canonical-graph job right
+  after its OWN inner commit, still inside round 1's outer one, so a LATER
+  failure rolling that outer transaction back would undo the new
+  `knowledge_documents` row while the artifact/job side effects had already
+  happened. **Phase 1** (own transaction) locks the candidate + the live
+  row, validates, and — on success — ATOMICALLY marks the candidate
+  `applying` right there (the R21 single-use guarantee: a concurrent second
+  approval sees `status != pending` immediately, with no lock held across
+  phase 2 — `applying`, not yet the terminal `applied`, since round 5;
+  see the crash-recovery gotcha below). **Phase 2** (no ambient
+  transaction, exactly like every other `DocumentIngestor` caller) calls
+  `reembedFromMarkdown()`; on success, flips the candidate to the terminal
+  `applied` state; a failure instead reverts the phase-1 claim (REJECTED
+  for a decided staleness, PENDING + re-thrown for any other failure — an
+  infra blip a reviewer can retry) rather than leaving the candidate
+  stranded with no version. **Phase 3** (own transaction, best-effort —
+  see below) writes the `kb_canonical_audit` row.
+- **Proposing a correction is itself audited — EVERY denied outcome, not
+  only rate-limiting — and the check-then-act sequence is race-protected on
+  TWO axes (Copilot PR #496 round 2).** ADR 0031 §6 requires an audit row
+  for every `proposeCorrection()` outcome — accepted, denied, and replayed
+  — `event_type = 'correction_proposed'`, `metadata_json.outcome` names
+  which and `metadata_json.reason` names why for a denial (bad input,
+  `old_text_not_found_or_ambiguous`, `rate_limited`). A per-TENANT+ACTOR
+  `Cache::lock()` wraps the whole check-then-act sequence: round 1's lock
+  was keyed on the idempotency key, so it only serialized IDENTICAL
+  proposals — two concurrent DIFFERENT proposals from the SAME actor could
+  both pass the rate-limit check before either recorded a hit, over-
+  spending the actor's hourly budget; a per-actor lock closes that
+  entirely. Inside it, `currentVersionFor($document, lock: true)` locks the
+  family's live row before its content is read, closing the propose-time
+  analogue of approval's row-locking fix. The accepted path still writes
+  the candidate and its audit row in ONE transaction (an audit-write
+  failure rolls the candidate back too — never a silently unaudited
+  candidate); every DENIED branch returns a result instead of throwing
+  from inside that transaction, so it always commits, and the audit-then-
+  throw happens after, outside it — a denial audited inside a transaction
+  that then rolls back would lose the very audit row it was writing.
+- **MCP proposals share ONE identity per tenant, honestly — not a
+  fictitious per-user one.** The deployed MCP connection authenticates a
+  TENANT-scoped token (`EnforceMcpScope`), never a per-user Sanctum
+  session/token, so `auth()->user()` is genuinely `null` on every real MCP
+  call. `KbProposeTextCorrectionTool` uses a fixed, explicitly-scoped
+  service identity, `'mcp:kb-propose-text-correction'` (mirroring
+  `KbWikiPromoteTool`'s `'mcp:kb-wiki-promote'`), rather than
+  `'user:'.(auth()->user()?->id ?? 'unknown')` — which never actually
+  resolved to a real user and only ever produced the single shared bucket
+  `user:unknown` (Copilot PR #496 round 2). The rate-limit budget,
+  idempotency tuple, `proposed_by` and audit actor are therefore shared per
+  TENANT for MCP-originated proposals; the HTTP surface's future review UI
+  will carry a real per-user identity once it ships.
+- **A correction against a document with NO retained artifact still works —
+  page boundaries are re-synthesized from chunk metadata (Copilot PR #496
+  round 4, H-A).** `DocumentVersionService::contentFor()` falls back to
+  chunk reconstruction (`implode("\n\n")` over `chunk_text`) whenever a
+  version has no retained conversion artifact — e.g. `reference_only`/
+  `markdown_only` retention, or a version ingested before artifact
+  retention existed. For a document chunked by `PdfPageChunker`, the page
+  number lives OUT-OF-BAND on each chunk (`metadata['page']`), never
+  inlined into `chunk_text` — so that reconstruction alone has NO
+  `## Page N` headers for `locatePageOccurrence()` to anchor on.
+  `KbReviewService::pageAwareContentFor()` re-synthesizes those headers
+  from chunk metadata before either propose or approve ever calls
+  `locatePageOccurrence()`, and degrades to the plain (headerless) content
+  — the exact pre-fix behaviour, still correct for a non-paginated
+  document — the moment any chunk lacks an integer `page`, since that
+  signals a chunking strategy this method cannot reason about.
+- **A crashed approval is recoverable, not silently indistinguishable from
+  success (Copilot PR #496 round 5, H-B).** Phase 1 and phase 2 are each
+  individually atomic, but there is no cross-process atomicity BETWEEN
+  them — this whole flow runs synchronously inside one HTTP/MCP request,
+  not a queued retryable job. If the process is killed anywhere between
+  phase 1's commit and the `applying → applied` flip, the candidate is
+  left stuck `applying` — DELIBERATELY not `applied`, so it is visibly
+  distinguishable from both a genuine success and a genuine in-flight
+  approval. `kb:review-reconcile-stuck-corrections`
+  (`KB_REVIEW_STUCK_APPLYING_MINUTES`, default 15) finds candidates stuck
+  past that threshold: a matching `kb_canonical_audit` row
+  (`metadata_json.candidate_id`) proves phase 2 genuinely committed, so it
+  finalizes to `applied`; no matching row means phase 2 never got that
+  far, so it reverts to `pending` for a reviewer to simply retry. An
+  ordinary `approveCorrection()` call never silently resumes an `applying`
+  row itself (any non-`pending` status, `applying` included, is
+  `already_consumed`) — reconciliation is a deliberately separate,
+  lower-frequency, explicitly-triggered operation (R44 — a scheduler-only
+  maintenance sweep with no caller-facing read, so CLI-only, same posture
+  as `kb:artifacts-backfill`: not auto-scheduled, run on demand or wired
+  into a cron by the operator).
+- **A post-commit-only failure (the artifact publish step, not the
+  document/chunks) is treated as a SUCCESS, never reverted (Copilot
+  PR #496 round 4, H-C).** `reembedFromMarkdown()` can throw
+  `ArtifactPublishFailedException` — its own docblock documents this as a
+  failure that happens AFTER its internal transaction already committed
+  the new `knowledge_documents` row and its chunks; only the artifact
+  publish afterwards failed. `approveCorrection()` catches this
+  specifically, before its generic failure handler, logs a warning, and
+  finalizes the candidate as applied — exactly the posture
+  `ReembedDocumentJob::logArtifactNotPublished()` already takes for the
+  same exception on its own call path. Treating it like any other failure
+  (revert to pending) would mark a correction that DID apply back as
+  unapplied, and a reviewer's retry would then find the superseded old
+  version and get rejected outright — losing a correction that actually
+  succeeded.
+- **A failed audit write can never turn an already-successful approval into
+  a reported failure — and it is durably retried, not just logged
+  (previously-missed MEDIUM round 4, escalated to a must-fix in round 7).**
+  By the time phase 3 runs, the correction has genuinely applied (phase 1 +
+  phase 2 already committed), so the failure is still caught rather than
+  propagated — letting it bubble up would tell the caller the approval
+  FAILED when it in fact succeeded, and a client that reacts by retrying
+  would then hit `already_consumed` (409) on a candidate that isn't pending
+  anymore, which reads as corruption, not as "it actually worked" (mirrors
+  `ChatLogManager::log()`'s established "never let logging/auditing failure
+  break an already-successful outcome" posture). What round 7 changed: on
+  failure, `WriteKbTextCorrectionAuditJob` is now dispatched
+  ($tries=4/backoff=[10,30,60], the same durability idiom as
+  `IngestDocumentJob`/`SendExternalNotificationJob`) instead of only being
+  logged — `kb_canonical_audit` is CLAUDE.md's one IMMUTABLE
+  FORENSIC/COMPLIANCE trail, unlike `chat_logs`, so "log a critical line and
+  hope a human reads it" alone was not durable enough for the ORIGINAL
+  scenario this gotcha names ("a momentary DB outage"), which a queued
+  retry with real wall-clock backoff genuinely survives and an inline retry
+  inside the already-returned HTTP/MCP request cannot. The synchronous
+  write stays primary (the >99% common case, zero added latency); the job
+  checks for an existing row by `metadata_json.candidate_id` before writing
+  (the sync attempt can fail AFTER its own INSERT actually committed) and
+  only falls back to `Log::critical()` once its OWN retries are exhausted
+  too — a true last resort, not the first one.
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
-  confidence heat-map), the agent-proposed text-correction-candidate flow
-  (`KbProposeTextCorrectionTool`, backed by its own `kb_text_correction_candidates`
-  table — the schema exists, the tool and its `SEC-AI-ACT-001` controls do
-  not, yet), and the CER/WER quality metrics. These land in later W3
-  sub-branches before the v8.37 GA tag; this page will be extended, not
-  replaced, when they do.
+  confidence heat-map — propose/approve/reject above are HTTP + MCP only
+  today, with no dedicated frontend), and the CER/WER quality metrics. These
+  land in later W3 sub-branches before the v8.37 GA tag; this page will be
+  extended, not replaced, when they do.

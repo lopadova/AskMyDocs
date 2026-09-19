@@ -12,9 +12,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * v8.37 / ADR 0031 §6-7 — an agent-proposed text correction CANDIDATE for one
  * page of a converted document. Never applied content: `status` transitions
- * `pending -> applied | rejected` only under a `lockForUpdate()` transaction
- * (R21), and `idempotency_key` (a DB `UNIQUE`) is the replay/dedup mechanism
- * for `KbProposeTextCorrectionTool`.
+ * `pending -> applying -> applied | rejected` (or `pending -> rejected`
+ * directly) only under a `lockForUpdate()` transaction (R21), and
+ * `idempotency_key` (a DB `UNIQUE`) is the replay/dedup mechanism for
+ * `KbProposeTextCorrectionTool`.
  *
  * @property int $id
  * @property string $tenant_id
@@ -35,6 +36,21 @@ final class KbTextCorrectionCandidate extends Model
     use BelongsToTenant;
 
     public const STATUS_PENDING = 'pending';
+
+    /**
+     * v8.37/W3b round 5 (Copilot PR #496, H-B) — the phase-1 claim state:
+     * the candidate is committed out of `pending` and its owning reviewer
+     * recorded, but the actual document-mutating work
+     * (`DocumentIngestor::reembedFromMarkdown()`, run OUTSIDE any ambient
+     * transaction) has not yet been confirmed to have finished. A row
+     * stuck here (the process that claimed it crashed before flipping it
+     * to `applied`) is found and reconciled by
+     * `kb:review-reconcile-stuck-corrections`, never silently resumed by
+     * an ordinary {@see \App\Services\Kb\Review\KbReviewService::approveCorrection()}
+     * call — which treats ANY non-`pending` status, including this one, as
+     * `already_consumed`.
+     */
+    public const STATUS_APPLYING = 'applying';
 
     public const STATUS_APPLIED = 'applied';
 
