@@ -239,9 +239,18 @@ function PageReviewNavigator({
         );
     }
 
+    // Copilot review PR #497 (pullrequestreview-5257223251) — this navigator is
+    // an async surface (it fetches page status and runs a toggle mutation), but
+    // previously exposed no observable async-state attributes, forcing E2E
+    // waits onto inner text elements instead of the shared data-state/aria-busy
+    // contract every other async region in this file uses.
+    const navState = status.isLoading ? 'loading' : status.isError || !status.data ? 'error' : 'ready';
+
     return (
         <section
             data-testid="kb-review-page-nav"
+            data-state={navState}
+            aria-busy={status.isLoading || toggleMut.isPending}
             style={{
                 display: 'flex',
                 flexDirection: 'column',

@@ -285,6 +285,35 @@ describe('ReviewTab', () => {
         expect(screen.getByTestId('kb-review-page-next')).not.toBeDisabled();
     });
 
+    // Copilot review PR #497 (pullrequestreview-5257223251) — the per-page
+    // navigator is an async surface (page status fetch + toggle mutation) but
+    // previously exposed no observable data-state/aria-busy, unlike every
+    // other async region in this file (R11). These drive the actual state
+    // transitions (not just render checks, per R16), mirroring the corrections
+    // queue's own loading/error/ready coverage above.
+    it('exposes data-state=loading + aria-busy=true on the page navigator while the page status is loading', () => {
+        pageStatusState.isLoading = true;
+        pageStatusState.data = undefined;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('data-state', 'loading');
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('exposes data-state=error on the page navigator when the page status fails to load', () => {
+        pageStatusState.isError = true;
+        pageStatusState.data = undefined;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('data-state', 'error');
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('aria-busy', 'false');
+    });
+
+    it('exposes data-state=ready + aria-busy=true on the page navigator while the toggle mutation is pending', () => {
+        toggleMutation.isPending = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('data-state', 'ready');
+        expect(screen.getByTestId('kb-review-page-nav')).toHaveAttribute('aria-busy', 'true');
+    });
+
     it('advances to page 2 when Next is clicked, actually re-requesting that page', async () => {
         wrap(<ReviewTab documentId={7} />);
         expect(pageStatusState.lastRequestedPage).toBe(1);
