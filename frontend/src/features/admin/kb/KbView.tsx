@@ -14,8 +14,10 @@ import { UploadModal } from './upload/UploadModal';
  * G1 shipped the tree + placeholder. G2 replaced the placeholder with
  * the full DocumentDetail pane (Preview / Meta / History) plus header
  * actions (Download / Print / Restore / Delete / Force delete). G3
- * added the Source tab (CodeMirror editor + PATCH /raw save pipeline),
- * so `VALID_TABS` now covers `preview / source / meta / history`.
+ * added the Source tab (CodeMirror editor + PATCH /raw save pipeline).
+ * A later PR added the canonical Graph tab, and v8.37/W3c added the
+ * Digitization Review tab, so `VALID_TABS` now covers
+ * `preview / source / meta / history / graph / review`.
  *
  * Selection + tab state persist in the URL via `doc` and `tab` search
  * params so operators can deep-link to a specific view. We parse the

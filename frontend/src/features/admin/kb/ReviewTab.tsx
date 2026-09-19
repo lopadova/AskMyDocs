@@ -55,10 +55,18 @@ export function ReviewTab({ documentId }: ReviewTabProps) {
 
     if (summary.isError || !summary.data) {
         if (isReviewDisabledError(summary.error)) {
+            // Copilot review PR #497 (pullrequestreview-5256869227) —
+            // data-state stays within the repo's shared async-state
+            // contract (idle|loading|ready|error|empty, R11); the
+            // feature-disabled 404 is a settled, non-loading, non-error
+            // terminal state, so it's `ready` with a secondary
+            // `data-feature="disabled"` flag distinguishing it from the
+            // normal populated panel.
             return (
                 <div
                     data-testid="kb-review"
-                    data-state="disabled"
+                    data-state="ready"
+                    data-feature="disabled"
                     aria-busy="false"
                     style={{ padding: 12, color: 'var(--fg-3)', fontSize: 12.5 }}
                 >

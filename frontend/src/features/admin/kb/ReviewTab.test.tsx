@@ -196,7 +196,11 @@ describe('ReviewTab', () => {
             config: {} as any,
         });
         wrap(<ReviewTab documentId={7} />);
-        expect(screen.getByTestId('kb-review')).toHaveAttribute('data-state', 'disabled');
+        // Copilot review PR #497 (pullrequestreview-5256869227) — data-state
+        // stays within the shared idle|loading|ready|error|empty enum; the
+        // disabled-feature branch is distinguished by data-feature instead.
+        expect(screen.getByTestId('kb-review')).toHaveAttribute('data-state', 'ready');
+        expect(screen.getByTestId('kb-review')).toHaveAttribute('data-feature', 'disabled');
         expect(screen.getByTestId('kb-review-disabled')).toBeInTheDocument();
         expect(screen.queryByTestId('kb-review-error')).not.toBeInTheDocument();
     });
