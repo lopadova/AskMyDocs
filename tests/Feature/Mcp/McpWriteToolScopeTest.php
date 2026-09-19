@@ -333,6 +333,53 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5257033036,
+     * discussion_r4054237132) — the `mcp` limiter's key used to append a
+     * `TenantContext::current()` segment. Because `throttle:mcp` runs
+     * before `mcp.scope` (this route sets the tenant, nothing upstream
+     * does), and `TenantContext` is a process singleton, that segment
+     * could carry state left over from a DIFFERENT prior request handled
+     * by the same worker — so the same bearer token could land in a
+     * different bucket than its own previous requests, resetting its
+     * throttle count. Simulates exactly that drift (mutate TenantContext
+     * mid-test, standing in for "another request touched this process")
+     * and asserts the SAME token is still throttled: the fix keys on the
+     * token hash alone, which cannot be perturbed by tenant-context state
+     * it never reads.
+     */
+    public function test_rate_limit_bucket_is_stable_across_tenant_context_drift(): void
+    {
+        config(['mcp.server.rate_limit_per_minute' => 2]);
+
+        $makeRequest = fn () => $this->withHeader('Authorization', 'Bearer definitely-not-a-real-token')
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'initialize',
+                'params' => [],
+            ]);
+
+        app(TenantContext::class)->set('tenant-a');
+        $first = $makeRequest();
+        $second = $makeRequest();
+
+        // Stand in for a different request having run on this same worker
+        // between $second and $third and left TenantContext pointing at a
+        // different tenant — the pre-fix key would hash this 3rd request
+        // into a brand-new "tenant-b" bucket with zero prior hits.
+        app(TenantContext::class)->set('tenant-b');
+        $third = $makeRequest();
+
+        $this->assertSame(401, $first->getStatusCode());
+        $this->assertSame(401, $second->getStatusCode());
+
+        // Same bearer token, only TenantContext drifted -> must still be
+        // the SAME rate-limit bucket. A 401 here would mean the tenant
+        // segment reset the count, exactly the bypass this fix closes.
+        $this->assertSame(429, $third->getStatusCode());
+    }
+
+    /**
      * @param  array<int, string>  $scopes
      */
     private function mintToken(array $scopes): void

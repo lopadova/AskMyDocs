@@ -16,7 +16,7 @@ use Laravel\Mcp\Facades\Mcp;
 | McpTenantToken, never a Sanctum PAT) never populate.
 |
 | Rate limiting is the dedicated "mcp" limiter (AppServiceProvider), keyed
-| by the request's raw Bearer token hash + tenant — not "api", which is
+| by the request's raw Bearer token hash alone — not "api", which is
 | never registered in this app and would throw on every request.
 |
 | Copilot review PR #497 (pullrequestreview-5256955613) — `throttle:mcp`
@@ -29,14 +29,14 @@ use Laravel\Mcp\Facades\Mcp;
 | closes that: every request is throttled before scope gets a chance to
 | reject it.
 |
-| This doesn't weaken the limiter's per-caller isolation for legitimate
-| traffic: the key's tenant segment resolves to TenantContext's untouched
-| default here (EnforceMcpScope::set() hasn't run yet — this bare route
-| carries no tenant.resolve middleware), but the token-hash segment
-| already comes straight off the raw request and uniquely identifies the
-| caller on its own (SHA-256 collision resistance), so two different
-| tokens never share a bucket regardless of which middleware set the
-| tenant segment.
+| Follow-up (pullrequestreview-5257033036, discussion_r4054237132): the
+| limiter key used to append a `TenantContext::current()` segment. With
+| throttle running before scope, that segment isn't established by this
+| request yet (EnforceMcpScope::set() hasn't fired) and, being a process
+| singleton, can carry stale state from a prior request on the same
+| worker — so the same token could drift across buckets. The limiter now
+| keys on the token hash alone (see AppServiceProvider), which already
+| uniquely and stably identifies the caller.
 |
 */
 

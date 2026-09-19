@@ -1180,14 +1180,29 @@ class AppServiceProvider extends ServiceProvider
         // routing/auth bugs fixed alongside this. There is no Sanctum user
         // on this route (EnforceMcpScope validates a McpTenantToken, not a
         // session) — key by the bearer token hash, matching how
-        // EnforceMcpScope itself resolves the token, plus tenant so a
-        // token cannot be starved by another tenant's traffic.
+        // EnforceMcpScope itself resolves the token.
+        //
+        // Copilot review PR #497 (pullrequestreview-5257033036,
+        // discussion_r4054237132) — round 7 originally appended a `|t:<tenant>`
+        // segment read from TenantContext::current(). That's wrong on two
+        // counts: (1) routes/ai.php's round-7 fix made `throttle:mcp` run
+        // BEFORE `mcp.scope`, so at the time this closure runs the token
+        // hasn't been validated yet and TenantContext::set() (EnforceMcpScope
+        // line ~114) hasn't fired for THIS request; (2) TenantContext is a
+        // process-scoped singleton, so under any long-running worker
+        // (Octane, queue, or a reused container) the tenant segment can be
+        // leftover state from a DIFFERENT prior request handled by the same
+        // process, not this caller's tenant at all. Either way the same
+        // bearer token can land in different buckets across requests,
+        // weakening the very limiter this route depends on. Drop the tenant
+        // segment: the token hash alone already uniquely and stably
+        // identifies the caller (SHA-256 collision resistance), so nothing
+        // is lost by keying on it alone, and it can no longer drift.
         RateLimiter::for('mcp', function (Request $request) {
-            $tenant = app(\App\Support\TenantContext::class)->current();
             $tokenHash = hash('sha256', (string) $request->bearerToken());
             $max = max(1, (int) config('mcp.server.rate_limit_per_minute', 60));
 
-            return Limit::perMinute($max)->by($tokenHash.'|t:'.$tenant);
+            return Limit::perMinute($max)->by($tokenHash);
         });
     }
 }
