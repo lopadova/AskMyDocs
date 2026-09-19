@@ -542,6 +542,16 @@ class KbSearchService
                     'retrieval_priority' => (int) ($chunk->document?->retrieval_priority ?? 50),
                     'generation_source' => $chunk->document?->generation_source ?? 'human',
                     'evidence_tier' => $chunk->document?->evidence_tier,
+                    // Copilot PR #494 round 6 — a derived boolean, not the
+                    // document's raw metadata (kept off this array by
+                    // design). Reranker::canonicalAdjustment() uses it to
+                    // scope the non-canonical auto-tier penalty to
+                    // OCR-originated rows only: generation_source='auto' on
+                    // a non-canonical document is NOT exclusive to OCR
+                    // (AutoWikiCompiler marks enriched raw documents 'auto'
+                    // too), and only OCR content is what ADR 0031 §5's
+                    // review penalty is meant to demote.
+                    'ocr_origin' => (($chunk->document?->metadata['converter']['provenance'] ?? null) === 'ocr'),
                 ],
             ];
         });

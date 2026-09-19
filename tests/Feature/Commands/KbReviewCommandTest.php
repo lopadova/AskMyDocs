@@ -225,6 +225,47 @@ final class KbReviewCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    /**
+     * Copilot PR #494 round 6 (must-fix) — `--report` is documented as
+     * read-only, but `--report --approve` (no --page) used to still run
+     * the approval and only then print the report: a "read-only" flag that
+     * mutated. Reject the combination outright, before any document is
+     * even fetched successfully — approve() must never fire.
+     */
+    public function test_report_and_approve_together_are_rejected(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc(['generation_source' => GenerationSource::Auto->value]);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--report' => true, '--approve' => true])
+            ->expectsOutputToContain('--report cannot be combined with --approve')
+            ->assertExitCode(1);
+
+        $doc->refresh();
+        $this->assertSame(GenerationSource::Auto->value, $doc->generation_source, 'the rejected combo must never approve the document');
+    }
+
+    /**
+     * Same rejection with `--page` present too — before this fix, THIS
+     * exact combo took the opposite path from the one above (it returned
+     * early from the page-read branch and silently skipped --approve
+     * instead of running it) — two different mutation outcomes for what
+     * users would reasonably expect to be the same "read-only" flag.
+     */
+    public function test_page_report_and_approve_together_are_rejected(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->convertedDoc(pageCount: 3, over: ['generation_source' => GenerationSource::Auto->value]);
+
+        $this->artisan('kb:review', ['document' => $doc->id, '--page' => 1, '--report' => true, '--approve' => true])
+            ->expectsOutputToContain('--report cannot be combined with --approve')
+            ->assertExitCode(1);
+
+        $doc->refresh();
+        $this->assertSame(GenerationSource::Auto->value, $doc->generation_source, 'the rejected combo must never approve the document');
+        $this->assertSame(0, KbDocumentPageReview::where('knowledge_document_id', $doc->id)->count(), 'the rejected combo must never write a page review row');
+    }
+
     public function test_fails_cleanly_when_the_page_exceeds_the_documents_page_count(): void
     {
         config(['kb.review.enabled' => true]);

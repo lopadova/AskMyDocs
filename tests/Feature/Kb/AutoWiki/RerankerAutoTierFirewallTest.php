@@ -16,7 +16,7 @@ use Tests\TestCase;
 final class RerankerAutoTierFirewallTest extends TestCase
 {
     /** @return array<string,mixed> */
-    private function chunk(int $id, bool $canonical, string $generationSource): array
+    private function chunk(int $id, bool $canonical, string $generationSource, bool $ocrOrigin = false): array
     {
         return [
             'chunk_id' => $id,
@@ -30,6 +30,7 @@ final class RerankerAutoTierFirewallTest extends TestCase
                 'canonical_status' => $canonical ? 'accepted' : null,
                 'retrieval_priority' => 50,
                 'generation_source' => $generationSource,
+                'ocr_origin' => $ocrOrigin,
             ],
         ];
     }
@@ -78,6 +79,12 @@ final class RerankerAutoTierFirewallTest extends TestCase
      * reviewed one (`human`) ranked identically. Two non-canonical chunks,
      * otherwise identical, differing ONLY in generation_source: the
      * reviewed one must now strictly outrank the unreviewed one.
+     *
+     * Copilot PR #494 round 6 — the unreviewed chunk is now explicitly
+     * `ocr_origin: true`, since round 6 scoped the non-canonical penalty to
+     * OCR-originated rows specifically (an `auto` row that ISN'T
+     * OCR-originated — e.g. AutoWiki-enriched raw content — no longer pays
+     * it; see the new test below).
      */
     public function test_reviewed_scan_outranks_unreviewed_scan_when_both_are_non_canonical(): void
     {
@@ -88,15 +95,78 @@ final class RerankerAutoTierFirewallTest extends TestCase
         ]);
 
         $chunks = collect([
-            $this->chunk(1, canonical: false, generationSource: 'auto'),
+            $this->chunk(1, canonical: false, generationSource: 'auto', ocrOrigin: true),
             $this->chunk(2, canonical: false, generationSource: 'human'),
         ]);
 
         $ranked = (new Reranker)->rerank('cache strategy', $chunks, limit: 10);
         $scores = $this->scoreById($ranked);
 
-        $this->assertGreaterThan($scores[1], $scores[2], 'a reviewed (human) non-canonical scan must outrank an unreviewed (auto) one');
+        $this->assertGreaterThan($scores[1], $scores[2], 'a reviewed (human) non-canonical scan must outrank an unreviewed (auto) OCR one');
         $this->assertSame([2, 1], $ranked->pluck('chunk_id')->map('intval')->all());
+    }
+
+    /**
+     * Copilot PR #494 round 6 (must-fix) — `generation_source='auto'` on a
+     * non-canonical row is NOT exclusive to OCR: `AutoWikiCompiler` marks
+     * enriched RAW documents `'auto'` too ("enriches raw / already-auto
+     * documents", per its own docblock — not only OCR'd scans), and those
+     * rows were NEVER penalized before this PR. Applying the OCR-review
+     * penalty by `generation_source` alone (with no origin check) silently
+     * demoted every existing AutoWiki-enriched raw document below an
+     * unenriched sibling — reversing established ranking for content that
+     * was never touched by Digitization Review. A non-canonical `auto` row
+     * WITHOUT `ocr_origin` must pay ZERO penalty and tie with a
+     * non-canonical `human` row.
+     */
+    public function test_non_canonical_auto_wiki_rows_without_ocr_origin_are_not_penalized(): void
+    {
+        config([
+            'kb.reranking.enabled' => true,
+            'kb.canonical.priority_weight' => 0.001,
+            'kb.canonical.auto_tier_penalty' => 0.02,
+        ]);
+
+        $chunks = collect([
+            $this->chunk(1, canonical: false, generationSource: 'auto', ocrOrigin: false),
+            $this->chunk(2, canonical: false, generationSource: 'human'),
+        ]);
+
+        $ranked = (new Reranker)->rerank('cache strategy', $chunks, limit: 10);
+        $scores = $this->scoreById($ranked);
+        $penalties = $this->canonicalPenaltyById($ranked);
+
+        $this->assertSame(0.0, $penalties[1], 'a non-canonical AutoWiki-enriched (non-OCR) row must pay zero auto-tier penalty');
+        $this->assertEqualsWithDelta($scores[1], $scores[2], 1e-9, 'a non-canonical AutoWiki row must tie with a non-canonical human row when neither is OCR-origin');
+    }
+
+    /**
+     * Copilot PR #494 round 6 — the CANONICAL branch is unchanged: it has
+     * always paid the auto-tier penalty regardless of origin (the
+     * pre-v8.37 v8.11 firewall). A canonical `auto` row with NO
+     * `ocr_origin` (an AutoWiki-generated canonical wiki page, the original
+     * v8.11 case this firewall was built for) must still be penalized
+     * exactly like before.
+     */
+    public function test_canonical_auto_wiki_rows_are_still_penalized_regardless_of_ocr_origin(): void
+    {
+        config([
+            'kb.reranking.enabled' => true,
+            'kb.canonical.priority_weight' => 0.001,
+            'kb.canonical.auto_tier_penalty' => 0.02,
+        ]);
+
+        $chunks = collect([
+            $this->chunk(1, canonical: true, generationSource: 'auto', ocrOrigin: false),
+            $this->chunk(2, canonical: true, generationSource: 'human'),
+        ]);
+
+        $ranked = (new Reranker)->rerank('cache strategy', $chunks, limit: 10);
+        $scores = $this->scoreById($ranked);
+        $penalties = $this->canonicalPenaltyById($ranked);
+
+        $this->assertGreaterThan(0.0, $penalties[1], 'a canonical auto row must still pay the auto-tier penalty even without ocr_origin');
+        $this->assertGreaterThan($scores[1], $scores[2], 'a canonical human row must still outrank a canonical auto row, ocr_origin or not');
     }
 
     /**

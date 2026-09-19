@@ -85,12 +85,31 @@ class WikiExplorerService
      * Promote an auto page to the human-vouched tier. Refuses (without error) on
      * a page that is already human, so a double-click is a safe no-op.
      *
+     * Copilot PR #494 round 6 (must-fix) — this method unconditionally sets
+     * `canonical_status = 'accepted'`, a canonical-only column. The
+     * numeric-ID HTTP ({@see \App\Http\Controllers\Api\Admin\KbWikiExplorerController})
+     * and CLI ({@see \App\Console\Commands\KbWikiPromoteCommand}) adapters
+     * resolve a tenant-scoped {@see KnowledgeDocument} without requiring
+     * `is_canonical` — so a non-canonical `auto` row (an OCR'd scan, or
+     * AutoWiki-enriched raw content) reaching this method would receive a
+     * FALSE canonical fact it was never meant to carry. (The MCP adapter,
+     * {@see \App\Mcp\Tools\KbWikiPromoteTool}, is naturally safe: it
+     * resolves by `doc_id`, which is always `null` on a non-canonical
+     * document — `DocumentIngestor` never sets it there.) This is exactly
+     * the case {@see \App\Services\Kb\Review\KbReviewService::approve()}
+     * avoids in its own non-canonical branch, which flips
+     * `generation_source` WITHOUT ever touching `canonical_status`.
+     *
      * @return array{promoted: bool, reason?: string, slug?: ?string}
      */
     public function promote(KnowledgeDocument $doc, string $actor): array
     {
         if ((string) ($doc->generation_source ?? GenerationSource::Human->value) !== GenerationSource::Auto->value) {
             return ['promoted' => false, 'reason' => 'not_auto', 'slug' => $doc->slug];
+        }
+
+        if (! (bool) $doc->is_canonical) {
+            return ['promoted' => false, 'reason' => 'not_canonical', 'slug' => $doc->slug];
         }
 
         $tenantId = (string) $doc->tenant_id;

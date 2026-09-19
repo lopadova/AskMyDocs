@@ -111,6 +111,37 @@ final class WikiExplorerServiceTest extends TestCase
     }
 
     /**
+     * Copilot PR #494 round 6 (must-fix) — the numeric-ID HTTP/CLI Wiki
+     * Explorer adapters resolve a tenant-scoped document WITHOUT requiring
+     * `is_canonical`, so an auto OCR'd scan or AutoWiki-enriched raw
+     * document could reach this method and receive a FALSE canonical fact
+     * (`canonical_status: 'accepted'`) it was never meant to carry. A
+     * non-canonical `auto` document must refuse, exactly like the
+     * `not_auto` case, and leave BOTH columns untouched.
+     */
+    public function test_promote_refuses_a_non_canonical_auto_doc(): void
+    {
+        $doc = $this->doc([
+            'slug' => null,
+            'doc_id' => null,
+            'canonical_type' => null,
+            'canonical_status' => null,
+            'is_canonical' => false,
+            'generation_source' => 'auto',
+        ]);
+
+        $result = $this->svc->promote($doc, 'admin:1');
+
+        $this->assertFalse($result['promoted']);
+        $this->assertSame('not_canonical', $result['reason']);
+        $doc->refresh();
+        $this->assertSame('auto', $doc->generation_source, 'a non-canonical doc must never be silently flipped to human');
+        $this->assertNull($doc->canonical_status, 'a non-canonical doc must never receive a false canonical_status');
+        // a refused promotion must never write an audit row
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
+    /**
      * Copilot PR #494 round 5 (must-fix) — save() returns false when a model
      * event vetoes the write. Before this fix, the ignored return value let
      * the transaction still write the 'promoted' audit row and this method

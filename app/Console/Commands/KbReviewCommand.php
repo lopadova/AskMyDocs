@@ -75,6 +75,20 @@ final class KbReviewCommand extends Command
             $didAnything = false;
             $report = (bool) $this->option('report');
 
+            // Copilot PR #494 round 6 (must-fix) — `--report` is documented
+            // as read-only. Before this fix, `--report --approve` (no
+            // --page) still executed the approval THEN printed the report
+            // — mutating a document under a flag whose whole contract is
+            // "no mutation" — while `--page=N --report --approve` returned
+            // early from the read branch above and silently SKIPPED the
+            // approval. Same two flags, two different mutation outcomes.
+            // Reject the combination outright rather than picking a side.
+            if ($report && (bool) $this->option('approve')) {
+                $this->error('--report cannot be combined with --approve; run them as separate invocations.');
+
+                return self::FAILURE;
+            }
+
             try {
                 $pageRaw = $this->option('page');
                 if ($pageRaw !== null) {
