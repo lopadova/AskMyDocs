@@ -55,6 +55,7 @@ serve it while the feature is off. The design rationale is
 | `KB_REVIEW_LOW_CONFIDENCE_THRESHOLD` | `0.70` | The OCR confidence (chunk metadata, W1) below which a span is highlighted in the review UI's heat-map, once it ships (see [Gotchas](#gotchas)). A visual aid only — it never gates approval. |
 | `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6), shared **per tenant**, not per user — the MCP connection carries a tenant-scoped token, not a per-user one, so every caller in the tenant spends the same hourly budget (see [Gotchas](#gotchas)). A replayed (idempotent) proposal never spends this budget — only a genuinely new candidate does. |
 | `KB_REVIEW_CORRECTIONS_PAGE_SIZE` | `50` | The cap on `GET .../documents/{id}/corrections`'s pending-candidate queue (R3 — memory-safe bulk operations); a caller's `?limit=` is clamped to this value. |
+| `KB_REVIEW_STUCK_APPLYING_MINUTES` | `15` | Staleness threshold for `kb:review-reconcile-stuck-corrections` — a candidate left in the intermediate `applying` state (a crashed approval) longer than this is eligible for reconciliation (see [Gotchas](#gotchas)). |
 
 ## Theory & background
 
@@ -319,6 +320,7 @@ The R44 tri-surface, all adapting the same `KbReviewService`:
 | List pending correction candidates | `KbReviewService`-adjacent read (direct query) | `GET /api/admin/kb/documents/{id}/corrections` | — |
 | Approve a correction candidate | `KbReviewService::approveCorrection()` | `POST /api/admin/kb/corrections/{id}/approve` | — (documented exception, [§8](#no-mcp-write-a-documented-exception)) |
 | Reject a correction candidate | `KbReviewService::rejectCorrection()` | `POST /api/admin/kb/corrections/{id}/reject` | — (same exception) |
+| Reconcile stuck approvals (H-B) | `kb:review-reconcile-stuck-corrections` | — | — (R44 documented single-surface exception: a scheduler-only maintenance sweep with no caller-facing read, same posture as `kb:artifacts-backfill`) |
 
 `KbReviewStatusTool` answers `{disabled: true, flag:
 'KB_DIGITIZATION_REVIEW_ENABLED'}` rather than a 500 or vanishing from the
@@ -546,14 +548,17 @@ curl -X POST /api/admin/kb/corrections/7/approve
   `knowledge_documents` row while the artifact/job side effects had already
   happened. **Phase 1** (own transaction) locks the candidate + the live
   row, validates, and — on success — ATOMICALLY marks the candidate
-  `applied` right there (the R21 single-use guarantee: a concurrent second
+  `applying` right there (the R21 single-use guarantee: a concurrent second
   approval sees `status != pending` immediately, with no lock held across
-  phase 2). **Phase 2** (no ambient transaction, exactly like every other
-  `DocumentIngestor` caller) calls `reembedFromMarkdown()`; a failure
-  reverts the phase-1 claim (REJECTED for a decided staleness, PENDING +
-  re-thrown for any other failure — an infra blip a reviewer can retry)
-  rather than leaving the candidate stranded `applied` with no version.
-  **Phase 3** (own transaction) writes the `kb_canonical_audit` row.
+  phase 2 — `applying`, not yet the terminal `applied`, since round 5;
+  see the crash-recovery gotcha below). **Phase 2** (no ambient
+  transaction, exactly like every other `DocumentIngestor` caller) calls
+  `reembedFromMarkdown()`; on success, flips the candidate to the terminal
+  `applied` state; a failure instead reverts the phase-1 claim (REJECTED
+  for a decided staleness, PENDING + re-thrown for any other failure — an
+  infra blip a reviewer can retry) rather than leaving the candidate
+  stranded with no version. **Phase 3** (own transaction, best-effort —
+  see below) writes the `kb_canonical_audit` row.
 - **Proposing a correction is itself audited — EVERY denied outcome, not
   only rate-limiting — and the check-then-act sequence is race-protected on
   TWO axes (Copilot PR #496 round 2).** ADR 0031 §6 requires an audit row
@@ -588,6 +593,70 @@ curl -X POST /api/admin/kb/corrections/7/approve
   idempotency tuple, `proposed_by` and audit actor are therefore shared per
   TENANT for MCP-originated proposals; the HTTP surface's future review UI
   will carry a real per-user identity once it ships.
+- **A correction against a document with NO retained artifact still works —
+  page boundaries are re-synthesized from chunk metadata (Copilot PR #496
+  round 4, H-A).** `DocumentVersionService::contentFor()` falls back to
+  chunk reconstruction (`implode("\n\n")` over `chunk_text`) whenever a
+  version has no retained conversion artifact — e.g. `reference_only`/
+  `markdown_only` retention, or a version ingested before artifact
+  retention existed. For a document chunked by `PdfPageChunker`, the page
+  number lives OUT-OF-BAND on each chunk (`metadata['page']`), never
+  inlined into `chunk_text` — so that reconstruction alone has NO
+  `## Page N` headers for `locatePageOccurrence()` to anchor on.
+  `KbReviewService::pageAwareContentFor()` re-synthesizes those headers
+  from chunk metadata before either propose or approve ever calls
+  `locatePageOccurrence()`, and degrades to the plain (headerless) content
+  — the exact pre-fix behaviour, still correct for a non-paginated
+  document — the moment any chunk lacks an integer `page`, since that
+  signals a chunking strategy this method cannot reason about.
+- **A crashed approval is recoverable, not silently indistinguishable from
+  success (Copilot PR #496 round 5, H-B).** Phase 1 and phase 2 are each
+  individually atomic, but there is no cross-process atomicity BETWEEN
+  them — this whole flow runs synchronously inside one HTTP/MCP request,
+  not a queued retryable job. If the process is killed anywhere between
+  phase 1's commit and the `applying → applied` flip, the candidate is
+  left stuck `applying` — DELIBERATELY not `applied`, so it is visibly
+  distinguishable from both a genuine success and a genuine in-flight
+  approval. `kb:review-reconcile-stuck-corrections`
+  (`KB_REVIEW_STUCK_APPLYING_MINUTES`, default 15) finds candidates stuck
+  past that threshold: a matching `kb_canonical_audit` row
+  (`metadata_json.candidate_id`) proves phase 2 genuinely committed, so it
+  finalizes to `applied`; no matching row means phase 2 never got that
+  far, so it reverts to `pending` for a reviewer to simply retry. An
+  ordinary `approveCorrection()` call never silently resumes an `applying`
+  row itself (any non-`pending` status, `applying` included, is
+  `already_consumed`) — reconciliation is a deliberately separate,
+  lower-frequency, explicitly-triggered operation (R44 — a scheduler-only
+  maintenance sweep with no caller-facing read, so CLI-only, same posture
+  as `kb:artifacts-backfill`: not auto-scheduled, run on demand or wired
+  into a cron by the operator).
+- **A post-commit-only failure (the artifact publish step, not the
+  document/chunks) is treated as a SUCCESS, never reverted (Copilot
+  PR #496 round 4, H-C).** `reembedFromMarkdown()` can throw
+  `ArtifactPublishFailedException` — its own docblock documents this as a
+  failure that happens AFTER its internal transaction already committed
+  the new `knowledge_documents` row and its chunks; only the artifact
+  publish afterwards failed. `approveCorrection()` catches this
+  specifically, before its generic failure handler, logs a warning, and
+  finalizes the candidate as applied — exactly the posture
+  `ReembedDocumentJob::logArtifactNotPublished()` already takes for the
+  same exception on its own call path. Treating it like any other failure
+  (revert to pending) would mark a correction that DID apply back as
+  unapplied, and a reviewer's retry would then find the superseded old
+  version and get rejected outright — losing a correction that actually
+  succeeded.
+- **The audit row is best-effort, deliberately — it can never turn an
+  already-successful approval into a reported failure (previously-missed
+  MEDIUM, round 4).** By the time phase 3 runs, the correction has
+  genuinely applied (phase 1 + phase 2 already committed). If writing the
+  `kb_canonical_audit` row itself fails, that failure is caught and
+  `Log::critical()`'d rather than propagated — letting it bubble up would
+  tell the caller the approval FAILED when it in fact succeeded, and a
+  client that reacts by retrying would then hit `already_consumed` (409)
+  on a candidate that isn't pending anymore, which reads as corruption,
+  not as "it actually worked" (mirrors `ChatLogManager::log()`'s
+  established "never let logging/auditing failure break an
+  already-successful outcome" posture).
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
   confidence heat-map — propose/approve/reject above are HTTP + MCP only
   today, with no dedicated frontend), and the CER/WER quality metrics. These

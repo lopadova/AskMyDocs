@@ -977,6 +977,9 @@ class AppServiceProvider extends ServiceProvider
             // v8.37/W3 — Digitization Review PHP surface (R44): mark a page
             // reviewed, approve a document, report review status.
             \App\Console\Commands\KbReviewCommand::class,
+            // v8.37/W3b round 5 — reconcile correction candidates stuck in
+            // `applying` after a crashed approval (ADR 0031 §7, H-B).
+            \App\Console\Commands\KbReviewReconcileStuckCorrectionsCommand::class,
         ]);
     }
 

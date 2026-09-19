@@ -19,6 +19,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Tests\TestCase;
@@ -113,7 +114,7 @@ final class KbReviewCorrectionTest extends TestCase
         $doc = $this->doc($over);
         $markdown = "# scan\n\n## Page 1\n\n".self::PAGE_1."\n\n## Page 2\n\n".self::PAGE_2."\n";
         KnowledgeChunk::create([
-            'tenant_id' => 'default',
+            'tenant_id' => $doc->tenant_id,
             'knowledge_document_id' => $doc->id,
             'project_key' => $doc->project_key,
             'chunk_order' => 0,
@@ -145,7 +146,7 @@ final class KbReviewCorrectionTest extends TestCase
         $doc = $this->doc($over);
         foreach ([1 => self::PAGE_1, 2 => self::PAGE_2] as $page => $text) {
             KnowledgeChunk::create([
-                'tenant_id' => 'default',
+                'tenant_id' => $doc->tenant_id,
                 'knowledge_document_id' => $doc->id,
                 'project_key' => $doc->project_key,
                 'chunk_order' => $page - 1,
@@ -456,6 +457,42 @@ final class KbReviewCorrectionTest extends TestCase
         $this->svc->proposeCorrection($doc, 2, 'unrelated', 'yet another', null, 'user:1');
     }
 
+    /**
+     * v8.37/W3b round 5 (Copilot PR #496 finding, carried since round 1) —
+     * the test above proves the SEQUENTIAL-replay behaviour (a replay never
+     * spends the budget), but "five sequential calls" cannot fail even if
+     * the per-actor `Cache::lock()` that serializes two DIFFERENT concurrent
+     * proposals stopped working. SQLite/the array cache driver used in
+     * tests cannot stage a true multi-process race on that lock (same
+     * limitation documented on `KbReviewServiceTest::test_approve_decides_
+     * from_a_fresh_read_not_the_callers_stale_document_instance()`). What
+     * IS directly testable — and proves the actual protection mechanism,
+     * not merely its sequential side effect — is that the decision comes
+     * from a FRESH read of the RateLimiter's own counter at call time:
+     * simulate "a concurrent proposal from the SAME actor already spent the
+     * whole budget" by hitting the limiter directly (bypassing this call
+     * entirely, exactly like the DB-bypass pattern above bypasses the
+     * in-memory model instance), THEN attempt a genuinely new proposal and
+     * confirm it is refused and creates nothing — rather than deciding from
+     * a count it cached before the bypassed hit.
+     */
+    public function test_propose_correction_rate_limit_decides_from_a_fresh_counter_not_a_stale_one(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.review.candidates_per_hour' => 1]);
+        $doc = $this->docWithContent();
+
+        RateLimiter::hit('kb-review-candidates:default:user:1', 3600);
+
+        try {
+            $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+            $this->fail('expected KbReviewRateLimitedException');
+        } catch (KbReviewRateLimitedException) {
+            // expected
+        }
+
+        $this->assertSame(0, KbTextCorrectionCandidate::count(), 'a rate-limited call must never create a candidate');
+    }
+
     // --- approveCorrection ----------------------------------------------
 
     public function test_approve_correction_throws_when_disabled(): void
@@ -745,9 +782,13 @@ final class KbReviewCorrectionTest extends TestCase
         $auditsBeforeApprove = KbCanonicalAudit::count();
         $docsBeforeApprove = KnowledgeDocument::count();
 
+        // The "winning" concurrent approval's committed state — a specific,
+        // distinguishable `consumed_at`/`consumed_by` pair the LOSING call
+        // below (user:2) must never overwrite.
+        $winnerConsumedAt = now()->subMinute();
         DB::table('kb_text_correction_candidates')->where('id', $candidate->id)->update([
             'status' => KbTextCorrectionCandidate::STATUS_APPLIED,
-            'consumed_at' => now(),
+            'consumed_at' => $winnerConsumedAt,
             'consumed_by' => null,
         ]);
 
@@ -761,8 +802,19 @@ final class KbReviewCorrectionTest extends TestCase
 
         $this->assertFalse($result['applied']);
         $this->assertSame('already_consumed', $result['reason']);
+        // No new "disk write" or "job dispatch" applies to the current
+        // (round 2) architecture — approval mints its new version through
+        // DocumentIngestor::reembedFromMarkdown(), never a manual write to
+        // source_path nor an IngestDocumentJob dispatch — so "exactly one
+        // effect" here is asserted the way this design actually has one:
+        // exactly one version (document count) and exactly one audit row,
+        // AND the candidate's own resolved state is untouched by the loser.
         $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count(), 'a rejected already_consumed attempt must never write a new audit row');
         $this->assertSame($docsBeforeApprove, KnowledgeDocument::count(), 'a rejected already_consumed attempt must never mint a new version');
+        $fresh = $candidate->fresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $fresh->status);
+        $this->assertSame($winnerConsumedAt->toDateTimeString(), $fresh->consumed_at?->toDateTimeString(), 'the loser (user:2) must never overwrite the winner\'s consumed_at');
+        $this->assertNull($fresh->consumed_by, 'the loser (user:2) must never overwrite the winner\'s consumed_by');
     }
 
     /**
@@ -826,12 +878,13 @@ final class KbReviewCorrectionTest extends TestCase
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
         $doc = $this->docWithContent();
         $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $reviewer = $this->user();
         $auditsBeforeApprove = KbCanonicalAudit::count();
         $docsBeforeApprove = KnowledgeDocument::count();
 
         DB::table('knowledge_documents')->where('id', $doc->id)->update(['status' => 'archived']);
 
-        $result = $this->svc->approveCorrection($candidate, 'user:1', null);
+        $result = $this->svc->approveCorrection($candidate, "user:{$reviewer->id}", (int) $reviewer->id);
 
         $this->assertFalse($result['applied']);
         $this->assertSame('stale_version_no_longer_active', $result['reason']);
@@ -839,6 +892,51 @@ final class KbReviewCorrectionTest extends TestCase
         $this->assertSame(KbTextCorrectionCandidate::STATUS_REJECTED, $candidate->status);
         $this->assertSame($auditsBeforeApprove, KbCanonicalAudit::count(), 'a no-longer-active rejection must never write a new audit row');
         $this->assertSame($docsBeforeApprove, KnowledgeDocument::count(), 'a no-longer-active rejection must never mint a new version');
+        // Copilot PR #496 round 5 (must-fix) — every OTHER rejection path
+        // records who resolved the candidate and when; this one, reached
+        // from phase 2, must too — otherwise it looks unresolved in
+        // audit/history despite being permanently un-approvable.
+        $this->assertNotNull($candidate->consumed_at);
+        $this->assertSame((int) $reviewer->id, $candidate->consumed_by);
+    }
+
+    /**
+     * v8.37/W3b round 5 (Copilot PR #496 must-fix) —
+     * `DocumentVersionService::currentVersionFor()` and
+     * `DocumentIngestor::reembedFromMarkdown()` both derive their OWN
+     * tenant scope from the ACTIVE `TenantContext`, never from the
+     * `$document`/`$candidate` model handed to them. Today's only caller
+     * (`KbReviewController`) happens to pre-scope what it resolves to the
+     * active tenant, but `KbReviewService` is a directly-callable shared
+     * core (R44) and must not rely on that caller discipline: a document
+     * belonging to a DIFFERENT tenant than the one currently active must
+     * be refused outright, before any read/write, rather than let this
+     * method's own `forTenant($document->tenant_id)` scoping silently
+     * diverge from `currentVersionFor()`'s `TenantContext::current()`
+     * scoping mid-flow.
+     */
+    public function test_propose_correction_refuses_a_document_belonging_to_a_different_tenant(): void
+    {
+        config(['kb.review.enabled' => true]);
+        app(TenantContext::class)->set('other-tenant');
+        $foreignDoc = $this->docWithContent(['tenant_id' => 'other-tenant']);
+        app(TenantContext::class)->set('default');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->svc->proposeCorrection($foreignDoc, 1, 'Bod', 'Bob', null, 'user:1');
+    }
+
+    /** Approve-side counterpart of the propose-side test above. */
+    public function test_approve_correction_refuses_a_candidate_belonging_to_a_different_tenant(): void
+    {
+        config(['kb.review.enabled' => true]);
+        app(TenantContext::class)->set('other-tenant');
+        $foreignDoc = $this->docWithContent(['tenant_id' => 'other-tenant']);
+        $foreignCandidate = $this->svc->proposeCorrection($foreignDoc, 1, 'Bod', 'Bob', null, 'user:1');
+        app(TenantContext::class)->set('default');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->svc->approveCorrection($foreignCandidate, 'user:1', null);
     }
 
     /**
@@ -912,6 +1010,130 @@ final class KbReviewCorrectionTest extends TestCase
         // faked EmbeddingCacheService from setUp()) succeeds.
         $result = $this->svc->approveCorrection($candidate->fresh(), 'user:1', null);
         $this->assertTrue($result['applied']);
+    }
+
+    public function test_approve_correction_leaves_the_candidate_applied_on_success(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        $result = $this->svc->approveCorrection($candidate, 'user:1', null);
+
+        $this->assertTrue($result['applied']);
+        // v8.37/W3b round 5 (H-B) — phase 1 claims `applying`, not
+        // `applied`; by the time approveCorrection() RETURNS on the
+        // success path, the explicit post-phase-2 flip must already have
+        // happened, so the candidate is in the TERMINAL `applied` state —
+        // never left at the intermediate `applying`.
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->fresh()->status);
+    }
+
+    // --- reconcileStuckCorrections -----------------------------------------
+
+    /**
+     * v8.37/W3b round 5 (Copilot PR #496, H-B) — a candidate stuck in
+     * `applying` whose `kb_canonical_audit` row proves phase 2 genuinely
+     * committed a new version (the process crashed AFTER
+     * reembedFromMarkdown() succeeded but before — or independently of —
+     * approveCorrection()'s own `applying` -> `applied` flip) is finalized
+     * to `applied`, never re-run.
+     */
+    public function test_reconcile_stuck_corrections_finalizes_a_candidate_whose_audit_proves_it_committed(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true, 'kb.review.stuck_applying_minutes' => 15]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        // Simulate the crash window: phase 1 claimed (applying), phase 2's
+        // reembedFromMarkdown() genuinely committed a new version AND
+        // phase 3 wrote its audit row, but the process died before
+        // approveCorrection()'s own post-phase-2 flip to `applied` ran.
+        $newVersion = $this->doc(['source_path' => $doc->source_path, 'version_hash' => bin2hex(random_bytes(16))]);
+        DB::table('kb_text_correction_candidates')->where('id', $candidate->id)->update([
+            'status' => KbTextCorrectionCandidate::STATUS_APPLYING,
+            'consumed_at' => now()->subMinutes(20),
+        ]);
+        KbCanonicalAudit::create([
+            'tenant_id' => 'default',
+            'project_key' => (string) $newVersion->project_key,
+            'doc_id' => $newVersion->doc_id,
+            'slug' => $newVersion->slug,
+            'event_type' => 'updated',
+            'actor' => 'user:1',
+            'before_json' => ['document_id' => $doc->id],
+            'after_json' => ['document_id' => $newVersion->id],
+            'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidate->id],
+        ]);
+
+        $result = $this->svc->reconcileStuckCorrections('default');
+
+        $this->assertSame(['finalized' => 1, 'reverted' => 0, 'skipped' => 0], $result);
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLIED, $candidate->fresh()->status);
+    }
+
+    /**
+     * A candidate stuck in `applying` with NO matching audit row (phase 2
+     * never got far enough to commit anything) is reverted to `pending` so
+     * a reviewer can simply retry — never left stuck forever.
+     */
+    public function test_reconcile_stuck_corrections_reverts_a_candidate_with_no_evidence_it_committed(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.review.stuck_applying_minutes' => 15]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        $reviewer = $this->user();
+        DB::table('kb_text_correction_candidates')->where('id', $candidate->id)->update([
+            'status' => KbTextCorrectionCandidate::STATUS_APPLYING,
+            'consumed_at' => now()->subMinutes(20),
+            'consumed_by' => $reviewer->id,
+        ]);
+
+        $result = $this->svc->reconcileStuckCorrections('default');
+
+        $this->assertSame(['finalized' => 0, 'reverted' => 1, 'skipped' => 0], $result);
+        $fresh = $candidate->fresh();
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_PENDING, $fresh->status);
+        $this->assertNull($fresh->consumed_at);
+        $this->assertNull($fresh->consumed_by);
+
+        // Retryable: a fresh approval now succeeds normally.
+        $result = $this->svc->approveCorrection($fresh, 'user:1', null);
+        $this->assertTrue($result['applied']);
+    }
+
+    /**
+     * A candidate `applying` for LESS than the staleness threshold is a
+     * genuinely in-flight approval, not a crash — the sweep must not touch
+     * it.
+     */
+    public function test_reconcile_stuck_corrections_skips_a_recently_claimed_candidate(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.review.stuck_applying_minutes' => 15]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+        DB::table('kb_text_correction_candidates')->where('id', $candidate->id)->update([
+            'status' => KbTextCorrectionCandidate::STATUS_APPLYING,
+            'consumed_at' => now()->subMinutes(2),
+        ]);
+
+        $result = $this->svc->reconcileStuckCorrections('default');
+
+        $this->assertSame(['finalized' => 0, 'reverted' => 0, 'skipped' => 0], $result);
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_APPLYING, $candidate->fresh()->status, 'a genuinely in-flight approval must be left untouched');
+    }
+
+    /** A pending or already-terminal candidate is never touched by the sweep. */
+    public function test_reconcile_stuck_corrections_ignores_non_applying_candidates(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->docWithContent();
+        $candidate = $this->svc->proposeCorrection($doc, 1, 'Bod', 'Bob', null, 'user:1');
+
+        $result = $this->svc->reconcileStuckCorrections('default');
+
+        $this->assertSame(['finalized' => 0, 'reverted' => 0, 'skipped' => 0], $result);
+        $this->assertSame(KbTextCorrectionCandidate::STATUS_PENDING, $candidate->fresh()->status);
     }
 
     // --- rejectCorrection -------------------------------------------------

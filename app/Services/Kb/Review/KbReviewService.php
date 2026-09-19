@@ -17,6 +17,7 @@ use App\Services\Kb\Versioning\ArtifactPublishFailedException;
 use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Services\Kb\Versioning\ReembedTargetNoLongerActiveException;
 use App\Support\Canonical\GenerationSource;
+use App\Support\TenantContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,7 @@ class KbReviewService
         private readonly WikiExplorerService $wikiExplorer,
         private readonly DocumentVersionService $versions,
         private readonly DocumentIngestor $ingestor,
+        private readonly TenantContext $tenant,
     ) {}
 
     /**
@@ -445,6 +447,19 @@ class KbReviewService
     ): KbTextCorrectionCandidate {
         $this->assertEnabled();
 
+        // Copilot PR #496 round 5 (must-fix, mirrors the same guard on
+        // approveCorrection()) — DocumentVersionService::currentVersionFor()
+        // (called below) derives ITS tenant scope from the ACTIVE
+        // TenantContext, not from `$document`'s own `tenant_id`. A caller
+        // that passes a document belonging to a different tenant than the
+        // one currently active would make this method's own queries
+        // (scoped by `$document->tenant_id`) disagree with
+        // currentVersionFor()'s internal scoping — refuse outright, before
+        // touching anything, rather than let the two silently diverge.
+        if ((string) $document->tenant_id !== $this->tenant->current()) {
+            throw new \InvalidArgumentException('The document does not belong to the active tenant.');
+        }
+
         $tenantId = (string) $document->tenant_id;
 
         // These four guards run before ANY lock/transaction is opened, so
@@ -678,23 +693,28 @@ class KbReviewService
      *    CURRENT live version's page (a correction proposed against
      *    version N must not silently apply to version N+1's different
      *    text), and — on success — ATOMICALLY marks the candidate
-     *    `applied` right here, BEFORE the external reembed call. This is
-     *    the R21 single-use guarantee: a second, concurrent approval
-     *    attempt's `lockForUpdate()` blocks until this transaction commits,
-     *    then sees `status != 'pending'` and returns `{applied: false,
-     *    reason: 'already_consumed'}` (mapped to HTTP 409 by the
-     *    controller) — WITHOUT needing any lock held across phase 2.
+     *    `applying` right here, BEFORE the external reembed call (round 5 —
+     *    not yet the terminal `applied`; see the crash-recovery note
+     *    further down). This is the R21 single-use guarantee: a second,
+     *    concurrent approval attempt's `lockForUpdate()` blocks until this
+     *    transaction commits, then sees `status != 'pending'` (`applying`
+     *    included) and returns `{applied: false, reason:
+     *    'already_consumed'}` (mapped to HTTP 409 by the controller) —
+     *    WITHOUT needing any lock held across phase 2.
      * 2. **Apply** (no ambient transaction — exactly like every other
      *    caller of `DocumentIngestor` uses it, e.g. `ReembedDocumentJob`) —
      *    `reembedFromMarkdown($live, $corrected)` manages its own complete
      *    transaction + post-commit side effects with nothing outside it to
-     *    ever roll back. A failure here (most commonly
+     *    ever roll back. On success, a small follow-up transaction flips
+     *    the candidate from `applying` to the terminal `applied` (round 5
+     *    — kept as close to `reembedFromMarkdown()` returning as possible).
+     *    A failure instead (most commonly
      *    `ReembedTargetNoLongerActiveException`, when phase 1's `$live` was
      *    itself a stale fallback — see that method's docblock) reverts the
      *    phase-1 claim in a small follow-up transaction (REJECTED for a
      *    decided staleness, PENDING + re-thrown for anything else — an
      *    infra blip a reviewer can simply retry, per R14) rather than
-     *    leaving the candidate stranded `applied` with no version.
+     *    leaving the candidate stranded `applying` with no version.
      * 3. **Record** (own transaction) — the `kb_canonical_audit` row for
      *    the now-successful correction. The candidate's `status`/
      *    `consumed_at`/`consumed_by` are already committed from phase 1, and
@@ -705,34 +725,64 @@ class KbReviewService
      *    — rather than telling the caller the approval failed when it
      *    didn't, or reopening the R21 race phase 1 closes).
      *
-     * Accepted residual risk (Copilot PR #496 round 4, H-B) — phases 1 and 2
-     * are each individually atomic (a DB transaction, and `reembedFromMarkdown()`'s
+     * Crash recovery (Copilot PR #496 round 5, H-B) — phases 1 and 2 are
+     * each individually atomic (a DB transaction, and `reembedFromMarkdown()`'s
      * own top-level transaction, respectively), but there is no cross-process
-     * atomicity BETWEEN them: this whole method runs synchronously inside one
-     * HTTP/MCP request, not as a queued, retryable job. If the PHP process
-     * handling that request is killed (OOM, SIGKILL, host failure) at any
-     * point between phase 1's commit and phase 2's `reembedFromMarkdown()`
-     * call returning, the candidate is left committed `applied` with NO
-     * corresponding new document version ever created — indistinguishable
-     * from a normal success without cross-referencing `kb_canonical_audit`
-     * for a matching `metadata_json.candidate_id`. Closing this properly
-     * needs a lease/outbox + reconciliation-job pattern (detect stuck
-     * `applied` candidates with no matching audit row past some staleness
-     * threshold, and either finalize or revert them) — a distinct, larger-
-     * scope piece of infrastructure than this propose/approve/reject flow,
-     * deliberately left as documented future work rather than folded in
-     * here. Until then, manual recovery: find candidates with
-     * `status='applied'` and no `kb_canonical_audit` row whose
-     * `metadata_json->candidate_id` matches; if no corresponding new
-     * `knowledge_documents` row exists for that document's family either,
-     * the reembed itself never ran — reset the candidate to `pending` via a
-     * direct update so a reviewer can retry.
+     * atomicity BETWEEN them: this whole method runs synchronously inside
+     * one HTTP/MCP request, not as a queued, retryable job. If the PHP
+     * process handling that request is killed (OOM, SIGKILL, host failure)
+     * anywhere between phase 1's commit and the `applying` -> `applied`
+     * flip right after `reembedFromMarkdown()` returns, the candidate is
+     * left stuck `applying` — DELIBERATELY not `applied` (round 4 committed
+     * it as `applied` here; round 5 splits that into `applying` then
+     * `applied` for exactly this reason): a stuck row is now visibly
+     * distinguishable from both a genuine success and a genuine in-flight
+     * approval, findable with a plain `status='applying'` query, rather
+     * than requiring a LEFT JOIN against `kb_canonical_audit` to tell an
+     * `applied`-but-unaudited success from an `applied`-but-nothing-ever-
+     * happened crash. `kb:review:reconcile-stuck-corrections`
+     * (`kb.review.stuck_applying_minutes`, default 15) finds candidates
+     * stuck past that threshold, cross-references `kb_canonical_audit` for
+     * a matching `metadata_json.candidate_id` to tell "phase 2 actually
+     * committed a new version" (finalize to `applied`) from "phase 2 never
+     * got that far" (revert to `pending` so a reviewer can retry) —
+     * genuinely closing the recoverability gap without a full lease/outbox
+     * + two-phase-commit subsystem (this crash window's true zero would
+     * require spanning two independent transactional resources — this
+     * service's DB and `DocumentIngestor`'s own transaction — which round
+     * 2 deliberately keeps SEPARATE to avoid an entirely different orphaned-
+     * side-effects bug). An ordinary `approveCorrection()` call NEVER
+     * silently resumes an `applying` row itself (any status other than
+     * `pending` is `already_consumed`, `applying` included) — that would
+     * risk a double-apply race; reconciliation is a deliberately separate,
+     * lower-frequency, explicitly-triggered operation (R44 — a scheduler-
+     * only maintenance sweep with no caller-facing read, so CLI-only).
      *
      * @return array{applied: bool, reason?: string, document_id?: int}
      */
     public function approveCorrection(KbTextCorrectionCandidate $candidate, string $actor, ?int $reviewerUserId): array
     {
         $this->assertEnabled();
+
+        // Copilot PR #496 round 5 (must-fix) — the shared core must not
+        // simply trust the candidate INSTANCE's own tenant_id as the scope
+        // to operate in: DocumentVersionService::currentVersionFor() and
+        // DocumentIngestor::reembedFromMarkdown() (both called below) each
+        // derive their OWN tenant scope from the ACTIVE TenantContext, not
+        // from any model passed into them. Today's only caller
+        // (KbReviewController) happens to pre-scope the candidate it
+        // resolves to the active tenant, but that is caller discipline,
+        // not something the shared PHP core itself enforces — and this
+        // service is also directly callable from CLI/MCP/tests (R44). A
+        // foreign or stale candidate would otherwise let phase 1 operate
+        // on one tenant's row while phase 2's DocumentVersionService/
+        // DocumentIngestor silently operate on whatever tenant happens to
+        // be active, producing inconsistent cross-tenant behaviour.
+        // Refuse outright, before any read or write, rather than let the
+        // two disagree mid-flow.
+        if ((string) $candidate->tenant_id !== $this->tenant->current()) {
+            throw new \InvalidArgumentException('The correction candidate does not belong to the active tenant.');
+        }
 
         $tenantId = (string) $candidate->tenant_id;
         $candidateId = (int) $candidate->id;
@@ -794,12 +844,21 @@ class KbReviewService
 
             $corrected = substr($markdown, 0, $located['start']).$locked->new_text.substr($markdown, $located['start'] + $located['length']);
 
-            // The atomic claim (R21): marked APPLIED now, before the
+            // The atomic claim (R21): marked APPLYING now, before the
             // external reembed call in phase 2 — a concurrent second
             // approval sees status != pending immediately, with no lock
-            // held across that call.
+            // held across that call. Deliberately NOT `applied` yet
+            // (Copilot PR #496 round 5, H-B): if the process crashes
+            // anywhere in phase 2/3, a row stuck in `applying` is visibly
+            // DISTINGUISHABLE from a genuine success — see
+            // `kb:review:reconcile-stuck-corrections`, which is what
+            // resolves it. An ordinary approveCorrection() call never
+            // resumes an `applying` row itself (below, `!== PENDING`
+            // covers it the same as any other non-pending status) — that
+            // would risk a double-apply race; reconciliation is a
+            // deliberately separate, lower-frequency operation.
             $locked->forceFill([
-                'status' => KbTextCorrectionCandidate::STATUS_APPLIED,
+                'status' => KbTextCorrectionCandidate::STATUS_APPLYING,
                 'consumed_at' => now(),
                 'consumed_by' => $reviewerUserId,
             ])->save();
@@ -837,9 +896,14 @@ class KbReviewService
         try {
             $newVersion = $this->ingestor->reembedFromMarkdown($live, $corrected);
         } catch (ReembedTargetNoLongerActiveException) {
+            // Copilot PR #496 round 5 (must-fix) — every OTHER rejection
+            // path in phase 1 records `consumed_at`/`consumed_by` (the
+            // reviewer who resolved it); this one, reached from phase 2,
+            // must do the same — otherwise a candidate that can no longer
+            // ever be approved still LOOKS unresolved in audit/history.
             DB::transaction(fn () => KbTextCorrectionCandidate::query()
                 ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
-                ->update(['status' => KbTextCorrectionCandidate::STATUS_REJECTED]));
+                ->update(['status' => KbTextCorrectionCandidate::STATUS_REJECTED, 'consumed_at' => now(), 'consumed_by' => $reviewerUserId]));
 
             return ['applied' => false, 'reason' => 'stale_version_no_longer_active'];
         } catch (ArtifactPublishFailedException $e) {
@@ -886,13 +950,30 @@ class KbReviewService
             throw $e;
         }
 
+        // Copilot PR #496 round 5 (H-B) — flip the phase-1 `applying` claim
+        // to the TERMINAL `applied` state as close to reembedFromMarkdown()
+        // returning as possible, in its own small transaction, BEFORE the
+        // (optional, best-effort) audit write below. This does not — cannot
+        // — eliminate the crash window between reembedFromMarkdown()'s own
+        // internal commit and this statement (no cross-resource atomicity
+        // spans two independent transactions without a 2PC/outbox this PR
+        // does not build), but it keeps that window as narrow as it can be
+        // made, and — combined with the `applying` status itself being
+        // distinguishable from `applied` — is exactly what makes a stuck
+        // row detectable and safe for `kb:review:reconcile-stuck-corrections`
+        // to resolve rather than silently indistinguishable from success.
+        DB::transaction(fn () => KbTextCorrectionCandidate::query()
+            ->forTenant($tenantId)->lockForUpdate()->whereKey($candidateId)
+            ->update(['status' => KbTextCorrectionCandidate::STATUS_APPLIED]));
+
         // Phase 3 — the audit row for the now-successful correction.
         //
         // Copilot PR #496 round 4 (previously-missed MEDIUM finding) — this
         // write is caught and logged rather than left to propagate. By this
         // point the correction has ALREADY applied: phase 1 committed the
-        // candidate as `applied` and phase 2 committed the new document
-        // version. Letting an audit-write failure (e.g. a momentary DB
+        // candidate as `applying` and the step just above flipped it to the
+        // terminal `applied` state once phase 2 confirmed success. Letting
+        // an audit-write failure (e.g. a momentary DB
         // outage) bubble up as an uncaught exception would tell the caller
         // the approval FAILED when it in fact SUCCEEDED — and a client that
         // reacts to that by retrying the same approve call would then hit
@@ -937,6 +1018,113 @@ class KbReviewService
         }
 
         return ['applied' => true, 'document_id' => $newVersion->id];
+    }
+
+    /**
+     * v8.37/W3b round 5 (Copilot PR #496, H-B) — finds candidates stuck in
+     * `applying` (`approveCorrection()`'s phase-1 claim, never flipped to a
+     * terminal state because the process crashed somewhere in phase 2/3)
+     * for longer than `$olderThanMinutes` (default
+     * `kb.review.stuck_applying_minutes`) and resolves each one:
+     *
+     * - A `kb_canonical_audit` row exists whose `metadata_json.candidate_id`
+     *   matches -> phase 2 genuinely committed a new version (phase 3's
+     *   audit write is the evidence): finalize to `applied`. A pure
+     *   state-flip, no re-application.
+     * - No matching audit row -> phase 2 never got far enough to commit
+     *   anything (or, in the narrowest sub-window, committed but crashed
+     *   before either approveCorrection()'s own `applied` flip or any
+     *   audit attempt — indistinguishable from "never ran" without a
+     *   canonical marker this PR does not add): revert to `pending` so a
+     *   reviewer can simply retry via the normal approve flow. Reverting a
+     *   row that in fact already has a committed version is the accepted
+     *   remaining risk of this narrow sub-window — the reviewer's retry
+     *   would then find `old_text` missing on the new version's page and
+     *   get `stale_old_text_not_found_or_ambiguous` rather than silently
+     *   double-applying, which is the safe failure direction.
+     *
+     * Deliberately NOT gated by `assertEnabled()` — a row can be stuck from
+     * before an operator disabled `kb.review.enabled`, and cleanup of
+     * already-existing rows should not depend on whether NEW proposals are
+     * currently accepted (mirrors `kb:prune-deleted` not gating on whatever
+     * flag governs live deletion). Called by
+     * `kb:review:reconcile-stuck-corrections` (R44 — a scheduler-only
+     * maintenance sweep with no caller-facing read, CLI-only by design).
+     * Each candidate is resolved under its own `lockForUpdate()`
+     * transaction, re-checking `status === STATUS_APPLYING` inside it (a
+     * genuinely-still-in-flight approval racing this sweep is simply
+     * skipped, not disturbed).
+     *
+     * @return array{finalized: int, reverted: int, skipped: int}
+     */
+    public function reconcileStuckCorrections(string $tenantId, ?int $olderThanMinutes = null): array
+    {
+        $minutes = $olderThanMinutes ?? max(1, (int) config('kb.review.stuck_applying_minutes', 15));
+        $threshold = now()->subMinutes($minutes);
+
+        $stuckIds = KbTextCorrectionCandidate::query()
+            ->forTenant($tenantId)
+            ->where('status', KbTextCorrectionCandidate::STATUS_APPLYING)
+            ->where('consumed_at', '<', $threshold)
+            ->pluck('id');
+
+        $finalized = 0;
+        $reverted = 0;
+        $skipped = 0;
+
+        foreach ($stuckIds as $candidateId) {
+            $outcome = DB::transaction(function () use ($tenantId, $candidateId): string {
+                /** @var KbTextCorrectionCandidate|null $locked */
+                $locked = KbTextCorrectionCandidate::query()
+                    ->forTenant($tenantId)
+                    ->lockForUpdate()
+                    ->find($candidateId);
+
+                if ($locked === null || $locked->status !== KbTextCorrectionCandidate::STATUS_APPLYING) {
+                    return 'skipped';
+                }
+
+                /** @var KbCanonicalAudit|null $audit */
+                $audit = KbCanonicalAudit::query()
+                    ->forTenant($tenantId)
+                    ->where('event_type', 'updated')
+                    ->where('metadata_json->candidate_id', $locked->id)
+                    ->first();
+
+                if ($audit !== null) {
+                    $locked->forceFill(['status' => KbTextCorrectionCandidate::STATUS_APPLIED])->save();
+
+                    Log::info('kb:review:reconcile-stuck-corrections — finalized a stuck candidate (its correction had genuinely committed)', [
+                        'candidate_id' => $locked->id,
+                        'tenant_id' => $tenantId,
+                        'document_id' => $audit->after_json['document_id'] ?? null,
+                    ]);
+
+                    return 'finalized';
+                }
+
+                $locked->forceFill([
+                    'status' => KbTextCorrectionCandidate::STATUS_PENDING,
+                    'consumed_at' => null,
+                    'consumed_by' => null,
+                ])->save();
+
+                Log::warning('kb:review:reconcile-stuck-corrections — reverted a stuck candidate to pending (no evidence its correction ever committed)', [
+                    'candidate_id' => $locked->id,
+                    'tenant_id' => $tenantId,
+                ]);
+
+                return 'reverted';
+            });
+
+            match ($outcome) {
+                'finalized' => $finalized++,
+                'reverted' => $reverted++,
+                default => $skipped++,
+            };
+        }
+
+        return ['finalized' => $finalized, 'reverted' => $reverted, 'skipped' => $skipped];
     }
 
     /**
