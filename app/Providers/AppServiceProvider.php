@@ -1198,11 +1198,27 @@ class AppServiceProvider extends ServiceProvider
         // segment: the token hash alone already uniquely and stably
         // identifies the caller (SHA-256 collision resistance), so nothing
         // is lost by keying on it alone, and it can no longer drift.
+        //
+        // Copilot review PR #497 (pullrequestreview-5257061609,
+        // discussion_r4054262640) — keying ONLY on the token hash opened a
+        // different bypass: a caller can defeat the limit entirely by
+        // sending a DIFFERENT bearer token value on every request (each
+        // invalid/rotated token hashes to a fresh bucket with zero prior
+        // hits — see EnforceMcpScope, which rejects unknown tokens but
+        // this limiter runs BEFORE it). Add a second, independent limit
+        // keyed by source IP so total traffic from one origin is bounded
+        // regardless of how many token values it cycles through. Laravel
+        // applies both and throttles on whichever is exceeded first (see
+        // config/mcp.php `server` block for the two knobs).
         RateLimiter::for('mcp', function (Request $request) {
             $tokenHash = hash('sha256', (string) $request->bearerToken());
             $max = max(1, (int) config('mcp.server.rate_limit_per_minute', 60));
+            $ipMax = max(1, (int) config('mcp.server.rate_limit_ip_per_minute', 300));
 
-            return Limit::perMinute($max)->by($tokenHash);
+            return [
+                Limit::perMinute($max)->by($tokenHash),
+                Limit::perMinute($ipMax)->by('ip:'.$request->ip()),
+            ];
         });
     }
 }

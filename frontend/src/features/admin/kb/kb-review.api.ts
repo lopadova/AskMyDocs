@@ -24,8 +24,25 @@ import { KB_DOC_KEY } from './kb-document.api';
 
 export const KB_REVIEW_KEY = ['admin', 'kb', 'review'] as const;
 
+/**
+ * Copilot review PR #497 (pullrequestreview-5257061609) — matching on
+ * status 404 alone misclassified ANY 404 from this API surface (e.g. a
+ * document that genuinely doesn't exist) as "feature disabled". Every
+ * mutating entry point of KbReviewService throws
+ * `KbReviewDisabledException` with this exact message
+ * (app/Exceptions/KbReviewDisabledException.php) when the feature flag
+ * is off, and Laravel renders it as `{"message": "..."}` for JSON
+ * requests — key on that substring too, not just the status code.
+ */
+const REVIEW_DISABLED_MESSAGE_MARKER = 'Digitization Review is disabled';
+
 export function isReviewDisabledError(error: unknown): boolean {
-    return error instanceof AxiosError && error.response?.status === 404;
+    if (!(error instanceof AxiosError) || error.response?.status !== 404) {
+        return false;
+    }
+
+    const data = error.response.data as { message?: unknown } | undefined;
+    return typeof data?.message === 'string' && data.message.includes(REVIEW_DISABLED_MESSAGE_MARKER);
 }
 
 export function useKbReviewSummary(documentId: number | null) {

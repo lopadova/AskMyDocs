@@ -380,6 +380,46 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * Copilot review PR #497 (pullrequestreview-5257061609,
+     * discussion_r4054262640) — after round 8 the `mcp` limiter keyed
+     * ONLY on the bearer token hash, which is bypassable: a caller
+     * sending a DIFFERENT token value on every request lands each one in
+     * a fresh, empty bucket, so the per-token limit never trips no
+     * matter how many requests it sends. The fix adds a second limit
+     * keyed by source IP. This test rotates the token on every request
+     * (so the per-token limit alone — set generous here — never fires)
+     * and asserts the IP-keyed limit still throttles by the 3rd request.
+     */
+    public function test_rate_limit_still_applies_when_bearer_token_is_rotated_every_request(): void
+    {
+        config([
+            'mcp.server.rate_limit_per_minute' => 1000,
+            'mcp.server.rate_limit_ip_per_minute' => 2,
+        ]);
+
+        $makeRequest = fn (string $token) => $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/mcp/kb', [
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'method' => 'initialize',
+                'params' => [],
+            ]);
+
+        $first = $makeRequest('token-one-never-reused');
+        $second = $makeRequest('token-two-never-reused');
+        $third = $makeRequest('token-three-never-reused');
+
+        $this->assertSame(401, $first->getStatusCode());
+        $this->assertSame(401, $second->getStatusCode());
+
+        // Every request used a DIFFERENT token, so the per-token limit
+        // (1000/min) never comes close to tripping. Only the IP-keyed
+        // limit (2/min, same test client IP for all three) can explain a
+        // 429 here — proving token rotation no longer bypasses throttling.
+        $this->assertSame(429, $third->getStatusCode());
+    }
+
+    /**
      * @param  array<int, string>  $scopes
      */
     private function mintToken(array $scopes): void
