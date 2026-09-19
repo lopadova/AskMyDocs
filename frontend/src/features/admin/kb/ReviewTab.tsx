@@ -378,7 +378,12 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
 
     if (query.isLoading) {
         return (
-            <section data-testid="kb-review-corrections-loading" style={{ color: 'var(--fg-3)', fontSize: 12.5 }}>
+            <section
+                data-testid="kb-review-corrections-loading"
+                data-state="loading"
+                aria-busy="true"
+                style={{ color: 'var(--fg-3)', fontSize: 12.5 }}
+            >
                 Loading correction candidates…
             </section>
         );
@@ -388,6 +393,8 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
         return (
             <section
                 data-testid="kb-review-corrections-error"
+                data-state="error"
+                aria-busy="false"
                 style={{ color: 'var(--danger-fg, #b91c1c)', fontSize: 12.5 }}
             >
                 Could not load correction candidates.
@@ -398,7 +405,12 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
     const { data, meta } = query.data;
 
     return (
-        <section data-testid="kb-review-corrections" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <section
+            data-testid="kb-review-corrections"
+            data-state={data.length === 0 ? 'empty' : 'ready'}
+            aria-busy="false"
+            style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
             <h4 style={{ margin: 0, fontSize: 13, color: 'var(--fg-1)' }}>Pending correction candidates</h4>
             {data.length === 0 ? (
                 <div data-testid="kb-review-corrections-empty" style={{ color: 'var(--fg-3)', fontSize: 12.5 }}>

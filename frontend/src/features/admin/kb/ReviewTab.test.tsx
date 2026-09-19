@@ -172,6 +172,8 @@ beforeEach(() => {
         meta: { limit: 20, offset: 0, has_more: false },
     };
     correctionsState.lastOffset = null;
+    correctionsState.isLoading = false;
+    correctionsState.isError = false;
     approveCorrectionMutation.isPending = false;
     rejectCorrectionMutation.isPending = false;
 });
@@ -332,12 +334,38 @@ describe('ReviewTab', () => {
         expect(screen.getByTestId('kb-review-correction-51')).toBeInTheDocument();
         expect(screen.getByTestId('kb-review-correction-51')).toHaveTextContent('Bod');
         expect(screen.getByTestId('kb-review-correction-51')).toHaveTextContent('Bob');
+        // Copilot review PR #497 (pullrequestreview-5256918804) — the
+        // corrections queue's own async region carries the shared
+        // data-state/aria-busy contract (R11), independent of the outer
+        // kb-review container's state.
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('data-state', 'ready');
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('aria-busy', 'false');
     });
 
     it('renders the empty state when there are no pending candidates', () => {
         correctionsState.data = { data: [], meta: { limit: 20, offset: 0, has_more: false } };
         wrap(<ReviewTab documentId={7} />);
         expect(screen.getByTestId('kb-review-corrections-empty')).toBeInTheDocument();
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('data-state', 'empty');
+    });
+
+    // Copilot review PR #497 (pullrequestreview-5256918804): the corrections
+    // queue's loading/error branches were missing data-state/aria-busy,
+    // breaking the shared Playwright/testid async-state contract other KB
+    // tabs (e.g. GraphTab) already honour.
+    it('renders a loading state for the corrections queue', () => {
+        correctionsState.isLoading = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-corrections-loading')).toHaveAttribute('data-state', 'loading');
+        expect(screen.getByTestId('kb-review-corrections-loading')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('renders an error state for the corrections queue', () => {
+        correctionsState.isError = true;
+        correctionsState.data = undefined;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-corrections-error')).toHaveAttribute('data-state', 'error');
+        expect(screen.getByTestId('kb-review-corrections-error')).toHaveAttribute('aria-busy', 'false');
     });
 
     it('clicking Approve on a candidate calls approveCorrection with that candidate id', async () => {
