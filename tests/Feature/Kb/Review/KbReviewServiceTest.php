@@ -327,7 +327,11 @@ final class KbReviewServiceTest extends TestCase
     public function test_approve_on_a_non_canonical_auto_document_flips_generation_source_and_audits(): void
     {
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
-        $doc = $this->doc(['is_canonical' => false, 'generation_source' => GenerationSource::Auto->value]);
+        $doc = $this->doc([
+            'is_canonical' => false,
+            'generation_source' => GenerationSource::Auto->value,
+            'metadata' => ['converter' => ['provenance' => 'ocr']],
+        ]);
 
         $result = $this->svc->approve($doc, 'user:1');
 
@@ -345,6 +349,32 @@ final class KbReviewServiceTest extends TestCase
             'event_type' => 'promoted',
             'actor' => 'user:1',
         ]);
+    }
+
+    /**
+     * Copilot PR #494 round 12 (previously missed, moderate) — the
+     * non-canonical branch's flip is only DURABLE against a later AutoWiki
+     * compile pass for OCR-origin rows: AutoWikiCompiler::apply()'s
+     * firewall (rounds 9/10) preserves a human value only when
+     * is_canonical || ocr_origin. A non-canonical, non-OCR `auto` document
+     * (AutoWiki-enriched raw markdown, generation_source=auto by
+     * construction) must therefore be REJECTED here rather than approved
+     * and audited — an audit row claiming a durable approval that a
+     * subsequent compile pass would silently undo is worse than no
+     * approval at all.
+     */
+    public function test_approve_rejects_a_non_canonical_non_ocr_document(): void
+    {
+        config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
+        $doc = $this->doc(['is_canonical' => false, 'generation_source' => GenerationSource::Auto->value]);
+
+        $result = $this->svc->approve($doc, 'user:1');
+
+        $this->assertFalse($result['approved']);
+        $this->assertSame('not_ocr_origin', $result['reason']);
+        $doc->refresh();
+        $this->assertSame(GenerationSource::Auto->value, $doc->generation_source, 'a rejected non-OCR approval must never flip generation_source');
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
     }
 
     public function test_approve_on_a_canonical_document_delegates_to_wiki_explorer_promote(): void
@@ -412,7 +442,11 @@ final class KbReviewServiceTest extends TestCase
     public function test_approve_decides_from_a_fresh_read_not_the_callers_stale_document_instance(): void
     {
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
-        $doc = $this->doc(['is_canonical' => false, 'generation_source' => GenerationSource::Auto->value]);
+        $doc = $this->doc([
+            'is_canonical' => false,
+            'generation_source' => GenerationSource::Auto->value,
+            'metadata' => ['converter' => ['provenance' => 'ocr']],
+        ]);
 
         // A concurrent worker's approve() call that already committed,
         // bypassing the in-memory $doc instance entirely.
@@ -458,7 +492,11 @@ final class KbReviewServiceTest extends TestCase
     public function test_approve_throws_and_writes_nothing_when_the_generation_source_save_is_vetoed(): void
     {
         config(['kb.review.enabled' => true, 'kb.canonical.audit_enabled' => true]);
-        $doc = $this->doc(['is_canonical' => false, 'generation_source' => GenerationSource::Auto->value]);
+        $doc = $this->doc([
+            'is_canonical' => false,
+            'generation_source' => GenerationSource::Auto->value,
+            'metadata' => ['converter' => ['provenance' => 'ocr']],
+        ]);
 
         KnowledgeDocument::saving(fn (KnowledgeDocument $model): bool => $model->getKey() !== $doc->id);
 

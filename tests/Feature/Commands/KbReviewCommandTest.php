@@ -99,7 +99,11 @@ final class KbReviewCommandTest extends TestCase
     public function test_approves_a_document(): void
     {
         config(['kb.review.enabled' => true]);
-        $doc = $this->doc();
+        // Copilot PR #494 round 12 — approve()'s non-canonical branch now
+        // rejects non-OCR documents (KbReviewServiceTest covers the
+        // rejection itself); this CLI test needs OCR-origin metadata to
+        // still exercise the success path.
+        $doc = $this->doc(['metadata' => ['converter' => ['provenance' => 'ocr']]]);
 
         $this->artisan('kb:review', ['document' => $doc->id, '--approve' => true])
             ->expectsOutputToContain('Document approved')

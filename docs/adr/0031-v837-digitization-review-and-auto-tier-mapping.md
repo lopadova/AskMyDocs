@@ -167,6 +167,15 @@ if ($document->is_canonical) {
 // never selects (it filters is_canonical=true first) — a value nobody
 // reads, but a lie about the row's canonical state nonetheless. The two
 // branches share the transition; they do not share the method.
+//
+// This branch ALSO rejects (approved: false, reason: 'not_ocr_origin') a
+// non-canonical document that is not OCR-derived (metadata.converter.
+// provenance !== 'ocr'). The flip's durability against a later AutoWiki
+// compile pass depends entirely on AutoWikiCompiler::apply()'s firewall
+// (§5), which preserves a human value only for is_canonical || OCR-origin
+// rows — approving an AutoWiki-enriched raw-markdown row here (also
+// non-canonical, also generation_source=auto by construction) would write
+// a 'promoted' audit row that a subsequent compile silently undoes.
 ```
 
 Both branches write one `kb_canonical_audit` row (`event_type = 'promoted'`,

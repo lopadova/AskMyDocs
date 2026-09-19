@@ -316,6 +316,25 @@ class KbReviewService
                 return ['approved' => false, 'reason' => 'not_auto'];
             }
 
+            // Copilot PR #494 round 12 (previously missed) — this flip's
+            // DURABILITY against a later AutoWiki compile pass depends
+            // entirely on AutoWikiCompiler::apply()'s firewall, which only
+            // preserves a human value for is_canonical || OCR-origin rows
+            // (rounds 9/10). Approving a non-canonical, non-OCR document
+            // here (an AutoWiki-enriched raw-markdown row,
+            // generation_source=auto by construction) would write a
+            // 'promoted' audit row claiming a durable approval, then a
+            // subsequent compile pass silently flips it right back to
+            // 'auto' — the audit trail would lie about the document's
+            // actual state. Restrict this branch to the ONE case the
+            // firewall actually protects: OCR-origin documents (ADR 0031's
+            // whole premise — Digitization Review gates OCR output, not
+            // raw markdown AutoWiki already owns).
+            $isOcrOrigin = (($locked->metadata['converter']['provenance'] ?? null) === 'ocr');
+            if (! $isOcrOrigin) {
+                return ['approved' => false, 'reason' => 'not_ocr_origin'];
+            }
+
             $before = ['generation_source' => (string) $locked->generation_source];
 
             // Copilot PR #494 round 4 — save() returns false when a model

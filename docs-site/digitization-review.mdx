@@ -171,7 +171,15 @@ separate signals, not a gate on each other. What differs is the destination:
   relaxing `promote()`'s own guard, because `promote()` unconditionally sets
   `canonical_status = 'accepted'` — correct for a canonical row, and a
   **false canonical fact** stamped on a document that was never canonical to
-  begin with.
+  begin with. This branch only accepts an **OCR-derived** non-canonical
+  document (`metadata.converter.provenance === 'ocr'`); any other
+  non-canonical `auto` row (an AutoWiki-enriched raw-markdown document,
+  also `generation_source = 'auto'` by construction) is rejected with
+  `{approved: false, reason: 'not_ocr_origin'}`. The reason is durability,
+  not policy: the AutoWiki firewall ([below](#the-reranker-firewall-fix))
+  only preserves a human value for `is_canonical || ocr_origin` rows, so
+  approving a non-OCR row here would write an audit row claiming a durable
+  approval that a later AutoWiki compile pass would silently undo.
 
 Both branches run inside **one transaction** that `lockForUpdate()`s the
 tenant-scoped document row first and re-reads `is_canonical` /
