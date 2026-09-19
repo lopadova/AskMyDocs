@@ -471,47 +471,66 @@ class KbReviewService
         return Cache::lock("kb-review-propose-actor:{$tenantId}:{$actor}", 10)->block(5, function () use (
             $document, $tenantId, $pageNumber, $oldText, $newText, $rationale, $actor,
         ): KbTextCorrectionCandidate {
-            /** @var array{ok: bool, candidate?: KbTextCorrectionCandidate, live?: KnowledgeDocument, reason?: string, extra?: array<string,mixed>, exception?: \Throwable} $outcome */
-            $outcome = DB::transaction(function () use ($document, $tenantId, $pageNumber, $oldText, $newText, $rationale, $actor): array {
-                $live = $this->versions->currentVersionFor($document, lock: true);
-                $content = $this->versions->contentFor($live);
+            // Captured by reference from inside the transaction below, the
+            // instant they're computed — BEFORE the insert that can throw
+            // — so the conflict-recovery catch block outside the
+            // transaction still has them even though the transaction that
+            // set them has since rolled back (round 3 fix below explains
+            // why that recovery cannot run INSIDE that transaction).
+            $conflictLive = null;
+            $conflictKey = null;
 
-                $located = $this->locatePageOccurrence((string) $content['content'], $pageNumber, $oldText);
-                if ($located === null) {
-                    return [
-                        'ok' => false, 'live' => $live, 'reason' => 'old_text_not_found_or_ambiguous',
-                        'exception' => new \InvalidArgumentException("old_text does not occur exactly once on page {$pageNumber} of document {$live->id}."),
-                    ];
-                }
+            try {
+                /** @var array{ok: bool, candidate?: KbTextCorrectionCandidate, live?: KnowledgeDocument, reason?: string, extra?: array<string,mixed>, exception?: \Throwable} $outcome */
+                $outcome = DB::transaction(function () use (
+                    $document, $tenantId, $pageNumber, $oldText, $newText, $rationale, $actor, &$conflictLive, &$conflictKey,
+                ): array {
+                    $live = $this->versions->currentVersionFor($document, lock: true);
+                    $content = $this->versions->contentFor($live);
 
-                $versionHash = (string) $live->version_hash;
-                $key = KbTextCorrectionCandidate::idempotencyKeyFor($tenantId, $actor, (int) $live->id, $versionHash, $pageNumber, $oldText, $newText);
+                    $located = $this->locatePageOccurrence((string) $content['content'], $pageNumber, $oldText);
+                    if ($located === null) {
+                        return [
+                            'ok' => false, 'live' => $live, 'reason' => 'old_text_not_found_or_ambiguous',
+                            'exception' => new \InvalidArgumentException("old_text does not occur exactly once on page {$pageNumber} of document {$live->id}."),
+                        ];
+                    }
 
-                // forTenant() here is defense-in-depth, not the correctness
-                // mechanism: idempotency_key already hashes tenantId in, so
-                // a cross-tenant collision is cryptographically infeasible
-                // — but every query against a tenant-aware table funnels
-                // through forTenant() regardless (R30).
-                $existing = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->first();
-                if ($existing !== null) {
-                    $this->auditProposal($tenantId, $live, $actor, $existing, 'replayed');
+                    $versionHash = (string) $live->version_hash;
+                    $key = KbTextCorrectionCandidate::idempotencyKeyFor($tenantId, $actor, (int) $live->id, $versionHash, $pageNumber, $oldText, $newText);
+                    $conflictLive = $live;
+                    $conflictKey = $key;
 
-                    return ['ok' => true, 'candidate' => $existing];
-                }
+                    // forTenant() here is defense-in-depth, not the
+                    // correctness mechanism: idempotency_key already
+                    // hashes tenantId in, so a cross-tenant collision is
+                    // cryptographically infeasible — but every query
+                    // against a tenant-aware table funnels through
+                    // forTenant() regardless (R30).
+                    $existing = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->first();
+                    if ($existing !== null) {
+                        $this->auditProposal($tenantId, $live, $actor, $existing, 'replayed');
 
-                $limit = max(0, (int) config('kb.review.candidates_per_hour', 60));
-                $limiterKey = "kb-review-candidates:{$tenantId}:{$actor}";
-                if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
-                    return [
-                        'ok' => false, 'live' => $live, 'reason' => 'rate_limited', 'extra' => ['limit_per_hour' => $limit],
-                        'exception' => new KbReviewRateLimitedException($actor, $limit),
-                    ];
-                }
-                if ($limit > 0) {
-                    RateLimiter::hit($limiterKey, 3600);
-                }
+                        return ['ok' => true, 'candidate' => $existing];
+                    }
 
-                try {
+                    $limit = max(0, (int) config('kb.review.candidates_per_hour', 60));
+                    $limiterKey = "kb-review-candidates:{$tenantId}:{$actor}";
+                    if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
+                        return [
+                            'ok' => false, 'live' => $live, 'reason' => 'rate_limited', 'extra' => ['limit_per_hour' => $limit],
+                            'exception' => new KbReviewRateLimitedException($actor, $limit),
+                        ];
+                    }
+                    if ($limit > 0) {
+                        RateLimiter::hit($limiterKey, 3600);
+                    }
+
+                    // No inner try/catch here (round 3 fix): if this
+                    // insert throws a QueryException, it must propagate
+                    // OUT of this transaction so DB::transaction() rolls
+                    // it back — the recovery below runs in a fresh
+                    // statement, never inside this one.
                     $candidate = KbTextCorrectionCandidate::create([
                         'tenant_id' => $tenantId,
                         'knowledge_document_id' => $live->id,
@@ -528,26 +547,38 @@ class KbReviewService
                     $this->auditProposal($tenantId, $live, $actor, $candidate, 'accepted');
 
                     return ['ok' => true, 'candidate' => $candidate];
-                } catch (QueryException $e) {
-                    if (! $this->isIdempotencyKeyConflict($e)) {
-                        throw $e;
-                    }
-                    // A concurrent proposer won the race on the SAME
-                    // idempotency_key — extremely unlikely now that both
-                    // the per-document row lock AND the per-actor
-                    // Cache::lock serialize this whole sequence, but kept
-                    // as defense-in-depth for a degraded/unavailable lock
-                    // store (which falls back to a no-op lock rather than
-                    // failing the request). The loser re-reads the
-                    // winner's row rather than surfacing a uniqueness
-                    // violation, and audits it as a replay (ADR 0031 §6:
-                    // every replayed call is audited).
-                    $winner = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->firstOrFail();
-                    $this->auditProposal($tenantId, $live, $actor, $winner, 'replayed');
-
-                    return ['ok' => true, 'candidate' => $winner];
+                });
+            } catch (QueryException $e) {
+                if (! $this->isIdempotencyKeyConflict($e)) {
+                    throw $e;
                 }
-            });
+                // Copilot PR #496 round 3 — the insert above ran inside
+                // `DB::transaction()`; when its closure throws, Laravel
+                // rolls that transaction back automatically, so by the
+                // time we're here it's already gone. On PostgreSQL,
+                // catching a constraint-violation exception WITHOUT
+                // rolling back first poisons the transaction (every
+                // subsequent statement fails with `25P02` until an
+                // explicit ROLLBACK) — running the winner re-read + its
+                // audit write INSIDE the same (already-caught, would-be-
+                // poisoned) transaction would silently break the exact
+                // "degraded lock store" concurrent-double-call path this
+                // whole mechanism exists to keep safe. Both statements
+                // below run OUTSIDE it, in a clean connection state. A
+                // concurrent proposer won the race on the SAME
+                // idempotency_key — extremely unlikely now that both the
+                // per-document row lock AND the per-actor Cache::lock
+                // serialize this whole sequence, but kept as defense-in-
+                // depth for a degraded/unavailable lock store (which falls
+                // back to a no-op lock rather than failing the request).
+                // The loser re-reads the winner's row rather than
+                // surfacing a uniqueness violation, and audits it as a
+                // replay (ADR 0031 §6: every replayed call is audited).
+                $winner = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $conflictKey)->firstOrFail();
+                $this->auditProposal($tenantId, $conflictLive, $actor, $winner, 'replayed');
+
+                return $winner;
+            }
 
             if (! $outcome['ok']) {
                 $this->auditProposal($tenantId, $outcome['live'], $actor, null, 'denied', array_merge(

@@ -43,7 +43,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
  * {@see KbReviewStatusTool}). A call while `KB_DIGITIZATION_REVIEW_ENABLED`
  * is off answers `{disabled: true, flag: ...}`, never a 500.
  */
-#[Description('Propose a correction to a probable OCR transcription error on one page of a knowledge document. Writes a CANDIDATE only (kb_text_correction_candidates) — never applied to the corpus until a human reviewer approves it via the admin UI. old_text must occur exactly once on the page (ambiguous or absent is refused). Rate-limited per user; tenant-scoped; idempotent (a repeated identical proposal returns the same candidate). Requires super-admin. Answers {disabled: true} when Digitization Review is off.')]
+#[Description('Propose a correction to a probable OCR transcription error on one page of a knowledge document. Writes a CANDIDATE only (kb_text_correction_candidates) — never applied to the corpus until a human reviewer approves it via the admin UI. old_text must occur exactly once on the page (ambiguous or absent is refused). Rate-limited PER TENANT (this MCP connection carries a tenant-scoped token, not a per-user one — every caller in the tenant shares one budget); idempotent (a repeated identical proposal returns the same candidate). Requires super-admin. Answers {disabled: true} when Digitization Review is off.')]
 #[IsIdempotent]
 class KbProposeTextCorrectionTool extends Tool
 {

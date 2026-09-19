@@ -441,18 +441,23 @@ this is the ONLY action that touches the corpus, via
 curl /api/admin/kb/documents/42/corrections?limit=50
 # {"data": [{"id": 7, "page_number": 1, "old_text": "Bod Construction Ltd",
 #            "new_text": "Bob Construction Ltd", "rationale": "...",
-#            "proposed_by": "user:unknown", "created_at": "..."}],
+#            "proposed_by": "mcp:kb-propose-text-correction", "created_at": "..."}],
 #  "meta": {"limit": 50, "offset": 0, "has_more": false}}
 
 curl -X POST /api/admin/kb/corrections/7/approve
 # {"data": {"applied": true, "document_id": 108}}
-# -> a NEW version (id 108) is minted: the corrected text is staged as
-#    its ARTIFACT (never written to the original document's source_path —
-#    that stays the untouched original binary for a PDF/OCR/image doc),
-#    chunked + embedded SYNCHRONOUSLY inside the same DB transaction as
-#    the candidate's status flip (no queued job, no after-commit race),
-#    the prior version is archived, and a kb_canonical_audit row records
-#    it (event_type=updated, before/after carry both document ids).
+# -> a three-phase flow (phase 1 claims the candidate `applied` in its own
+#    transaction; phase 2, OUTSIDE any ambient transaction, mints a NEW
+#    version (id 108) via DocumentIngestor::reembedFromMarkdown() — the
+#    corrected text is staged as its ARTIFACT (conditional on the
+#    document's retention/artifact-store policy: e.g. reference_only can
+#    omit it) and never written to the original document's source_path,
+#    which stays the untouched original binary for a PDF/OCR/image doc —
+#    chunked + embedded SYNCHRONOUSLY inside reembedFromMarkdown()'s OWN
+#    top-level transaction, no queued job, no after-commit race; phase 3,
+#    its own transaction, writes the kb_canonical_audit row
+#    (event_type=updated, before/after carry both document ids)); the
+#    prior version is archived, not deleted.
 
 # Calling approve again on the SAME candidate is a safe no-op (R21) and a
 # genuine CONFLICT — HTTP 409, per ADR 0031 §6:

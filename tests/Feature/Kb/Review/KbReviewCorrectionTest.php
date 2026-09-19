@@ -379,17 +379,24 @@ final class KbReviewCorrectionTest extends TestCase
 
     /**
      * R21 — the check-then-act sequence (existing-check, rate-limit
-     * check-and-hit, insert) is race-protected: a `Cache::lock()`, keyed on
-     * the idempotency key, serializes it (Copilot PR #496 round 1 finding
-     * #7). Not stageable as a true two-thread race in PHPUnit (mirrors
-     * KbReviewCorrectionTest's own R21 precedent for approveCorrection's
-     * lockForUpdate() below, and KbReviewServiceTest's for
-     * setPageReviewStatus()); what IS directly testable, and proves the
-     * fix, is the outcome the lock exists to guarantee: a replay — even
-     * one that races the FIRST insert closely enough that both calls see
-     * the same "before" state if unlocked — costs the actor's rate-limit
-     * budget exactly ONCE, never twice, across N calls with the identical
-     * 7-tuple.
+     * check-and-hit, insert) is race-protected by a per-TENANT+ACTOR
+     * `Cache::lock()` (Copilot PR #496 round 2 finding — round 1's lock,
+     * keyed on the idempotency key, only serialized IDENTICAL proposals; a
+     * per-actor lock covers DIFFERENT concurrent proposals from the same
+     * actor too). Not stageable as a true concurrent/forked race in
+     * PHPUnit (Copilot PR #496 round 3 — mirrors KbReviewCorrectionTest's
+     * own R21 precedent for approveCorrection's lockForUpdate() below, and
+     * KbReviewServiceTest's for setPageReviewStatus()): a genuinely
+     * concurrent test would need real OS-level parallelism (threads/forked
+     * processes racing the SAME lock store and rate limiter), which this
+     * suite's single-process, single-connection SQLite run cannot provide.
+     * What IS directly testable — sequentially, but exercising the SAME
+     * shared-budget invariant the lock protects — is that N calls with the
+     * IDENTICAL 7-tuple (a replay, this test) spend the actor's budget
+     * exactly ONCE, and that a genuinely DIFFERENT proposal from the SAME
+     * actor draws from the SAME remaining budget rather than a separate
+     * one (asserted below, and in
+     * `test_propose_correction_enforces_the_hourly_rate_limit_per_actor`).
      */
     public function test_propose_correction_n_identical_calls_spend_the_rate_limit_budget_exactly_once(): void
     {
