@@ -121,6 +121,39 @@ final class KbReviewControllerTest extends TestCase
             ->assertJsonPath('data.status', 'unreviewed');
     }
 
+    /**
+     * Copilot PR #494 round 11 flagged `->whereNumber(['id', 'page'])` as
+     * only constraining one of the two parameters. That reading doesn't
+     * match Laravel's implementation: `whereNumber($parameters)` maps EVERY
+     * name in the array to the same `[0-9]+` expression via
+     * `assignExpressionToParameters()` (`CreatesRegularExpressionRouteConstraints`),
+     * so both `{id}` and `{page}` are already constrained. This is a
+     * regression lock, not a fix — proves the route rejects a decimal
+     * `{page}` segment (would 404 on route-mismatch, not reach the
+     * controller) so a future accidental narrowing to a single-parameter
+     * `whereNumber('id')` call is caught immediately.
+     */
+    public function test_api_page_status_route_rejects_a_decimal_page_segment(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc();
+        // A full (non-partial) mock throws BadMethodCallException on any
+        // call without an expectation set — proves the 404 below comes
+        // from the ROUTER refusing to match "2.5" against the whereNumber
+        // constraint, not from the controller/service layer. Without this,
+        // a passing 404 would be ambiguous: PHP's weak-typed coercion of
+        // "2.5" into `int $page` truncates to 2 with only a deprecation
+        // notice, so a route that incorrectly matched would still reach
+        // pageReviewStatus(doc, 2) and could ALSO 404 there (the doc has
+        // no recorded page_count), masking the exact regression this test
+        // exists to catch.
+        $this->bind();
+
+        $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/pages/2.5")
+            ->assertNotFound();
+    }
+
     public function test_api_page_status_maps_an_out_of_range_page_to_404(): void
     {
         config(['kb.review.enabled' => true]);

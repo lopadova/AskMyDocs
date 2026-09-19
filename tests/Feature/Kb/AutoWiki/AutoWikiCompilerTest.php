@@ -291,6 +291,43 @@ final class AutoWikiCompilerTest extends TestCase
         $this->assertDatabaseCount('kb_canonical_audit', 1);
     }
 
+    /**
+     * Copilot PR #494 round 11 (must-fix) — save() returns false when a model
+     * event vetoes the write. Before this fix, the ignored return value let
+     * apply()'s transaction still write the 'updated' AutoWiki audit row and
+     * compile() report applied=true, while frontmatter_json/generation_source
+     * stayed untouched on disk. A `saving` listener scoped to THIS document's
+     * id simulates the veto; the whole transaction must roll back, so neither
+     * the enrichment nor its audit row survives, and compile() must surface
+     * the failure through the same best-effort exception envelope as any
+     * other apply()-time exception rather than a false applied:true.
+     */
+    public function test_compile_writes_nothing_when_the_save_is_vetoed(): void
+    {
+        $doc = $this->doc(['is_canonical' => false, 'generation_source' => 'auto']);
+
+        KnowledgeDocument::saving(fn (KnowledgeDocument $model): bool => $model->getKey() !== $doc->id);
+
+        $ai = $this->aiReturning(['tags' => ['cache'], 'summary' => 's', 'aliases' => [], 'cross_references' => []]);
+
+        $thrown = null;
+        try {
+            try {
+                (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+            } catch (\RuntimeException $e) {
+                $thrown = $e;
+            }
+        } finally {
+            \Illuminate\Support\Facades\Event::forget('eloquent.saving: '.KnowledgeDocument::class);
+        }
+
+        $this->assertNotNull($thrown, 'a vetoed save must surface as a thrown exception, not a silent applied:true');
+        $doc->refresh();
+        $this->assertNull($doc->frontmatter_json, 'a vetoed save must leave frontmatter_json untouched');
+        $this->assertSame('auto', $doc->generation_source, 'a vetoed save must leave generation_source untouched');
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
     public function test_model_override_selects_the_configured_provider_and_model(): void
     {
         config(['kb.autowiki.ai_provider' => 'openrouter', 'kb.autowiki.ai_model' => 'qwen/qwen3']);

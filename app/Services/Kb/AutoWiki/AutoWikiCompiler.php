@@ -219,7 +219,16 @@ class AutoWikiCompiler
                 $attributes['evidence_tier'] = $enrichment['evidence_tier'];
             }
 
-            $locked->forceFill($attributes)->save();
+            // Copilot PR #494 round 11 — save() returns false when a model
+            // event vetoes the write. Ignoring that let the transaction fall
+            // through to writing the 'updated' audit row (and compile()
+            // reporting applied=true) while frontmatter_json/generation_source
+            // stayed untouched on disk. Throwing rolls back the whole
+            // transaction (row lock + audit row included), mirroring
+            // WikiExplorerService::promote()'s round-5 fix.
+            if (! $locked->forceFill($attributes)->save()) {
+                throw new \RuntimeException("Failed to persist AutoWiki enrichment for document {$documentId} (tenant {$tenantId}); a model event vetoed the save.");
+            }
 
             if ((bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
