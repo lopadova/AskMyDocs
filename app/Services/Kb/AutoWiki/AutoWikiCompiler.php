@@ -12,6 +12,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Kb\KbSearchService;
 use App\Support\Canonical\EvidenceTier;
 use App\Support\Canonical\GenerationSource;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
 
@@ -127,7 +128,13 @@ class AutoWikiCompiler
             return ['applied' => false, 'reason' => 'empty_enrichment', 'provider' => $response->provider, 'model' => $response->model];
         }
 
-        $this->apply($document, $enrichment, $response->provider, $response->model);
+        if (! $this->apply($document, $enrichment, $response->provider, $response->model)) {
+            // Copilot PR #494 round 10 (must-fix) — apply() lost the race:
+            // a human approved this document while the LLM call above was
+            // in flight. Report it the same way the up-front firewall
+            // check does, rather than claiming a false 'applied' success.
+            return ['applied' => false, 'reason' => 'human_curated', 'provider' => $response->provider, 'model' => $response->model];
+        }
 
         return [
             'applied' => true,
@@ -145,63 +152,96 @@ class AutoWikiCompiler
      * tag-overlap signal can use them is a follow-up increment; v8.11.1 stores
      * them at the document level.)
      *
+     * Copilot PR #494 round 10 (must-fix) — `compile()`'s firewall check
+     * runs BEFORE `resolveProvider()->chat()`, which can take substantial
+     * wall-clock time. A reviewer can approve this exact document (via
+     * `KbReviewService::approve()`) while the LLM call is in flight; the
+     * snapshot `compile()` checked is then stale by the time this method
+     * would write. This method re-locks the row and re-runs the SAME
+     * firewall predicate against its CURRENT state, inside the write
+     * transaction, and aborts (no write, no audit row) if a human has
+     * approved it in the interim — closing the race `compile()`'s
+     * up-front check cannot, by itself, close.
+     *
      * @param  array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>, evidence_tier: ?string}  $enrichment
+     * @return bool  false when the write was aborted because the row is
+     *     now human-approved (canonical, or OCR-origin) — the caller must
+     *     NOT report this as an applied enrichment.
      */
-    private function apply(KnowledgeDocument $document, array $enrichment, string $provider, string $model): void
+    private function apply(KnowledgeDocument $document, array $enrichment, string $provider, string $model): bool
     {
-        $frontmatter = is_array($document->frontmatter_json) ? $document->frontmatter_json : [];
-        // The evidence_tier the LLM derived on the PREVIOUS compile (if any) —
-        // captured before we overwrite the _autowiki block, to tell an auto
-        // value apart from a human override below.
-        $previousAutoTier = $frontmatter['_autowiki']['evidence_tier'] ?? null;
-        $frontmatter['_autowiki'] = [
-            'tags' => $enrichment['tags'],
-            'summary' => $enrichment['summary'],
-            'aliases' => $enrichment['aliases'],
-            'cross_references' => $enrichment['cross_references'],
-            'evidence_tier' => $enrichment['evidence_tier'],
-            'provider' => $provider,
-            'model' => $model,
-            'generated_at' => now()->toIso8601String(),
-            'source_version_hash' => $document->version_hash,
-        ];
+        $tenantId = (string) $document->tenant_id;
+        $documentId = (int) $document->id;
 
-        $attributes = [
-            'frontmatter_json' => $frontmatter,
-            'generation_source' => GenerationSource::Auto->value,
-        ];
-        // P1b firewall — a human override of evidence_tier MUST win over the LLM
-        // guess. The fresh derivation always lands in _autowiki, but the COLUMN
-        // is refreshed only when it is still null (never assessed) or still holds
-        // the previous auto-derived value (i.e. no human has touched it). A
-        // column value that differs from the last auto value was human-set
-        // (via EvidenceTierService) and is preserved.
-        $columnIsHumanSet = $document->evidence_tier !== null
-            && $document->evidence_tier !== $previousAutoTier;
-        if ($enrichment['evidence_tier'] !== null && ! $columnIsHumanSet) {
-            $attributes['evidence_tier'] = $enrichment['evidence_tier'];
-        }
+        return DB::transaction(function () use ($enrichment, $provider, $model, $tenantId, $documentId): bool {
+            /** @var KnowledgeDocument $locked */
+            $locked = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->findOrFail($documentId);
 
-        $document->forceFill($attributes)->save();
+            $isHuman = (string) ($locked->generation_source ?? GenerationSource::Human->value) === GenerationSource::Human->value;
+            $isOcrOrigin = (($locked->metadata['converter']['provenance'] ?? null) === 'ocr');
+            if ($isHuman && ((bool) $locked->is_canonical || $isOcrOrigin)) {
+                return false;
+            }
 
-        if ((bool) config('kb.canonical.audit_enabled', true)) {
-            KbCanonicalAudit::create([
-                // Explicit tenant_id from the document (R30 defense-in-depth):
-                // don't rely on TenantContext being set if the compiler is ever
-                // invoked outside the job or the context drifts.
-                'tenant_id' => (string) $document->tenant_id,
-                'project_key' => (string) $document->project_key,
-                'doc_id' => $document->doc_id,
-                'slug' => $document->slug,
-                'event_type' => 'updated',
-                'actor' => 'system:autowiki',
-                'after_json' => ['_autowiki' => $frontmatter['_autowiki']],
-                'metadata_json' => [
-                    'tags' => $enrichment['tags'],
-                    'cross_reference_count' => count($enrichment['cross_references']),
-                ],
-            ]);
-        }
+            $frontmatter = is_array($locked->frontmatter_json) ? $locked->frontmatter_json : [];
+            // The evidence_tier the LLM derived on the PREVIOUS compile (if any) —
+            // captured before we overwrite the _autowiki block, to tell an auto
+            // value apart from a human override below.
+            $previousAutoTier = $frontmatter['_autowiki']['evidence_tier'] ?? null;
+            $frontmatter['_autowiki'] = [
+                'tags' => $enrichment['tags'],
+                'summary' => $enrichment['summary'],
+                'aliases' => $enrichment['aliases'],
+                'cross_references' => $enrichment['cross_references'],
+                'evidence_tier' => $enrichment['evidence_tier'],
+                'provider' => $provider,
+                'model' => $model,
+                'generated_at' => now()->toIso8601String(),
+                'source_version_hash' => $locked->version_hash,
+            ];
+
+            $attributes = [
+                'frontmatter_json' => $frontmatter,
+                'generation_source' => GenerationSource::Auto->value,
+            ];
+            // P1b firewall — a human override of evidence_tier MUST win over the LLM
+            // guess. The fresh derivation always lands in _autowiki, but the COLUMN
+            // is refreshed only when it is still null (never assessed) or still holds
+            // the previous auto-derived value (i.e. no human has touched it). A
+            // column value that differs from the last auto value was human-set
+            // (via EvidenceTierService) and is preserved.
+            $columnIsHumanSet = $locked->evidence_tier !== null
+                && $locked->evidence_tier !== $previousAutoTier;
+            if ($enrichment['evidence_tier'] !== null && ! $columnIsHumanSet) {
+                $attributes['evidence_tier'] = $enrichment['evidence_tier'];
+            }
+
+            $locked->forceFill($attributes)->save();
+
+            if ((bool) config('kb.canonical.audit_enabled', true)) {
+                KbCanonicalAudit::create([
+                    // Explicit tenant_id from the document (R30 defense-in-depth):
+                    // don't rely on TenantContext being set if the compiler is ever
+                    // invoked outside the job or the context drifts.
+                    'tenant_id' => $tenantId,
+                    'project_key' => (string) $locked->project_key,
+                    'doc_id' => $locked->doc_id,
+                    'slug' => $locked->slug,
+                    'event_type' => 'updated',
+                    'actor' => 'system:autowiki',
+                    'after_json' => ['_autowiki' => $frontmatter['_autowiki']],
+                    'metadata_json' => [
+                        'tags' => $enrichment['tags'],
+                        'cross_reference_count' => count($enrichment['cross_references']),
+                    ],
+                ]);
+            }
+
+            return true;
+        });
     }
 
     /**

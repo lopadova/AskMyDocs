@@ -236,6 +236,61 @@ final class AutoWikiCompilerTest extends TestCase
         $this->assertSame('auto', $doc->fresh()->generation_source);
     }
 
+    /**
+     * Copilot PR #494 round 10 (must-fix) — compile()'s firewall check
+     * runs BEFORE the (potentially slow) LLM call, against a snapshot
+     * that can go stale: a human can approve the exact same document
+     * while that call is in flight. Simulate this by having the mocked
+     * chat() call itself perform "the concurrent approval" — updating
+     * the DB directly and writing its own audit row, bypassing the
+     * in-memory $doc instance entirely, exactly like the round-9
+     * WikiExplorerService::promote() race test. apply() must re-check
+     * the CURRENT row state inside its own lock and abort rather than
+     * flip the now-human row back to 'auto'.
+     */
+    public function test_aborts_the_write_when_a_human_approves_while_the_llm_call_is_in_flight(): void
+    {
+        $doc = $this->doc([
+            'is_canonical' => false,
+            'generation_source' => 'auto',
+            'metadata' => ['converter' => ['provenance' => 'ocr']],
+        ]);
+
+        $provider = Mockery::mock(AiProviderInterface::class);
+        $provider->shouldReceive('chat')->once()->andReturnUsing(function () use ($doc): AiResponse {
+            \Illuminate\Support\Facades\DB::table('knowledge_documents')
+                ->where('id', $doc->id)
+                ->update(['generation_source' => 'human']);
+            \App\Models\KbCanonicalAudit::create([
+                'tenant_id' => 'default',
+                'project_key' => (string) $doc->project_key,
+                'doc_id' => $doc->doc_id,
+                'slug' => $doc->slug,
+                'event_type' => 'promoted',
+                'actor' => 'user:2',
+                'before_json' => ['generation_source' => 'auto'],
+                'after_json' => ['generation_source' => 'human'],
+                'metadata_json' => ['source' => 'concurrent_approval_during_llm_call'],
+            ]);
+
+            return new AiResponse(
+                content: (string) json_encode(['tags' => ['cache'], 'summary' => 's', 'aliases' => [], 'cross_references' => []]),
+                provider: 'fake',
+                model: 'fake-x',
+            );
+        });
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('provider')->with(null)->andReturn($provider);
+
+        $result = (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+
+        $this->assertFalse($result['applied'], 'a human approval that lands during the LLM call must not be undone');
+        $this->assertSame('human_curated', $result['reason']);
+        $this->assertSame('human', $doc->fresh()->generation_source, 'the concurrent approval must survive apply()');
+        // exactly the concurrent approval's audit row — no autowiki 'updated' row
+        $this->assertDatabaseCount('kb_canonical_audit', 1);
+    }
+
     public function test_model_override_selects_the_configured_provider_and_model(): void
     {
         config(['kb.autowiki.ai_provider' => 'openrouter', 'kb.autowiki.ai_model' => 'qwen/qwen3']);
