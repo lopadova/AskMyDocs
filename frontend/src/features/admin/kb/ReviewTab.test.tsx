@@ -376,4 +376,66 @@ describe('ReviewTab', () => {
 
         expect(correctionsState.lastOffset).toBe(20);
     });
+
+    // Copilot finding on PR #497: switching the selected document must not
+    // carry over the previous document's page cursor / corrections offset.
+    it('resets the page cursor to 1 when the selected document changes', async () => {
+        const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { rerender } = render(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={7} />
+            </QueryClientProvider>,
+        );
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-page-next'));
+        });
+        expect(screen.getByTestId('kb-review-page-number')).toHaveTextContent('Page 2 of 3');
+        expect(pageStatusState.lastRequestedPage).toBe(2);
+
+        rerender(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={8} />
+            </QueryClientProvider>,
+        );
+
+        expect(screen.getByTestId('kb-review-page-number')).toHaveTextContent('Page 1 of 3');
+        expect(pageStatusState.lastRequestedPage).toBe(1);
+    });
+
+    it('resets the corrections offset to 0 when the selected document changes', async () => {
+        correctionsState.data = {
+            data: [
+                {
+                    id: 51,
+                    page_number: 2,
+                    old_text: 'Bod',
+                    new_text: 'Bob',
+                    rationale: null,
+                    proposed_by: 'mcp:kb-propose-text-correction',
+                    created_at: null,
+                },
+            ],
+            meta: { limit: 20, offset: 0, has_more: true },
+        };
+        const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { rerender } = render(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={7} />
+            </QueryClientProvider>,
+        );
+
+        await act(async () => {
+            await userEvent.click(screen.getByTestId('kb-review-corrections-next'));
+        });
+        expect(correctionsState.lastOffset).toBe(20);
+
+        rerender(
+            <QueryClientProvider client={qc}>
+                <ReviewTab documentId={8} />
+            </QueryClientProvider>,
+        );
+
+        expect(correctionsState.lastOffset).toBe(0);
+    });
 });

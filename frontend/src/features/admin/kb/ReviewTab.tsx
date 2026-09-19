@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '../shared/Toast';
 import type { KbCorrectionCandidate } from '../admin.api';
 import {
@@ -169,6 +169,13 @@ function ApprovalSection({
 function PageReviewSection({ documentId, total }: { documentId: number; total: number }) {
     const [page, setPage] = useState(1);
 
+    // Selecting a different document must not carry over the previous
+    // document's page cursor — a stale page can exceed the new
+    // document's total (or land on a doc with none at all).
+    useEffect(() => {
+        setPage(1);
+    }, [documentId]);
+
     if (total === 0) {
         return (
             <section
@@ -320,6 +327,14 @@ function StatusPill({ status }: { status: 'reviewed' | 'unreviewed' }) {
 
 function CorrectionsSection({ documentId }: { documentId: number }) {
     const [offset, setOffset] = useState(0);
+
+    // Same reasoning as PageReviewSection: a stale offset from the
+    // previously selected document must not leak into the new
+    // document's corrections query.
+    useEffect(() => {
+        setOffset(0);
+    }, [documentId]);
+
     const query = useKbCorrections(documentId, CORRECTIONS_PAGE_SIZE, offset);
     const approveMut = useApproveCorrection(documentId);
     const rejectMut = useRejectCorrection(documentId);
