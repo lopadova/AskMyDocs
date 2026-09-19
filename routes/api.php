@@ -691,6 +691,19 @@ Route::middleware([
         Route::post('/kb/documents/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approve'])
             ->whereNumber('id')->name('api.admin.kb.documents.approve');
 
+        // v8.37/W3b (ADR 0031 §6) — the correction-candidate review queue:
+        // list pending candidates for a document, approve or reject one.
+        // Proposing a candidate is MCP-only (KbProposeTextCorrectionTool);
+        // approving/rejecting is HTTP-only (ADR 0031 §8 — no MCP write of
+        // that decision exists). R32 — same admin KB group gate as the
+        // representative `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/documents/{id}/corrections', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'corrections'])
+            ->whereNumber('id')->name('api.admin.kb.documents.corrections');
+        Route::post('/kb/corrections/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approveCorrection'])
+            ->whereNumber('id')->name('api.admin.kb.corrections.approve');
+        Route::post('/kb/corrections/{id}/reject', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'rejectCorrection'])
+            ->whereNumber('id')->name('api.admin.kb.corrections.reject');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

@@ -106,6 +106,29 @@ final class DocumentVersionService
     }
 
     /**
+     * v8.37/W3 (ADR 0031 §6) — the LIVE (most recent) version of `$document`'s
+     * family, full model (every column, unlike {@see versionsFor()}'s bounded
+     * select). `KbReviewService::approveCorrection()` uses this so a
+     * correction candidate proposed against an older version still applies
+     * to whatever the family's newest row is by the time a reviewer approves
+     * it — a candidate's `knowledge_document_id` names the version it was
+     * PROPOSED against, not necessarily the one it must APPLY to. Falls back
+     * to `$document` itself when the family query somehow returns nothing
+     * (the row passed in not yet visible to this connection) rather than a
+     * null a caller would have to guard.
+     */
+    public function currentVersionFor(KnowledgeDocument $document): KnowledgeDocument
+    {
+        $live = $this->familyQuery($document)
+            ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('indexed_at')
+            ->orderByDesc('id')
+            ->first();
+
+        return $live ?? $document;
+    }
+
+    /**
      * The bound on a timeline listing: the caller's positive limit, capped by
      * `kb.versioning.timeline_limit` (a non-positive configured value is the
      * default of 100, never "unbounded").

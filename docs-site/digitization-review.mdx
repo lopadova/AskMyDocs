@@ -53,7 +53,7 @@ serve it while the feature is off. The design rationale is
 |---|---|---|
 | `KB_DIGITIZATION_REVIEW_ENABLED` | `false` | The feature flag above — every mutating entry point and every read surface (R43). |
 | `KB_REVIEW_LOW_CONFIDENCE_THRESHOLD` | `0.70` | The OCR confidence (chunk metadata, W1) below which a span is highlighted in the review UI's heat-map, once it ships (see [Gotchas](#gotchas)). A visual aid only — it never gates approval. |
-| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The per-user rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6). Reserved: the tool itself has not shipped yet, so this knob currently has no effect. |
+| `KB_REVIEW_CANDIDATES_PER_HOUR` | `60` | The per-user rate cap on `KbProposeTextCorrectionTool` (ADR 0031 §6). A replayed (idempotent) proposal never spends this budget — only a genuinely new candidate does. |
 
 ## Theory & background
 
@@ -89,10 +89,15 @@ flowchart TD
         APR[approve]
     end
 
+    PROP[proposeCorrection]
+    APC[approveCorrection]
+    REJ[rejectCorrection]
+
     CLI["kb:review {doc} --page=N --status=reviewed|unreviewed / --approve / --report"] --> core
-    HTTP["PATCH .../pages/{n}/review-status\nGET .../pages/{n}\nGET .../review-summary\nPOST .../approve"] --> core
+    HTTP["PATCH .../pages/{n}/review-status\nGET .../pages/{n}\nGET .../review-summary\nPOST .../approve\nGET .../documents/{id}/corrections\nPOST .../corrections/{id}/approve\nPOST .../corrections/{id}/reject"] --> core
     MCP["KbReviewStatusTool (read-only)"] --> PAGE
     MCP --> SUM
+    MCPW["KbProposeTextCorrectionTool (write, candidate only)"] --> PROP
 
     SET --> ROW[(kb_document_page_reviews\nupsert on tenant+doc+page)]
     PAGE --> ROW
@@ -102,6 +107,13 @@ flowchart TD
     APR -->|"! is_canonical, generation_source=auto"| FLIP["generation_source: auto -> human"]
     PROMOTE --> AUDIT[(kb_canonical_audit\nevent_type=promoted)]
     FLIP --> AUDIT
+
+    PROP --> CAND[(kb_text_correction_candidates\nstatus=pending, UNIQUE idempotency_key)]
+    APC -->|"lockForUpdate, R21"| CAND
+    REJ -->|"lockForUpdate, R21"| CAND
+    APC -->|"old_text still matches CURRENT page"| DISK["Storage::put(source_path)"]
+    DISK --> INGEST[IngestDocumentJob]
+    APC --> AUDIT
 
     RANK[Reranker::canonicalAdjustment] -->|reads| DOC[(knowledge_documents\ngeneration_source)]
 ```
@@ -268,7 +280,32 @@ UNIQUE (tenant_id, knowledge_document_id, page_number)   -- the upsert key
 INDEX  (knowledge_document_id)                            -- cascade-delete scan path
 ```
 
-The R44 tri-surface, all three adapting the same `KbReviewService`:
+```
+kb_text_correction_candidates
+  id                     bigint PK
+  tenant_id              string(50), default 'default', indexed        (R31)
+  knowledge_document_id  bigint FK -> knowledge_documents, cascade delete
+  page_number            int
+  version_hash           string(64) — the version this candidate was validated against
+  old_text               text
+  new_text               text (<= 4000 chars, app-enforced)
+  rationale              string(500) nullable
+  idempotency_key        string(64) — sha256 of the CONCATENATION of the
+                         per-field sha256 digests of (tenant, user,
+                         document, version_hash, page, old, new); hashing
+                         each field first keeps the key injective
+  status                 string: pending | applied | rejected
+  proposed_by            string — the MCP caller's immutable identity
+  consumed_at            nullable timestamp
+  consumed_by            nullable FK -> users (the reviewer who approved/rejected)
+  created_at / updated_at
+
+UNIQUE (idempotency_key)                                  -- the replay/dedup mechanism
+INDEX  (tenant_id, knowledge_document_id, status)          -- the pending queue
+INDEX  (knowledge_document_id)                             -- cascade-delete scan path
+```
+
+The R44 tri-surface, all adapting the same `KbReviewService`:
 
 | Capability | PHP / CLI | HTTP | MCP |
 |---|---|---|---|
@@ -276,12 +313,25 @@ The R44 tri-surface, all three adapting the same `KbReviewService`:
 | Approve a document | `KbReviewService::approve()` | `POST /api/admin/kb/documents/{id}/approve` | — (same exception) |
 | Read a page's status | `kb:review {document} --page={n} --report` | `GET /api/admin/kb/documents/{id}/pages/{n}` | `KbReviewStatusTool` (`page` argument) |
 | Read the document summary | `kb:review {document} --report` | `GET /api/admin/kb/documents/{id}/review-summary` | `KbReviewStatusTool` (no `page`) |
+| Propose a text correction | `KbReviewService::proposeCorrection()` | — (MCP-only, see below) | `KbProposeTextCorrectionTool` (write — a CANDIDATE only) |
+| List pending correction candidates | `KbReviewService`-adjacent read (direct query) | `GET /api/admin/kb/documents/{id}/corrections` | — |
+| Approve a correction candidate | `KbReviewService::approveCorrection()` | `POST /api/admin/kb/corrections/{id}/approve` | — (documented exception, [§8](#no-mcp-write-a-documented-exception)) |
+| Reject a correction candidate | `KbReviewService::rejectCorrection()` | `POST /api/admin/kb/corrections/{id}/reject` | — (same exception) |
 
 `KbReviewStatusTool` answers `{disabled: true, flag:
 'KB_DIGITIZATION_REVIEW_ENABLED'}` rather than a 500 or vanishing from the
 MCP manifest when the feature is off — tool **registration** stays
 flag-independent (the registration test derives the roster from the files in
 `app/Mcp/Tools/`, not from config), only the *behaviour* is gated.
+`KbProposeTextCorrectionTool` follows the identical posture: registration is
+flag-independent, the write itself is gated.
+
+The propose/approve split is deliberately **asymmetric across surfaces**: an
+agent may only ever *propose* a correction (MCP, never HTTP — there is no
+"propose" HTTP endpoint at all), and a human may only ever *approve or
+reject* one (HTTP, never MCP). Neither surface can do the other's half of
+the transaction — the split itself is the enforcement of ADR 0003's
+boundary, not a policy check layered on top of a symmetric capability.
 
 ## Decision rationale (ADR 0031)
 
@@ -289,13 +339,16 @@ flag-independent (the registration test derives the roster from the files in
 
 [R44](https://github.com/lopadova/AskMyDocs) normally requires PHP + HTTP +
 MCP for every capability. Review status and approval are the deliberate
-exception, restated from [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-human-gated-promotion.md)'s
-boundary: an agent may point at a probable transcription error (the
-not-yet-shipped `KbProposeTextCorrectionTool`, ADR 0031 §6-7) but can never
-be the one that marks anything "reviewed" or "approved" — that is a human
-vouching for content the platform did not author. `KbReviewStatusTool` is
-read-only by construction: it has no path to `setPageReviewStatus()` or
-`approve()` at all, not a gate that could be misconfigured open.
+exception, restated from [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s
+boundary: an agent may point at a probable transcription error
+(`KbProposeTextCorrectionTool`, ADR 0031 §6-7) but can never be the one that
+marks anything "reviewed" or "approved" — that is a human vouching for
+content the platform did not author. `KbReviewStatusTool` is read-only by
+construction: it has no path to `setPageReviewStatus()` or `approve()` at
+all, not a gate that could be misconfigured open.
+`KbProposeTextCorrectionTool` mirrors this from the other side — it has no
+path to `approveCorrection()` or `rejectCorrection()` either, only to
+`proposeCorrection()`, which by itself has zero effect on the corpus.
 
 ### Why canonicity branches the approval, not a config flag
 
@@ -368,6 +421,36 @@ curl -X POST /api/admin/kb/documents/42/approve
 # {"data": {"approved": true}}
 ```
 
+An agent, via MCP, points at a probable transcription error on page 1 — this
+writes a CANDIDATE only, zero effect on the corpus:
+
+```json
+// tools/call KbProposeTextCorrectionTool
+{"document_id": 42, "page": 1, "old_text": "Bod Construction Ltd",
+ "new_text": "Bob Construction Ltd", "rationale": "likely OCR misread of a handwritten signature block"}
+// -> {"candidate_id": 7, "document_id": 42, "page_number": 1, "status": "pending", "idempotency_key": "..."}
+```
+
+A human reviewer lists the pending queue and approves it — this is the ONLY
+action that touches the corpus, via `DocumentIngestor`:
+
+```bash
+curl /api/admin/kb/documents/42/corrections
+# {"data": [{"id": 7, "page_number": 1, "old_text": "Bod Construction Ltd",
+#            "new_text": "Bob Construction Ltd", "rationale": "...",
+#            "proposed_by": "user:unknown", "created_at": "..."}]}
+
+curl -X POST /api/admin/kb/corrections/7/approve
+# {"data": {"applied": true}}
+# -> page 1's text is corrected on disk, IngestDocumentJob re-chunks +
+#    re-embeds the WHOLE document (not just page 1 — a full re-ingest,
+#    same as every other correction), a kb_canonical_audit row records it.
+
+# Calling approve again on the same candidate is a safe no-op (R21):
+curl -X POST /api/admin/kb/corrections/7/approve
+# {"data": {"applied": false, "reason": "already_consumed"}}
+```
+
 ## Gotchas
 
 - **The summary/page-status reads are ungated at the service layer, on
@@ -401,10 +484,21 @@ curl -X POST /api/admin/kb/documents/42/approve
   `unreviewed` for `pages/999` on such a document — until Copilot PR #494
   round 5 closed the gap; they now share the same "no page count, no page
   number is valid" posture.
+- **A correction candidate's approval re-validates against the CURRENT
+  version, not the one it was proposed against.** `proposeCorrection()`
+  records `version_hash`, but `approveCorrection()` re-reads the document
+  family's LIVE version and re-checks that `old_text` still occurs exactly
+  once there. If a later edit changed or removed that text in the meantime,
+  approval REJECTS the now-stale candidate (`stale_old_text_not_found_or_ambiguous`)
+  rather than silently applying a correction to text that may no longer
+  mean what the proposer thought — ADR 0031 §6's explicit requirement.
+- **Approving a correction re-ingests the WHOLE document, not just the
+  corrected page.** Same path `KbDocumentController::updateRaw()`'s manual
+  edits take (CLAUDE.md §6's single ingestion execution path) —
+  `EmbeddingCacheService` means pages whose text did not change cost no new
+  provider call, but every chunk is re-derived.
 - **Not yet shipped**: the review UI (original ↔ Markdown side-by-side,
-  confidence heat-map), the agent-proposed text-correction-candidate flow
-  (`KbProposeTextCorrectionTool`, backed by its own `kb_text_correction_candidates`
-  table — the schema exists, the tool and its `SEC-AI-ACT-001` controls do
-  not, yet), and the CER/WER quality metrics. These land in later W3
-  sub-branches before the v8.37 GA tag; this page will be extended, not
-  replaced, when they do.
+  confidence heat-map — propose/approve/reject above are HTTP + MCP only
+  today, with no dedicated frontend), and the CER/WER quality metrics. These
+  land in later W3 sub-branches before the v8.37 GA tag; this page will be
+  extended, not replaced, when they do.

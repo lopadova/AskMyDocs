@@ -12,6 +12,7 @@ use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\FlowRunStatusTool;
 use App\Mcp\Tools\KbDocumentVersionsTool;
 use App\Mcp\Tools\KbOcrStatusTool;
+use App\Mcp\Tools\KbProposeTextCorrectionTool;
 use App\Mcp\Tools\KbReviewStatusTool;
 use App\Mcp\Tools\WidgetIntroConfigTool;
 use App\Mcp\Tools\KbDetokenizeTool;
@@ -210,6 +211,10 @@ class KnowledgeBaseServer extends Server
         // (R44). Read-only by design; no MCP write of review status or
         // approval exists (ADR 0003's boundary, restated for OCR content).
         KbReviewStatusTool::class,
+        // v8.37/W3 / ADR 0031 §6 — the ONE MCP write toward the corpus this
+        // cycle adds, and even it writes only a correction CANDIDATE, never
+        // applied content (full SEC-AI-ACT-001 mutating-tool controls).
+        KbProposeTextCorrectionTool::class,
         // v8.36 / ADR 0030 — Time Machine version list (R44). Read-only, metadata
         // only: the artifact content stays on the role-gated HTTP surface.
         KbDocumentVersionsTool::class,

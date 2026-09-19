@@ -338,4 +338,118 @@ final class KbReviewControllerTest extends TestCase
             ->postJson("/api/admin/kb/documents/{$doc->id}/approve")
             ->assertForbidden();
     }
+
+    // --- v8.37/W3b correction-candidate queue (ADR 0031 §6) --------------
+
+    private function candidate(KnowledgeDocument $doc, array $over = []): \App\Models\KbTextCorrectionCandidate
+    {
+        return \App\Models\KbTextCorrectionCandidate::create(array_merge([
+            'tenant_id' => (string) $doc->tenant_id,
+            'knowledge_document_id' => $doc->id,
+            'page_number' => 1,
+            'version_hash' => $doc->version_hash,
+            'old_text' => 'Bod',
+            'new_text' => 'Bob',
+            'rationale' => 'likely OCR misread',
+            'idempotency_key' => hash('sha256', 'k-'.bin2hex(random_bytes(8))),
+            'status' => \App\Models\KbTextCorrectionCandidate::STATUS_PENDING,
+            'proposed_by' => 'user:1',
+        ], $over));
+    }
+
+    /**
+     * `corrections()` reads `kb_text_correction_candidates` directly (there
+     * is no dedicated KbReviewService read method to mock) — a real DB
+     * scenario, not a mocked one.
+     */
+    public function test_api_corrections_lists_only_pending_candidates_for_the_document(): void
+    {
+        config(['kb.review.enabled' => true]);
+        $doc = $this->doc();
+        $other = $this->doc();
+        $pending = $this->candidate($doc);
+        $this->candidate($doc, ['status' => \App\Models\KbTextCorrectionCandidate::STATUS_APPLIED, 'idempotency_key' => hash('sha256', 'applied')]);
+        $this->candidate($other, ['idempotency_key' => hash('sha256', 'other-doc')]);
+
+        $response = $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections")
+            ->assertOk();
+
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $pending->id);
+        $response->assertJsonPath('data.0.old_text', 'Bod');
+        $response->assertJsonPath('data.0.new_text', 'Bob');
+    }
+
+    public function test_api_corrections_returns_404_when_the_feature_is_disabled(): void
+    {
+        config(['kb.review.enabled' => false]);
+        $doc = $this->doc();
+
+        $this->actingAs($this->admin())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections")
+            ->assertNotFound();
+    }
+
+    public function test_api_approve_correction_delegates_to_the_service(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('approveCorrection')->once()
+            ->with(Mockery::type(\App\Models\KbTextCorrectionCandidate::class), Mockery::type('string'), Mockery::type('int'))
+            ->andReturn(['applied' => true]);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/approve")
+            ->assertOk()
+            ->assertJsonPath('data.applied', true);
+    }
+
+    public function test_api_approve_correction_404_for_unknown_candidate(): void
+    {
+        $this->bind();
+
+        $this->actingAs($this->admin())
+            ->postJson('/api/admin/kb/corrections/999999/approve')
+            ->assertNotFound();
+    }
+
+    public function test_api_reject_correction_delegates_to_the_service(): void
+    {
+        $doc = $this->doc();
+        $candidate = $this->candidate($doc);
+        $mock = $this->bind();
+        $mock->shouldReceive('rejectCorrection')->once()
+            ->with(Mockery::type(\App\Models\KbTextCorrectionCandidate::class), Mockery::type('int'))
+            ->andReturn(['rejected' => true]);
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$candidate->id}/reject")
+            ->assertOk()
+            ->assertJsonPath('data.rejected', true);
+    }
+
+    public function test_api_correction_endpoints_do_not_see_another_tenants_candidate(): void
+    {
+        app(TenantContext::class)->set('other-tenant');
+        $foreignDoc = $this->doc(['tenant_id' => 'other-tenant']);
+        $foreign = $this->candidate($foreignDoc, ['tenant_id' => 'other-tenant']);
+        app(TenantContext::class)->set('test-tenant');
+        $this->bind();
+
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/kb/corrections/{$foreign->id}/approve")
+            ->assertNotFound();
+    }
+
+    public function test_api_corrections_viewer_is_forbidden(): void
+    {
+        $doc = $this->doc();
+
+        $this->actingAs($this->viewer())
+            ->getJson("/api/admin/kb/documents/{$doc->id}/corrections")
+            ->assertForbidden();
+    }
 }

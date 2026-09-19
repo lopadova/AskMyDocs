@@ -5,12 +5,22 @@ declare(strict_types=1);
 namespace App\Services\Kb\Review;
 
 use App\Exceptions\KbReviewDisabledException;
+use App\Exceptions\KbReviewRateLimitedException;
+use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbDocumentPageReview;
+use App\Models\KbTextCorrectionCandidate;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\AutoWiki\WikiExplorerService;
+use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Support\Canonical\GenerationSource;
+use App\Support\Kb\StorageNamespace;
+use App\Support\KbDiskResolver;
+use App\Support\KbPath;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * v8.37/W3 (ADR 0031) — the shared core (R44) behind Digitization Review:
@@ -37,6 +47,7 @@ class KbReviewService
 {
     public function __construct(
         private readonly WikiExplorerService $wikiExplorer,
+        private readonly DocumentVersionService $versions,
     ) {}
 
     /**
@@ -365,6 +376,343 @@ class KbReviewService
 
             return ['approved' => true];
         });
+    }
+
+    /**
+     * ADR 0031 §6 — record an agent-proposed text-correction CANDIDATE.
+     * Never touches `knowledge_documents` or its chunks; writes only to
+     * `kb_text_correction_candidates`. `old_text` must occur EXACTLY once on
+     * the CURRENT live version of `$pageNumber` — zero or multiple
+     * occurrences both refuse (ADR 0031 §6: "ambiguous or absent →
+     * refused, never 'first match'"). `new_text` <= 4000 chars, `rationale`
+     * <= 500 chars (app-enforced, ADR 0031 §7).
+     *
+     * Idempotent via the DB-enforced `idempotency_key`: a replayed call
+     * (identical 7-tuple of tenant/actor/document/version/page/old/new)
+     * returns the SAME existing row, checked BEFORE the rate limiter is
+     * touched — a replay never spends the actor's budget. A genuinely
+     * concurrent double-call is resolved by the `UNIQUE` constraint to
+     * exactly one row: the loser's insert fails and re-reads the winner's.
+     *
+     * @throws \InvalidArgumentException  bad page number, oversize
+     *     new_text/rationale, empty old_text, or old_text not found /
+     *     ambiguous on the page.
+     * @throws KbReviewRateLimitedException  the actor's
+     *     `kb.review.candidates_per_hour` budget is spent (only reached for
+     *     a genuinely NEW candidate, never a replay).
+     */
+    public function proposeCorrection(
+        KnowledgeDocument $document,
+        int $pageNumber,
+        string $oldText,
+        string $newText,
+        ?string $rationale,
+        string $actor,
+    ): KbTextCorrectionCandidate {
+        $this->assertEnabled();
+
+        if ($pageNumber < 1) {
+            throw new \InvalidArgumentException("page_number must be >= 1, got {$pageNumber}.");
+        }
+        if (trim($oldText) === '') {
+            throw new \InvalidArgumentException('old_text must not be empty.');
+        }
+        if (mb_strlen($newText) > 4000) {
+            throw new \InvalidArgumentException('new_text must be at most 4000 characters.');
+        }
+        if ($rationale !== null && mb_strlen($rationale) > 500) {
+            throw new \InvalidArgumentException('rationale must be at most 500 characters.');
+        }
+
+        $tenantId = (string) $document->tenant_id;
+        $live = $this->versions->currentVersionFor($document);
+        $content = $this->versions->contentFor($live);
+
+        $located = $this->locatePageOccurrence((string) $content['content'], $pageNumber, $oldText);
+        if ($located === null) {
+            throw new \InvalidArgumentException("old_text does not occur exactly once on page {$pageNumber} of document {$live->id}.");
+        }
+
+        $versionHash = (string) $live->version_hash;
+        $key = KbTextCorrectionCandidate::idempotencyKeyFor($tenantId, $actor, (int) $live->id, $versionHash, $pageNumber, $oldText, $newText);
+
+        // forTenant() here is defense-in-depth, not the correctness
+        // mechanism: idempotency_key already hashes tenantId in, so a
+        // cross-tenant collision is cryptographically infeasible — but
+        // every query against a tenant-aware table funnels through
+        // forTenant() regardless (R30).
+        $existing = KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $limit = max(0, (int) config('kb.review.candidates_per_hour', 60));
+        $limiterKey = "kb-review-candidates:{$tenantId}:{$actor}";
+        if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
+            throw new KbReviewRateLimitedException($actor, $limit);
+        }
+        if ($limit > 0) {
+            RateLimiter::hit($limiterKey, 3600);
+        }
+
+        try {
+            return KbTextCorrectionCandidate::create([
+                'tenant_id' => $tenantId,
+                'knowledge_document_id' => $live->id,
+                'page_number' => $pageNumber,
+                'version_hash' => $versionHash,
+                'old_text' => $oldText,
+                'new_text' => $newText,
+                'rationale' => $rationale,
+                'idempotency_key' => $key,
+                'status' => KbTextCorrectionCandidate::STATUS_PENDING,
+                'proposed_by' => $actor,
+            ]);
+        } catch (QueryException $e) {
+            if (! $this->isIdempotencyKeyConflict($e)) {
+                throw $e;
+            }
+            // A concurrent proposer won the race on the SAME idempotency_key
+            // between our SELECT above and this INSERT — the loser re-reads
+            // the winner's row rather than surfacing a uniqueness violation
+            // (ADR 0031 §6: "resolved by the unique constraint to exactly
+            // one row").
+            return KbTextCorrectionCandidate::query()->forTenant($tenantId)->where('idempotency_key', $key)->firstOrFail();
+        }
+    }
+
+    /**
+     * ADR 0031 §6 — the reviewer's approval, single-use and atomic (R21).
+     * ONE transaction: `lockForUpdate()`s the candidate row (refusing any
+     * row whose status is no longer `pending`) TOGETHER WITH the document
+     * row, re-validates `old_text` still occurs exactly once on the CURRENT
+     * live version's page (a correction proposed against version N must not
+     * silently apply to version N+1's different text — a stale mismatch
+     * REJECTS the candidate rather than leaving it pending forever), applies
+     * it by writing the corrected Markdown to the same disk path the family
+     * already lives at and queuing `IngestDocumentJob` (the identical
+     * re-ingest path `KbDocumentController::updateRaw()` takes — CLAUDE.md
+     * §6's single ingestion execution path), writes the `kb_canonical_audit`
+     * row, and marks the candidate `applied` + `consumed_at`. Two reviewers
+     * approving the SAME candidate concurrently: the second transaction's
+     * `lockForUpdate()` blocks until the first commits, then sees
+     * `status != 'pending'` and returns `{applied: false, reason:
+     * 'already_consumed'}` — never a duplicate version, never a silent
+     * second no-op.
+     *
+     * The Markdown write to disk happens INSIDE this transaction but is not
+     * itself transactional (no filesystem two-phase commit exists) — a
+     * throw AFTER a successful write but before the transaction commits
+     * leaves the corrected bytes on disk while the candidate stays
+     * `pending`. The write is idempotent (retrying reproduces the same
+     * bytes), so a retried approval self-heals; this is the same residual
+     * risk `KbDocumentController::updateRaw()` already accepts for its own
+     * disk-write-then-audit-then-job sequence.
+     *
+     * @return array{applied: bool, reason?: string}
+     */
+    public function approveCorrection(KbTextCorrectionCandidate $candidate, string $actor, ?int $reviewerUserId): array
+    {
+        $this->assertEnabled();
+
+        $tenantId = (string) $candidate->tenant_id;
+        $candidateId = (int) $candidate->id;
+
+        return DB::transaction(function () use ($tenantId, $candidateId, $actor, $reviewerUserId): array {
+            /** @var KbTextCorrectionCandidate $locked */
+            $locked = KbTextCorrectionCandidate::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->findOrFail($candidateId);
+
+            if ($locked->status !== KbTextCorrectionCandidate::STATUS_PENDING) {
+                return ['applied' => false, 'reason' => 'already_consumed'];
+            }
+
+            /** @var KnowledgeDocument|null $document */
+            $document = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->find($locked->knowledge_document_id);
+
+            if ($document === null) {
+                $locked->forceFill([
+                    'status' => KbTextCorrectionCandidate::STATUS_REJECTED,
+                    'consumed_at' => now(),
+                    'consumed_by' => $reviewerUserId,
+                ])->save();
+
+                return ['applied' => false, 'reason' => 'document_not_found'];
+            }
+
+            $live = $this->versions->currentVersionFor($document);
+            $content = $this->versions->contentFor($live);
+            $markdown = (string) $content['content'];
+
+            $located = $this->locatePageOccurrence($markdown, (int) $locked->page_number, (string) $locked->old_text);
+            if ($located === null) {
+                $locked->forceFill([
+                    'status' => KbTextCorrectionCandidate::STATUS_REJECTED,
+                    'consumed_at' => now(),
+                    'consumed_by' => $reviewerUserId,
+                ])->save();
+
+                return ['applied' => false, 'reason' => 'stale_old_text_not_found_or_ambiguous'];
+            }
+
+            $corrected = substr($markdown, 0, $located['start']).$locked->new_text.substr($markdown, $located['start'] + $located['length']);
+
+            $sourcePath = KbPath::normalize((string) $live->source_path);
+            $metadata = is_array($live->metadata) ? $live->metadata : [];
+            $disk = StorageNamespace::recordedDisk($metadata) ?? KbDiskResolver::forProject($live->project_key);
+            $prefix = trim(StorageNamespace::recordedPrefix($metadata), '/');
+            $fullPath = $prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath;
+
+            if (Storage::disk($disk)->put($fullPath, $corrected) === false) {
+                // R4/R14: a load-bearing write failure must not proceed to
+                // audit + dispatch as though the correction had landed.
+                throw new \RuntimeException("Failed to write corrected markdown for document {$live->id} (candidate {$candidateId}) to disk {$disk}:{$fullPath}.");
+            }
+
+            if ((bool) config('kb.canonical.audit_enabled', true)) {
+                KbCanonicalAudit::create([
+                    'tenant_id' => $tenantId,
+                    'project_key' => (string) $live->project_key,
+                    'doc_id' => $live->doc_id,
+                    'slug' => $live->slug,
+                    'event_type' => 'updated',
+                    'actor' => $actor,
+                    'before_json' => ['version_hash' => $live->version_hash, 'old_text' => $locked->old_text],
+                    'after_json' => ['new_text' => $locked->new_text, 'page_number' => $locked->page_number],
+                    'metadata_json' => ['source' => 'kb_review_correction_candidate', 'candidate_id' => $candidateId],
+                ]);
+            }
+
+            // Single ingestion execution path (CLAUDE.md §6) — the queued
+            // job re-reads from this same disk+prefix combination, chunks,
+            // embeds and refreshes graph edges, exactly like
+            // KbDocumentController::updateRaw()'s manual-edit path.
+            IngestDocumentJob::dispatchForCurrentTenant(
+                projectKey: $live->project_key,
+                relativePath: $sourcePath,
+                disk: $disk,
+                title: $live->title,
+                metadata: $metadata,
+            );
+
+            $locked->forceFill([
+                'status' => KbTextCorrectionCandidate::STATUS_APPLIED,
+                'consumed_at' => now(),
+                'consumed_by' => $reviewerUserId,
+            ])->save();
+
+            return ['applied' => true];
+        });
+    }
+
+    /**
+     * ADR 0031 §6 — a reviewer denies a candidate without applying it.
+     * Single-use and atomic (R21) via the same `lockForUpdate()` shape as
+     * {@see approveCorrection()}; a candidate already consumed (applied or
+     * previously rejected) returns `{rejected: false, reason:
+     * 'already_consumed'}` rather than re-writing `consumed_at`.
+     *
+     * @return array{rejected: bool, reason?: string}
+     */
+    public function rejectCorrection(KbTextCorrectionCandidate $candidate, ?int $reviewerUserId): array
+    {
+        $this->assertEnabled();
+
+        $tenantId = (string) $candidate->tenant_id;
+        $candidateId = (int) $candidate->id;
+
+        return DB::transaction(function () use ($tenantId, $candidateId, $reviewerUserId): array {
+            /** @var KbTextCorrectionCandidate $locked */
+            $locked = KbTextCorrectionCandidate::query()
+                ->forTenant($tenantId)
+                ->lockForUpdate()
+                ->findOrFail($candidateId);
+
+            if ($locked->status !== KbTextCorrectionCandidate::STATUS_PENDING) {
+                return ['rejected' => false, 'reason' => 'already_consumed'];
+            }
+
+            $locked->forceFill([
+                'status' => KbTextCorrectionCandidate::STATUS_REJECTED,
+                'consumed_at' => now(),
+                'consumed_by' => $reviewerUserId,
+            ])->save();
+
+            return ['rejected' => true];
+        });
+    }
+
+    /**
+     * The exact byte offset + length of `$oldText`'s SOLE occurrence within
+     * `$pageNumber`'s section of `$markdown`, split on the `## Page N`
+     * headers {@see \App\Services\Kb\Ocr\OcrService::renderMarkdown()}
+     * writes between pages. Byte offsets throughout (matching `substr()` /
+     * `strpos()`, not `mb_*`) — the same convention the OCR page-splitting
+     * itself uses. Null when the page heading cannot be found, or
+     * `$oldText` occurs zero or more than once within it.
+     *
+     * @return array{start: int, length: int}|null
+     */
+    private function locatePageOccurrence(string $markdown, int $pageNumber, string $oldText): ?array
+    {
+        if ($oldText === '') {
+            return null;
+        }
+        if (preg_match_all('/^## Page (\d+)\s*$/m', $markdown, $matches, PREG_OFFSET_CAPTURE) < 1) {
+            return null;
+        }
+
+        $sectionStart = null;
+        $sectionEnd = strlen($markdown);
+        foreach ($matches[1] as $i => $numberMatch) {
+            if ((int) $numberMatch[0] !== $pageNumber) {
+                continue;
+            }
+            [$headerText, $headerOffset] = $matches[0][$i];
+            $sectionStart = $headerOffset + strlen($headerText);
+            if (isset($matches[0][$i + 1])) {
+                $sectionEnd = $matches[0][$i + 1][1];
+            }
+            break;
+        }
+
+        if ($sectionStart === null) {
+            return null;
+        }
+
+        $section = substr($markdown, $sectionStart, $sectionEnd - $sectionStart);
+
+        $firstPos = strpos($section, $oldText);
+        if ($firstPos === false) {
+            return null;
+        }
+        $secondPos = strpos($section, $oldText, $firstPos + 1);
+        if ($secondPos !== false) {
+            return null;
+        }
+
+        return ['start' => $sectionStart + $firstPos, 'length' => strlen($oldText)];
+    }
+
+    /**
+     * R14: confirm it IS an integrity/unique constraint violation via
+     * SQLSTATE before inspecting the message (mirrors
+     * DocumentVersionService::isCanonicalIdentityConflict()'s reasoning).
+     * SQLSTATE 23505 = Postgres unique; 23000 = MySQL/SQLite integrity.
+     */
+    private function isIdempotencyKeyConflict(QueryException $e): bool
+    {
+        if (! in_array($e->errorInfo[0] ?? '', ['23000', '23505'], true)) {
+            return false;
+        }
+
+        return str_contains($e->getMessage(), 'uq_kb_correction_candidates_idempotency_key')
+            || str_contains($e->getMessage(), 'kb_text_correction_candidates.idempotency_key');
     }
 
     private function assertEnabled(): void
