@@ -418,12 +418,20 @@ function CorrectionsSection({ documentId }: { documentId: number }) {
     }
 
     const { data, meta } = query.data;
+    // Copilot review PR #497 (pullrequestreview-5257577664, discussion_r4054642099) —
+    // this section hardcoded aria-busy="false" even while the corrections query was
+    // refetching after invalidation, or an approve/reject mutation was in flight.
+    // Buttons disable in that state (CorrectionRow's isBusy prop), but nothing
+    // observable on the section itself let assistive tech or Playwright detect it —
+    // unlike PageReviewSection's nav, which already derives aria-busy from its own
+    // query + mutation pending state.
+    const correctionsBusy = query.isFetching || approveMut.isPending || rejectMut.isPending;
 
     return (
         <section
             data-testid="kb-review-corrections"
             data-state={data.length === 0 ? 'empty' : 'ready'}
-            aria-busy="false"
+            aria-busy={correctionsBusy}
             style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
         >
             <h4 style={{ margin: 0, fontSize: 13, color: 'var(--fg-1)' }}>Pending correction candidates</h4>

@@ -63,6 +63,7 @@ type CorrectionsState = {
     data: { data: CorrectionCandidate[]; meta: { limit: number; offset: number; has_more: boolean } } | undefined;
     isLoading: boolean;
     isError: boolean;
+    isFetching: boolean;
     lastOffset: number | null;
 };
 
@@ -83,6 +84,7 @@ const correctionsState: CorrectionsState = {
     },
     isLoading: false,
     isError: false,
+    isFetching: false,
     lastOffset: null,
 };
 
@@ -132,6 +134,7 @@ vi.mock('./kb-review.api', () => ({
             data: correctionsState.data,
             isLoading: correctionsState.isLoading,
             isError: correctionsState.isError,
+            isFetching: correctionsState.isFetching,
         };
     },
     useApproveCorrection: () => approveCorrectionMutation,
@@ -185,6 +188,7 @@ beforeEach(() => {
     correctionsState.lastOffset = null;
     correctionsState.isLoading = false;
     correctionsState.isError = false;
+    correctionsState.isFetching = false;
     approveCorrectionMutation.isPending = false;
     rejectCorrectionMutation.isPending = false;
 });
@@ -415,6 +419,29 @@ describe('ReviewTab', () => {
         // kb-review container's state.
         expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('data-state', 'ready');
         expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('aria-busy', 'false');
+    });
+
+    // Copilot review PR #497 (pullrequestreview-5257577664, discussion_r4054642099) —
+    // kb-review-corrections hardcoded aria-busy="false" even while the query was
+    // refetching after invalidation or an approve/reject mutation was in flight.
+    // Buttons disabled but nothing on the section itself was observable (R11).
+    it('exposes aria-busy=true on the corrections section while the query is refetching', () => {
+        correctionsState.isFetching = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('data-state', 'ready');
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('exposes aria-busy=true on the corrections section while an approve mutation is pending', () => {
+        approveCorrectionMutation.isPending = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('exposes aria-busy=true on the corrections section while a reject mutation is pending', () => {
+        rejectCorrectionMutation.isPending = true;
+        wrap(<ReviewTab documentId={7} />);
+        expect(screen.getByTestId('kb-review-corrections')).toHaveAttribute('aria-busy', 'true');
     });
 
     it('renders the empty state when there are no pending candidates', () => {
