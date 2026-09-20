@@ -14,8 +14,10 @@ import { UploadModal } from './upload/UploadModal';
  * G1 shipped the tree + placeholder. G2 replaced the placeholder with
  * the full DocumentDetail pane (Preview / Meta / History) plus header
  * actions (Download / Print / Restore / Delete / Force delete). G3
- * added the Source tab (CodeMirror editor + PATCH /raw save pipeline),
- * so `VALID_TABS` now covers `preview / source / meta / history`.
+ * added the Source tab (CodeMirror editor + PATCH /raw save pipeline).
+ * A later PR added the canonical Graph tab, and v8.37/W3c added the
+ * Digitization Review tab, so `VALID_TABS` now covers
+ * `preview / source / meta / history / graph / review`.
  *
  * Selection + tab state persist in the URL via `doc` and `tab` search
  * params so operators can deep-link to a specific view. We parse the
@@ -28,7 +30,7 @@ import { UploadModal } from './upload/UploadModal';
  * 500 errors as toasts.
  */
 
-const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history', 'graph'];
+const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history', 'graph', 'review'];
 
 function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
     if (typeof window === 'undefined') {
@@ -114,6 +116,18 @@ export function KbView() {
     function handleDeleted() {
         // Force the tree to refetch so the deleted row disappears (or
         // flips to trashed badge when with_trashed is on).
+        treeQuery.refetch();
+    }
+
+    // Copilot review PR #497 (pullrequestreview-5257901128) — an applied
+    // correction candidate can mint a NEW document version; ReviewTab
+    // forwards its id here via DocumentDetail. Switching selection also
+    // updates the `doc` URL param through the existing syncUrl effect
+    // below (keyed on selectedDocId), so a deep-link to this document
+    // now points at the live version too. Mirrors handleDeleted's tree
+    // refetch so the tree reflects the version swap as well.
+    function handleDocumentReplaced(nextDocumentId: number) {
+        setSelectedDocId(nextDocumentId);
         treeQuery.refetch();
     }
 
@@ -283,6 +297,7 @@ export function KbView() {
                                 activeTab={activeTab}
                                 onTabChange={setActiveTab}
                                 onDeleted={handleDeleted}
+                                onDocumentReplaced={handleDocumentReplaced}
                             />
                         )}
                     </div>

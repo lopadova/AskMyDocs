@@ -12,6 +12,7 @@ import { SourceTab } from './SourceTab';
 import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
 import { GraphTab } from './GraphTab';
+import { ReviewTab } from './ReviewTab';
 import { useToast } from '../shared/Toast';
 
 /*
@@ -29,7 +30,7 @@ import { useToast } from '../shared/Toast';
  * for Playwright.
  */
 
-export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history' | 'graph';
+export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history' | 'graph' | 'review';
 
 export interface DocumentDetailProps {
     documentId: number;
@@ -37,10 +38,17 @@ export interface DocumentDetailProps {
     onTabChange: (next: KbDetailTab) => void;
     /** Called after a successful destructive op (delete / force-delete). */
     onDeleted?: () => void;
+    /**
+     * Copilot review PR #497 (pullrequestreview-5257901128) — forwarded to
+     * ReviewTab so an applied correction that mints a new document version
+     * can switch the active selection to it instead of leaving the operator
+     * on the now-archived doc. See ReviewTabProps.onDocumentReplaced.
+     */
+    onDocumentReplaced?: (nextDocumentId: number) => void;
 }
 
 export function DocumentDetail(props: DocumentDetailProps) {
-    const { documentId, activeTab, onTabChange, onDeleted } = props;
+    const { documentId, activeTab, onTabChange, onDeleted, onDocumentReplaced } = props;
 
     const query = useKbDocument(documentId);
     const restoreMut = useRestoreKbDocument();
@@ -186,6 +194,9 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
                 {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
                 {activeTab === 'graph' ? <GraphTab documentId={doc.id} /> : null}
+                {activeTab === 'review' ? (
+                    <ReviewTab documentId={doc.id} onDocumentReplaced={onDocumentReplaced} />
+                ) : null}
             </div>
 
             {confirm !== null ? (
@@ -334,6 +345,7 @@ function TabStrip({
         { key: 'meta', label: 'Meta' },
         { key: 'history', label: 'History' },
         { key: 'graph', label: 'Graph' },
+        { key: 'review', label: 'Review' },
     ];
     return (
         <div

@@ -106,6 +106,46 @@ final class DocumentVersionService
     }
 
     /**
+     * v8.37/W3 (ADR 0031 §6) — the LIVE (most recent) version of `$document`'s
+     * family, full model (every column, unlike {@see versionsFor()}'s bounded
+     * select). `KbReviewService::approveCorrection()` uses this so a
+     * correction candidate proposed against an older version still applies
+     * to whatever the family's newest row is by the time a reviewer approves
+     * it — a candidate's `knowledge_document_id` names the version it was
+     * PROPOSED against, not necessarily the one it must APPLY to. Filters
+     * `status = 'active'`: the ingest archiving sweep
+     * ({@see \App\Services\Kb\DocumentIngestor}) guarantees exactly one
+     * active row per `(tenant, project_key, source_path)` family regardless
+     * of restore-vs-ingest ordering, but a Time Machine restore can leave an
+     * ARCHIVED row with a newer `indexed_at` than the active one — ordering
+     * by `indexed_at` alone (without the status filter) can therefore pick a
+     * row that is no longer live. Falls back to `$document` itself when the
+     * family query somehow returns nothing (the row passed in not yet
+     * visible to this connection, or genuinely no active row in the family)
+     * rather than a null a caller would have to guard.
+     *
+     * `$lock` runs the read under `lockForUpdate()` — callers that resolve
+     * the live row in order to WRITE to it (approve/reject a correction
+     * candidate) must lock it in the SAME query that reads it, inside the
+     * SAME transaction, so a concurrent re-ingest cannot archive this exact
+     * row between the read and the write (R21).
+     */
+    public function currentVersionFor(KnowledgeDocument $document, bool $lock = false): KnowledgeDocument
+    {
+        $query = $this->familyQuery($document)
+            ->where('status', 'active')
+            ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('indexed_at')
+            ->orderByDesc('id');
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first() ?? $document;
+    }
+
+    /**
      * The bound on a timeline listing: the caller's positive limit, capped by
      * `kb.versioning.timeline_limit` (a non-positive configured value is the
      * default of 100, never "unbounded").

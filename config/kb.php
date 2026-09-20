@@ -625,6 +625,33 @@ return [
         ],
     ],
 
+    // v8.37/W3 — Digitization Review (ADR 0031). Default OFF (R43): the flag
+    // gates the review HTTP surface + FE routes with a clean 404 and gates
+    // KbReviewService's mutating entry points with a KbReviewDisabledException
+    // (never a silent no-op) — MCP tool REGISTRATION stays flag-independent
+    // per ADR 0031 §1 (KnowledgeBaseServerRegistrationTest derives the roster
+    // from files in app/Mcp/Tools/, not from config), so a disabled tool call
+    // answers {disabled: true, flag: ...} rather than vanishing from the
+    // manifest.
+    'review' => [
+        'enabled' => filter_var(env('KB_DIGITIZATION_REVIEW_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Confidence heat-map threshold (ADR 0031 §3) — a span whose
+        // ocr_confidence (chunk metadata, W1) falls under this is highlighted
+        // in the review UI. A visual aid only; nothing here gates approval.
+        'low_confidence_threshold' => (float) env('KB_REVIEW_LOW_CONFIDENCE_THRESHOLD', 0.70),
+        // Rate cap on KbProposeTextCorrectionTool (ADR 0031 §6), shared PER
+        // TENANT: the MCP connection carries a tenant-scoped token, not a
+        // per-user one, so every caller in the tenant spends this budget.
+        'candidates_per_hour' => (int) env('KB_REVIEW_CANDIDATES_PER_HOUR', 60),
+        // R3 — page size cap for GET /api/admin/kb/documents/{id}/corrections.
+        'corrections_page_size' => (int) env('KB_REVIEW_CORRECTIONS_PAGE_SIZE', 50),
+        // v8.37/W3b round 5 (Copilot PR #496, H-B) — a candidate left in
+        // STATUS_APPLYING longer than this is considered stuck (the
+        // approving process crashed between claiming it and completing
+        // phase 2/3), and is picked up by `kb:review-reconcile-stuck-corrections`.
+        'stuck_applying_minutes' => (int) env('KB_REVIEW_STUCK_APPLYING_MINUTES', 15),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Content-gap analytics (v8.8/W4)

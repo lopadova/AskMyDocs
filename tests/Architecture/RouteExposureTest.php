@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Architecture;
 
 use Illuminate\Routing\Route;
+use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -56,26 +57,54 @@ class RouteExposureTest extends TestCase
      * endpoints (mounted only under APP_ENV=testing). Each is a reasoned
      * exception, not an oversight.
      *
-     * @var array<int, string>
+     * Keyed by URI; the value is `'*'` when every mutating method on that
+     * URI is exempt (the common case — one mutating method per URI), or an
+     * explicit method list when only SOME of the URI's mutating methods are
+     * exempt. `mcp/kb` needs the latter: it carries both a real
+     * authenticated POST transport (mcp.scope) AND a spec-mandated,
+     * middleware-less DELETE 405-stub sharing the same URI. A bare
+     * URI-only match (the previous shape) would silently exempt POST too
+     * if `mcp.scope` were ever accidentally dropped from that route —
+     * exactly the gap this test exists to catch (Copilot review PR #497,
+     * pullrequestreview-5256772155).
+     *
+     * @var array<string, string|array<int, string>>
      */
     private const PUBLIC_MUTATING_ROUTES = [
-        'login',
-        'testing/reset',
-        'testing/seed',
-        'api/auth/login',
-        'api/auth/register',
-        'api/auth/forgot-password',
-        'api/auth/reset-password',
-        'api/auth/token',
-        'api/auth/register-token',
-        'api/widget/user-token',
-        'csp-report',
+        'login' => '*',
+        'testing/reset' => '*',
+        'testing/seed' => '*',
+        'api/auth/login' => '*',
+        'api/auth/register' => '*',
+        'api/auth/forgot-password' => '*',
+        'api/auth/reset-password' => '*',
+        'api/auth/token' => '*',
+        'api/auth/register-token' => '*',
+        'api/widget/user-token' => '*',
+        'csp-report' => '*',
+        // v8.37/W3b round 7 — Laravel\Mcp\Server\Registrar::web() registers
+        // a stub DELETE /mcp/kb (spec-mandated 405 "Allow: POST" responder
+        // for the MCP HTTP transport's session-close semantics) with NO
+        // middleware — it touches no data and mutates nothing, it only
+        // ever returns a static 405. ONLY DELETE is exempt here: the real
+        // POST /mcp/kb must always carry mcp.scope (AUTH_EXACT below) and
+        // is never covered by this entry.
+        'mcp/kb' => ['DELETE'],
     ];
 
     protected function defineRoutes($router): void
     {
         require __DIR__.'/../../routes/web.php';
         $router->prefix('api')->middleware('api')->group(__DIR__.'/../../routes/api.php');
+        // v8.37/W3b round 7 — POST /mcp/kb (routes/ai.php) is a real
+        // mutating route and belongs in this inventory. `laravel/mcp`'s
+        // own McpServiceProvider (registered in the parent TestCase's
+        // getEnvironmentSetUp) would normally load it, but under
+        // Testbench its base_path() points at Testbench's own skeleton
+        // app, not this project, so that auto-load silently no-ops here
+        // — same reason Tests\TestCase::defineRoutes() requires it
+        // explicitly. `mcp.scope` is already in AUTH_EXACT below.
+        require __DIR__.'/../../routes/ai.php';
     }
 
     private function routeHasAuth(Route $route): bool
@@ -99,6 +128,27 @@ class RouteExposureTest extends TestCase
         return (bool) array_intersect(['POST', 'PUT', 'PATCH', 'DELETE'], $route->methods());
     }
 
+    /**
+     * Method-aware allow-list lookup: `'*'` exempts every mutating method on
+     * the URI; an explicit method list exempts ONLY those methods, so a
+     * route sharing a URI with an exempt stub (e.g. POST /mcp/kb alongside
+     * the exempt DELETE stub) is never accidentally waved through too.
+     */
+    private function routeIsPubliclyAllowed(Route $route): bool
+    {
+        $allowed = self::PUBLIC_MUTATING_ROUTES[$route->uri()] ?? null;
+        if ($allowed === null) {
+            return false;
+        }
+        if ($allowed === '*') {
+            return true;
+        }
+
+        $mutatingMethods = array_intersect(['POST', 'PUT', 'PATCH', 'DELETE'], $route->methods());
+
+        return array_diff($mutatingMethods, $allowed) === [];
+    }
+
     public function test_every_mutating_route_is_authenticated_or_declared_public(): void
     {
         $offenders = [];
@@ -106,7 +156,7 @@ class RouteExposureTest extends TestCase
             if (! $this->routeIsMutating($route) || $this->routeHasAuth($route)) {
                 continue;
             }
-            if (in_array($route->uri(), self::PUBLIC_MUTATING_ROUTES, true)) {
+            if ($this->routeIsPubliclyAllowed($route)) {
                 continue;
             }
             $offenders[] = implode('|', array_intersect(['POST', 'PUT', 'PATCH', 'DELETE'], $route->methods()))
@@ -119,6 +169,35 @@ class RouteExposureTest extends TestCase
             "Un-authenticated state-changing route(s) that are not on the public allow-list. "
             ."Gate them with auth/role/can/tenant.authorize, or add a reasoned entry to "
             ."RouteExposureTest::PUBLIC_MUTATING_ROUTES:\n".implode("\n", $offenders),
+        );
+    }
+
+    /**
+     * Copilot review PR #497 (pullrequestreview-5256772155) regression: the
+     * previous bare URI-only allow-list (`in_array($route->uri(), [...])`)
+     * would have exempted BOTH methods sharing the `mcp/kb` URI — the real
+     * POST transport included — if `mcp.scope` were ever accidentally
+     * dropped from the POST route. Proves the method-aware lookup tells
+     * the exempt DELETE stub apart from the always-must-be-authenticated
+     * POST route, using real Route objects (not just the current routing
+     * table, which would trivially pass either way as long as POST /mcp/kb
+     * keeps its middleware today).
+     */
+    public function test_public_mutating_routes_allow_list_is_method_aware_not_uri_only(): void
+    {
+        $method = new ReflectionMethod($this, 'routeIsPubliclyAllowed');
+        $method->setAccessible(true);
+
+        $deleteRoute = new Route(['DELETE'], 'mcp/kb', fn () => null);
+        $postRoute = new Route(['POST'], 'mcp/kb', fn () => null);
+
+        $this->assertTrue(
+            $method->invoke($this, $deleteRoute),
+            'the spec-mandated DELETE /mcp/kb 405 stub must stay exempt',
+        );
+        $this->assertFalse(
+            $method->invoke($this, $postRoute),
+            'POST /mcp/kb must NEVER be exempted by URI alone — it must carry mcp.scope',
         );
     }
 

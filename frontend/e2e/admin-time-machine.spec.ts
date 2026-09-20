@@ -69,7 +69,18 @@ test.describe('Admin Time Machine', () => {
         await expect(timeline).toBeVisible({ timeout: 15_000 });
 
         const rows = page.locator('[data-testid^="kb-time-machine-version-"][data-version-status]');
-        await expect(rows.nth(1)).toBeVisible();
+        // CI failure on PR #497 (shard 2/4, run 35479693986): this locator used
+        // the default 5s expect timeout while every other assertion for a
+        // real async operation in this same test (timeline load, diff
+        // render) already uses 15s. Under CI's 4-way parallel shard matrix
+        // (workers: 1, so no intra-shard contention, but real CPU/IO
+        // pressure across the 4 concurrent runner jobs), the second version
+        // row occasionally rendered just past 5s — failed identically on
+        // both the initial attempt and the configured CI retry (retries: 1),
+        // unrelated to this PR's diff (Review tab / routes/index.tsx).
+        // Aligning the timeout removes the inconsistency rather than papering
+        // over a real bug: nothing else in this test treats 5s as sufficient.
+        await expect(rows.nth(1)).toBeVisible({ timeout: 15_000 });
         expect(await rows.count()).toBeGreaterThanOrEqual(2);
 
         // v8.36 / ADR 0030 — every real row carries the version provenance

@@ -674,6 +674,36 @@ Route::middleware([
         Route::post('/kb/documents/{id}/wiki-discard', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'discard'])
             ->whereNumber('id')->name('api.admin.kb.documents.wiki-discard');
 
+        // v8.37/W3 (ADR 0031 §2/§4/§9) — Digitization Review: read a
+        // document's page-review summary or a single page's status, set a
+        // page's review status, approve a document (auto -> human). Paths
+        // match ADR 0031 §9's documented HTTP contract table exactly
+        // (Copilot PR #494 round 4 flagged `/review-approve` diverging from
+        // the ADR's `/approve`, and the missing per-page GET). R32 — same
+        // admin KB group gate as the representative
+        // `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/documents/{id}/review-summary', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'summary'])
+            ->whereNumber('id')->name('api.admin.kb.documents.review-summary');
+        Route::get('/kb/documents/{id}/pages/{page}', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'pageStatus'])
+            ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.status');
+        Route::patch('/kb/documents/{id}/pages/{page}/review-status', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'markPageReviewed'])
+            ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.review-status');
+        Route::post('/kb/documents/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approve'])
+            ->whereNumber('id')->name('api.admin.kb.documents.approve');
+
+        // v8.37/W3b (ADR 0031 §6) — the correction-candidate review queue:
+        // list pending candidates for a document, approve or reject one.
+        // Proposing a candidate is MCP-only (KbProposeTextCorrectionTool);
+        // approving/rejecting is HTTP-only (ADR 0031 §8 — no MCP write of
+        // that decision exists). R32 — same admin KB group gate as the
+        // representative `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/documents/{id}/corrections', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'corrections'])
+            ->whereNumber('id')->name('api.admin.kb.documents.corrections');
+        Route::post('/kb/corrections/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approveCorrection'])
+            ->whereNumber('id')->name('api.admin.kb.corrections.approve');
+        Route::post('/kb/corrections/{id}/reject', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'rejectCorrection'])
+            ->whereNumber('id')->name('api.admin.kb.corrections.reject');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

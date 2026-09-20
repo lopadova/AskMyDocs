@@ -255,31 +255,62 @@ class Reranker
     /**
      * Additive score delta from the canonical layer.
      *
-     *   boost   = +priorityWeight × retrieval_priority       (0..0.30 at default weight)
-     *   penalty = -configured penalty per non-retrievable status
+     *   boost   = +priorityWeight × retrieval_priority       (canonical-only,
+     *             0..0.30 at default weight — a retrieval_priority reads
+     *             meaningless on a non-canonical row)
+     *   penalty = -autoTierPenalty(generation_source)        (canonical rows
+     *             ALWAYS; non-canonical rows ONLY when OCR-originated,
+     *             v8.37/W3 ADR 0031 §5 — see below)
+     *             -statusPenalty(canonical_status)           (canonical-only)
      *
-     * Non-canonical chunks get zero adjustment (delta = 0) so legacy
-     * documents rank identically to pre-canonical behaviour.
+     * `generation_source='auto'` on a non-canonical row is NOT exclusive to
+     * OCR: `AutoWikiCompiler` marks enriched RAW documents `'auto'` too (it
+     * "enriches raw / already-auto documents", per its own docblock, not
+     * only OCR'd scans). Those AutoWiki-enriched rows were NEVER penalized
+     * before v8.37/W3 (the auto-tier penalty only ran past the
+     * `is_canonical` early return, below); ADR 0031 §5's review penalty is
+     * meant to demote unreviewed *OCR text* specifically, not to reverse
+     * established AutoWiki ranking for existing raw content. So the
+     * non-canonical penalty is gated on `ocr_origin` (a derived boolean set
+     * by {@see \App\Services\Kb\KbSearchService}'s query from
+     * `metadata.converter.provenance === 'ocr'`) — the canonical branch is
+     * UNCHANGED: it has always paid the auto-tier penalty regardless of
+     * origin (the pre-v8.37 v8.11 firewall), so canonical AutoWiki wiki
+     * pages keep their established behaviour too.
      *
      * @return array{delta: float, boost: float, penalty: float}
      */
     private function canonicalAdjustment(array $chunk, float $priorityWeight): array
     {
         $doc = $chunk['document'] ?? [];
-        if (! (bool) ($doc['is_canonical'] ?? false)) {
-            return ['delta' => 0.0, 'boost' => 0.0, 'penalty' => 0.0];
-        }
-
-        $priority = (int) ($doc['retrieval_priority'] ?? 50);
-        $boost = $priorityWeight * $priority;
-        $penalty = $this->statusPenalty((string) ($doc['canonical_status'] ?? ''));
+        $isCanonical = (bool) ($doc['is_canonical'] ?? false);
+        $isOcrOrigin = (bool) ($doc['ocr_origin'] ?? false);
 
         // v8.11 Auto-Wiki firewall — an AUTO-tier doc (generation_source='auto')
         // takes a small extra penalty so a human-curated `accepted` doc on the
         // same topic always outranks the auto-compiled one (anti-hallucination
-        // guarantee). Default-`human` rows (every pre-v8.11 doc) get 0 here, so
-        // ranking is byte-identical to pre-v8.11 until an auto doc exists.
-        $penalty += $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'));
+        // guarantee). A row whose generation_source has never been explicitly
+        // set to 'auto' (the column default is 'human') gets 0 here, so
+        // ranking is byte-identical to before this column existed.
+        //
+        // v8.37/W3 (ADR 0031 §5) — the non-canonical arm of this penalty is
+        // scoped to `ocr_origin` (see the method docblock above): an
+        // unreviewed OCR'd scan (`auto`, OCR-originated) pays it, so a
+        // reviewed (`human`) sibling scan always outranks it; a
+        // non-canonical AutoWiki-enriched row (`auto`, NOT OCR-originated)
+        // does not, preserving its pre-v8.37 ranking.
+        $applyAutoPenalty = $isCanonical || $isOcrOrigin;
+        $penalty = $applyAutoPenalty
+            ? $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'))
+            : 0.0;
+
+        if (! $isCanonical) {
+            return ['delta' => -$penalty, 'boost' => 0.0, 'penalty' => $penalty];
+        }
+
+        $priority = (int) ($doc['retrieval_priority'] ?? 50);
+        $boost = $priorityWeight * $priority;
+        $penalty += $this->statusPenalty((string) ($doc['canonical_status'] ?? ''));
 
         return [
             'delta' => $boost - $penalty,
