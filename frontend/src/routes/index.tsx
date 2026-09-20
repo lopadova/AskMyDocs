@@ -680,9 +680,21 @@ const adminRolesRoute = createRoute({
 // chat citation chip is clicked). Declared here so TanStack preserves the
 // query string on navigation; KbView reads it via window.location.search
 // (parseInitialUrl) to open the document on mount.
+//
+// Reproduced via `admin-kb-review.spec.ts` (PR #497 CI, shard 1/4) — this
+// enum drifted from KbView.tsx's own `VALID_TABS`, which already included
+// 'review'. syncUrl() replaces the URL with `?tab=review` on every render
+// while that tab is active; the very next route re-match runs
+// `validateSearch` against the OLD enum, Zod throws, and TanStack
+// Router's CatchBoundary unmounts the entire tree ("Something went
+// wrong!") — so `getByTestId('kb-review')` never appears at all, not even
+// transiently. Not caught by ReviewTab.test.tsx (Vitest never touches the
+// router) or by any earlier Copilot review round (the router schema and
+// KbView.tsx's VALID_TABS are declared in two different files, so no diff
+// hunk showed the two enums side by side).
 const adminKbSearchSchema = z.object({
     doc: z.coerce.number().int().positive().optional(),
-    tab: z.enum(['preview', 'source', 'meta', 'history', 'graph']).optional(),
+    tab: z.enum(['preview', 'source', 'meta', 'history', 'graph', 'review']).optional(),
 });
 
 const adminKbRoute = createRoute({
