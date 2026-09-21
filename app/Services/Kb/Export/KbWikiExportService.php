@@ -31,13 +31,13 @@ use Padosoft\PiiRedactor\RedactorEngine;
  * never filtered after the fact. `AccessScopeScope::apply()` bypasses
  * entirely when `auth()->user()` is null, which is the default in a console
  * process; skipping this step would silently export every document in the
- * project regardless of who asked. This command is a single-shot process
- * that exits when the export finishes, so — unlike the async job ADR 0032
- * §5 describes for the HTTP/MCP path, which a worker can reuse across jobs
- * and therefore MUST reload and clear the principal itself — restoring the
- * pre-export auth state here is defensive housekeeping, not a security
- * boundary; the real worker-reuse protection lands with the queued job in
- * W4b.
+ * project regardless of who asked. `export()` always restores the guard
+ * state via `Auth::forgetGuards()` (ADR 0032 §5, mirrors
+ * `ExecuteAgentRunJob::handle()`'s own "queue workers are long-lived, never
+ * leak one run's principal into the next" discipline) — this is NOT
+ * CLI-only housekeeping: the same service backs the queued export job in
+ * W4b, and a leaked principal on a reused worker is a cross-request ACL
+ * bypass, not merely a correctness bug.
  */
 final class KbWikiExportService
 {
@@ -62,6 +62,7 @@ final class KbWikiExportService
         $previousUser = Auth::guard('web')->user();
 
         $this->tenant->set($tenantId);
+        Auth::forgetGuards();
         Auth::guard('web')->setUser($asUser);
 
         try {
@@ -77,10 +78,16 @@ final class KbWikiExportService
 
             return $this->writeFolder($tenantId, $projectKey, $documents, $outputDir);
         } finally {
-            $this->tenant->set($previousTenant);
+            // `setUser()` cannot accept null, so an unauthenticated "before"
+            // state can only be restored by dropping the resolved guard
+            // entirely — never leave $asUser installed when there was no
+            // previous user (ADR 0032 §5: a leaked principal on a reused
+            // process is a cross-request ACL bypass).
+            Auth::forgetGuards();
             if ($previousUser !== null) {
                 Auth::guard('web')->setUser($previousUser);
             }
+            $this->tenant->set($previousTenant);
         }
     }
 
@@ -99,6 +106,8 @@ final class KbWikiExportService
         Collection $documents,
         string $outputDir,
     ): array {
+        $this->refuseNonEmptyDestination($outputDir);
+
         $wikiDir = $outputDir.'/wiki';
         $rawDir = $outputDir.'/raw';
         $this->ensureDir($outputDir);
@@ -165,11 +174,29 @@ final class KbWikiExportService
         ];
     }
 
+    /**
+     * The document's database id is ALWAYS the leading, hyphen-free
+     * component (`{id}` or `{id}-{slug}`) so no two documents can ever
+     * collide: a non-canonical row falling back to its own numeric id and a
+     * different row whose canonical `slug` happens to equal that same
+     * numeric string would otherwise both resolve to the identical
+     * `wiki/{id}.md` and silently overwrite one another — a real case
+     * (id `12` vs. slug `"12"`), not a hypothetical one.
+     */
     private function fileBaseNameFor(KnowledgeDocument $document): string
     {
-        $candidate = $document->slug ?? $document->doc_id ?? (string) $document->id;
+        $id = (string) $document->id;
+        $candidate = $document->slug ?? $document->doc_id ?? null;
+        if ($candidate === null) {
+            return $id;
+        }
 
-        return Str::slug((string) $candidate) ?: (string) $document->id;
+        $slug = Str::slug((string) $candidate);
+        if ($slug === '' || $slug === $id) {
+            return $id;
+        }
+
+        return $id.'-'.$slug;
     }
 
     /**
@@ -199,9 +226,17 @@ final class KbWikiExportService
         }
         $yaml .= "---\n\n";
 
-        $title = (string) ($document->title ?? $document->source_path ?? "Document {$document->id}");
+        // `contentFor()` (not `rawArtifactFor()`) is the right source here:
+        // `wiki/` is the readable compiled page and may legitimately degrade
+        // to a chunk reconstruction, the same distinction `raw/` (artifact-
+        // or-explicit-gap, never a substitute) draws the opposite way.
+        $body = trim($this->versions->contentFor($document)['content']);
+        if ($body === '') {
+            $title = (string) ($document->title ?? $document->source_path ?? "Document {$document->id}");
+            $body = "# {$title}\n\n_No content available for this document._\n";
+        }
 
-        return $yaml."# {$title}\n\n_Exported page — body populated from the current version's content in W4b; this slice writes frontmatter + title only._\n";
+        return $yaml.$body."\n";
     }
 
     /**
@@ -298,6 +333,30 @@ final class KbWikiExportService
         $engine = app(RedactorEngine::class);
 
         return $engine->redact($text, $strategy);
+    }
+
+    /**
+     * A reused destination can carry documents from a PRIOR export that the
+     * current (possibly narrower) ACL no longer covers: MANIFEST.json would
+     * describe the new, smaller set faithfully while the folder on disk
+     * still held the old, wider one — the delivered folder outliving what
+     * its own manifest claims. Refusing a non-empty destination is the safe
+     * default; an operator who wants to re-export picks an empty directory
+     * (the CLI's own `--output` default is always a fresh timestamped path).
+     */
+    private function refuseNonEmptyDestination(string $outputDir): void
+    {
+        if (! is_dir($outputDir)) {
+            return;
+        }
+        $entries = scandir($outputDir);
+        if ($entries === false) {
+            throw new \RuntimeException("Cannot read export destination: {$outputDir}");
+        }
+        $entries = array_diff($entries, ['.', '..']);
+        if ($entries !== []) {
+            throw new \RuntimeException("Export destination is not empty: {$outputDir}. Choose an empty or non-existent directory.");
+        }
     }
 
     private function ensureDir(string $path): void

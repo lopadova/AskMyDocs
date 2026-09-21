@@ -308,4 +308,86 @@ final class KbWikiExportServiceTest extends TestCase
         $this->assertStringNotContainsString('mario.rossi@example.com', $content);
         $this->assertStringContainsString('[REDACTED]', $content);
     }
+
+    /**
+     * Copilot review finding (PR #503) — setUser() cannot accept null, so
+     * restoring an unauthenticated "before" state requires dropping the
+     * resolved guard entirely, not skipping restoration.
+     */
+    public function test_export_forgets_the_guard_when_there_was_no_previous_user(): void
+    {
+        Auth::forgetGuards();
+        $this->assertNull(Auth::guard('web')->user());
+
+        $this->documentWithArtifact(self::IN_SCOPE, "# Remote work\n\nAllowed on Fridays.\n");
+        $exportingUser = $this->makeUser();
+        $this->membership($exportingUser);
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $exportingUser, $this->outputDir);
+
+        $this->assertNull(
+            Auth::guard('web')->user(),
+            'The export principal must not leak into a process that had no authenticated user before the export.',
+        );
+    }
+
+    /**
+     * Copilot review finding (PR #503) — a reused destination can carry
+     * documents a narrower re-export no longer covers, while MANIFEST.json
+     * faithfully describes only the new, smaller set.
+     */
+    public function test_it_refuses_to_write_into_a_non_empty_destination(): void
+    {
+        $this->documentWithArtifact(self::IN_SCOPE, "# Remote work\n\nAllowed on Fridays.\n");
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        mkdir($this->outputDir, 0755, true);
+        file_put_contents($this->outputDir.'/leftover-from-a-previous-export.txt', 'stale');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/not empty/');
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+    }
+
+    /**
+     * Copilot review finding (PR #503) — a non-canonical document's filename
+     * falls back to its numeric id; a DIFFERENT document with a canonical
+     * slug equal to that same numeric string must not collapse onto it.
+     */
+    public function test_filenames_never_collide_even_when_a_slug_equals_another_documents_id(): void
+    {
+        $docWithoutSlug = $this->documentWithArtifact('runbooks/a.md', "# A\n\nBody A.\n");
+        $this->documentWithArtifact('runbooks/b.md', "# B\n\nBody B.\n", [
+            'slug' => (string) $docWithoutSlug->id,
+        ]);
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        $result = app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+        $this->assertSame(2, $result['document_count']);
+        $wikiFiles = glob($this->outputDir.'/wiki/*.md');
+        $rawFiles = glob($this->outputDir.'/raw/*.md');
+        $this->assertCount(2, $wikiFiles, 'Two documents must never collapse onto the same wiki filename.');
+        $this->assertCount(2, $rawFiles, 'Two documents must never collapse onto the same raw filename.');
+    }
+
+    /**
+     * Copilot review finding (PR #503) — every wiki/*.md previously shipped
+     * frontmatter + a placeholder sentence only, never the document body.
+     */
+    public function test_wiki_page_body_contains_the_documents_actual_content(): void
+    {
+        $doc = $this->documentWithArtifact('runbooks/deploy.md', "# Deploy\n\nStep one. Step two.\n");
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+        $page = (string) file_get_contents($this->outputDir.'/wiki/'.$doc->id.'.md');
+        $this->assertStringContainsString('Step one. Step two.', $page);
+        $this->assertStringNotContainsString('this slice writes frontmatter + title only', $page);
+    }
 }
