@@ -980,6 +980,9 @@ class AppServiceProvider extends ServiceProvider
             // v8.37/W3b round 5 — reconcile correction candidates stuck in
             // `applying` after a crashed approval (ADR 0031 §7, H-B).
             \App\Console\Commands\KbReviewReconcileStuckCorrectionsCommand::class,
+            // v8.38/W4a (ADR 0032) — portable wiki export PHP surface (R44):
+            // ACL+PII-scoped folder build over KbWikiExportService.
+            \App\Console\Commands\KbExportWikiCommand::class,
         ]);
     }
 

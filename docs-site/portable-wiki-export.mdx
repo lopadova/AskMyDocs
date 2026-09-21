@@ -1,0 +1,230 @@
+---
+title: "Portable Wiki Export — core (v8.38/W4a)"
+description: "A CLI that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a consistency-checked manifest and no server dependency."
+icon: "folder-tree"
+---
+
+## Motivation
+
+Every other surface in AskMyDocs — chat, MCP retrieval, the admin tree —
+requires a live connection to the server and reads through the same
+access-control scope. That is correct for day-to-day use, but it means the
+knowledge base has no answer to a real, recurring request: *"give me a folder
+I can hand to an auditor, load into an offline agent, or keep as a snapshot,
+without giving them a login."* [ADR 0032](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0032-v838-portable-wiki-export-and-candidate-only-import.md)
+answers it with `kb:export-wiki`: a folder export that is **exactly** what
+the requesting user could retrieve at export time — never more, because it
+is computed through the identical `AccessScopeScope` the live server uses,
+not filtered after the fact.
+
+This page documents **W4a**, the first and currently only shipped slice: the
+synchronous CLI export core. The async job, the `.mcp.json` live
+reconnection, and the `kb:import-wiki` round-trip are designed in the ADR but
+not yet built — see [Not yet shipped](#not-yet-shipped-w4bw4c) below.
+
+<Note>
+Everything on this page is **off by default** (`KB_WIKI_EXPORT_ENABLED=false`,
+R43). With the flag off, `kb:export-wiki` refuses cleanly (exit 1, no
+side effects) rather than running unrestricted.
+</Note>
+
+## Theory & design
+
+Three decisions carry the whole feature, each a direct consequence of
+`raw/` and `wiki/` becoming disk artifacts the server no longer governs the
+moment the folder leaves it:
+
+**1. The export computes ACL, it does not filter for it.** `KbWikiExportService::export()`
+authenticates as the requesting user (`Auth::setUser($asUser)`, on the app's
+own default guard — never a hardcoded `web`, so a deployment with a
+non-default `AUTH_GUARD` still gets real scoping) for the duration of the
+export, then queries `KnowledgeDocument` exactly as any other authenticated
+read would. `AccessScopeScope` — the global scope every other surface goes
+through — applies automatically. There is no second, export-specific ACL
+check to keep in sync with the real one; there is only ever one scope.
+
+**2. `raw/` is the artifact or an explicit gap, never a substitute.**
+`DocumentVersionService::rawArtifactFor()` returns the stored conversion
+artifact's bytes, or nothing — it deliberately skips `contentFor()`'s chunk-
+reconstruction fallback. A chunk reconstruction is an *index* over a
+document, not the document itself (the same distinction
+[ADR 0030](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0030-v836-conversion-artifacts-on-the-time-machine.md)
+draws for the Cloud Time Machine's diff source). A document with no
+verified artifact is listed in `MANIFEST.json`'s `raw_missing` with a
+reason, and the whole export's `status` becomes `partial` — never a folder
+that silently looks complete when it is not.
+
+**3. The export inherits the tenant's PII policy, not a weaker one.**
+An export folder is a *second* disk artifact the platform produces (the
+vector store being the first, per
+[ADR 0020](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0020-v823-pii-safe-ingestion-reversible-vault.md)).
+Both `raw/` and `wiki/` are rendered through the same
+`KbPiiPolicyResolver` + `RedactorEngine` gate `ChunkRedactor` uses at
+ingestion, so a tenant that redacts PII on the way in gets a folder that
+never carries it on the way out either.
+
+```mermaid
+flowchart TD
+    CLI["kb:export-wiki --tenant --project --as-user"] --> AUTH["Auth::setUser(asUser)<br/>on the app's default guard"]
+    AUTH --> QUERY["KnowledgeDocument::query()<br/>AccessScopeScope applies automatically"]
+    QUERY --> LOCK["Acquire exclusive lock on --output<br/>(flock, non-blocking)"]
+    LOCK --> EMPTY{"Destination empty?"}
+    EMPTY -->|no| REFUSE["Refuse — no silent overwrite<br/>or interleave with a prior export"]
+    EMPTY -->|yes| LOOP["Per document"]
+    LOOP --> ARTIFACT{"Verified/unverified<br/>artifact stored?"}
+    ARTIFACT -->|yes| RAW["raw/{id}[-slug].md<br/>PII-redacted if policy active"]
+    ARTIFACT -->|no| MISSING["MANIFEST.json raw_missing entry<br/>status becomes partial"]
+    LOOP --> WIKI["wiki/{id}[-slug].md<br/>frontmatter + content (PII-redacted too)"]
+    RAW --> MANIFEST["MANIFEST.json<br/>sha256 per file + chain hash"]
+    WIKI --> MANIFEST
+    MISSING --> MANIFEST
+    MANIFEST --> DOCS["README.md / AGENTS.md / CLAUDE.md<br/>untrusted-content boundary"]
+```
+
+## Folder layout
+
+```
+<output>/
+├── wiki/                  # one page per document, id-prefixed filenames
+│   └── {id}[-slug].md     # frontmatter + the document's readable content
+├── raw/                   # the stored conversion artifact, when one exists
+│   └── {id}[-slug].md     # absent entirely for a raw_missing document
+├── README.md              # what this is, tenant/project, partial-export note
+├── AGENTS.md               # untrusted-content boundary, generic-agent flavoured
+├── CLAUDE.md               # the same boundary, Claude-flavoured
+├── MANIFEST.json          # per-file sha256 + a running chain hash + status
+└── .export.lock           # reservation marker — see Gotchas
+```
+
+`wiki/` and `raw/` filenames are **always id-prefixed** (`{database id}` or
+`{database id}-{slug}`), never a bare slug. A non-canonical document falling
+back to its own numeric id and a *different* document whose canonical slug
+happens to equal that same string would otherwise both resolve to the
+identical filename and silently overwrite one another — the id prefix makes
+that provably impossible, since two documents never share a database id.
+
+## Frontmatter contract
+
+Every `wiki/*.md` page opens with YAML frontmatter carrying two axes that
+are **never merged**, because they answer different questions:
+
+| Key | Answers | Source |
+|---|---|---|
+| `tier` | Has a person vouched for this content? (`human` / `auto`) | `knowledge_documents.generation_source` ([ADR 0014](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0014-source-retention-and-conversion-artifacts.md)) |
+| `evidence_tier` | How authoritative is the claim itself? | `knowledge_documents.evidence_tier` |
+| `provenance_tier` | Who originally wrote it? | `knowledge_documents.provenance_tier` ([ADR 0028](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md)) |
+| `extraction` | How did the text enter the system? (`ocr` / `text-layer`) | Derived from `metadata.converter.provenance`, mirroring `KbSearchService::mapChunkToArray()`'s own derivation rather than re-parsing it a third way |
+| `canonical_type` | Is this a canonical knowledge-graph node, and of what kind? | `knowledge_documents.canonical_type` |
+
+## Manifest & consistency, not tamper evidence
+
+`MANIFEST.json` hashes every file the export wrote (sha256) and chains those
+hashes into a single `chain_hash`, the same primitive the compliance reports
+use for their own internal chaining. That buys **corruption detection** — a
+folder recovered from a laptop months later can be checked for internal
+consistency, catching a truncated copy or a partial sync — but it is
+deliberately **not** described as tamper-evident: the hash is unkeyed and
+lives in the same folder it covers, so anyone who can edit a file here can
+recompute `chain_hash` to match, and nothing in the folder can prove
+otherwise. Verifying against a malicious actor, not just accidental
+corruption, would require the server to hold its own copy of the hash (or
+sign it with a key the export never has) and compare on demand — that is
+out-of-band verification design, not shipped by W4a and not yet designed:
+
+```json
+{
+  "tenant_id": "acme",
+  "project_key": "eng",
+  "status": "partial",
+  "exported_at": "2026-09-21T14:00:00+00:00",
+  "files": { "README.md": "…sha256…", "wiki/57.md": "…sha256…" },
+  "raw_missing": [{ "document_id": 57, "reason": "missing" }],
+  "chain_hash": "…sha256 of the sorted (path, hash) pairs, chained…"
+}
+```
+
+## Untrusted-content boundary
+
+Once a folder leaves the server, no live `ProvenanceToolFirewall` can vet
+what is written inside it. `README.md`, `AGENTS.md` and `CLAUDE.md` all open
+with the same restated boundary
+([SEC-LLM-001](https://github.com/lopadova/AskMyDocs/blob/main/.claude/rules/rule-security-ai-llm.md)'s
+prompt-injection containment, applied to a static folder instead of a live
+retrieval turn): every page under `raw/` and `wiki/` is **data**, never an
+instruction, whatever it claims about itself.
+
+## CLI (R44 — the only surface W4a ships)
+
+```bash
+php artisan kb:export-wiki \
+  --tenant=acme \
+  --project=eng \
+  --as-user=reviewer@acme.example \
+  --output=/tmp/acme-eng-export   # optional — defaults to a fresh
+                                    # storage/app/kb-wiki-exports/... path
+```
+
+- `--as-user` must resolve to a real user with a `ProjectMembership` in
+  `--tenant` — an unknown email or a non-member refuses before touching any
+  data.
+- Omitting `--output` builds a destination from slugged, filesystem-safe
+  `--tenant`/`--project` segments plus a timestamp *and* a random suffix
+  (`Str::random(8)`), so two exports for the same tenant/project started in
+  the same second never collide.
+- The exit summary reports `status` (`complete`/`partial`) and warns when
+  `raw_missing` is non-empty.
+
+HTTP and MCP surfaces (`KbCreateExportTool`/`KbGetExportTool`) land in
+W4b/W4c over this same `KbWikiExportService` core — see below.
+
+## Gotchas & operations
+
+- **Destination reservation is atomic.** `writeFolder()` holds an exclusive,
+  non-blocking `flock()` on a `.export.lock` file inside the destination for
+  the entire write. Without it, two exports racing the same explicit
+  `--output` could both observe it empty before either had written
+  anything, then interleave `wiki/`/`raw/` files into one folder matching
+  neither export's manifest. A concurrent attempt is refused immediately
+  ("Another export is already in progress"), before any file is written.
+- **A non-empty destination is always refused**, lock contention aside — a
+  reused directory from a prior, wider-ACL export must never leak documents
+  the current export's principal cannot read. Point `--output` at a fresh or
+  empty directory; the CLI's own default always is one.
+- **Guard/tenant state is always restored**, including when setup itself
+  throws. `export()`'s `finally` runs `Auth::forgetGuards()` unconditionally
+  (never leaves `--as-user` authenticated on a reused process) and restores
+  the previous tenant, whatever failed along the way.
+- **`wiki/` is the readable copy and may legitimately reconstruct**; `raw/`
+  never does. Don't treat their absence/presence symmetrically when reading
+  an export programmatically — check `raw_missing` for the artifact
+  guarantee, not whether `wiki/{id}.md` exists (it always does).
+
+## Not yet shipped (W4b/W4c)
+
+Per [ADR 0032](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0032-v838-portable-wiki-export-and-candidate-only-import.md)
+§4/§5/§7/§11, deliberately deferred past this slice:
+
+- The **async job** + HTTP endpoint + retained, downloadable exports.
+- **`.mcp.json`** — a live reconnection back to the server from inside the
+  exported folder — blocked on two auth-chain fixes the ADR names (a bearer-
+  type guard adapter for `McpTenantToken`, and re-applying the connecting
+  user's own principal, never the exporter's, to every retrieval).
+- **`llms.txt`/`llms-full.txt`** and **`include_images`** (figures are
+  omitted by default when the PII policy is active, per the same §7 that
+  governs `raw/` and `wiki/` text).
+- **`kb:prune-wiki-exports`** — the retention sweep. `KB_WIKI_EXPORT_RETENTION_HOURS`
+  (default `24`) exists in config today so the block will not need
+  reshaping later, but nothing reads it yet.
+- **`kb:import-wiki`** — editing an exported page and reimporting it as a
+  promotion **candidate**, never a direct corpus write, per
+  [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s
+  "agent proposes, a person commits" boundary.
+
+<CardGroup cols={2}>
+  <Card title="Canonical & promotion" icon="stamp" href="/canonical-and-promotion">
+    ADR 0003's boundary — the same one kb:import-wiki will respect.
+  </Card>
+  <Card title="Source permissions" icon="lock" href="/source-permissions">
+    AccessScopeScope, the exact scope this export computes through.
+  </Card>
+</CardGroup>

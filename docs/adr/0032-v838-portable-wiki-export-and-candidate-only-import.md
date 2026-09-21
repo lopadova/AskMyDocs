@@ -248,8 +248,19 @@ MCP tool argument) and recorded in the manifest; a test covers both states.
 
 `MANIFEST.json` hashes every file (sha256) and chains the hashes with the
 same primitive the compliance reports already use (v8.0 W8) — a folder
-found on a laptop months later can be verified against the server's record
-of what it exported, without re-exporting.
+found on a laptop months later can be checked for internal consistency
+without re-exporting.
+
+**Implementation note (W4a review, 2026-09-21):** as shipped, `chain_hash`
+is unkeyed and stored inside the same folder it covers, so it detects
+accidental corruption (a truncated copy, a partial sync) but is NOT
+cryptographic tamper evidence against a malicious actor — anyone editing a
+file in the folder can recompute a matching `chain_hash`. The heading above
+states the original design goal; achieving it for real would need the
+server to hold its own copy of the hash (or sign it with a key the export
+never has) and compare on demand out-of-band. That is not designed and not
+part of W4a — see `docs-site/portable-wiki-export.mdx`'s "Manifest &
+consistency, not tamper evidence" section for the corrected framing.
 
 ### 9. The folder is untrusted content the moment it leaves the server
 
