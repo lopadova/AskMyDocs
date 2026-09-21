@@ -654,6 +654,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Portable wiki export/import (v8.38/W4, ADR 0032)
+    |--------------------------------------------------------------------------
+    |
+    | W4a ships the synchronous core (KbWikiExportService + kb:export-wiki):
+    | flag, ACL-scoped folder build, PII-governed raw/, tamper-evident
+    | manifest. The async job (HTTP), retention sweep, MCP tools, and
+    | kb:import-wiki round-trip are W4b/W4c — this block will grow with them.
+    */
+    'wiki_export' => [
+        'enabled' => filter_var(env('KB_WIKI_EXPORT_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Swept by kb:prune-wiki-exports once the async job (W4b) lands.
+        'retention_hours' => (int) env('KB_WIKI_EXPORT_RETENTION_HOURS', 24),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Content-gap analytics (v8.8/W4)
     |--------------------------------------------------------------------------
     |
