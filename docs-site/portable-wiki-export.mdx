@@ -1,6 +1,6 @@
 ---
 title: "Portable Wiki Export — core (v8.38/W4a)"
-description: "A CLI that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a tamper-evident manifest and no server dependency."
+description: "A CLI that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a consistency-checked manifest and no server dependency."
 icon: "folder-tree"
 ---
 
@@ -116,12 +116,20 @@ are **never merged**, because they answer different questions:
 | `extraction` | How did the text enter the system? (`ocr` / `text-layer`) | Derived from `metadata.converter.provenance`, mirroring `KbSearchService::mapChunkToArray()`'s own derivation rather than re-parsing it a third way |
 | `canonical_type` | Is this a canonical knowledge-graph node, and of what kind? | `knowledge_documents.canonical_type` |
 
-## Manifest & tamper evidence
+## Manifest & consistency, not tamper evidence
 
 `MANIFEST.json` hashes every file the export wrote (sha256) and chains those
-hashes with the same primitive the compliance reports already use — a
-folder recovered from a laptop months later can be checked against the
-server's own record of what it exported, without re-exporting:
+hashes into a single `chain_hash`, the same primitive the compliance reports
+use for their own internal chaining. That buys **corruption detection** — a
+folder recovered from a laptop months later can be checked for internal
+consistency, catching a truncated copy or a partial sync — but it is
+deliberately **not** described as tamper-evident: the hash is unkeyed and
+lives in the same folder it covers, so anyone who can edit a file here can
+recompute `chain_hash` to match, and nothing in the folder can prove
+otherwise. Verifying against a malicious actor, not just accidental
+corruption, would require the server to hold its own copy of the hash (or
+sign it with a key the export never has) and compare on demand — that is
+out-of-band verification design, not shipped by W4a and not yet designed:
 
 ```json
 {

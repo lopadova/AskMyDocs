@@ -10,7 +10,7 @@ use App\Services\Kb\Pii\IngestStrategyResolver;
 use App\Services\Kb\Pii\KbPiiPolicyResolver;
 use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Support\TenantContext;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Padosoft\PiiRedactor\RedactorEngine;
@@ -38,6 +38,18 @@ use Padosoft\PiiRedactor\RedactorEngine;
  * CLI-only housekeeping: the same service backs the queued export job in
  * W4b, and a leaked principal on a reused worker is a cross-request ACL
  * bypass, not merely a correctness bug.
+ *
+ * CALLER CONSTRAINT: `export()`'s `Auth::forgetGuards()` clears EVERY
+ * resolved guard on the process, not only the one it uses — correct for a
+ * CLI invocation or a dedicated queue worker (no other guard is legitimately
+ * in play there, matching `ExecuteAgentRunJob`'s own process shape), wrong
+ * for a call made inline from a live HTTP request that has its own
+ * authenticated guard (e.g. Sanctum) to preserve. ADR 0032 §5's own design
+ * never does that: the HTTP surface (W4b) validates + captures the
+ * principal, then DISPATCHES a queued job — it never calls `export()`
+ * synchronously from within the request's own process. Do not add an
+ * inline HTTP call site without first giving this method per-guard
+ * snapshot/restore (there is no such thing today).
  */
 final class KbWikiExportService
 {
@@ -85,13 +97,16 @@ final class KbWikiExportService
             // applies automatically to this query now that $asUser is the
             // authenticated principal. No manual ACL filtering here — R33's
             // whole point is that the scope, not the caller, is authoritative.
-            $documents = KnowledgeDocument::query()
+            // NOT ->get() here (R3, memory-safe bulk operations): a whole
+            // TENANT PROJECT can be large, and this command's own purpose is
+            // to export all of it — writeFolder() streams the query via
+            // chunkById() instead of materializing every document up front.
+            $query = KnowledgeDocument::query()
                 ->forTenant($tenantId)
                 ->where('project_key', $projectKey)
-                ->where('status', 'active')
-                ->get();
+                ->where('status', 'active');
 
-            return $this->writeFolder($tenantId, $projectKey, $documents, $outputDir);
+            return $this->writeFolder($tenantId, $projectKey, $query, $outputDir);
         } finally {
             // `setUser()` cannot accept null, so an unauthenticated "before"
             // state can only be restored by dropping the resolved guard
@@ -107,7 +122,7 @@ final class KbWikiExportService
     }
 
     /**
-     * @param  Collection<int, KnowledgeDocument>  $documents
+     * @param  Builder<KnowledgeDocument>  $query
      * @return array{
      *     path: string,
      *     status: string,
@@ -118,21 +133,21 @@ final class KbWikiExportService
     private function writeFolder(
         string $tenantId,
         string $projectKey,
-        Collection $documents,
+        Builder $query,
         string $outputDir,
     ): array {
         $this->ensureDir($outputDir);
         $lock = $this->acquireDestinationLock($outputDir);
 
         try {
-            return $this->writeFolderUnderLock($tenantId, $projectKey, $documents, $outputDir);
+            return $this->writeFolderUnderLock($tenantId, $projectKey, $query, $outputDir);
         } finally {
             $this->releaseDestinationLock($lock);
         }
     }
 
     /**
-     * @param  Collection<int, KnowledgeDocument>  $documents
+     * @param  Builder<KnowledgeDocument>  $query
      * @return array{
      *     path: string,
      *     status: string,
@@ -143,7 +158,7 @@ final class KbWikiExportService
     private function writeFolderUnderLock(
         string $tenantId,
         string $projectKey,
-        Collection $documents,
+        Builder $query,
         string $outputDir,
     ): array {
         // The empty-check and every write below run while this call HOLDS
@@ -159,42 +174,57 @@ final class KbWikiExportService
         $this->ensureDir($rawDir);
 
         $policy = $this->resolveRedaction($tenantId, $projectKey);
+        $documentCount = 0;
         $rawMissing = [];
         $files = [];
 
-        foreach ($documents as $document) {
-            $slugOrId = $this->fileBaseNameFor($document);
+        // chunkById(): a whole tenant project can be large, and exporting
+        // "all of it" is this command's own stated purpose (R3, memory-safe
+        // bulk operations) — materializing every document with ->get()
+        // before writing a single file would let a large project exhaust
+        // memory before producing any output (Copilot review finding).
+        $query->chunkById(200, function ($chunk) use (
+            $outputDir,
+            $policy,
+            &$documentCount,
+            &$rawMissing,
+            &$files,
+        ): void {
+            foreach ($chunk as $document) {
+                $documentCount++;
+                $slugOrId = $this->fileBaseNameFor($document);
 
-            $wikiPath = "wiki/{$slugOrId}.md";
-            $wikiContent = $this->buildWikiPage($document, $policy);
-            $this->putFile("{$outputDir}/{$wikiPath}", $wikiContent);
-            $files[$wikiPath] = hash('sha256', $wikiContent);
+                $wikiPath = "wiki/{$slugOrId}.md";
+                $wikiContent = $this->buildWikiPage($document, $policy);
+                $this->putFile("{$outputDir}/{$wikiPath}", $wikiContent);
+                $files[$wikiPath] = hash('sha256', $wikiContent);
 
-            $artifact = $this->versions->rawArtifactFor($document);
-            $isPresent = in_array($artifact['state'], [
-                DocumentVersionService::ARTIFACT_VERIFIED,
-                DocumentVersionService::ARTIFACT_UNVERIFIED,
-            ], true);
+                $artifact = $this->versions->rawArtifactFor($document);
+                $isPresent = in_array($artifact['state'], [
+                    DocumentVersionService::ARTIFACT_VERIFIED,
+                    DocumentVersionService::ARTIFACT_UNVERIFIED,
+                ], true);
 
-            if (! $isPresent) {
-                $rawMissing[] = [
-                    'document_id' => (int) $document->id,
-                    'reason' => $artifact['state'],
-                ];
-                continue;
+                if (! $isPresent) {
+                    $rawMissing[] = [
+                        'document_id' => (int) $document->id,
+                        'reason' => $artifact['state'],
+                    ];
+                    continue;
+                }
+
+                $rawContent = (string) $artifact['content'];
+                if ($policy['redact_enabled']) {
+                    $rawContent = $this->redact($rawContent, $policy['strategy']);
+                }
+
+                $rawPath = "raw/{$slugOrId}.md";
+                $this->putFile("{$outputDir}/{$rawPath}", $rawContent);
+                $files[$rawPath] = hash('sha256', $rawContent);
             }
+        });
 
-            $rawContent = (string) $artifact['content'];
-            if ($policy['redact_enabled']) {
-                $rawContent = $this->redact($rawContent, $policy['strategy']);
-            }
-
-            $rawPath = "raw/{$slugOrId}.md";
-            $this->putFile("{$outputDir}/{$rawPath}", $rawContent);
-            $files[$rawPath] = hash('sha256', $rawContent);
-        }
-
-        $readme = $this->buildReadme($tenantId, $projectKey, $documents->count(), $rawMissing);
+        $readme = $this->buildReadme($tenantId, $projectKey, $documentCount, $rawMissing);
         $this->putFile("{$outputDir}/README.md", $readme);
         $files['README.md'] = hash('sha256', $readme);
 
@@ -213,7 +243,7 @@ final class KbWikiExportService
         return [
             'path' => $outputDir,
             'status' => $status,
-            'document_count' => $documents->count(),
+            'document_count' => $documentCount,
             'raw_missing' => $rawMissing,
         ];
     }
@@ -341,6 +371,18 @@ final class KbWikiExportService
     }
 
     /**
+     * `chain_hash` is a corruption/consistency check, NOT cryptographic
+     * tamper evidence: it is an unkeyed hash of hashes computed and stored
+     * in the SAME folder it covers, so anyone who can edit a file here can
+     * recompute it identically and no verifier can tell the difference. It
+     * catches accidental corruption (a truncated copy, a partial sync) and
+     * lets a script confirm "these files are internally consistent with
+     * each other" — it does NOT prove the folder matches what the server
+     * originally produced against a malicious actor. Real tamper evidence
+     * would need a server-held, out-of-band signature (e.g. the server
+     * keeps its own copy of this hash, or signs it with a key the export
+     * never has); that is not part of W4a and is not designed yet.
+     *
      * @param  array<string, string>  $files  path => sha256
      * @param  list<array{document_id: int, reason: string}>  $rawMissing
      */
