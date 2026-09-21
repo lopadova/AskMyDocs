@@ -658,9 +658,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | W4a ships the synchronous core (KbWikiExportService + kb:export-wiki):
-    | flag, ACL-scoped folder build, PII-governed raw/, tamper-evident
-    | manifest. The async job (HTTP), retention sweep, MCP tools, and
-    | kb:import-wiki round-trip are W4b/W4c — this block will grow with them.
+    | flag, ACL-scoped folder build, PII-governed raw/, and a manifest with
+    | a per-file sha256 + chain hash — a corruption/consistency check, NOT
+    | tamper evidence (the hash is unkeyed and lives in the same folder it
+    | covers; see KbWikiExportService::buildManifest()'s doc comment). The
+    | async job (HTTP), retention sweep, MCP tools, and kb:import-wiki
+    | round-trip are W4b/W4c — this block will grow with them.
     */
     'wiki_export' => [
         'enabled' => filter_var(env('KB_WIKI_EXPORT_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
