@@ -69,11 +69,16 @@ final class KbWikiExportService
         // export every active document in the project, unfiltered.
         $previousUser = Auth::user();
 
-        $this->tenant->set($tenantId);
-        Auth::forgetGuards();
-        Auth::setUser($asUser);
-
         try {
+            // Tenant/guard mutation happens INSIDE the try (not before it):
+            // if Auth::setUser() itself throws — an unusual guard
+            // implementation, a corrupted $asUser — the process must still
+            // reach the finally below rather than being left switched to
+            // the export tenant with its guards forgotten.
+            $this->tenant->set($tenantId);
+            Auth::forgetGuards();
+            Auth::setUser($asUser);
+
             // AccessScopeScope is a global scope on KnowledgeDocument: it
             // applies automatically to this query now that $asUser is the
             // authenticated principal. No manual ACL filtering here — R33's

@@ -84,8 +84,13 @@ final class KbExportWikiCommand extends Command
             // construction: an unsanitized `--project=../../outside` would
             // make the default destination escape kb-wiki-exports/. Slug
             // both segments (falling back to a short hash if slugging
-            // strips everything) rather than concatenating them raw.
-            $output = storage_path('app/kb-wiki-exports/'.$this->safeSegment($tenant).'-'.$this->safeSegment($project).'-'.now()->format('YmdHis'));
+            // strips everything) rather than concatenating them raw. The
+            // trailing random suffix (not just a to-the-second timestamp)
+            // keeps two exports for the same tenant/project started within
+            // the same second from resolving to the same directory and
+            // tripping the "destination is not empty" refusal against each
+            // other.
+            $output = storage_path('app/kb-wiki-exports/'.$this->safeSegment($tenant).'-'.$this->safeSegment($project).'-'.now()->format('YmdHis').'-'.Str::random(8));
         }
 
         $result = $exporter->export($tenant, $project, $user, $output);

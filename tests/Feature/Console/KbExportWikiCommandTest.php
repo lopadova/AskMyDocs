@@ -195,4 +195,42 @@ final class KbExportWikiCommandTest extends TestCase
             }
         }
     }
+
+    /**
+     * Copilot review finding (PR #503, round 3) — the default destination
+     * was timestamped to one-second precision only; two exports for the
+     * same tenant/project within the same second used to resolve to the
+     * identical directory and trip the "destination is not empty" refusal
+     * against each other.
+     */
+    public function test_two_default_destinations_for_the_same_tenant_and_project_never_collide(): void
+    {
+        $user = $this->makeMember('default');
+
+        $root = storage_path('app/kb-wiki-exports');
+        $before = is_dir($root) ? array_diff((array) scandir($root), ['.', '..']) : [];
+
+        try {
+            $this->artisan('kb:export-wiki', [
+                '--tenant' => $this->tenantId,
+                '--project' => 'default',
+                '--as-user' => $user->email,
+            ])->assertSuccessful();
+
+            $this->artisan('kb:export-wiki', [
+                '--tenant' => $this->tenantId,
+                '--project' => 'default',
+                '--as-user' => $user->email,
+            ])->assertSuccessful();
+
+            $after = is_dir($root) ? array_diff((array) scandir($root), ['.', '..']) : [];
+            $created = array_diff($after, $before);
+            $this->assertCount(2, $created, 'Two back-to-back exports for the same tenant/project must not collide on the default destination.');
+        } finally {
+            $after = is_dir($root) ? array_diff((array) scandir($root), ['.', '..']) : [];
+            foreach (array_diff($after, $before) as $entry) {
+                $this->rrmdir($root.'/'.$entry);
+            }
+        }
+    }
 }

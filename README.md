@@ -1073,6 +1073,13 @@ Default **OFF** (`KB_DIGITIZATION_REVIEW_ENABLED=false`, [ADR 0031](docs/adr/003
 
 Docs: [Digitization Review](https://padosoft.mintlify.app/digitization-review).
 
+### Portable Wiki Export — core (v8.38/W4a)
+
+Default **OFF** (`KB_WIKI_EXPORT_ENABLED=false`, [ADR 0032](docs/adr/0032-v838-portable-wiki-export-and-candidate-only-import.md)). This W4a slice ships only the synchronous CLI export core: `kb:export-wiki {--tenant} {--project} {--as-user} {--output}` builds an ACL- and PII-scoped folder (`wiki/`, `raw/`, `README.md`, `AGENTS.md`, `CLAUDE.md`, `MANIFEST.json`) under an operator-chosen directory. The exported set is exactly what `--as-user` may retrieve — computed by authenticating as that user for the export's duration so `AccessScopeScope` (the same global scope every other read surface goes through) applies to the document query itself, never filtered after the fact. `raw/` is the stored conversion artifact or an explicit `raw_missing` manifest entry (never a chunk reconstruction passed off as the original); `wiki/` is the readable compiled page and may legitimately fall back to a reconstruction. Both `raw/` and `wiki/` go through the tenant's PII policy when active — the export inherits the same redaction contract as ingestion, not a weaker one. `MANIFEST.json` hashes every file (sha256) plus a running chain hash so a folder found later can be verified against what the server actually exported.
+
+- **Not yet shipped** (W4b/W4c, ADR 0032 §4/§5/§7/§11): the async job + HTTP endpoint + retained/downloadable exports, `.mcp.json` (pending two MCP auth-chain fixes the ADR calls out), `llms.txt`/`llms-full.txt`, `include_images`, the `kb:prune-wiki-exports` retention sweep (`KB_WIKI_EXPORT_RETENTION_HOURS=24` config key exists, nothing reads it yet), the MCP tools (`KbCreateExportTool`/`KbGetExportTool`), and `kb:import-wiki`'s candidate-only round-trip (ADR 0003 boundary).
+- **Config**: `KB_WIKI_EXPORT_ENABLED` (the CLI's own gate) and `KB_WIKI_EXPORT_RETENTION_HOURS=24` (reserved for the W4b sweep).
+
 Built-in chunkers (v3.0):
 
 - `PdfPageChunker` — handles `pdf` and (v8.36) `image` source-types. Slices on the `## Page N` heading boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` so citations like "see page N of foo.pdf" map 1:1 to a single chunk row. Pages exceeding `KB_CHUNK_HARD_CAP_TOKENS` are split intra-page on `\n\n` paragraph boundaries; all pieces of the same page share the same `heading_path` so page-level citations still resolve cleanly.

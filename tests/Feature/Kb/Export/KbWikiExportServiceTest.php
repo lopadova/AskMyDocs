@@ -445,4 +445,37 @@ final class KbWikiExportServiceTest extends TestCase
             Auth::forgetGuards();
         }
     }
+
+    /**
+     * Copilot review finding (PR #503, round 3) — tenant/guard mutation used
+     * to happen BEFORE the try block, so an exception during setup itself
+     * would skip the finally entirely. Moved inside the try; this proves
+     * the general contract — any failure during export(), wherever it
+     * originates, still leaves tenant/guard state restored.
+     */
+    public function test_tenant_and_guard_state_are_restored_when_the_export_itself_fails(): void
+    {
+        $this->documentWithArtifact(self::IN_SCOPE, "# Remote work\n\nAllowed on Fridays.\n");
+
+        $previousUser = $this->makeUser();
+        $this->membership($previousUser);
+        $this->actingAs($previousUser, 'web');
+        $previousTenant = app(TenantContext::class)->current();
+
+        $exportingUser = $this->makeUser();
+        $this->membership($exportingUser);
+
+        mkdir($this->outputDir, 0755, true);
+        file_put_contents($this->outputDir.'/leftover.txt', 'stale');
+
+        try {
+            app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $exportingUser, $this->outputDir);
+            $this->fail('Expected the non-empty destination refusal to propagate.');
+        } catch (\RuntimeException) {
+            // expected — assertions below are the point of the test.
+        }
+
+        $this->assertSame($previousTenant, app(TenantContext::class)->current());
+        $this->assertSame($previousUser->id, Auth::id());
+    }
 }
