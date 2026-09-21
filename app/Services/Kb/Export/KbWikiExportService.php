@@ -41,6 +41,8 @@ use Padosoft\PiiRedactor\RedactorEngine;
  */
 final class KbWikiExportService
 {
+    private const LOCK_FILENAME = '.export.lock';
+
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly DocumentVersionService $versions,
@@ -119,11 +121,40 @@ final class KbWikiExportService
         Collection $documents,
         string $outputDir,
     ): array {
+        $this->ensureDir($outputDir);
+        $lock = $this->acquireDestinationLock($outputDir);
+
+        try {
+            return $this->writeFolderUnderLock($tenantId, $projectKey, $documents, $outputDir);
+        } finally {
+            $this->releaseDestinationLock($lock);
+        }
+    }
+
+    /**
+     * @param  Collection<int, KnowledgeDocument>  $documents
+     * @return array{
+     *     path: string,
+     *     status: string,
+     *     document_count: int,
+     *     raw_missing: list<array{document_id: int, reason: string}>,
+     * }
+     */
+    private function writeFolderUnderLock(
+        string $tenantId,
+        string $projectKey,
+        Collection $documents,
+        string $outputDir,
+    ): array {
+        // The empty-check and every write below run while this call HOLDS
+        // the exclusive lock acquired in writeFolder() — otherwise two
+        // exports targeting the same explicit --output could both observe
+        // it empty, then interleave writes into a folder whose contents
+        // match neither manifest (Copilot review finding, PR #503 round 4).
         $this->refuseNonEmptyDestination($outputDir);
 
         $wikiDir = $outputDir.'/wiki';
         $rawDir = $outputDir.'/raw';
-        $this->ensureDir($outputDir);
         $this->ensureDir($wikiDir);
         $this->ensureDir($rawDir);
 
@@ -370,17 +401,48 @@ final class KbWikiExportService
      */
     private function refuseNonEmptyDestination(string $outputDir): void
     {
-        if (! is_dir($outputDir)) {
-            return;
-        }
         $entries = scandir($outputDir);
         if ($entries === false) {
             throw new \RuntimeException("Cannot read export destination: {$outputDir}");
         }
-        $entries = array_diff($entries, ['.', '..']);
+        // '.export.lock' is OUR OWN reservation marker (acquireDestinationLock()),
+        // created before this check runs — it is not prior export content.
+        $entries = array_diff($entries, ['.', '..', self::LOCK_FILENAME]);
         if ($entries !== []) {
             throw new \RuntimeException("Export destination is not empty: {$outputDir}. Choose an empty or non-existent directory.");
         }
+    }
+
+    /**
+     * Exclusive, non-blocking reservation of the destination for the
+     * lifetime of the write. Without it, two exports racing the same
+     * explicit --output can both pass `refuseNonEmptyDestination()` before
+     * either writes a file, then interleave `wiki/`/`raw/` content into one
+     * folder that matches neither export's MANIFEST.json.
+     *
+     * @return resource
+     */
+    private function acquireDestinationLock(string $outputDir)
+    {
+        $handle = fopen($outputDir.'/'.self::LOCK_FILENAME, 'c');
+        if ($handle === false) {
+            throw new \RuntimeException("Cannot create export lock file in: {$outputDir}");
+        }
+        if (! flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
+            throw new \RuntimeException("Another export is already in progress for: {$outputDir}");
+        }
+
+        return $handle;
+    }
+
+    /**
+     * @param  resource  $handle
+     */
+    private function releaseDestinationLock($handle): void
+    {
+        flock($handle, LOCK_UN);
+        fclose($handle);
     }
 
     private function ensureDir(string $path): void

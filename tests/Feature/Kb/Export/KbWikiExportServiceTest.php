@@ -478,4 +478,36 @@ final class KbWikiExportServiceTest extends TestCase
         $this->assertSame($previousTenant, app(TenantContext::class)->current());
         $this->assertSame($previousUser->id, Auth::id());
     }
+
+    /**
+     * Copilot review finding (PR #503, round 4) — the empty-destination
+     * check and the writes that follow were not atomic: two exports
+     * targeting the same explicit directory could both observe it as
+     * empty, then interleave files into a folder matching neither
+     * manifest. Proves the fix by holding the reservation lock the exact
+     * way a concurrent export would, before this export ever starts.
+     */
+    public function test_a_concurrent_export_to_the_same_destination_is_refused_before_any_write(): void
+    {
+        $this->documentWithArtifact(self::IN_SCOPE, "# Remote work\n\nAllowed on Fridays.\n");
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        mkdir($this->outputDir, 0755, true);
+        $externalHandle = fopen($this->outputDir.'/.export.lock', 'c');
+        $this->assertNotFalse($externalHandle);
+        $this->assertTrue(flock($externalHandle, LOCK_EX | LOCK_NB), 'Test setup could not acquire the lock it needs to simulate a concurrent holder.');
+
+        try {
+            app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+            $this->fail('Expected the concurrent-holder lock to refuse this export.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('already in progress', $e->getMessage());
+        } finally {
+            flock($externalHandle, LOCK_UN);
+            fclose($externalHandle);
+        }
+
+        $this->assertSame([], glob($this->outputDir.'/wiki/*.md') ?: [], 'The refused export must not have written anything.');
+    }
 }
