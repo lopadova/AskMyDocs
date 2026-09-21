@@ -5,6 +5,7 @@ import { MessageThread } from '../MessageThread';
 import { Composer } from '../Composer';
 import { SuggestedFollowups } from '../SuggestedFollowups';
 import { CitationDocumentModal } from '../CitationDocumentModal';
+import { ConversationDebugDownloadButton } from '../ConversationDebugDownloadButton';
 import { Icon } from '../../../components/Icons';
 import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 import type { MessageCitation } from '../chat.api';
@@ -184,6 +185,9 @@ export function SessionsView(): ReactNode {
                                     </div>
                                 </div>
                             </div>
+                            {activeId !== null && (
+                                <ConversationDebugDownloadButton conversationId={activeId} />
+                            )}
                         </header>
 
                         <MessageThread
