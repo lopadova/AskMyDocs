@@ -390,4 +390,59 @@ final class KbWikiExportServiceTest extends TestCase
         $this->assertStringContainsString('Step one. Step two.', $page);
         $this->assertStringNotContainsString('this slice writes frontmatter + title only', $page);
     }
+
+    /**
+     * Copilot review finding (PR #503, round 2) — ADR 0032 §7: the export
+     * inherits the tenant PII policy for the whole export, not only `raw/`.
+     * `wiki/` is the primary readable copy and would otherwise carry the
+     * exact PII `raw/` was redacted to keep off disk.
+     */
+    public function test_wiki_page_body_is_redacted_when_the_pii_policy_is_active(): void
+    {
+        $this->enableRedaction('mask');
+        $doc = $this->documentWithArtifact('support/ticket-123.md', "# Ticket\n\nContact mario.rossi@example.com about it.\n");
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+        $page = (string) file_get_contents($this->outputDir.'/wiki/'.$doc->id.'.md');
+        $this->assertStringNotContainsString('mario.rossi@example.com', $page);
+        $this->assertStringContainsString('[REDACTED]', $page);
+    }
+
+    /**
+     * Copilot review finding (PR #503, round 2) — `AccessScopeScope::apply()`
+     * resolves the principal through `auth()->user()`, i.e. the app's
+     * DEFAULT guard, not necessarily one named `web`. Hardcoding
+     * `Auth::guard('web')` would silently bypass ACL filtering on a
+     * deployment where `AUTH_GUARD` names a different guard.
+     */
+    public function test_acl_scoping_holds_when_the_default_guard_is_not_named_web(): void
+    {
+        config(['auth.guards.other_default' => ['driver' => 'session', 'provider' => 'users']]);
+        config(['auth.defaults.guard' => 'other_default']);
+        $this->app->forgetInstance('auth');
+        Auth::forgetGuards();
+
+        try {
+            $this->documentWithArtifact(self::IN_SCOPE, "# Remote work\n\nAllowed on Fridays.\n");
+            $this->documentWithArtifact(self::OUT_OF_SCOPE, "# Exec comp\n\nCFO base salary is 250000 EUR.\n");
+
+            $user = $this->makeUser();
+            $this->membership($user, ['folder_globs' => ['hr/policies/**']]);
+
+            $result = app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+            $this->assertSame(
+                1,
+                $result['document_count'],
+                'ACL scoping must hold even when the app default guard is not "web".',
+            );
+        } finally {
+            config(['auth.defaults.guard' => 'web']);
+            $this->app->forgetInstance('auth');
+            Auth::forgetGuards();
+        }
+    }
 }

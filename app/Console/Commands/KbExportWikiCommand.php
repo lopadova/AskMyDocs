@@ -8,6 +8,7 @@ use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Services\Kb\Export\KbWikiExportService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 
 /**
  * v8.38/W4a (ADR 0032) — CLI surface (R44) for the portable wiki export.
@@ -79,7 +80,12 @@ final class KbExportWikiCommand extends Command
 
         $output = trim((string) $this->option('output'));
         if ($output === '') {
-            $output = storage_path('app/kb-wiki-exports/'.$tenant.'-'.$project.'-'.now()->format('YmdHis'));
+            // --tenant/--project are operator input, not filesystem-safe by
+            // construction: an unsanitized `--project=../../outside` would
+            // make the default destination escape kb-wiki-exports/. Slug
+            // both segments (falling back to a short hash if slugging
+            // strips everything) rather than concatenating them raw.
+            $output = storage_path('app/kb-wiki-exports/'.$this->safeSegment($tenant).'-'.$this->safeSegment($project).'-'.now()->format('YmdHis'));
         }
 
         $result = $exporter->export($tenant, $project, $user, $output);
@@ -90,5 +96,12 @@ final class KbExportWikiCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function safeSegment(string $value): string
+    {
+        $slug = Str::slug($value);
+
+        return $slug !== '' ? $slug : substr(hash('sha256', $value), 0, 16);
     }
 }

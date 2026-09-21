@@ -59,11 +59,19 @@ final class KbWikiExportService
     public function export(string $tenantId, string $projectKey, User $asUser, string $outputDir): array
     {
         $previousTenant = $this->tenant->current();
-        $previousUser = Auth::guard('web')->user();
+        // `AccessScopeScope::apply()` resolves the principal through
+        // `auth()->user()` — Laravel's DEFAULT guard, whatever `AUTH_GUARD`
+        // names it. `Auth::user()`/`Auth::setUser()` (no guard argument)
+        // forward to that same default guard (mirrors
+        // `ExecuteAgentRunJob::handle()`'s `Auth::setUser($run->user)`);
+        // hardcoding `Auth::guard('web')` here would silently miss the scope
+        // on a deployment configured with a different default guard and
+        // export every active document in the project, unfiltered.
+        $previousUser = Auth::user();
 
         $this->tenant->set($tenantId);
         Auth::forgetGuards();
-        Auth::guard('web')->setUser($asUser);
+        Auth::setUser($asUser);
 
         try {
             // AccessScopeScope is a global scope on KnowledgeDocument: it
@@ -85,7 +93,7 @@ final class KbWikiExportService
             // process is a cross-request ACL bypass).
             Auth::forgetGuards();
             if ($previousUser !== null) {
-                Auth::guard('web')->setUser($previousUser);
+                Auth::setUser($previousUser);
             }
             $this->tenant->set($previousTenant);
         }
@@ -122,7 +130,7 @@ final class KbWikiExportService
             $slugOrId = $this->fileBaseNameFor($document);
 
             $wikiPath = "wiki/{$slugOrId}.md";
-            $wikiContent = $this->buildWikiPage($document);
+            $wikiContent = $this->buildWikiPage($document, $policy);
             $this->putFile("{$outputDir}/{$wikiPath}", $wikiContent);
             $files[$wikiPath] = hash('sha256', $wikiContent);
 
@@ -205,8 +213,10 @@ final class KbWikiExportService
      * (`extraction`, ADR 0029/0031 — derived from `metadata.converter.provenance`,
      * mirroring KbSearchService::mapChunkToArray()'s own `ocr_origin` derivation
      * rather than re-parsing metadata a third way).
+     *
+     * @param  array{redact_enabled: bool, strategy: string}  $policy
      */
-    private function buildWikiPage(KnowledgeDocument $document): string
+    private function buildWikiPage(KnowledgeDocument $document, array $policy): string
     {
         $metadata = is_array($document->metadata ?? null) ? $document->metadata : [];
         $converterProvenance = $metadata['converter']['provenance'] ?? null;
@@ -234,6 +244,15 @@ final class KbWikiExportService
         if ($body === '') {
             $title = (string) ($document->title ?? $document->source_path ?? "Document {$document->id}");
             $body = "# {$title}\n\n_No content available for this document._\n";
+        }
+
+        // ADR 0032 §7: the export inherits the tenant PII policy rather than
+        // a weaker one — `raw/` is not the only place this document's text
+        // lands. wiki/ is the primary READABLE copy, so it must carry the
+        // same surrogates `raw/` does, not the bytes the policy exists to
+        // keep off disk.
+        if ($policy['redact_enabled']) {
+            $body = $this->redact($body, $policy['strategy']);
         }
 
         return $yaml.$body."\n";

@@ -158,4 +158,41 @@ final class KbExportWikiCommandTest extends TestCase
         $this->assertFileExists($this->outputDir.'/MANIFEST.json');
         $this->assertFileExists($this->outputDir.'/README.md');
     }
+
+    /**
+     * Copilot review finding (PR #503, round 2) — the default --output is
+     * built from the raw --project value. An unsanitized `../../outside`
+     * segment must not escape kb-wiki-exports/ on disk.
+     */
+    public function test_the_default_destination_never_escapes_kb_wiki_exports_even_with_a_traversal_project_key(): void
+    {
+        $user = $this->makeMember('default');
+
+        $root = storage_path('app/kb-wiki-exports');
+        $before = is_dir($root) ? array_diff((array) scandir($root), ['.', '..']) : [];
+
+        try {
+            $this->artisan('kb:export-wiki', [
+                '--tenant' => $this->tenantId,
+                '--project' => '../../outside-traversal-test',
+                '--as-user' => $user->email,
+            ])->assertSuccessful();
+
+            $this->assertDirectoryDoesNotExist(dirname($root).'/outside-traversal-test', 'A traversal project key must not escape kb-wiki-exports/.');
+
+            $after = is_dir($root) ? array_diff((array) scandir($root), ['.', '..']) : [];
+            $created = array_diff($after, $before);
+            foreach ($created as $entry) {
+                $this->assertStringStartsWith($root.'/', $root.'/'.$entry);
+                $this->assertDirectoryExists($root.'/'.$entry);
+            }
+        } finally {
+            // Cleanup: this test (unlike the others) writes under the real
+            // default destination, not $this->outputDir.
+            $after = is_dir($root) ? array_diff((array) scandir($root), ['.', '..']) : [];
+            foreach (array_diff($after, $before) as $entry) {
+                $this->rrmdir($root.'/'.$entry);
+            }
+        }
+    }
 }
