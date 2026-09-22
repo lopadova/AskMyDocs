@@ -1,132 +1,160 @@
 # Demo readiness audit — G1
 
-**Data:** 22 settembre 2026, 11:34 CEST<br>
+**Data:** 22 settembre 2026<br>
 **Ambiente verificato:** locale Herd `https://askmydocsdev.test`<br>
-**Branch operativo:** `feature/demo-g1-audit-baseline`, da `origin/develop`<br>
-**Commit applicativo:** `c96af4b4` (`feat(chat): add super-admin debug transcript export`)
+**Tenant e progetto di certificazione:** `autry`<br>
+**Scope esterno:** nessuna sincronizzazione IMAP reale, nessun push o PR.
 
 ## Esito sintetico
 
-La baseline locale e la suite mirata sono ripetibili, l'applicazione e le
-dipendenze principali sono raggiungibili, ma la demo **non è pronta per una
-certificazione live**. Restano blocchi sulla coerenza GitFlow, sulla salute
-delle code/worker, sulle migrazioni pendenti e sulle integrazioni live.
+I P0 tecnici locali sono chiusi: contratto agentico prudente, rifiuto dei PDF
+dichiarati ma non validi, migrazioni applicate e provate in clone, runtime
+persistente e ingestion Autry completata fino alla citazione e al cleanup.
 
 | Area | Stato | Evidenza |
 | --- | --- | --- |
-| Applicazione Herd | PASS | `https://askmydocsdev.test/login` restituisce HTTP 200 |
-| PostgreSQL / pgvector | PASS | driver `pgsql`; estensione `vector` presente |
-| Redis | PASS | cache, sessione e queue configurate su Redis; store raggiungibile |
-| Storage KB | PASS con rischio | disco `kb` presente e scrivibile; 15 GiB liberi, volume al 99% |
-| Migrazioni | FAIL | tre migrazioni `2026_10_03_*` sono pendenti |
-| Queue / worker | FAIL | tre failed job e nessun worker persistente osservato |
-| IMAP | FAIL | installazioni storiche in stato `errored`; nessuno smoke live eseguito |
-| API Oktodora | BLOCCATO | contratto/mock presente, endpoint demo e credenziali live non attestati |
-| MCP Gescat | BLOCCATO | contratti e test presenti, ma discovery/`tools/list` live non eseguita |
-| Baseline mirata | PASS | 28 test PHP, 219 assertion; 3 test frontend; typecheck verde |
-| Suite PHP completa | FAIL | contratto risposta agent non più allineato al test |
+| Contratto Agent API | PASS | fallback senza claim: `insufficient`, nessuna citazione o fonte strumento; payload pubblico invariato |
+| Ingestion IMAP PDF | PASS | firma `%PDF-` richiesta per MIME `application/pdf`; mismatch auditato e non accodato |
+| Failed jobs storici | PASS | tre job diagnosticati, archiviati nel backup e rimossi puntualmente senza retry/flush |
+| Migrazioni locali | PASS | tre migrazioni applicate; prova up/down in clone riuscita |
+| Worker e scheduler | PASS | tre agenti `launchd` attivi e riavviabili; log senza nuovi errori |
+| Ingestion Autry | PASS | upload → ingest → chunk/embedding → ricerca → citazione → cancellazione fixture |
+| Sintesi agentica live Autry | BLOCCATO esterno | chiave `OPENROUTER_API_KEY` non configurata; il contratto e la citazione di retrieval sono verificati localmente |
+| Probe IMAP Autry | BLOCCATO esterno | configurazione priva di host; nessuna sincronizzazione reale avviata |
+| GitFlow remoto | IN ATTESA | branch di sincronizzazione e merge commit locali pronti; push/PR restano al maintainer |
 
-## Git e GitFlow
+## Contratto agentico e ingestion
 
-È stato eseguito `git fetch --all --prune --tags`. Il checkout iniziale
-`develop` era pulito e due commit avanti rispetto a `origin/develop`:
+`DefaultAgentRunHandlerTest` ora certifica il fallback prudente per una
+risposta senza claim verificabili: `completeness=insufficient`, nessuna
+citazione né `tool_sources`, limitazione `missing_claims` e richiesta di una
+fonte o della grafia corretta. I casi con evidenze fondate restano separati e
+conservano le citazioni. Non è stato modificato alcun campo del payload Agent
+API (`answer`, `completeness`, `citations`, `tool_sources`, `limitations`).
 
-- `b8c876e289f3a0d5ac7926a2d79729dcc42bf2fc` — export transcript debug;
-- `7e215720` — specifica esecutiva demo.
+Il bridge host rifiuta una sorgente IMAP dichiarata `application/pdf` se i
+primi byte non corrispondono alla firma PDF. Scrive un audit secret-free con
+ragione `declared_mime_signature_mismatch`, quindi solleva
+`UnsupportedIngestionSourceException`: il job non viene accodato e il caller
+non può confermare il messaggio, perciò il checkpoint IMAP non avanza. I test
+coprono sia il rifiuto sia il PDF valido.
 
-Per rispettare la specifica G1, il primo commit è stato riposizionato tramite
-cherry-pick su `feature/demo-g1-audit-baseline`, creato direttamente da
-`origin/develop`; il commit risultante è `c96af4b4`. Il diff è di 9 file,
-773 inserimenti, e comprende controller, route, UI e relativi test.
+I tre failed job preesistenti sono stati prima registrati nel manifesto di
+backup: due inviti riferivano record ormai assenti e
+`10661-2026-31.pdf` non aveva una firma PDF valida. Sono stati rimossi solo i
+tre UUID identificati con `queue:forget`; non sono stati né ritentati né
+svuotati altri job. `queue:failed` risulta vuota.
 
-Il controllo esplicito `git merge-base --is-ancestor origin/main
-origin/develop` termina con codice 1: l'invariante `main → develop` non è
-soddisfatta dopo il fetch. `git diff --check` è verde.
+## Migrazioni e rollback
 
-## Runtime e dati
+Prima dell'intervento il volume disponeva di oltre 5 GiB liberi. È stato
+salvato fuori dal repository un dump PostgreSQL recuperabile, il manifesto e
+uno snapshot redatto di `migrate:status`.
 
-`php artisan about` ha confermato Laravel 13.30.1, PHP 8.4.23, ambiente
-`local`, URL Herd corretta, PostgreSQL, Redis per cache/sessioni/code e mail
-SMTP. Il link `public/storage` non è presente; non blocca il disco KB privato,
-ma blocca qualunque prova demo che dipenda da asset pubblici.
-
-Tutte le migrazioni fino al 2 ottobre risultano applicate. Sono pendenti:
+Le migrazioni applicate a step sono:
 
 - `2026_10_03_000001_create_chat_folders_table`;
 - `2026_10_03_000002_add_organisation_to_conversations_table`;
 - `2026_10_03_000003_add_session_recap_to_conversations_table`.
 
-La queue predefinita Redis usa `kb-ingest`. `queue:failed` espone tre errori:
-due `Padosoft\\Invitations\\Mail\\InvitationMail` e un
-`App\\Jobs\\IngestDocumentJob`, tutti sulla coda `kb-ingest`. Lo scheduler
-registra sia `connectors.dispatch-due-syncs` sia
-`connectors.imap.pump-backfills`, ma al controllo non è rimasto un processo
-`queue:work`, `queue:listen`, `schedule:work` o Horizon persistente.
+`migrate:status` non riporta più migrazioni pendenti. Nel clone temporaneo del
+database il ciclo applicazione completa → rollback di tre step ha rimosso
+tabella `chat_folders` e colonne `chat_folder_id`, `pinned_at`, `archived_at`,
+`importance`, `session_recap`; il database locale operativo è rimasto
+aggiornato. Gli smoke test di cartelle, organizzazione conversazioni e recap
+sono verdi.
 
-## Integrazioni e segreti
+## Runtime locale persistente
 
-La verifica è stata volutamente secret-free: sono stati rilevati solo nomi di
-variabili/configurazioni e metadati delle installazioni, senza leggere o
-stampare valori sensibili.
+Le configurazioni riproducibili sono in [`ops/launchd`](../ops/launchd):
 
-- provider AI e embedding: configurati; la chiave OpenRouter risulta presente;
-  `OPENROUTER_SITE_URL` è assente;
-- IMAP: quattro record di credenziali cifrate; due installazioni `default` sono
-  `errored` (ultimo sync 13 agosto), mentre altre installazioni sono `active`
-  ma senza `last_sync_at`;
-- MCP: installazioni locali `active` e `pending`, non collegate in questa
-  sessione a uno smoke Gescat;
-- Gescat: widget/host-tool e contratti MCP presenti in codice; il reale server
-  di Gescat deve ancora esporre una discovery verificata;
-- Oktodora: il runbook contiene il percorso con server mock, ma l'endpoint HTTPS
-  demo reale e le credenziali non sono state individuate nella configurazione
-  disponibile.
+- `com.askmydocsdev.queue-core`: code `agent,kb-ingest,default`;
+- `com.askmydocsdev.queue-connectors`: coda `connectors`;
+- `com.askmydocsdev.scheduler`: `schedule:work`.
 
-## Baseline eseguita
+Lo script `ops/launchd/install-local.sh` usa PHP Herd, imposta il PATH
+necessario ai wrapper Herd e riavvia gli agenti. Tutti e tre sono stati
+caricati e verificati in stato `running` dopo una reinstallazione; i log dedicati in
+`storage/logs/` non riportano errori. Lo scheduler ha
+`CONNECTOR_SCHEDULED_SYNC_ENABLED=false`: gli altri task pianificati restano
+attivi, ma non possono avviare sync o backfill automatici dei connector.
+
+## Certificazione Autry
+
+Il file benigno `g1-readiness-20260922` è stato caricato attraverso il normale
+servizio di staging/commit dell'admin. Il batch
+`01a0c8a8-5d58-7214-be6c-dbbbba7013c8` ha prodotto il documento `13002`, un
+chunk e un embedding; la ricerca semantica lo ha restituito come risultato
+primario e il builder ha generato una citazione riferita al documento. Non si
+sono creati failed job.
+
+Il fixture è stato poi rimosso solo attraverso il flow `kb.delete`, run
+`ca8797fb-3f5e-4031-970a-e22a040f40df`; documento, chunk e file sorgente non
+esistono più. La verifica di una risposta testuale live con quella citazione è
+rinviata finché non sarà configurata una chiave OpenRouter: non è stata
+inventata né stampata alcuna credenziale.
+
+È stato eseguito esclusivamente un probe IMAP in sola lettura. Ha rilevato
+l'assenza dell'host di connessione e ha restituito un errore tipizzato; non ha
+archiviato messaggi, non ha accodato job e non ha fatto avanzare checkpoint.
+
+## GitFlow
+
+In una worktree isolata è stato creato
+`chore/sync-main-into-develop-20260922` da `origin/develop`. Il merge
+`origin/main → branch` è stato risolto esplicitamente e committato come
+`42ceafc1`; il controllo di antenato `origin/main` e `git diff --check` sono
+verdi, così come il test architetturale isolato. Il push e la PR con merge
+commit verso `develop` restano intenzionalmente non eseguiti.
+
+La ricreazione di `feature/demo-g1-audit-baseline` dal `develop` remoto
+aggiornato dipende dal merge di quella PR. A quel punto vanno riportati i due
+commit locali storici (export transcript e audit) insieme ai commit G1 di
+questa worktree, senza riscrivere rami condivisi.
+
+## Gate eseguiti
 
 ```text
-php artisan test \
-  tests/Feature/Admin/ConversationDebugTranscriptTest.php \
-  tests/Feature/Api/Admin/KbUploadCommitIntegrationTest.php \
-  tests/Feature/Connectors/ImapBackfillAlgorithmsTest.php \
-  tests/Feature/Mcp/McpConnectorAuditRecorderTest.php \
-  tests/Feature/Agent/AgentServerToolRunnerTest.php \
-  tests/Feature/Eval/EvalNightlyCommandTest.php
-# 28 passed, 219 assertions
+herd php artisan test tests/Feature/Agent/DefaultAgentRunHandlerTest.php \
+  tests/Feature/Connectors/HostIngestionBridgeTest.php \
+  tests/Feature/Connectors/ImapSyncProgressTest.php
+# 45 passed, 130 assertions
+
+herd php artisan test tests/Feature/Connectors/SerializedSyncSchedulerTest.php \
+  tests/Feature/Connectors/ImapBackfillTest.php \
+  tests/Feature/Api/ChatFolderControllerTest.php \
+  tests/Feature/Api/ConversationOrganizationTest.php \
+  tests/Feature/Chat/ConversationRecapServiceTest.php
+# 67 passed, 255 assertions
+
+plutil -lint ops/launchd/*.plist.template
+zsh -n ops/launchd/install-local.sh
+# passed
+
+herd php artisan test
+# 4,310 passed, 1 skipped (vincolo Windows), 19,732 assertions
+
+npm run typecheck
+# passed
 
 npm test -- --run frontend/src/features/chat/ConversationDebugDownloadButton.test.tsx
 # 3 passed
 
-npm run typecheck
-# passed
+herd php artisan migrate:status
+herd php artisan queue:failed
+curl --fail https://askmydocsdev.test/login
+# nessuna migrazione pending; nessun failed job; HTTP 200
 ```
 
-La richiesta HTTP Herd e le verifiche pgvector/Redis/disco KB sono PASS. La
-suite PHP completa è stata avviata come controllo esplorativo; è stata fermata
-quando ha esposto il primo errore riproducibile, quindi non costituisce una
-certificazione complessiva. Il test isolato
-`tests/Feature/Agent/DefaultAgentRunHandlerTest.php` termina con 1 errore su
-2: alla riga 203 si attende `Non risultano ordini disponibili per il cliente
-richiesto.`, mentre il codice restituisce `Non trovo ‘Tizio’ nelle fonti
-disponibili. Puoi indicare lo spelling corretto o una fonte?`.
+## Ownership e residui
 
-## Blocchi da risolvere
+| Priorità | Azione | Owner |
+| --- | --- | --- |
+| P0 | push e PR del branch `chore/sync-main-into-develop-20260922` | maintainer Git |
+| P1 | configurare host IMAP Autry e autorizzare esplicitamente una sync reale | owner integrazione |
+| P1 | configurare `OPENROUTER_API_KEY` e ripetere la sintesi agentica live citata | owner AI/segreti |
+| P1 | liberare spazio sul volume locale, vicino alla saturazione | owner ambiente |
+| P1 | certificare smoke live Gescat e Oktodora, fuori dallo scope G1 | owner integrazioni |
 
-| Priorità | Blocco | Owner proposto | Azione prima della demo |
-| --- | --- | --- | --- |
-| P0 | `origin/main` non è antenato di `origin/develop` | maintainer Git | riallineare con PR `main → develop`, senza riscritture |
-| P0 | failed `IngestDocumentJob` su `kb-ingest` | backend | diagnosticare payload/redrive e fissare test di regressione |
-| P0 | nessun worker persistente osservato | ambiente | avviare/supervisionare worker per `kb-ingest` e `agent` |
-| P0 | migrazioni locali pendenti | backend/maintainer | verificare compatibilità e applicare solo con piano rollback |
-| P0 | suite PHP non verde: contratto agent divergente | backend agent | decidere il contratto desiderato e aggiornare implementazione o test |
-| P1 | IMAP storico in errore | integrazioni | creare mailbox demo dedicata, testare sync e checkpoint |
-| P1 | Gescat e Oktodora non certificati live | integrazioni | definire tenant demo, eseguire smoke redatti e registrare audit |
-| P1 | disco locale quasi saturo | ambiente | liberare spazio o spostare lo storage demo prima di ingestion |
-| P2 | `public/storage` non collegato | frontend/ops | creare il link se la demo deve servire asset pubblici |
-
-## Prossima azione
-
-Prima di passare al Giorno 2, ripetere la baseline una volta risolti i blocchi
-P0 e registrare un tenant/progetto demo esplicito. La prima verifica live deve
-essere una ingestion di file innocuo e noto, con worker attivo e tracciabilità
-di batch, job, chunk ed embedding.
+Nessun altro P0 tecnico locale resta aperto. Le azioni esterne sono state
+deliberatamente lasciate ferme per rispettare i limiti di autorizzazione.
