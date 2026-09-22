@@ -96,11 +96,11 @@ final class DefaultAgentRunHandlerTest extends TestCase
                 provider: 'fake',
                 model: 'fake-agent',
                 toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
-                    'answer' => 'Non risultano ordini disponibili per il cliente richiesto.',
                     'completeness' => 'insufficient',
-                    'document_ids' => [],
-                    'tool_execution_ids' => [],
+                    'claims' => [],
                     'limitations' => ['Nessuna fonte ha restituito ordini.'],
+                    'requires_selection' => false,
+                    'render_table' => false,
                 ]]],
             ),
         );
@@ -200,7 +200,13 @@ final class DefaultAgentRunHandlerTest extends TestCase
         $this->assertSame('final', $run->result_json['phase']);
         $this->assertSame('it-IT', data_get($run->result_json, 'response.locale'));
         $this->assertSame('insufficient', data_get($run->result_json, 'response.completeness'));
-        $this->assertSame('Non risultano ordini disponibili per il cliente richiesto.', data_get($run->result_json, 'response.answer'));
+        $this->assertSame(
+            'Non trovo ‘Tizio’ nelle fonti disponibili. Puoi indicare lo spelling corretto o una fonte?',
+            data_get($run->result_json, 'response.answer'),
+        );
+        $this->assertSame([], data_get($run->result_json, 'response.citations'));
+        $this->assertSame([], data_get($run->result_json, 'response.tool_sources'));
+        $this->assertSame(['missing_claims'], data_get($run->result_json, 'response.limitations'));
         $this->assertStringContainsString('The selected region is Europe.', (string) $requests[0]['turn_context']);
         $turnContext = json_decode((string) $requests[1]['turn_context'], true, flags: JSON_THROW_ON_ERROR);
         $this->assertStringContainsString('"region":"EU"', (string) data_get($turnContext, 'mcp_app'));
