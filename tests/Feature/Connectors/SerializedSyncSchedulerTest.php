@@ -22,6 +22,20 @@ final class SerializedSyncSchedulerTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_disabled_scheduled_sync_does_not_dispatch_a_never_synced_installation(): void
+    {
+        Queue::fake();
+        config()->set('connectors.scheduled_sync_enabled', false);
+        ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'imap', 'label' => 'certification-pending',
+            'config_json' => ['connection' => ['host' => 'imap.x.test', 'username' => 'u@x.test']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'last_sync_at' => null, 'created_by' => 1,
+        ]);
+
+        $this->assertSame(0, (new SerializedSyncScheduler)->dispatchDueSyncs());
+        Queue::assertNothingPushed();
+    }
+
     public function test_dispatches_the_serialized_job_for_due_active_imap_installations_only(): void
     {
         Queue::fake();

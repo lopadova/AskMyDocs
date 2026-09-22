@@ -40,6 +40,14 @@ final class SerializedSyncScheduler extends SyncScheduler
 
     public function dispatchDueSyncs(): int
     {
+        // A local scheduler can remain healthy while an operator completes an
+        // explicit first-sync certification. This gate prevents a never-synced
+        // ACTIVE installation from being imported merely because schedule:work
+        // started; production defaults remain unchanged.
+        if (! config('connectors.scheduled_sync_enabled', true)) {
+            return 0;
+        }
+
         // Defence in depth: skip silently if the migration hasn't run yet.
         if (! Schema::hasTable('connector_installations')) {
             return 0;

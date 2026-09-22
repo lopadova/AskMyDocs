@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.askmydocsdev.queue-core</string>
+    <key>WorkingDirectory</key>
+    <string>__ASKMYDOCS_ROOT__</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>cd '__ASKMYDOCS_ROOT__' &amp;&amp; exec '__HERD_BIN__' php artisan queue:work redis --queue=agent,kb-ingest,default --sleep=1 --tries=3 --no-interaction --max-time=3600</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HERD_BIN_DIR__:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__ASKMYDOCS_ROOT__/storage/logs/launchd-queue-core.log</string>
+    <key>StandardErrorPath</key>
+    <string>__ASKMYDOCS_ROOT__/storage/logs/launchd-queue-core-error.log</string>
+</dict>
+</plist>

@@ -27,6 +27,23 @@ final class ImapBackfillTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_disabled_scheduled_sync_does_not_resume_an_active_backfill(): void
+    {
+        Queue::fake();
+        config()->set('connectors.scheduled_sync_enabled', false);
+        $installation = $this->installation();
+        ImapBackfill::create([
+            'tenant_id' => $this->tenantId(),
+            'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING,
+            'batch_size' => 100,
+            'cutoff_at' => now(),
+        ]);
+
+        $this->assertSame(0, (new ImapBackfillScheduler)->pumpActive());
+        Queue::assertNothingPushed();
+    }
+
     public function test_start_creates_one_durable_full_history_campaign(): void
     {
         Queue::fake();
