@@ -84,6 +84,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # The realtime client is distributed by the Composer package as a local
+      # file dependency. Install PHP dependencies before npm ci so TypeScript
+      # resolves the same client package that Vite uses in the application.
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, sqlite, pdo_sqlite, intl, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Install PHP dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
