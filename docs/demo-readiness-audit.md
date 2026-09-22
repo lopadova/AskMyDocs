@@ -3,7 +3,8 @@
 **Data:** 22 settembre 2026<br>
 **Ambiente verificato:** locale Herd `https://askmydocsdev.test`<br>
 **Tenant e progetto di certificazione:** `autry`<br>
-**Scope esterno:** nessuna sincronizzazione IMAP reale, nessun push o PR.
+**Scope esterno:** nessuna sincronizzazione IMAP reale. Le attività GitFlow
+descritte sotto sono state eseguite con autorizzazione esplicita.
 
 ## Esito sintetico
 
@@ -21,7 +22,7 @@ persistente e ingestion Autry completata fino alla citazione e al cleanup.
 | Ingestion Autry | PASS | upload → ingest → chunk/embedding → ricerca → citazione → cancellazione fixture |
 | Sintesi agentica live Autry | BLOCCATO esterno | chiave `OPENROUTER_API_KEY` non configurata; il contratto e la citazione di retrieval sono verificati localmente |
 | Probe IMAP Autry | BLOCCATO esterno | configurazione priva di host; nessuna sincronizzazione reale avviata |
-| GitFlow remoto | IN ATTESA | branch di sincronizzazione e merge commit locali pronti; push/PR restano al maintainer |
+| GitFlow remoto | PASS | PR [#504](https://github.com/lopadova/AskMyDocs/pull/504) fusa con merge commit `2419f330`; `origin/main` è antenato di `origin/develop` |
 
 ## Contratto agentico e ingestion
 
@@ -103,14 +104,23 @@ archiviato messaggi, non ha accodato job e non ha fatto avanzare checkpoint.
 In una worktree isolata è stato creato
 `chore/sync-main-into-develop-20260922` da `origin/develop`. Il merge
 `origin/main → branch` è stato risolto esplicitamente e committato come
-`42ceafc1`; il controllo di antenato `origin/main` e `git diff --check` sono
-verdi, così come il test architetturale isolato. Il push e la PR con merge
-commit verso `develop` restano intenzionalmente non eseguiti.
+`42ceafc1`. La PR [#504](https://github.com/lopadova/AskMyDocs/pull/504) è
+stata fusa con merge commit `2419f330`; dopo il fetch,
+`git merge-base --is-ancestor origin/main origin/develop` è verde.
 
-La ricreazione di `feature/demo-g1-audit-baseline` dal `develop` remoto
-aggiornato dipende dal merge di quella PR. A quel punto vanno riportati i due
-commit locali storici (export transcript e audit) insieme ai commit G1 di
-questa worktree, senza riscrivere rami condivisi.
+La prima CI ha evidenziato un test di contratto rimasto sul comportamento
+precedente. È stato allineato al fallback prudente e verificato localmente;
+la seconda CI ha superato RAG regression gate, dependency audit, Vitest e la
+suite PHPUnit completa. Il job Vitest installa ora le dipendenze Composer
+prima di `npm ci`, perché il client realtime è una dipendenza locale fornita
+dal package PHP.
+
+`feature/demo-g1-audit-baseline` è stata ricreata da `origin/develop`. Prima
+della ricostruzione sono stati creati il ref di backup
+`backup/feature-demo-g1-audit-baseline-pre-rebuild-20260922` e un bundle
+verificato fuori dal repository. Sono stati riportati export transcript,
+audit e modifiche G1; il commit del fallback agentico è stato saltato perché
+già incluso dal merge di sincronizzazione.
 
 ## Gate eseguiti
 
@@ -140,6 +150,9 @@ npm run typecheck
 npm test -- --run frontend/src/features/chat/ConversationDebugDownloadButton.test.tsx
 # 3 passed
 
+GitHub Actions, PR #504
+# RAG regression gate, dependency audit, Vitest e PHPUnit verdi
+
 herd php artisan migrate:status
 herd php artisan queue:failed
 curl --fail https://askmydocsdev.test/login
@@ -150,11 +163,11 @@ curl --fail https://askmydocsdev.test/login
 
 | Priorità | Azione | Owner |
 | --- | --- | --- |
-| P0 | push e PR del branch `chore/sync-main-into-develop-20260922` | maintainer Git |
 | P1 | configurare host IMAP Autry e autorizzare esplicitamente una sync reale | owner integrazione |
 | P1 | configurare `OPENROUTER_API_KEY` e ripetere la sintesi agentica live citata | owner AI/segreti |
 | P1 | liberare spazio sul volume locale, vicino alla saturazione | owner ambiente |
 | P1 | certificare smoke live Gescat e Oktodora, fuori dallo scope G1 | owner integrazioni |
 
-Nessun altro P0 tecnico locale resta aperto. Le azioni esterne sono state
-deliberatamente lasciate ferme per rispettare i limiti di autorizzazione.
+Nessun P0 tecnico locale resta aperto. Le sole attività bloccate richiedono
+segreti o configurazione esterna esplicita; la release della feature G1 resta
+disciplinata dai normali gate della relativa PR.
