@@ -6,7 +6,9 @@ namespace App\Flow\Compensators;
 
 use App\Flow\Steps\StepTenantBinder;
 use App\Models\KnowledgeDocument;
+use App\Scopes\AccessScopeScope;
 use App\Services\Kb\DocumentDeleter;
+use App\Support\TenantContext;
 use Padosoft\LaravelFlow\FlowCompensator;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepResult;
@@ -55,7 +57,25 @@ final class RollbackChunksCompensator implements FlowCompensator
         // R2 — soft-deleted rows must remain reachable here so the
         // compensator can promote a soft delete to a hard delete on the
         // (rare) re-entry path.
-        $document = KnowledgeDocument::withTrashed()->find($documentId);
+        // R30 — and scoped to the tenant the context just bound: a stale or
+        // replayed flow output naming another tenant's id must find nothing,
+        // never delete that tenant's row (and, since v8.36, its artifact).
+        //
+        // AccessScopeScope is deliberately LIFTED here too, on the PRIMARY
+        // lookup: it narrows what the CURRENT authenticated actor may READ,
+        // which has nothing to do with whether this tenant-owned row needs
+        // to be unwound. Compensation is a system-level cleanup, not a
+        // user-facing read — a row hidden by a request-scoped project/path
+        // ACL is exactly as much this saga's to roll back as a visible one.
+        // Applying the scope here (as an earlier revision did) would leave
+        // the document, its chunks, its graph projection and its conversion
+        // artifact behind while reporting nothing at all (R14) — the tenant
+        // filter above is the boundary that actually matters for this
+        // operation, not the current reader's project membership.
+        $document = KnowledgeDocument::withoutGlobalScope(AccessScopeScope::class)
+            ->withTrashed()
+            ->forTenant(app(TenantContext::class)->current())
+            ->find($documentId);
         if ($document === null) {
             // Already gone — saga rollback is idempotent by contract.
             return;

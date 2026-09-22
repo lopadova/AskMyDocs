@@ -26,6 +26,8 @@
         "icon": "book-open",
         "pages": [
           "ingestion",
+          "documents-and-ocr",
+          "digitization-review",
           "chat-and-retrieval",
           "chat-sessions-workspace",
           "canonical-and-promotion",

@@ -7,7 +7,11 @@ namespace App\Flow\Steps\Prune;
 use App\Flow\Steps\StepTenantBinder;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
+use App\Support\Kb\StorageNamespace;
+use App\Support\KbPath;
 use DateTimeImmutable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepHandler;
 use Padosoft\LaravelFlow\FlowStepResult;
@@ -42,6 +46,13 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
         $cutoff = $this->parseCutoff($context->input['cutoff_iso'] ?? null);
 
         $deleted = 0;
+        // v8.36 / ADR 0030 §3 — a hard delete can legitimately KEEP the
+        // source file (another writer holds its storage key, the cache store
+        // cannot exclude anyone, the lock lapsed mid-section). The rows are
+        // gone either way, so a run that left bytes behind must SAY so
+        // (R14): otherwise "Pruned N document(s)" reads as a completed
+        // cleanup and the orphan sweep's later work looks unexplained.
+        $filesKept = 0;
         // R3 — chunkById uses `id > ?` cursoring so it stays correct even
         // though forceDelete() removes each row as we iterate.
         // R30 — explicit tenant scope on the read.
@@ -50,9 +61,34 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
             ->onlyTrashed()
             ->where('deleted_at', '<', $cutoff)
             ->orderBy('id')
-            ->chunkById(100, function ($rows) use (&$deleted): void {
+            ->chunkById(100, function ($rows) use (&$deleted, &$filesKept): void {
                 foreach ($rows as $row) {
-                    $this->deleter->delete($row, force: true);
+                    // PR #492 Copilot round-1 — a `markdown_only`-retention
+                    // row keeps a non-empty `source_path` after its original
+                    // was intentionally dropped (`DocumentIngestor`, same
+                    // reading as `DocumentDeleter::deleteOrphans()` above):
+                    // `delete()` then answers `file_deleted=false` for a file
+                    // that was never there to keep, and counting it here
+                    // reports bytes retained that `kb:prune-orphan-files` has
+                    // nothing to reap.
+                    $metadata = is_array($row->metadata) ? $row->metadata : [];
+                    $sourceWasDropped = ($metadata['source_dropped'] ?? false) === true;
+                    $hadFile = $row->source_path !== null && $row->source_path !== '' && ! $sourceWasDropped;
+                    // PR #492 Copilot round-4 — `file_deleted=false` is not
+                    // only "another writer/version still needs it": it is
+                    // ALSO what `DocumentDeleter` answers for a source that
+                    // is already missing out-of-band (deleted by hand, by a
+                    // bug, by a process this row's metadata never recorded)
+                    // — `source_dropped` only covers the ONE known case
+                    // (`markdown_only` retention). Probed BEFORE the delete
+                    // call, with the SAME disk/prefix resolution the deleter
+                    // itself uses, so "kept" means bytes were actually
+                    // observed on disk, not just that nothing was removed.
+                    $hadFile = $hadFile && $this->sourceFileObservedPresent($metadata, (string) $row->source_path);
+                    $result = $this->deleter->delete($row, force: true);
+                    if ($hadFile && ($result['file_deleted'] ?? false) === false) {
+                        $filesKept++;
+                    }
                     $deleted++;
                 }
             });
@@ -62,9 +98,45 @@ final class HardDeleteSoftDeletedStep implements FlowStepHandler
                 'tenant_id' => $tenantId,
                 'cutoff_iso' => $cutoff->format(\DateTimeInterface::ATOM),
                 'deleted_count' => $deleted,
+                // Additive (R27). Counts a row whose source was NOT removed —
+                // including the ordinary case of a file another version still
+                // references, which is why it is reported, not failed.
+                'files_kept' => $filesKept,
             ],
-            businessImpact: ['deleted_count' => $deleted],
+            businessImpact: ['deleted_count' => $deleted, 'files_kept' => $filesKept],
         );
+    }
+
+    /**
+     * Whether the row's source file is ACTUALLY on disk right now, resolved
+     * with the exact same `StorageNamespace` + `KbPath::normalize()` reading
+     * `DocumentDeleter` uses internally — so this probe and the deleter's
+     * own decision can never disagree about WHICH object they mean.
+     *
+     * Fails closed (returns `true`, "presumed present") on every case where
+     * the probe itself cannot be trusted: a prefix that cannot name a path
+     * (the same case `StorageNamespace::prefixCanNamePath()` documents as
+     * "a deleting consumer treats the row as referencing its path
+     * everywhere"), or a disk that throws answering `exists()`. Under-
+     * counting `files_kept` (silently treating a REAL kept file as absent)
+     * would hide bytes `kb:prune-orphan-files` still has work to do on;
+     * over-counting merely repeats today's known gap for one more edge case.
+     */
+    private function sourceFileObservedPresent(array $metadata, string $sourcePath): bool
+    {
+        $prefix = StorageNamespace::recordedPrefix($metadata);
+        if (! StorageNamespace::prefixCanNamePath($prefix)) {
+            return true;
+        }
+        try {
+            $fullPath = KbPath::normalize($prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath);
+
+            return Storage::disk(StorageNamespace::diskOf($metadata))->exists($fullPath);
+        } catch (\Throwable $e) {
+            Log::warning('HardDeleteSoftDeletedStep: could not probe source existence before delete; presumed present', ['source_path' => $sourcePath, 'error' => $e->getMessage()]);
+
+            return true;
+        }
     }
 
     private function parseCutoff(mixed $raw): DateTimeImmutable

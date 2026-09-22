@@ -1,0 +1,778 @@
+# ADR 0030 — Conversion artifacts on the Time Machine
+
+- **Status:** Accepted
+- **Date:** 2026-09-12
+- **Cycle:** v8.36 (W2 of the Document Intelligence cycle); consumed by W3 (v8.37) and W4 (v8.38)
+- **Builds on:** [ADR 0014](0014-v811-auto-wiki-tier.md) (source-retention
+  policy + `markdown_path` declared as schema foundation),
+  [ADR 0020](0020-v823-pii-safe-ingestion-reversible-vault.md) (one core, both
+  ingest paths; crypto-shred), [ADR 0029](0029-v836-ocr-converter-drivers-and-ocr-provenance.md)
+  (run-scoped OCR figures), the v8.7/W5 *Cloud Time Machine*
+  (`DocumentVersionService`, `KbDocumentVersionController`,
+  `kb:prune-archived-versions`), R21 atomic invariants, R30/R31 tenant scoping,
+  R43 both-state branches, R44 tri-surface.
+- **Plan:** [PLAN v8.36 → v8.40](../v4-platform/PLAN-v8.36-document-intelligence-and-llm-wiki-export.md) §W2;
+  audit [AUDIT-2026-09-11-annota-ai-gap](../v4-platform/AUDIT-2026-09-11-annota-ai-gap.md) §2.1 (corrected row *Immutable document versions*).
+
+## Context
+
+AskMyDocs already has a version model. Every re-ingest archives the prior
+`knowledge_documents` row as `archived` **with its chunks**
+(`DocumentIngestor::archivePreviousVersions`); `DocumentVersionService` lists
+the `(tenant, project_key, source_path)` family, diffs two versions through
+`App\Support\MarkdownDiff` and restores one under a `lockForUpdate()` with a
+`kb_canonical_audit` row; **Admin → Time Machine** shows it;
+`kb:prune-archived-versions` caps the family. The first draft of the
+competitor audit missed this because it grepped the migrations for a versions
+*table*; the model is the archived *row*. The audit was corrected before the
+cycle started and this ADR is sized to the corrected gap, which is narrow and
+precise:
+
+1. **The version body is a reconstruction.** `reconstructContent()` rebuilds
+   the text from `knowledge_chunks` — no frontmatter, no images, and text the
+   chunker has already transformed. The Time Machine therefore diffs two
+   reconstructions, and a restore brings back an index, not a document.
+   `config/kb.php::source_retention` and `knowledge_documents.markdown_path`
+   were declared in v8.11 (ADR 0014) as the foundation for the faithful
+   artifact; the ingest wiring never landed.
+2. **A version is born only on re-ingest.** Nothing else can create one
+   because nothing else can write — there is no correction surface. W3 will
+   need one.
+3. **A version has no actor and no reason.** The Time Machine can say *what*
+   changed, not *who* changed it or *why* — and the existing field list of
+   `versionsFor()`, the controller mapping and `timemachine.api.ts` would hide
+   the columns even once they exist.
+
+Three properties of the code constrain the design: the family (not a table) is
+the version model and every read of it is tenant-scoped through `forTenant()`;
+PII redaction is wired **once, in both ingest paths** (ADR 0020 D3) — the
+artifact must be wired the same way or the two paths diverge on the first
+release; and a database transaction cannot roll back a filesystem write.
+
+## Decision
+
+### 1. The family stays the version model — no versions table
+
+A version *is* a `knowledge_documents` row of the family. This ADR adds no
+table. Everything below is one flag, three columns, one artifact per row, and
+the service reading them.
+
+### 2. `KB_CONVERSION_ARTIFACTS_ENABLED` — default OFF, both states tested
+
+The artifact write is behind `KB_CONVERSION_ARTIFACTS_ENABLED=false`
+(`config('kb.conversion_artifacts.enabled')`). With the flag off **no new
+artifact is written**: `markdown_path` stays `null` on every row ingested
+while it is off, and `diff` / `restore` / the versions endpoint keep working
+by reconstruction, as in v8.35. The read surface is not byte-for-byte v8.35,
+by design: the responses gain the additive fields of §4 (`null` / *unknown*
+for rows that never had them, R27), and a row that received an artifact while
+the flag was on keeps it — `contentFor()` (§5) still reads it and still says
+which source it used. Turning the flag off is therefore a stop, not a
+rollback; nothing already stored is discarded or hidden. With the flag on, `source_retention`
+(ADR 0014) is finally wired: in `full_copy` (the default) and `markdown_only`
+the converter output is stored; in `reference_only` it is not. The mode
+governs the **derived** data — the artifact and the `.ocr/` run — and never
+removes the source a copy-based entry point (HTTP ingest, a connector) wrote
+under the row's `source_path`: that file is what a forced re-embed and a
+`kb:ocr` re-run read from, and `reference_only` stores nothing that could
+stand in for it (`markdown_only` is the mode that drops the original, and it
+can only because the artifact does — and a `reference_only` sibling on the
+same storage key blocks that drop, §3). A `reference_only` row still
+references its `source_path`, so `kb:prune-orphan-files` keeps the file: the
+mode saves the derived copies, not the original. A deployment that wants no
+local binary of a copy-based source uses `markdown_only`. Both states are
+tested on both ingest paths (R43).
+
+### 3. The converted Markdown is a stored artifact — one core, both paths, compensated
+
+The exact string the chunker receives — after conversion and **before**
+chunking — is written to the `kb` disk (under `KB_PATH_PREFIX`) at
+`.artifacts/{tenant_id}/{project_key}/{source_path}.versions/{version_hash}.md`
+and its path recorded in `knowledge_documents.markdown_path`, in
+`DocumentIngestor::persistDocumentAndChunks()`,
+which both the Flow saga (`ParseMarkdownStep` converts → `PersistChunksStep` →
+`persistDrafts()`) and the direct path (`ingest()` → `persistFromDrafts()`)
+already share — **one core, both paths**, exactly as `ChunkRedactor` is wired.
+
+`source_path` is prefix-free and the prefix is one global setting, so tenant
+and project are part of the key explicitly — **as safe segments, never
+verbatim**: each is admitted only when it matches
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` (no `/`, no `..`) **and does not start
+with `h-`** — that prefix is reserved for the encoding — and is otherwise
+replaced by `h-` + the **full** 64-hex SHA-256 of the value. The mapping is
+injective: a verbatim segment can never spell an encoded one (`h-…` is never
+admitted verbatim, so a tenant literally named `h-<hex>` is itself hashed),
+and two distinct values share an encoded segment only on a SHA-256 collision.
+A collision test pins both properties (a literal `h-<64 hex>` name and the
+unsafe value whose digest it spells resolve to different paths). The composed
+path is normalised with `KbPath::normalize()` and must resolve **inside** the
+artifact root. Two checks, by disk kind: the lexical one on every disk — a string
+check on the normalised path (`str_starts_with($path, $root.'/')`), after
+`KbPath::normalize()` has rejected `.` and `..` segments, so no traversal
+survives it — and, on a **local** disk, a `realpath` check on every read,
+delete and publish (the file's real path when it exists, its parent's
+otherwise, and the published file's after the move) that refuses a path a
+symlink planted under `.artifacts/` makes resolve outside the real root.
+Object stores have no symlinks: there the lexical check is the whole check.
+`.artifacts` is a **reserved** segment: `KB_PATH_PREFIX` must not contain it
+(the containment boundary is the only such segment of a path; a prefix
+carrying one would draw it one level above the real root), and a stored
+pointer with more than one is refused. A stored pointer is held to the same
+canonical rule as a composed one: it must already be what `KbPath::normalize()`
+would make of it (no `.`/`..`, no `//`, no `\`) or it is refused on every disk —
+on an object store the lexical check is the whole check, so
+`.artifacts/../outside.md` is never read, deleted or probed; and containment
+is asserted before any `exists()`, so a symlink under `.artifacts/` is never
+followed by the probe. The `.artifacts/` root
+is a generated-asset subtree (`KbPath::isGeneratedAsset()`, ADR 0029): the
+folder walker and the orphan sweeps never read it back as a source.
+
+A database transaction cannot roll back a filesystem write, so the publish is
+**compensated, not "inside" the transaction**, and race-safe against two
+concurrent identical ingests: each writer writes to its own temporary name
+(`{final}.{uuid}.tmp`), commits the row with the **final** path recorded, and
+only after commit moves its temp file into place. A final file that already
+exists is **not** taken on faith: the path is the content hash, so the store
+re-hashes what is there — identical bytes → the temp is dropped; anything else
+(a truncated or replaced file) → the verified temp is moved over it, an atomic
+rename on a local disk, so a corrupt pre-existing artifact is repaired
+instead of being kept and later reported as `integrity: mismatch` (§5) while
+the temp that was correct is thrown away. The identical-ingest path does not
+skip this: the ingestor's same-hash short-circuit returns the existing version
+only **after verifying its artifact** — present on disk and hashing to
+`content_hash` — and when the artifact is missing or corrupt it republishes it
+from the freshly converted bytes through the same temp-then-publish protocol
+(no new version, no chunk rewrite, the pointer and `content_hash` unchanged
+because the bytes are the same); `kb:artifacts-backfill` covers the rows
+nobody re-ingests.
+The loser of the
+unique-constraint race never touches the final path: its failure branch
+deletes **its own temp file only**. A crash between commit and move leaves a
+row whose artifact is missing — `contentFor()` falls back to reconstruction
+and says so (§5), and `kb:artifacts-backfill` repairs it. A publish that
+**fails** after commit (the disk refuses the move, or the temp write of a
+repair) keeps the pointer in that same `missing` state — never rolled back,
+a rollback would race a concurrent repair of the same version — and
+**throws** `ArtifactPublishFailedException` once the pointer is kept: the
+ingest job's retry (`$tries = 3`) is an identical re-ingest that takes the
+repair path and publishes once the disk is back — a **new** flow run, because
+the job salts its idempotency key with the attempt number (with flow
+persistence on, the store hands the recorded run back for a key whatever its
+status, so an unsalted retry would receive the failed run and execute
+nothing) — and a connector sync sees a failed document instead of a silently
+degraded one (R14). On the direct path (`ingest()` / `ingestMarkdown()`) the
+canonical indexer is dispatched **before** the publish, so it is never
+withheld from a version that exists; on the Flow saga the `persist-chunks`
+step fails and the `maybe-dispatch-canonical-indexer` step of that attempt
+does not run — the row stays (compensators fire only for downstream
+failures), and the retry that repairs the artifact runs the indexer step.
+Only the retention tail that follows a successful publish (the
+`markdown_only` drop) stays best effort: a job whose retry would be a
+version-hash no-op with nothing left to publish is not failed for it.
+Database uniqueness is
+`uq_kb_doc_tenant_version = (tenant_id, project_key, source_path, version_hash)`
+since `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`, which
+finally rebuilt the three `knowledge_documents` composite uniques the
+`tenant_id` rollout had deferred (`uq_kb_doc_doc_id` and `uq_kb_doc_slug`
+with it). Until then the indexes were keyed on `project_key` alone while
+every read and write scoped by `tenant_id`, so the two disagreed in the
+direction that hurts: the ingestor's tenant-scoped `updateOrCreate` lookup
+missed the other tenant's row and the insert then died on a unique keyed on
+columns the query never filtered by, and the restore path's conflict probe
+could not see a holder the database would still reject. Widening a unique
+can never fail on existing data, so the rebuild is a plain forward migration.
+The artifact path already carried `tenant_id`, so identity matches the
+constraint without a change here. There is nothing to reference-count.
+`kb:prune-archived-versions` additionally sweeps `.tmp` leftovers older than
+one hour **that no live writer leases** — a writer takes a cache lease on its
+temp (`kb:artifact-temp:{sha1(disk|tmp)}`, `KB_CONVERSION_ARTIFACTS_TMP_LEASE`,
+default 7200 s, the primary guard: one configured shorter than the age
+threshold is raised to it and reported once) before the bytes land and gives it back at publish or
+discard, so a temp still inside a slow transaction is reported
+`artifact_temps_in_flight` and never deleted under its writer's feet, whatever
+its age; every one of these durations is read through
+`App\Support\Kb\SettingInt::whole()` (SEC-SETTING-SHAPE-001), which refuses a
+value that is not a whole number instead of truncating it — `is_numeric($v)
+&& (int) $v >= 1` turns a configured `1.9` into a ONE-SECOND lease that
+satisfies the clamp, lapses mid-commit and tells nobody, which is the exact
+failure the clamp exists to prevent. The age threshold remains the second guard for a lease the store lost
+or a cache store that cannot lock (reported once, never an ingest outage). The
+artifact **path lock** has no such fallback: a publish or a removal without it
+would race every other writer of the path, so on a store that cannot lock both
+are refused (the publish throws and discards its temp, the removal is reported
+`failed`) — a lock-capable cache store (Redis in production) is a requirement
+of the feature, not a tuning knob. The `null` store, which implements the lock
+contract and grants every lock without excluding anyone, is detected by
+`ConversionArtifactStore::cacheStoreCanLock()` (`$store instanceof NullStore`), reported once and refused
+exactly like a store that cannot lock — the publish, the removal, the
+`markdown_only` drop, the orphan-source sweep and every artifact-enabled
+ingest. What stays undetectable is a provider whose locks do not exclude
+ACROSS processes (the array store, process-local by design). Both locks (the
+storage key's and the artifact path's) have a TTL and no renewal, so no holder
+assumes its work fits inside it: the critical section receives its lock
+(`App\Support\Kb\HeldLock`) and asserts, right before its irreversible step —
+the row commit, the `markdown_only` delete, the artifact publish or removal
+(including the branch that reports the bytes already published, which
+licenses the drop), the orphan source's delete, and on the OCR side the run
+record after a long figure write, the purge of a run and the purge of the
+assets directory — that the lock is still its own; a lapsed lock is a
+refusal (`LockLostException`: the commit rolls back, the original is kept, the
+publish discards its temp, the removal is `failed`). It is a check right before
+the step, not a renewal: the window shrinks to the step itself, it does not
+close — and on a row commit it cannot shrink below the COMMIT itself, which
+Laravel issues after the transaction closure returns: a TTL that lapses in
+that last stretch leaves the row invisible to a holder that takes the key.
+That case is therefore reconciled rather than assumed
+(`DocumentIngestor::reconcileIfKeyLockLapsedAcrossCommit()`: compare the
+original's presence before and after, stamp `source_dropped` only when it was
+taken and the row's artifact stands in for it, report at `error` when nothing
+does — best-effort, and it never turns a landed commit into a failure).
+Preventing it needs a key lock taken inside the transaction, so the database
+serializes the row's visibility with the key; that is recorded as a follow-up.
+
+Ownership itself is read by capability — not by class: any lock exposing a
+callable `isOwnedByCurrentProcess()` that answers a boolean can prove it. A
+lock whose probe is missing, not public, or answers anything other than a
+boolean (a store registered with `Cache::extend()` returning a bare contract
+implementation) cannot prove ownership at all, so the step is
+refused there too, reported once per class: the same posture as a store that
+cannot lock. On such a store that is a stop, not a degradation: every ingest
+that converts through OCR — whatever `KB_CONVERSION_ARTIFACTS_ENABLED` says,
+since the OCR assets lock is older than this ADR — and every artifact-enabled
+ingest rolls back and retries, and every prune reports `failed`, until
+`CACHE_STORE` names a lock-capable store (Redis in production). The orphan-file sweep's deletion of a
+source re-checks the references first (a row that took the key between the
+snapshot and the delete keeps its file, `kept_meanwhile`), and keeps any
+source an ingest has RESERVED (reported per file, and counted in the
+summary's `kept_meanwhile` — the sweep's one counter for "not an orphan to
+decide today"; `in_flight=` in the same line counts dangling OCR trees and is
+a different thing).
+
+The reservation (`App\Support\Kb\SourceInFlight`) is what closes the read +
+convert window. An ingest reads and converts its source BEFORE it takes the
+key's lock — an OCR run takes minutes — so in that window the file has neither
+a row nor a holder, and the sweep sees a perfectly ordinary orphan: it deletes
+the bytes out from under the conversion, after which the row commits
+`full_copy` over an original that is already gone. `IngestDocumentJob` takes
+the reservation before it reads a byte and gives it back in a `finally`
+(`KB_SOURCE_INFLIGHT_RESERVATION_SECONDS`, default `kb.ocr.job_timeout` + 5 min
+with a 600 s floor, is only the backstop for a worker killed mid-conversion).
+
+Every consumer that DELETES a source honours it: the orphan sweep (which
+reports the file per line and counts it in `kept_meanwhile`), its `--dry-run`
+preview, and the hard delete of `DocumentDeleter` (HTTP, `kb:delete --force`,
+`kb:prune-deleted`, the Flow compensation). On the hard-delete path this
+refuses nothing the operator asked for: the ROW is already deleted, and
+`file_deleted: false` is an outcome that path already reports for a key a
+writer holds right now — the file simply waits for the sweep instead of being
+taken from a conversion in progress. A store that cannot answer the probe
+keeps the file the same way (conservative direction; a stale file must never
+fail a delete). `kb:ingest-folder --sync`, which converts inline instead of
+queueing, takes the reservation too.
+
+`KB_ORPHAN_SOURCE_GRACE_SECONDS` remains as the SECOND guard, for the cases
+the reservation cannot cover: a cache store that cannot exclude anyone (where
+`reserve()` hands back null and `held()` answers false rather than pinning
+every file — R43), a file written and queued whose job has not started yet,
+and a retry that could not re-take the reservation a killed worker left
+behind under its TTL. A reservation that could not be taken is REPORTED
+(`SourceInFlight: … only the age grace guards this ingest`), so that
+degradation is visible in the log rather than discovered as a deleted source.
+It is only a second guard because an age threshold is
+a guess about how long work takes — OCR (`kb.ocr.job_timeout`, 3600 s) can
+outlast the 3600 s grace on its own — and because it keys on when the BYTES
+were written, not on when the conversion started, so a first ingest of a file
+staged earlier (`kb:ingest-folder` over a corpus copied days ago, a job that
+waited in a backed-up queue) gets no protection from it at all. The reservation
+has neither limitation: it states the fact instead of estimating it.
+
+While artifacts are on, the sweep's re-check and delete also run under the
+same storage key lock (`App\Support\Kb\SourceKeyLock`,
+shared with the `markdown_only` drop and the row commits of non-Markdown
+sources — a Markdown source's commit takes no lock, so for it the re-check alone
+narrows the window); a key a writer holds right now is kept as in flight. With
+artifacts off nothing else takes that lock, so the sweep takes none either.
+The **hard delete** of a source takes that same key lock (HTTP, `kb:delete
+--force`, `kb:prune-deleted`, the Flow compensation): the reference scan, the
+`.ocr/` purge and the `delete()` all run under it, each irreversible step
+asserting the TTL has not lapsed (`HeldLock`). Every refusal keeps the file for
+the sweep rather than failing the delete — the row is already committed, and a
+stale file must never fail a deletion: a key a writer holds right now
+(`LockTimeoutException`), a cache store that cannot exclude anyone, any other
+acquisition failure, and a lapse mid-section are all `file_deleted: false`. With
+artifacts off nothing else takes that lock, so the hard delete takes none either
+(R43). The window in which the ingest's READ/CONVERT phase runs before any
+lock exists is covered by the reservation above, which this path honours too
+— before the OCR purge, so neither the run nor the source is taken from a
+conversion in progress.
+The
+artifact root itself is checked before it is probed or listed (a `.artifacts`
+that is a symlink out of the disk is a refused sweep, never an enumeration of
+the outside), and a temp path is checked like a final one before it is read,
+moved or discarded — and artifacts whose
+`(tenant, project, path, version_hash)` no row (trashed rows included, R2)
+references, only after that authoritative check.
+Failure and idempotency tests cover all of it, including a sequential
+winner/loser test of two identical publishes (the loser discards only its
+own temp). A process-level race test is not feasible in the suite — SQLite
+is in-memory per process and `Storage::fake()` is per test — so the
+concurrent case rests on the unique constraint plus that loser path, not on
+a test that fires two workers (R21 exception, stated here on purpose). In `markdown_only` the original binary is deleted only after the
+**final move has succeeded** — `publish()` throws on a failed move, reuses a
+pre-existing final only after re-hashing it (a corrupt one is replaced, never
+kept), and the drop runs after it, never on the database commit alone — and
+only when every
+other row referencing the same storage key (any tenant, trashed included) has
+its artifact **present on disk**: a `markdown_path` whose file never landed (a
+publish that failed after commit, repaired later by the backfill) does not
+stand in for the original. The gate also honours each row's own **retention
+contract**: every row records the mode it was ingested under
+(`metadata.source_retention`), and a shared original is dropped only when
+every referencing row was ingested under a mode that does not require it — a
+`full_copy` row (or a pre-v8.36 row without the stamp, which counts as
+`full_copy`) blocks the drop even with its artifact present; a
+`reference_only` row stored nothing that could stand in for the original (no
+artifact by design) and blocks the drop too — the shared original is the only
+thing a re-embed or a `kb:ocr` re-run of that version can read; a
+`markdown_only` row needs its artifact on disk. A sibling's artifact stands in for the original only when it **verifies** —
+its bytes hash to the row's `content_hash` (`document_hash` for a legacy
+pointer) — a pointer proves nothing and a corrupt sibling less than nothing,
+so the last valid representation is never deleted; the scan streams the
+referencing rows (R3) and stops at the first that still requires the
+original. The scan and the delete run under the storage key's lock
+(`kb:source:{disk}:{sha1(key)}`), the same lock every persist path holds
+around its row commit, so a concurrent ingest of the same `(disk, path)`
+cannot commit a `full_copy` row between the two halves. The gate is one method
+(`DocumentIngestor::finalizeSourceRetention()`) with three callers — the fresh
+ingest, the identical re-ingest whose artifact was just verified, repaired or
+published for the first time, `kb:artifacts-backfill` after a write — so an original re-uploaded after a
+drop, or kept because the key was locked, is dropped the next time any of
+them leaves a verified artifact behind; a lock that cannot be
+taken keeps the original (the conservative direction). The lock is taken for
+**every** commit of a non-Markdown source while the flag is on, whatever the
+row's own contract — a `reference_only` version stores no artifact but still
+requires the shared original, so it must not commit past a concurrent drop's
+reference scan — and only there: with the flag off, in a dry run or for a
+Markdown source an ingest never waits on it (R43). Like the OCR run lock it
+**needs an atomic lock store (Redis) in production**: on a per-host store the
+two halves of different pods are not serialized. Wait and TTL are
+`KB_CONVERSION_ARTIFACTS_SOURCE_LOCK_WAIT` / `_TTL` (10 s / 60 s). The stamp is
+**host-owned**: `source_retention`
+(and `source_dropped`) are stripped at the HTTP ingest and connector
+boundaries by `OcrService::stripTrustedOnlyKeys()` like `version_actor`, set
+server-side from the configured mode at ingest, validated against the known
+modes (an unknown value resolves to the configured mode, never to a
+permissive one), and carried back from the row only by trusted replays such
+as `ReembedDocumentJob` — so a client can never mark a `full_copy` row as one
+that no longer needs its shared original. The drop itself is gated on the
+row's **own** stamp, never on the configured mode of the day: a `full_copy`
+version re-embedded after `KB_SOURCE_RETENTION` moved to `markdown_only`
+keeps its original, and so does a pre-v8.36 row replayed without a stamp — a
+version being **replaced** (a forced re-embed, a fresh OCR run of the same
+bytes) keeps the contract it was born under (`full_copy` when it has none);
+only a **new** version gets the configured mode. With the artifacts flag off
+the knob is the inert foundation it was (nothing stored, nothing dropped or
+withheld), so a new version is stamped `full_copy` — what actually happened —
+and a later backfill with the flag on never reads `intentionally_missing`
+into a row that never lived under `reference_only`. A kept original is logged with the blocking row
+(R4 return checked on the delete).
+
+Turning the flag on populates nothing by itself, so `kb:artifacts-backfill
+{--project=} {--tenant=} {--dry-run}` — **operator-only maintenance, a
+documented R44 exception** (a storage repair that can re-run OCR and spend;
+its authorization boundary is the console, `--tenant` validated as
+`kb:reembed-project` does) — walks every live row and judges each on **its
+own** retention contract (`metadata.source_retention`; a row without the
+stamp predates v8.36 and counts as `full_copy` — the configured mode of the
+day decides nothing, so a `full_copy` history is still backfilled after the
+knob moved to `reference_only`): a row stamped `reference_only` is
+`intentionally_missing` even when a legacy source file is still on disk — the
+flag never changes a tenant's retention policy; a row whose pointer resolves
+to a readable file hashing to `document_hash` is `already_stored`; every other
+row — no pointer, or a pointer whose file is missing or corrupt (a publish
+that failed after commit, a process that died between the pointer and the
+move, a later corruption) — is re-converted from its source while it is still
+on disk, and the artifact is written **without** creating a version when the
+converted bytes hash to the stored `document_hash`; a `hash_mismatch` (an
+engine changed since) is reported and **nothing is written** — an artifact
+must agree with the version's chunks; a missing source is reported, not
+invented. The identical re-ingest path publishes the artifact of a pointerless
+row the same way (§3 above), so the backfill is for the rows nobody
+re-pushes.
+
+The artifact is the **raw** converted Markdown, not the redacted chunks: the
+raw markdown is already the `document_hash` idempotency anchor. For a
+Markdown source that is byte for byte the user's own file; for a PDF, DOCX or
+OCR'd source it is **generated** text that did not exist on disk before —
+un-redacted, and therefore a data surface with its own controls, stated
+here rather than assumed:
+
+- **Access.** The artifact is readable only through the admin Time Machine
+  surfaces (`role:admin|super-admin`, R32 matrix row), scoped by tenant
+  (R30) and by the document's own family; it is never served to the chat,
+  the widget, retrieval or an MCP tool (§9, surfaces table). The vector
+  store stays the only surface the model reads, and it holds the redacted
+  chunks (ADR 0020).
+- **PII.** Redaction runs on chunks, not on the artifact, on purpose: the
+  artifact must hash to `document_hash` and be restorable as-is. So it is
+  treated like the original binary on the same disk — the same ACL, the same
+  disk, the same operators — and the only agent-facing rendering of it is
+  the W4 export, which passes every artifact through the tenant PII policy
+  before it leaves (ADR 0032).
+- **Erasure.** The artifact goes with its row: `DocumentDeleter`'s hard
+  delete removes it, and `kb:prune-archived-versions` removes it with each
+  pruned version and sweeps orphans (§8). Every flow that hard-deletes a
+  document goes through `DocumentDeleter`, so every one of them removes the
+  artifact. **This is document deletion, not subject erasure.** The Art.17
+  path that exists today (`SubjectErasureService`, ADR 0020 Decision 6, also
+  the DSAR `delete` hook of `AskMyDocsUserDataDeleter`) crypto-shreds the
+  `pii_token_maps` vault — the AI boundary: surrogates in chunks, embeddings
+  and chat become unresolvable — and **touches no raw asset**: not the
+  original binary the customer uploaded, not this artifact, not the
+  `{source_path}.ocr/` run (ADR 0029). The artifact is raw Markdown *before*
+  the PII seam and therefore still contains the subject's original values
+  after a shred, exactly as the original PDF does. So the artifact adds no
+  new erasure obligation, but the ADR must not overstate the guarantee: a
+  data-subject request that reaches raw assets is completed by **hard-deleting
+  the documents that contain the subject** (`kb:delete --force`,
+  `DELETE /api/kb/documents`, the retention prunes), which is a customer /
+  operator step the DSAR runbook has to include — a vault shred is not an
+  erasure of stored Markdown, of OCR figures, or of the source. Locating "every
+  document that mentions this subject" is not a W2 capability: it is recorded
+  as a candidate for the v8.39 routine (W5) — a subject → documents locator
+  over the vault's token map, driving `DocumentDeleter` — and, until it
+  exists, the compliance claim is "shred covers the index; deletion covers
+  the raw assets; the operator joins the two".
+- **Retention.** No artifact is written in `reference_only`; `markdown_only`
+  replaces the original binary with the artifact rather than adding to it.
+
+OCR figures (ADR 0029) are **not** copied under the artifact: they stay at
+`{source_path}.ocr/{run}/images/`, and the artifact's `metadata.converter.ocr.run`
+names the run whose images it references.
+
+### 4. Three columns on `knowledge_documents` — and the seams that surface them
+
+| Column | Type | Meaning |
+|---|---|---|
+| `version_actor` | `string(191) null` | Who created this version: `system:ingest`, `system:ocr`, `system:autowiki`, `user:{id}`, `agent:{id}` (when an agent acts for a user through `DelegationContext`; today the authenticated principal yields `user:{id}`). **Derived server-side, never taken from the client**: `version_actor` is a host-only metadata key, stripped at the HTTP ingest and connector boundaries by the same `OcrService::stripTrustedOnlyKeys()` gate that already strips `dry_run` / `ocr.*` (ADR 0029), and then set by the trusted caller — `user:{id}` from the authenticated principal in `KbIngestController` and in `restore`, `system:ingest` for the CLI walker and the connector bridge, `system:ocr` for a `kb:ocr` re-run; the ingestor falls back to `system:ingest` when no trusted caller set it. A caller who sends `version_actor` in `documents.*.metadata` cannot forge a `user:{id}` or `system:*` identity; a negative test sends one and asserts the stored actor is the principal's. |
+| `version_reason` | `string(1024) null` | Free text supplied by the caller: `re-ingest`, `ocr`, `correction: page 2`, `restore of #123`. |
+| `content_hash` | `string(64) null` | SHA-256 of the stored artifact bytes, recorded at the moment they are written. For every ingested version it equals `document_hash` **by construction** (both hash the same Markdown; a correction is an ordinary new version, §7), and it is null on rows without an artifact. It exists as its own column so a reader can verify the stored bytes against the row without re-hashing the source — the integrity check the backfill (§3), the prune (§8) and the export manifest (W4) rely on — not to diverge from `document_hash`. |
+
+All three are nullable so every existing row is a valid "unknown actor"
+version; a backfill is deliberately not run (an invented actor is worse than
+none). The migration is **mirrored in `tests/database/migrations/`** — the
+SQLite suite loads only that directory — or the feature tests run against a
+stale schema. The columns are surfaced end to end in the same PR: added to the
+`DocumentVersionService::versionsFor()` field list, mapped by
+`KbDocumentVersionController::index()`, typed on `DocVersion` in
+`frontend/src/features/admin/time-machine/timemachine.api.ts` and rendered in
+the Time Machine list (additive fields only, R27).
+
+### 5. `diff` prefers artifacts, falls back to reconstruction
+
+`DocumentVersionService::contentFor(KnowledgeDocument $v)` returns the
+artifact when `markdown_path` is set, the file exists **and its bytes hash to
+`content_hash`** — `content_hash` is the integrity check, so it is checked on
+every read: a truncated or replaced file is logged, degrades to
+`reconstructContent()` and says so (`integrity: mismatch`; `verified` when the
+hash matched, `null` when there was nothing to check against — a row without
+`content_hash`). The content endpoint carries `integrity`, the diff
+`from_integrity` / `to_integrity` (additive, R27), so a tampered artifact is
+never presented as a faithful side. Otherwise `reconstructContent()`. `diff()` uses `contentFor()` on both sides and reports
+which source each side came from (`from_source` / `to_source` ∈
+`artifact | reconstruction`) and the integrity verdict of each side, so the UI
+can say when a diff is faithful (both sides stored **and** verified), when the
+stored documents are compared but a side has no hash to verify against (a
+legacy pointer — never presented as verified history), and when it is an index
+diff. Both branches are tested (R43): two versions with
+artifacts diff the artifacts; two without fall back; a mixed pair falls back
+on the side that lacks one and says so. A missing file behind a non-null
+`markdown_path` is logged and falls back — it is not a 500 (R14 applies to
+silent success, not to a documented degrade).
+
+### 6. `restore` re-activates the artifact with the row
+
+Restoring an archived version flips status and settles the canonical identity
+inside one transaction. The identity is the restored version's **own**: a
+restore is the re-ingest of an older version's bytes, and under ingest the
+canonical identity follows the CONTENT, so it is reconstructed from the
+frontmatter the archive retained
+(`vacateCanonicalIdentifiersOnPreviousVersions()` clears `doc_id` / `slug` /
+`canonical_status` / `is_canonical` but preserves `frontmatter_json` and
+`canonical_type` precisely for this) and through the SAME parser + validator
+the ingest path runs — a frontmatter the parser would refuse (an invalid
+status, a slug that does not match the pattern, a missing type) cannot come
+back as an identity here either. Restoring a canonical version over a
+non-canonical live one therefore reclaims its slug instead of being silently
+demoted, and restoring a version that never declared a slug does NOT inherit
+the live row's — the family's slug is left unheld, exactly as it would be
+after ingesting those bytes.
+
+Two cases the rule has to answer explicitly. A **legacy** row archived before
+the frontmatter was persisted (`canonical_type` survived, the frontmatter did
+not) retains no identity of its own, and the outgoing live version is the only
+place its slug still exists: there it is carried, as before. And a reclaimed
+slug or doc_id can still be **held by a row the restore does not vacate** — an
+archived sibling (a re-ingest that dropped the frontmatter vacates nothing) or
+a live row of another source path in the same project; only the family's
+active rows are vacated. Writing it anyway would raise on `uq_kb_doc_slug` /
+`uq_kb_doc_doc_id`, i.e. a 500 carrying raw SQL. The restore's job is to bring
+the CONTENT back, so a taken slot degrades the row to non-canonical with a
+warning naming the holder, rather than failing the restore or taking the slug
+from whoever holds it now.
+ `version_actor` / `version_reason` are the
+**creation** provenance of the version and are never rewritten by a restore:
+the restore is recorded apart, appended to the row's `metadata.restores` as
+`{actor: user:{id}, at, previous_live_id}`, and the versions surfaces (HTTP,
+CLI, MCP) expose the last entry as the additive `restored_by` / `restored_at`
+(R27) — so the timeline says both who created a version and who brought it
+back, and a second restore does not erase the first. `markdown_path` is left
+untouched — the artifact was never deleted with the archive, only with the
+prune. Nothing is re-embedded; the retained chunks are reused as before.
+
+### 7. Versions born from a correction go through the same service
+
+W3 will create a version from a saved correction. It does so by calling
+`DocumentIngestor` with the corrected markdown, `version_actor = user:{id}`,
+`version_reason = "correction: page N"`: an **ordinary new version**, with
+`document_hash = version_hash = content_hash = sha256(corrected markdown)`,
+its own artifact and its own row — the original conversion stays in the
+family as the archived version it always was, so the Time Machine diffs the
+correction against it faithfully. Nothing preserves the original document
+hash across a correction, and nothing needs to: the hashes name bytes, and
+the bytes changed. The document is re-chunked and re-embedded as a whole,
+and the cost of the unchanged pages is bounded by the **embedding cache**
+(`embedding_cache`, keyed on text hash), not by a partial update — the
+`## Page N` boundaries make the untouched chunks byte-identical, so their
+embeddings are cache hits. This ADR fixes the contract; W3 implements the
+caller.
+
+### 8. Retention and erasure cover the artifact and the OCR assets
+
+Every removal of an artifact — the hard delete, the prune of a version, the
+orphan sweep — goes through ONE gate,
+`DocumentDeleter::removeArtifactIfUnreferenced(disk, path)`: under the artifact
+**path's lock** (`kb:artifact:{disk}:{sha1(path)}`, the lock a publish holds
+around its post-commit move, sharing the source-lock wait / TTL knobs) the
+references are re-checked and the file is removed only when no row of any
+tenant — live, archived, trashed, a row without a usable recorded disk
+(absent, null, empty or malformed `metadata.disk`: a legacy, ambiguous row,
+one reading for every consumer in `App\Support\Kb\StorageNamespace`) included — still
+points at it on that disk. The path is the content hash, so an identical
+ingest that ran between a caller's decision (the prune's snapshot, a hard
+delete's row transaction) and the removal recreated the very same path for a
+new row: the re-check keeps it (`artifacts_kept` for a pruned row,
+`artifact_orphans_kept` for an orphan candidate that gained a row — simply no
+orphan any more). The gate is the cross-tenant read for EVERY artifact
+removal — hard delete (HTTP, `kb:delete --force`, `kb:prune-deleted`, the
+Flow compensation), the prune and the orphan sweep — not only the sweep. On the publish side
+`DocumentIngestor::publishArtifactForRow()` re-checks, under the same lock,
+that its row still points at the path before moving the temp in: a row hard
+deleted between commit and publish has nothing to stand in for, so its bytes
+are discarded, never published as an orphan.
+`kb:prune-archived-versions` deletes the artifact with the row it prunes and
+**reports** what happened to it — `artifacts_removed` / `artifacts_absent` /
+`artifacts_failed` per tenant, the temp and orphan sweeps likewise
+(`artifact_temps_failed`, `artifact_orphans_failed`) — and exits non-zero when
+any delete was refused: the rows are gone, the bytes are not, and a refused
+delete is never reported as a completed cleanup (R14). The prune selects
+archived rows **by query** (one family at a time, R3) but removes each row
+through the deleter's row path (`DocumentDeleter::deleteRowsOnly()`): chunks,
+the graph node an archived canonical version may still own, and the
+deprecation audit row go in one transaction per row, the same cascade every
+other hard delete takes. Nor does it re-implement the reference rules: the
+decision whether a pruned row's recorded run (`metadata.converter.ocr.run`,
+the `{prefix}/{source_path}.ocr/{run}/` directory) may go is delegated to the
+deleter's gate, `DocumentDeleter::documentReferencingOcrRun(disk, prefix,
+source_path, run)`, the same helper family as
+`documentReferencingStorageKey()` — a run directory is physically namespaced
+by disk, prefix, source path and run key, so a run is purged only when no
+remaining row, live, archived or soft-deleted, of any tenant whose **recorded
+namespace resolves to that very directory** still names it (a same-named row
+under another disk or prefix references another directory and neither keeps
+this one alive nor is ignored; a legacy row without a usable recorded disk —
+absent, null or empty — counts as a reference, fail closed) — the orphan sweep asks the same predicate for all
+its candidates at once (`documentsReferencingOcrRuns()`, one bounded query per
+500 `(source, run)` pairs, never one query per run) — never while it is inside the in-flight grace (ADR
+0029 §6), and only under the run's own reservation — the lock a converter
+holds from its recorded-run check to its commit — so a run being reused at
+that very moment is never deleted between its figure check and its commit;
+the `.ocr/` tree as a whole still goes with the *last referencing row* of the
+source, through `DocumentDeleter`'s hard delete. One gate, three callers (the
+hard delete, the prune, the orphan sweep): they cannot diverge on what
+"referenced" means. `DocumentDeleter`'s hard
+delete removes the artifact of the row it deletes unconditionally — on the
+direct path, on the Flow saga's `deleteRowsOnly()` step and on the ingest
+saga's compensation (`deleteDbOnly()`, which preserves the source it never
+wrote but not the artifact the failing flow did) alike, reported as
+`artifact_deleted` (additive: what *this* call did — a caller that opts out
+and handles the artifact itself gets `false`, never a claim about work not
+done) and untouched by `keep_file`, which covers the shared source only: each
+row owns its own artifact, unlike the shared source file. ADR 0020 Decision 6
+crypto-shred applies unchanged and **stops at the AI boundary**: it shreds the
+vault, which is the only link between a surrogate and a person, and it does not
+touch the artifact — raw Markdown before the PII seam — nor the OCR run, nor
+the source. Those are erased by deletion only: the documents that contain the
+subject are hard-deleted (row by row or by the prune) and the artifact, the
+run and the source go with them (§3, *Erasure*). A shred alone is not an
+erasure of any raw asset.
+
+The sweep set is not the configured namespace alone: `kb:prune-archived-versions`
+sweeps temps and orphans on the configured `(disk, prefix)` **and** on every
+`(metadata.disk, metadata.prefix)` a row with an artifact pointer recorded —
+the same pair `stageArtifact()` composes the artifact path from — as long as
+the disk resolves on this deployment; a disk that does not is reported per
+namespace and counted (`artifact_namespaces_skipped`, additive in the summary
+line), never silently left to leak. The batched gate above and the single gate
+are one predicate.
+
+What each row recorded is read from its hydrated `metadata` through
+`StorageNamespace`, exactly as every other consumer reads it; the SQL only
+narrows the rows. Reading the two JSON **selectors** back as columns would be
+cheaper and wrong: a JSON driver hands a non-scalar back as its JSON *text*
+(`[]`, `{"disk":"kb"}`) and a number as its literal, so an `is_string()` test
+on the selector accepts a malformed value as a literal disk name — and the
+run then reports, and counts as a permanent leak, a namespace nobody ever
+recorded. A malformed `metadata.disk` is not a recorded disk here for the
+same reason it is not one for the deleter.
+
+A prefix needs the same judgement and a different answer. A string is not
+automatically a prefix: `KbPath::normalize()` refuses a `.` / `..` segment
+and every consumer composes the recorded prefix through it, so a row carrying
+`prefix: '../outside'` does not degrade on its own — it throws, in whatever
+ran next. It did, on both sides of a forced re-embed at once: the source read
+and the artifact staging that follows it (`rootFor()`), from one value.
+
+`StorageNamespace::prefixCanNamePath()` is that judgement, asked BEFORE
+anything composes the value. What to do with an unusable one is deliberately
+NOT shared, because the safe direction differs: a **deleting** consumer treats
+the row as referencing its path everywhere and fails closed (removing bytes on
+a guess is unrecoverable), while a **read** reads no original and a **write**
+stages no artifact, so one row's bad metadata cannot fail a job for a version
+whose bytes are fine. `recordedPrefix()` therefore returns the recorded value
+verbatim: rewriting it to the configured prefix would make the row claim an
+object at a location it never recorded, and the deleter would then delete it.
+
+### 8b. One active version per family, against a concurrent restore
+
+`archivePreviousVersions()` locks the WHOLE family — every row of
+`(tenant_id, project_key, source_path)`, whatever its status — before it
+archives, and only then runs its `UPDATE … WHERE status != 'archived'`.
+
+The UPDATE alone is not the invariant it looks like. Under PostgreSQL READ
+COMMITTED its WHERE is evaluated at scan time; when a matched row is locked
+by another transaction the row is re-checked after the lock clears, but a row
+that did NOT match at scan time is never revisited. An archived version that
+a Time Machine restore activates in the window between the ingest's scan and
+its commit is therefore missed, and the family ends with **two active rows** —
+ambiguous for every reader that resolves the live version by `status`.
+
+The status-free locking read closes it from the ingest side; the restore side
+was already closed by its own post-update `$concurrentlyActive` sweep, which
+runs on a fresh statement snapshot. Whichever transaction reaches the family
+second blocks on the other's rows and re-reads them: restore-first, the
+ingest archives the newly active row; ingest-first, the restore's sweep
+archives the newly inserted one. Either order leaves exactly one active
+version.
+
+SQLite has no row-level MVCC, so the regression test pins the ORDER the fix
+depends on (the family is locked and read after the new version exists)
+rather than the cross-process interleaving, which no in-process test can
+stage.
+
+### 9. The MCP read surface the v8.7 feature never got
+
+`KbDocumentVersionsTool` (read) lists a document's family with `id`, `status`,
+`is_live`, `version_actor`, `version_reason`, `content_hash`,
+`has_artifact`, `artifact_state`, `restored_by`, `restored_at` (§6), `indexed_at`, tenant-scoped through the same service (R30,
+R44). `has_artifact` is a **read + verified** claim on every surface (HTTP,
+MCP, CLI) — true only for `artifact_state = verified`, never the pointer
+alone: the ingestor deliberately keeps `markdown_path` when a post-commit
+publish fails and a file can be truncated later, so each surface derives it
+from `DocumentVersionService::artifactStateFor()` — the same read + hash check
+`contentFor()` serves content with — and exposes the additive `artifact_state`
+(`none` · `verified` · `unverified` · `missing` · `mismatch`) so an operator
+never reads a "stored" badge over a file that cannot be read. `unverified` (a
+readable file with no `content_hash` to check against — a legacy pointer) still
+serves content, with no integrity verdict, and is not claimed as stored; the
+identical re-ingest and the backfill record the hash once the bytes are known
+to be the version's, and the state becomes `verified`. The family a timeline
+verifies is **bounded by the listing itself** (R3) and amortized by a memo,
+not by the retention cap:
+the prune runs daily and `KB_KEEP_ARCHIVED_VERSIONS` can be set high, so a
+family can hold hundreds of versions and every row costs a read + hash.
+`DocumentVersionService::versionsFor()` lists at most
+`KB_VERSIONS_TIMELINE_LIMIT` (default 100) versions per call, newest first
+(rows without `indexed_at` last on every driver — PostgreSQL would otherwise
+put them first and fill the window), and every surface pages with an offset
+and reports the family `total`, the `limit`, the `offset` and `truncated`
+(additive, R27 — `total` was the listed count while the two were always
+equal; it is the family size now). An invalid page is refused (HTTP 422, an
+MCP error, a CLI failure), never silently satisfied. The state each listed
+row shows is memoized for `KB_VERSIONS_ARTIFACT_STATE_CACHE` seconds (default
+300; `0` verifies on every read) under a key carrying disk + path +
+`content_hash` — immutable for a published artifact, so a republished or
+repointed version cannot read a stale entry, and a row with no hash to key on
+is never memoized: a page costs one object read per row the first time and
+none while the memo stands. Only `verified` is memoized: the repairable
+states are always re-read, so the identical re-ingest and the backfill that
+republish the bytes show as repaired on the next listing. A verified file
+deleted or tampered inside the window may keep its badge until the entry
+expires; `…/versions/{id}/content` and
+`…/versions/diff` always re-read and report `missing` / `mismatch`, so the
+memo can only make a badge lag, never make served bytes unfaithful. The
+restore ledger
+(`metadata.restores`, §6) is host-owned like `version_actor`: stripped at the
+untrusted boundaries, appended by the restore path only. It reads; it never restores. `kb:doc-versions {document} {--tenant=} {--limit=} {--offset=}` is
+the CLI over the same service — `--tenant` validated non-empty and the
+document resolved with `forTenant()`, never the process-global default.
+`restore` stays HTTP-only and human-only, and `kb:artifacts-backfill` (§3)
+stays console-only: both are listed with their exception in the surfaces
+table below.
+
+## Consequences
+
+- The Time Machine answers *what did this document say on date X* with the
+  document, not with its index; *Semantic Time Travel* (parked since v8.0)
+  gets its data layer.
+- W3 (review) and W4 (export) read `markdown_path`; neither needs to know how
+  the artifact was produced. W4's `raw/` folder is a copy of the artifacts,
+  rendered through the tenant PII policy.
+- Disk footprint grows by one Markdown per version. The existing cap
+  (`KB_KEEP_ARCHIVED_VERSIONS`, default 10) bounds it; `markdown_only` shrinks
+  it below today's footprint for binary sources.
+- Existing rows have no artifact and keep diffing by reconstruction until
+  their next re-ingest. No migration rewrites history.
+- `content_hash` equals `document_hash` **on every version that has a stored
+  artifact**, by construction (§4, §7); on a row without one — flag OFF,
+  `reference_only`, a legacy row ingested before W2 — it is null, and null
+  means "no artifact", never "a correction" or "a mismatch". Its value
+  is the integrity check on the stored bytes, not a second identity —
+  a reader that treats it as a version id will be wrong; a reader that
+  compares it to the bytes on disk is doing exactly what it is for.
+
+## Surfaces (R44)
+
+| Capability | PHP / CLI | HTTP | MCP |
+|---|---|---|---|
+| List a document's versions | `kb:doc-versions {document} {--tenant=} {--limit=} {--offset=}` · `DocumentVersionService::versionsFor()` | `GET /api/admin/kb/documents/{id}/versions` (existing; now returns actor/reason/hash, bounded + paged with `?limit=&offset=`) | `KbDocumentVersionsTool` (read; `limit` / `offset`) |
+| Diff two versions (artifact-aware) | `kb:doc-versions {document} --diff=A:B {--tenant=}` · `DocumentVersionService::diff()` | `GET /api/admin/kb/documents/{id}/versions/diff?from&to` (existing; now reports the source of each side) | — (documented R44 exception, see below) |
+| Restore a version | `DocumentVersionService::restore()` | `POST /api/admin/kb/documents/{id}/restore-version` (existing; now records actor/reason) | — (write; human-only by design) |
+| Read a version's artifact | `DocumentVersionService::contentFor()` | `GET /api/admin/kb/documents/{id}/versions/{versionId}/content` | — (documented R44 exception, see below) |
+| Backfill artifacts for existing rows | `kb:artifacts-backfill {--project=} {--tenant=} {--dry-run}` (§3) | — | — (operator-only maintenance that re-converts, can spend and rewrites storage: console is its authorization boundary; documented R44 exception) |
+
+**Why diff and content have no MCP surface in v8.36.** The artifact is the
+converter's output **before** the PII seam: redaction runs on the chunks
+(ADR 0020), not on the stored Markdown, and the two admin endpoints are
+role-gated precisely because they return un-redacted bytes to a human who is
+allowed to see them. An MCP tool returning the same bytes — or a diff of
+two of them — would hand the model text that never passed the tenant PII
+policy, which is the one read path agents are not given anywhere else in the
+platform (SEC-LLM-001 gate 3). The list tool exposes only the metadata of
+§4, none of the content. A **redacted** agent read of an artifact is the W4
+concern: the export renders every artifact through the tenant PII policy
+(ADR 0032), and that rendered form is what an agent may consume. Until then
+the exception is explicit, not an omission.
+
+All surfaces adapt one core, `DocumentVersionService`, tenant-scoped through
+`KnowledgeDocument::forTenant()` (R30).

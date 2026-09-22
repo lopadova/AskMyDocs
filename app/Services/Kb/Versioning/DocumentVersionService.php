@@ -4,14 +4,23 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Versioning;
 
+use App\Jobs\CanonicalIndexerJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Scopes\AccessScopeScope;
+use App\Services\Kb\Canonical\CanonicalParser;
+use App\Support\Kb\SettingInt;
+use App\Support\Kb\StorageNamespace;
 use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * v8.7/W5 — Cloud Time Machine: browse + restore document versions.
@@ -22,27 +31,360 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * retained history: it lists the version timeline for a doc's
  * `(tenant, project_key, source_path)` family, reconstructs a version's
  * content from its chunks, diffs two versions, and restores an archived
- * version (status flip + canonical-identity transfer, transactional +
- * audited). Reuses retained chunks/embeddings — no re-embedding.
+ * version (status flip + the version's own canonical identity, recomputed
+ * from its retained frontmatter; transactional + audited). Reuses retained
+ * chunks/embeddings — no re-embedding.
  */
 final class DocumentVersionService
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    /** The timeline-limit misconfiguration has been reported by this process (test seam: resetWarnings()). */
+    private static bool $warnedTimelineLimit = false;
+
+    private static bool $warnedArtifactStateCache = false;
+
+    public static function resetWarnings(): void
+    {
+        self::$warnedArtifactStateCache = false;
+        self::$warnedTimelineLimit = false;
+    }
+
+    public const SOURCE_ARTIFACT = 'artifact';
+
+    public const INTEGRITY_VERIFIED = 'verified';
+
+    public const INTEGRITY_MISMATCH = 'mismatch';
+
+    public const SOURCE_RECONSTRUCTION = 'reconstruction';
+
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly ConversionArtifactStore $artifacts,
+        private readonly CanonicalParser $parser,
+    ) {}
 
     /**
-     * All versions (active + archived) for the doc's family, newest first.
+     * The versions (active + archived) of the doc's family, newest first —
+     * at most `$limit` of them (`kb.versioning.timeline_limit` when null),
+     * skipping the newest `$offset` (the page cursor: every surface exposes
+     * it, so a family larger than the bound is still reachable page by
+     * page). The timeline is BOUNDED (R3): every caller hydrates each row
+     * and reads + hashes its artifact, and a family grows without bound
+     * while the prune is delayed or `keep_archived` is high; the surfaces
+     * say when the family is larger than what they show (`truncated`).
+     * Rows without `indexed_at` sort LAST on every driver (PostgreSQL would
+     * put NULLs first under DESC and fill the window with them).
      *
      * @return Collection<int, KnowledgeDocument>
      */
-    public function versionsFor(KnowledgeDocument $document): Collection
+    public function versionsFor(KnowledgeDocument $document, ?int $limit = null, int $offset = 0): Collection
+    {
+        return $this->familyQuery($document)
+            ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('indexed_at')
+            ->orderByDesc('id')
+            ->offset(max(0, $offset))
+            ->limit(self::timelineLimit($limit))
+            ->get(['id', 'title', 'version_hash', 'status', 'is_canonical', 'canonical_type', 'indexed_at', 'created_at',
+                // v8.36 / ADR 0030 §4 — version provenance + the artifact pointer
+                'markdown_path', 'version_actor', 'version_reason', 'content_hash', 'metadata']);
+    }
+
+    /** How many versions the doc's family holds in total (the timeline shows at most `timelineLimit()` of them). */
+    public function familySizeFor(KnowledgeDocument $document): int
+    {
+        return $this->familyQuery($document)->count();
+    }
+
+    /**
+     * One version of the doc's family by id — resolved against the WHOLE
+     * family (tenant-scoped), never against a listed page: a diff or a
+     * restore may name a version the bounded listing did not show.
+     */
+    public function versionInFamily(KnowledgeDocument $document, int $id): ?KnowledgeDocument
+    {
+        return $this->familyQuery($document)->whereKey($id)->first();
+    }
+
+    /**
+     * v8.37/W3 (ADR 0031 §6) — the LIVE (most recent) version of `$document`'s
+     * family, full model (every column, unlike {@see versionsFor()}'s bounded
+     * select). `KbReviewService::approveCorrection()` uses this so a
+     * correction candidate proposed against an older version still applies
+     * to whatever the family's newest row is by the time a reviewer approves
+     * it — a candidate's `knowledge_document_id` names the version it was
+     * PROPOSED against, not necessarily the one it must APPLY to. Filters
+     * `status = 'active'`: the ingest archiving sweep
+     * ({@see \App\Services\Kb\DocumentIngestor}) guarantees exactly one
+     * active row per `(tenant, project_key, source_path)` family regardless
+     * of restore-vs-ingest ordering, but a Time Machine restore can leave an
+     * ARCHIVED row with a newer `indexed_at` than the active one — ordering
+     * by `indexed_at` alone (without the status filter) can therefore pick a
+     * row that is no longer live. Falls back to `$document` itself when the
+     * family query somehow returns nothing (the row passed in not yet
+     * visible to this connection, or genuinely no active row in the family)
+     * rather than a null a caller would have to guard.
+     *
+     * `$lock` runs the read under `lockForUpdate()` — callers that resolve
+     * the live row in order to WRITE to it (approve/reject a correction
+     * candidate) must lock it in the SAME query that reads it, inside the
+     * SAME transaction, so a concurrent re-ingest cannot archive this exact
+     * row between the read and the write (R21).
+     */
+    public function currentVersionFor(KnowledgeDocument $document, bool $lock = false): KnowledgeDocument
+    {
+        $query = $this->familyQuery($document)
+            ->where('status', 'active')
+            ->orderByRaw('CASE WHEN indexed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('indexed_at')
+            ->orderByDesc('id');
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first() ?? $document;
+    }
+
+    /**
+     * The bound on a timeline listing: the caller's positive limit, capped by
+     * `kb.versioning.timeline_limit` (a non-positive configured value is the
+     * default of 100, never "unbounded").
+     */
+    public static function timelineLimit(?int $requested = null): int
+    {
+        $configured = config('kb.versioning.timeline_limit', 100);
+        $whole = SettingInt::whole($configured, 1);
+        $max = $whole ?? 100;
+        if ($whole === null && ! self::$warnedTimelineLimit) {
+            // Once per process, not once per call: the limit is read by every
+            // surface (HTTP / MCP / CLI) on every page, and a misconfiguration
+            // must stay visible without sustained noise.
+            self::$warnedTimelineLimit = true;
+            Log::warning('DocumentVersionService: kb.versioning.timeline_limit is not a positive number of versions; using the default', [
+                'configured' => is_scalar($configured) ? $configured : gettype($configured),
+                'default' => 100,
+            ]);
+        }
+        if ($requested === null || $requested < 1) {
+            return $max;
+        }
+
+        return min($requested, $max);
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Builder<KnowledgeDocument> */
+    private function familyQuery(KnowledgeDocument $document): \Illuminate\Database\Eloquent\Builder
     {
         return KnowledgeDocument::query()
             ->forTenant($this->tenant->current())
             ->where('project_key', $document->project_key)
-            ->where('source_path', $document->source_path)
-            ->orderByDesc('indexed_at')
-            ->orderByDesc('id')
-            ->get(['id', 'title', 'version_hash', 'status', 'is_canonical', 'canonical_type', 'indexed_at', 'created_at']);
+            ->where('source_path', $document->source_path);
+    }
+
+    public const ARTIFACT_NONE = 'none';
+
+    public const ARTIFACT_VERIFIED = 'verified';
+
+    public const ARTIFACT_UNVERIFIED = 'unverified';
+
+    public const ARTIFACT_MISSING = 'missing';
+
+    public const ARTIFACT_MISMATCH = 'mismatch';
+
+    /**
+     * v8.36 / ADR 0030 §5 — the verified state of a version's artifact, the
+     * same read + hash check {@see contentFor()} serves content with (never
+     * the pointer alone: the ingestor deliberately keeps the pointer when a
+     * post-commit publish fails, and a file can be truncated or replaced
+     * later): `none` (no pointer), `verified` (readable, hashes to
+     * `content_hash`), `unverified` (readable, no `content_hash` to check
+     * against), `missing` (pointer set, nothing readable there), `mismatch`
+     * (readable, does not hash to `content_hash`). Every surface that claims
+     * "this version has a stored artifact" derives it from here.
+     *
+     * The check READS the bytes, so a timeline page of `timeline_limit`
+     * versions would fetch that many objects from a bucket on every listing
+     * and on every "load older" page. `verified` — and ONLY `verified` — is
+     * therefore memoized for `kb.versioning.artifact_state_cache_seconds`
+     * (0 disables it, R43). The memo is keyed on `(disk, path)` and its VALUE
+     * is the `content_hash` it was verified against, so the hash is compared
+     * rather than baked into the key: a hit requires the recorded hash to
+     * still be the one that was verified, and a row whose hash changed reads
+     * as a miss and is re-verified. All three are immutable for a published
+     * artifact, so the memo cannot outlive the bytes it describes.
+     *
+     * The asymmetry is the point. A state that can be repaired — `missing`,
+     * `mismatch`, `unverified`, `none` — is never memoized, so the identical
+     * re-ingest and `kb:artifacts-backfill` that republish the bytes show as
+     * repaired on the very next listing; only the state that cannot improve
+     * on its own is cached. What the window can then hide is the one
+     * transition left: a verified file deleted or tampered WITHIN it, whose
+     * badge may lag by up to the TTL — while the content and diff endpoints
+     * re-read every time and report `missing` / `mismatch` faithfully. The
+     * badge is a diagnostic; the served bytes are the contract.
+     */
+    public function artifactStateFor(KnowledgeDocument $version): string
+    {
+        $seconds = self::artifactStateCacheSeconds();
+        $hash = $version->content_hash;
+        if ($seconds < 1 || ! is_string($hash) || $hash === '') {
+            return $this->readArtifact($version)['state'];
+        }
+        $metadata = is_array($version->metadata) ? $version->metadata : [];
+        // The VALUE is the verified hash, so the key needs only (disk, path):
+        // one key per artifact, which the removal gate can forget without
+        // knowing which rows pointed at it.
+        $key = self::artifactStateCacheKey(StorageNamespace::diskOf($metadata), (string) $version->markdown_path);
+        try {
+            if (Cache::get($key) === $hash) {
+                return self::ARTIFACT_VERIFIED;
+            }
+        } catch (\Throwable $e) {
+            // A cache that refuses is never an outage on a read path (R14):
+            // the state is computed, just not memoized.
+            Log::warning('DocumentVersionService: artifact state memo not read; verifying', ['document_id' => (int) $version->id, 'error' => $e->getMessage()]);
+
+            return $this->readArtifact($version)['state'];
+        }
+        $state = $this->readArtifact($version)['state'];
+        if ($state !== self::ARTIFACT_VERIFIED) {
+            return $state; // repairable: never memoized, so a repair shows on the next listing
+        }
+        try {
+            Cache::put($key, $hash, $seconds);
+        } catch (\Throwable $e) {
+            Log::warning('DocumentVersionService: artifact state not memoized; verifying on every read', ['document_id' => (int) $version->id, 'error' => $e->getMessage()]);
+        }
+
+        return $state;
+    }
+
+    /** One key per artifact `(disk, path)`; the value is the `content_hash` proved verified. */
+    public static function artifactStateCacheKey(string $disk, string $path): string
+    {
+        return 'kb:artifact-state:'.$disk.':'.sha1($path);
+    }
+
+    /**
+     * Forget an artifact's memoized verification. Called by the ONE gate
+     * every removal goes through (`DocumentDeleter::removeArtifactIfUnreferenced()`),
+     * so a file WE delete never leaves a "stored" badge standing for the rest
+     * of the window: what the window can still hide is an external deletion
+     * or tampering, which the content and diff endpoints report faithfully
+     * anyway. A cache that refuses is logged, never a removal turned into a
+     * failure (R14).
+     */
+    public static function forgetArtifactStateMemo(string $disk, string $path): void
+    {
+        try {
+            Cache::forget(self::artifactStateCacheKey($disk, $path));
+        } catch (\Throwable $e) {
+            Log::warning('DocumentVersionService: artifact state memo not forgotten after a removal; the badge may lag until it expires', ['disk' => $disk, 'markdown_path' => $path, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Seconds an artifact state stays memoized. `0` disables the memo
+     * deliberately and silently (every read verifies); a negative or
+     * non-numeric value disables it too — the safe direction — and is
+     * reported once per process, never a stale badge from a
+     * misconfiguration.
+     */
+    public static function artifactStateCacheSeconds(): int
+    {
+        $configured = config('kb.versioning.artifact_state_cache_seconds', 300);
+        $seconds = SettingInt::whole($configured, 0);
+        if ($seconds !== null) {
+            return $seconds;
+        }
+        if (! self::$warnedArtifactStateCache) {
+            self::$warnedArtifactStateCache = true;
+            Log::warning('DocumentVersionService: kb.versioning.artifact_state_cache_seconds is not a number of seconds; verifying every read', [
+                'configured' => is_scalar($configured) ? $configured : gettype($configured),
+            ]);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Whether an artifact state backs the `has_artifact` claim: only
+     * `verified` — readable AND hashing to `content_hash`. `unverified` (a
+     * readable file with no hash to check against) serves content, but it
+     * is a diagnostic state, not a claim of integrity; the identical
+     * re-ingest and the backfill record the hash and make it `verified`.
+     */
+    public static function isVerifiedArtifactState(string $state): bool
+    {
+        return $state === self::ARTIFACT_VERIFIED;
+    }
+
+    /**
+     * @return array{state: string, content: string|null, disk: string|null, path: string|null}
+     */
+    private function readArtifact(KnowledgeDocument $version): array
+    {
+        $path = $version->markdown_path;
+        if (! is_string($path) || $path === '') {
+            return ['state' => self::ARTIFACT_NONE, 'content' => null, 'disk' => null, 'path' => null];
+        }
+        $metadata = is_array($version->metadata) ? $version->metadata : [];
+        // One reading for every consumer (StorageNamespace): a row whose
+        // `metadata.disk` is not a non-empty string reads from the configured
+        // disk, never from '' or 'Array'.
+        $disk = StorageNamespace::diskOf($metadata);
+        $content = $this->artifacts->read($disk, $path);
+        if ($content === null) {
+            return ['state' => self::ARTIFACT_MISSING, 'content' => null, 'disk' => $disk, 'path' => $path];
+        }
+        if (! is_string($version->content_hash) || $version->content_hash === '') {
+            return ['state' => self::ARTIFACT_UNVERIFIED, 'content' => $content, 'disk' => $disk, 'path' => $path];
+        }
+        if (hash('sha256', $content) !== $version->content_hash) {
+            return ['state' => self::ARTIFACT_MISMATCH, 'content' => null, 'disk' => $disk, 'path' => $path];
+        }
+
+        return ['state' => self::ARTIFACT_VERIFIED, 'content' => $content, 'disk' => $disk, 'path' => $path];
+    }
+
+    /**
+     * v8.36 / ADR 0030 §5 — the version's content and where it came from:
+     * the stored artifact when `markdown_path` is set, the file is there and
+     * its bytes hash to `content_hash` (or there is no hash to check),
+     * otherwise the chunk reconstruction. A missing file behind a non-null
+     * path is logged and degrades — it is not a 500 (R14 is about silent
+     * success; this says which source it used). A truncated or replaced file
+     * is never reported as a faithful artifact: it degrades to the
+     * reconstruction and says so (`integrity: mismatch`).
+     *
+     * @return array{content: string, source: string, integrity: string|null}
+     */
+    public function contentFor(KnowledgeDocument $version): array
+    {
+        $artifact = $this->readArtifact($version);
+        switch ($artifact['state']) {
+            case self::ARTIFACT_VERIFIED:
+                return ['content' => (string) $artifact['content'], 'source' => self::SOURCE_ARTIFACT, 'integrity' => self::INTEGRITY_VERIFIED];
+            case self::ARTIFACT_UNVERIFIED:
+                return ['content' => (string) $artifact['content'], 'source' => self::SOURCE_ARTIFACT, 'integrity' => null];
+            case self::ARTIFACT_MISMATCH:
+                Log::warning('DocumentVersionService: artifact bytes do not match content_hash, falling back to reconstruction', [
+                    'document_id' => (int) $version->id,
+                    'disk' => $artifact['disk'],
+                    'markdown_path' => $artifact['path'],
+                ]);
+
+                return ['content' => $this->reconstructContent($version), 'source' => self::SOURCE_RECONSTRUCTION, 'integrity' => self::INTEGRITY_MISMATCH];
+            case self::ARTIFACT_MISSING:
+                Log::warning('DocumentVersionService: artifact missing behind markdown_path, falling back to reconstruction', [
+                    'document_id' => (int) $version->id,
+                    'disk' => $artifact['disk'],
+                    'markdown_path' => $artifact['path'],
+                ]);
+                break;
+        }
+
+        return ['content' => $this->reconstructContent($version), 'source' => self::SOURCE_RECONSTRUCTION, 'integrity' => null];
     }
 
     /**
@@ -61,11 +403,18 @@ final class DocumentVersionService
     }
 
     /**
-     * @return array{from: int, to: int, added: int, removed: int, rows: list<array{type: string, text: string}>}
+     * Artifact-aware since v8.36 (ADR 0030 §5): each side is its stored
+     * artifact when there is one, its chunk reconstruction otherwise, and
+     * `from_source` / `to_source` say which — additive keys (R27), so the
+     * v8.7 shape is unchanged for every existing reader.
+     *
+     * @return array{from: int, to: int, added: int, removed: int, rows: list<array{type: string, text: string}>, from_source: string, to_source: string, from_integrity: string|null, to_integrity: string|null}
      */
     public function diff(KnowledgeDocument $from, KnowledgeDocument $to): array
     {
-        $diff = MarkdownDiff::compute($this->reconstructContent($from), $this->reconstructContent($to));
+        $fromContent = $this->contentFor($from);
+        $toContent = $this->contentFor($to);
+        $diff = MarkdownDiff::compute($fromContent['content'], $toContent['content']);
 
         return [
             'from' => (int) $from->id,
@@ -73,15 +422,48 @@ final class DocumentVersionService
             'added' => $diff['added'],
             'removed' => $diff['removed'],
             'rows' => $diff['rows'],
+            'from_source' => $fromContent['source'],
+            'to_source' => $toContent['source'],
+            'from_integrity' => $fromContent['integrity'] ?? null,
+            'to_integrity' => $toContent['integrity'] ?? null,
         ];
     }
 
     /**
-     * Restore an archived version to live. Archives the current live
-     * version of the same family, transfers its canonical identity (when
-     * canonical) to the target, activates the target, and writes a
-     * `kb_canonical_audit` row for canonical restores. Transactional so a
-     * partial flip can never leave two live versions or a vacated identity.
+     * The most recent restore recorded on a version (ADR 0030 §6), or null
+     * when it was never restored. Additive read model for the index surfaces.
+     *
+     * @return array{actor: string, at: string, previous_live_id: int|null}|null
+     */
+    public static function lastRestoreOf(KnowledgeDocument $version): ?array
+    {
+        $metadata = is_array($version->metadata) ? $version->metadata : [];
+        $restores = is_array($metadata['restores'] ?? null) ? $metadata['restores'] : [];
+        $last = $restores === [] ? null : end($restores);
+        if (! is_array($last) || ! is_string($last['actor'] ?? null) || ! is_string($last['at'] ?? null)) {
+            return null;
+        }
+
+        return ['actor' => $last['actor'], 'at' => $last['at'], 'previous_live_id' => isset($last['previous_live_id']) ? (int) $last['previous_live_id'] : null];
+    }
+
+    /**
+     * Restore an archived version to live. Archives the current live version
+     * of the same family, settles the canonical identity, activates the
+     * target, and writes a `kb_canonical_audit` row for canonical restores.
+     * Transactional so a partial flip can never leave two live versions or a
+     * vacated identity.
+     *
+     * v8.36 — the identity is the restored version's OWN, recomputed from the
+     * frontmatter the archive retained through the same parser + validator the
+     * ingest path runs: a restore is the re-ingest of older bytes, so the
+     * canonical identity follows the CONTENT. A version that never declared a
+     * slug takes none (the family's slug is left unheld, exactly as after
+     * ingesting non-canonical bytes); a LEGACY version archived before the
+     * frontmatter was persisted has none of its own, so it still carries the
+     * outgoing live/swept row's. A reclaimed slug or doc_id already held by
+     * another row degrades the restore to non-canonical with a logged warning
+     * rather than raising on the composite unique.
      *
      * R21 — The target is re-fetched with lockForUpdate() as the FIRST
      * statement inside the transaction so concurrent restore calls for the
@@ -101,7 +483,15 @@ final class DocumentVersionService
     {
         $tenantId = $this->tenant->current();
 
-        DB::transaction(function () use ($target, $tenantId, $actor): void {
+        // Captured out of the transaction: the graph projection is reconciled
+        // AFTER the commit (see below), and by then the identities have been
+        // vacated from the rows that held them.
+        $vacatedIdentities = [];
+        $restoredId = null;
+        $restoredProjectKey = null;
+        $restoredIdentity = [];
+
+        DB::transaction(function () use ($target, $tenantId, $actor, &$vacatedIdentities, &$restoredId, &$restoredProjectKey, &$restoredIdentity): void {
             // R21 — Re-read and lock the target first; the stale $target loaded
             // by the controller cannot be trusted once we cross the lock boundary.
             $locked = KnowledgeDocument::query()
@@ -128,18 +518,37 @@ final class DocumentVersionService
                 ->lockForUpdate()
                 ->first();
 
-            $restoreCanonical = $live !== null && (bool) $live->is_canonical;
-            $identity = $restoreCanonical
-                ? [
+            // v8.36 — the restored version's canonical identity is ITS OWN,
+            // reconstructed from the frontmatter the archive retained. A
+            // restore is the re-ingest of an older version's bytes, and under
+            // ingest the canonical identity follows the CONTENT: taking
+            // whatever the live row happened to hold would mark content
+            // canonical that never declared it (and would silently demote a
+            // canonical version restored over a non-canonical one).
+            $ownIdentity = $this->canonicalIdentityFromFrontmatter($locked);
+            $targetWasCanonical = $ownIdentity !== null || $locked->canonical_type !== null;
+            $identity = $ownIdentity ?? [];
+            // Legacy rows (archived before the frontmatter was persisted) keep
+            // no identity of their own: `canonical_type` is all that survives,
+            // so for THOSE the family's identity is carried from the outgoing
+            // live version — the only place the slug still exists.
+            $carryFromLive = $targetWasCanonical && $ownIdentity === null;
+            $restoreCanonical = $ownIdentity !== null;
+            if ($carryFromLive && $live !== null && (bool) $live->is_canonical) {
+                $identity = [
                     'is_canonical' => true,
                     'doc_id' => $live->doc_id,
                     'slug' => $live->slug,
                     'canonical_status' => $live->canonical_status,
                     'retrieval_priority' => $live->retrieval_priority,
-                ]
-                : [];
+                ];
+                $restoreCanonical = true;
+            }
 
             if ($live !== null) {
+                // Captured BEFORE the vacate: after it the row no longer knows
+                // which graph nodes it owned, and those nodes outlive it.
+                $vacatedIdentities[] = ['doc_id' => $live->doc_id, 'slug' => $live->slug];
                 // Vacate the outgoing live version's canonical identity FIRST
                 // so the composite uniques (project, slug)/(project, doc_id)
                 // are free before we assign them to the target.
@@ -152,31 +561,141 @@ final class DocumentVersionService
                 ]);
             }
 
-            $locked->update(array_merge(['status' => 'active', 'indexed_at' => now()], $identity));
-
             // R21 — Sweep-archive any other active versions that may have been
             // activated by a concurrent restore transaction. When two threads
             // restore different archived versions concurrently, PostgreSQL
             // EvalPlanQual re-evaluates WHERE status='active' after a blocked
             // lock is released; the formerly-active row is now archived so
             // $live above returns null, causing this thread to miss the version
-            // that the concurrent transaction just activated. This UPDATE runs
-            // at UPDATE-lock-acquisition time (not at SELECT scan time) so it
-            // captures any such version and upholds the one-active-per-family
-            // invariant unconditionally.
-            KnowledgeDocument::query()
+            // that the concurrent transaction just activated. This fresh
+            // SELECT runs after our own UPDATE — READ COMMITTED gives each
+            // statement a new snapshot — so it sees the row that transaction
+            // activated. The row is always vacated and archived, upholding the
+            // one-active-per-family invariant unconditionally; its canonical
+            // identity is carried onto the target ONLY when the target is a
+            // legacy version with none of its own (the identity rule above) —
+            // otherwise the family's slug is deliberately left unheld, exactly
+            // as it would be after ingesting non-canonical bytes. A carried
+            // transfer is audited like the ordinary one.
+            $displacedIds = $live !== null ? [(int) $live->id] : [];
+            $concurrentlyActive = KnowledgeDocument::query()
                 ->forTenant($tenantId)
                 ->where('project_key', $locked->project_key)
                 ->where('source_path', $locked->source_path)
                 ->where('status', 'active')
                 ->where('id', '!=', $locked->id)
-                ->update([
+                ->lockForUpdate()
+                ->get();
+            foreach ($concurrentlyActive as $other) {
+                $displacedIds[] = (int) $other->id;
+                // Same rule as above: only a legacy row with no identity of its
+                // own borrows the swept version's.
+                if ($carryFromLive && $identity === [] && (bool) $other->is_canonical) {
+                    $identity = [
+                        'is_canonical' => true,
+                        'doc_id' => $other->doc_id,
+                        'slug' => $other->slug,
+                        'canonical_status' => $other->canonical_status,
+                        'retrieval_priority' => $other->retrieval_priority,
+                    ];
+                    $restoreCanonical = true;
+                }
+                $vacatedIdentities[] = ['doc_id' => $other->doc_id, 'slug' => $other->slug];
+                // Vacate BEFORE the target takes the identity (composite uniques).
+                $other->update([
                     'status' => 'archived',
                     'is_canonical' => false,
                     'doc_id' => null,
                     'slug' => null,
                     'canonical_status' => null,
                 ]);
+            }
+
+            // v8.36 / ADR 0030 §6 — `version_actor` / `version_reason` are the
+            // CREATION provenance of the version and stay immutable; a restore
+            // is appended to `metadata.restores` (actor, when, which live row it
+            // displaced), so the timeline keeps both who created a version and
+            // who brought it back. `markdown_path` is left untouched (the
+            // artifact was never deleted with the archive, only with the prune).
+            $lockedMetadata = is_array($locked->metadata) ? $locked->metadata : [];
+            $restores = is_array($lockedMetadata['restores'] ?? null) ? $lockedMetadata['restores'] : [];
+            $restores[] = [
+                'actor' => $actor ?? 'system:restore',
+                'at' => now()->toIso8601String(),
+                'previous_live_id' => $displacedIds[0] ?? null,
+            ];
+            // The family's ACTIVE rows have been vacated above, but the
+            // reclaimed slug/doc_id can still be held by an archived sibling
+            // (a re-ingest that dropped the frontmatter vacates nothing) or by
+            // a live row of ANOTHER source path in the same project. Writing
+            // it anyway raises a QueryException on `uq_kb_doc_tenant_slug` /
+            // `uq_kb_doc_tenant_doc_id` — a 500 with a raw SQL message. The restore's
+            // job is to bring the CONTENT back, so a taken slot degrades the
+            // row to non-canonical, loudly, rather than failing the restore or
+            // stealing the slot from its current holder.
+            if ($identity !== []) {
+                $holderId = $this->conflictingCanonicalHolderId($locked, $identity, $tenantId);
+                if ($holderId !== null) {
+                    Log::warning('DocumentVersionService: restoring without the canonical identity — its slug or doc_id is held by another document', [
+                        'knowledge_document_id' => (int) $locked->id,
+                        'project_key' => (string) $locked->project_key,
+                        'slug' => $identity['slug'] ?? null,
+                        'doc_id' => $identity['doc_id'] ?? null,
+                        'held_by_document_id' => $holderId,
+                    ]);
+                    $identity = [];
+                    $restoreCanonical = false;
+                }
+            }
+
+            // The probe above only ever finds an EXISTING holder — it has
+            // nothing to lock when the slot is genuinely free. Two restores
+            // in different families can both observe "free" and race to
+            // claim the SAME identity; the loser's write here is the only
+            // moment left to catch it, so it runs inside a nested transaction
+            // (a SAVEPOINT — `DB::transaction()` called while one is already
+            // open) and the composite unique is the arbiter. A SAVEPOINT
+            // keeps the failure local to this statement: without it, Postgres
+            // marks the WHOLE outer transaction aborted and every statement
+            // after — including the graceful retry below — would fail too.
+            try {
+                DB::transaction(function () use ($locked, $identity, $lockedMetadata, $restores): void {
+                    $locked->update(array_merge([
+                        'status' => 'active',
+                        'indexed_at' => now(),
+                        'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
+                    ], $identity));
+                });
+            } catch (QueryException $e) {
+                if ($identity === [] || ! $this->isCanonicalIdentityConflict($e)) {
+                    throw $e;
+                }
+                Log::warning('DocumentVersionService: restoring without the canonical identity — a concurrent restore claimed its slug or doc_id first', [
+                    'knowledge_document_id' => (int) $locked->id,
+                    'project_key' => (string) $locked->project_key,
+                    'slug' => $identity['slug'] ?? null,
+                    'doc_id' => $identity['doc_id'] ?? null,
+                ]);
+                $identity = [];
+                $restoreCanonical = false;
+                // The failed attempt's `fill()` left `$locked` dirty with the
+                // identity it could not claim — the ROLLBACK TO SAVEPOINT
+                // undid the WRITE, not the in-memory model, so retrying on
+                // this same instance would silently resend the stale values
+                // even though this call omits them. The row's OWN lock was
+                // taken before the savepoint and survives the rollback, so a
+                // plain re-fetch (no re-lock needed) is enough to retry clean.
+                $locked = $locked->fresh();
+                $locked->update(array_merge([
+                    'status' => 'active',
+                    'indexed_at' => now(),
+                    'metadata' => array_merge($lockedMetadata, ['restores' => $restores]),
+                ], $identity));
+            }
+
+            $restoredId = (int) $locked->id;
+            $restoredProjectKey = (string) $locked->project_key;
+            $restoredIdentity = $identity;
 
             if ($restoreCanonical && (bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
@@ -185,13 +704,213 @@ final class DocumentVersionService
                     'slug' => $identity['slug'] ?? null,
                     'event_type' => 'updated',
                     'actor' => $actor ?? 'time-machine:restore',
-                    'before_json' => ['restored_from_status' => 'archived', 'previous_live_id' => $live?->id],
+                    'before_json' => ['restored_from_status' => 'archived', 'previous_live_id' => $displacedIds[0] ?? null, 'displaced_ids' => $displacedIds],
                     'after_json' => ['restored_version_id' => (int) $locked->id, 'version_hash' => $locked->version_hash],
                     'metadata_json' => ['action' => 'version_restore'],
                 ]);
             }
         });
 
-        return $target->fresh() ?? throw new \RuntimeException('Restored version has been deleted.');
+        // The graph projection follows the ACTIVE version, so a restore moves
+        // it (R10 §5/§9). Two halves, and the second is the one an indexer
+        // alone cannot do:
+        //
+        //  - every identity this restore vacated and did NOT hand to the
+        //    restored row is now owned by no active version, so its nodes are
+        //    removed (the composite FK takes the edges). Restoring a
+        //    NON-canonical version is exactly this case, and it is why
+        //    dispatching the indexer is not sufficient: it would short-circuit
+        //    on a row with no identity and leave the whole previous graph
+        //    standing;
+        //  - an identity the restored row DOES hold is left in place and
+        //    rebuilt by the indexer, which is forced past its
+        //    `(tenant, document, version_hash)` idempotency key because the
+        //    restored version's hash is one it has already indexed before.
+        //
+        // After the commit, never inside it: a queued job must not see a
+        // transaction that may still roll back, and a node delete that
+        // preceded a rollback would leave the graph short of a version that
+        // is still live.
+        if ($restoredId !== null && $restoredProjectKey !== null) {
+            $restoredDocId = $restoredIdentity['doc_id'] ?? null;
+            $restoredSlug = $restoredIdentity['slug'] ?? null;
+            $deleter = app(\App\Services\Kb\DocumentDeleter::class);
+            foreach ($vacatedIdentities as $vacated) {
+                $docId = $vacated['doc_id'];
+                $slug = $vacated['slug'];
+                if ($docId === null && $slug === null) {
+                    continue;
+                }
+                // BOTH halves, not either: an identity is handed on only when
+                // the restored row holds the same doc_id AND the same slug.
+                // Restoring `(D1, S1)` over `(D2, S1)` shares only the slug,
+                // and the node still owned by `D2` would survive — orphaned,
+                // and sitting on the `node_uid` the indexer is about to
+                // upsert (`uq_kb_nodes_project_uid`). The mirror case,
+                // `(D1, S1)` over `(D1, S2)`, strands the node named `S2`.
+                // Removing either is safe: what the restored row does own is
+                // rebuilt by the forced re-index below.
+                if ($docId === $restoredDocId && $slug === $restoredSlug) {
+                    continue; // handed to the restored row; the indexer rebuilds it
+                }
+                $deleter->removeGraphNodesForIdentity($tenantId, $restoredProjectKey, $docId, $slug);
+            }
+            if (($restoredIdentity['is_canonical'] ?? false) === true) {
+                CanonicalIndexerJob::dispatch($restoredId, $tenantId, forceReindex: true);
+            }
+        }
+
+        // v8.36 / PR #479 Copilot review round 5 (R30) — `$target->fresh()`
+        // is a bare primary-key lookup with NO tenant predicate at all;
+        // `BelongsToTenant` installs no global scope (the docblock above,
+        // on the transaction's own re-read, says so explicitly: "the stale
+        // $target ... cannot be trusted"). That re-read scopes by
+        // `forTenant($tenantId)`; this final response lookup, reached
+        // AFTER the transaction commits, must hold the same boundary —
+        // an ID that happens to collide across tenants, or a caller
+        // supplying an already-stale model, must never return another
+        // tenant's row here.
+        return KnowledgeDocument::query()->forTenant($tenantId)->find($target->id)
+            ?? throw new \RuntimeException('Restored version has been deleted.');
+    }
+
+    /**
+     * The canonical identity a version declares in ITS OWN retained
+     * frontmatter, or null when it declares none.
+     *
+     * `vacateCanonicalIdentifiersOnPreviousVersions()` clears `doc_id`,
+     * `slug`, `canonical_status` and `is_canonical` when a version is
+     * archived but PRESERVES `frontmatter_json` (and `canonical_type`)
+     * precisely so the identity can be reconstructed: the markdown is the
+     * source of truth and the columns are its projection (CLAUDE.md §6).
+     * `retrieval_priority` survives the archive on the row itself, so it is
+     * read back from the column with the frontmatter as a fallback.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function canonicalIdentityFromFrontmatter(KnowledgeDocument $version): ?array
+    {
+        $frontmatter = $version->frontmatter_json;
+        if (! is_array($frontmatter) || $frontmatter === []) {
+            return null;
+        }
+        // `_derived` is the ingestor's own sub-map, not authored frontmatter.
+        unset($frontmatter['_derived']);
+        if ($frontmatter === []) {
+            return null;
+        }
+
+        // The identity is recomputed through the SAME parser + validator the
+        // ingest path runs, so a restore can never resurrect an identity that
+        // ingestion would have refused (an invalid status, a slug that does
+        // not match the pattern, a missing type). Anything the parser turns
+        // down degrades to a non-canonical restore, exactly as re-ingesting
+        // those bytes would.
+        try {
+            $document = $this->parser->parse("---\n".Yaml::dump($frontmatter, 4, 2)."---\n\n");
+        } catch (\Throwable $e) {
+            Log::warning('DocumentVersionService: a version\'s retained frontmatter could not be re-read; restoring it without a canonical identity', [
+                'knowledge_document_id' => (int) $version->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+        if (! $this->parser->validate($document)->valid || $document->slug === null || $document->slug === '') {
+            return null;
+        }
+
+        return [
+            'is_canonical' => true,
+            'doc_id' => $document->docId,
+            'slug' => $document->slug,
+            'canonical_type' => $document->type?->value,
+            'canonical_status' => $document->status?->value,
+            'retrieval_priority' => $document->retrievalPriority,
+        ];
+    }
+
+    /**
+     * The id of another row in this tenant + project that already holds the
+     * slug or doc_id the restore is about to reclaim, or null when the slots
+     * are free.
+     *
+     * The composite uniques are `(tenant_id, project_key, slug)` and
+     * `(tenant_id, project_key, doc_id)` since 2026_10_02_000011, and only
+     * the family's ACTIVE rows are vacated before the assignment — an
+     * archived sibling of this family (a re-ingest that dropped the
+     * frontmatter never vacates) or a live row of ANOTHER source path can
+     * still hold the value. Writing it anyway raises a `QueryException` the
+     * restore has no business turning into a 500.
+     *
+     * The probe therefore has to see EXACTLY what the index sees. A holder
+     * the reader is not allowed to read still occupies the slot, so the two
+     * global scopes are lifted here: `withTrashed()` because a soft-deleted
+     * row keeps its slug, and `AccessScopeScope` because an ACL-hidden
+     * holder is invisible to this admin yet not to the database. Dropping
+     * either one turns a degraded restore back into the 500 this probe
+     * exists to prevent. The tenant filter STAYS — it is the first column of
+     * the index.
+     *
+     * @param  array<string, mixed>  $identity
+     */
+    private function conflictingCanonicalHolderId(KnowledgeDocument $locked, array $identity, string $tenantId): ?int
+    {
+        $slug = $identity['slug'] ?? null;
+        $docId = $identity['doc_id'] ?? null;
+        if (! is_string($slug) && ! is_string($docId)) {
+            return null;
+        }
+
+        // `value('id')` and not `first()`: with `AccessScopeScope` lifted the
+        // row may be one this admin is not allowed to read, and the only
+        // thing this probe is entitled to is whether the slot is taken. The
+        // lock clause is on the query, so the row is still locked.
+        $holder = KnowledgeDocument::withTrashed()
+            ->withoutGlobalScope(AccessScopeScope::class)
+            ->forTenant($tenantId)
+            ->where('project_key', $locked->project_key)
+            ->where('id', '!=', $locked->id)
+            ->where(static function ($query) use ($slug, $docId): void {
+                if (is_string($slug)) {
+                    $query->orWhere('slug', $slug);
+                }
+                if (is_string($docId)) {
+                    $query->orWhere('doc_id', $docId);
+                }
+            })
+            ->lockForUpdate()
+            ->value('id');
+
+        return $holder !== null ? (int) $holder : null;
+    }
+
+    /**
+     * Recognise the `uq_kb_doc_tenant_slug` / `uq_kb_doc_tenant_doc_id`
+     * unique violation across drivers — the arbiter for the race
+     * {@see conflictingCanonicalHolderId()} cannot cover: two restores
+     * claiming the SAME previously-free identity both see "nothing to lock"
+     * and only the database catches the second write.
+     *
+     * R14: confirm it IS an integrity/unique constraint violation via
+     * SQLSTATE BEFORE inspecting the message, so a schema error or an
+     * unrelated constraint that happens to mention `knowledge_documents` is
+     * never misclassified as a race to gracefully degrade past. SQLSTATE
+     * 23505 = Postgres unique; 23000 = MySQL/SQLite integrity (covers
+     * duplicate-key + UNIQUE). The message check then narrows to the two
+     * identity constraints specifically: the named index (Postgres/MySQL)
+     * or the column-list form SQLite emits.
+     */
+    private function isCanonicalIdentityConflict(QueryException $e): bool
+    {
+        if (! in_array($e->errorInfo[0] ?? '', ['23000', '23505'], true)) {
+            return false;
+        }
+        $message = $e->getMessage();
+
+        return str_contains($message, 'uq_kb_doc_tenant_slug')
+            || str_contains($message, 'uq_kb_doc_tenant_doc_id')
+            || str_contains($message, 'knowledge_documents.slug')
+            || str_contains($message, 'knowledge_documents.doc_id');
     }
 }

@@ -163,6 +163,10 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbWikiIndex::class,
         // v8.11/P8 — apply-engine application audit.
         \App\Models\KbDocAnalysisApplication::class,
+        // v8.37/W3 — Digitization Review: per-page review progress and
+        // agent-proposed text correction candidates (ADR 0031 §2/§7).
+        \App\Models\KbDocumentPageReview::class,
+        \App\Models\KbTextCorrectionCandidate::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

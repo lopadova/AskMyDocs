@@ -273,6 +273,34 @@ class KbDocumentControllerTest extends TestCase
         $this->assertFalse(Storage::disk('kb')->exists('policies/hard.md'));
     }
 
+    /**
+     * v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 — additive
+     * (R27): this controller calls `DocumentDeleter::delete()` directly
+     * (not through the Flow saga), whose result already carries
+     * `artifact_deleted`; the response only surfaced `file_deleted`, so a
+     * caller could never observe whether the row's version artifact was
+     * also removed.
+     */
+    public function test_destroy_with_force_response_reports_artifact_deleted(): void
+    {
+        config()->set('kb.conversion_artifacts.enabled', true);
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/artifact.md', canonical: false, slug: null);
+        $doc->metadata = ['disk' => 'kb', 'prefix' => ''];
+        $artifactPath = '.artifacts/default/hr-portal/policies/artifact.md.versions/'.$doc->version_hash.'.md';
+        $doc->markdown_path = $artifactPath;
+        $doc->save();
+        Storage::disk('kb')->put('policies/artifact.md', "# Body\n");
+        Storage::disk('kb')->put($artifactPath, "# Body\n");
+
+        $response = $this->actingAs($admin)
+            ->deleteJson('/api/admin/kb/documents/'.$doc->id.'?force=1')
+            ->assertOk();
+
+        $this->assertTrue($response->json('artifact_deleted'));
+        Storage::disk('kb')->assertMissing($artifactPath);
+    }
+
     // ------------------------------------------------------------------
     // history
     // ------------------------------------------------------------------

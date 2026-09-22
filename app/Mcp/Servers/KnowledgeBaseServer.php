@@ -10,6 +10,10 @@ use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\ConnectorSettingsTool;
 use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\FlowRunStatusTool;
+use App\Mcp\Tools\KbDocumentVersionsTool;
+use App\Mcp\Tools\KbOcrStatusTool;
+use App\Mcp\Tools\KbProposeTextCorrectionTool;
+use App\Mcp\Tools\KbReviewStatusTool;
 use App\Mcp\Tools\WidgetIntroConfigTool;
 use App\Mcp\Tools\KbDetokenizeTool;
 use App\Mcp\Tools\KbEraseSubjectTool;
@@ -201,6 +205,19 @@ class KnowledgeBaseServer extends Server
         // starting, cancelling, replaying or approving a run stays behind the
         // cockpit's per-row authorizer, where a human is present.
         FlowRunStatusTool::class,
+        // v8.36 / ADR 0029 — OCR status read surface (R44). Read-only by design.
+        KbOcrStatusTool::class,
+        // v8.37/W3 / ADR 0031 §8 — Digitization Review status read surface
+        // (R44). Read-only by design; no MCP write of review status or
+        // approval exists (ADR 0003's boundary, restated for OCR content).
+        KbReviewStatusTool::class,
+        // v8.37/W3 / ADR 0031 §6 — the ONE MCP write toward the corpus this
+        // cycle adds, and even it writes only a correction CANDIDATE, never
+        // applied content (full SEC-AI-ACT-001 mutating-tool controls).
+        KbProposeTextCorrectionTool::class,
+        // v8.36 / ADR 0030 — Time Machine version list (R44). Read-only, metadata
+        // only: the artifact content stays on the role-gated HTTP surface.
+        KbDocumentVersionsTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

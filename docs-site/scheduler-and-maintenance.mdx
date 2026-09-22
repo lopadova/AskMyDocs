@@ -86,14 +86,62 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   [dimension gotcha](/troubleshooting#embedding-dimension-gotcha).
 - **`kb:prune-deleted`** — hard-delete documents soft-deleted longer than
   `KB_SOFT_DELETE_RETENTION_DAYS`, cascading chunks + graph + file on disk.
+  Since v8.36 it also prints `files_kept=N` per tenant when non-zero: rows
+  whose source file was NOT removed — still referenced by another version, or
+  (with conversion artifacts on) its storage key held by a writer, its cache
+  store unable to lock, or the lock lapsed mid-section. The rows are gone
+  either way and it is not an error; `kb:prune-orphan-files` takes those bytes
+  once nothing references them. A clean run prints no such line.
 - **`kb:prune-archived-versions`** — drop old archived document versions beyond
-  the per-family retention cap.
+  the per-family retention cap, each through the deleter's row path (chunks,
+  graph node, deprecation audit); since v8.36 each pruned version's conversion
+  artifact goes with it (and its OCR run, when no row whose recorded disk +
+  prefix resolve to that run directory still names it), and the run sweeps
+  stale `.tmp` files (older than `KB_CONVERSION_ARTIFACTS_TMP_MAX_AGE` and no
+  longer leased by a live writer — `KB_CONVERSION_ARTIFACTS_TMP_LEASE`; an
+  aged temp still leased is reported `artifact_temps_in_flight` and kept) and
+  artifacts no row references on that disk; every removal re-checks the
+  references under the artifact path's lock (an identical ingest that
+  recreated the path meanwhile keeps it: `artifacts_kept` on the per-tenant
+  line, `artifact_orphans_kept` on the sweep line — the orphan sweep reports
+  the kept candidates in `--dry-run` too, the per-tenant prune reports
+  nothing in a dry run). Every refused removal is counted (`*_failed`) and
+  makes the command exit non-zero.
 - **`kb:prune-staging-batches`** — purge stale drag-and-drop upload staging
   batches and their staged files on the `kb-staging` disk once past
   `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the
   staging area from accumulating abandoned review sessions.
 - **`kb:prune-orphan-files`** — remove markdown files on the KB disk with no
-  matching `knowledge_documents` row.
+  matching `knowledge_documents` row; each deletion re-checks the references
+  first, so a row that took the path between the snapshot and the delete
+  keeps its file (`kept_meanwhile`, printed when non-zero); while conversion
+  artifacts are on the re-check and the delete also run under the storage
+  key's lock (the lock the `markdown_only` drop and non-Markdown row commits
+  hold — a key a writer holds right now is kept as in flight, a lock that
+  lapsed is a reported failure). `--dry-run` lists the snapshot's candidates
+  previews the in-flight grace (a modification time is deterministic) but not
+  `kept_meanwhile` from a held key: who holds a key at that instant is not
+  something a preview can know. The candidate lists are bounded by
+  `KB_ORPHAN_SCAN_MAX_ITEMS` (default 50 000; not switchable off — a
+  non-positive value is the default, since an unbounded walk would OOM the
+  worker on a large disk): a sweep that hits
+  the cap reports `scan_truncated=1` and exits non-zero rather than presenting
+  a partial pass as a complete one, and the next run continues where it
+  stopped. A source younger than
+  `KB_ORPHAN_SOURCE_GRACE_SECONDS` (default 3600 s, `0` disables) is kept
+  whatever else is true: an ingest reads and converts its source before it
+  takes the storage key's lock, so in that window a perfectly ordinary-looking
+  orphan may be the input of a conversion in progress. Since v8.36 it is also the reaper of the
+  OCR run store: a `{source}.ocr/` tree whose source is gone from the disk and
+  from every row of any tenant (trashed included) is *dangling*, and a run
+  inside a live tree that no row names any more is *stale* — both are removed
+  once older than `KB_OCR_PURGE_GRACE_SECONDS` (a younger run is an in-flight
+  reservation and is kept, reported as `in_flight`). The reference decision is
+  `DocumentDeleter`'s gate, the same the hard delete and
+  `kb:prune-archived-versions` use. The disk is walked once, lazily, and
+  sources are judged in batches of 1000: a scan the disk refuses deletes
+  nothing and exits non-zero, and an OCR tree whose source the disk refuses to
+  probe is kept and counted (`tree_probe_failed`, exit non-zero).
 - **`kb:rebuild-graph`** — rebuild `kb_nodes` + `kb_edges` from canonical docs.
   No-op when no canonical docs exist. See [canonical & promotion](/canonical-and-promotion).
 - **`kb:health-recompute`** / **`kb:stale-review-sweep`** — recompute KB health

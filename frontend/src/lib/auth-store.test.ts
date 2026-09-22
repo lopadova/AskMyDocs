@@ -31,6 +31,21 @@ describe('useAuthStore', () => {
         expect(s.loading).toBe(false);
     });
 
+    it('setMe keeps the server-delivered KB upload extensions and clear drops them (R18)', () => {
+        useAuthStore.getState().setMe({
+            user: { id: 1, name: 'x', email: 'x@x' },
+            roles: [],
+            permissions: [],
+            projects: [],
+            kb_upload: { accepted_extensions: ['md', 'pdf', 'png'] },
+        });
+        expect(useAuthStore.getState().kbUploadAcceptedExtensions).toEqual(['md', 'pdf', 'png']);
+        useAuthStore.getState().setMe({ user: { id: 1, name: 'x', email: 'x@x' }, roles: [], permissions: [], projects: [] });
+        expect(useAuthStore.getState().kbUploadAcceptedExtensions).toEqual([]);
+        useAuthStore.getState().clear();
+        expect(useAuthStore.getState().kbUploadAcceptedExtensions).toEqual([]);
+    });
+
     it('clear resets to empty and marks loading=false', () => {
         useAuthStore.getState().setMe({
             user: { id: 1, name: 'x', email: 'x@x' },

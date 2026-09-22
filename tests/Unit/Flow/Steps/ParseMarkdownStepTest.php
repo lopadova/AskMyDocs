@@ -46,6 +46,57 @@ final class ParseMarkdownStepTest extends TestCase
         $this->assertNull($result->output['canonical']); // no frontmatter
     }
 
+    /**
+     * v8.36 — the prefix the source was ingested under travels with the
+     * job: a re-run of a row recorded under `archive/` resolves the SAME
+     * object even after `kb.sources.path_prefix` moved elsewhere, and the
+     * metadata it persists keeps that prefix; without one, today's config.
+     */
+    public function test_the_incoming_metadata_prefix_wins_over_the_configured_one(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('archive/docs/intro.md', "# Archived\n\nBody.");
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', 'elsewhere');
+
+        $step = $this->app->make(ParseMarkdownStep::class);
+        $input = ['tenant_id' => 'default', 'project_key' => 'demo', 'source_path' => 'docs/intro.md', 'disk' => 'kb', 'mime_type' => 'text/markdown'];
+
+        $result = $step->execute(new FlowContext(flowRunId: 'test-run-prefix', definitionName: 'kb.ingest', input: $input + ['metadata' => ['prefix' => 'archive']]));
+        $this->assertTrue($result->success);
+        $this->assertStringContainsString('Archived', $result->output['markdown']);
+        $this->assertSame('archive', $result->output['metadata']['prefix']);
+
+        try {
+            $step->execute(new FlowContext(flowRunId: 'test-run-prefix-2', definitionName: 'kb.ingest', input: $input + ['metadata' => []]));
+            $this->fail('without an incoming prefix the configured one is used, where the file is not');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('elsewhere/docs/intro.md', $e->getMessage());
+        }
+    }
+
+    /**
+     * SEC-PATH-001 — prefix + source go through the ONE normaliser: a `..`
+     * in a stored or configured prefix is refused, backslashes and repeated
+     * separators resolve to the same key the ingest wrote.
+     */
+    public function test_the_prefix_is_normalised_with_the_source_and_traversal_is_refused(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('archive/sub/docs/intro.md', "# Archived\n\nBody.");
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $step = $this->app->make(ParseMarkdownStep::class);
+        $input = ['tenant_id' => 'default', 'project_key' => 'demo', 'source_path' => 'docs/intro.md', 'disk' => 'kb', 'mime_type' => 'text/markdown'];
+
+        $result = $step->execute(new FlowContext(flowRunId: 'prefix-norm', definitionName: 'kb.ingest', input: $input + ['metadata' => ['prefix' => 'archive\\sub//']]));
+        $this->assertTrue($result->success);
+        $this->assertStringContainsString('Archived', $result->output['markdown']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $step->execute(new FlowContext(flowRunId: 'prefix-trav', definitionName: 'kb.ingest', input: $input + ['metadata' => ['prefix' => 'archive/../../etc']]));
+    }
+
     public function test_failure_path_throws_when_file_missing(): void
     {
         Storage::fake('kb');
@@ -68,6 +119,37 @@ final class ParseMarkdownStepTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('file not found');
+        $step->execute($context);
+    }
+
+    /**
+     * R14 — a zero-byte object (a truncated upload, a bucket answering with
+     * an empty body) is a FAILED step, never an empty version that would
+     * archive the valid live one. Every queued ingest reads through here.
+     */
+    public function test_failure_path_throws_when_the_disk_returns_no_bytes(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/empty.md', '');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        $step = $this->app->make(ParseMarkdownStep::class);
+        $context = new FlowContext(
+            flowRunId: 'test-run-empty',
+            definitionName: 'kb.ingest',
+            input: [
+                'tenant_id' => 'default',
+                'project_key' => 'demo',
+                'source_path' => 'docs/empty.md',
+                'disk' => 'kb',
+                'mime_type' => 'text/markdown',
+                'metadata' => [],
+            ],
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('returned no bytes');
         $step->execute($context);
     }
 

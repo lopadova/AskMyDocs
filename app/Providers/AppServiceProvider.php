@@ -108,6 +108,20 @@ class AppServiceProvider extends ServiceProvider
             return new PipelineRegistry($app, (array) config('kb-pipeline', []));
         });
 
+        // v8.36 / ADR 0029 — OCR driver registry. Same R23 posture as the
+        // pipeline registry: every FQCN in `kb.ocr.drivers` is validated to
+        // implement OcrDriver at boot; the configured driver is resolved by
+        // name at conversion time.
+        $this->app->singleton(\App\Services\Kb\Ocr\OcrDriverRegistry::class, function ($app) {
+            return new \App\Services\Kb\Ocr\OcrDriverRegistry($app, (array) config('kb.ocr.drivers', []));
+        });
+        // Bound as a singleton so every consumer — PdfConverter's `?OcrService`,
+        // OcrConverter, the admin controller, the CLI, the estimator — shares
+        // ONE instance (the run-lock bookkeeping and the driver cache live on
+        // it); without the binding the container would build a fresh service
+        // per resolution.
+        $this->app->singleton(\App\Services\Kb\Ocr\OcrService::class);
+
         // v8.15/W2 — digest card renderers (Discord/Slack/Teams). The registry
         // validates the interface + non-overlapping channel keys at boot (R23).
         $this->app->singleton(\App\Services\Digest\Renderers\DigestRendererRegistry::class, function () {
@@ -970,6 +984,11 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\NotificationsDigestWeeklyCommand::class,
             // v8.7/W5 — Cloud Time Machine archived-version retention.
             \App\Console\Commands\PruneArchivedVersionsCommand::class,
+            // v8.36 / ADR 0029 — OCR PHP surface (R44): re-run + status.
+            \App\Console\Commands\KbOcrCommand::class,
+            // v8.36 / ADR 0030 — Time Machine PHP surface (R44) + operator backfill.
+            \App\Console\Commands\KbDocVersionsCommand::class,
+            \App\Console\Commands\KbArtifactsBackfillCommand::class,
             // v8.9 — UI upload staging buffer retention sweep.
             \App\Console\Commands\PruneStagingBatchesCommand::class,
             // v8.11/P1b — evidence-tier PHP surface (AutoSci #67, R44).
@@ -1029,6 +1048,12 @@ class AppServiceProvider extends ServiceProvider
             // v8.22/Ciclo 3 — runtime config governance PHP surface (R44).
             \App\Console\Commands\AppSettingsListCommand::class,
             \App\Console\Commands\AppSettingsSetCommand::class,
+            // v8.37/W3 — Digitization Review PHP surface (R44): mark a page
+            // reviewed, approve a document, report review status.
+            \App\Console\Commands\KbReviewCommand::class,
+            // v8.37/W3b round 5 — reconcile correction candidates stuck in
+            // `applying` after a crashed approval (ADR 0031 §7, H-B).
+            \App\Console\Commands\KbReviewReconcileStuckCorrectionsCommand::class,
         ]);
     }
 
@@ -1217,6 +1242,57 @@ class AppServiceProvider extends ServiceProvider
             $max = max(1, (int) config('kb.chat.rate_limit_per_minute', 20));
 
             return Limit::perMinute($max)->by($identity.'|t:'.$tenant);
+        });
+
+        // v8.37/W3b round 7 (SEC-THROTTLE-001) — routes/ai.php's inbound
+        // /mcp/kb transport referenced `throttle:api`, a limiter that has
+        // never been registered anywhere in this app (the `api` middleware
+        // GROUP does not include throttling by default — Laravel only adds
+        // it when `->throttleApi()` is called in bootstrap/app.php, which
+        // this app does not do). Every real request would have thrown
+        // "Rate limiter [api] is not defined" (500), on top of the
+        // routing/auth bugs fixed alongside this. There is no Sanctum user
+        // on this route (EnforceMcpScope validates a McpTenantToken, not a
+        // session) — key by the bearer token hash, matching how
+        // EnforceMcpScope itself resolves the token.
+        //
+        // Copilot review PR #497 (pullrequestreview-5257033036,
+        // discussion_r4054237132) — round 7 originally appended a `|t:<tenant>`
+        // segment read from TenantContext::current(). That's wrong on two
+        // counts: (1) routes/ai.php's round-7 fix made `throttle:mcp` run
+        // BEFORE `mcp.scope`, so at the time this closure runs the token
+        // hasn't been validated yet and TenantContext::set() (EnforceMcpScope
+        // line ~114) hasn't fired for THIS request; (2) TenantContext is a
+        // process-scoped singleton, so under any long-running worker
+        // (Octane, queue, or a reused container) the tenant segment can be
+        // leftover state from a DIFFERENT prior request handled by the same
+        // process, not this caller's tenant at all. Either way the same
+        // bearer token can land in different buckets across requests,
+        // weakening the very limiter this route depends on. Drop the tenant
+        // segment: the token hash alone already uniquely and stably
+        // identifies the caller (SHA-256 collision resistance), so nothing
+        // is lost by keying on it alone, and it can no longer drift.
+        //
+        // Copilot review PR #497 (pullrequestreview-5257061609,
+        // discussion_r4054262640) — keying ONLY on the token hash opened a
+        // different bypass: a caller can defeat the limit entirely by
+        // sending a DIFFERENT bearer token value on every request (each
+        // invalid/rotated token hashes to a fresh bucket with zero prior
+        // hits — see EnforceMcpScope, which rejects unknown tokens but
+        // this limiter runs BEFORE it). Add a second, independent limit
+        // keyed by source IP so total traffic from one origin is bounded
+        // regardless of how many token values it cycles through. Laravel
+        // applies both and throttles on whichever is exceeded first (see
+        // config/mcp.php `server` block for the two knobs).
+        RateLimiter::for('mcp', function (Request $request) {
+            $tokenHash = hash('sha256', (string) $request->bearerToken());
+            $max = max(1, (int) config('mcp.server.rate_limit_per_minute', 60));
+            $ipMax = max(1, (int) config('mcp.server.rate_limit_ip_per_minute', 300));
+
+            return [
+                Limit::perMinute($max)->by($tokenHash),
+                Limit::perMinute($ipMax)->by('ip:'.$request->ip()),
+            ];
         });
     }
 }

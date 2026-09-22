@@ -12,7 +12,7 @@ rest of the documentation builds on them.
 Every ingested source (markdown, text, PDF, DOCX, or a connector pull) becomes a
 **document** row in `knowledge_documents` and a set of section-aware **chunks** in
 `knowledge_chunks`, each with an `embedding vector(N)`. Ingestion is **idempotent**:
-documents upsert on the tuple `(project_key, source_path, version_hash)`, so
+documents upsert on the tuple `(tenant_id, project_key, source_path, version_hash)`, so
 re-pushing identical bytes is a no-op and a new version archives the previous one
 so stale chunks never surface.
 

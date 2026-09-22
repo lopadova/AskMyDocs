@@ -80,6 +80,14 @@ final class RunBenchmarkCommand extends Command
         );
 
         $this->renderScorecard($card);
+        if (($card['corpus_failures'] ?? []) !== []) {
+            // A partial corpus is a partial benchmark: fewer distractors
+            // flatter the ranking metrics, so the run does not pass — the
+            // runner already set `passed` to false, which is what `--gate`
+            // reads and what the persisted scorecard records. This line says
+            // WHICH files, so the operator can fix them (R14).
+            $this->warn(sprintf('%d corpus file(s) could not be ingested and were NOT benchmarked — the run cannot pass: %s', count($card['corpus_failures']), implode(', ', $card['corpus_failures'])));
+        }
         $reportPath = $this->persist($card);
         $this->line("\nReport: {$reportPath}");
 
@@ -181,7 +189,13 @@ final class RunBenchmarkCommand extends Command
         $md = "# Retrieval-quality benchmark — {$card['project']}\n\n";
         $md .= '- when: '.now()->toIso8601String()."\n";
         $md .= "- k: {$card['k']}  corpus: {$card['corpus_count']}  queries: {$card['query_count']}\n";
-        $md .= '- PASSED: '.($card['passed'] ? 'yes' : 'NO')."\n\n## Aggregate\n\n";
+        $md .= '- PASSED: '.($card['passed'] ? 'yes' : 'NO')."\n";
+        $corpusFailures = $card['corpus_failures'] ?? [];
+        if ($corpusFailures !== []) {
+            // The archived report must say the corpus was partial (R14).
+            $md .= '- corpus_failures: '.count($corpusFailures).' file(s) NOT benchmarked — '.implode(', ', $corpusFailures)."\n";
+        }
+        $md .= "\n## Aggregate\n\n";
         foreach ($agg as $key => $val) {
             $md .= "- {$key}: ".number_format((float) $val, 4)."\n";
         }

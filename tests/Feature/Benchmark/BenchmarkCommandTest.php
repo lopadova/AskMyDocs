@@ -66,6 +66,60 @@ final class BenchmarkCommandTest extends TestCase
         $this->assertGreaterThan(0.0, $card['aggregate']['citation_precision']);
     }
 
+    /**
+     * R14 — a corpus file that could not be ingested makes the benchmark a
+     * PARTIAL one, and fewer distractors flatter every ranking metric. So the
+     * run cannot pass: the scorecard that is rendered, persisted AND read by
+     * `--gate` all carry `passed: false`, whatever the thresholds say. A
+     * warning alone would let a broken corpus file turn a gate green.
+     */
+    public function test_a_corpus_file_that_cannot_be_ingested_fails_the_run_and_the_gate(): void
+    {
+        // Thresholds a stub run trivially meets: the ONLY thing that can make
+        // this run fail is the corpus failure itself, which is exactly the
+        // behaviour under test (with real thresholds the stub fails anyway and
+        // the assertion would prove nothing).
+        config([
+            'kb.benchmark.threshold_ndcg' => 0.0,
+            'kb.benchmark.threshold_mrr' => 0.0,
+            'kb.benchmark.threshold_citation_precision' => 0.0,
+            'kb.benchmark.threshold_refusal_accuracy' => 0.0,
+        ]);
+        $root = dirname(__DIR__, 3);
+        $corpus = sys_get_temp_dir().'/bench-corpus-'.uniqid();
+        mkdir($corpus, 0o755, true);
+        foreach (glob($root.'/resources/benchmark/corpus/*') ?: [] as $file) {
+            copy($file, $corpus.'/'.basename($file));
+        }
+        // A file the ingester cannot read: an extension it accepts, no content
+        // it can convert.
+        file_put_contents($corpus.'/broken.pdf', 'not a pdf at all');
+
+        try {
+            $this->artisan('kb:benchmark', [
+                '--stub' => true,
+                '--corpus' => $corpus,
+                '--queries' => $root.'/resources/benchmark/queries.yaml',
+                '--project' => 'benchmark',
+                '--k' => 5,
+                '--gate' => true,
+            ])
+                ->expectsOutputToContain('could not be ingested and were NOT benchmarked — the run cannot pass')
+                ->assertExitCode(1);
+
+            $files = Storage::disk('local')->allFiles('kb-benchmark');
+            $json = collect($files)->first(fn ($f) => str_ends_with($f, '.json'));
+            $card = json_decode(Storage::disk('local')->get($json), true);
+            $this->assertNotSame([], $card['corpus_failures']);
+            $this->assertFalse($card['passed'], 'the persisted scorecard records the same verdict the gate read');
+        } finally {
+            foreach (glob($corpus.'/*') ?: [] as $file) {
+                unlink($file);
+            }
+            rmdir($corpus);
+        }
+    }
+
     public function test_with_answers_generates_real_chat_and_scores_answer_faithfulness(): void
     {
         // --with-answers drives REAL chat + embeddings calls per answerable

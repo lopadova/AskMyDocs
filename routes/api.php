@@ -558,6 +558,9 @@ Route::middleware([
                 ->name('api.admin.kb.uploads.show');
             Route::get('/{uploadBatch}/status', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'status'])
                 ->name('api.admin.kb.uploads.status');
+            // v8.36 / ADR 0029 §8 — OCR cost estimate before commit.
+            Route::get('/{uploadBatch}/estimate', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'estimate'])
+                ->name('api.admin.kb.uploads.estimate');
             Route::post('/{uploadBatch}/commit', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'commit'])
                 ->name('api.admin.kb.uploads.commit');
             Route::post('/{uploadBatch}/cancel', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'cancel'])
@@ -712,6 +715,36 @@ Route::middleware([
         Route::post('/kb/documents/{id}/wiki-discard', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'discard'])
             ->whereNumber('id')->name('api.admin.kb.documents.wiki-discard');
 
+        // v8.37/W3 (ADR 0031 §2/§4/§9) — Digitization Review: read a
+        // document's page-review summary or a single page's status, set a
+        // page's review status, approve a document (auto -> human). Paths
+        // match ADR 0031 §9's documented HTTP contract table exactly
+        // (Copilot PR #494 round 4 flagged `/review-approve` diverging from
+        // the ADR's `/approve`, and the missing per-page GET). R32 — same
+        // admin KB group gate as the representative
+        // `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/documents/{id}/review-summary', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'summary'])
+            ->whereNumber('id')->name('api.admin.kb.documents.review-summary');
+        Route::get('/kb/documents/{id}/pages/{page}', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'pageStatus'])
+            ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.status');
+        Route::patch('/kb/documents/{id}/pages/{page}/review-status', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'markPageReviewed'])
+            ->whereNumber(['id', 'page'])->name('api.admin.kb.documents.pages.review-status');
+        Route::post('/kb/documents/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approve'])
+            ->whereNumber('id')->name('api.admin.kb.documents.approve');
+
+        // v8.37/W3b (ADR 0031 §6) — the correction-candidate review queue:
+        // list pending candidates for a document, approve or reject one.
+        // Proposing a candidate is MCP-only (KbProposeTextCorrectionTool);
+        // approving/rejecting is HTTP-only (ADR 0031 §8 — no MCP write of
+        // that decision exists). R32 — same admin KB group gate as the
+        // representative `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/documents/{id}/corrections', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'corrections'])
+            ->whereNumber('id')->name('api.admin.kb.documents.corrections');
+        Route::post('/kb/corrections/{id}/approve', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'approveCorrection'])
+            ->whereNumber('id')->name('api.admin.kb.corrections.approve');
+        Route::post('/kb/corrections/{id}/reject', [\App\Http\Controllers\Api\Admin\KbReviewController::class, 'rejectCorrection'])
+            ->whereNumber('id')->name('api.admin.kb.corrections.reject');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).
@@ -719,12 +752,26 @@ Route::middleware([
             ->whereNumber('id')->name('api.admin.kb.documents.versions.index');
         Route::get('/kb/documents/{id}/versions/diff', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'diff'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.diff');
-        // `restore-version` (NOT `restore`) — `POST /kb/documents/{document}/restore`
-        // already exists for un-deleting SOFT-DELETED docs (KbDocumentController);
-        // the Time Machine restore re-activates an ARCHIVED VERSION, a distinct op
-        // (R20 — route contracts must not collide).
+        // v8.36 / ADR 0030 §5 — a version's content (artifact or reconstruction).
+        // R32 — `/api/admin/kb/documents/1/versions/1/content` is the matrix row.
+        Route::get('/kb/documents/{id}/versions/{versionId}/content', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'content'])
+            ->whereNumber('id')->whereNumber('versionId')->name('api.admin.kb.documents.versions.content');
+        // This route is named `restore-version`, NOT `restore`: that plain
+        // name is already taken by the DIFFERENT, already-registered route
+        // `POST /kb/documents/{document}/restore` above (line ~452,
+        // KbDocumentController::restore), which un-deletes a SOFT-DELETED
+        // document. THIS route re-activates an ARCHIVED VERSION of a live
+        // document — a distinct operation, hence the distinct name (R20 —
+        // route contracts must not collide).
         Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
+        // v8.36 / ADR 0029 — OCR status + re-run (R44 HTTP surface). R32 —
+        // covered by the AdminAuthorizationMatrix (`/api/admin/kb/documents/1/ocr`).
+        Route::get('/kb/documents/{id}/ocr', [\App\Http\Controllers\Api\Admin\KbOcrController::class, 'status'])
+            ->whereNumber('id')->name('api.admin.kb.documents.ocr.status');
+        Route::post('/kb/documents/{id}/ocr', [\App\Http\Controllers\Api\Admin\KbOcrController::class, 'rerun'])
+            ->whereNumber('id')->name('api.admin.kb.documents.ocr.rerun');
 
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])

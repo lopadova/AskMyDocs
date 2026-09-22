@@ -83,9 +83,14 @@ Canonical columns (nullable): `doc_id`, `slug`, `canonical_type`,
 `frontmatter_json`. Auto-Wiki columns: `generation_source` (default `human`),
 `evidence_tier` (nullable).
 
-**Uniqueness:** `(project_key, source_path, version_hash)` (the idempotency
-anchor), `(project_key, doc_id)` = `uq_kb_doc_doc_id`, `(project_key, slug)` =
-`uq_kb_doc_slug`.
+**Uniqueness:** `(tenant_id, project_key, source_path, version_hash)` =
+`uq_kb_doc_tenant_version` (the idempotency anchor),
+`(tenant_id, project_key, doc_id)` = `uq_kb_doc_tenant_doc_id`,
+`(tenant_id, project_key, slug)` = `uq_kb_doc_tenant_slug`. All three start
+with `tenant_id` since
+`2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`: `project_key`
+is not a tenant boundary, so keying row identity on it alone left the indexes
+disagreeing with every tenant-scoped read and write.
 
 ### `knowledge_chunks`
 

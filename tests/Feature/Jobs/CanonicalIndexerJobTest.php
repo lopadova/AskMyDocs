@@ -277,6 +277,30 @@ class CanonicalIndexerJobTest extends TestCase
         $this->assertStringContainsString($doc->version_hash, $jobA->buildIdempotencyKey());
     }
 
+    /** A retry is a NEW run: the attempt salt keeps a persisted failed run from being handed back to the attempt meant to project the graph (same rule as IngestDocumentJob::idempotencyKeyFor()). */
+    public function test_idempotency_key_is_salted_per_retry_attempt_but_not_on_the_first(): void
+    {
+        $doc = $this->seedCanonicalDoc('acme', 'dec-key-3', 'decision', 'K3');
+        $job = new CanonicalIndexerJob($doc->id, 'test-tenant');
+
+        $this->assertSame($job->buildIdempotencyKey(), $job->buildIdempotencyKey(1), 'the first attempt keeps the plain key');
+        $this->assertSame($job->buildIdempotencyKey().':attempt2', $job->buildIdempotencyKey(2));
+        $this->assertNotSame($job->buildIdempotencyKey(2), $job->buildIdempotencyKey(3));
+    }
+
+    /** R30 — the version hash that salts the key is read within the job's tenant: a foreign row's hash never builds this tenant's key. */
+    public function test_idempotency_key_never_borrows_another_tenants_version_hash(): void
+    {
+        $doc = $this->seedCanonicalDoc('acme', 'dec-key-4', 'decision', 'K4');
+
+        $own = new CanonicalIndexerJob($doc->id, 'test-tenant');
+        $foreign = new CanonicalIndexerJob($doc->id, 'other-tenant');
+
+        $this->assertStringContainsString($doc->version_hash, $own->buildIdempotencyKey());
+        $this->assertStringNotContainsString($doc->version_hash, $foreign->buildIdempotencyKey());
+        $this->assertStringEndsWith(':missing', $foreign->buildIdempotencyKey());
+    }
+
     public function test_idempotency_key_changes_when_version_hash_changes(): void
     {
         // Iter5 (PR #116) — Copilot finding: a key based ONLY on

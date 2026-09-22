@@ -22,12 +22,12 @@ use Tests\TestCase;
  *
  * Per CLAUDE.md R10 + R30: slug + doc_id are tenant-scoped, NOT global.
  * Two tenants may legitimately share `(project_key='demo', slug='dec-x')`.
- * The current v3-era global UNIQUE on `(project_key, node_uid)` blocks
- * that today, so to exercise the bug-window in this regression test we
- * temporarily drop the v3 uniques + the dependent FK on kb_edges. The
- * FIX itself is forward-looking for the v4.x migration that rebuilds
- * uniques tenant-scoped, but the delete query MUST already filter by
- * tenant_id so the next migration doesn't reintroduce the leak.
+ * On `knowledge_documents` the schema says so since 2026_10_02_000011;
+ * `kb_nodes` still carries the v3-era global UNIQUE on
+ * `(project_key, node_uid)` — its rebuild is the one deferred because
+ * kb_edges' composite FK targets it — so this test drops that index and
+ * the dependent FK to reach the scenario. The delete query MUST filter by
+ * tenant_id regardless, so that rebuild cannot reintroduce the leak.
  */
 final class DocumentDeleterCrossTenantCascadeTest extends TestCase
 {
@@ -39,13 +39,15 @@ final class DocumentDeleterCrossTenantCascadeTest extends TestCase
 
         Storage::fake('kb');
 
-        // Drop the v3-era global uniques on kb_nodes + knowledge_documents
-        // so two tenants can hold the same `(project_key, slug)` /
-        // `(project_key, node_uid)` shape. The follow-up migration tracked
-        // in 2026_04_28 tenant_id rollout will rebuild these indexes
-        // tenant-scoped; until then, the WHERE filter in cascadeGraphFor()
-        // (and the analogous filters in DocumentIngestor) are the only
-        // line of defence against cross-tenant clobber.
+        // `knowledge_documents` needs nothing here since 2026_10_02_000011:
+        // its three composite uniques now start with `tenant_id`, so two
+        // tenants holding the same `(project_key, slug)` is exactly what the
+        // schema permits. `kb_nodes` still carries the v3-era global
+        // `(project_key, node_uid)` unique — its rebuild is the one deferred
+        // by 2026_05_26_000001 (the composite FK from kb_edges targets it) —
+        // so that index is dropped here to reach the scenario, and the WHERE
+        // filter in cascadeGraphFor() remains the line of defence for the
+        // graph tables.
         //
         // SQLite's composite FK on kb_edges → kb_nodes points at the unique
         // we're about to drop. Since this scenario never touches kb_edges,
@@ -56,10 +58,6 @@ final class DocumentDeleterCrossTenantCascadeTest extends TestCase
         Schema::dropIfExists('kb_edges');
         Schema::table('kb_nodes', function ($table) {
             $table->dropUnique('uq_kb_nodes_project_uid');
-        });
-        Schema::table('knowledge_documents', function ($table) {
-            $table->dropUnique('uq_kb_doc_slug');
-            $table->dropUnique('uq_kb_doc_doc_id');
         });
     }
 

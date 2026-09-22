@@ -62,7 +62,8 @@ docs exist (zero regression for non-canonical consumers).
   dispatches one job per doc.
 - Both → `IngestDocumentJob` (`$tries = 3`, backoff `[10,30,60]`) →
   `DocumentIngestor::ingestMarkdown()` (SHA-256 upsert on
-  `(project_key, source_path, version_hash)` — idempotent by construction).
+  `(tenant_id, project_key, source_path, version_hash)` — idempotent by
+  construction).
 
 **Canonical branch** — when the markdown has a valid YAML frontmatter,
 `DocumentIngestor` populates the 8 canonical columns (`doc_id`, `slug`,
@@ -153,9 +154,15 @@ when no canonical docs exist.
   `canonical_status`, `is_canonical` (default false),
   `retrieval_priority` (0-100, default 50), `source_of_truth` (default
   true), `frontmatter_json` (parsed YAML + `_derived` pre-validated
-  slug lists). UNIQUE `(project_key, source_path, version_hash)` +
-  composite uniques `(project_key, doc_id)` and `(project_key, slug)` —
-  canonical identifiers are tenant-scoped.
+  slug lists). UNIQUE `(tenant_id, project_key, source_path,
+  version_hash)` = `uq_kb_doc_tenant_version` + composite uniques
+  `(tenant_id, project_key, doc_id)` = `uq_kb_doc_tenant_doc_id` and
+  `(tenant_id, project_key, slug)` = `uq_kb_doc_tenant_slug`, all three
+  rebuilt from their `project_key`-only shape by
+  `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`
+  (R30/R31) — row identity is tenant-scoped, and a query that probes
+  those slots for a conflict must lift the soft-delete and ACL scopes
+  because the index honours neither.
 - **`knowledge_chunks`** — `knowledge_document_id` FK ON DELETE CASCADE,
   `project_key`, `chunk_order`, `chunk_hash` (SHA-256), `heading_path`,
   `chunk_text`, `metadata` JSON (includes `wikilinks` array for canonical

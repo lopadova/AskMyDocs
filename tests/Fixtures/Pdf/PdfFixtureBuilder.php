@@ -21,7 +21,8 @@ namespace Tests\Fixtures\Pdf;
  *  - Trailer + startxref
  *
  * Limitations (intentional — keep the fixture builder small):
- *  - No images, no embedded fonts, no compression streams.
+ *  - No embedded fonts, no compression streams; the only image is the
+ *    optional 1×1 gray XObject that marks a page as "scanned".
  *  - ASCII text only (no Unicode escapes). Sufficient for assertion text
  *    like "Page 1: Lorem ipsum about A.".
  *
@@ -56,13 +57,20 @@ final class PdfFixtureBuilder
 
     /**
      * @param  list<string>  $pageTexts  one element = one page (ASCII only).
+     * @param  list<int>  $imagePages  1-based page numbers that also draw a
+     *                                 (1×1 gray) image XObject — a "scanned"
+     *                                 page when its text is blank.
+     * @param  list<int>  $paintedPages  1-based page numbers that also fill a
+     *                                   rectangle path (no text object, no
+     *                                   image) — text outlined into paths,
+     *                                   as a design export produces it.
      *
      * @throws \InvalidArgumentException when `$pageTexts` is empty — a PDF
      *         with zero pages produces an invalid `/Kids []` list and a
      *         malformed Pages object that smalot cannot parse. Callers
      *         must always provide ≥1 page.
      */
-    public static function build(array $pageTexts): string
+    public static function build(array $pageTexts, array $imagePages = [], array $paintedPages = []): string
     {
         if ($pageTexts === []) {
             throw new \InvalidArgumentException(
@@ -85,6 +93,7 @@ final class PdfFixtureBuilder
         $firstPageId = 3;
         $firstContentId = $firstPageId + $pageCount;
         $fontId = $firstContentId + $pageCount;
+        $imageId = $fontId + 1;
 
         $kidsList = implode(' ', array_map(
             fn (int $i) => ($firstPageId + $i) . ' 0 R',
@@ -97,17 +106,27 @@ final class PdfFixtureBuilder
         for ($i = 0; $i < $pageCount; $i++) {
             $pageId = $firstPageId + $i;
             $contentId = $firstContentId + $i;
+            $drawsImage = in_array($i + 1, $imagePages, true);
             $objects[$pageId] = "<< /Type /Page /Parent {$pagesId} 0 R /Contents {$contentId} 0 R "
-                . "/Resources << /Font << /F1 {$fontId} 0 R >> >> "
+                . "/Resources << /Font << /F1 {$fontId} 0 R >> "
+                . ($drawsImage ? "/XObject << /Im1 {$imageId} 0 R >> " : '')
+                . ">> "
                 . "/MediaBox [0 0 612 792] >>";
 
             // Escape PDF string literal: backslash, parens, line breaks. ASCII only here.
             $escaped = self::escapeStringLiteral($pageTexts[$i]);
-            $stream = "BT\n/F1 12 Tf\n100 700 Td\n({$escaped}) Tj\nET";
+            $stream = "BT\n/F1 12 Tf\n100 700 Td\n({$escaped}) Tj\nET"
+                . ($drawsImage ? "\nq\n400 0 0 600 100 100 cm\n/Im1 Do\nQ" : '')
+                . (in_array($i + 1, $paintedPages, true) ? "\n0 0 0 rg\n100 100 200 50 re\nf" : '');
             $objects[$contentId] = "<< /Length " . strlen($stream) . " >>\nstream\n{$stream}\nendstream";
         }
 
         $objects[$fontId] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+        if ($imagePages !== []) {
+            // A 1×1 8-bit gray image, uncompressed: the smallest XObject smalot
+            // recognises as an image.
+            $objects[$imageId] = "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n\x80\nendstream";
+        }
 
         return self::serialize($objects, $catalogId);
     }
