@@ -72,6 +72,50 @@ final class DeleteDocumentFlowTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/x.md');
     }
 
+    /**
+     * v8.36 / PR #479 Copilot review round 6 — HardDeleteRowsStep commits
+     * the row deletion, and RemoveSourceFileStep — a SEPARATE, LATER Flow
+     * step — decides the file's fate independently: no single reservation
+     * spans the whole Flow, which a review round flagged as a race between
+     * the row-delete and a concurrent ingest reading the same source.
+     *
+     * Both steps route through DocumentDeleter::removeSourceObjectUnderLock(),
+     * the same choke point the direct (non-Flow) hard-delete path uses
+     * (DocumentDeleterTest::
+     * test_hard_delete_keeps_the_file_while_a_concurrent_ingest_holds_the_source_reservation),
+     * which already checks SourceInFlight::acquireForRemoval() before
+     * touching the file — so the gap between the two Flow steps closes the
+     * same way. Kept as a permanent Flow-level regression alongside that
+     * unit-level one, so a future change to either step's wiring cannot
+     * silently drop the file-removal step's own reservation check without
+     * a test going red.
+     */
+    public function test_hard_delete_flow_keeps_the_file_while_a_concurrent_ingest_holds_the_source_reservation(): void
+    {
+        $doc = $this->seedDoc('test-tenant', 'acme', 'docs/reserved.md');
+        Storage::disk('kb')->put('docs/reserved.md', '# x');
+
+        $reservation = \App\Support\Kb\SourceInFlight::reserve('kb', 'docs/reserved.md');
+        $this->assertNotNull($reservation, 'the test cache store must be able to hold a reservation');
+
+        $run = Flow::execute(
+            DeleteDocumentFlow::NAME,
+            [
+                'tenant_id' => 'test-tenant',
+                'document_id' => $doc->id,
+                'force' => true,
+            ],
+            FlowExecutionOptions::make(correlationId: 'test-tenant'),
+        );
+
+        $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
+        $this->assertSame(0, KnowledgeDocument::withTrashed()->count(), 'the row is gone regardless');
+        // a concurrent ingest holds the reservation: the file must be kept
+        Storage::disk('kb')->assertExists('docs/reserved.md');
+
+        $reservation->release();
+    }
+
     public function test_hard_delete_preserves_file_when_another_version_references_it(): void
     {
         $deleted = $this->seedDoc('test-tenant', 'acme', 'docs/shared.md');

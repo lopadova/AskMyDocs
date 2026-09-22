@@ -30,6 +30,16 @@ export type AuthFeatures = {
     };
 };
 
+/**
+ * Server-delivered KB upload contract (R27 additive on `/api/auth/me`, R18):
+ * the file extensions the staging request accepts, from the backend's
+ * `SourceType::knownExtensions()` — images only while OCR is on — so the
+ * picker never keeps a second literal list.
+ */
+export type AuthKbUpload = {
+    accepted_extensions: string[];
+};
+
 export type AuthMePayload = {
     user: AuthUser;
     roles: string[];
@@ -43,6 +53,7 @@ export type AuthMePayload = {
     };
     preferences?: Record<string, string>;
     features?: AuthFeatures;
+    kb_upload?: AuthKbUpload;
 };
 
 type AuthState = {
@@ -51,6 +62,8 @@ type AuthState = {
     permissions: string[];
     projects: AuthProject[];
     features: AuthFeatures;
+    /** Extensions the KB upload accepts (empty until `/api/auth/me` delivers them). */
+    kbUploadAcceptedExtensions: string[];
     onboarding: {
         required: boolean;
         can_create_company: boolean;
@@ -74,6 +87,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     permissions: [],
     projects: [],
     features: {},
+    kbUploadAcceptedExtensions: [],
     onboarding: { required: false, can_create_company: false },
     loading: true,
     setMe: (me) => {
@@ -88,6 +102,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             permissions: me.permissions,
             projects: me.projects,
             features: me.features ?? {},
+            kbUploadAcceptedExtensions: me.kb_upload?.accepted_extensions ?? [],
             onboarding: me.onboarding ?? { required: false, can_create_company: false },
             loading: false,
         });
@@ -100,6 +115,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             permissions: [],
             projects: [],
             features: {},
+            kbUploadAcceptedExtensions: [],
             onboarding: { required: false, can_create_company: false },
             loading: false,
         });

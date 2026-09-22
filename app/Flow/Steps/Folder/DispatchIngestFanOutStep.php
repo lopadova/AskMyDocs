@@ -8,6 +8,9 @@ use App\Flow\Steps\StepTenantBinder;
 use App\Jobs\IngestDocumentJob;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\FileTypeSniffer;
+use App\Support\Kb\HeldLock;
+use App\Support\Kb\SourceInFlight;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Support\Facades\Storage;
@@ -82,6 +85,7 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
 
         $dispatched = 0;
         $failures = [];
+        $artifactFailures = [];
         $storage = Storage::disk($disk);
 
         foreach ($files as $fullPath) {
@@ -104,14 +108,32 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
 
             $extension = (string) pathinfo($relative, PATHINFO_EXTENSION);
             $sourceType = SourceType::fromExtension($extension);
+            // v8.36 / ADR 0029 — an image is a supported type only while OCR
+            // is on (R43); off, it is recorded as unsupported exactly as before.
+            if ($sourceType === SourceType::IMAGE && ! (bool) config('kb.ocr.enabled', false)) {
+                $sourceType = SourceType::UNKNOWN;
+            }
             if ($sourceType === SourceType::UNKNOWN) {
                 $failures[] = ['path' => $relative, 'reason' => 'unsupported_extension: '.$extension];
+                continue;
+            }
+            // ADR 0029 §2 — an image is dispatched with its EXACT raster MIME
+            // (jpeg/tiff/webp) read from its BYTES, never the family label and
+            // never the extension (a JPEG named `.png` is `image/jpeg`): the
+            // MIME reaches the converter registry and the document row as what
+            // the bytes are. Bytes that are no known raster are a per-file
+            // failure here (R14), never a job that dies in the converter.
+            $mimeType = $sourceType === SourceType::IMAGE
+                ? FileTypeSniffer::imageMimeOnDisk($storage, $fullPath)
+                : $sourceType->toMime();
+            if ($mimeType === null) {
+                $failures[] = ['path' => $relative, 'reason' => 'unrecognised_bytes: not a PNG, JPEG, TIFF or WebP image'];
                 continue;
             }
 
             try {
                 if ($sync) {
-                    $this->ingestSync($storage, $disk, $prefix, $projectKey, $fullPath, $relative, $sourceType);
+                    $this->ingestSync($storage, $disk, $prefix, $projectKey, $fullPath, $relative, $mimeType);
                 } else {
                     IngestDocumentJob::dispatch(
                         projectKey: $projectKey,
@@ -119,11 +141,22 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                         disk: $disk,
                         title: null,
                         metadata: [],
-                        mimeType: $sourceType->toMime(),
+                        mimeType: $mimeType,
                         tenantId: $tenantId,
                     );
                 }
                 $dispatched++;
+            } catch (\App\Services\Kb\Versioning\ArtifactPublishFailedException $e) {
+                // The document IS ingested (row, chunks, embeddings committed);
+                // only its conversion artifact is missing — the pointer is
+                // kept as `missing` and repaired forward (ADR 0030 §3). Counted
+                // as dispatched, reported apart: never a file "not ingested".
+                $dispatched++;
+                $artifactFailures[] = [
+                    'path' => $relative,
+                    'document_id' => $e->documentId,
+                    'reason' => $e->getMessage(),
+                ];
             } catch (\Throwable $e) {
                 $failures[] = [
                     'path' => $relative,
@@ -141,10 +174,15 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                 'dispatched_count' => $dispatched,
                 'failure_count' => count($failures),
                 'failures' => $failures,
+                // Additive (R27): ingested documents whose artifact publish
+                // was refused — done, degraded, repairable.
+                'artifact_failure_count' => count($artifactFailures),
+                'artifact_failures' => $artifactFailures,
             ],
             businessImpact: [
                 'dispatched_count' => $dispatched,
                 'failure_count' => count($failures),
+                'artifact_failure_count' => count($artifactFailures),
             ],
         );
     }
@@ -156,26 +194,55 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         string $projectKey,
         string $fullPath,
         string $relative,
-        SourceType $sourceType,
+        string $mimeType,
     ): void {
-        if (! $storage->exists($fullPath)) {
-            throw new RuntimeException("File vanished before ingestion: {$fullPath}");
+        // ADR 0030 §3 — the same reservation the queued job takes, for the
+        // same reason: `--sync` reads and converts inline, and until the row
+        // commits the file has neither a row nor a holder. A concurrent
+        // `kb:prune-orphan-files` would see an ordinary orphan and delete the
+        // bytes out from under the conversion. Released whatever the outcome;
+        // the TTL is only the backstop for a process killed mid-conversion.
+        // A CONTENDED key throws (SourceReservationContendedException) rather
+        // than degrading, and that is deliberately left uncaught here: the
+        // caller's per-file try/catch already records it as an ordinary
+        // ingest failure, exactly like a bad file or a conversion error.
+        $reservation = SourceInFlight::reserve($disk, $fullPath);
+        // Round-9 Copilot review on PR #479 (IngestDocumentJob counterpart)
+        // — bind it so DocumentIngestor::finalizeSourceRetention()'s
+        // markdown_only drop of the shared original can assert it is still
+        // held, the same as the queued job does.
+        app()->instance(\App\Support\Kb\ActiveSourceReservation::class, new \App\Support\Kb\ActiveSourceReservation($reservation));
+        try {
+            if (! $storage->exists($fullPath)) {
+                throw new RuntimeException("File vanished before ingestion: {$fullPath}");
+            }
+            $bytes = $storage->get($fullPath);
+            if (! is_string($bytes) || $bytes === '') {
+                // `exists()` said yes, `get()` said nothing (a bucket 5xx, a
+                // mount gone between the two calls, a zero-byte object): a
+                // per-file failure, never an empty document ingested at the
+                // real source path that archives the valid version under it
+                // (R14).
+                throw new RuntimeException("Disk [{$disk}] returned no bytes for {$fullPath}");
+            }
+            $title = pathinfo($relative, PATHINFO_FILENAME);
+            $this->ingestor->ingest(
+                projectKey: $projectKey,
+                source: new SourceDocument(
+                    sourcePath: $relative,
+                    mimeType: $mimeType,
+                    bytes: $bytes,
+                    externalUrl: null,
+                    externalId: null,
+                    connectorType: 'local',
+                    metadata: ['disk' => $disk, 'prefix' => $prefix],
+                ),
+                title: $title,
+            );
+        } finally {
+            app()->forgetInstance(\App\Support\Kb\ActiveSourceReservation::class);
+            HeldLock::releaseQuietly($reservation);
         }
-        $bytes = (string) $storage->get($fullPath);
-        $title = pathinfo($relative, PATHINFO_FILENAME);
-        $this->ingestor->ingest(
-            projectKey: $projectKey,
-            source: new SourceDocument(
-                sourcePath: $relative,
-                mimeType: $sourceType->toMime(),
-                bytes: $bytes,
-                externalUrl: null,
-                externalId: null,
-                connectorType: 'local',
-                metadata: ['disk' => $disk, 'prefix' => $prefix],
-            ),
-            title: $title,
-        );
     }
 
     private function stripPrefix(string $path, string $prefix): string

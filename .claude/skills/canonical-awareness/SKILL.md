@@ -33,10 +33,15 @@ Concrete checklist — apply on every PR that touches the KB subsystem:
    tenants will raise a FK violation — the error message must be
    treated as a bug, not silenced.
 
-4. **Slug + doc_id uniqueness is scoped per project** — the composite
-   uniques are `(project_key, slug)` and `(project_key, doc_id)`.
-   Two different projects can (and SHOULD be able to) share
-   `dec-cache-v2`. Never assume a slug is globally unique.
+4. **Slug + doc_id uniqueness is scoped per tenant AND project** — the
+   composite uniques are `(tenant_id, project_key, slug)` and
+   `(tenant_id, project_key, doc_id)` since
+   `2026_10_02_000011_tenant_scope_knowledge_document_uniques.php`.
+   Two different projects — and two different tenants — can (and SHOULD
+   be able to) share `dec-cache-v2`. Never assume a slug is globally
+   unique. A query that probes those slots for a CONFLICT must see what
+   the index sees: `withTrashed()` + `withoutGlobalScope(AccessScopeScope::class)`,
+   because a soft-deleted or ACL-hidden holder still occupies the slot.
 
 5. **Hard delete cascades the graph** — `DocumentDeleter::forceDelete()`
    removes `kb_nodes` owned by the doc (matched via `source_doc_id`
@@ -50,7 +55,8 @@ Concrete checklist — apply on every PR that touches the KB subsystem:
    `kb:prune-deleted` or `DELETE /api/kb/documents?force=1`.
 
 7. **Canonical re-ingest vacates identifiers first** — changed content
-   on a canonical doc violates `uq_kb_doc_slug` / `uq_kb_doc_doc_id`
+   on a canonical doc violates `uq_kb_doc_tenant_slug` /
+   `uq_kb_doc_tenant_doc_id`
    unless the archived prior version has its canonical identifiers
    nulled BEFORE the new row is inserted. `DocumentIngestor` already
    does this in `vacateCanonicalIdentifiersOnPreviousVersions()`;

@@ -82,7 +82,7 @@ the host *uses* them, never the reverse.
   One tenant-scoped, audited credential core; an explicit identity-scoped
   current-session query; and the security-motivated exception that keeps
   one-time `ik_` secrets out of MCP transcripts.
-- **[ADR 0028](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md) — Source ACL mirroring and ingest-time provenance** *(proposed — design only, nothing shipped)*.
+- **[ADR 0028](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md) — Source ACL mirroring and ingest-time provenance** *(shipped in three phases, v8.32 → v8.34)*.
   The ingestion contract records what a document *is* and not where its authority
   comes from, so a file shared with three people upstream becomes readable by
   everyone with the project. The design mirrors source permissions through two
@@ -121,7 +121,41 @@ flowchart LR
     A0009 --> A0028[0028 source ACL + provenance]
     A0024 --> A0028
     A0014 -.- A0028
+    A0020[0020 PII-safe ingest] --> A0029[0029 OCR converter]
+    A0028 --> A0029
+    A0014 --> A0030[0030 conversion artifacts]
+    A0029 -.- A0030
 ```
+
+## The document-intelligence arc: from file to reviewed, portable knowledge
+
+- **[ADR 0029](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0029-v836-ocr-converter-drivers-and-ocr-provenance.md) — OCR converter, pluggable drivers, and OCR provenance.**
+  Scanned PDFs and images enter the same registry-driven pipeline as every
+  other format: one `OcrConverter` registered *before* `PdfConverter`, four
+  drivers behind one contract (`docling`, `mistral-ocr`, `vision-llm`,
+  `tesseract`), figures written beside the document, a confidence per page,
+  and — the load-bearing part — the existing PII seam (ADR 0020) and the
+  existing provenance vocabulary (ADR 0028) reused unchanged. OCR records
+  *how the text was obtained*, not *who authored it*; an OCR'd inbound letter
+  stays external text that may be quoted but never drives a tool call. The
+  cycle's invariant is drawn here: an agent that read a scan may **propose** a
+  correction, never commit one. Default-OFF until the review lane (W3) has a
+  measured baseline.
+- **[ADR 0030](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0030-v836-conversion-artifacts-on-the-time-machine.md) — Conversion artifacts on the Time Machine.**
+  The version model AskMyDocs already has — the archived `knowledge_documents`
+  row and its chunks — finally carries the document itself. The converted
+  Markdown becomes a stored artifact written in *both* ingest paths through
+  the one persistence core, three nullable columns arrive with it —
+  `version_actor` and `version_reason` record who created a version and why,
+  `content_hash` is the integrity hash of the stored artifact — `diff` prefers artifacts and falls back to reconstruction
+  (both branches tested), and retention and deletion cover the artifact.
+  The erasure boundary is stated, not assumed: the Art.17 crypto-shred targets
+  the vault and stops at the AI boundary — it never erases stored Markdown,
+  OCR figures or the original source, which are raw assets *before* the PII
+  seam; those are erased by hard-deleting the documents that contain the
+  subject, an operator step of the DSAR runbook.
+  No versions table is added: the family *is* the version model, and the
+  narrower gap the audit found is closed without rebuilding what v8.7 shipped.
 
 ## Decision rationale (meta)
 

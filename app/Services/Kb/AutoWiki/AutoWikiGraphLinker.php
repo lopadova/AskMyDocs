@@ -161,7 +161,8 @@ class AutoWikiGraphLinker
      * squat on the HUMAN canonical slug namespace: a human canonical doc
      * declares a clean slug in its frontmatter, and if an auto doc had grabbed
      * that same title-derived slug, the human doc's ingest would fail the
-     * `uq_kb_doc_slug (project_key, slug)` unique. The prefix also means an
+     * `uq_kb_doc_tenant_slug (tenant_id, project_key, slug)` unique. The
+     * prefix also means an
      * `auto-*` graph node can only pre-exist when this very doc already owned
      * the slug, so {@see upsertSelfNode()} never hijacks a node it didn't make.
      *

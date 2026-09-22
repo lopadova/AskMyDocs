@@ -83,15 +83,19 @@ final class RemoveSourceFileStep implements FlowStepHandler
             );
         }
 
-        $deleted = $this->deleter->removeFileFor($disk, $fullPath, $documentId, $sourcePath);
+        $removal = $this->deleter->removeFileFor($disk, $fullPath, $documentId, $sourcePath);
 
         return FlowStepResult::success(
             output: [
-                'file_deleted' => $deleted,
+                'file_deleted' => $removal['file_deleted'],
+                // v8.36 / ADR 0029 §6 — the `.ocr/` tree beside the source:
+                // false when it was kept (in-flight grace, a run in use) or
+                // failed to go, so the run reports the complete cleanup.
+                'ocr_assets_deleted' => $removal['ocr_assets_deleted'],
                 'disk' => $disk,
                 'full_path' => $fullPath,
             ],
-            businessImpact: ['file_deleted' => $deleted],
+            businessImpact: ['file_deleted' => $removal['file_deleted'], 'ocr_assets_deleted' => $removal['ocr_assets_deleted']],
         );
     }
 }

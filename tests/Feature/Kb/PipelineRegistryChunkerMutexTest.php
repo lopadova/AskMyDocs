@@ -45,6 +45,8 @@ final class PipelineRegistryChunkerMutexTest extends TestCase
         $sourceTypeUniverse = [
             // v3 core
             'markdown', 'md', 'text', 'docx', 'pdf',
+            // v8.36 / ADR 0029 — OCR'd images (PdfPageChunker claims `image` too)
+            'image',
             // v4.5/W5.5 source-aware
             'notion', 'notion_note',
             'confluence',

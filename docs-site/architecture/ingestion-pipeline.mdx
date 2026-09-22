@@ -17,7 +17,7 @@ behaviour, by funnelling every entry point through one execution path.
 The design rests on three principles:
 
 1. **Idempotency by content hash.** A document's identity is the tuple
-   `(project_key, source_path, version_hash)` where `version_hash` is the
+   `(tenant_id, project_key, source_path, version_hash)` where `version_hash` is the
    SHA-256 of the source content. Identical bytes under the same path produce the
    same row — re-ingest is free.
 2. **One execution path.** CLI and HTTP both fan into `IngestDocumentJob →
@@ -56,13 +56,14 @@ via backoff; a persistent one lands in `failed_jobs`.
 
 `DocumentIngestor::ingestMarkdown()` hashes the source, then:
 
-- If a row with the same `(project_key, source_path, version_hash)` exists → no-op.
+- If a row with the same `(tenant_id, project_key, source_path, version_hash)` exists → no-op.
 - If the content changed (new `version_hash`) → the prior version is archived so
   its chunks stop surfacing, and the new version is inserted.
 
 For the canonical branch, prior versions' canonical identifiers are *vacated*
 (`vacateCanonicalIdentifiersOnPreviousVersions`) before insert, so the composite
-uniques `(project_key, doc_id)` / `(project_key, slug)` accept the new version.
+uniques `(tenant_id, project_key, doc_id)` / `(tenant_id, project_key, slug)`
+accept the new version.
 
 ### Chunking — `MarkdownChunker`
 

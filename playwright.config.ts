@@ -139,6 +139,12 @@ const serveEnv = {
     // The AI-ON path is covered by GamificationInsightsTest (phpunit,
     // mocked AiManager), per R43.
     KB_GAMIFICATION_AI_ENABLED: 'false',
+    // v8.37/W3c — light up Digitization Review (ADR 0031) so
+    // admin-kb-review.spec.ts reaches the real ReviewTab against
+    // DemoSeeder-seeded documents (R13). The default-OFF clean-404
+    // "disabled" landing is covered by ReviewTab.test.tsx (Vitest),
+    // per R43 (both states tested).
+    KB_DIGITIZATION_REVIEW_ENABLED: 'true',
     // PHP_CLI_SERVER_WORKERS spawns N worker children for
     // the PHP built-in dev server (PHP 7.4+). Without
     // this env var (AND `--no-reload` above so the var

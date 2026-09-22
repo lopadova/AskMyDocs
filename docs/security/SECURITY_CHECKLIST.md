@@ -44,7 +44,7 @@ and listed in §6.
 
 **Baseline populations** (measured 2026-08-09 @ `7844e9ee` — see THREAT_MODEL §1):
 70 Artisan commands · 29 scheduler slots (+2 config-gated + connector sync) · 9+
-queue jobs · 46 MCP tools (12 write-capable) · 2 SSE streams · 5 AI providers ·
+queue jobs · 53 MCP tools (14 write-capable) · 2 SSE streams · 5 AI providers ·
 public widget (11 routes) · Tauri desktop · 0 inbound webhooks · 0 CSV exports.
 
 **Prescreen result (2026-08-09).** `npm run security:rules` green (19 IDs, 88
@@ -651,7 +651,7 @@ per-surface state; a control is only as strong as its weakest member.
 | Queue | 9 host jobs + connector/pkg jobs | initiator re-authorized at effect (SEC-AI-ACT §4) | MCP-triggered write re-auth proof → PR 3 |
 | Streaming (SSE) | 2 (chat, tabular-review) | tenant-scoped in-controller (`forTenant`, 404 on miss) | cross-tenant denial regression test → PR 4 |
 | Fallback / retry | provider fallback chain | metered + bounded | PII + provider-policy on fallback branch → PR 8 |
-| MCP | 46 tools (12 write) | `EnforceMcpScope` + `McpToolAuthorizer` | bidirectional write-tool coverage test → PR 3 |
+| MCP | 53 tools (14 write) | `EnforceMcpScope` + `McpToolAuthorizer` | bidirectional write-tool coverage test → PR 3 |
 | Widget | 11 public routes | PII masker + tool validator + snapshot validator (closed contract) | SSRF on theme/intro fetch → PR 2 |
 | React SPA | renderer surfaces | output-is-data allow-lists; refusal UX (R26) | CSP nonce wiring → PR 1 |
 | Tauri | desktop webview | native client; token auth | capability wildcards + null CSP → PR 11 |

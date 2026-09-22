@@ -119,6 +119,39 @@ class KbDeleteControllerTest extends TestCase
         Storage::disk('kb')->assertMissing('docs/a.md');
     }
 
+    /**
+     * v8.36 / ADR 0030 §8 / PR #479 Copilot review round 5 — additive
+     * (R27): `artifact_deleted` was added to `HardDeleteRowsStep`'s Flow
+     * output, but this HTTP delete adapter still built its response from
+     * only `file_deleted`, so a caller could never observe whether the
+     * row's version artifact was removed alongside the source file.
+     */
+    public function test_force_flag_response_reports_artifact_deleted(): void
+    {
+        config()->set('kb.conversion_artifacts.enabled', true);
+        Storage::disk('kb')->put('docs/a.md', 'hi');
+        $doc = $this->seedDoc('demo', 'docs/a.md');
+        $artifactPath = '.artifacts/default/demo/docs/a.md.versions/'.$doc->version_hash.'.md';
+        Storage::disk('kb')->put($artifactPath, 'hi');
+        $doc->forceFill(['markdown_path' => $artifactPath])->save();
+
+        $this->deleteJson('/api/kb/documents', [
+            'force' => true,
+            'documents' => [
+                ['project_key' => 'demo', 'source_path' => 'docs/a.md'],
+            ],
+        ])
+            ->assertStatus(200)
+            ->assertJson([
+                'deleted' => 1,
+                'documents' => [
+                    ['mode' => 'hard', 'file_deleted' => true, 'artifact_deleted' => true],
+                ],
+            ]);
+
+        Storage::disk('kb')->assertMissing($artifactPath);
+    }
+
     public function test_reports_missing_documents_without_failing(): void
     {
         config()->set('kb.deletion.soft_delete', true);

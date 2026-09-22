@@ -11,6 +11,16 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        // v8.37/W3b round 7 — routes/ai.php (Mcp::web('/mcp/kb', ...)) is
+        // NOT loaded here on purpose: `laravel/mcp`'s own
+        // McpServiceProvider::registerRoutes() already does
+        // `Route::group([], base_path('routes/ai.php'))` in its boot(),
+        // auto-discovered via Composer (bootstrap/cache/packages.php).
+        // Requiring it again here would register /mcp/kb twice. Only
+        // Orchestra Testbench (which skips package auto-discovery by
+        // design, see tests/TestCase.php) needs its own explicit
+        // registration of McpServiceProvider to load this route for
+        // feature tests.
     )
     ->withMiddleware(function (Middleware $middleware) {
         // v4.0/W1.D — ResolveTenant runs FIRST in every HTTP request so

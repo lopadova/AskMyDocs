@@ -103,4 +103,24 @@ class KbPathTest extends TestCase
         $this->assertTrue(KbPath::matchesAnyGlob('a/b.md', ['x/y/*', 'a/*']));
         $this->assertTrue(KbPath::matchesAnyGlob('a/b.md', ['a/*', 'x/y/*']));
     }
+
+    /**
+     * v8.36 / ADR 0029 — the converter's own output must never be read back
+     * as a source: anything under a `{name}.ocr/` segment or the reserved
+     * `.artifacts/` root is a generated asset.
+     */
+    public function test_is_generated_asset_marks_ocr_runs_and_artifact_roots_only(): void
+    {
+        $this->assertTrue(KbPath::isGeneratedAsset('docs/scan.png.ocr/0123456789abcdef/images/fig-1-1.png'));
+        $this->assertTrue(KbPath::isGeneratedAsset('docs/scan.png.ocr/0123456789abcdef/result.json'));
+        $this->assertTrue(KbPath::isGeneratedAsset('.artifacts/acme/legal/docs/a.md.versions/x.md'));
+        $this->assertTrue(KbPath::isGeneratedAsset('prefix/.artifacts/acme/legal/a.md'));
+        $this->assertTrue(KbPath::isGeneratedAsset('Docs/Scan.PNG.OCR/run/images/f.png'));
+
+        $this->assertFalse(KbPath::isGeneratedAsset('docs/scan.png'));
+        $this->assertFalse(KbPath::isGeneratedAsset('docs/notes.ocr'), 'a FILE named *.ocr is not a run directory');
+        $this->assertFalse(KbPath::isGeneratedAsset('docs/ocr/guide.md'));
+        $this->assertFalse(KbPath::isGeneratedAsset('docs/artifacts/guide.md'));
+        $this->assertFalse(KbPath::isGeneratedAsset('a/.artifacts'), 'a leaf named .artifacts is a file, not the root');
+    }
 }

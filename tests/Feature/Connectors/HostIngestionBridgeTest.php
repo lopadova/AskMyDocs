@@ -75,6 +75,393 @@ final class HostIngestionBridgeTest extends TestCase
         });
     }
 
+    public function test_dispatch_ingestion_strips_host_only_ocr_controls_from_connector_metadata(): void
+    {
+        Queue::fake();
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-notion',
+            relativePath: 'notion/page-abc.md',
+            disk: 'kb',
+            title: 'Page ABC',
+            // `disk` / `prefix` name the storage namespace: a connector must
+            // not point the queued read at another object than the one it
+            // persisted (ParseMarkdownStep honours `metadata.prefix`); the
+            // version actor is an audit identity the host derives (ADR 0030 §4).
+            metadata: ['notion_page_id' => 'abc-123', 'dry_run' => true, 'ocr' => ['force' => true], 'prefix' => 'other-tenant', 'disk' => 'elsewhere', 'version_actor' => 'user:1'],
+            mimeType: 'text/markdown',
+            tenantId: 'acme',
+        );
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job): bool {
+            return $job->metadata === ['notion_page_id' => 'abc-123'];
+        });
+    }
+
+    public function test_dispatch_ingestion_refuses_an_image_when_ocr_is_off_and_records_the_reason(): void
+    {
+        Queue::fake();
+        config()->set('kb.ocr.enabled', false);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-onedrive',
+            relativePath: 'onedrive/scan.png',
+            disk: 'kb',
+            title: 'Scan',
+            metadata: ['connector' => 'onedrive', 'installation_id' => 7],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+
+        $audit = KbCanonicalAudit::query()
+            ->where('event_type', 'connector_ingest_refused')
+            ->first();
+        $this->assertNotNull($audit, 'The refusal must be recorded as a reasoned audit event.');
+        $this->assertSame('connector:onedrive', $audit->actor);
+        $this->assertSame('ocr_disabled', $audit->metadata_json['metadata']['reason']);
+        $this->assertSame('image/png', $audit->metadata_json['metadata']['mime_type']);
+        $this->assertSame(7, $audit->metadata_json['installation_id']);
+        // R30 — the audit row carries the tenant the CONNECTOR passed, not the
+        // worker's current context (which is 'default' here).
+        $this->assertSame('acme', $audit->tenant_id);
+    }
+
+    public function test_a_connector_mime_with_parameters_is_normalised_before_the_image_gate(): void
+    {
+        Queue::fake();
+        config()->set('kb.ocr.enabled', false);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-onedrive',
+            relativePath: 'connector-onedrive/scan.png',
+            disk: 'kb',
+            title: 'scan.png',
+            metadata: ['connector' => 'onedrive', 'installation_id' => 7],
+            mimeType: 'Image/PNG; charset=binary',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertSame('image/png', $audit->metadata_json['metadata']['mime_type']);
+    }
+
+    public function test_refused_imap_image_removes_the_orphan_source_and_records_it(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        Storage::disk('kb')->put('connector-email/connectors/imap/installation-12/inbox/99.png', 'PNG');
+
+        // The UID confirmation is the same `recordSuccessfulDispatch()` call
+        // the success path makes (its semantics are covered by
+        // ImapSyncProgressTest); with no active sync it is a documented no-op,
+        // so this test proves the refusal side: nothing queued, orphan bytes
+        // gone, the audit row present.
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: 'connector-email/connectors/imap/installation-12/inbox/99.png',
+            disk: 'kb',
+            title: 'scan.png',
+            metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '99', 'imap_doc_key' => 'INBOX:1:99', 'imap_mailbox' => 'INBOX'],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb')->assertMissing('connector-email/connectors/imap/installation-12/inbox/99.png');
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertTrue($audit->metadata_json['metadata']['source_removed']);
+    }
+
+    /**
+     * The orphan is removed from the disk the CONNECTOR wrote to, never from
+     * `config('kb.sources.disk')` — a connector may target another disk, and
+     * deleting the same key on the wrong one leaves the bytes it meant to
+     * drop while reporting `source_removed` (Copilot #478 round 3).
+     */
+    public function test_refused_imap_image_is_removed_from_the_disk_the_connector_wrote_to(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        Storage::fake('kb-attachments');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/55.png';
+        Storage::disk('kb-attachments')->put($path, 'PNG');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: $path,
+            disk: 'kb-attachments',
+            title: 'scan.png',
+            metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '55', 'imap_doc_key' => 'INBOX:1:55', 'imap_mailbox' => 'INBOX'],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb-attachments')->assertMissing($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertTrue($audit->metadata_json['metadata']['source_removed']);
+    }
+
+    /**
+     * R14 — a cleanup that failed is not a refusal that succeeded: the
+     * failure reaches the sync job (the UID stays unconfirmed, so the next
+     * sync re-presents the attachment and the removal is retried) and the
+     * audit row says so, instead of a warning while the bytes stay behind.
+     */
+    public function test_refused_imap_image_whose_cleanup_fails_raises_instead_of_acknowledging(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                // Un-normalisable (traversal): the removal cannot resolve the key.
+                relativePath: 'connector-email/../escape/88.png',
+                disk: 'kb',
+                title: 'scan.png',
+                metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '88', 'imap_doc_key' => 'INBOX:1:88', 'imap_mailbox' => 'INBOX'],
+                mimeType: 'image/png',
+                tenantId: 'acme',
+            );
+            $this->fail('a failed cleanup must not be acknowledged as a clean refusal');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('could not be removed', $e->getMessage());
+        }
+
+        Queue::assertNothingPushed();
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertNull($audit->metadata_json['metadata']['source_removed']);
+        $this->assertTrue($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
+    public function test_refused_imap_image_keeps_a_source_a_live_row_still_references(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/77.png';
+        Storage::disk('kb')->put($path, 'PNG');
+        // A row ingested earlier (OCR was on) still points at the same key.
+        KnowledgeDocument::create([
+            'tenant_id' => 'acme', 'project_key' => 'connector-email', 'source_type' => 'image', 'title' => 'scan',
+            'source_path' => $path, 'mime_type' => 'image/png', 'language' => 'en', 'access_scope' => 'internal',
+            'status' => 'active', 'document_hash' => hash('sha256', 'a'), 'version_hash' => hash('sha256', 'a'),
+            'metadata' => ['disk' => 'kb', 'prefix' => ''], 'indexed_at' => now(),
+        ]);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: $path,
+            disk: 'kb',
+            title: 'scan.png',
+            metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '77', 'imap_doc_key' => 'INBOX:1:77', 'imap_mailbox' => 'INBOX'],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertFalse($audit->metadata_json['metadata']['source_removed']);
+    }
+
+    /**
+     * PR #492 Copilot round-7 — the reference check and delete were not
+     * protected by SourceInFlight: a previously dispatched OCR job can
+     * already hold the source reservation while its document row is NOT
+     * yet committed, so documentReferencingStorageKey() sees no row and
+     * (before this fix) removeRefusedSource() would delete the bytes out
+     * from under that conversion. This is a DIFFERENT scenario from the
+     * "a live row still references it" test above: here there is no row
+     * at all yet — only the reservation an in-flight ingest holds.
+     */
+    public function test_refused_imap_image_keeps_a_source_an_in_flight_ingest_reserved(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/66.png';
+        Storage::disk('kb')->put($path, 'PNG');
+        // Simulates an ingest job mid-flight on this exact source: reserved,
+        // no document row committed yet — the case documentReferencingStorageKey()
+        // alone cannot see.
+        $lock = \App\Support\Kb\SourceInFlight::reserve('kb', $path);
+        $this->assertNotNull($lock, 'the test itself needs a lock-capable store to hold the reservation');
+
+        try {
+            /** @var HostIngestionBridge $bridge */
+            $bridge = $this->app->make(ConnectorIngestionContract::class);
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: $path,
+                disk: 'kb',
+                title: 'scan.png',
+                metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '66', 'imap_doc_key' => 'INBOX:1:66', 'imap_mailbox' => 'INBOX'],
+                mimeType: 'image/png',
+                tenantId: 'acme',
+            );
+        } finally {
+            $lock->release();
+        }
+
+        Queue::assertNothingPushed();
+        // The bytes an in-flight ingest reserved must never be deleted out from under it.
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertFalse($audit->metadata_json['metadata']['source_removed']);
+        $this->assertFalse($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
+    /**
+     * PR #492 Copilot round-7 (implied by "as the other source-deletion
+     * paths do") — SourceInFlight::acquireForRemoval() only means anything
+     * on a store that can actually exclude a concurrent holder
+     * (cacheStoreCanLock()); on a store that cannot lock, a real reservation
+     * would silently grant every acquisition regardless of a genuine
+     * in-flight ingest. Refused outright, the same posture as every other
+     * source-deletion path in this PR cycle.
+     */
+    public function test_refused_imap_image_removal_refuses_on_a_store_without_locks(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('nolock', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(new \Tests\Fixtures\Cache\NoLockStore));
+        config(['cache.stores.nolock' => ['driver' => 'nolock'], 'cache.default' => 'nolock']);
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/44.png';
+        Storage::disk('kb')->put($path, 'PNG');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: $path,
+                disk: 'kb',
+                title: 'scan.png',
+                metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '44', 'imap_doc_key' => 'INBOX:1:44', 'imap_mailbox' => 'INBOX'],
+                mimeType: 'image/png',
+                tenantId: 'acme',
+            );
+            $this->fail('a removal that cannot exclude a concurrent ingest must be refused, not run unguarded');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('could not be removed', $e->getMessage());
+        }
+
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertNull($audit->metadata_json['metadata']['source_removed']);
+        $this->assertTrue($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
+    /**
+     * PR #492 Copilot round-7 (Finding A) — the reservation was acquired
+     * and checked for existence, but never re-asserted still owned right
+     * before the delete: a TTL that lapsed during the DB round-trip
+     * (`documentReferencingStorageKey()`) left the actual removal
+     * unguarded. `LapsingLockStore` grants the reservation (so
+     * `acquireForRemoval()` returns non-null and the method proceeds past
+     * that guard and the "still referenced" check) but reports it unowned
+     * from the first `isOwnedByCurrentProcess()` call onward — the
+     * deterministic stand-in for a lease that lapsed mid-call (see the
+     * fixture's own docblock and the twin test on `OcrFigureStorePurgeRunTest`
+     * for Finding B, the same gap one call site over).
+     */
+    public function test_refused_imap_image_removal_defers_when_the_reservation_lapses_before_the_delete(): void
+    {
+        \Illuminate\Support\Facades\Cache::extend('lapsing', static fn ($app) => \Illuminate\Support\Facades\Cache::repository(
+            new \Tests\Fixtures\Cache\LapsingLockStore(static fn (string $name): bool => str_starts_with($name, 'kb:source-inflight:'))
+        ));
+        config(['cache.stores.lapsing' => ['driver' => 'lapsing'], 'cache.default' => 'lapsing']);
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.ocr.enabled', false);
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        $path = 'connector-email/connectors/imap/installation-12/inbox/77.png';
+        Storage::disk('kb')->put($path, 'PNG');
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: $path,
+            disk: 'kb',
+            title: 'scan.png',
+            metadata: ['connector' => 'imap', 'installation_id' => 12, 'imap_uid' => '77', 'imap_doc_key' => 'INBOX:1:77', 'imap_mailbox' => 'INBOX'],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertNothingPushed();
+        // A reservation that lapsed before the delete must defer (KEPT), not
+        // proceed unguarded.
+        Storage::disk('kb')->assertExists($path);
+        $audit = KbCanonicalAudit::query()->where('event_type', 'connector_ingest_refused')->firstOrFail();
+        $this->assertFalse($audit->metadata_json['metadata']['source_removed']);
+        $this->assertFalse($audit->metadata_json['metadata']['cleanup_failed']);
+    }
+
+    public function test_dispatch_ingestion_queues_an_image_when_ocr_is_on(): void
+    {
+        Queue::fake();
+        config()->set('kb.ocr.enabled', true);
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-onedrive',
+            relativePath: 'onedrive/scan.png',
+            disk: 'kb',
+            title: 'Scan',
+            metadata: ['connector' => 'onedrive', 'installation_id' => 7],
+            mimeType: 'image/png',
+            tenantId: 'acme',
+        );
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job): bool {
+            return $job->relativePath === 'onedrive/scan.png'
+                && $job->mimeType === 'image/png'
+                && $job->tenantId === 'acme';
+        });
+        $this->assertDatabaseMissing('kb_canonical_audit', ['event_type' => 'connector_ingest_refused']);
+    }
+
     public function test_dispatch_ingestion_derives_generated_fixture_metadata_from_reserved_message_id(): void
     {
         Queue::fake();

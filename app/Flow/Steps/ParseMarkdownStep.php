@@ -49,7 +49,16 @@ final class ParseMarkdownStep implements FlowStepHandler
         $metadata = is_array($rawMetadata) ? $rawMetadata : [];
 
         $normalizedPath = KbPath::normalize($relativePath);
-        $fullPath = $this->resolveStoragePath($normalizedPath);
+        // v8.36 — the prefix the source was ingested under travels with the
+        // job (`metadata.prefix`, recorded by the ingest and preserved by
+        // `OcrService::rerun()`): a re-run resolves the SAME object the row
+        // records even when `kb.sources.path_prefix` has changed since,
+        // instead of passing the preflight on one prefix and reading (or
+        // failing on) another here. Absent → the prefix configured today.
+        $prefix = array_key_exists('prefix', $metadata) && is_string($metadata['prefix'])
+            ? $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $fullPath = $this->resolveStoragePath($normalizedPath, $prefix);
         $storage = Storage::disk($disk);
 
         if (! $storage->exists($fullPath)) {
@@ -65,11 +74,25 @@ final class ParseMarkdownStep implements FlowStepHandler
                 "ParseMarkdownStep: failed to read file [{$disk}]: {$fullPath}"
             );
         }
+        if ($bytes === '') {
+            // A zero-byte object is not a source (a truncated upload, a
+            // bucket that answered with an empty body): a failed step, never
+            // an empty version that archives the valid live one (R14). Every
+            // queued ingest reads through here, so this is the one guard.
+            throw new RuntimeException(
+                "ParseMarkdownStep: disk [{$disk}] returned no bytes for {$fullPath}"
+            );
+        }
 
         $combinedMetadata = array_merge($metadata, [
             'disk' => $disk,
-            'prefix' => (string) config('kb.sources.path_prefix', ''),
+            'prefix' => $prefix,
         ]);
+        if ($context->dryRun) {
+            // v8.36 — converters with a persistence seam (OCR figures, paid
+            // remote drivers) must know this is a preview: no write, no spend.
+            $combinedMetadata['dry_run'] = true;
+        }
 
         $source = new SourceDocument(
             sourcePath: $normalizedPath,
@@ -132,10 +155,18 @@ final class ParseMarkdownStep implements FlowStepHandler
         return FlowStepResult::success($output, $impact);
     }
 
-    private function resolveStoragePath(string $normalizedRelativePath): string
+    /**
+     * The same key the ingest and the deleter resolve: prefix + source
+     * through the ONE normaliser (`KbPath::normalize()` — backslashes,
+     * repeated separators and traversal segments handled once), never a
+     * hand-rolled join a `..` in a stored or configured prefix could slip
+     * past (SEC-PATH-001).
+     */
+    private function resolveStoragePath(string $normalizedRelativePath, string $prefix): string
     {
-        $prefix = (string) config('kb.sources.path_prefix', '');
-        return ltrim(trim($prefix, '/').'/'.ltrim($normalizedRelativePath, '/'), '/');
+        $prefix = trim(str_replace('\\', '/', $prefix), '/');
+
+        return $prefix === '' ? $normalizedRelativePath : KbPath::normalize($prefix.'/'.$normalizedRelativePath);
     }
 
     private function tryParseCanonical(string $projectKey, string $sourcePath, string $markdown): ?\App\Services\Kb\Canonical\CanonicalParsedDocument

@@ -24,6 +24,10 @@ final class HardDeleteRowsStepTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertTrue($result->output['hard_deleted']);
         $this->assertSame(0, KnowledgeDocument::withTrashed()->count());
+        // v8.36 / ADR 0030 §8 — additive (R27): a row without an artifact
+        // reports "none remains" on both the output and the business impact.
+        $this->assertTrue($result->output['artifact_deleted']);
+        $this->assertTrue($result->businessImpact['artifact_deleted']);
     }
 
     public function test_no_op_when_force_false(): void

@@ -6,6 +6,7 @@ namespace Tests\Feature\Kb;
 
 use App\Ai\EmbeddingsResponse;
 use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
 use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
@@ -511,5 +512,83 @@ final class KbSearchServiceFiltersTest extends TestCase
             'sql' => $builder->toSql(),
             'bindings' => $builder->getBindings(),
         ];
+    }
+
+    private function doc(array $overrides = []): KnowledgeDocument
+    {
+        static $n = 0;
+        $n++;
+
+        return KnowledgeDocument::create(array_merge([
+            'tenant_id' => 'default',
+            'project_key' => 'eng',
+            'source_type' => 'image',
+            'source_path' => "scans/doc-{$n}.pdf",
+            'title' => "Doc {$n}",
+            'mime_type' => 'application/pdf',
+            'status' => 'active',
+            'document_hash' => str_repeat('a', 64),
+            'version_hash' => bin2hex(random_bytes(16)),
+            'is_canonical' => false,
+        ], $overrides));
+    }
+
+    /**
+     * Copilot PR #494 round 9 (previously missed, must-fix) — the
+     * `Reranker` firewall tests only ever call `Reranker` with hand-built
+     * `ocr_origin` values; none of them exercised `KbSearchService`'s own
+     * derivation of that field from `metadata.converter.provenance`. A
+     * typo or removal in `mapChunkToArray()` would leave real OCR chunks
+     * unpenalized while every firewall test stayed green, because none of
+     * them go through the retrieval-path mapping at all. This reflects
+     * into the extracted `mapChunkToArray()` with a REAL, persisted
+     * `KnowledgeChunk`+`KnowledgeDocument` pair (no vector SQL involved,
+     * so it runs on SQLite) and asserts the derivation for both an
+     * OCR-provenance document and an AutoWiki-enriched (non-OCR) control
+     * row with the identical `generation_source = 'auto'`.
+     */
+    public function test_map_chunk_to_array_derives_ocr_origin_from_converter_provenance(): void
+    {
+        $ocrDoc = $this->doc([
+            'generation_source' => 'auto',
+            'metadata' => ['converter' => ['provenance' => 'ocr']],
+        ]);
+        $ocrChunk = KnowledgeChunk::create([
+            'tenant_id' => 'default',
+            'knowledge_document_id' => $ocrDoc->id,
+            'project_key' => 'eng',
+            'chunk_order' => 0,
+            'chunk_hash' => 'ocr-chunk-hash',
+            'heading_path' => 'Page 1',
+            'chunk_text' => 'Scanned OCR text.',
+        ]);
+
+        $autoWikiDoc = $this->doc([
+            'generation_source' => 'auto',
+            'source_type' => 'markdown',
+            'mime_type' => 'text/markdown',
+            'metadata' => null,
+        ]);
+        $autoWikiChunk = KnowledgeChunk::create([
+            'tenant_id' => 'default',
+            'knowledge_document_id' => $autoWikiDoc->id,
+            'project_key' => 'eng',
+            'chunk_order' => 0,
+            'chunk_hash' => 'autowiki-chunk-hash',
+            'heading_path' => 'Intro',
+            'chunk_text' => 'AutoWiki-enriched raw text.',
+        ]);
+
+        $reflection = new ReflectionMethod($this->svc, 'mapChunkToArray');
+        $reflection->setAccessible(true);
+
+        $ocrMapped = $reflection->invoke($this->svc, $ocrChunk->fresh()->load('document'));
+        $autoWikiMapped = $reflection->invoke($this->svc, $autoWikiChunk->fresh()->load('document'));
+
+        $this->assertTrue($ocrMapped['document']['ocr_origin'], 'an OCR-provenance document must map to ocr_origin=true');
+        $this->assertSame('auto', $ocrMapped['document']['generation_source']);
+
+        $this->assertFalse($autoWikiMapped['document']['ocr_origin'], 'an AutoWiki-enriched (non-OCR) document must map to ocr_origin=false despite the identical generation_source=auto');
+        $this->assertSame('auto', $autoWikiMapped['document']['generation_source']);
     }
 }
