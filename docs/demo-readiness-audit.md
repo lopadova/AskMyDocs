@@ -204,11 +204,51 @@ chunking, PDF/DOCX e cache embedding sono verdi. Le failure UI per tipo non
 supportato e immagine con OCR disattivato mostrano entrambe una risposta 422
 esplicita.
 
-Resta un rischio operativo preesistente: `queue:failed` contiene 2.513 record
-storici (in prevalenza `kb-ingest` da precedente backfill IMAP). I record
-riportano il flow e lo step `persist-chunks`, ma non conservano la causa interna
-perché l'audit Flow non era persistito in quel periodo. Non sono stati
-ritentati, eliminati o svuotati. Per impedire nuova attività autonoma sui
-connector locali è stato impostato
-`CONNECTOR_SCHEDULED_SYNC_ENABLED=false` nell'ambiente locale e riavviati solo
-worker connector e scheduler; il worker core dell'ingestion resta operativo.
+### Riesecuzione UI e correzioni di chiusura
+
+Lo smoke manuale su `https://askmydocsdev.test` ha usato il solo Markdown
+temporaneo `askmydocs-g2-ui-smoke-20260923.md`, senza dati reali, nel tenant
+`acme` e progetto `acme-kb`. I batch `01a0ce93-5cdf-70af-86bf-a0fdade6b281`,
+`01a0ce94-9172-729d-964c-a893c3d33a38` e
+`01a0ce95-2747-7361-9114-15773becdf82` hanno tutti raggiunto lo stato UI
+`SUCCEEDED`; sono stati acquisiti screenshot sia della review di staging sia
+del risultato del batch. Il primo upload ha creato due chunk, entrambi con
+embedding; la ricerca del marcatore `violet compass ledger 4a8e` ha restituito
+la fonte corretta. Il secondo upload, a byte invariati, ha riusato il documento
+`16811` e i suoi due chunk. Il terzo, modificato alla stessa path, ha creato il
+documento `16812`, archiviato `16811` e mantenuto una sola versione attiva; la
+ricerca di `jade orbit 7c51` ha restituito il nuovo testo e la stessa fonte.
+
+La riesecuzione ha evidenziato due casi limite coperti ora dal prodotto e dai
+test: ogni item di un batch UI riceve un `runKey` Flow distinto, così byte
+modificati alla stessa path attraversano nuovamente l'ingestor; quando un
+re-ingest identico è un no-op, il listener collega l'item completato al
+documento attivo già esistente. Il contratto pubblico non cambia: il job
+`IngestDocumentJob` usa i tre tentativi automatici con backoff `10, 30, 60`,
+e il listener porta l'ultimo errore a item `failed` e batch
+`completed_with_errors`, senza endpoint manuali di retry o reset.
+
+Verifiche ripetute:
+
+```text
+npm run build
+# completato
+npm run e2e -- frontend/e2e/kb-upload.spec.ts
+# 7 passed (22.1s), un solo worker
+herd php artisan test [upload, progress, ingest, parser, chunk, embedding]
+# verde: staging/magic byte/dimensione/duplicati/path, failure parziali,
+# retry, versioning, PDF/DOCX e retrieval pipeline
+```
+
+Dopo la verifica, `DocumentDeleter` ha hard-delete entrambe le versioni e il
+file sul disk KB. Il controllo finale rileva `0` documenti, `0` chunk e file
+sorgente assente per la fixture; la copia locale temporanea è nel Cestino,
+quindi non è più in `/tmp` ed è recuperabile se dovesse servire un riesame.
+
+Resta un rischio operativo preesistente: al controllo finale `failed_jobs`
+contiene 2.526 record storici (in prevalenza `kb-ingest` da precedente backfill
+IMAP). Non sono stati ritentati, eliminati o svuotati. Per non alterare più il
+backlog in modo autonomo, `CONNECTOR_SCHEDULED_SYNC_ENABLED=false` resta
+nell'ambiente locale e il servizio launchd `com.askmydocsdev.queue-connectors`
+è disabilitato; `com.askmydocsdev.queue-core` resta abilitato e non c'erano job
+`kb-ingest` in attesa al controllo finale.
