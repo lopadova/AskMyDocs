@@ -370,6 +370,24 @@ export interface ChatCollectionOption {
     name: string;
 }
 
+export interface ConversationDebugTranscriptDownload {
+    blob: Blob;
+    filename: string;
+}
+
+function filenameFromContentDisposition(header: string | undefined, fallback: string): string {
+    const match = header?.match(/filename\*?=(?:UTF-8''|\")?([^;\"]+)/i);
+    if (!match?.[1]) {
+        return fallback;
+    }
+
+    try {
+        return decodeURIComponent(match[1].trim());
+    } catch {
+        return match[1].trim();
+    }
+}
+
 export const chatApi = {
     async listConversations(
         scope: ConversationArchiveScope = 'active',
@@ -417,6 +435,27 @@ export const chatApi = {
     async generateTitle(id: number): Promise<{ title: string }> {
         const { data } = await api.post<{ title: string }>(`/conversations/${id}/generate-title`);
         return data;
+    },
+
+    /**
+     * Super-admin-only forensic export for the active conversation. The API
+     * returns a JSON attachment rather than a browser navigation so the SPA's
+     * authenticated Axios client keeps the active tenant header on the call.
+     */
+    async downloadDebugTranscript(conversationId: number): Promise<ConversationDebugTranscriptDownload> {
+        const response = await api.get(
+            `/api/admin/conversations/${conversationId}/debug-transcript`,
+            { responseType: 'blob' },
+        );
+        const fallback = `chat-debug-${conversationId}.json`;
+
+        return {
+            blob: response.data as Blob,
+            filename: filenameFromContentDisposition(
+                response.headers['content-disposition'],
+                fallback,
+            ),
+        };
     },
 
     async listMessages(conversationId: number): Promise<Message[]> {

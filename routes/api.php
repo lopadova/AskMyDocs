@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\ConversationDebugTranscriptController;
 use App\Http\Controllers\Api\Admin\AgentRunOverviewController;
 use App\Http\Controllers\Api\Admin\ComplianceReportController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
@@ -1136,6 +1137,30 @@ Route::middleware([
     ->group(function () {
         Route::get('/overview', AgentRunOverviewController::class)
             ->name('api.admin.agent-runs.overview');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Conversation debug transcript (super-admin)
+|--------------------------------------------------------------------------
+|
+| A transcript contains the original messages plus persisted planner,
+| retrieval and tool-result payloads. It is intentionally stricter than the
+| general agent overview: only a tenant super-admin may download it.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'role:super-admin',
+])
+    ->prefix('admin/conversations')
+    ->group(function () {
+        Route::get('/{conversation}/debug-transcript', ConversationDebugTranscriptController::class)
+            ->whereNumber('conversation')
+            ->name('api.admin.conversations.debug-transcript');
     });
 
 /*

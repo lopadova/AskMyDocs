@@ -125,6 +125,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Scheduled connector work
+    |--------------------------------------------------------------------------
+    |
+    | A running Laravel scheduler is useful for local maintenance, but an
+    | unattended first sync can import external mail before an operator has
+    | certified the installation. This switch gates both the periodic connector
+    | sweep and the IMAP backfill pump. It remains enabled by default so deployed
+    | environments preserve their existing scheduling behavior.
+    |
+    */
+    'scheduled_sync_enabled' => (bool) env('CONNECTOR_SCHEDULED_SYNC_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Fake IMAP ping (E2E / local seam — v8.17)
     |--------------------------------------------------------------------------
     |

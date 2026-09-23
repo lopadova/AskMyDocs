@@ -115,6 +115,20 @@ final class KbUploadControllerTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('files.1');
     }
 
+    public function test_stage_rejects_a_file_larger_than_the_configured_limit(): void
+    {
+        config(['kb.staging.max_file_bytes' => 1024]);
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'engineering',
+            'files' => [UploadedFile::fake()->createWithContent('too-large.md', str_repeat('x', 1025))],
+        ])->assertStatus(422)->assertJsonValidationErrors('files.0');
+
+        $this->assertDatabaseCount('kb_ingest_batches', 0);
+        $this->assertDatabaseCount('kb_ingest_batch_items', 0);
+    }
+
     public function test_stage_flags_canonical_frontmatter_with_warning(): void
     {
         $admin = $this->makeAdmin();
@@ -154,7 +168,8 @@ final class KbUploadControllerTest extends TestCase
             return $job->projectKey === 'engineering'
                 && $job->relativePath === 'guide.md'
                 && $job->disk === 'kb'
-                && ($job->metadata['kb_upload_batch_item_id'] ?? null) === $item->id;
+                && ($job->metadata['kb_upload_batch_item_id'] ?? null) === $item->id
+                && $job->runKey === 'upload-'.$item->id;
         });
     }
 
