@@ -171,3 +171,44 @@ curl --fail https://askmydocsdev.test/login
 Nessun P0 tecnico locale resta aperto. Le sole attività bloccate richiedono
 segreti o configurazione esterna esplicita; la release della feature G1 resta
 disciplinata dai normali gate della relativa PR.
+
+## G2 — upload e ingestion file (23 settembre 2026)
+
+La baseline schema locale è stata riallineata applicando le cinque migrazioni
+pendenti `2026_10_02_000009`–`000013`: provenienza della versione, indice di
+`markdown_path`, univocità tenant-scoped di documenti, page review e correction
+candidates. `migrate:status` non riporta più migrazioni pendenti.
+
+L'accettazione live ha usato un file Markdown temporaneo nel tenant e progetto
+`autry`, path `g2-acceptance/askmydocs-g2-ingestion-20260923.md`. Il primo
+batch ha completato staging → storage → job `kb-ingest` → conversione → tre
+chunk ordinati → embedding a 1536 dimensioni; la ricerca pgvector ha restituito
+il documento fra i primi risultati. Un secondo commit degli stessi byte ha
+mantenuto una sola versione attiva, senza duplicare chunk. Un terzo commit,
+con contenuto diverso alla stessa path, ha archiviato la versione precedente e
+reso attiva una nuova versione con tre chunk; il nuovo marcatore è stato
+recuperato dalla ricerca. Le due versioni e il file di fixture sono poi stati
+hard-deleted con `DocumentDeleter`: nessun documento di accettazione resta nel
+tenant.
+
+La suite browser `frontend/e2e/kb-upload.spec.ts` è verde (7 scenari). Il
+problema iniziale non era nel contratto upload: i worker Playwright eseguivano
+in parallelo `/testing/reset`, che usa `migrate:fresh` sul singolo database di
+test condiviso. La configurazione ora esegue la suite con un worker fino a
+quando non sarà introdotto un database isolato per worker. È stato inoltre
+ricompilato il bundle frontend prima della prova: il bundle presente era
+anteriore alla riga UI della stima OCR.
+
+I test PHP mirati di staging, commit, magic-byte, progress, OCR, parser,
+chunking, PDF/DOCX e cache embedding sono verdi. Le failure UI per tipo non
+supportato e immagine con OCR disattivato mostrano entrambe una risposta 422
+esplicita.
+
+Resta un rischio operativo preesistente: `queue:failed` contiene 2.512 record
+storici (in prevalenza `kb-ingest` da precedente backfill IMAP). I record
+riportano il flow e lo step `persist-chunks`, ma non conservano la causa interna
+perché l'audit Flow non era persistito in quel periodo. Non sono stati
+ritentati, eliminati o svuotati. Per impedire nuova attività autonoma sui
+connector locali è stato impostato
+`CONNECTOR_SCHEDULED_SYNC_ENABLED=false` nell'ambiente locale e riavviati solo
+worker connector e scheduler; il worker core dell'ingestion resta operativo.
