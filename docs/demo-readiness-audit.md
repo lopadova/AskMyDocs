@@ -204,7 +204,7 @@ chunking, PDF/DOCX e cache embedding sono verdi. Le failure UI per tipo non
 supportato e immagine con OCR disattivato mostrano entrambe una risposta 422
 esplicita.
 
-Resta un rischio operativo preesistente: `queue:failed` contiene 2.512 record
+Resta un rischio operativo preesistente: `queue:failed` contiene 2.513 record
 storici (in prevalenza `kb-ingest` da precedente backfill IMAP). I record
 riportano il flow e lo step `persist-chunks`, ma non conservano la causa interna
 perché l'audit Flow non era persistito in quel periodo. Non sono stati
