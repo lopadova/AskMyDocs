@@ -619,6 +619,14 @@ Route::middleware([
         Route::put('/kb/autowiki-settings', [\App\Http\Controllers\Api\Admin\KbAutoWikiSettingController::class, 'upsert'])
             ->name('api.admin.kb.autowiki-settings.upsert');
 
+        // Recursive retrieval is deliberately disabled until an administrator
+        // defines the business context for the project.  The profile is a
+        // tenant-scoped configuration surface, never an inferred KB document.
+        Route::get('/kb/retrieval-profiles', [\App\Http\Controllers\Api\Admin\KbRetrievalProfileController::class, 'index'])
+            ->name('api.admin.kb.retrieval-profiles.index');
+        Route::put('/kb/retrieval-profiles', [\App\Http\Controllers\Api\Admin\KbRetrievalProfileController::class, 'upsert'])
+            ->name('api.admin.kb.retrieval-profiles.upsert');
+
         // v8.8/W4 — content-gap analytics (questions the KB couldn't answer).
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/content-gaps`).

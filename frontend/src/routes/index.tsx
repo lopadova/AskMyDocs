@@ -39,6 +39,7 @@ import { WikiHealthView } from '../features/admin/wiki-health/WikiHealthView';
 import { WikiIndicesView } from '../features/admin/wiki-indices/WikiIndicesView';
 import { WikiExplorerView } from '../features/admin/wiki-explorer/WikiExplorerView';
 import { AutoWikiSettingsView } from '../features/admin/autowiki-settings/AutoWikiSettingsView';
+import { RetrievalProfilesView } from '../features/admin/retrieval-profiles/RetrievalProfilesView';
 import { TimeMachineView } from '../features/admin/time-machine/TimeMachineView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
@@ -967,6 +968,22 @@ const adminAutoWikiSettingsRoute = createRoute({
     component: AdminAutoWikiSettingsRoute,
 });
 
+function AdminRetrievalProfilesRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="retrieval-profiles">
+                <RetrievalProfilesView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminRetrievalProfilesRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/kb/retrieval-profiles',
+    component: AdminRetrievalProfilesRoute,
+});
+
 // v8.7/W5 — Cloud Time Machine (per-document version timeline + diff + restore).
 function AdminKbTimeMachineRoute() {
     const params = useParams({ strict: false }) as { docId?: string };
@@ -1539,6 +1556,7 @@ const teamChildren = [
     adminWikiIndicesRoute,
     adminWikiExplorerRoute,
     adminAutoWikiSettingsRoute,
+    adminRetrievalProfilesRoute,
     adminTagsRoute,
     adminSynonymsRoute,
     adminKbInsightsRoute,
