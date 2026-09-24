@@ -1556,4 +1556,23 @@ return [
             'enabled' => (bool) env('KB_PROVENANCE_TOOL_FIREWALL', true),
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recursive, profile-guided retrieval
+    |--------------------------------------------------------------------------
+    |
+    | This controls how much of a source can be read AFTER vector retrieval
+    | has found a candidate. It does not widen the search scope: tenant,
+    | project and ACL filters are enforced by KbSearchService first.
+    */
+    'investigation' => [
+        // Emergency operational rollback only. The shipped default requires a
+        // profile and never sends the raw user message to vector retrieval.
+        'enabled' => (bool) env('KB_RECURSIVE_RETRIEVAL_ENABLED', true),
+        'max_sources_per_round' => (int) env('KB_INVESTIGATION_MAX_SOURCES_PER_ROUND', 5),
+        'full_source_max_chars' => (int) env('KB_INVESTIGATION_FULL_SOURCE_MAX_CHARS', 18000),
+        'long_source_neighbor_radius' => (int) env('KB_INVESTIGATION_LONG_SOURCE_NEIGHBOR_RADIUS', 1),
+        'long_source_max_chars' => (int) env('KB_INVESTIGATION_LONG_SOURCE_MAX_CHARS', 9000),
+    ],
 ];

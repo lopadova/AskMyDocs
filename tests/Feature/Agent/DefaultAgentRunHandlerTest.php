@@ -68,6 +68,7 @@ final class DefaultAgentRunHandlerTest extends TestCase
 
     public function test_container_handler_runs_collection_synthesis_and_terminal_lifecycle(): void
     {
+        config()->set('kb.investigation.enabled', false);
         $requests = [];
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')

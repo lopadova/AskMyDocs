@@ -10,6 +10,8 @@ use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Models\AgentRun;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationResult;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,6 +34,7 @@ final class AgentLoopTest extends TestCase
         config()->set('connector-api.ssrf.enabled', true);
         config()->set('connector-api.ssrf.https_only', false);
         config()->set('connector-api.ssrf.resolve_dns', false);
+        config()->set('kb.investigation.enabled', false);
     }
 
     public function test_it_chains_customer_lookup_into_orders_and_replans_with_combined_evidence(): void
@@ -583,6 +586,50 @@ final class AgentLoopTest extends TestCase
         $this->assertCount(2, $run->plannerShadowReports);
         $this->assertTrue($run->plannerShadowReports->every(fn ($report): bool => ! $report->fallback_used));
         Http::assertSentCount(1);
+    }
+
+    public function test_initial_agent_evidence_uses_the_selected_recursive_kb_sources_only(): void
+    {
+        config()->set('kb.investigation.enabled', true);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->planResponse(['decision' => 'answer', 'actions' => []]));
+        $this->app->instance(AiManager::class, $ai);
+
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $selected = [
+            'chunk_id' => 101,
+            'chunk_hash' => 'selected-hash',
+            'chunk_text' => 'Ordine Tizio #42 consegnato.',
+            'project_key' => 'crm',
+            'vector_score' => 0.9,
+            'document' => [
+                'id' => 11,
+                'title' => 'Esito ordine Tizio',
+                'source_path' => 'mail/tizio-42',
+                'source_type' => 'text',
+            ],
+        ];
+        $investigation = Mockery::mock(KbInvestigationService::class);
+        $investigation->shouldReceive('investigate')->once()->andReturn(new KbInvestigationResult(
+            'ready',
+            'sufficient_evidence',
+            new SearchResult(collect([$selected]), collect(), collect()),
+            [$selected],
+            ['ordine cliente Tizio stato consegna'],
+        ));
+        $this->app->instance(KbInvestigationService::class, $investigation);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $documents = $outcome->evidence->documents();
+        $this->assertCount(1, $documents);
+        $this->assertSame(11, $documents[0]['document_id']);
+        $this->assertSame('Ordine Tizio #42 consegnato.', $documents[0]['evidence'][0]['content']);
     }
 
     /** @param array<string,mixed> $payload */
