@@ -121,7 +121,7 @@ export function RetrievalProfilesView(): ReactNode {
                     </label>
                     <TwoColumnField label="Relevant entities" value={entitiesText} onChange={setEntitiesText} testId="admin-retrieval-profile-entities" disabled={mutation.isPending} />
                     <TwoColumnField label="Expected facts" value={factsText} onChange={setFactsText} testId="admin-retrieval-profile-facts" disabled={mutation.isPending} />
-                    <TwoColumnField label="Preferred source types" value={sourceTypesText} onChange={setSourceTypesText} testId="admin-retrieval-profile-source-types" disabled={mutation.isPending} hint="One per line, for example markdown or email." />
+                    <TwoColumnField label="Preferred source types" value={sourceTypesText} onChange={setSourceTypesText} testId="admin-retrieval-profile-source-types" disabled={mutation.isPending} hint="One per line, for example markdown, text or email." />
                     {formError && <p data-testid="admin-retrieval-profile-save-error" role="alert" style={{ color: 'var(--err)' }}>{formError}</p>}
                     <div>
                         <Button type="submit" variant="primary" busy={mutation.isPending} data-testid="admin-retrieval-profile-save">Save retrieval profile</Button>

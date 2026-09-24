@@ -60,14 +60,15 @@ final class KbRetrievalProfileControllerTest extends TestCase
             'glossary' => [['term' => 'ordine', 'meaning' => 'Pratica commerciale', 'aliases' => ['pratica']]],
             'relevant_entities' => ['cliente', 'numero ordine'],
             'expected_facts' => ['stato ordine', 'data prevista'],
-            'preferred_source_types' => ['markdown'],
+            'preferred_source_types' => ['markdown', 'email'],
         ];
 
         $this->actingAs($this->user('admin'))
             ->putJson('/api/admin/kb/retrieval-profiles', $payload)
             ->assertOk()
             ->assertJsonPath('profile.configured', true)
-            ->assertJsonPath('profile.glossary.0.term', 'ordine');
+            ->assertJsonPath('profile.glossary.0.term', 'ordine')
+            ->assertJsonPath('profile.preferred_source_types.1', 'email');
 
         $this->actingAs($this->user('admin'))
             ->getJson('/api/admin/kb/retrieval-profiles')

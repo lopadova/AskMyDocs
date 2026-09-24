@@ -16,6 +16,7 @@ return [
     'no_grounded_answer' => 'I cannot find information in the provided documents to answer this question.',
     'refusal' => [
         'no_relevant_context' => 'No documents in the knowledge base match this question.',
+        'retrieval_profile_required' => 'Search for this project requires an administrator to configure its company retrieval profile first.',
         'llm_self_refusal' => 'The AI cannot answer this question based on the provided documents.',
         'blocked_by_guardrails' => 'This request was blocked by the input guardrails and was not processed.',
     ],

@@ -106,6 +106,10 @@ final class MessageStreamControllerTest extends TestCase
         ]);
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
         config()->set('kb.refusal.min_chunks_required', 1);
+        // These are legacy transport-contract tests. Recursive retrieval has
+        // dedicated integration coverage; keep their existing mocked search
+        // seam on the explicit rollback setting.
+        config()->set('kb.investigation.enabled', false);
         // Disable real chat logging — final ChatLogManager can't be
         // Mockery-mocked, but the controller persists a Message row
         // either way, so we still cover persistence semantics.

@@ -11,6 +11,7 @@ use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\CounterfactualService;
 use App\Services\Guardrails\ChatGuardrails;
@@ -38,6 +39,7 @@ class KbChatController extends Controller
         KbChatRequest $request,
         AiManager $ai,
         ChatRetrievalService $retrieval,
+        KbInvestigationService $investigation,
         ChatLogManager $chatLog,
         ConfidenceCalculator $confidence,
         CounterfactualService $counterfactual,
@@ -85,7 +87,16 @@ class KbChatController extends Controller
 
         $startTime = microtime(true);
 
-        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        // The stateless endpoint follows the exact same profile-guided flow
+        // as conversation chat: raw text is interpreted first and never passed
+        // directly to vector retrieval.
+        $investigationResult = $investigation->investigate(
+            question: $question,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: (int) $request->input('depth', 3),
+        );
+        $result = $investigationResult->search;
 
         // v8.0/W3.4 — Counterfactual mini-retrieval against up to 3
         // other projects the user has membership in. RBAC-critical:
@@ -94,12 +105,18 @@ class KbChatController extends Controller
         // raw chunk pool — a project the user has no membership in
         // must never appear here. Default-ON via config; per-user
         // preference toggle lands in W3.5 (FE work).
-        $counterfactualPanels = $counterfactual->pick(
-            query: $question,
-            userId: $request->user()?->id,
-            tenantId: $tenants->current(),
-            primaryProjectKey: $projectKey,
-        );
+        // Counterfactual search is intentionally legacy-only: it broadens a
+        // raw query across other projects, incompatible with the recursive
+        // flow's profile and project boundary. An enabled investigation sees
+        // only its selected project/ACL-filtered sources.
+        $counterfactualPanels = $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            ? $counterfactual->pick(
+                query: $question,
+                userId: $request->user()?->id,
+                tenantId: $tenants->current(),
+                primaryProjectKey: $projectKey,
+            )
+            : [];
 
         // T3.3 — deterministic refusal short-circuit. If too few primary
         // chunks pass the grounding gate, we don't call the LLM at all and
@@ -110,7 +127,10 @@ class KbChatController extends Controller
         // null → 0 and silently disabled this gate in production), and
         // grounds on the FINAL rerank_score OR the vector floor so
         // lexically-strong matches aren't wrongly refused.
-        if ($retrieval->shouldRefuse($result)) {
+        if (! $investigationResult->isReady() || (
+            $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            && $retrieval->shouldRefuse($result)
+        )) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -118,7 +138,9 @@ class KbChatController extends Controller
                 projectKey: $projectKey,
                 result: $result,
                 startTime: $startTime,
-                reason: 'no_relevant_context',
+                reason: $investigationResult->stopReason === 'retrieval_profile_required'
+                    ? 'retrieval_profile_required'
+                    : 'no_relevant_context',
                 counterfactual: $counterfactualPanels,
             );
         }
@@ -154,6 +176,7 @@ class KbChatController extends Controller
             'expanded' => $result->expanded,
             'rejected' => $result->rejected,
             'projectKey' => $projectKey,
+            'retrievalInvestigation' => $investigationResult->answerPromptContext(),
         ])->render();
 
         // v8.16/W3 — one trace id per turn: run the LLM call inside the finops
@@ -342,6 +365,10 @@ class KbChatController extends Controller
                 // off, or when the calling user is anonymous).
                 'counterfactual' => $counterfactual,
                 'counterfactual_count' => count($counterfactual),
+                // The recursive-service trace is intentionally compact: it
+                // records generated KB queries and a stop reason, never source
+                // text or rejected candidates.
+                'retrieval_investigation' => $result->meta['investigation'] ?? null,
             ],
         ];
     }

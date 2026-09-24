@@ -32,9 +32,15 @@ final class UpsertKbRetrievalProfileRequest extends FormRequest
             'expected_facts' => ['nullable', 'array', 'max:80'],
             'expected_facts.*' => ['string', 'max:240'],
             'preferred_source_types' => ['nullable', 'array', 'max:16'],
-            'preferred_source_types.*' => ['string', Rule::in(array_map(
-                static fn (SourceType $type): string => $type->value,
-                SourceType::cases(),
+            'preferred_source_types.*' => ['string', Rule::in(array_merge(
+                array_map(
+                    static fn (SourceType $type): string => $type->value,
+                    SourceType::cases(),
+                ),
+                // IMAP messages are normalized as `email` by the connector,
+                // while uploaded text files use the core SourceType tokens.
+                // Keep both usable in the administrator-owned profile.
+                ['email'],
             ))],
         ];
     }

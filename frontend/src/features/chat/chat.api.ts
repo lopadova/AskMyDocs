@@ -227,7 +227,8 @@ export interface MessageMetadata {
     confidence?: number | null;
     // T3.3/T3.4 — refusal taxonomy tag. Stays English regardless of
     // user locale (machine-readable identifier the dashboard rolls up).
-    // Possible values: 'no_relevant_context' | 'llm_self_refusal' | null.
+    // Possible values: 'no_relevant_context' | 'llm_self_refusal' |
+    // 'retrieval_profile_required' | null.
     refusal_reason?: string | null;
     // v5.0/W2 — legacy AppMessage tool-call array (pre-SDK v6 wire
     // format). `message-shape-adapters.ts::getToolCalls()` normalises
