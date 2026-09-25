@@ -528,6 +528,25 @@ Route::middleware([
                 ->name('api.admin.kb.uploads.items.destroy');
         });
 
+        // v8.38/W4b — Portable wiki export, async surface (ADR 0032 §5/§11).
+        // Default OFF (kb.wiki_export.enabled, R43) — every action returns
+        // the same {disabled: true} shape while off. R32 — covered by the
+        // AdminAuthorizationMatrix (`/api/admin/kb/exports/1`) plus a
+        // dedicated write-boundary test for the POST (mirrors the connector
+        // `configure` pattern — POST routes aren't exercised by the
+        // matrix's GET-only sweep). {id} is a UUID, scoped to the active
+        // tenant (R30) inside the controller (no implicit route binding —
+        // the id must resolve through the same disabled/404 branching the
+        // R43 contract requires).
+        Route::prefix('kb/exports')->group(function () {
+            Route::post('/', [\App\Http\Controllers\Api\Admin\KbWikiExportController::class, 'store'])
+                ->name('api.admin.kb.exports.store');
+            Route::get('/{id}', [\App\Http\Controllers\Api\Admin\KbWikiExportController::class, 'show'])
+                ->name('api.admin.kb.exports.show');
+            Route::get('/{id}/download', [\App\Http\Controllers\Api\Admin\KbWikiExportController::class, 'download'])
+                ->name('api.admin.kb.exports.download');
+        });
+
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
         // knowledge_document_tags. Controller methods take `int $id`

@@ -106,6 +106,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/collections' => ['admin', 'super-admin'],
             '/api/admin/kb/projects' => ['admin', 'super-admin'],
             '/api/admin/kb/uploads' => ['admin', 'super-admin'],
+            // v8.38/W4b — async portable wiki export status (ADR 0032 §11).
+            // The `store` (POST) write boundary is asserted separately below
+            // (POST-only routes aren't exercised by this GET-only sweep).
+            '/api/admin/kb/exports/1' => ['admin', 'super-admin'],
             '/api/admin/commands/catalogue' => ['admin', 'super-admin'],
             '/api/admin/compliance/reports' => ['admin', 'super-admin'],
             '/api/admin/notifications/defaults' => ['admin', 'super-admin'],
@@ -569,6 +573,39 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
         $this->actingAs($this->userWithRole('viewer'))
             ->postJson($uri)
+            ->assertStatus(403);
+    }
+
+    /**
+     * v8.38/W4b — `POST /api/admin/kb/exports` is POST-only (a GET 405s, so
+     * it can't ride the GET matrix above). Same `role:admin|super-admin`
+     * group as `/api/admin/kb/exports/{id}` — assert the write boundary
+     * explicitly: admin/super-admin pass the gate (a missing `project_key`
+     * then 422s or the feature-off shape 200s, but never 403), a viewer is
+     * blocked with 403.
+     */
+    public function test_create_export_requires_admin_or_super_admin(): void
+    {
+        $writeUri = '/api/admin/kb/exports';
+
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($writeUri, [])
+                ->getStatusCode();
+            $this->assertNotSame(
+                403,
+                $status,
+                "Role [{$role}] must pass authorization on POST [{$writeUri}] but got 403.",
+            );
+            $this->assertNotSame(
+                404,
+                $status,
+                "[{$writeUri}] must be MOUNTED (role [{$role}] got 404 — route missing?).",
+            );
+        }
+
+        $this->actingAs($this->userWithRole('viewer'))
+            ->postJson($writeUri, [])
             ->assertStatus(403);
     }
 

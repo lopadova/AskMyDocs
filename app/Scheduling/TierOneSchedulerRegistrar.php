@@ -78,6 +78,9 @@ final class TierOneSchedulerRegistrar
         ['finops_capture_prices', 'ai-finops:capture-prices'],
         ['finops_check_alerts', 'ai-finops:check-alerts'],
         ['finops_prune_ledger', 'ai-finops:prune'],
+        // v8.38/W4b — async wiki export bundle retention sweep (ADR 0032
+        // §12, hourly — a distinct sweep + knob from kb_prune_staging_batches).
+        ['kb_prune_wiki_exports', 'kb:prune-wiki-exports'],
     ];
 
     public function register(Schedule $schedule): void

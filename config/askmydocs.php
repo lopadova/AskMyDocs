@@ -307,6 +307,15 @@ return [
             'enabled' => (bool) env('SCHEDULE_FINOPS_PRUNE_LEDGER_ENABLED', true),
             'cron' => (string) env('SCHEDULE_FINOPS_PRUNE_LEDGER_CRON', '45 4 * * *'),
         ],
+        // v8.38/W4b — async wiki export bundle retention sweep (ADR 0032
+        // §12). HOURLY, unlike the other pruners' once-nightly cadence —
+        // an export's own KB_WIKI_EXPORT_RETENTION_HOURS window (default
+        // 24h) is short enough that a daily-only sweep would leave expired
+        // bundles sitting on kb.staging.disk for up to a day past expiry.
+        'kb_prune_wiki_exports' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_WIKI_EXPORTS_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_WIKI_EXPORTS_CRON', '0 * * * *'),
+        ],
         // `eval:nightly` is double-gated: an upstream
         // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
         // scheduler REGISTRATION in `bootstrap/app.php` — when false,
