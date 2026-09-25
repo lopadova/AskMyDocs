@@ -7,9 +7,11 @@ namespace App\Http\Middleware;
 use App\Mcp\Servers\KnowledgeBaseServer;
 use App\Models\KbCanonicalAudit;
 use App\Models\McpTenantToken;
+use App\Models\User;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use ReflectionClass;
 use Symfony\Component\HttpFoundation\Response;
@@ -112,6 +114,39 @@ final class EnforceMcpScope
             return response()->json(['error' => 'mcp_tenant_mismatch'], 403);
         }
 
+        // SEC-AUDIT-fix (2026-09-25) — `AccessScopeScope::apply()` (R33)
+        // returns with NO restriction the moment `auth()->user()` is null
+        // ("bypass in unauthenticated contexts"), and nothing on this route
+        // ever authenticated a Laravel user for the token: `auth:sanctum`
+        // was deliberately removed from routes/ai.php (round 7, see the
+        // comment above `handle()`) because it rejected the McpTenantToken
+        // bearer, and no replacement ever bound a principal. The practical
+        // effect, live since that change: EVERY MCP retrieval tool that
+        // queries KnowledgeDocument/KnowledgeChunk (KbSearchTool,
+        // KbReadChunkTool, KbSearchByProjectTool, ...) ran with the
+        // project/ACL layers of AccessScopeScope entirely disabled — only
+        // tenant isolation (R30, via TenantContext below) held. A token
+        // scoped to `mcp:read` for a user restricted to `hr/policies/**`
+        // could retrieve `hr/salaries/**` chunks over MCP: the exact H8/
+        // v8.31 shape R33 exists to prevent, this time for the whole
+        // transport rather than one query arm.
+        //
+        // The fix restores the token's `created_by` user as the request
+        // principal — ADR 0032 §4's "principal binding" gap, except it is
+        // not new-feature debt: it is a live bypass on the ALREADY-SHIPPED
+        // MCP surface, fixed here ahead of and independently from the W4
+        // wiki-export work that first named it. `User::find()` returns
+        // null for a missing id AND for a soft-deleted user (SoftDeletes'
+        // own global scope) — offboarding a user therefore revokes their
+        // minted tokens' retrieval power without a separate check, exactly
+        // what SEC-OFFBOARD-001 asks for. Fail closed on a missing
+        // principal (orphaned/legacy token, or `created_by` never set)
+        // rather than falling back to the previous unrestricted behaviour.
+        $principal = User::query()->find($token->created_by);
+        if ($principal === null) {
+            return response()->json(['error' => 'mcp_principal_missing'], 403);
+        }
+
         // Copilot review PR #497 (pullrequestreview-5257132403,
         // discussion_r4054304571) — TenantContext is a process-scoped
         // singleton (see the round-7/8 comments above and
@@ -131,6 +166,15 @@ final class EnforceMcpScope
         $tenantContext = app(TenantContext::class);
         $previousTenant = $tenantContext->current();
         $tenantContext->set($tokenTenant);
+
+        // Same discipline as ExecuteAgentRunJob's principal restoration:
+        // forgetGuards() BEFORE setUser() and again in `finally`. This is
+        // an HTTP middleware, not a queue job, but the reasoning is
+        // identical — Octane (and any other long-lived worker reusing this
+        // process across requests) must never let one caller's principal
+        // leak into the next request the same process handles.
+        Auth::forgetGuards();
+        Auth::setUser($principal);
 
         try {
             // Copilot review PR #497 (pullrequestreview-5256772155) —
@@ -185,6 +229,7 @@ final class EnforceMcpScope
 
             return $next($request);
         } finally {
+            Auth::forgetGuards();
             $tenantContext->set($previousTenant);
         }
     }
