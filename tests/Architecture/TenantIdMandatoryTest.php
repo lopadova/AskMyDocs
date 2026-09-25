@@ -160,6 +160,9 @@ final class TenantIdMandatoryTest extends TestCase
         // agent-proposed text correction candidates (ADR 0031 §2/§7).
         \App\Models\KbDocumentPageReview::class,
         \App\Models\KbTextCorrectionCandidate::class,
+        // v8.38/W4b — async portable wiki export request/bundle tracking
+        // (ADR 0032 §5/§11/§12).
+        \App\Models\KbWikiExportRequest::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

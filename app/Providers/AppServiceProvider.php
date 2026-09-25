@@ -983,6 +983,8 @@ class AppServiceProvider extends ServiceProvider
             // v8.38/W4a (ADR 0032) — portable wiki export PHP surface (R44):
             // ACL+PII-scoped folder build over KbWikiExportService.
             \App\Console\Commands\KbExportWikiCommand::class,
+            // v8.38/W4b (ADR 0032 §12) — async export bundle retention sweep.
+            \App\Console\Commands\PruneWikiExportsCommand::class,
         ]);
     }
 

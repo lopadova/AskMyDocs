@@ -37,7 +37,7 @@ final class TenantReadScopeTest extends TestCase
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
         'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbDocumentPageReview', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbIngestBatch',
-        'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbTextCorrectionCandidate', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
+        'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbTextCorrectionCandidate', 'KbUserBadge', 'KbWikiExportRequest', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'UnmappedSourcePrincipal',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
@@ -81,6 +81,7 @@ final class TenantReadScopeTest extends TestCase
         'app/Console/Commands/PruneOrphanFilesCommand.php' => 'Orphan-file maintenance sweep; reconciles disk vs DB by design.',
         'app/Console/Commands/DigestPruneFeedCommand.php' => 'Global digest-feed retention prune; intentionally instance-wide (same posture as the other prune sweeps).',
         'app/Console/Commands/PruneStagingBatchesCommand.php' => 'Global upload-staging retention sweep; intentionally instance-wide (same posture as the other prune commands).',
+        'app/Console/Commands/PruneWikiExportsCommand.php' => 'v8.38/W4b — global async wiki-export bundle retention sweep (ADR 0032 §12); intentionally instance-wide, same posture as the other prune commands.',
         'app/Console/Commands/GamificationNarrateCommand.php' => 'Tenant enumeration → per-tenant GamificationInsightsService::recomputeForTenant (scoped downstream).',
         'app/Console/Commands/KbReviewReconcileStuckCorrectionsCommand.php' => 'Tenant enumeration → per-tenant KbReviewService::reconcileStuckCorrections (scoped downstream).',
 

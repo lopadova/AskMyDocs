@@ -273,6 +273,8 @@ class MaintenanceCommandController extends Controller
             'finops_capture_prices' => 'Snapshot watched-model list prices for the FinOps price-watch (v8.16).',
             'finops_check_alerts' => 'Evaluate FinOps budget alert thresholds and dispatch notifications (v8.16).',
             'finops_prune_ledger' => 'Prune the ai_finops_usage_ledger past its retention window (v8.16).',
+            // v8.38/W4b — async wiki export bundle retention sweep (ADR 0032 §12).
+            'kb_prune_wiki_exports' => 'Purge expired async portable-wiki export bundles past their retention window (v8.38/W4b).',
             // Composite-gated slots — only registered when the
             // upstream env flag is also on (see bootstrap/app.php).
             // Listed here so they appear in the widget when active.

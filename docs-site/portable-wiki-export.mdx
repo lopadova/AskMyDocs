@@ -1,6 +1,6 @@
 ---
-title: "Portable Wiki Export — core (v8.38/W4a)"
-description: "A CLI that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a consistency-checked manifest and no server dependency."
+title: "Portable Wiki Export"
+description: "A CLI + async HTTP surface that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a consistency-checked manifest and no server dependency."
 icon: "folder-tree"
 ---
 
@@ -17,10 +17,11 @@ the requesting user could retrieve at export time — never more, because it
 is computed through the identical `AccessScopeScope` the live server uses,
 not filtered after the fact.
 
-This page documents **W4a**, the first and currently only shipped slice: the
-synchronous CLI export core. The async job, the `.mcp.json` live
-reconnection, and the `kb:import-wiki` round-trip are designed in the ADR but
-not yet built — see [Not yet shipped](#not-yet-shipped-w4bw4c) below.
+This page covers **W4a** (the synchronous CLI export core) and **W4b** (the
+async HTTP surface, retained/downloadable bundles, and the retention sweep).
+The `.mcp.json` live reconnection and the `kb:import-wiki` round-trip are
+designed in the ADR but not yet built — see
+[Not yet shipped](#not-yet-shipped-w4c) below.
 
 <Note>
 Everything on this page is **off by default** (`KB_WIKI_EXPORT_ENABLED=false`,
@@ -79,6 +80,28 @@ flowchart TD
     WIKI --> MANIFEST
     MISSING --> MANIFEST
     MANIFEST --> DOCS["README.md / AGENTS.md / CLAUDE.md<br/>untrusted-content boundary"]
+```
+
+This is `KbWikiExportService::export()`'s core — shared verbatim by both the
+CLI (`kb:export-wiki`, synchronous) and the async job below (W4b); neither
+surface reimplements it. The async path wraps it with idempotency, queueing,
+and a second re-authorization gate at download time:
+
+```mermaid
+flowchart TD
+    POST["POST /api/admin/kb/exports"] --> KEY["Idempotency key: sha256(tenant,<br/>principal, project, options,<br/>corpus snapshot, authorization digest)"]
+    KEY --> EXISTS{"Matching queued/<br/>processing/completed row?"}
+    EXISTS -->|yes| REUSE["Return the existing request — 200"]
+    EXISTS -->|no| CREATE["Create request row — 202<br/>dispatch ExecuteKbWikiExportJob"]
+    CREATE --> JOB["Job reloads User by id,<br/>re-checks export permission,<br/>Auth::setUser (never leaked to next job)"]
+    JOB --> EXPORT["KbWikiExportService::export()<br/>(the core diagram above)"]
+    EXPORT --> ZIP["Zip the folder"]
+    ZIP --> STAGE["Stage on kb.staging.disk<br/>(ADR 0029's disk, reused)"]
+    STAGE --> POLL["GET /{id} — status + download_url"]
+    POLL --> DOWNLOAD["GET /{id}/download"]
+    DOWNLOAD --> REAUTH{"Every recorded document id<br/>still visible to THIS session?"}
+    REAUTH -->|no| INVALID["403 export_invalidated"]
+    REAUTH -->|yes| BYTES["Stream the zip"]
 ```
 
 ## Folder layout
@@ -153,7 +176,7 @@ prompt-injection containment, applied to a static folder instead of a live
 retrieval turn): every page under `raw/` and `wiki/` is **data**, never an
 instruction, whatever it claims about itself.
 
-## CLI (R44 — the only surface W4a ships)
+## CLI — synchronous core (W4a)
 
 ```bash
 php artisan kb:export-wiki \
@@ -174,8 +197,63 @@ php artisan kb:export-wiki \
 - The exit summary reports `status` (`complete`/`partial`) and warns when
   `raw_missing` is non-empty.
 
-HTTP and MCP surfaces (`KbCreateExportTool`/`KbGetExportTool`) land in
-W4b/W4c over this same `KbWikiExportService` core — see below.
+The MCP tools (`KbCreateExportTool`/`KbGetExportTool`) land in W4c over the
+same `KbWikiExportService` core — see [Not yet shipped](#not-yet-shipped-w4c)
+below.
+
+## Async HTTP surface (W4b, ADR 0032 §5/§11/§12)
+
+```bash
+# Start (or reuse, via idempotency key) an async export
+curl -X POST https://<host>/api/admin/kb/exports \
+  -H "Authorization: Bearer <sanctum-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"project_key":"eng"}'
+# → 202 { "data": { "id": "...", "status": "queued", ... } }
+
+# Poll
+curl https://<host>/api/admin/kb/exports/<id> -H "Authorization: Bearer <sanctum-token>"
+# → { "data": { "status": "completed", "document_count": 42,
+#               "download_url": "/api/admin/kb/exports/<id>/download" } }
+
+# Download (re-authorizes the CURRENT session, see below)
+curl -OJ https://<host>/api/admin/kb/exports/<id>/download -H "Authorization: Bearer <sanctum-token>"
+```
+
+- **Idempotency.** The key is `sha256(tenant, principal, project, normalised
+  options, corpus snapshot, authorization digest)`. The corpus snapshot
+  (max `updated_at` + row count) alone would miss an ACL/membership change
+  that *removes* a document from the principal's view without touching any
+  `updated_at` — the authorization digest (sorted visible document ids +
+  role + project memberships) is what forces a narrowed view to invalidate
+  the cache and start a fresh export.
+- **Principal restoration mirrors `ExecuteAgentRunJob`.** `ExecuteKbWikiExportJob`
+  takes only scalar ids in its constructor, reloads the `User` by id inside
+  `handle()`, re-checks they still hold the export permission (a permission
+  can be revoked between the HTTP request and the worker picking up the
+  job — that's not retryable, so the job marks the request `failed` rather
+  than throwing), authenticates as them, and clears the guard in `finally` —
+  a reused queue worker must never leak one export's principal into the next.
+- **Download-time re-authorization is a SECOND, independent gate.** The
+  export's `document_ids_json` (the ACL-scoped set it was actually computed
+  against) is re-checked against the downloading session's current
+  visibility on every download, not only at creation. If any id is no
+  longer visible the response is `403 export_invalidated` — because a
+  cached idempotency key can outlive the ACL state it was computed from,
+  and this is the catch the idempotency key alone cannot provide.
+  Deliberately **not** a bypass-auth Laravel signed URL: a link that skips
+  the session couldn't re-authorize a principal at all.
+- **Staging, not a new disk.** The job zips the folder and stages it on
+  `kb.staging.disk` (ADR 0029's upload-staging disk, reused — `raw/`'s
+  `.export.lock` reservation marker is excluded from the zip, it has no
+  value once the export is complete).
+- **Retention.** `kb:prune-wiki-exports [--dry-run]` sweeps by `expires_at`
+  (not `created_at` + a status list, like `kb:prune-staging-batches`) —
+  hourly (`onOneServer()->withoutOverlapping()`), a deliberately different
+  cadence and knob from the once-nightly staging sweep, because
+  `KB_WIKI_EXPORT_RETENTION_HOURS`'s default (24h) is short enough that a
+  daily-only sweep would leave expired bundles around for up to a day past
+  expiry.
 
 ## Gotchas & operations
 
@@ -199,22 +277,24 @@ W4b/W4c over this same `KbWikiExportService` core — see below.
   an export programmatically — check `raw_missing` for the artifact
   guarantee, not whether `wiki/{id}.md` exists (it always does).
 
-## Not yet shipped (W4b/W4c)
+## Not yet shipped (W4c)
 
 Per [ADR 0032](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0032-v838-portable-wiki-export-and-candidate-only-import.md)
-§4/§5/§7/§11, deliberately deferred past this slice:
+§4/§7/§10/§11, deliberately deferred past W4a+W4b:
 
-- The **async job** + HTTP endpoint + retained, downloadable exports.
 - **`.mcp.json`** — a live reconnection back to the server from inside the
   exported folder — blocked on two auth-chain fixes the ADR names (a bearer-
   type guard adapter for `McpTenantToken`, and re-applying the connecting
   user's own principal, never the exporter's, to every retrieval).
-- **`llms.txt`/`llms-full.txt`** and **`include_images`** (figures are
-  omitted by default when the PII policy is active, per the same §7 that
-  governs `raw/` and `wiki/` text).
-- **`kb:prune-wiki-exports`** — the retention sweep. `KB_WIKI_EXPORT_RETENTION_HOURS`
-  (default `24`) exists in config today so the block will not need
-  reshaping later, but nothing reads it yet.
+- **`llms.txt`/`llms-full.txt`** and **`include_images`**/**`--format`**
+  variants (figures are omitted by default when the PII policy is active,
+  per the same §7 that governs `raw/` and `wiki/` text). Both are
+  explicitly **rejected** (`422`), not silently accepted and ignored, by
+  the current async request service — R14.
+- The **MCP tools** (`KbCreateExportTool`, `KbGetExportTool`,
+  `KbImportWikiTool`) — SEC-AI-ACT-001's full mutating-tool control set
+  (idempotency key, audit row, per-principal rate limit, authorization
+  before validation).
 - **`kb:import-wiki`** — editing an exported page and reimporting it as a
   promotion **candidate**, never a direct corpus write, per
   [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s

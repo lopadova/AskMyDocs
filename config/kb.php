@@ -657,18 +657,25 @@ return [
     | Portable wiki export/import (v8.38/W4, ADR 0032)
     |--------------------------------------------------------------------------
     |
-    | W4a ships the synchronous core (KbWikiExportService + kb:export-wiki):
+    | W4a shipped the synchronous core (KbWikiExportService + kb:export-wiki):
     | flag, ACL-scoped folder build, PII-governed raw/, and a manifest with
     | a per-file sha256 + chain hash — a corruption/consistency check, NOT
     | tamper evidence (the hash is unkeyed and lives in the same folder it
-    | covers; see KbWikiExportService::buildManifest()'s doc comment). The
-    | async job (HTTP), retention sweep, MCP tools, and kb:import-wiki
-    | round-trip are W4b/W4c — this block will grow with them.
+    | covers; see KbWikiExportService::buildManifest()'s doc comment).
+    |
+    | W4b adds the ASYNC path (ADR 0032 §5/§11/§12): `POST /api/admin/kb/exports`
+    | queues ExecuteKbWikiExportJob, which zips the export and stages it on
+    | `kb.staging.disk` (ADR 0029's disk, reused — NOT a new disk of its
+    | own) at `wiki-exports/{tenant}/{request-id}.zip`. `retention_hours`
+    | below drives BOTH the DB row's `expires_at` and the sweep
+    | `kb:prune-wiki-exports` performs (hourly, `onOneServer()`) — the sync
+    | CLI export from W4a is untouched by any of this and has no expiry.
+    | `.mcp.json`, the MCP tools, and kb:import-wiki are W4c.
     */
     'wiki_export' => [
         'enabled' => filter_var(env('KB_WIKI_EXPORT_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-        // Swept by kb:prune-wiki-exports once the async job (W4b) lands.
         'retention_hours' => (int) env('KB_WIKI_EXPORT_RETENTION_HOURS', 24),
+        'queue' => env('KB_WIKI_EXPORT_QUEUE', 'default'),
     ],
 
     /*
