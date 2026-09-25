@@ -9,6 +9,7 @@ use App\Services\Kb\Export\KbWikiExportRequestService;
 use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -82,13 +83,26 @@ class KbCreateExportTool extends Tool
             return Response::error('project_key is required.');
         }
 
+        // Independent-review nit (PR #509) — tooManyAttempts()+hit() is a
+        // check-then-act pair; without a lock, two concurrent calls from
+        // the same principal could both pass the check before either
+        // records a hit, slightly overshooting the budget. A per-principal
+        // lock closes it cheaply, mirroring KbWikiImportService's own
+        // per-actor Cache::lock() construction.
         $limit = max(0, (int) config('kb.wiki_export.create_requests_per_hour', 10));
         $limiterKey = 'kb-wiki-export-create:'.$tenants->current().':'.$user->id;
-        if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
-            return Response::error("Export-request rate limit exceeded: {$limit} per hour.");
-        }
-        if ($limit > 0) {
-            RateLimiter::hit($limiterKey, 3600);
+        $rateLimitError = Cache::lock("kb-wiki-export-create-lock:{$limiterKey}", 10)->block(5, function () use ($limit, $limiterKey): ?string {
+            if ($limit > 0 && RateLimiter::tooManyAttempts($limiterKey, $limit)) {
+                return "Export-request rate limit exceeded: {$limit} per hour.";
+            }
+            if ($limit > 0) {
+                RateLimiter::hit($limiterKey, 3600);
+            }
+
+            return null;
+        });
+        if ($rateLimitError !== null) {
+            return Response::error($rateLimitError);
         }
 
         try {

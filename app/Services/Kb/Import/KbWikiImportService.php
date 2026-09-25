@@ -10,6 +10,7 @@ use App\Models\KbWikiImportCandidate;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Versioning\DocumentVersionService;
 use App\Support\TenantContext;
 use Illuminate\Database\QueryException;
@@ -37,19 +38,28 @@ use Padosoft\LaravelFlow\IssuedApprovalToken;
  * back from an export, and it calls `importDocument()` once per changed
  * page after diffing against the server.
  *
- * **Diff mechanism, and why it compares BODY, not the whole file.** A
- * byte-for-byte comparison of the incoming file against the server's
- * regenerated export representation would false-positive on every export
- * cycle whose frontmatter serialization order or governance-field values
- * (`tier`, `extraction`, …) legitimately shift without any editorial
- * change — exactly the "false CHANGED" noise this method exists to avoid.
- * Comparing only the Markdown BODY against
- * {@see DocumentVersionService::contentFor()}'s own content — the same
- * source {@see \App\Services\Kb\Export\KbWikiExportService} renders into
- * `wiki/*.md` — targets what a human editor actually touches, and needs no
- * fragile YAML-round-trip guarantee to stay correct either direction (R14:
- * a false "unchanged" would SILENTLY DROP a real edit, which is worse than
- * a false "changed" proposing a no-op).
+ * **Diff mechanism, and why it compares BODY plus three specific
+ * frontmatter fields, not the whole file.** A byte-for-byte comparison of
+ * the incoming file against the server's regenerated export representation
+ * would false-positive on every export cycle whose frontmatter
+ * serialization order or governance-field values (`tier`, `extraction`, …)
+ * legitimately shift without any editorial change — exactly the "false
+ * CHANGED" noise this method exists to avoid. Comparing only the Markdown
+ * BODY against {@see DocumentVersionService::contentFor()}'s own content —
+ * the same source {@see \App\Services\Kb\Export\KbWikiExportService}
+ * renders into `wiki/*.md` — targets what a human editor most often
+ * touches, and needs no fragile YAML-round-trip guarantee to stay correct
+ * either direction. It is NOT the whole story, though: {@see
+ * frontmatterDiffers()} additionally checks `type`/`status`/
+ * `retrieval_priority` — the three CanonicalParser-validated fields a person
+ * CAN meaningfully edit without touching a single character of the body
+ * (e.g. demoting `accepted` to `deprecated`). An independent review of this
+ * PR caught the gap before it shipped: without that check, such an edit
+ * produced a byte-identical body and was reported `unchanged`, silently
+ * dropping it — exactly the R14 failure mode this class already warned
+ * against in its own earlier draft ("a false 'unchanged' would SILENTLY
+ * DROP a real edit, which is worse than a false 'changed' proposing a
+ * no-op").
  *
  * **Idempotency, and its two honestly-documented limits.** A replayed call
  * with the identical (tenant, project, slug, content, actor) tuple resolves
@@ -139,7 +149,7 @@ final class KbWikiImportService
                 ->where('status', 'active')
                 ->first();
 
-            if ($current instanceof KnowledgeDocument) {
+            if ($current instanceof KnowledgeDocument && ! $this->frontmatterDiffers($current, $parsed)) {
                 $liveBody = trim((string) ($this->versions->contentFor($current)['content'] ?? ''));
                 if ($liveBody === trim($parsed->body)) {
                     return ['status' => 'unchanged', 'slug' => $slug, 'document_id' => (int) $current->id];
@@ -288,7 +298,13 @@ final class KbWikiImportService
         }
 
         $wikiDir = realpath($root.'/wiki');
-        if ($wikiDir === false || ! str_starts_with($wikiDir, $root)) {
+        // Copilot/independent-review finding (PR #509) — a bare
+        // str_starts_with($wikiDir, $root) is a classic prefix-without-
+        // separator bug: a symlinked wiki/ resolving to a SIBLING of $root
+        // whose name merely starts with $root's own name (e.g. "$root-evil")
+        // would satisfy the check while resolving outside the intended
+        // root. Requiring the trailing separator closes that gap.
+        if ($wikiDir === false || ! str_starts_with($wikiDir, $root.DIRECTORY_SEPARATOR)) {
             throw new \InvalidArgumentException("No wiki/ folder found under: {$root}");
         }
 
@@ -310,7 +326,10 @@ final class KbWikiImportService
             }
 
             $realFile = realpath((string) $item->getPathname());
-            if ($realFile === false || ! str_starts_with($realFile, $wikiDir)) {
+            // Same prefix-without-separator fix as the $wikiDir check above
+            // — a bare str_starts_with($realFile, $wikiDir) would accept a
+            // symlinked page resolving into "$wikiDir-evil/...".
+            if ($realFile === false || ! str_starts_with($realFile, $wikiDir.DIRECTORY_SEPARATOR)) {
                 // Symlink escape or a file that vanished between the scan
                 // and this check — refuse rather than read outside the
                 // resolved root (ADR 0032 §10).
@@ -326,7 +345,21 @@ final class KbWikiImportService
                 continue;
             }
 
-            $result = $this->importDocument($tenantId, $projectKey, $markdown, $asUser, KbWikiImportCandidate::SOURCE_CLI);
+            // Independent-review nit (PR #509) — importDocument() can throw
+            // KbWikiImportRateLimitedException, which previously propagated
+            // straight out of this loop and lost every result already
+            // collected for files processed before the rate limit was hit.
+            // Once the actor's budget is spent, every remaining file in
+            // this SAME call would fail identically, so there is no value
+            // in continuing to try them — record the one refusal and stop,
+            // returning everything gathered so far.
+            try {
+                $result = $this->importDocument($tenantId, $projectKey, $markdown, $asUser, KbWikiImportCandidate::SOURCE_CLI);
+            } catch (KbWikiImportRateLimitedException $e) {
+                $results[] = ['path' => $realFile, 'status' => 'rate_limited', 'slug' => null, 'message' => $e->getMessage()];
+
+                return $results;
+            }
             $results[] = array_merge(['path' => $realFile], $result);
         }
 
@@ -376,6 +409,31 @@ final class KbWikiImportService
                 'reject_path' => $rejectPath,
             ],
         ];
+    }
+
+    /**
+     * Independent-review finding (PR #509) — the body-only diff described
+     * in the class docblock left a real gap: an edit that changes ONLY
+     * `type`/`status`/`retrieval_priority` (e.g. demoting a page from
+     * `accepted` to `deprecated`) produced a byte-identical body and was
+     * reported `unchanged`, silently dropping an editorial change the
+     * class's own docblock explicitly warns against ("a false 'unchanged'
+     * would SILENTLY DROP a real edit"). This governs ONLY whether the
+     * body-comparison branch runs at all — it does not replace it: a
+     * frontmatter change alone is enough to skip straight to proposing,
+     * without needing the (deliberately noisy-tolerant) body comparison to
+     * agree.
+     */
+    private function frontmatterDiffers(KnowledgeDocument $current, CanonicalParsedDocument $parsed): bool
+    {
+        if ($current->canonical_type !== $parsed->type?->value) {
+            return true;
+        }
+        if ($current->canonical_status !== $parsed->status?->value) {
+            return true;
+        }
+
+        return (int) $current->retrieval_priority !== $parsed->retrievalPriority;
     }
 
     private function firstHeading(string $body): ?string

@@ -174,6 +174,32 @@ final class KbWikiImportServiceTest extends TestCase
         $this->assertSame(0, KbWikiImportCandidate::query()->forTenant($this->tenantId)->count(), 'An unchanged page must never start a promotion flow.');
     }
 
+    /**
+     * Independent-review finding (PR #509) — a body-only diff silently
+     * dropped a frontmatter-only edit (e.g. demoting canonical_status from
+     * accepted to deprecated with the body left untouched). The body is
+     * byte-identical here; only `status` differs — this must still be
+     * proposed, never reported "unchanged".
+     */
+    public function test_proposes_a_candidate_for_a_frontmatter_only_edit(): void
+    {
+        $this->documentWithArtifact('runbooks/deploy.md', "Step one. Step two.\n", [
+            'slug' => 'deploy-runbook',
+            'doc_id' => 'deploy-runbook-id',
+            'canonical_type' => 'runbook',
+            'canonical_status' => 'accepted',
+        ]);
+        $user = $this->makeUser();
+
+        $result = app(KbWikiImportService::class)->importDocument(
+            $this->tenantId, $this->projectKey,
+            $this->markdownFor('deploy-runbook', 'runbook', 'deprecated', "Step one. Step two.\n"),
+            $user, KbWikiImportCandidate::SOURCE_CLI,
+        );
+
+        $this->assertSame('created', $result['status'], 'A status-only edit (body unchanged) must still be proposed, never silently dropped.');
+    }
+
     public function test_proposes_a_candidate_for_an_edited_existing_document(): void
     {
         $this->documentWithArtifact('runbooks/deploy.md', "Old body.\n", [
@@ -304,5 +330,38 @@ final class KbWikiImportServiceTest extends TestCase
         );
 
         $this->assertNotSame('unchanged', $result['status'], 'A scoped-out user must never be told the existing document is unchanged.');
+    }
+
+    /**
+     * Independent-review finding (PR #509) — a bare `str_starts_with($wikiDir,
+     * $root)` accepts a SIBLING directory whose name merely starts with
+     * $root's own name (e.g. "$root-evil"), which is exactly what a
+     * symlinked `wiki/` resolving outside the intended root looks like.
+     * Reproduces the exact shape: `wiki/` is a symlink pointing at a
+     * directory named "{root}-evil" — a real containment check must refuse
+     * it; the pre-fix check would have accepted it as if it were nested.
+     */
+    public function test_a_wiki_symlink_escaping_to_a_sibling_directory_is_refused(): void
+    {
+        $root = sys_get_temp_dir().'/kb-wiki-import-escape-'.uniqid();
+        $evilSibling = $root.'-evil';
+        mkdir($root, 0755, true);
+        mkdir($evilSibling, 0755, true);
+        file_put_contents($evilSibling.'/secret.md', "# Secret\n\nShould never be read.\n");
+        $this->assertTrue(symlink($evilSibling, $root.'/wiki'), 'Test setup could not create the escaping symlink.');
+
+        try {
+            $user = $this->makeUser();
+
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessageMatches('/No wiki\/ folder found under/');
+
+            app(KbWikiImportService::class)->importFolder($this->tenantId, $root, $user);
+        } finally {
+            @unlink($root.'/wiki');
+            @unlink($evilSibling.'/secret.md');
+            @rmdir($evilSibling);
+            @rmdir($root);
+        }
     }
 }
