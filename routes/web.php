@@ -183,15 +183,18 @@ Route::post('/agent-runs/{run}/continue', [AgentRunControlController::class, 're
 
 /*
 |--------------------------------------------------------------------------
-| React SPA (catch-all for /app/*)
+| React SPA (dashboard and standalone surfaces)
 |--------------------------------------------------------------------------
 |
-| Serves the React application. Authentication is handled inside React
-| via `/api/auth/me` + guard components, so the route itself has no
-| middleware — the SPA redirects to /login when the me endpoint returns
-| 401. The legacy `/chat` Blade flow is untouched.
+| Serves the React application. Authentication is handled inside React via
+| `/api/auth/me` + guard components, so the routes themselves have no
+| middleware. `/workbench` is intentionally a standalone product surface;
+| its shell renders only the AskMyDocs mark and access control, not the
+| dashboard frame. The legacy `/chat` Blade flow is untouched.
 |
 */
+
+Route::get('/workbench', SpaController::class)->name('workbench');
 
 Route::get('/app/{any?}', SpaController::class)
     ->where('any', '.*')
