@@ -163,6 +163,10 @@ final class TenantIdMandatoryTest extends TestCase
         // v8.38/W4b — async portable wiki export request/bundle tracking
         // (ADR 0032 §5/§11/§12).
         \App\Models\KbWikiExportRequest::class,
+        // v8.38/W4c — the idempotency record behind one round-trip
+        // (kb:import-wiki / POST /api/admin/kb/imports / KbImportWikiTool)
+        // proposal (ADR 0032 §10/§11).
+        \App\Models\KbWikiImportCandidate::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

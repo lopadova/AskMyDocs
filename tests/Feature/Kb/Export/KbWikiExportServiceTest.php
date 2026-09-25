@@ -7,6 +7,7 @@ namespace Tests\Feature\Kb\Export;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\Export\KbWikiExportService;
 use App\Services\Kb\Versioning\ConversionArtifactStore;
 use App\Support\TenantContext;
@@ -509,5 +510,94 @@ final class KbWikiExportServiceTest extends TestCase
         }
 
         $this->assertSame([], glob($this->outputDir.'/wiki/*.md') ?: [], 'The refused export must not have written anything.');
+    }
+
+    /**
+     * v8.38/W4c (ADR 0032 §4) — `.mcp.json` names the server and two
+     * env-referenced headers, never a credential. This is the regression
+     * ADR 0032 §4 explicitly calls for: no token-shaped string anywhere in
+     * the export or its manifest.
+     */
+    public function test_mcp_json_is_written_with_no_embedded_credential(): void
+    {
+        config(['app.url' => 'https://askmydocs.example.test']);
+        $this->documentWithArtifact(self::IN_SCOPE, "# Remote work\n\nAllowed on Fridays.\n");
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+        $this->assertFileExists($this->outputDir.'/.mcp.json');
+        $config = json_decode((string) file_get_contents($this->outputDir.'/.mcp.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('https://askmydocs.example.test/mcp/kb', $config['mcpServers']['askmydocs']['url']);
+        $this->assertSame('Bearer ${ASKMYDOCS_MCP_TOKEN}', $config['mcpServers']['askmydocs']['headers']['Authorization']);
+        $this->assertSame('${ASKMYDOCS_TENANT_ID}', $config['mcpServers']['askmydocs']['headers']['X-Tenant-Id']);
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->outputDir, \FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($iterator as $item) {
+            if (! $item->isFile()) {
+                continue;
+            }
+            $content = (string) file_get_contents((string) $item->getPathname());
+            $this->assertDoesNotMatchRegularExpression('/Bearer [A-Za-z0-9_\-\.]{20,}/', $content, "{$item->getPathname()} must not contain a real bearer token.");
+            $this->assertDoesNotMatchRegularExpression('/askmd_[A-Za-z0-9]{10,}/', $content, "{$item->getPathname()} must not contain a real McpTenantToken value.");
+        }
+
+        $manifest = json_decode((string) file_get_contents($this->outputDir.'/MANIFEST.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertArrayHasKey('.mcp.json', $manifest['files']);
+    }
+
+    /**
+     * v8.38/W4c — the entire point of adding slug/id/type/status to the
+     * frontmatter: an exported page for a CANONICAL document must parse and
+     * VALIDATE unmodified, so `kb:import-wiki` can propose it as a
+     * promotion candidate without the person editing the folder having to
+     * hand-add fields the export itself could have carried.
+     */
+    public function test_a_canonical_documents_exported_page_round_trips_through_canonical_parser(): void
+    {
+        $doc = $this->documentWithArtifact('runbooks/deploy.md', "# Deploy\n\nStep one. Step two.\n", [
+            'slug' => 'deploy-runbook',
+            'doc_id' => 'rb-deploy-001',
+            'canonical_type' => 'runbook',
+            'canonical_status' => 'accepted',
+        ]);
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+        $page = (string) file_get_contents($this->outputDir.'/wiki/'.$doc->id.'-deploy-runbook.md');
+        $parsed = app(CanonicalParser::class)->parse($page);
+        $this->assertNotNull($parsed, 'A canonical export page must carry a parseable YAML frontmatter block.');
+        $validation = app(CanonicalParser::class)->validate($parsed);
+        $this->assertTrue($validation->valid, 'A canonical export page must validate unmodified: '.json_encode($validation->errors));
+        $this->assertSame('deploy-runbook', $parsed->slug);
+        $this->assertSame('runbook', $parsed->type?->value);
+        $this->assertSame('accepted', $parsed->status?->value);
+    }
+
+    /**
+     * v8.38/W4c — the deliberate other half: a NON-canonical document has
+     * nothing to round-trip (no slug ever existed for it), and its exported
+     * page correctly fails CanonicalParser::validate() rather than being
+     * silently promotable.
+     */
+    public function test_a_non_canonical_documents_exported_page_does_not_validate(): void
+    {
+        $doc = $this->documentWithArtifact('runbooks/scratch.md', "# Scratch\n\nNot canonical.\n");
+        $user = $this->makeUser();
+        $this->membership($user);
+
+        app(KbWikiExportService::class)->export($this->tenantId, $this->projectKey, $user, $this->outputDir);
+
+        $page = (string) file_get_contents($this->outputDir.'/wiki/'.$doc->id.'.md');
+        $parsed = app(CanonicalParser::class)->parse($page);
+        $this->assertNotNull($parsed);
+        $validation = app(CanonicalParser::class)->validate($parsed);
+        $this->assertFalse($validation->valid);
+        $this->assertArrayHasKey('slug', $validation->errors);
     }
 }

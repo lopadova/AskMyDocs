@@ -985,6 +985,10 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbExportWikiCommand::class,
             // v8.38/W4b (ADR 0032 §12) — async export bundle retention sweep.
             \App\Console\Commands\PruneWikiExportsCommand::class,
+            // v8.38/W4c (ADR 0032 §10) — round-trip PHP surface (R44): the
+            // one surface with local filesystem access to a folder
+            // previously produced by kb:export-wiki.
+            \App\Console\Commands\KbImportWikiCommand::class,
         ]);
     }
 

@@ -609,6 +609,39 @@ final class AdminAuthorizationMatrixTest extends TestCase
             ->assertStatus(403);
     }
 
+    /**
+     * v8.38/W4c — `POST /api/admin/kb/imports` is POST-only, same
+     * `role:admin|super-admin` group as `/api/admin/kb/exports/*`. Mirrors
+     * `test_create_export_requires_admin_or_super_admin()` exactly: an
+     * empty body 422s (missing `project_key`/`markdown`) or the
+     * feature-off shape 200s for admin/super-admin, never 403; a viewer is
+     * blocked with 403.
+     */
+    public function test_create_import_requires_admin_or_super_admin(): void
+    {
+        $writeUri = '/api/admin/kb/imports';
+
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($writeUri, [])
+                ->getStatusCode();
+            $this->assertNotSame(
+                403,
+                $status,
+                "Role [{$role}] must pass authorization on POST [{$writeUri}] but got 403.",
+            );
+            $this->assertNotSame(
+                404,
+                $status,
+                "[{$writeUri}] must be MOUNTED (role [{$role}] got 404 — route missing?).",
+            );
+        }
+
+        $this->actingAs($this->userWithRole('viewer'))
+            ->postJson($writeUri, [])
+            ->assertStatus(403);
+    }
+
     private function userWithRole(string $role): User
     {
         $user = User::create([

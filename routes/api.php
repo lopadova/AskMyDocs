@@ -547,6 +547,17 @@ Route::middleware([
                 ->name('api.admin.kb.exports.download');
         });
 
+        // v8.38/W4c — Portable wiki import, single-document surface (ADR
+        // 0032 §10/§11). Same gate (kb.wiki_export.enabled — no separate
+        // flag), same role:admin|super-admin stack. POST-only: unlike
+        // exports there is no GET/status surface — the folder-walking
+        // capability only exists on the CLI (kb:import-wiki), which has
+        // local filesystem access an HTTP client does not. R32 — covered
+        // by a dedicated write-boundary test (mirrors kb/exports' own,
+        // POST routes aren't exercised by the matrix's GET-only sweep).
+        Route::post('kb/imports', [\App\Http\Controllers\Api\Admin\KbWikiImportController::class, 'store'])
+            ->name('api.admin.kb.imports.store');
+
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
         // knowledge_document_tags. Controller methods take `int $id`
