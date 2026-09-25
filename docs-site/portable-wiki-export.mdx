@@ -1,6 +1,6 @@
 ---
 title: "Portable Wiki Export"
-description: "A CLI + async HTTP surface that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a consistency-checked manifest and no server dependency."
+description: "A CLI + async HTTP + MCP surface that compiles a project's knowledge into an ACL- and PII-scoped folder anyone can read offline, with a consistency-checked manifest, a live MCP reconnection, and a candidate-only round-trip back in."
 icon: "folder-tree"
 ---
 
@@ -17,11 +17,13 @@ the requesting user could retrieve at export time — never more, because it
 is computed through the identical `AccessScopeScope` the live server uses,
 not filtered after the fact.
 
-This page covers **W4a** (the synchronous CLI export core) and **W4b** (the
-async HTTP surface, retained/downloadable bundles, and the retention sweep).
-The `.mcp.json` live reconnection and the `kb:import-wiki` round-trip are
-designed in the ADR but not yet built — see
-[Not yet shipped](#not-yet-shipped-w4c) below.
+This page covers **W4a** (the synchronous CLI export core), **W4b** (the
+async HTTP surface, retained/downloadable bundles, and the retention sweep),
+and **W4c** (the `.mcp.json` live reconnection, the frontmatter that makes an
+exported page round-trippable, and `kb:import-wiki` / `POST
+/api/admin/kb/imports` / `KbImportWikiTool` — the candidate-only path back
+in). `llms.txt`/`llms-full.txt`, `--format` variants, and `include_images`
+remain deferred — see [Still deferred](#still-deferred) below.
 
 <Note>
 Everything on this page is **off by default** (`KB_WIKI_EXPORT_ENABLED=false`,
@@ -112,10 +114,11 @@ flowchart TD
 │   └── {id}[-slug].md     # frontmatter + the document's readable content
 ├── raw/                   # the stored conversion artifact, when one exists
 │   └── {id}[-slug].md     # absent entirely for a raw_missing document
-├── README.md              # what this is, tenant/project, partial-export note
+├── README.md              # what this is, tenant/project, .mcp.json connection steps
 ├── AGENTS.md               # untrusted-content boundary, generic-agent flavoured
 ├── CLAUDE.md               # the same boundary, Claude-flavoured
 ├── MANIFEST.json          # per-file sha256 + a running chain hash + status
+├── .mcp.json              # server URL + env-referenced headers — no credential (W4c)
 └── .export.lock           # reservation marker — see Gotchas
 ```
 
@@ -128,16 +131,30 @@ that provably impossible, since two documents never share a database id.
 
 ## Frontmatter contract
 
-Every `wiki/*.md` page opens with YAML frontmatter carrying two axes that
-are **never merged**, because they answer different questions:
+Every `wiki/*.md` page opens with YAML frontmatter carrying two groups of
+keys that are **never merged**, because they answer different questions —
+and, since W4c, that answer BOTH "how governed is this?" and "is this page
+promotable as-is?":
 
 | Key | Answers | Source |
 |---|---|---|
+| `slug` | The canonical slug — present only on a CANONICAL document | `knowledge_documents.slug` |
+| `id` | The canonical `doc_id` | `knowledge_documents.doc_id` |
+| `type` | One of the 9 canonical types — what `CanonicalParser::validate()` requires | `knowledge_documents.canonical_type` |
+| `status` | `draft`/`review`/`accepted`/`superseded`/`deprecated`/`archived` — the OTHER field `CanonicalParser::validate()` requires | `knowledge_documents.canonical_status` |
 | `tier` | Has a person vouched for this content? (`human` / `auto`) | `knowledge_documents.generation_source` ([ADR 0014](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0014-source-retention-and-conversion-artifacts.md)) |
 | `evidence_tier` | How authoritative is the claim itself? | `knowledge_documents.evidence_tier` |
 | `provenance_tier` | Who originally wrote it? | `knowledge_documents.provenance_tier` ([ADR 0028](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0028-source-acl-mirroring-and-ingest-provenance.md)) |
 | `extraction` | How did the text enter the system? (`ocr` / `text-layer`) | Derived from `metadata.converter.provenance`, mirroring `KbSearchService::mapChunkToArray()`'s own derivation rather than re-parsing it a third way |
-| `canonical_type` | Is this a canonical knowledge-graph node, and of what kind? | `knowledge_documents.canonical_type` |
+| `canonical_type` | Same value as `type`, kept for W4a-produced folders and readers who prefer the more descriptive name | `knowledge_documents.canonical_type` |
+
+`slug`/`id`/`type`/`status` are `null` on a NON-canonical document's page —
+there is genuinely nothing to round-trip for it yet (see
+[Round-trip](#round-trip-kbimport-wiki-and-the-mcp-tools-w4c) below): the
+person editing the folder must add all four deliberately before
+`kb:import-wiki` will propose it, the same bar
+[ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s
+`/candidates` endpoint already holds every draft to.
 
 ## Manifest & consistency, not tamper evidence
 
@@ -197,8 +214,8 @@ php artisan kb:export-wiki \
 - The exit summary reports `status` (`complete`/`partial`) and warns when
   `raw_missing` is non-empty.
 
-The MCP tools (`KbCreateExportTool`/`KbGetExportTool`) land in W4c over the
-same `KbWikiExportService` core — see [Not yet shipped](#not-yet-shipped-w4c)
+`KbCreateExportTool` / `KbGetExportTool` are the MCP surface of this same
+async path (W4c) — see [Round-trip](#round-trip-kbimport-wiki-and-the-mcp-tools-w4c)
 below.
 
 ## Async HTTP surface (W4b, ADR 0032 §5/§11/§12)
@@ -277,34 +294,141 @@ curl -OJ https://<host>/api/admin/kb/exports/<id>/download -H "Authorization: Be
   an export programmatically — check `raw_missing` for the artifact
   guarantee, not whether `wiki/{id}.md` exists (it always does).
 
-## Not yet shipped (W4c)
+## `.mcp.json` — no credential, ever (W4c, ADR 0032 §4)
+
+Every export writes a `.mcp.json` naming the server and two `env`-referenced
+headers — never a token, signed URL, or session id, because this file is
+explicitly designed to be copied, emailed, and committed to a personal notes
+repo:
+
+```json
+{
+  "mcpServers": {
+    "askmydocs": {
+      "url": "https://<host>/mcp/kb",
+      "headers": {
+        "Authorization": "Bearer ${ASKMYDOCS_MCP_TOKEN}",
+        "X-Tenant-Id": "${ASKMYDOCS_TENANT_ID}"
+      }
+    }
+  }
+}
+```
+
+`README.md` inside the export carries the connection steps (mint a token
+scoped to *your own* access, export the two env vars, point an MCP-aware
+client at the file). This closes the two host-side gaps the ADR named
+before this connection was safe to ship — both fixed independently of
+export/import, ahead of W4c:
+
+1. **Bearer authentication.** `/mcp/kb` is mounted with only
+   `EnforceMcpScope` (`throttle:mcp` + `mcp.scope`, no `auth:sanctum` — the
+   middleware reads the `McpTenantToken` bearer directly, hashes and looks
+   it up itself).
+2. **Principal binding (R33).** `EnforceMcpScope` resolves the token's
+   `created_by` user and binds it as the request's Laravel principal before
+   any tool runs — so `AccessScopeScope` scopes every MCP retrieval to
+   *that* user's ACL, not an unrestricted bypass. Whoever mints their own
+   token sees their own access, never the exporter's.
+
+## Round-trip — `kb:import-wiki` and the MCP tools (W4c, ADR 0032 §10/§11)
+
+Editing a page and getting it back into the corpus never writes directly —
+every edit becomes a promotion **candidate**
+([ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s
+"agent proposes, a person commits" boundary, restated for a folder instead
+of a chat transcript), over the EXACT `Flow::execute(PromotionFlow::NAME,
+...)` saga `POST /api/kb/promotion/promote` already uses — paused at an
+approval gate, nothing written to `knowledge_documents` until a human
+approves.
+
+```mermaid
+flowchart TD
+    CLI["kb:import-wiki {folder} --tenant --as-user"] --> ROOT["realpath(folder)<br/>local containment check (distinct from KbPath::normalize — R1)"]
+    ROOT --> MANIFEST["Read MANIFEST.json for project_key<br/>+ tenant-mismatch guard"]
+    MANIFEST --> WALK["Walk wiki/*.md<br/>(skip index.md / log.md)"]
+    WALK --> DOC["importDocument() per file<br/>— the SAME core HTTP + MCP call"]
+    DOC --> PARSE{"CanonicalParser::parse()<br/>+ validate()"}
+    PARSE -->|missing slug/type/status| INVALID["invalid — reported, not proposed"]
+    PARSE -->|valid| DIFF{"Body differs from<br/>DocumentVersionService::contentFor()<br/>(ACL-scoped to the importing user)"}
+    DIFF -->|no| UNCHANGED["unchanged — nothing proposed"]
+    DIFF -->|yes| DEDUP{"Same idempotency key<br/>as an existing candidate row?"}
+    DEDUP -->|yes| REPLAYED["replayed — same flow_run_id,<br/>no second approval token minted"]
+    DEDUP -->|no| RATE{"Under kb.wiki_export.<br/>import_candidates_per_hour?"}
+    RATE -->|no| REFUSED["429 rate limited"]
+    RATE -->|yes| FLOW["Flow::execute(PromotionFlow::NAME, ...)<br/>pauses at the approval gate"]
+    FLOW --> CANDIDATE["kb_wiki_import_candidates row<br/>(idempotency_key -> flow_run_id)"]
+    CANDIDATE --> HUMAN["Human approves via<br/>POST /api/kb/promotion/{id}/approve"]
+    HUMAN --> WRITE["knowledge_documents write<br/>+ re-ingest — same as any other promotion"]
+```
+
+- **Single-document surface, everywhere except the CLI.** `POST
+  /api/admin/kb/imports` and `KbImportWikiTool` take `{project_key,
+  markdown}` — the same shape `POST /api/kb/promotion/candidates` already
+  validates — because an HTTP client or an MCP tool call has no server-side
+  folder to walk. Only `kb:import-wiki {folder}` has local filesystem
+  access, so folder-walking is CLI-only; all three surfaces funnel into the
+  identical `KbWikiImportService::importDocument()`.
+- **Two DIFFERENT path checks, on purpose.** `{folder}` is resolved with
+  `realpath()` and every candidate file is re-checked to stay under that
+  resolved root — a local-containment concern. The resulting candidate's
+  eventual KB-disk `source_path` is separately normalised through
+  `KbPath::normalize()` (R1) once it is approved and written. Neither
+  substitutes for the other.
+- **The diff is BODY-only, deliberately.** Comparing the whole file against
+  a regenerated export representation would false-positive on every export
+  cycle whose frontmatter serialization or governance fields legitimately
+  shift without an editorial change. Comparing only the Markdown body
+  against `DocumentVersionService::contentFor()` — the same source `wiki/`
+  itself renders from — targets what a person actually edits, and the
+  lookup runs under the IMPORTING user's own `AccessScopeScope`: a user who
+  cannot see a slug is told "new", never "unchanged" for a document they
+  have no visibility into.
+- **Idempotency has one honest limit.** A replayed call resolves the SAME
+  paused flow run rather than starting a second one, but does NOT mint a
+  second usable approval token — the underlying
+  `ApprovalTokenManager::reissuePendingForStep()` is a one-shot operation
+  per approval record. A replay reports the run's id with no new token,
+  which is more honest than pretending a second single-use token exists.
+- **Rate-limited per actor** (`kb.wiki_export.import_candidates_per_hour`,
+  default 30/hour) — the same knob on all three surfaces.
+
+```bash
+# CLI — the folder-walking surface
+php artisan kb:import-wiki /tmp/acme-eng-export \
+  --tenant=acme --as-user=reviewer@acme.example
+#   unchanged   wiki/57-deploy-runbook.md
+#   proposed    wiki/58-incident-2026-08.md  (flow_run_id: ...)
+# Import complete: 1 unchanged, 1 proposed, 0 replayed, 0 invalid, 0 other.
+
+# HTTP / MCP — one document at a time
+curl -X POST https://<host>/api/admin/kb/imports \
+  -H "Authorization: Bearer <sanctum-token>" -H "Content-Type: application/json" \
+  -d '{"project_key":"eng","markdown":"---\nslug: incident-2026-08\nid: inc-2026-08\ntype: incident\nstatus: accepted\n---\n\n# Incident 2026-08\n..."}'
+# → 202 { "data": { "status": "created", "flow_run_id": "...",
+#                    "approval": { "token": "...", "approve_path": "..." } } }
+```
+
+## Still deferred
 
 Per [ADR 0032](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0032-v838-portable-wiki-export-and-candidate-only-import.md)
-§4/§7/§10/§11, deliberately deferred past W4a+W4b:
+§2/§7, past W4c:
 
-- **`.mcp.json`** — a live reconnection back to the server from inside the
-  exported folder — blocked on two auth-chain fixes the ADR names (a bearer-
-  type guard adapter for `McpTenantToken`, and re-applying the connecting
-  user's own principal, never the exporter's, to every retrieval).
-- **`llms.txt`/`llms-full.txt`** and **`include_images`**/**`--format`**
-  variants (figures are omitted by default when the PII policy is active,
-  per the same §7 that governs `raw/` and `wiki/` text). Both are
-  explicitly **rejected** (`422`), not silently accepted and ignored, by
-  the current async request service — R14.
-- The **MCP tools** (`KbCreateExportTool`, `KbGetExportTool`,
-  `KbImportWikiTool`) — SEC-AI-ACT-001's full mutating-tool control set
-  (idempotency key, audit row, per-principal rate limit, authorization
-  before validation).
-- **`kb:import-wiki`** — editing an exported page and reimporting it as a
-  promotion **candidate**, never a direct corpus write, per
-  [ADR 0003](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0003-promotion-pipeline.md)'s
-  "agent proposes, a person commits" boundary.
+- **`llms.txt`/`llms-full.txt`** and the **`--format=markdown|llms-txt`**
+  variants — only `--format=llm-wiki` (the default) exists.
+- **`include_images`** — figures are omitted by default when the tenant's
+  PII policy is active (`ChunkRedactor` rewrites text, not pixels); the
+  opt-in inclusion path is not built.
+
+Both are explicitly **rejected** (`422`/`InvalidArgumentException`), not
+silently accepted and ignored, by `KbWikiExportRequestService::normalizeOptions()`
+— R14.
 
 <CardGroup cols={2}>
   <Card title="Canonical & promotion" icon="stamp" href="/canonical-and-promotion">
-    ADR 0003's boundary — the same one kb:import-wiki will respect.
+    ADR 0003's boundary — the same one kb:import-wiki proposes candidates through.
   </Card>
   <Card title="Source permissions" icon="lock" href="/source-permissions">
-    AccessScopeScope, the exact scope this export computes through.
+    AccessScopeScope, the exact scope both export and import compute through.
   </Card>
 </CardGroup>

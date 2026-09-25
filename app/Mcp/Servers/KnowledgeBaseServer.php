@@ -10,7 +10,10 @@ use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\ConnectorSettingsTool;
 use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\FlowRunStatusTool;
+use App\Mcp\Tools\KbCreateExportTool;
 use App\Mcp\Tools\KbDocumentVersionsTool;
+use App\Mcp\Tools\KbGetExportTool;
+use App\Mcp\Tools\KbImportWikiTool;
 use App\Mcp\Tools\KbOcrStatusTool;
 use App\Mcp\Tools\KbProposeTextCorrectionTool;
 use App\Mcp\Tools\KbReviewStatusTool;
@@ -218,6 +221,18 @@ class KnowledgeBaseServer extends Server
         // v8.36 / ADR 0030 — Time Machine version list (R44). Read-only, metadata
         // only: the artifact content stays on the role-gated HTTP surface.
         KbDocumentVersionsTool::class,
+
+        // v8.38/W4c / ADR 0032 §11 — portable wiki export/import tri-surface
+        // (third surface, alongside kb:export-wiki/kb:import-wiki and
+        // POST /api/admin/kb/exports|imports). KbCreateExportTool is a
+        // genuine write (starts a job, retains a bundle); KbGetExportTool
+        // is read-only status; KbImportWikiTool proposes a promotion
+        // candidate only, never writes the corpus directly (same control
+        // set as KbProposeTextCorrectionTool above — see
+        // EnforceMcpScope::PROPOSE_TOOL_NAMES).
+        KbCreateExportTool::class,
+        KbGetExportTool::class,
+        KbImportWikiTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

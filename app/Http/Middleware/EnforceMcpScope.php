@@ -48,6 +48,10 @@ final class EnforceMcpScope
         'kbsuggestsupersessionchaintool' => true,
         'kbproposecanonicaledittool' => true,
         'kbproposetextcorrectiontool' => true,
+        // v8.38/W4c (ADR 0032 §10/§11) — proposes a promotion candidate,
+        // never writes the corpus directly. Same posture as
+        // kbproposetextcorrectiontool above.
+        'kbimportwikitool' => true,
     ];
 
     public const SCOPE_READ = 'mcp:read';

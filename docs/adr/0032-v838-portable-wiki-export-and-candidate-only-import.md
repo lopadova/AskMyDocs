@@ -70,6 +70,16 @@ content the instant it leaves the server — and an import path that turns
 edits back into promotion candidates, never direct writes, closing the loop
 a raw-text export cannot.
 
+**Implementation status (W4c, 2026-09-25):** `.mcp.json` (§4), the
+round-trip's promotion candidates (§10), and the tri-surface tools
+(`KbCreateExportTool`, `KbGetExportTool`, `KbImportWikiTool` — §11) have
+shipped. Still deferred, and NOT part of this revision: `llms.txt` /
+`llms-full.txt` and the `--format=markdown|llms-txt` variants (§2),
+`include_images` (§7). Both remain explicitly rejected with a clear error
+by `KbWikiExportRequestService::normalizeOptions()` rather than silently
+ignored (R14) — a future revision can lift either restriction independently
+without touching the round-trip this section describes.
+
 ## Decision
 
 ### 1. `KB_WIKI_EXPORT_ENABLED` — default OFF, both states tested (R43)
@@ -186,6 +196,51 @@ this connection is safe to ship:
    document visible to one of them, the other's token cannot retrieve it
    over MCP) and an integration test that exports for a **non-default**
    tenant and connects with the generated file are both mandatory.
+
+**Implementation note (hotfix, 2026-09-25) — both gaps closed, neither the
+way originally planned:**
+
+Gap 1 did not ship as described above, and does not need to: `auth:sanctum`
+was never re-added to `/mcp/kb` (it was in fact *removed* during v8.37/W3b
+round 7, ahead of this ADR, precisely because it rejected the
+`McpTenantToken` bearer — see `routes/ai.php`:
+`Mcp::web('/mcp/kb', KnowledgeBaseServer::class)->middleware(['throttle:mcp',
+'mcp.scope'])`, no `auth:sanctum`). No `app/Auth/McpTokenGuard.php` adapter
+was ever built or is now planned; `EnforceMcpScope` is, and remains, the
+route's sole authentication layer — it reads the bearer, hashes and looks it
+up against `McpTenantToken` directly, and rejects a missing/invalid/revoked/
+expired token before anything else runs. The "bearer type mismatch" this
+item described was a real gap in the auth chain, but the fix already
+shipped for it (round 7's removal of `auth:sanctum`) predates this ADR;
+there is no further work here.
+
+Gap 2 (principal binding) was real and, until this hotfix, still open: round
+7's `auth:sanctum` removal fixed the bearer-type rejection but left nothing
+binding `auth()->user()` at all, so `AccessScopeScope` (R33) ran with no
+restriction on every MCP retrieval call — tenant isolation (R30) held, ACL
+did not. `EnforceMcpScope::handle()` now resolves `token->created_by` via
+`User::query()->find()` (returning `null`, and failing closed with 403
+`mcp_principal_missing`, for a missing OR soft-deleted user — offboarding
+revokes a token's retrieval power for free, `SEC-OFFBOARD-001`) and binds it
+with `Auth::setUser()` for the request's duration, `Auth::forgetGuards()`
+before binding and again in `finally` (mirrors `ExecuteAgentRunJob`'s
+principal restoration — a long-running worker must never leak one caller's
+principal into the next request/job it handles). Landed independently of
+and ahead of W4c, in `hotfix/mcp-principal-binding` (merged to `main` as
+PR #507, ported to `feature/v8.38` as PR #508), locked by
+`tests/Feature/Mcp/McpPrincipalBindingTest.php` — including the exact
+cross-user ACL regression this section already called mandatory (a
+project-scoped user's token cannot retrieve chunks outside its
+`folder_globs` allowlist over MCP) — and
+`tests/Feature/Mcp/McpPiiToolsEndToEndTest.php` (the PII tri-surface tools
+now provably work end-to-end over `/mcp/kb` under a bound principal, not
+only through their HTTP/CLI surfaces).
+
+Net effect for W4c: both auth-chain gaps this section named are closed
+before any wiki-export MCP tool (`KbCreateExportTool`, `KbGetExportTool`,
+`KbImportWikiTool`) is registered, so none of them need to carry this fix
+themselves — they inherit a route that is already fully authenticated,
+tenant-scoped, and ACL-scoped to the token's `created_by` user.
 
 ### 5. ACL-aware export (R33) — computed, never filtered after the fact
 
