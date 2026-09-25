@@ -236,6 +236,28 @@ final class KbProposeTextCorrectionToolTest extends TestCase
         config(['kb.review.enabled' => true]);
         $doc = $this->docWithPage1('Bod is the supplier.');
 
+        // SEC-AUDIT-fix (2026-09-25) — EnforceMcpScope now requires a
+        // resolvable `created_by` user (the request principal) AND that
+        // principal is bound to `auth()->user()` for the duration of the
+        // request, so AccessScopeScope (R33) now genuinely restricts this
+        // tool's document lookup to the principal's project membership —
+        // a membership-less user reads nothing (`allowedProjectScopes()`
+        // === [] -> `whereRaw('1=0')`). Grant the test principal the same
+        // project ($this->doc()'s default 'eng') this test's document
+        // lives in; this test proves the protocol reaches the tool
+        // end-to-end, not ACL scoping (covered by McpPrincipalBindingTest).
+        $principal = \App\Models\User::query()->create([
+            'name' => 'MCP principal',
+            'email' => 'mcp-principal-'.uniqid().'@demo.local',
+            'password' => \Illuminate\Support\Facades\Hash::make('secret123'),
+        ]);
+        \App\Models\ProjectMembership::query()->create([
+            'tenant_id' => app(TenantContext::class)->current(),
+            'user_id' => $principal->id,
+            'project_key' => 'eng',
+            'role' => 'member',
+        ]);
+
         $plainToken = 'askmd_test-token-'.bin2hex(random_bytes(8));
         McpTenantToken::query()->create([
             'tenant_id' => app(TenantContext::class)->current(),
@@ -243,6 +265,7 @@ final class KbProposeTextCorrectionToolTest extends TestCase
             'token_hash' => hash('sha256', $plainToken),
             'token_last4' => substr($plainToken, -4),
             'scopes_json' => ['mcp:read', 'mcp:tools:propose'],
+            'created_by' => $principal->id,
         ]);
 
         $toolName = (new KbProposeTextCorrectionTool())->name();

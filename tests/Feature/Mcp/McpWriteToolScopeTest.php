@@ -7,9 +7,11 @@ namespace Tests\Feature\Mcp;
 use App\Http\Middleware\EnforceMcpScope;
 use App\Mcp\Servers\KnowledgeBaseServer;
 use App\Models\McpTenantToken;
+use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use ReflectionClass;
 use Tests\TestCase;
@@ -229,6 +231,7 @@ class McpWriteToolScopeTest extends TestCase
             'token_hash' => hash('sha256', 'other-tenant-token'),
             'token_last4' => 'oken',
             'scopes_json' => ['mcp:read'],
+            'created_by' => $this->principalId(),
         ]);
 
         $request = Request::create('/mcp/kb', 'POST', [], [], [], [
@@ -262,6 +265,7 @@ class McpWriteToolScopeTest extends TestCase
             'token_hash' => hash('sha256', 'plain-test-token'),
             'token_last4' => 'oken',
             'scopes_json' => ['mcp:read'],
+            'created_by' => $this->principalId(),
         ]);
         $this->assertNull($token->last_used_at);
 
@@ -346,6 +350,7 @@ class McpWriteToolScopeTest extends TestCase
             'token_hash' => hash('sha256', 'restore-success-token'),
             'token_last4' => 'oken',
             'scopes_json' => ['mcp:read'],
+            'created_by' => $this->principalId(),
         ]);
 
         $request = Request::create('/mcp/kb', 'POST', [], [], [], [
@@ -382,6 +387,7 @@ class McpWriteToolScopeTest extends TestCase
             'token_hash' => hash('sha256', 'restore-denial-token'),
             'token_last4' => 'oken',
             'scopes_json' => ['mcp:tools:propose'],
+            'created_by' => $this->principalId(),
         ]);
 
         $request = Request::create('/mcp/kb', 'POST', [], [], [], [
@@ -521,6 +527,22 @@ class McpWriteToolScopeTest extends TestCase
     }
 
     /**
+     * SEC-AUDIT-fix (2026-09-25) — EnforceMcpScope now binds the token's
+     * `created_by` user as the request principal (AccessScopeScope/R33
+     * fix); a token minted without one is now refused with
+     * `mcp_principal_missing`. Every test below needs a real, persisted
+     * user id to keep exercising the scope/tenant gate it actually tests.
+     */
+    private function principalId(): int
+    {
+        return User::query()->create([
+            'name' => 'MCP principal',
+            'email' => 'mcp-principal-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret123'),
+        ])->id;
+    }
+
+    /**
      * @param  array<int, string>  $scopes
      */
     private function mintToken(array $scopes): void
@@ -531,6 +553,7 @@ class McpWriteToolScopeTest extends TestCase
             'token_hash' => hash('sha256', 'plain-test-token'),
             'token_last4' => 'oken',
             'scopes_json' => $scopes,
+            'created_by' => $this->principalId(),
         ]);
     }
 
