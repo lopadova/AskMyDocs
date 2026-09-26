@@ -693,6 +693,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Auto-Wiki maintenance as a delegated routine (v8.39/W5, ADR 0033)
+    |--------------------------------------------------------------------------
+    |
+    | Default OFF. Gates registration of `App\Routines\WikiMaintenanceRoutineTarget`
+    | into `padosoft/laravel-routines`' TargetRegistry AND the mutating
+    | tri-surface entry points (CLI `run`, `POST .../wiki-routine/run`). The
+    | read surfaces (`kb:wiki-routine status`, `GET .../wiki-routine`,
+    | `KbWikiRoutineStatusTool`) are always registered and answer
+    | {disabled: true} when this flag is off (ADR 0033 §1, R43).
+    |
+    | With the flag off, `kb:wiki-maintain`'s existing Tier-1 scheduler entry
+    | is byte-identical to before this ADR — see
+    | `App\Routines\WikiMaintenanceRoutineGate` + `bootstrap/app.php`.
+    */
+    'wiki_routine' => [
+        'enabled' => filter_var(env('KB_WIKI_ROUTINE_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Content-gap analytics (v8.8/W4)
     |--------------------------------------------------------------------------
     |

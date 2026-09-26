@@ -90,6 +90,19 @@ class RouteExposureTest extends TestCase
         // POST /mcp/kb must always carry mcp.scope (AUTH_EXACT below) and
         // is never covered by this entry.
         'mcp/kb' => ['DELETE'],
+        // v8.39/W5 — `padosoft/laravel-routines`' own webhook ingress
+        // (`RoutinesServiceProvider::packageBooted()`, `hooks/routines/{id}`),
+        // mounted unconditionally by the package regardless of
+        // KB_WIKI_ROUTINE_ENABLED. Deliberately session-less by design (ADR
+        // 0033 §5 quotes the package's own docblock: "la chiama una macchina,
+        // che non ha cookie ne' CSRF e non deve averne") — auth is an
+        // HMAC-SHA256 signature over the raw body with a PER-ROUTINE secret
+        // (`WebhookController`), not Laravel's `auth` middleware, plus a
+        // `throttle:60,1` rate limit. Nothing in this cycle creates a
+        // `trigger_kind=webhook` routine (AskMyDocs only ever provisions
+        // `trigger_kind=cron`, ADR 0033 §4), so the route is inert here, but
+        // it is mounted and must be accounted for regardless.
+        'hooks/routines/{id}' => '*',
     ];
 
     protected function defineRoutes($router): void

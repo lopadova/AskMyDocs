@@ -110,6 +110,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // The `store` (POST) write boundary is asserted separately below
             // (POST-only routes aren't exercised by this GET-only sweep).
             '/api/admin/kb/exports/1' => ['admin', 'super-admin'],
+            // v8.39/W5 — Auto-Wiki maintenance routine status (ADR 0033
+            // §8). The `run` (POST) write boundary is asserted separately
+            // below, same reason as the exports/imports POST routes.
+            '/api/admin/kb/wiki-routine' => ['admin', 'super-admin'],
             '/api/admin/commands/catalogue' => ['admin', 'super-admin'],
             '/api/admin/compliance/reports' => ['admin', 'super-admin'],
             '/api/admin/notifications/defaults' => ['admin', 'super-admin'],
@@ -620,6 +624,36 @@ final class AdminAuthorizationMatrixTest extends TestCase
     public function test_create_import_requires_admin_or_super_admin(): void
     {
         $writeUri = '/api/admin/kb/imports';
+
+        foreach (['admin', 'super-admin'] as $role) {
+            $status = $this->actingAs($this->userWithRole($role))
+                ->postJson($writeUri, [])
+                ->getStatusCode();
+            $this->assertNotSame(
+                403,
+                $status,
+                "Role [{$role}] must pass authorization on POST [{$writeUri}] but got 403.",
+            );
+            $this->assertNotSame(
+                404,
+                $status,
+                "[{$writeUri}] must be MOUNTED (role [{$role}] got 404 — route missing?).",
+            );
+        }
+
+        $this->actingAs($this->userWithRole('viewer'))
+            ->postJson($writeUri, [])
+            ->assertStatus(403);
+    }
+
+    /**
+     * v8.39/W5 — `POST /api/admin/kb/wiki-routine/run` is POST-only, same
+     * `role:admin|super-admin` group as the GET status route above. Mirrors
+     * `test_create_export_requires_admin_or_super_admin()` exactly.
+     */
+    public function test_run_wiki_routine_requires_admin_or_super_admin(): void
+    {
+        $writeUri = '/api/admin/kb/wiki-routine/run';
 
         foreach (['admin', 'super-admin'] as $role) {
             $status = $this->actingAs($this->userWithRole($role))

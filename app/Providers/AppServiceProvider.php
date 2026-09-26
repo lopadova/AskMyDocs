@@ -242,6 +242,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
         $this->registerPiiRedactorTenancy();
+        $this->registerWikiRoutineTarget();
     }
 
     /**
@@ -989,6 +990,9 @@ class AppServiceProvider extends ServiceProvider
             // one surface with local filesystem access to a folder
             // previously produced by kb:export-wiki.
             \App\Console\Commands\KbImportWikiCommand::class,
+            // v8.39/W5 (ADR 0033 §8) — tri-surface PHP/CLI: read the
+            // Auto-Wiki maintenance routine's status, or trigger a run.
+            \App\Console\Commands\KbWikiRoutineCommand::class,
         ]);
     }
 
@@ -1229,5 +1233,32 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute($ipMax)->by('ip:'.$request->ip()),
             ];
         });
+    }
+
+    /**
+     * v8.39/W5 (ADR 0033 §3) — registers
+     * {@see \App\Routines\WikiMaintenanceRoutineTarget} with
+     * `padosoft/laravel-routines`' `TargetRegistry`, gated on
+     * `config('kb.wiki_routine.enabled')` — default OFF, R43. The
+     * `interface_exists`/`class_exists` guard is forward-safety, not a
+     * genuine-absence check: both packages are `require` dependencies of
+     * this application (ADR 0033 §2), same as every other `padosoft/*`
+     * integration here.
+     */
+    private function registerWikiRoutineTarget(): void
+    {
+        if (! (bool) config('kb.wiki_routine.enabled', false)) {
+            return;
+        }
+
+        if (! interface_exists(\Padosoft\Routines\Contracts\Target\RoutineTarget::class)
+            || ! class_exists(\Padosoft\Routines\Targets\TargetRegistry::class)) {
+            \Illuminate\Support\Facades\Log::warning('KB_WIKI_ROUTINE_ENABLED is true but laravel-routines contracts/engine are unavailable — the wiki-maintenance routine target was not registered.');
+
+            return;
+        }
+
+        $this->app->make(\Padosoft\Routines\Targets\TargetRegistry::class)
+            ->register($this->app->make(\App\Routines\WikiMaintenanceRoutineTarget::class));
     }
 }

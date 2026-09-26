@@ -181,7 +181,18 @@ return Application::configure(basePath: dirname(__DIR__))
         // (Tier-2). Slot list lives on the registrar so PHPUnit can
         // exercise the config-driven branch directly.
         $registrar = new \App\Scheduling\TierOneSchedulerRegistrar;
-        $registrar->register($schedule);
+
+        // v8.39/W5 (ADR 0033 §6) — `kb_wiki_maintain` stays listed in
+        // TierOneSchedulerRegistrar::SLOTS (ops inventory, ops widget) but
+        // is excluded from actually being scheduled here once a delegated
+        // routine owns firing it (laravel-routines' own `routines:tick`
+        // fires it instead). The gate wraps its one DB-dependent condition
+        // in try/catch and defaults to "keep the cron" on any failure —
+        // see WikiMaintenanceRoutineGate's own docblock for why.
+        $excludeSlots = app(\App\Routines\WikiMaintenanceRoutineGate::class)->cronSlotShouldStayActive()
+            ? []
+            : ['kb_wiki_maintain'];
+        $registrar->register($schedule, $excludeSlots);
 
         // TODO PR3 (RBAC): when spatie/laravel-activitylog is installed,
         //   add 'activitylog_clean' => ['activitylog:clean --days=90', '20 4 * * *']

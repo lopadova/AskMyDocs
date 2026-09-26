@@ -260,6 +260,27 @@ abstract class TestCase extends OrchestraTestCase
         // in its own getEnvironmentSetUp to prove the wired-and-secured route.
         $app->register(\Padosoft\Invitations\Admin\InvitationsAdminServiceProvider::class);
 
+        // v8.39/W5 (ADR 0033 §2) — padosoft/laravel-routines +
+        // -contracts. A `require` dependency of this app (not
+        // runtime-optional, same convention as every other padosoft/*
+        // package here — see the ADR's own correction of the plan's
+        // framing). Registered BEFORE App\Providers\AppServiceProvider so
+        // its TargetRegistry singleton exists when
+        // registerWikiRoutineTarget() tries to resolve it.
+        $app->register(\Padosoft\Routines\RoutinesServiceProvider::class);
+        // R32 — host override of config/routines.php: the package's own
+        // default (`api.enabled` true) mounts a generic, non-tenant-scoped
+        // admin API this application deliberately keeps OFF (ADR 0033 §5).
+        // array_merge keeps the package's other top-level keys (tick,
+        // lock_seconds, targets, defaults, …) while the host's `api.enabled`
+        // override wins. AdminAuthorizationMatrixTest and the wiki-routine
+        // tri-surface tests exercise the SECURE configuration, not the
+        // package's insecure default.
+        $app['config']->set('routines', array_merge(
+            (array) $app['config']->get('routines', []),
+            require __DIR__.'/../config/routines.php',
+        ));
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
