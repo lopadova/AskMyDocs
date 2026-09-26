@@ -107,6 +107,95 @@ final class TabularReviewExtractorTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_vision_column_with_json_path_format_still_routes_to_vision_not_the_shortcut(): void
+    {
+        // v8.40/W6 (ADR 0034) — `agent: vision` WINS over the json_path format
+        // shortcut, mirroring the `agent: graph` precedent: the agent dimension
+        // must stay orthogonal to format, never silently downgraded into a
+        // metadata lookup by a stray `format: json_path`.
+        $review = $this->makeReview([
+            [
+                'name' => 'Status',
+                'prompt' => null,
+                'format' => 'json_path',
+                'json_path' => '$.status',
+                'agent' => 'vision',
+            ],
+        ]);
+        $doc = $this->makeDoc($review->project_key);
+        $this->makeChunk($doc, '', 'Body', metadata: ['status' => 'In Progress']);
+
+        // Vision is OFF by default in this test suite (KB_TABULAR_VISION_ENABLED
+        // unset) — if the column were (wrongly) routed through the json_path
+        // shortcut it would resolve to a GREY "sourced from metadata" cell
+        // with summary "In Progress" instead of a disabled-flag red failure.
+        Http::fake(['*' => Http::response(['error' => 'should_not_be_called'], 500)]);
+
+        $cells = $this->extractor()->extract($review, $doc);
+
+        $this->assertCount(1, $cells);
+        $this->assertSame(CellStatus::FAILED->value, $cells[0]->status);
+        $this->assertSame(CellFlag::RED->value, $cells[0]->flag);
+        $this->assertStringContainsString('Vision extraction is disabled', $cells[0]->content['reasoning']);
+        Http::assertNothingSent();
+    }
+
+    public function test_review_with_all_four_agent_kinds_resolves_each_bucket_independently(): void
+    {
+        // v8.40/W6 (ADR 0034) — extract + graph + verify + vision in the same
+        // columns_config: every bucket resolves independently and no existing
+        // agent kind's behaviour regresses.
+        $review = $this->makeReview([
+            ['name' => 'Title', 'prompt' => 'Doc title?', 'format' => 'text'],
+            ['name' => 'Canonical?', 'format' => 'yes_no', 'agent' => 'graph', 'metric' => 'is_canonical'],
+            ['name' => 'Claim', 'prompt' => 'What does it claim?', 'format' => 'text', 'agent' => 'verify'],
+            ['name' => 'Colour', 'prompt' => 'What colour is the garment?', 'format' => 'text', 'agent' => 'vision'],
+        ]);
+        $doc = KnowledgeDocument::create([
+            'project_key' => $review->project_key,
+            'source_type' => 'markdown',
+            'title' => 'Canonical doc',
+            'source_path' => 'c-'.uniqid().'.md',
+            'document_hash' => str_repeat('e', 64),
+            'version_hash' => str_repeat('f', 64),
+            'status' => 'indexed',
+            'is_canonical' => true,
+            'canonical_status' => 'accepted',
+            'slug' => 'dec-'.uniqid(),
+        ]);
+        $this->makeChunk($doc, 'H', 'Body.');
+        $this->stubSearch($doc);
+
+        // Vision is OFF by default — no provider call for it. The batched
+        // extract call carries both the extract column (index 0) and the
+        // verify column (index 2); the verify pass issues a second call.
+        Http::fake(['*' => Http::sequence()
+            ->push($this->aiPayload(
+                "{\"column_index\":0,\"summary\":\"Foo\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}\n"
+                ."{\"column_index\":2,\"summary\":\"Bold claim\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}"
+            ), 200)
+            ->push($this->aiPayload('{"column_index":2,"supported":true}'), 200),
+        ]);
+
+        $cells = $this->extractor()->extract($review, $doc);
+
+        $this->assertCount(4, $cells);
+        // extract
+        $this->assertSame('Foo', $cells[0]->content['summary']);
+        $this->assertSame(CellStatus::READY->value, $cells[0]->status);
+        // graph — deterministic, no LLM call for this column.
+        $this->assertSame('Yes', $cells[1]->content['summary']);
+        $this->assertSame(CellFlag::GREEN->value, $cells[1]->flag);
+        // verify — supported=true keeps the extracted value unchanged.
+        $this->assertSame('Bold claim', $cells[2]->content['summary']);
+        $this->assertSame(CellFlag::GREEN->value, $cells[2]->flag);
+        // vision — OFF by default → definite red failure, never a 500 or a
+        // silent skip (R14).
+        $this->assertSame(CellStatus::FAILED->value, $cells[3]->status);
+        $this->assertSame(CellFlag::RED->value, $cells[3]->flag);
+        $this->assertStringContainsString('Vision extraction is disabled', $cells[3]->content['reasoning']);
+    }
+
     public function test_verify_column_downgrades_an_unsupported_value(): void
     {
         // v8.19/W4 — a `verify` column: the extract pass returns green, the

@@ -139,6 +139,36 @@ final class RunReportToolTest extends TestCase
         $this->assertSame(2, $payload['report']['summary']['total_documents']);
     }
 
+    public function test_vision_column_agent_passes_through_the_projection(): void
+    {
+        // v8.40/W6 (ADR 0034) — a `vision` column's agent value must pass
+        // through the MCP projection with zero code change beyond the enum
+        // addition (acceptance criterion 5).
+        $this->tenants->set('tenant-a');
+        $user = User::create([
+            'name' => 'Owner',
+            'email' => 'owner-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret-password'),
+        ]);
+        $review = TabularReview::create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'eng',
+            'user_id' => $user->id,
+            'title' => 'Vision Audit',
+            'columns_config' => [
+                ['name' => 'Colour', 'prompt' => 'What colour is the garment?', 'format' => 'text', 'agent' => 'vision'],
+            ],
+        ]);
+        $doc = $this->doc('tenant-a');
+        $this->cell('tenant-a', $review->id, $doc, 0, 'Navy blue', CellFlag::GREEN);
+
+        $payload = $this->invoke(['review_id' => $review->id]);
+
+        $this->assertTrue($payload['available']);
+        $this->assertSame('vision', $payload['report']['columns'][0]['agent']);
+        $this->assertNull($payload['report']['columns'][0]['metric']);
+    }
+
     public function test_cross_tenant_review_is_invisible(): void
     {
         $review = $this->review('tenant-b');

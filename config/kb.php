@@ -625,6 +625,27 @@ return [
         ],
     ],
 
+    // v8.40/W6 (ADR 0034) — the `agent: vision` Tabular Review column kind.
+    // Default OFF (R43): a review with a vision column and the flag off still
+    // generates every OTHER column normally and produces a clean, loud, red
+    // `failed` cell for the vision one — never a 500, never a silent skip,
+    // never a fallback to `extract` semantics.
+    'tabular_review' => [
+        'vision' => [
+            'enabled' => filter_var(env('KB_TABULAR_VISION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            // Bounded work (SEC-LLM-001 gate 7): a catalog page with many
+            // figures does not turn one cell's generation into an unbounded
+            // multi-image provider call.
+            'max_images_per_cell' => (int) env('KB_TABULAR_VISION_MAX_IMAGES', 4),
+            // Empty → falls back to KB_OCR_VISION_PROVIDER/_MODEL, then that
+            // provider's default text model (mirrors vision_llm OCR above).
+            'provider' => env('KB_TABULAR_VISION_PROVIDER') ?: null,
+            'model' => env('KB_TABULAR_VISION_MODEL') ?: null,
+            'max_tokens' => (int) env('KB_TABULAR_VISION_MAX_TOKENS', 1200),
+            'timeout' => (int) env('KB_TABULAR_VISION_TIMEOUT', 120),
+        ],
+    ],
+
     // v8.37/W3 — Digitization Review (ADR 0031). Default OFF (R43): the flag
     // gates the review HTTP surface + FE routes with a clean 404 and gates
     // KbReviewService's mutating entry points with a KbReviewDisabledException
