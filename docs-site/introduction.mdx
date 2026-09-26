@@ -38,7 +38,7 @@ flowchart LR
     P --> AI[AiManager → provider]
     AI -->|grounded answer + citations| U
     subgraph Ingestion
-      DOC[Markdown / PDF / DOCX / connectors] --> ING[DocumentIngestor]
+      DOC[Markdown / PDF / DOCX / scans-OCR / connectors] --> ING[DocumentIngestor]
       ING --> DB[(PostgreSQL + pgvector)]
       ING --> WIKI[Auto-Wiki compiler]
     end
@@ -46,7 +46,7 @@ flowchart LR
     WIKI --> DB
 ```
 
-## The six moats
+## The seven moats
 
 These are the differentiators no other public RAG platform — open-source or SaaS —
 currently ships. Each links to the page that explains the theory, the design, and
@@ -76,6 +76,12 @@ the decision rationale in depth.
   <Card title="Eval-harness CI gate" icon="flask" href="https://github.com/lopadova/AskMyDocs">
     A RAG regression gate on every PR plus nightly LLM-as-judge and adversarial
     cohorts — an out-of-the-box eval surface nobody else publicly ships.
+  </Card>
+  <Card title="Document Intelligence" icon="file-magnifying-glass" href="/documents-and-ocr">
+    OCR of scans and images, faithful conversion-artifact versioning, a
+    propose-only Digitization Review loop, and an already-compiled portable
+    wiki export — closing a 2026 competitor's exact gap without its ungated
+    agent-write shortcut.
   </Card>
 </CardGroup>
 
