@@ -128,6 +128,76 @@ test.describe('Admin Tabular Reviews (W3)', () => {
         await expect(metric.locator('option', { hasText: 'evidence_tier' })).toHaveCount(1);
     });
 
+    test('W6 — selecting agent=vision does NOT reveal the governance metric picker', async ({ page }) => {
+        // v8.40/W6 (ADR 0034) — `vision` needs no `metric` key (that stays
+        // `graph`-only): the column's existing prompt/format/enum_values
+        // already drive the extraction instruction. This is the negative
+        // counterpart to the graph test above — proves the FE distinguishes
+        // the two agentic kinds correctly, not just "shows the picker for
+        // anything non-extract".
+        await page.goto('/app/admin/tabular-reviews');
+        await expect(page.getByTestId('admin-tabular-reviews')).toBeVisible({ timeout: 15_000 });
+        await page.getByTestId('admin-tabular-reviews-create').click();
+        await expect(page.getByTestId('admin-tabular-review-create-dialog')).toBeVisible();
+
+        const agentSelect = page.getByTestId('admin-tabular-review-create-column-0-agent');
+        await expect(agentSelect.locator('option', { hasText: 'vision' })).toHaveCount(1);
+        await agentSelect.selectOption('vision');
+        await expect(page.getByTestId('admin-tabular-review-create-column-0-metric')).toHaveCount(0);
+    });
+
+    test('W6 — a vision column generates a definite red cell with zero AI provider calls when the document has no visual evidence', async ({ page }) => {
+        // v8.40/W6 (ADR 0034) — real backend, real generation, KB_TABULAR_VISION_ENABLED=true
+        // (CI env, see tests.yml). `hr-portal` is DemoSeeder's textual policy
+        // KB: no document there has OCR-extracted figures or an image mime
+        // type, so VisionColumnResolver::resolveImages() returns [] and the
+        // resolver never touches the AI provider — the test proves R14 (a
+        // real, definite, loudly-surfaced red cell, never a silent gap or a
+        // 500) without needing any AI credentials in CI.
+        await page.goto('/app/admin/tabular-reviews');
+        await expect(page.getByTestId('admin-tabular-reviews')).toBeVisible({ timeout: 15_000 });
+
+        await page.getByTestId('admin-tabular-reviews-create').click();
+        await page.getByTestId('admin-tabular-review-create-title').fill('E2E vision review');
+        await page.getByTestId('admin-tabular-review-create-project').fill('hr-portal');
+        await page.getByTestId('admin-tabular-review-create-column-0-name').fill('Photo colour');
+        await page.getByTestId('admin-tabular-review-create-column-0-prompt').fill('Identify the primary colour shown.');
+        await page.getByTestId('admin-tabular-review-create-column-0-agent').selectOption('vision');
+
+        const createPost = page.waitForResponse(
+            (r) => r.url().endsWith('/api/admin/tabular-reviews') && r.request().method() === 'POST',
+            { timeout: 15_000 },
+        );
+        await page.getByTestId('admin-tabular-review-create-submit').click();
+        const createResp = await createPost;
+        if (!createResp.ok()) {
+            throw new Error(
+                `POST /api/admin/tabular-reviews returned non-OK: ${createResp.status()} ${await createResp.text()}`,
+            );
+        }
+        const created = await createResp.json();
+        const newId = created.data.id as number;
+        await expect(page.getByTestId('admin-tabular-review-show')).toHaveAttribute('data-review-id', String(newId), { timeout: 10_000 });
+
+        const generatePost = page.waitForResponse(
+            (r) => r.url().endsWith(`/api/admin/tabular-reviews/${newId}/generate`) && r.request().method() === 'POST',
+            { timeout: 30_000 },
+        );
+        await page.getByTestId('admin-tabular-review-show-generate').click();
+        const generateResp = await generatePost;
+        if (!generateResp.ok()) {
+            throw new Error(
+                `POST /api/admin/tabular-reviews/${newId}/generate returned non-OK: ${generateResp.status()} ${await generateResp.text()}`,
+            );
+        }
+
+        const grid = page.getByTestId('admin-tabular-review-show-grid');
+        await expect(grid).toBeVisible({ timeout: 20_000 });
+        // At least one row's vision cell (column 0) resolved to a definite red flag.
+        const redVisionCell = page.locator('[data-testid$="-0"][data-flag="red"]').first();
+        await expect(redVisionCell).toBeVisible({ timeout: 20_000 });
+    });
+
     test('W5 — the ready-made template gallery opens and reaches a non-loading state', async ({ page }) => {
         // v8.19/W5 — the template gallery is a real-backend read of the built-in
         // system workflows. R14: it must always resolve to ready/empty/error —

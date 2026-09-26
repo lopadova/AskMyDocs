@@ -567,6 +567,17 @@ jobs:
           # clean-404 "disabled" landing is covered by ReviewTab.test.tsx
           # (Vitest), per R43 (both states tested).
           KB_DIGITIZATION_REVIEW_ENABLED: 'true'
+          # v8.40/W6 — light up vision columns (ADR 0034) so
+          # admin-tabular-reviews.spec.ts can exercise the real ENABLED
+          # resolver path deterministically: a document with no OCR
+          # figures and a non-image mime type resolves to a definite red
+          # "no visual evidence" cell with ZERO outbound AI provider call
+          # (VisionColumnResolver::resolveImages() returns [] before the
+          # provider is ever touched) — no AI credentials needed in CI.
+          # The default-OFF "disabled" red cell is covered by
+          # VisionColumnResolverTest (PHPUnit), per R43 (both states
+          # tested).
+          KB_TABULAR_VISION_ENABLED: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.
