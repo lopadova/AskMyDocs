@@ -91,17 +91,20 @@ class RouteExposureTest extends TestCase
         // is never covered by this entry.
         'mcp/kb' => ['DELETE'],
         // v8.39/W5 — `padosoft/laravel-routines`' own webhook ingress
-        // (`RoutinesServiceProvider::packageBooted()`, `hooks/routines/{id}`),
-        // mounted unconditionally by the package regardless of
-        // KB_WIKI_ROUTINE_ENABLED. Deliberately session-less by design (ADR
-        // 0033 §5 quotes the package's own docblock: "la chiama una macchina,
-        // che non ha cookie ne' CSRF e non deve averne") — auth is an
-        // HMAC-SHA256 signature over the raw body with a PER-ROUTINE secret
-        // (`WebhookController`), not Laravel's `auth` middleware, plus a
-        // `throttle:60,1` rate limit. Nothing in this cycle creates a
-        // `trigger_kind=webhook` routine (AskMyDocs only ever provisions
-        // `trigger_kind=cron`, ADR 0033 §4), so the route is inert here, but
-        // it is mounted and must be accounted for regardless.
+        // (`RoutinesServiceProvider::packageBooted()`, `hooks/routines/{id}`).
+        // The package mounts it unconditionally by DEFAULT, but this app's
+        // `config/routines.php` now sets `webhooks.enabled` to `false`
+        // (subagent review, PR #512 — should-fix: no reason to expose it
+        // when nothing here ever creates a `trigger_kind=webhook` routine),
+        // so under the test suite's config it currently does NOT appear in
+        // the resolved routing table at all. This entry stays regardless:
+        // an operator can still set `ROUTINES_WEBHOOKS_ENABLED=true`, and
+        // when they do the route is deliberately session-less by design
+        // (ADR 0033 §5 quotes the package's own docblock: "la chiama una
+        // macchina, che non ha cookie ne' CSRF e non deve averne") — auth
+        // is an HMAC-SHA256 signature over the raw body with a PER-ROUTINE
+        // secret (`WebhookController`), not Laravel's `auth` middleware,
+        // plus a `throttle:60,1` rate limit.
         'hooks/routines/{id}' => '*',
     ];
 

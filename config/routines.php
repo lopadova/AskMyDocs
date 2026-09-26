@@ -83,8 +83,17 @@ return [
     | Il throttle non e' decorativo: e' l'unica difesa contro chi prova firme a
     | ripetizione, dato che la rotta e' per definizione esposta.
     */
+    // v8.39/W5 (ADR 0033): default changed from the package's own `true` to
+    // `false` — nothing in this app creates a `trigger_kind=webhook`
+    // routine (AskMyDocs only ever provisions `trigger_kind=cron`, ADR 0033
+    // §4), so the endpoint would be unreasoned public attack surface for
+    // zero functional benefit. The route is well-built even when on (HMAC
+    // signature, constant-time compare, replay window, anti-enumeration
+    // 404 — subagent review, PR #512), but "off until something actually
+    // needs it" is the same conservative posture already applied to
+    // `api.enabled` above.
     'webhooks' => [
-        'enabled' => env('ROUTINES_WEBHOOKS_ENABLED', true),
+        'enabled' => env('ROUTINES_WEBHOOKS_ENABLED', false),
         'prefix' => env('ROUTINES_WEBHOOKS_PREFIX', 'hooks/routines'),
         'middleware' => ['throttle:60,1'],
     ],

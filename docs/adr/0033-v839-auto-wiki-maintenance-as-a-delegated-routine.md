@@ -218,6 +218,16 @@ on first use:
 
 No mandate is granted at creation — see §7.
 
+The find-then-create above is wrapped in `Cache::lock('wiki-routine-provision:'.$tenantId,
+15)->block(10, ...)` (an unguarded find-then-create would be a TOCTOU race:
+two concurrent `run()` calls for the same tenant — a double-click on "Run
+now," or a concurrent HTTP+CLI trigger — could both see "not provisioned"
+and both insert a `Routine` row, since `routines` carries no unique
+constraint on `(target_type, organization_id)`; caught by an independent
+review of this PR, R21). `WikiRoutineService::provisionLockKey($tenantId)`
+exposes the exact key so a test can hold it externally and prove real
+mutual exclusion, mirroring `App\Support\Kb\SourceKeyLock`'s convention.
+
 ### 5. The package's own generic admin API is turned OFF (`ROUTINES_API_ENABLED=false`)
 
 `padosoft/laravel-routines`'s default `config('routines.api.middleware') =
@@ -234,9 +244,17 @@ correctly-scoped choice is to publish `config/routines.php` with
 `api.enabled = false` (`ROUTINES_API_ENABLED=false` in `.env.example`) and
 let AskMyDocs's own tenant-scoped, RBAC-gated tri-surface (§6) be the ONLY
 sanctioned way to read or trigger a routine in this application. The
-signed webhook ingress (`hooks/routines/{id}`, HMAC-per-routine) is left at
-its default — inert unless something creates a `trigger_kind=webhook`
-routine, which nothing in this cycle does.
+signed webhook ingress (`hooks/routines/{id}`, HMAC-per-routine) is turned
+OFF too (`ROUTINES_WEBHOOKS_ENABLED=false`, `config/routines.php`
+`webhooks.enabled`) — an independent review of this PR caught that the
+package mounts it by default, and nothing this cycle creates a
+`trigger_kind=webhook` routine, so leaving it on would be unreasoned
+public attack surface for zero functional benefit. The route is soundly
+built when it IS enabled (HMAC-SHA256 over the raw body, constant-time
+compare, per-routine secret, replay window, anti-enumeration 404), so
+turning it on later for an actual webhook-triggered routine is safe — this
+is "off until something needs it," not a statement about the route's own
+security.
 
 ### 6. No double run, no orphaned run
 
@@ -255,11 +273,21 @@ returns **true** (keep the legacy cron — the safe default) unless ALL of:
 1. `KB_WIKI_ROUTINE_ENABLED=true`
 2. The adapter is registered (`interface_exists`/`class_exists`, §3)
 3. An **active** `Routine` row exists for `target_type =
-   WikiMaintenanceRoutineTarget::TYPE` — checked in a `try/catch`; any
-   `\Throwable` (DB down, table not yet migrated) is caught, logged, and
-   treated as "not ready" — the cron stays on. A missing table or an
-   unreachable database is one more way this condition is "not satisfied
-   yet," never a reason to lose the nightly run entirely.
+   WikiMaintenanceRoutineTarget::TYPE` **AND** `organization_id =
+   'default'` — checked in a `try/catch`; any `\Throwable` (DB down, table
+   not yet migrated) is caught, logged, and treated as "not ready" — the
+   cron stays on. A missing table or an unreachable database is one more
+   way this condition is "not satisfied yet," never a reason to lose the
+   nightly run entirely.
+
+   The `organization_id = 'default'` scope is load-bearing, not
+   decoration: the legacy `kb_wiki_maintain` slot only ever maintains
+   tenant `default` (`KbWikiMaintainCommand`'s own `--tenant=default`
+   default). An earlier draft of this gate checked ANY active routine,
+   regardless of tenant — caught by an independent review of this PR
+   before merge: any OTHER tenant enabling the routine for itself would
+   have silently disabled the shared cron slot `default` still depends
+   on, with no error and no log naming the loss.
 
 ```php
 // bootstrap/app.php, inside withSchedule(), replacing the plain SLOTS entry
@@ -272,9 +300,11 @@ if (! app(\App\Routines\WikiMaintenanceRoutineGate::class)->cronSlotShouldStayAc
 ```
 
 Any of the three missing → the scheduler entry is byte-identical to before
-this ADR, and a log line names which condition failed. A test covers
-"flag on, no Routine row yet" (cron stays on) and "flag on, active Routine
-row exists" (cron turns off) explicitly.
+this ADR, and a log line names which condition failed. Tests cover "flag
+on, no Routine row yet" (cron stays on), "flag on, active Routine row
+exists for `default`" (cron turns off), and — the regression this PR's
+review caught — "flag on, active Routine row exists for a DIFFERENT
+tenant" (cron stays on for `default` regardless).
 
 ### 7. What the mandate/pause-and-ask machinery does NOT do this cycle — an honest gap, not an oversight
 

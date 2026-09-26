@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Routines;
 
+use Illuminate\Support\Facades\Cache;
 use Padosoft\Routines\Models\Routine;
 use Padosoft\Routines\Models\RoutineRun;
 use Padosoft\Routines\RoutineManager;
@@ -82,26 +83,44 @@ final class WikiRoutineService
         return ['id' => $run->id, 'outcome' => $run->outcome, 'message' => $run->message];
     }
 
+    /**
+     * The cache lock key that serializes provisioning for one tenant.
+     * `routines` carries no unique constraint on `(target_type,
+     * organization_id)` — a plain find-then-create here is a TOCTOU race:
+     * two concurrent calls (a double-click on "Run now", or a concurrent
+     * HTTP + CLI trigger) can both see "not provisioned" and both insert a
+     * `Routine` row for the same tenant, producing duplicate cron-fired
+     * maintenance runs from then on (subagent review, PR #512). Public so
+     * a test can hold the exact same lock externally to prove exclusion,
+     * mirroring {@see \App\Support\Kb\SourceKeyLock}'s pattern.
+     */
+    public static function provisionLockKey(string $tenantId): string
+    {
+        return 'wiki-routine-provision:'.$tenantId;
+    }
+
     private function ensureRoutine(string $tenantId): Routine
     {
-        $existing = $this->findRoutine($tenantId);
-        if ($existing !== null) {
-            return $existing;
-        }
+        return Cache::lock(self::provisionLockKey($tenantId), 15)->block(10, function () use ($tenantId): Routine {
+            $existing = $this->findRoutine($tenantId);
+            if ($existing !== null) {
+                return $existing;
+            }
 
-        // No mandate granted here — ADR 0033 §7: the routine runs as the
-        // application, the same authority kb:wiki-maintain's cron already
-        // has today. Documented gap, not an oversight.
-        return $this->routines->create([
-            'owner' => 'system:askmydocs-wiki-maintenance',
-            'organization_id' => $tenantId,
-            'name' => "Wiki maintenance — {$tenantId}",
-            'target_type' => WikiMaintenanceRoutineTarget::TYPE,
-            'target_payload' => ['tenant' => $tenantId],
-            'trigger_kind' => 'cron',
-            'cron' => (string) config('askmydocs.schedule.kb_wiki_maintain.cron', '40 4 * * *'),
-            'initiation' => 'system',
-        ]);
+            // No mandate granted here — ADR 0033 §7: the routine runs as the
+            // application, the same authority kb:wiki-maintain's cron already
+            // has today. Documented gap, not an oversight.
+            return $this->routines->create([
+                'owner' => 'system:askmydocs-wiki-maintenance',
+                'organization_id' => $tenantId,
+                'name' => "Wiki maintenance — {$tenantId}",
+                'target_type' => WikiMaintenanceRoutineTarget::TYPE,
+                'target_payload' => ['tenant' => $tenantId],
+                'trigger_kind' => 'cron',
+                'cron' => (string) config('askmydocs.schedule.kb_wiki_maintain.cron', '40 4 * * *'),
+                'initiation' => 'system',
+            ]);
+        });
     }
 
     private function findRoutine(string $tenantId): ?Routine

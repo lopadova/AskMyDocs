@@ -7,7 +7,9 @@ namespace Tests\Feature\Routines;
 use App\Routines\WikiMaintenanceRoutineTarget;
 use App\Routines\WikiRoutineService;
 use App\Services\Kb\AutoWiki\WikiMaintainer;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Mockery;
 use Padosoft\Routines\Models\Routine;
 use Padosoft\Routines\Targets\TargetRegistry;
@@ -96,6 +98,36 @@ final class WikiRoutineServiceTest extends TestCase
         $this->assertTrue($service->status('tenant-a')['provisioned']);
         $this->assertTrue($service->status('tenant-b')['provisioned']);
         $this->assertSame(2, Routine::query()->where('target_type', WikiMaintenanceRoutineTarget::TYPE)->count());
+    }
+
+    /**
+     * Subagent review, PR #512 — must-fix #2: `ensureRoutine()` was a bare
+     * find-then-create with no unique constraint on `(target_type,
+     * organization_id)` and no lock — a TOCTOU race where two concurrent
+     * callers for the same tenant could both see "not provisioned" and
+     * both insert a `Routine` row. Calling `run()` twice sequentially (as
+     * {@see self::test_run_reuses_the_existing_routine_for_the_same_tenant_rather_than_provisioning_a_second_one()}
+     * does) would pass even with NO lock at all, so it proves nothing
+     * about the race itself. Holding the exact same lock externally
+     * ({@see WikiRoutineService::provisionLockKey()}) and asserting `run()`
+     * blocks until it times out — rather than racing through — is the
+     * deterministic, single-process way to prove real mutual exclusion
+     * (mirrors {@see \App\Support\Kb\SourceKeyLock}'s test convention).
+     */
+    public function test_ensure_routine_is_serialized_by_a_lock_not_a_bare_check_then_create(): void
+    {
+        $mock = $this->bindMaintainerAndRegisterTarget();
+        $mock->shouldReceive('maintain')->never();
+
+        $holder = Cache::lock(WikiRoutineService::provisionLockKey('acme'), 30);
+        $this->assertTrue($holder->get(), 'the test holds exactly the lock provisioning needs');
+
+        try {
+            $this->expectException(LockTimeoutException::class);
+            app(WikiRoutineService::class)->run('acme');
+        } finally {
+            $holder->release();
+        }
     }
 
     public function test_run_grants_no_mandate_the_routine_runs_as_the_application_adr_0033_7(): void
