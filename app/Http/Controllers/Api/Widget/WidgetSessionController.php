@@ -8,6 +8,7 @@ use App\Http\Middleware\ResolveWidgetKey;
 use App\Models\WidgetKey;
 use App\Models\WidgetIdentity;
 use App\Models\WidgetSession;
+use App\Actions\ActionRegistry;
 use App\Models\WidgetSessionStep;
 use App\Services\Widget\WidgetAiToolRegistry;
 use App\Services\Widget\WidgetOrchestratorService;
@@ -190,6 +191,7 @@ final class WidgetSessionController extends Controller
         string $session,
         WidgetOrchestratorService $orchestrator,
         WidgetAiToolRegistry $aiToolRegistry,
+        ActionRegistry $actionRegistry,
     ): JsonResponse {
         $data = $request->validate([
             'tool' => ['required', 'string', 'max:255'],
@@ -242,6 +244,13 @@ final class WidgetSessionController extends Controller
             return response()->json([
                 'error' => 'tool_not_enabled',
                 'message' => "AiTool '{$tool}' is not enabled for this skill.",
+            ], 422);
+        }
+
+        if (! $actionRegistry->isExecutable($tool)) {
+            return response()->json([
+                'error' => 'tool_not_classified',
+                'message' => "AiTool '{$tool}' has no executable effect classification.",
             ], 422);
         }
 
