@@ -1,10 +1,13 @@
 # Hand-off — v8.36 → v8.40 Document Intelligence cycle: session kickoff
 
-**Status:** designed 2026-09-11, **in progress since 2026-09-12** — plan merged
-to `main` (#476, `b20420a3`), `feature/v8.36` open, ADR 0029 + 0030 under review
-(#477), W1 under review (#478), W2 implemented locally on its head. The §7
-checkpoint table below is the live execution state; this header only says the
-cycle has started.
+**Status:** designed 2026-09-11, executed 2026-09-12 → 2026-09-26,
+**cycle COMPLETE — W1 through W5 shipped and GA-tagged-pending (v8.36.0 → v8.39.0,
+all four tag pushes blocked by this session's credential scope, see each
+cycle's closure STATUS doc), W6/v8.40 deliberately deferred and never
+opened.** This file is kept as the historical record of how the cycle was
+planned and executed, and as the reference for anyone who later decides to
+promote W6 into an actual v8.40 release. The §7 checkpoint table below is
+the final execution state, not a live one anymore.
 **Owner of the work:** the Claude Code session opened with `lopadova/AskMyDocs` as
 its *initial* source (§5 explains why it has to be a new session), driven by Lorenzo.
 **Goal:** execute `docs/v4-platform/PLAN-v8.36-document-intelligence-and-llm-wiki-export.md`
@@ -258,14 +261,17 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | plan | `main` | `claude/plan-annota-gap-document-intelligence` | [#476](https://github.com/lopadova/AskMyDocs/pull/476) | `b20420a3` | — | merged 2026-09-12 (squash; 12 Copilot rounds) |
 | ADR 0029+0030 | `feature/v8.36` (from `main` @ `b20420a3`) | `feature/v8.36-adr-0029-0030` | [#477](https://github.com/lopadova/AskMyDocs/pull/477) | `7f9a1bfe` (squash on `feature/v8.36`; PR head `ad9fae6c`) | — | merged 2026-09-13 (16 Copilot rounds, labelled E2E green) |
 | W1 | `feature/v8.36` | `feature/v8.36-W1` | [#478](https://github.com/lopadova/AskMyDocs/pull/478) | `e48736f3` (squash on `feature/v8.36`; PR head `588857a6`) | — | merged 2026-09-13 (25 review rounds: Copilot rounds 1–22 addressed, Copilot then silent on the last four heads — R36 fallback: CI green incl. Playwright 4/4 + independent local review at 0 must-fix, recorded on the PR) |
-| W2 | `feature/v8.36` | `feature/v8.36-W2` | (opens 2026-09-13) | — | — | rebased on `e48736f3`; local suites green; PR → `feature/v8.36` |
-| v8.36 GA | `main` | — | — | — | — | — |
-| W3 | `feature/v8.37` | `feature/v8.37-W3` | — | — | — | not started |
-| W4 | `feature/v8.38` | `feature/v8.38-W4` | — | — | — | not started |
-| W5 | `feature/v8.39` | `feature/v8.39-W5` | — | — | — | not started |
-| W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | optional |
+| W2 | `feature/v8.36` | `feature/v8.36-W2` | [#479](https://github.com/lopadova/AskMyDocs/pull/479) | (squash on `feature/v8.36`) | — | merged 2026-09-16 |
+| v8.36 GA | `main` | — | [#492](https://github.com/lopadova/AskMyDocs/pull/492) | `62dd0b25` | `v8.36.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-16-v836-w1-w2-closure.md)) | merged 2026-09-16T20:45:12+02:00 |
+| W3 | `feature/v8.37` | `feature/v8.37-W3` | [#494](https://github.com/lopadova/AskMyDocs/pull/494), [#496](https://github.com/lopadova/AskMyDocs/pull/496), [#497](https://github.com/lopadova/AskMyDocs/pull/497) | — | — | merged into `feature/v8.37` |
+| v8.37 GA | `main` | — | [#499](https://github.com/lopadova/AskMyDocs/pull/499) | `ebc12f22` | `v8.37.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-20-v837-w3-closure.md)) | merged 2026-09-20T05:51:51+02:00 |
+| W4 | `feature/v8.38` | `feature/v8.38-W4[abc]` | [#503](https://github.com/lopadova/AskMyDocs/pull/503), [#506](https://github.com/lopadova/AskMyDocs/pull/506), [#507](https://github.com/lopadova/AskMyDocs/pull/507)/[#508](https://github.com/lopadova/AskMyDocs/pull/508) (cross-cutting hotfix), [#509](https://github.com/lopadova/AskMyDocs/pull/509) | — | — | merged into `feature/v8.38` |
+| v8.38 GA | `main` | — | [#511](https://github.com/lopadova/AskMyDocs/pull/511) | `1f27af95` | `v8.38.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-25-v838-w4-closure.md)) | merged 2026-09-26T02:59:44+01:00 |
+| W5 | `main` (single PR, no `feature/v8.39` sub-task split — see the PR body / [STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md) for why) | `feature/v8.39` | [#512](https://github.com/lopadova/AskMyDocs/pull/512) | `58c8a898` | — | merged as part of v8.39 GA below (2 must-fix + 1 should-fix from an independent R36-fallback review fixed before merge) |
+| v8.39 GA | `main` | — | [#512](https://github.com/lopadova/AskMyDocs/pull/512) | `58c8a898` | `v8.39.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md)) | merged 2026-09-26T08:25:45+01:00 |
+| W6 | `feature/v8.40` | `feature/v8.40-W6` | — | — | — | **deferred, never opened** — the plan's own §W6 framed it as "not scheduled ... only if promoted" (a hand-off checkpoint row to record the decision, not a commitment); the v8.39 closure explicitly decided not to promote it. See the README roadmap row and the [v8.39 STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md) "Deferred" section. No `feature/v8.40` branch exists. |
 
-Last updated: 2026-09-14 (W1 PR #478 merged as `e48736f3`; W2 PR #479 in the Copilot loop on `feature/v8.36-W2`).
+Last updated: 2026-09-26 — cycle complete through W5 (v8.39.0 GA, PR #512); W6/v8.40 closed as deferred, not promoted. Two docs-only follow-ups landed after the GA merge, both R46 md-only (no code): [#514](https://github.com/lopadova/AskMyDocs/pull/514) (README/roadmap-doc re-grade against Annota AI + `ENTERPRISE-COMPLETENESS-ROADMAP.md` R5 re-scope) and [#515](https://github.com/lopadova/AskMyDocs/pull/515) (surfaced the whole cycle in the README's top-line "moats" pitch and the doc-site's mirrored landing page, which had been missed by the closure step above).
 
 Follow-ups recorded during W1 (not in scope of a merged PR, to schedule):
 

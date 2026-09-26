@@ -47,7 +47,7 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 ## Table of Contents
 
 - [What it is](#what-it-is)
-- [Why AskMyDocs — the 6 moats](#why-askmydocs--the-6-moats)
+- [Why AskMyDocs — the 7 moats](#why-askmydocs--the-7-moats)
 - [✨ Universal Connectors](#universal-connectors)
 - [✨ Modern Chat Surface (Vercel AI SDK UI)](#modern-chat-surface-vercel-ai-sdk-ui)
 - [✨ KITT — Knowledge Interface Tour Toolkit](#kitt--knowledge-interface-tour-toolkit)
@@ -76,7 +76,9 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 
 **What.** AskMyDocs is an **AI hub for enterprise knowledge** built on
 Laravel 13 + PostgreSQL + pgvector. It ingests markdown, text, PDF and
-DOCX documents into a typed canonical knowledge graph, answers
+DOCX documents — and, since v8.36, **scans and images via OCR**
+(pluggable docling / Mistral OCR / vision-LLM / tesseract drivers) — into
+a typed canonical knowledge graph, answers
 questions over them with streaming RAG, exposes the same knowledge as
 MCP tools for any agentic client (Claude Desktop, Claude Code,
 Cursor, custom agents), and ships a full React admin SPA — KPI
@@ -119,13 +121,14 @@ authoritative, argued, diagrammed reference.
 
 ---
 
-## Why AskMyDocs — the 6 moats
+## Why AskMyDocs — the 7 moats
 
 These differentiators come from the public competitor audit at
 [`docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md`](docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md)
-(Section 3, "Where AskMyDocs is genuinely AHEAD") plus the v8.11 Auto-Wiki
-cycle. They are the moats no other public RAG platform — open-source or SaaS —
-currently ships.
+(Section 3, "Where AskMyDocs is genuinely AHEAD"), the v8.11 Auto-Wiki
+cycle, and the [Annota AI gap audit](docs/v4-platform/AUDIT-2026-09-11-annota-ai-gap.md)
+that drove the v8.36 → v8.39 Document Intelligence cycle. They are the moats
+no other public RAG platform — open-source or SaaS — currently ships.
 
 | ★ | Moat | One-line |
 |:---:|---|---|
@@ -135,8 +138,9 @@ currently ships.
 | ★ | **MIT-licensed, self-hostable, on-prem feasible** (no $500K/yr vendor contract) | Vectara is the only competitor that ships on-prem ($500K/yr public list). Glean / Notion AI / ChatGPT Enterprise / M365 Copilot are SaaS-only. AskMyDocs runs on any Laravel + PostgreSQL + pgvector host with zero vendor lock-in; the entire sister-package stack is MIT and independently reusable. |
 | ★ | **Eval-harness CI gate + nightly LLM-as-judge + adversarial cohorts + retrieval-metric source-of-truth** | `padosoft/eval-harness` v1.3 RAG regression gate on every PR (4 datasets / 1 baseline + 3 adversarial / 7 metrics including custom `CitationGroundednessMetric` + `CosineGroundednessMetric`); `eval:nightly` Artisan cron at 05:30 UTC with three-fence cost guard, regression detection vs prior baseline, `Log::alert` + sidecar on regression; adversarial-lane nightly opt-in shipped in v4.4. **Since v8.18 it is also a runtime `require` dependency**: the retrieval-metric math (MRR, nDCG@k) is delegated to it through a single anti-corruption adapter (`PackageMetricAdapter`), so the package — not bespoke host code — is the source of truth for ranking metrics. Out-of-the-box eval surface nobody else publicly ships. |
 | ★ | **Self-compiling Auto-Wiki tier behind an anti-hallucination firewall** (v8.11) | A second-class **`auto` tier** the system *builds itself* — on ingest the LLM enriches frontmatter (tags / summary / cross-refs / evidence-tier), materialises a navigable graph, synthesizes new `domain-concept` pages, indexes + lints them, agentically navigates (multi-hop BFS), and cross-model-reviews its own output — yet the **reranker firewall always ranks human-`accepted` > auto > raw**, so machine knowledge never silently becomes authoritative. Every layer is reversible, audited, tenant-scoped, default-ON-but-degradable, and exposed PHP + HTTP API + MCP. No public RAG platform ships a self-maintaining knowledge tier *behind* a human-vouched firewall. |
+| ★ | **Document Intelligence closing the Annota AI gap end to end** (v8.36 → v8.39) | *File → reviewed Markdown → portable, agent-consumable wiki* — the exact seam a 2026 competitor audit found us missing, closed without cutting the corner they did. OCR of scans/images with pluggable drivers (docling / Mistral OCR / vision-LLM / tesseract); the converted Markdown genuinely **stored** as a versioned conversion artifact, not a lossy chunk reconstruction; a Digitization Review loop where an agent **proposes** a text correction and a human approves it — never an ungated `update_document_page`-style rewrite; an already-compiled, hash-manifested portable wiki export with a live `.mcp.json` back-link; and the maintenance cron itself upgradeable to a named, observable, tenant-scoped delegated routine. See the [full comparison](#how-it-compares--the-annota-ai-gap-closed-v836--v839) below. |
 
-### Plus: a closed-loop **KB Lifecycle Intelligence** suite (v8.7 → v8.11)
+### Plus: a closed-loop **KB Lifecycle Intelligence** suite (v8.7 → v8.39)
 
 Beyond the moats, the v8.7–v8.11 cycles shipped a closed governance loop most
 RAG tools simply don't have — the exact capabilities the
@@ -233,6 +237,32 @@ tells buyers to demand:
   CSV export / revoke, a direct-invitation sender, and referral / reward / waitlist / anti-abuse tables)
   inside the unified admin chrome, and a closed-beta `INVITE_REQUIRED` signup gate that is
   **default-OFF**. See the [doc-site](https://padosoft.mintlify.app/invitations).
+- **Document Intelligence — file → reviewed Markdown → portable, agent-consumable wiki**
+  (v8.36 → v8.39) — closes the exact gap a competitor audit
+  ([Annota AI](docs/v4-platform/AUDIT-2026-09-11-annota-ai-gap.md)) found: **OCR of scans and
+  images** (`OcrConverter`, pluggable docling / Mistral OCR / vision-LLM / tesseract drivers,
+  figures extracted to `images/`, LaTeX formulas, per-page confidence, and a FinOps cost estimate
+  on the upload modal — v8.36/W1); the converted Markdown now genuinely **stored** as a real
+  conversion artifact on the existing *Cloud Time Machine* — faithful document diff/restore
+  instead of a chunk reconstruction, versions born on correction with `actor`/`reason` (v8.36/W2);
+  a **Digitization Review** loop — OCR'd content is born in the `auto` tier and promoted to
+  `human` on approval, the anti-hallucination reranker firewall's `human > auto` ordering now
+  covering non-canonical rows too, an MCP `KbProposeTextCorrectionTool` that **proposes** a
+  correction and never commits one (the explicit inverse of a competitor's ungated
+  `update_document_page`), and a `ReviewTab` admin UI (v8.37/W3); **Portable Wiki Export** —
+  `kb:export-wiki` ships an ACL-filtered, hash-manifested, **already-compiled** `raw/`+`wiki/`
+  folder with a `.mcp.json` pointing back at the live server (placeholder credential env-vars
+  only, never an embedded token), an idempotent async HTTP surface, and `kb:import-wiki`
+  returning edits as human-gated promotion candidates, never a direct write (v8.38/W4); and
+  **Auto-Wiki maintenance as a delegated routine** — the existing nightly maintenance cron can
+  now optionally run as a named, observable routine via `padosoft/laravel-routines`, tenant-scoped
+  entirely by the host since the engine has none of its own concept of a tenant (v8.39/W5). Every
+  surface tri-surface (PHP + HTTP + MCP), every flag default-**OFF**, both states tested (R43).
+  See [Documents & OCR](https://padosoft.mintlify.app/documents-and-ocr),
+  [Digitization Review](https://padosoft.mintlify.app/digitization-review),
+  [Portable Wiki Export](https://padosoft.mintlify.app/portable-wiki-export),
+  [Auto-Wiki](https://padosoft.mintlify.app/auto-wiki), and the
+  [full Annota AI comparison](#how-it-compares--the-annota-ai-gap-closed-v836--v839) below.
 
 ---
 
