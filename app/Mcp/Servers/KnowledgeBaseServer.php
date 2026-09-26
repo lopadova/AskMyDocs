@@ -52,6 +52,7 @@ use App\Mcp\Tools\KbWikiMaintainTool;
 use App\Mcp\Tools\KbWikiNavigateTool;
 use App\Mcp\Tools\KbWikiPromoteTool;
 use App\Mcp\Tools\KbWikiReviewTool;
+use App\Mcp\Tools\KbWikiRoutineStatusTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbRunReportTool;
 use App\Mcp\Tools\KbSearchTool;
@@ -233,6 +234,13 @@ class KnowledgeBaseServer extends Server
         KbCreateExportTool::class,
         KbGetExportTool::class,
         KbImportWikiTool::class,
+
+        // v8.39/W5 / ADR 0033 §8 — Auto-Wiki maintenance as a delegated
+        // routine, MCP read surface. Read-only: no MCP `run` tool exists
+        // (documented R44 exception, same posture as W1's OCR re-run and
+        // W3's review-approval — an agent may see the routine's state,
+        // never start it).
+        KbWikiRoutineStatusTool::class,
 
         // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
         // The invite engine's MCP tools over the SAME services the HTTP + PHP

@@ -558,6 +558,20 @@ Route::middleware([
         Route::post('kb/imports', [\App\Http\Controllers\Api\Admin\KbWikiImportController::class, 'store'])
             ->name('api.admin.kb.imports.store');
 
+        // v8.39/W5 — Auto-Wiki maintenance as a delegated routine (ADR
+        // 0033 §8). Default OFF (kb.wiki_routine.enabled, R43) — GET
+        // always answers (either {disabled: true} or the tenant's
+        // routine status); POST requires the flag on. Tenant comes from
+        // TenantContext (session/header), never from request input
+        // (SEC-IDOR-001). R32 — covered by the AdminAuthorizationMatrix
+        // (GET) plus a dedicated write-boundary test for the POST.
+        Route::prefix('kb/wiki-routine')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\Admin\KbWikiRoutineController::class, 'index'])
+                ->name('api.admin.kb.wiki-routine.index');
+            Route::post('/run', [\App\Http\Controllers\Api\Admin\KbWikiRoutineController::class, 'run'])
+                ->name('api.admin.kb.wiki-routine.run');
+        });
+
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
         // knowledge_document_tags. Controller methods take `int $id`

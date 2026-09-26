@@ -77,6 +77,60 @@ Each phase is independently toggleable and **degrades cleanly when off**:
 `KB_CHANGE_AUTOAPPLY_ENABLED` (default-OFF). With every flag off, AskMyDocs
 behaves exactly like its pre-Auto-Wiki self.
 
+## Maintenance as a routine (v8.39/W5, ADR 0033)
+
+`kb:wiki-maintain`'s nightly cron (index rebuild + lint + backfill) can
+optionally run as a **named, observable routine** instead of an anonymous
+scheduler entry — the same `padosoft/laravel-routines` engine other
+delegated-agent work in this platform uses. Default OFF
+(`KB_WIKI_ROUTINE_ENABLED`, R43): with it off, the cron is byte-identical
+to before this ADR.
+
+```mermaid
+flowchart LR
+    A["kb:wiki-routine run<br/>POST .../wiki-routine/run"] --> B{"Routine row<br/>exists for this tenant?"}
+    B -->|no| C["RoutineManager::create()<br/>auto-provisions one"]
+    B -->|yes| D["RoutineManager::fireNow()"]
+    C --> D
+    D --> E["WikiMaintenanceRoutineTarget::fire()"]
+    E --> F["WikiMaintainer::maintain()<br/>(unchanged core)"]
+    F --> G["TargetResult::succeeded/failed"]
+
+    H["Nightly: WikiMaintenanceRoutineGate"] -->|"flag on AND target registered<br/>AND an active routine exists"| I["skip the legacy cron slot —<br/>routines:tick fires it instead"]
+    H -->|"any condition not met<br/>(incl. any DB error)"| J["keep the legacy<br/>kb_wiki_maintain cron"]
+```
+
+**What it is:** a `routines` row (package table, no schema of its own added
+by AskMyDocs) whose `target_type` is `askmydocs.wiki_maintenance` and whose
+`organization_id` holds this app's tenant id — the package has no tenant
+concept, so `WikiRoutineService` does the R30 scoping itself. Reading or
+triggering it goes through AskMyDocs' own tenant-scoped, RBAC-gated
+tri-surface — `padosoft/laravel-routines`' own generic admin API
+(`api/routines/v1`) is turned OFF in this deployment (`ROUTINES_API_ENABLED=false`)
+because it has no tenant boundary and would otherwise let any authenticated
+user of any tenant read every tenant's routines.
+
+**Why no MCP `run` tool.** Starting the routine spends and rewrites
+`auto`-tier pages — the same posture the OCR re-run and review-approval
+surfaces elsewhere in this platform already take. An agent may see
+`KbWikiRoutineStatusTool`'s read-only report of the routine's status, last
+run, and any pending question; it can never start a run itself.
+
+**An honest gap.** The routine has no granted *mandate* this cycle — no
+step-up consent flow exists yet to authorize one — so it runs with exactly
+the same authority the unattended cron already had: `WikiMaintainer` still
+only ever compiles and lints, never touches a `human`-tier page. The
+`MandateExceeded`/pause-and-ask machinery this engine provides is real and
+wired through, but nothing in this cycle can trigger it. A future cycle
+that wants the full "ask a human when it exceeds its mandate" experience
+needs to build that consent UI first — genuinely separate scope, documented
+rather than glossed over in [ADR 0033](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0033-v839-auto-wiki-maintenance-as-a-delegated-routine.md).
+
+```bash
+php artisan kb:wiki-routine status --tenant=acme   # always available, {disabled: true} when the flag is off
+php artisan kb:wiki-routine run --tenant=acme      # requires KB_WIKI_ROUTINE_ENABLED=true
+```
+
 ## Gotchas & operations
 
 - The firewall is non-negotiable: never write retrieval code that ignores

@@ -41,9 +41,14 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
     public function test_default_cron_is_registered_when_no_override(): void
     {
         $schedule = $this->app->make(Schedule::class);
-        // Sanity: the schedule instance comes from the IoC container,
-        // not from the bootstrap closure, so it starts empty.
-        $this->assertSame([], $schedule->events());
+        // Sanity: the schedule instance comes from the IoC container, not
+        // from the bootstrap closure, so it starts empty of every HOST
+        // slot. v8.39/W5 — `padosoft/laravel-routines` (a `require`
+        // dependency now, ADR 0033 §2) auto-registers its OWN `routines:tick`
+        // on ANY resolved `Schedule` instance (`callAfterResolving`), so this
+        // no longer means "zero events" — only "zero of this project's
+        // Tier-1 slots."
+        $this->assertSame([], $this->collectExpressionsFor($schedule, 'kb:prune-deleted'));
 
         (new TierOneSchedulerRegistrar)->register($schedule);
 
@@ -174,6 +179,31 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
     /**
      * @return array<int, string>
      */
+    /**
+     * v8.39/W5 (ADR 0033 §6) — `kb_wiki_maintain` stays in `SLOTS` (ops
+     * inventory) but `register()`'s `$excludeSlots` param lets a caller
+     * (bootstrap/app.php, gated on WikiMaintenanceRoutineGate) skip
+     * actually scheduling it once a delegated routine owns firing it.
+     * Every OTHER slot must be unaffected by the exclusion.
+     */
+    public function test_excluded_slot_is_not_registered_while_other_slots_are_unaffected(): void
+    {
+        $schedule = $this->app->make(Schedule::class);
+        (new TierOneSchedulerRegistrar)->register($schedule, ['kb_wiki_maintain']);
+
+        $this->assertSame([], $this->collectExpressionsFor($schedule, 'kb:wiki-maintain'));
+        $this->assertNotEmpty($this->collectExpressionsFor($schedule, 'kb:prune-deleted'));
+    }
+
+    public function test_no_exclusion_registers_kb_wiki_maintain_as_before(): void
+    {
+        $schedule = $this->app->make(Schedule::class);
+        (new TierOneSchedulerRegistrar)->register($schedule);
+
+        $events = $this->collectExpressionsFor($schedule, 'kb:wiki-maintain');
+        $this->assertContains('40 4 * * *', $events);
+    }
+
     private function collectExpressionsFor(Schedule $schedule, string $needle): array
     {
         $matches = [];

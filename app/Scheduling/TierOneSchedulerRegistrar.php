@@ -70,7 +70,15 @@ final class TierOneSchedulerRegistrar
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
         // v8.9 — UI upload staging buffer retention sweep.
         ['kb_prune_staging_batches', 'kb:prune-staging-batches'],
-        // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint + backfill).
+        // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint
+        // + backfill). v8.39/W5 (ADR 0033 §6): stays LISTED here so ops
+        // inventory (`MaintenanceCommandController::schedulerStatus()`,
+        // `WikiMaintainTriSurfaceTest`) keeps seeing it, but `register()`
+        // below can skip actually scheduling it when
+        // App\Routines\WikiMaintenanceRoutineGate says the routine (via
+        // laravel-routines' own `routines:tick`) now owns firing it —
+        // a DB-dependent condition the generic per-slot config check
+        // below can't express.
         ['kb_wiki_maintain', 'kb:wiki-maintain'],
         // v8.16 — FinOps maintenance: snapshot watched-model prices, evaluate
         // budget alert thresholds, prune the usage ledger past its retention
@@ -83,9 +91,20 @@ final class TierOneSchedulerRegistrar
         ['kb_prune_wiki_exports', 'kb:prune-wiki-exports'],
     ];
 
-    public function register(Schedule $schedule): void
+    /**
+     * @param  list<string>  $excludeSlots  slot keys to skip actually
+     *         scheduling this call — v8.39/W5 (ADR 0033 §6): used for
+     *         `kb_wiki_maintain` when a delegated routine now owns firing
+     *         it. The slot stays in `SLOTS` (and therefore in `slots()`'s
+     *         ops-inventory) either way; only the `Schedule::command()`
+     *         registration is skipped.
+     */
+    public function register(Schedule $schedule, array $excludeSlots = []): void
     {
         foreach (self::SLOTS as [$slot, $command]) {
+            if (in_array($slot, $excludeSlots, true)) {
+                continue;
+            }
             $this->registerSlot($schedule, $slot, $command);
         }
     }

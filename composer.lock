@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "12a61f904c518acc2d8056a0f28b87c8",
+    "content-hash": "cf2c302c4ed8db05e68b5f4758063cfa",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -4977,6 +4977,127 @@
                 "source": "https://github.com/padosoft/laravel-pii-redactor-admin"
             },
             "time": "2026-07-24T14:01:29+00:00"
+        },
+        {
+            "name": "padosoft/laravel-routines",
+            "version": "v1.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/laravel-routines.git",
+                "reference": "aa4d46807a4607ee7e9a9b22f9503505be28e5b1"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/laravel-routines/zipball/aa4d46807a4607ee7e9a9b22f9503505be28e5b1",
+                "reference": "aa4d46807a4607ee7e9a9b22f9503505be28e5b1",
+                "shasum": ""
+            },
+            "require": {
+                "dragonmantank/cron-expression": "^3.3",
+                "illuminate/console": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/routing": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "padosoft/laravel-routines-contracts": "^1.2",
+                "php": "^8.3",
+                "psr/log": "^3.0",
+                "spatie/laravel-package-tools": "^1.16"
+            },
+            "require-dev": {
+                "larastan/larastan": "^3.0",
+                "laravel/framework": "^12.0|^13.0",
+                "laravel/pint": "^1.18",
+                "orchestra/testbench": "^10.0|^11.0",
+                "pestphp/pest": "^4.4",
+                "pestphp/pest-plugin-laravel": "^4.1"
+            },
+            "suggest": {
+                "padosoft/laravel-ai-finops": "Tetti di spesa per fire e per periodo, con sospensione automatica.",
+                "padosoft/laravel-iam-agents": "Fa girare le routine con identita' delegata (sub + act) e autorita' = intersezione stretta, rivalutata a ogni fire.",
+                "padosoft/laravel-rebel-channels": "Porta su Telegram/WhatsApp/SMS/voce la domanda di una routine che si e' fermata.",
+                "padosoft/laravel-routines-admin": "Il pannello: schedule, ledger, mandati e la coda di cio' che aspetta una risposta.",
+                "phpunit/phpunit": "Required to use the shipped target-contract kit (Padosoft\\\\Routines\\\\Testing\\\\AssertsTargetContract) in your own test suite."
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\Routines\\RoutinesServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\Routines\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Scheduled, manual and webhook-triggered agentic routines for Laravel — with delegated identity, budget ceilings and a human reachable when a routine hits something it wasn't authorized to do.",
+            "keywords": [
+                "agentic",
+                "ai",
+                "automation",
+                "cron",
+                "laravel",
+                "routines",
+                "scheduler"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/laravel-routines/issues",
+                "source": "https://github.com/padosoft/laravel-routines/tree/v1.2.0"
+            },
+            "time": "2026-08-29T19:30:25+00:00"
+        },
+        {
+            "name": "padosoft/laravel-routines-contracts",
+            "version": "v1.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/laravel-routines-contracts.git",
+                "reference": "52a251701b9046fc62fe43bf12c889d8426daf9f"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/laravel-routines-contracts/zipball/52a251701b9046fc62fe43bf12c889d8426daf9f",
+                "reference": "52a251701b9046fc62fe43bf12c889d8426daf9f",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "pestphp/pest": "^3.0",
+                "phpstan/phpstan": "^2.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\Routines\\Contracts\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Shared contracts for padosoft/laravel-routines — the vocabulary a package needs to declare a routine target, with zero runtime dependencies.",
+            "keywords": [
+                "agentic",
+                "automation",
+                "contracts",
+                "laravel",
+                "routines",
+                "scheduler"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/laravel-routines-contracts/issues",
+                "source": "https://github.com/padosoft/laravel-routines-contracts/tree/v1.2.0"
+            },
+            "time": "2026-08-29T19:04:26+00:00"
         },
         {
             "name": "phpoffice/math",
@@ -12113,5 +12234,5 @@
     "platform-overrides": {
         "php": "8.3.0"
     },
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.6.0"
 }
