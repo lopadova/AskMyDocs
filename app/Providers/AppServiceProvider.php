@@ -67,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(\App\Authorization\IamPdp::class, \App\Authorization\SpatieIamPdp::class);
+
         $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
 
         // PR11 / Phase G4 — PDF rendering strategy. The interface is
