@@ -364,8 +364,10 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                 ))}
                             </select>
                             {/* v8.19/W5 — the agentic dimension: extract (RAG LLM),
-                              * graph (deterministic governance metric, no LLM), or
-                              * verify (anti-hallucination second pass). */}
+                              * graph (deterministic governance metric, no LLM),
+                              * verify (anti-hallucination second pass), or
+                              * vision (v8.40/W6, ADR 0034 — one vision-LLM call
+                              * per document over its OCR figures or own image). */}
                             <select
                                 aria-label={`Column ${i + 1} agent`}
                                 data-testid={`admin-tabular-review-create-column-${i}-agent`}
@@ -742,9 +744,14 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                             <ul data-testid="admin-tabular-review-evidence-citations" style={{ paddingLeft: 16 }}>
                                 {citations.map((raw, ci) => {
                                     const c = (raw ?? {}) as { chunk_id?: unknown; quote?: unknown };
+                                    // v8.40/W6 (ADR 0034) — a `vision` column's citations
+                                    // reference the image the model was shown
+                                    // (a figure filename or the document's own
+                                    // source filename), not a chunk id.
+                                    const label = col?.agent === 'vision' ? 'image' : 'chunk';
                                     return (
                                         <li key={ci} data-testid={`admin-tabular-review-evidence-citation-${ci}`} style={{ marginBottom: 8, fontSize: 13 }}>
-                                            <code style={{ color: 'var(--fg-3)' }}>chunk {String(c.chunk_id ?? '?')}</code>
+                                            <code style={{ color: 'var(--fg-3)' }}>{label} {String(c.chunk_id ?? '?')}</code>
                                             {typeof c.quote === 'string' && c.quote !== '' && (
                                                 <blockquote style={{ margin: '4px 0 0', paddingLeft: 8, borderLeft: '2px solid var(--hairline)' }}>
                                                     {c.quote}

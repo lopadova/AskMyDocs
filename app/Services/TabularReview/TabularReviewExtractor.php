@@ -62,6 +62,7 @@ class TabularReviewExtractor
         private readonly KbSearchService $search,
         private readonly TenantContext $ctx,
         private readonly GovernanceColumnResolver $governance,
+        private readonly VisionColumnResolver $vision,
     ) {}
 
     /**
@@ -86,17 +87,24 @@ class TabularReviewExtractor
         }
 
         // Group columns by extraction path: json_path shortcut (no LLM),
-        // graph governance (no LLM, deterministic), or the LLM batch.
+        // graph governance (no LLM, deterministic), vision (one LLM call per
+        // column per document, unbatched), or the batched LLM path.
         $shortcutColumns = [];
         $graphColumns = [];
+        $visionColumns = [];
         $llmColumns = [];
         foreach ($columns as $idx => $col) {
-            // `agent: graph` WINS over the json_path format shortcut so the agent
-            // dimension is truly orthogonal — a graph column always resolves its
-            // governance metric and can never be silently downgraded into a
-            // metadata lookup by a stray `format: json_path` (Copilot).
+            // `agent: graph` and `agent: vision` WIN over the json_path format
+            // shortcut so the agent dimension is truly orthogonal — a graph
+            // column always resolves its governance metric and a vision column
+            // always resolves its images; neither can be silently downgraded
+            // into a metadata lookup by a stray `format: json_path` (Copilot).
             if ($col['agent']->isLlmFree()) { // AgentKind::GRAPH — deterministic governance.
                 $graphColumns[$idx] = $col;
+                continue;
+            }
+            if ($col['agent']->isVision()) { // AgentKind::VISION — one vision-LLM call per document.
+                $visionColumns[$idx] = $col;
                 continue;
             }
             if ($col['format']->isLlmFree() && $col['json_path'] !== null) {
@@ -128,6 +136,33 @@ class TabularReviewExtractor
                     status: CellStatus::READY,
                     content: $resolved,
                     flag: CellFlag::tryFrom($resolved['flag']) ?? CellFlag::GREY,
+                );
+            }
+            $persisted[] = $cell;
+            $onCell?->__invoke($cell);
+        }
+
+        // ── Vision path (LLM vision call over OCR figures or a standalone image doc) ──
+        foreach ($visionColumns as $idx => $col) {
+            $instruction = $col['prompt'] !== '' ? $col['prompt'] : $col['name'];
+            $resolved = $this->vision->resolve($doc, $instruction, $col['format'], $col['enum_values']);
+            if ($resolved === null) {
+                $cell = $this->persistFailure(
+                    $tenant,
+                    $review,
+                    $doc,
+                    $idx,
+                    'Vision extraction is disabled on this deployment (KB_TABULAR_VISION_ENABLED=false).',
+                );
+            } else {
+                $cell = $this->persistCell(
+                    $tenant,
+                    $review,
+                    $doc,
+                    $idx,
+                    status: CellStatus::READY,
+                    content: $resolved,
+                    flag: CellFlag::tryFrom($resolved['flag']) ?? CellFlag::RED,
                 );
             }
             $persisted[] = $cell;
