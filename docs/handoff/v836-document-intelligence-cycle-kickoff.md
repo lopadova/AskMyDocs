@@ -1,13 +1,16 @@
 # Hand-off — v8.36 → v8.40 Document Intelligence cycle: session kickoff
 
 **Status:** designed 2026-09-11, executed 2026-09-12 → 2026-09-26,
-**cycle COMPLETE — W1 through W5 shipped and GA-tagged-pending (v8.36.0 → v8.39.0,
-all four tag pushes blocked by this session's credential scope, see each
-cycle's closure STATUS doc), W6/v8.40 deliberately deferred and never
-opened.** This file is kept as the historical record of how the cycle was
-planned and executed, and as the reference for anyone who later decides to
-promote W6 into an actual v8.40 release. The §7 checkpoint table below is
-the final execution state, not a live one anymore.
+**cycle COMPLETE — W1 through W6 shipped and GA-tagged-pending (v8.36.0 → v8.40.0,
+all five tag pushes blocked by this session's credential scope, see each
+cycle's closure STATUS doc).** W6 was left deferred at v8.39 closure and
+**promoted and shipped the same day** as v8.40.0 (PR #516) once a real
+image-heavy-tenant business signal arrived — see
+[ADR 0034](../adr/0034-v840-vision-column-in-tabular-review.md) and the
+[v8.40 closure STATUS](../v4-platform/STATUS-2026-09-26-v840-w6-closure.md).
+This file is kept as the historical record of how the cycle was planned and
+executed. The §7 checkpoint table below is the final execution state, not a
+live one anymore.
 **Owner of the work:** the Claude Code session opened with `lopadova/AskMyDocs` as
 its *initial* source (§5 explains why it has to be a new session), driven by Lorenzo.
 **Goal:** execute `docs/v4-platform/PLAN-v8.36-document-intelligence-and-llm-wiki-export.md`
@@ -269,9 +272,9 @@ navigation in `docs-site/docs.json`; Playwright real-data E2E for every screen
 | v8.38 GA | `main` | — | [#511](https://github.com/lopadova/AskMyDocs/pull/511) | `1f27af95` | `v8.38.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-25-v838-w4-closure.md)) | merged 2026-09-26T02:59:44+01:00 |
 | W5 | `main` (single PR, no `feature/v8.39` sub-task split — see the PR body / [STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md) for why) | `feature/v8.39` | [#512](https://github.com/lopadova/AskMyDocs/pull/512) | `58c8a898` | — | merged as part of v8.39 GA below (2 must-fix + 1 should-fix from an independent R36-fallback review fixed before merge) |
 | v8.39 GA | `main` | — | [#512](https://github.com/lopadova/AskMyDocs/pull/512) | `58c8a898` | `v8.39.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md)) | merged 2026-09-26T08:25:45+01:00 |
-| W6 | `feature/v8.40` | `feature/v8.40-W6` | in progress | — | — | **PROMOTED 2026-09-26** — the fashion-ecommerce photo-tenant signal the plan's own §W6 conditioned promotion on now exists; [ADR 0034](../adr/0034-v840-vision-column-in-tabular-review.md) is the plan addendum the promotion clause required. See the plan's §W6 (now "ADDENDUM") and the [v8.39 STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md) "Deferred" section for the prior decision this reverses. |
+| W6 | `feature/v8.40` | — (single-PR cycle, mirrors v8.39) | [#516](https://github.com/lopadova/AskMyDocs/pull/516) | `ede79491` | `v8.40.0` (tag push blocked, see [STATUS](../v4-platform/STATUS-2026-09-26-v840-w6-closure.md)) | merged 2026-09-26T16:06:01Z — **PROMOTED 2026-09-26** — the fashion-ecommerce photo-tenant signal the plan's own §W6 conditioned promotion on arrived the same day; [ADR 0034](../adr/0034-v840-vision-column-in-tabular-review.md) is the plan addendum the promotion clause required. Independent subagent review (Copilot out of budget for this roadmap, Codex silent) caught and fixed one real crash path before merge. See the plan's §W6 (now "ADDENDUM") and the [v8.39 STATUS](../v4-platform/STATUS-2026-09-26-v839-w5-closure.md) "Deferred" section for the prior decision this reverses. |
 
-Last updated: 2026-09-26 — cycle complete through W5 (v8.39.0 GA, PR #512); W6/v8.40 (vision column) promoted the same day on an explicit business signal and is now in progress (ADR 0034). Two docs-only follow-ups landed after the v8.39 GA merge, both R46 md-only (no code): [#514](https://github.com/lopadova/AskMyDocs/pull/514) (README/roadmap-doc re-grade against Annota AI + `ENTERPRISE-COMPLETENESS-ROADMAP.md` R5 re-scope) and [#515](https://github.com/lopadova/AskMyDocs/pull/515) (surfaced the whole cycle in the README's top-line "moats" pitch and the doc-site's mirrored landing page, which had been missed by the closure step above).
+Last updated: 2026-09-26 — cycle complete through W6 (v8.40.0 GA, PR #516, merge `ede79491`). W6/v8.40 (vision column) was promoted the same day v8.39 closed, on an explicit fashion-ecommerce business signal, and shipped the same day — see [ADR 0034](../adr/0034-v840-vision-column-in-tabular-review.md) and the [v8.40 closure STATUS](../v4-platform/STATUS-2026-09-26-v840-w6-closure.md). Two docs-only follow-ups landed between the v8.39 and v8.40 GA merges, both R46 md-only (no code): [#514](https://github.com/lopadova/AskMyDocs/pull/514) (README/roadmap-doc re-grade against Annota AI + `ENTERPRISE-COMPLETENESS-ROADMAP.md` R5 re-scope) and [#515](https://github.com/lopadova/AskMyDocs/pull/515) (surfaced the whole cycle in the README's top-line "moats" pitch and the doc-site's mirrored landing page, which had been missed by the closure step above). All five GA tags (`v8.36.0`..`v8.40.0`) remain blocked by this session's credential scope on `git push` of a tag ref — see each cycle's own closure STATUS doc for the exact `git tag` commands.
 
 Follow-ups recorded during W1 (not in scope of a merged PR, to schedule):
 
