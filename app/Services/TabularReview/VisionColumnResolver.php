@@ -125,11 +125,22 @@ class VisionColumnResolver
                 if (count($out) >= $cap) {
                     break;
                 }
+                // OcrFigureStore only ever writes image bytes under
+                // `.../images/`, but this resolver has no control over that
+                // invariant — defence in depth, matching the allow-list the
+                // standalone-document branch below already enforces.
+                try {
+                    $mime = $storage->mimeType($path) ?: 'image/png';
+                } catch (\Throwable) {
+                    continue;
+                }
+                if (! in_array($mime, self::IMAGE_MIME_ALLOWLIST, true)) {
+                    continue;
+                }
                 $bytes = $storage->get($path);
                 if (! is_string($bytes) || $bytes === '') {
                     continue;
                 }
-                $mime = $storage->mimeType($path) ?: 'image/png';
                 $out[] = ['bytes' => $bytes, 'mime' => $mime, 'relative' => 'images/'.basename($path)];
             }
             if ($out !== []) {
@@ -151,6 +162,19 @@ class VisionColumnResolver
             return [];
         }
         $prefix = StorageNamespace::recordedPrefix($doc->metadata);
+        // A recorded prefix that CANNOT name a path (e.g. a legacy/malformed
+        // `../outside`) is returned verbatim by recordedPrefix() by design —
+        // StorageNamespace's own contract says it "throws, in whatever ran
+        // next" unless the caller checks first. Every other consumer that
+        // composes a path from recordedPrefix() (IngestDocumentJob,
+        // OcrService, DocumentDeleter, DocumentIngestor, ReembedDocumentJob)
+        // guards with prefixCanNamePath() before composing; this resolver
+        // must too, or a malformed-prefix document would throw uncaught out
+        // of resolve() and abort EVERY column for that document — not just
+        // degrade the vision one (R14).
+        if ($prefix !== '' && ! StorageNamespace::prefixCanNamePath($prefix)) {
+            return [];
+        }
         $sourcePath = $prefix === '' ? $normalized : KbPath::normalize($prefix.'/'.$normalized);
 
         if (! $storage->exists($sourcePath)) {

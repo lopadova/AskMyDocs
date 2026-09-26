@@ -190,6 +190,42 @@ final class VisionColumnResolverTest extends TestCase
         Http::assertNothingSent();
     }
 
+    // ── Malformed recorded prefix (independent-review must-fix) ──────
+
+    public function test_a_prefix_that_cannot_name_a_path_degrades_to_a_red_cell_instead_of_throwing(): void
+    {
+        // StorageNamespace::recordedPrefix() returns a legacy/malformed
+        // prefix like `../outside` verbatim by design — its own contract
+        // says composing a path from it "throws, in whatever ran next"
+        // unless the caller guards with prefixCanNamePath() first (the
+        // pattern IngestDocumentJob/OcrService/DocumentDeleter/
+        // DocumentIngestor/ReembedDocumentJob all already follow).
+        // resolve() must never let this abort the whole extract() call for
+        // the document — it must degrade to the same "no visual evidence"
+        // red cell as any other unreadable source (R14).
+        config(['kb.tabular_review.vision.enabled' => true]);
+        Storage::fake('kb');
+        Storage::disk('kb')->put('catalog/sku-5.jpg', 'JPEGBYTES');
+
+        $doc = $this->doc([
+            'source_path' => 'catalog/sku-5.jpg',
+            'mime_type' => 'image/jpeg',
+            'metadata' => ['prefix' => '../outside'],
+        ]);
+
+        Http::fake(['*' => Http::response(['error' => 'should_not_be_called'], 500)]);
+
+        $resolver = $this->app->make(VisionColumnResolver::class);
+        $result = $resolver->resolve($doc, 'What colour is the garment?', FormatType::TEXT, []);
+
+        $this->assertNotNull($result);
+        $this->assertNull($result['summary']);
+        $this->assertSame(CellFlag::RED->value, $result['flag']);
+        $this->assertStringContainsString('No visual evidence', $result['reasoning']);
+
+        Http::assertNothingSent();
+    }
+
     // ── Provider throws ──────────────────────────────────────────────
 
     public function test_provider_call_throwing_returns_a_red_cell_without_leaking_the_raw_exception(): void
