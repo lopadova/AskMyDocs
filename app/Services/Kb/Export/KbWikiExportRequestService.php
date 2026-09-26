@@ -9,8 +9,8 @@ use App\Models\KbWikiExportRequest;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * v8.38/W4b (ADR 0032 §5/§11) — orchestrates the ASYNC export request:
@@ -64,20 +64,50 @@ final class KbWikiExportRequestService
             $authDigest,
         );
 
-        $existing = KbWikiExportRequest::query()
-            ->forTenant($tenantId)
-            ->where('idempotency_key', $key)
-            ->whereIn('status', [
-                KbWikiExportRequest::STATUS_QUEUED,
-                KbWikiExportRequest::STATUS_PROCESSING,
-                KbWikiExportRequest::STATUS_COMPLETED,
-            ])
-            ->first();
-        if ($existing instanceof KbWikiExportRequest) {
-            return $existing;
-        }
+        // Independent-review fix (PR #511 GA merge) — the whole
+        // find-or-create sequence is now serialized per (tenant, key) so
+        // no caller can ever race the unique (tenant_id, idempotency_key)
+        // constraint: every writer of this exact key funnels through the
+        // same lock, so a QueryException from that constraint can no
+        // longer happen from this method's own callers. This also fixes a
+        // genuine bug the lock-free version had: a request whose PRIOR
+        // identical attempt ended in `failed` (temp-disk hiccup, zip
+        // failure, staging-disk blip — see ExecuteKbWikiExportJob::fail())
+        // could never be retried — the same corpus/options/ACL state
+        // deterministically re-derives the same idempotency key, the
+        // `create()` collided with the dead row's still-live unique
+        // constraint, and the fallback lookup (no status filter) handed
+        // the stale FAILED row straight back as if it were a legitimate
+        // reuse, forever. A FAILED/EXPIRED row is terminal and not
+        // reusable, so it is deleted here and a fresh row takes its place
+        // under the same idempotency key — the retry the caller actually
+        // wanted.
+        return Cache::lock("kb-wiki-export-request:{$tenantId}:{$key}", 15)->block(10, function () use (
+            $tenantId,
+            $projectKey,
+            $requestingUser,
+            $normalizedOptions,
+            $key,
+        ): KbWikiExportRequest {
+            $existing = KbWikiExportRequest::query()
+                ->forTenant($tenantId)
+                ->where('idempotency_key', $key)
+                ->first();
 
-        try {
+            if ($existing instanceof KbWikiExportRequest) {
+                if (in_array($existing->status, [
+                    KbWikiExportRequest::STATUS_QUEUED,
+                    KbWikiExportRequest::STATUS_PROCESSING,
+                    KbWikiExportRequest::STATUS_COMPLETED,
+                ], true)) {
+                    return $existing;
+                }
+
+                // FAILED or EXPIRED — terminal, not a valid reuse target.
+                // Free the unique slot so the create() below can retry.
+                $existing->delete();
+            }
+
             $request = KbWikiExportRequest::create([
                 'tenant_id' => $tenantId,
                 'project_key' => $projectKey,
@@ -86,26 +116,12 @@ final class KbWikiExportRequestService
                 'options_json' => $normalizedOptions,
                 'idempotency_key' => $key,
             ]);
-        } catch (QueryException $exception) {
-            // Concurrent identical request raced the unique
-            // (tenant_id, idempotency_key) constraint — the loser reads
-            // the winner instead of erroring (same posture as
-            // KbReviewService::proposeCorrection()'s idempotency race).
-            $winner = KbWikiExportRequest::query()
-                ->forTenant($tenantId)
-                ->where('idempotency_key', $key)
-                ->first();
-            if ($winner instanceof KbWikiExportRequest) {
-                return $winner;
-            }
 
-            throw $exception;
-        }
+            ExecuteKbWikiExportJob::dispatch($request->id, (int) $requestingUser->id, $tenantId)
+                ->onQueue((string) config('kb.wiki_export.queue', 'default'));
 
-        ExecuteKbWikiExportJob::dispatch($request->id, (int) $requestingUser->id, $tenantId)
-            ->onQueue((string) config('kb.wiki_export.queue', 'default'));
-
-        return $request;
+            return $request;
+        });
     }
 
     /**

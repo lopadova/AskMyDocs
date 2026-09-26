@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Models\KbWikiExportRequest;
+use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -20,7 +22,15 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
  * `POST /api/admin/kb/exports`. Mirrors
  * {@see \App\Http\Controllers\Api\Admin\KbWikiExportController::show()}'s
  * presentation exactly (same fields, `download_url` present only once the
- * export is completed and not yet expired).
+ * export is completed and not yet expired) INCLUDING its `role:admin|
+ * super-admin` gate — independent-review fix (PR #511 GA merge): being
+ * `#[IsReadOnly]` maps this tool to the baseline `mcp:read` scope every
+ * valid MCP token carries, which is not the same axis as a Laravel role
+ * (see {@see KbCreateExportTool}'s own docblock on this distinction), so
+ * without an explicit re-check any tenant member holding an MCP token
+ * could read another user's export-request status/error metadata even
+ * though the HTTP surface and `KbCreateExportTool` both restrict this
+ * capability to admins.
  *
  * Tenant-scoped (R30) — a foreign-tenant or unknown id both answer "not
  * found", never a cross-tenant existence leak.
@@ -52,6 +62,14 @@ class KbGetExportTool extends Tool
     {
         if (! (bool) config('kb.wiki_export.enabled', false)) {
             return Response::json(['disabled' => true, 'flag' => 'KB_WIKI_EXPORT_ENABLED']);
+        }
+
+        $user = Auth::user();
+        if (! $user instanceof User) {
+            return Response::error('No MCP principal bound to this request.');
+        }
+        if (! $user->hasAnyRole(['admin', 'super-admin'])) {
+            return Response::error('The MCP token\'s principal does not hold export permission (requires admin or super-admin).');
         }
 
         $id = trim((string) $request->get('id', ''));

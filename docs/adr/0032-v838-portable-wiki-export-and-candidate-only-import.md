@@ -357,13 +357,22 @@ exists to preserve.
 
 ### 11. Tri-surface (R44)
 
-- **CLI**: `kb:export-wiki --tenant= --project= --as-user=
-  --format=llm-wiki|markdown|llms-txt [--include-images]` /
-  `kb:import-wiki {path} --tenant= --as-user=`.
+- **CLI**: `kb:export-wiki --tenant= --project= --as-user= --output=` /
+  `kb:import-wiki {folder} --tenant= --as-user=`. Independent-review
+  correction (PR #511 GA merge): only `format=llm-wiki` and
+  `include_images=false` are implemented end to end — neither the CLI nor
+  the async request service accepts a `--format`/`--include-images` flag;
+  a request for anything else is explicitly rejected (R14), never silently
+  ignored. §4/§7's "not yet shipped" language already said as much; this
+  section's own flag list had drifted from it.
 - **HTTP**: `POST /api/admin/kb/exports` (async, staged on the `kb-staging`
-  disk, returns a signed download URL on completion) + `GET
-  /api/admin/kb/exports/{id}` + `POST /api/admin/kb/imports` (candidates
-  only — never a corpus write).
+  disk) + `GET /api/admin/kb/exports/{id}` + `GET
+  /api/admin/kb/exports/{id}/download` + `POST /api/admin/kb/imports`
+  (candidates only — never a corpus write). Independent-review correction:
+  the download route is deliberately **not** a bypass-auth Laravel signed
+  URL — every download re-authorizes the CURRENT Sanctum session (see the
+  "second, independent gate" paragraph below), which a signed URL, by
+  design, would skip.
 - **MCP**: `KbCreateExportTool` (mutating — starts a job and writes a
   retained artifact; SEC-AI-ACT-001 applies in full: authorized like the
   HTTP endpoint, written to `admin_command_audit`, rate-limited per

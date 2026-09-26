@@ -139,6 +139,36 @@ final class KbWikiExportRequestServiceTest extends TestCase
         $this->assertNotSame($first->id, $second->id);
     }
 
+    /**
+     * Independent-review regression (PR #511 GA merge) — before the fix,
+     * a prior FAILED request under the same idempotency key was returned
+     * forever by the `QueryException` fallback lookup (which, unlike the
+     * happy-path lookup, applied no status filter), permanently blocking
+     * retry for that exact tenant/user/project/options/corpus state. A
+     * FAILED row must be treated as terminal-and-discardable, not a valid
+     * reuse target: the retry must get a genuinely NEW, QUEUED row.
+     */
+    public function test_a_prior_failed_request_can_be_retried_under_the_same_idempotency_key(): void
+    {
+        $this->document('docs/a.md');
+        $user = $this->makeUser();
+        $this->membership($user);
+        Auth::login($user);
+
+        $service = app(KbWikiExportRequestService::class);
+        $first = $service->requestExport($this->tenantId, $this->projectKey, $user, []);
+        $first->forceFill(['status' => KbWikiExportRequest::STATUS_FAILED, 'error_message' => 'staging disk blip'])->save();
+
+        $second = $service->requestExport($this->tenantId, $this->projectKey, $user, []);
+
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame(KbWikiExportRequest::STATUS_QUEUED, $second->status);
+        $this->assertSame($first->idempotency_key, $second->idempotency_key);
+        $this->assertNull(KbWikiExportRequest::query()->forTenant($this->tenantId)->find($first->id));
+        $this->assertSame(1, KbWikiExportRequest::query()->forTenant($this->tenantId)->count());
+        Queue::assertPushed(ExecuteKbWikiExportJob::class, 2);
+    }
+
     public function test_requesting_on_behalf_of_a_different_user_than_the_active_guard_refuses(): void
     {
         $requestingUser = $this->makeUser();
