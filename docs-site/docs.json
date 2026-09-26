@@ -28,6 +28,7 @@
           "ingestion",
           "documents-and-ocr",
           "digitization-review",
+          "portable-wiki-export",
           "chat-and-retrieval",
           "canonical-and-promotion",
           "auto-wiki",

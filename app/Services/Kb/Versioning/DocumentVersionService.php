@@ -320,6 +320,28 @@ final class DocumentVersionService
     }
 
     /**
+     * v8.38/W4 (ADR 0032 §6) — the raw artifact (state + bytes) WITHOUT the
+     * reconstruction fallback `contentFor()` applies. Wiki export's `raw/`
+     * is the stored artifact or an explicit `raw_missing` manifest entry,
+     * never a chunk reconstruction (that is an index over the document, not
+     * the document — ADR 0030's own distinction, restated here). Callers
+     * that want "give me something to show" use `contentFor()`; callers
+     * that want "is there a real artifact, and its bytes" use this.
+     *
+     * Deliberately NOT named `artifactStateFor()` — that method already
+     * exists above, memoizes the `verified` state, and returns a bare
+     * `string`. This one always re-reads (export is not a hot path) and
+     * returns the content alongside the state, which the memoized method
+     * cannot: it never holds bytes.
+     *
+     * @return array{state: string, content: string|null, disk: string|null, path: string|null}
+     */
+    public function rawArtifactFor(KnowledgeDocument $version): array
+    {
+        return $this->readArtifact($version);
+    }
+
+    /**
      * @return array{state: string, content: string|null, disk: string|null, path: string|null}
      */
     private function readArtifact(KnowledgeDocument $version): array
