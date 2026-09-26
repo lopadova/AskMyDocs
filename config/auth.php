@@ -77,16 +77,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Two-Factor Authentication (feature flag)
+    | Two-Factor Authentication
     |--------------------------------------------------------------------------
     |
-    | Stubbed in PR2 (Phase B). When disabled (default), the TwoFactorController
-    | returns 501 Not Implemented. A later PR will wire the full TOTP flow.
+    | The feature remains disabled by default for backwards-compatible rollout.
     |
     */
 
     'two_factor' => [
         'enabled' => env('AUTH_2FA_ENABLED', false),
+        'issuer' => env('AUTH_2FA_ISSUER', env('APP_NAME', 'AskMyDocs')),
     ],
 
 ];

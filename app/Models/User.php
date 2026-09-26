@@ -69,6 +69,8 @@ class User extends Authenticatable implements InvitedAccount
         'password',
         'remember_token',
         'email_normalized',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected static function booted(): void
@@ -126,6 +128,8 @@ class User extends Authenticatable implements InvitedAccount
             'password' => 'hashed',
             'is_active' => 'boolean',
             'chat_preferences' => 'array',
+            'two_factor_enabled_at' => 'datetime',
+            'two_factor_last_used_step' => 'integer',
         ];
     }
 

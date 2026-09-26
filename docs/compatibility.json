@@ -1,0 +1,58 @@
+{
+  "schema": "askmydocs-enterprise-compatibility/v1",
+  "measured_at": "2026-09-27",
+  "repository": "AskMyDocs",
+  "branch": "main",
+  "head": "working-tree-after-E01.02",
+  "plan_snapshot": "63e9916b990dc3fb76b8b84083c72a489b5926f5",
+  "vocentra_owner": "separate-agent",
+  "runtime": {
+    "php": "8.5.11",
+    "composer": "2.10.2",
+    "node": "25.2.1",
+    "npm": "11.6.2",
+    "composer_validate": {"result": "PASS", "command": "composer validate --no-check-publish", "exit_code": 0},
+    "artisan_route_list": {"result": "PASS", "exit_code": 0, "command": "php artisan route:list --path=api --except-vendor --no-ansi", "scope": "route bootstrap and enumeration after lock install + explicit provider"}
+  },
+  "dependencies": {
+    "laravel/ai": {"locked": "v0.11.0", "status": "installed_in_lock_not_end_to_end_verified"},
+    "padosoft/laravel-flow": {"locked": "v2.5.0", "status": "installed_in_lock_not_dag_adopted"},
+    "padosoft/laravel-routines": {"locked": "v1.2.0", "status": "installed_and_explicit_provider_wired_bootstrap_pass"},
+    "padosoft/laravel-routines-contracts": {"locked": "v1.2.0", "status": "installed_and_autoloaded"},
+    "padosoft/eval-harness": {"locked": "v1.6.0", "status": "installed_in_lock_not_verified"},
+    "padosoft/laravel-ai-finops": {"locked": "v1.7.0", "status": "installed_in_lock_not_verified"},
+    "padosoft/laravel-ai-guardrails": {"locked": "v1.6.0", "status": "installed_in_lock_not_verified"},
+    "padosoft/askmydocs-connector-base": {"locked": "v1.6.0", "status": "installed_in_lock_contract_only"}
+  },
+  "findings": {
+    "F01": "confirmed_protective_test_pass",
+    "F02": "confirmed_stub_501",
+    "F03": "open_e002_dependency_verification",
+    "F04": "open_cross_repo_verification",
+    "F05": "open_package_not_locked",
+    "F06": "bootstrap_resolved_runtime_delegation_open",
+    "F07": "open_runtime_verification",
+    "F08": "open_runtime_verification",
+    "F09": "coordination_only_separate_owner",
+    "F10": "open_cross_repo_verification",
+    "F11": "confirmed_contract_limit_not_integrated",
+    "F12": "confirmed_static_route_separation",
+    "F13": "open_quality_evaluation",
+    "F14": "changed_graph_expander_present_wiki_navigator_absent",
+    "F15": "not_verified_in_this_workspace",
+    "F16": "open_cross_repo_verification",
+    "F17": "open_runtime_verification",
+    "F18": "open_cross_repo_verification"
+  },
+  "executed_evidence": [
+    {"id": "E00.01-01", "command": "composer validate --no-check-publish", "exit_code": 0, "result": "PASS", "scope": "composer manifest only"},
+    {"id": "E00.02-01", "command": "composer install --no-interaction --prefer-dist --no-progress", "exit_code": 0, "result": "PASS", "scope": "installed two packages from existing lock; no version update"},
+    {"id": "E00.02-02", "command": "php artisan route:list --path=api --except-vendor --no-ansi", "exit_code": 0, "result": "PASS", "scope": "route bootstrap and enumeration"},
+    {"id": "E00.02-03", "command": "php artisan list --raw --no-ansi", "exit_code": 0, "result": "PASS", "scope": "routines:list and routines:tick registered"},
+    {"id": "E00.01-03", "command": "php artisan test tests/Architecture/GraphExecutorNotAdoptedTest.php --no-coverage", "exit_code": 0, "tests": 1, "assertions": 2, "result": "PASS", "scope": "DAG non-adoption guard"},
+    {"id": "E01.02-01", "command": "php artisan test --no-coverage tests/Feature/Api/Auth/TwoFactorTest.php tests/Feature/Api/Auth/TwoFactorStubTest.php", "exit_code": 0, "tests": 9, "assertions": 31, "result": "PASS", "scope": "local Testbench/SQLite 2FA enrollment, TOTP, recovery single-use, disable and flag-off contract"},
+    {"id": "E01.02-02", "command": "php artisan test --no-coverage tests/Unit/Agent/AgentExecutionContextTest.php tests/Unit/Middleware/AuthorizeTenantHeaderTest.php tests/Feature/Agent/AgentRunTransportTest.php tests/Feature/Agent/AgentMessageControllerTest.php tests/Feature/Agent/AgentLoopTest.php", "exit_code": 0, "tests": 26, "assertions": 90, "result": "PASS", "scope": "E01.01 regression"}
+  ],
+  "not_verified": ["provider_live", "browser_real_backend", "postgres_concurrency", "native_devices", "external_webhooks", "production_deploy", "comparative_benchmark", "Vocentra_repository_HEAD", "2fa_browser_authenticator", "2fa_postgres_migration", "2fa_rate_limit_process_boundary"],
+  "next_tasks": ["E01.03", "E00.02 release-matrix follow-up", "E03.01 blocked on graph isolation", "V00.01 coordination-only", "W00.01"]
+}
