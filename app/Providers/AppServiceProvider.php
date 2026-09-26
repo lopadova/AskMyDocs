@@ -67,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(\App\Authorization\IamPdp::class, \App\Authorization\SpatieIamPdp::class);
+
         $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
 
         // PR11 / Phase G4 — PDF rendering strategy. The interface is
@@ -1163,6 +1165,16 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('register', function (Request $request) {
             return Limit::perMinute(6)->by($request->ip());
+        });
+
+        RateLimiter::for('two-factor', function (Request $request) {
+            $user = $request->user();
+            $identity = $user !== null
+                ? 'u:'.$user->getAuthIdentifier()
+                : 'ip:'.$request->ip();
+            $max = max(1, (int) config('auth.two_factor.rate_limit_per_minute', 6));
+
+            return Limit::perMinute($max)->by($identity.'|ip:'.$request->ip());
         });
 
         // SEC-THROTTLE-001 (F-06): the authenticated /kb/chat endpoint drives an

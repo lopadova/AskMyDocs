@@ -110,8 +110,10 @@ Route::middleware('web')->prefix('auth')->group(function () {
             Route::post('/enable', [TwoFactorController::class, 'enable'])
                 ->name('api.auth.2fa.enable');
             Route::post('/verify', [TwoFactorController::class, 'verify'])
+                ->middleware('throttle:two-factor')
                 ->name('api.auth.2fa.verify');
             Route::post('/disable', [TwoFactorController::class, 'disable'])
+                ->middleware('throttle:two-factor')
                 ->name('api.auth.2fa.disable');
         });
     });

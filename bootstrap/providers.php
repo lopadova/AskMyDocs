@@ -31,6 +31,10 @@ $providers = [
     // Windows + Herd). Required for `Flow::define()` / `Flow::execute()`
     // on the kb.ingest definition + future canonical / scheduled flows.
     Padosoft\LaravelFlow\LaravelFlowServiceProvider::class,
+    // v8.39/W5 — laravel-routines engine. Explicit registration keeps the
+    // RoutineManager and its fail-closed delegation defaults available when
+    // Laravel's package-discovery cache is stale on Windows + Herd.
+    Padosoft\Routines\RoutinesServiceProvider::class,
     // v4.2/W2 — registers IngestDocumentFlow definition with FlowEngine
     // on every boot (synchronous, in-process). Must run AFTER the
     // package SP above so the FlowEngine singleton is available, and

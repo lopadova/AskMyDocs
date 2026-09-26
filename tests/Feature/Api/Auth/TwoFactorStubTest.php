@@ -7,10 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
-/**
- * PR2 ships only the stub — AUTH_2FA_ENABLED defaults to false so every
- * endpoint returns 501 until a later PR wires the real TOTP flow.
- */
+/** The disabled rollout contract remains a stable 501 response. */
 class TwoFactorStubTest extends TestCase
 {
     use RefreshDatabase;
