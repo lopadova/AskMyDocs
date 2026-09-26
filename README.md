@@ -1102,6 +1102,24 @@ The chunker registry is order-significant — `PdfPageChunker` is listed FIRST i
 
 The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
 
+### How it compares — the Annota AI gap, closed (v8.36 → v8.39)
+
+The [Annota AI audit](docs/v4-platform/AUDIT-2026-09-11-annota-ai-gap.md) (2026-09-11, baseline v8.35.0) found one competitor moving into our category from the data-preparation side, with a §2.1 "where Annota AI is ahead" matrix that named the exact gap the v8.36 → v8.39 cycle above was built to close. Re-graded against what actually shipped, not the v8.35.0 baseline:
+
+| Capability | v8.35.0 (audit baseline) | v8.39.0 (this cycle) | Annota AI |
+|---|:---:|:---:|:---:|
+| OCR of scans and images | ❌ | ✅ (`OcrConverter`, W1) | ✅ |
+| Layout-aware conversion (tables, figures, LaTeX formulas) | ⚠️ | ✅ (figures to `images/`, LaTeX, W1) | ✅ |
+| Per-asset review status (unreviewed → reviewed → approved) | ⚠️ | ✅ (`auto`/`human` tier + `KbReviewService`, W3) | ✅ |
+| Immutable versions with faithful diff, correction-time `actor`/`reason` | ⚠️ (versions existed, but were chunk reconstructions born only on re-ingest) | ✅ (real conversion artifacts, correction-time versioning, W2) | ✅ |
+| Content export as a portable workspace (`raw/`+`wiki/`, `.mcp.json`, hash-manifested) | ❌ | ✅ (`kb:export-wiki`, W4) | ✅ |
+| MCP tools on the preparation loop (propose a correction, create/get an export, import edits) | ❌ | ✅ — but **propose-only by design** (ADR 0003): no MCP tool can set a review status directly, unlike Annota's `update_document_page`/`update_asset_review_status`, which let an agent rewrite content and mark it reviewed with no human gate | ✅ (no human gate) |
+| Per-operation cost estimate before commit | ⚠️ | ✅ (FinOps cost estimate on the upload modal, W1) | ✅ |
+| Side-by-side original↔Markdown pane with a confidence heat-map, CER/WER metrics | ❌ | ⚠️ **still partial** — the review/approve loop shipped (W3); the advanced side-by-side pane with a heat-map and CER/WER quality metrics is explicitly deferred, documented in the [W3 STATUS](docs/v4-platform/STATUS-2026-09-20-v837-w3-closure.md) | ✅ |
+| Image labelling · Magic Select/Annotate · COCO · YOLO training | ❌ | ❌ — **out of domain by design** (audit §3: a different market; the one adjacency worth a small move, a `vision` column in Tabular Review, is W6, explicitly deferred/optional, see the Roadmap below) | ✅ / 🔜 |
+
+Where AskMyDocs was already ahead at the audit's baseline (§2.2 — hosted grounded Q&A, multi-tenant + source-ACL isolation, 9 connectors vs upload-only, the canonical layer + human-gated promotion + anti-repetition graph, self-compiling Auto-Wiki behind the `human > auto > raw` firewall, PII redaction + crypto-shred, AI Act as shipped modules, ingest-time provenance + injection boundary, an eval gate in CI, spend governance, tamper-evident audit trails, delegated identity/mandates/scheduled agents that pause to ask) remains unchanged and is not re-litigated here — see the audit's §2.2 for the full matrix. **The overlap that mattered — file → reviewed Markdown → portable, agent-consumable wiki — is closed**, and the two genuinely honest gaps that remain (the advanced review pane, and the mandate/consent step-up flow for the routine engine — [W5 STATUS](docs/v4-platform/STATUS-2026-09-26-v839-w5-closure.md) §7) are documented, not silently dropped.
+
 ### Multi-tenant deployment (v4.0)
 
 The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Historical v3.x rows may still carry the storage value `tenant_id = 'default'`, but `default` is now a reserved, non-operational slug: it is never exposed as a team and never grants access. Every operational request requires an explicit membership in an active, non-system tenant.
