@@ -101,6 +101,16 @@ class TwoFactorTest extends TestCase
         $this->assertNull(User::query()->firstOrFail()->fresh()->two_factor_secret);
     }
 
+    public function test_verify_is_rate_limited_per_identity_and_ip(): void
+    {
+        $this->authedUser();
+        config()->set('auth.two_factor.rate_limit_per_minute', 1);
+        $this->postJson('/api/auth/2fa/enable')->assertOk();
+
+        $this->postJson('/api/auth/2fa/verify', ['code' => '000000'])->assertStatus(422);
+        $this->postJson('/api/auth/2fa/verify', ['code' => '000000'])->assertStatus(429);
+    }
+
     private function totp(string $secret): string
     {
         $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';

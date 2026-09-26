@@ -1167,6 +1167,16 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(6)->by($request->ip());
         });
 
+        RateLimiter::for('two-factor', function (Request $request) {
+            $user = $request->user();
+            $identity = $user !== null
+                ? 'u:'.$user->getAuthIdentifier()
+                : 'ip:'.$request->ip();
+            $max = max(1, (int) config('auth.two_factor.rate_limit_per_minute', 6));
+
+            return Limit::perMinute($max)->by($identity.'|ip:'.$request->ip());
+        });
+
         // SEC-THROTTLE-001 (F-06): the authenticated /kb/chat endpoint drives an
         // AI provider turn (real spend) but carried no rate limit — one tenant
         // user could exhaust provider quota / DB capacity for everyone. Key the

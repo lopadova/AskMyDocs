@@ -87,6 +87,7 @@ return [
     'two_factor' => [
         'enabled' => env('AUTH_2FA_ENABLED', false),
         'issuer' => env('AUTH_2FA_ISSUER', env('APP_NAME', 'AskMyDocs')),
+        'rate_limit_per_minute' => (int) env('AUTH_2FA_RATE_LIMIT_PER_MINUTE', 6),
     ],
 
 ];
