@@ -85,6 +85,28 @@ class CaseStudyUsersSeeder extends Seeder
         ],
     ];
 
+    /** @return list<string> */
+    public static function companyKeys(): array
+    {
+        return array_keys(self::COMPANIES);
+    }
+
+    public static function superAdminEmailFor(string $companyKey): string
+    {
+        $company = self::COMPANIES[$companyKey] ?? null;
+        if ($company === null) {
+            throw new \InvalidArgumentException("Unknown case-study company: {$companyKey}");
+        }
+
+        foreach ($company['accounts'] as $account) {
+            if ($account['role'] === 'super-admin') {
+                return $account['email'];
+            }
+        }
+
+        throw new \LogicException("Case-study company {$companyKey} has no super-admin account.");
+    }
+
     public function run(): void
     {
         // UN TENANT PER AZIENDA: tenant_id = project_key. Così l'isolamento vale

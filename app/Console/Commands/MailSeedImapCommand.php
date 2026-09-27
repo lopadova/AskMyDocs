@@ -50,6 +50,7 @@ class MailSeedImapCommand extends Command
         {--purge : Alias legacy di --purge-all-seeded — DISTRUTTIVO}
         {--preview-purge : Emette un confirm token monouso senza toccare la rete}
         {--confirm-token= : Token DB-backed emesso da --preview-purge}
+        {--local-fixture-reset : Auto-conferma SOLO il purge del profilo gold/demo per tutte le fixture, in APP_ENV=local}
         {--actor= : Identità operatore legata al token e all’audit}
         {--dry-run : Costruisce e valida i messaggi senza inviare nulla (non serve la password)}';
 
@@ -78,6 +79,7 @@ class MailSeedImapCommand extends Command
         $purgeDataset = (bool) $this->option('purge-dataset');
         $purgeOnly = (bool) $this->option('purge-only');
         $previewPurge = (bool) $this->option('preview-purge');
+        $localFixtureReset = (bool) $this->option('local-fixture-reset');
         $destructive = $purgeAll || $purgeDataset;
         $actor = trim((string) $this->option('actor'));
         if ($actor === '') {
@@ -121,6 +123,21 @@ class MailSeedImapCommand extends Command
         }
         if ($previewPurge && (! $destructive || $dryRun)) {
             $this->error('--preview-purge richiede un purge esplicito e non si combina con dry-run/estimate-cost.');
+
+            return self::INVALID;
+        }
+        if ($localFixtureReset && ! $this->isPermittedLocalFixtureReset(
+            $mailboxKeys,
+            $profile,
+            $usesDataset,
+            $purgeDataset,
+            $purgeAll,
+            $dryRun,
+            $previewPurge,
+        )) {
+            $this->error(
+                '--local-fixture-reset is restricted to APP_ENV=local, all known test mailboxes, and a scoped gold/demo dataset purge.',
+            );
 
             return self::INVALID;
         }
@@ -180,9 +197,18 @@ class MailSeedImapCommand extends Command
                 $environmentGuard->assertRemoteMutationAllowed();
                 $seeder->assertRemotePreflight($mailboxKeys, $datasetDirectory);
                 if ($destructive) {
+                    $confirmationToken = trim((string) $this->option('confirm-token'));
+                    if ($localFixtureReset) {
+                        // Do not bypass the confirmation protocol: issue and
+                        // immediately consume the SAME operation-bound nonce.
+                        // The option itself is constrained above to a local,
+                        // fixture-only selection and still leaves an audit
+                        // record just like an operator-confirmed reset.
+                        $confirmationToken = $confirmation->issue($operationContext)['token'];
+                    }
                     $confirmation->consume(
                         $operationContext,
-                        trim((string) $this->option('confirm-token')),
+                        $confirmationToken,
                     );
                 }
                 $auditHandles = $audit->begin($operationContext);
@@ -499,6 +525,31 @@ class MailSeedImapCommand extends Command
             mailboxes: (array) $this->option('mailbox'),
             projects: (array) $this->option('project'),
         );
+    }
+
+    /** @param list<string> $mailboxKeys */
+    private function isPermittedLocalFixtureReset(
+        array $mailboxKeys,
+        string $profile,
+        bool $usesDataset,
+        bool $purgeDataset,
+        bool $purgeAll,
+        bool $dryRun,
+        bool $previewPurge,
+    ): bool {
+        $expected = TestEmailFixtures::mailboxKeys();
+        sort($expected);
+        $selected = $mailboxKeys;
+        sort($selected);
+
+        return app()->environment('local')
+            && $usesDataset
+            && in_array($profile, ['gold', 'demo'], true)
+            && $selected === $expected
+            && $purgeDataset
+            && ! $purgeAll
+            && ! $dryRun
+            && ! $previewPurge;
     }
 
     private function resolveDatasetVersion(string $datasetVersion, string $profile): string

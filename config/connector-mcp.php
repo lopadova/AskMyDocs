@@ -3,12 +3,19 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\McpConnectionDiagnostics;
+use App\Services\Dev\LocalIntegrationFixtureEnvironment;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Session\Middleware\StartSession;
 
+$localFixtures = LocalIntegrationFixtureEnvironment::enabled();
+$configuredInternalEndpoints = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('MCP_CONNECTOR_INTERNAL_ENDPOINT_ALLOWLIST', '')),
+)));
+
 return [
-    'enabled' => (bool) env('MCP_CONNECTOR_ENABLED', false),
+    'enabled' => $localFixtures || (bool) env('MCP_CONNECTOR_ENABLED', false),
     'runtime_mode' => env('MCP_CONNECTOR_RUNTIME_MODE', 'off'),
     'legacy_adapter_enabled' => (bool) env('MCP_CONNECTOR_LEGACY_ADAPTER_ENABLED', false),
 
@@ -20,10 +27,13 @@ return [
         'max_redirects' => 3,
         'max_response_bytes' => 2_000_000,
         'max_catalog_pages' => 20,
-        'internal_endpoint_allowlist' => array_values(array_filter(array_map(
-            'trim',
-            explode(',', (string) env('MCP_CONNECTOR_INTERNAL_ENDPOINT_ALLOWLIST', '')),
-        ))),
+        // Loopback is admitted ONLY when the narrow local-fixture gate above
+        // is active. Production still requires an operator-provided explicit
+        // allowlist and keeps the package's private-address protection.
+        'internal_endpoint_allowlist' => array_values(array_unique([
+            ...$configuredInternalEndpoints,
+            ...($localFixtures ? ['127.0.0.1', '::1', 'localhost'] : []),
+        ])),
     ],
 
     'ingest' => [

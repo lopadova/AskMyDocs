@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Services\Dev\LocalIntegrationFixtureEnvironment;
+
 /*
 |--------------------------------------------------------------------------
 | API Connector (host overrides)
@@ -21,6 +23,28 @@ declare(strict_types=1);
 */
 
 return [
+    /*
+    |--------------------------------------------------------------------------
+    | Local deterministic fixtures
+    |--------------------------------------------------------------------------
+    |
+    | The static API mock is deliberately loopback-only. The vendor SSRF guard
+    | must stay enabled everywhere by default; this *explicit* .env flag is
+    | written only by `dev:reset-local-integration-fixtures` after its local
+    | environment guard succeeds. No deployed environment can enable it.
+    |
+    */
+    'ssrf' => [
+        'enabled' => ! LocalIntegrationFixtureEnvironment::enabled()
+            && (bool) env('API_CONNECTOR_SSRF_ENABLED', true),
+        'https_only' => ! LocalIntegrationFixtureEnvironment::enabled()
+            && (bool) env('API_CONNECTOR_HTTPS_ONLY', true),
+        'resolve_dns' => (bool) env('API_CONNECTOR_SSRF_RESOLVE_DNS', true),
+        'allowlist' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('API_CONNECTOR_DOMAIN_ALLOWLIST', '')),
+        ))),
+    ],
     'routes' => [
         'enabled' => (bool) env('API_CONNECTOR_ROUTES_ENABLED', true),
         'prefix' => env('API_CONNECTOR_ROUTES_PREFIX', 'api/admin/api-connectors'),

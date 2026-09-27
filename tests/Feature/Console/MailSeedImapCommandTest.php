@@ -343,6 +343,56 @@ final class MailSeedImapCommandTest extends TestCase
         $this->assertSame($appendsAfterFirstRun, count($appender->appends));
     }
 
+    public function test_local_fixture_reset_issues_and_consumes_its_own_scoped_confirmation(): void
+    {
+        $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'pw');
+        $datasetRoot = $this->temporaryDirectory('local-fixture-gold');
+        $this->bindRecorder();
+        $this->app['env'] = 'local';
+
+        try {
+            $this->artisan('demo:generate-case-study-emails', [
+                '--profile' => 'gold',
+                '--output' => $datasetRoot,
+            ])->assertExitCode(0);
+
+            $this->artisan('mail:seed-imap', [
+                '--all' => true,
+                '--profile' => 'gold',
+                '--dataset-root' => $datasetRoot,
+                '--purge-dataset' => true,
+                '--local-fixture-reset' => true,
+                '--summary-only' => true,
+                '--actor' => 'local-case-study-fixtures',
+            ])->assertExitCode(0);
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+
+        $this->assertGreaterThan(0, EmailDatasetOperationNonce::query()->count());
+        $this->assertSame(
+            0,
+            EmailDatasetOperationNonce::query()->whereNull('consumed_at')->count(),
+            'The local path must consume an operation-bound nonce instead of bypassing confirmation.',
+        );
+    }
+
+    public function test_local_fixture_reset_refuses_a_partial_mailbox_selection(): void
+    {
+        $this->app['env'] = 'local';
+
+        try {
+            $this->artisan('mail:seed-imap', [
+                '--mailbox' => ['rotta-logistics-1'],
+                '--profile' => 'gold',
+                '--purge-dataset' => true,
+                '--local-fixture-reset' => true,
+            ])->assertExitCode(2);
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+    }
+
     public function test_real_append_writes_one_completed_tenant_audit_per_mailbox_without_secrets(): void
     {
         $this->setPassword('CONNECTOR_TEST_GMAIL_PASSWORD', 'do-not-audit-this');

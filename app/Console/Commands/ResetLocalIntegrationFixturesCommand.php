@@ -1,0 +1,155 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Models\AppSetting;
+use App\Services\Admin\AppSettingsResolver;
+use App\Services\Dev\LocalIntegrationFixtureEnvironment;
+use App\Services\Dev\LocalIntegrationFixtureLifecycle;
+use App\Support\TenantContext;
+use Database\Seeders\CaseStudyUsersSeeder;
+use Database\Seeders\LocalIntegrationConnectorsSeeder;
+use Illuminate\Console\Command;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
+use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
+use RuntimeException;
+
+/**
+ * Rebuilds a self-contained local integration scenario for the three case
+ * studies. It never invokes migrate:fresh and never resets a tenant outside
+ * the fixed allowlist.
+ */
+final class ResetLocalIntegrationFixturesCommand extends Command
+{
+    protected $signature = 'dev:reset-local-integration-fixtures
+        {--without-email : Do not mutate the dedicated Gmail fixture mailbox or install/sync IMAP}
+        {--email-profile=gold : Generated fixture email profile: gold or demo}
+        {--skip-smoke : Skip the final local MCP read-only smoke calls}';
+
+    protected $description = 'Reset only the three local case-study tenants, then configure deterministic documents, email, API and MCP fixtures.';
+
+    public function handle(
+        LocalIntegrationFixtureEnvironment $environment,
+        LocalIntegrationFixtureLifecycle $lifecycle,
+        AppSettingsResolver $settings,
+        TenantContext $tenants,
+    ): int {
+        try {
+            $environment->assertLocal();
+            $profile = $this->emailProfile();
+            $environment->enable(app()->environmentFilePath());
+            // A previous local run may have cached configuration before the
+            // narrow fixture gate existed. Clear only that derived cache so
+            // Herd's next request reads the persisted local flag.
+            $this->callChecked('config:clear', []);
+            $this->configureCurrentProcess();
+
+            $this->components->info('1/6 — Riavvio dei mock API e MCP locali');
+            $lifecycle->restart();
+
+            $this->components->info('2/6 — Reset dei soli tenant case-study');
+            foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
+                if (Tenant::query()->where('slug', $tenantId)->exists()) {
+                    $this->callChecked('tenant:reset', ['tenant' => $tenantId, '--force' => true]);
+                } else {
+                    $this->line("  [{$tenantId}] non esiste ancora: sarà creato dal seeder.");
+                }
+            }
+
+            $this->components->info('3/6 — Aziende, utenti e documenti');
+            $initArguments = [
+                '--profile' => $profile,
+                '--generate-email-dataset' => ! (bool) $this->option('without-email'),
+                '--ingest-emails' => ! (bool) $this->option('without-email'),
+                '--local-fixture-email-reset' => ! (bool) $this->option('without-email'),
+                '--skip-emails' => (bool) $this->option('without-email'),
+                '--email-actor' => 'local-case-study-fixtures',
+            ];
+            $this->callChecked('demo:init-case-studies', $initArguments);
+
+            $this->components->info('4/6 — Connettori API e MCP per azienda');
+            $this->callChecked('db:seed', ['--class' => LocalIntegrationConnectorsSeeder::class, '--force' => true]);
+
+            $this->components->info('5/6 — Attivazione runtime MCP nei tre tenant');
+            $previousTenant = $tenants->current();
+            try {
+                foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
+                    $tenants->set($tenantId);
+                    $settings->set('connector.mcp.runtime_mode', 'active', $tenantId, AppSetting::WILDCARD);
+                }
+            } finally {
+                $tenants->set($previousTenant);
+            }
+
+            if (! (bool) $this->option('skip-smoke')) {
+                $this->components->info('6/6 — Smoke MCP read-only per azienda');
+                foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
+                    $connection = McpConnection::withoutGlobalScopes()
+                        ->where('tenant_id', $tenantId)
+                        ->where('project_key', $tenantId)
+                        ->where('label', 'Fixture MCP operativo locale')
+                        ->first();
+                    if (! $connection instanceof McpConnection) {
+                        throw new RuntimeException("Missing local MCP fixture connection for {$tenantId}.");
+                    }
+                    $this->callChecked('mcp-connectors:smoke', [
+                        '--connection' => $connection->public_id,
+                        '--tool' => 'get_company_context',
+                    ]);
+                }
+            } else {
+                $this->components->warn('6/6 — Smoke MCP saltato (--skip-smoke).');
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->components->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->components->info(
+            'Ambiente locale pronto: ogni account case-study ha documenti, e-mail, API e MCP coerenti nel proprio tenant.',
+        );
+
+        return self::SUCCESS;
+    }
+
+    private function configureCurrentProcess(): void
+    {
+        // The current CLI process has already loaded config before we changed
+        // .env. Mirror the persisted local gate here; Herd picks it up on the
+        // next request (and config:cache is intentionally unsupported for this
+        // local-only harness).
+        config([
+            'connector-api.ssrf.enabled' => false,
+            'connector-api.ssrf.https_only' => false,
+            'connector-mcp.enabled' => true,
+            'connector-mcp.http.internal_endpoint_allowlist' => ['127.0.0.1', '::1', 'localhost'],
+            // Run jobs created by this command inline. This makes Gmail ingest
+            // deterministic and avoids waking the shared local Redis queues or
+            // consuming another developer's backlog.
+            'queue.default' => 'sync',
+        ]);
+    }
+
+    private function emailProfile(): string
+    {
+        $profile = trim((string) $this->option('email-profile'));
+        if (! in_array($profile, ['gold', 'demo'], true)) {
+            throw new RuntimeException('--email-profile must be gold or demo.');
+        }
+
+        return $profile;
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function callChecked(string $command, array $arguments): void
+    {
+        $exitCode = $this->call($command, $arguments);
+        if ($exitCode !== self::SUCCESS) {
+            throw new RuntimeException("Command '{$command}' failed with exit code {$exitCode}.");
+        }
+    }
+}
