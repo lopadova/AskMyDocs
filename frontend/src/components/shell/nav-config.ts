@@ -16,6 +16,7 @@ import type { AuthFeatures } from '../../lib/auth-store';
 export type SidebarSection =
     | 'chat'
     | 'sessions'
+    | 'workbench'
     | 'kb-browse'
     | 'dashboard'
     | 'insights'
@@ -85,6 +86,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Workspace',
         items: [
             { id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/$teamHash/chat' },
+            {
+                id: 'workbench',
+                label: 'Workbench',
+                icon: 'Grid',
+                route: '/workbench',
+            },
             // v8.x — ChatGPT-style workspace: KB access plus sessions
             // organised into folders, pinned, archived and flagged.
             // Ungated like Chat: the boundary is per-user ownership, not role.

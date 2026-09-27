@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Connectors;
 
 use App\Connectors\HostIngestionBridge;
+use App\Connectors\UnsupportedIngestionSourceException;
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
@@ -564,6 +565,100 @@ final class HostIngestionBridgeTest extends TestCase
         }
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_imap_pdf_with_an_invalid_signature_is_audited_and_never_queued(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', true);
+
+        /** @var TenantContext $tenantContext */
+        $tenantContext = $this->app->make(TenantContext::class);
+        $tenantContext->set('acme');
+        Storage::disk('kb')->put(
+            'connector-email/connectors/imap/installation-12/inbox/99.pdf',
+            'This is not a PDF document.',
+        );
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+
+        $this->expectException(UnsupportedIngestionSourceException::class);
+        $this->expectExceptionMessage('declared application/pdf bytes do not have a PDF signature');
+
+        try {
+            $bridge->dispatchIngestion(
+                projectKey: 'connector-email',
+                relativePath: 'connector-email/connectors/imap/installation-12/inbox/99.pdf',
+                disk: 'kb',
+                title: 'Invalid attachment',
+                metadata: [
+                    'connector' => 'imap',
+                    'installation_id' => 12,
+                    'imap_uid' => '99',
+                    'imap_doc_key' => 'INBOX:1:99',
+                    'imap_mailbox' => 'INBOX',
+                ],
+                mimeType: 'application/pdf',
+                tenantId: 'acme',
+            );
+        } finally {
+            Queue::assertNothingPushed();
+            $audit = KbCanonicalAudit::query()
+                ->where('tenant_id', 'acme')
+                ->where('event_type', 'connector_ingestion_rejected')
+                ->sole();
+            $this->assertSame('connector:imap', $audit->actor);
+            $this->assertSame(12, $audit->metadata_json['installation_id']);
+            $this->assertSame(
+                'declared_mime_signature_mismatch',
+                $audit->metadata_json['metadata']['reason'],
+            );
+            $this->assertSame('application/pdf', $audit->metadata_json['metadata']['declared_mime_type']);
+            $this->assertArrayHasKey('source_path_sha256', $audit->metadata_json['metadata']);
+            $this->assertArrayHasKey('correlation_sha256', $audit->metadata_json['metadata']);
+            $this->assertStringNotContainsString('99.pdf', json_encode($audit->metadata_json));
+            $this->assertStringNotContainsString('INBOX:1:99', json_encode($audit->metadata_json));
+        }
+    }
+
+    public function test_imap_pdf_with_a_valid_signature_is_queued(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', '');
+        config()->set('filesystems.disks.kb.throw', true);
+        Storage::disk('kb')->put(
+            'connector-email/connectors/imap/installation-12/inbox/100.pdf',
+            "%PDF-1.7\nbenign fixture",
+        );
+
+        /** @var HostIngestionBridge $bridge */
+        $bridge = $this->app->make(ConnectorIngestionContract::class);
+        $bridge->dispatchIngestion(
+            projectKey: 'connector-email',
+            relativePath: 'connector-email/connectors/imap/installation-12/inbox/100.pdf',
+            disk: 'kb',
+            title: 'Valid attachment',
+            metadata: [
+                'connector' => 'imap',
+                'installation_id' => 12,
+                'imap_uid' => '100',
+                'imap_doc_key' => 'INBOX:1:100',
+                'imap_mailbox' => 'INBOX',
+            ],
+            mimeType: 'application/pdf',
+            tenantId: 'acme',
+        );
+
+        Queue::assertPushed(IngestDocumentJob::class, 1);
+        $this->assertFalse(KbCanonicalAudit::query()
+            ->where('event_type', 'connector_ingestion_rejected')
+            ->exists());
     }
 
     public function test_generated_imap_fixture_uses_a_stable_path_across_new_transport_uids(): void

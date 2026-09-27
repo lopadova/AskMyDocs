@@ -43,6 +43,7 @@
         "spatie/laravel-activitylog": "^4.12|^5.0",
         "spatie/laravel-permission": "^8.3",
         "symfony/yaml": "^7.4|^8.0",
+        "ui4/laravel-workbench": "dev-main",
         "webklex/php-imap": "^6.0"
     },
     "require-dev": {
@@ -94,6 +95,14 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "repositories": [
+        {
+            "name": "ui4",
+            "type": "path",
+            "url": "/Users/marco/packages/Ui4VocalAgent/packages/laravel-ui4-workbench",
+            "options": {
+                "symlink": true
+            }
+        },
         {
             "type": "vcs",
             "url": "https://github.com/padosoft/askmydocs-connector-api"

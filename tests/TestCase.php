@@ -271,6 +271,26 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
+        // UI4 is a discovered package in the production application, while
+        // Testbench intentionally skips that discovery cache. Mirror the host
+        // config and prepend ResolveTenant so feature tests exercise the same
+        // tenant-aware route boundary as the HTTP kernel.
+        $ui4Config = require __DIR__.'/../config/ui4-workbench.php';
+        $ui4Config['middleware'] = [
+            \App\Http\Middleware\ResolveTenant::class,
+            'web',
+            'auth:sanctum',
+            'tenant.authorize',
+        ];
+        // Testbench has its own temporary base path, so the production
+        // base_path() values in the published config would not reach this
+        // workspace's manifests or linked vendor package.
+        $ui4Config['manifest_paths'] = [
+            __DIR__.'/../resources/manifests/ui4',
+            __DIR__.'/../vendor/ui4/laravel-workbench/resources/manifests',
+        ];
+        $app['config']->set('ui4-workbench', $ui4Config);
+        $app->register(\Ui4\Workbench\Ui4WorkbenchServiceProvider::class);
         // The production fallback remains the reserved legacy `default`.
         // Tests instead start and reset on a real operational namespace, so
         // tenant-aware fixtures cannot accidentally encode implicit access to

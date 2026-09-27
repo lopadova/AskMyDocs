@@ -128,6 +128,13 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             tenantId: $tenantId,
             metadata: $metadata,
         );
+        $this->assertImapSourceSignature(
+            relativePath: $relativePath,
+            disk: $disk,
+            mimeType: $mimeType,
+            tenantId: $tenantId,
+            metadata: $metadata,
+        );
 
         IngestDocumentJob::dispatch(
             projectKey: $projectKey,
@@ -299,6 +306,112 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             ]);
 
             return null;
+        }
+    }
+
+    /**
+     * Connector metadata is transport-provided and cannot be trusted as a
+     * content classifier. In particular, passing arbitrary bytes through as a
+     * PDF causes the asynchronous parser to fail after the IMAP UID has already
+     * been acknowledged. Validate the inexpensive, standard PDF magic prefix
+     * at the host boundary so a rejected attachment cannot advance that
+     * checkpoint.
+     *
+     * This intentionally applies only to persisted IMAP sources. Other
+     * connectors have different source lifecycles and their own validation
+     * contracts; broadening this guard would make their byte transport an
+     * accidental host API.
+     *
+     * @param array<string,mixed> $metadata
+     */
+    private function assertImapSourceSignature(
+        string $relativePath,
+        string $disk,
+        string $mimeType,
+        string $tenantId,
+        array $metadata,
+    ): void {
+        if (($metadata['connector'] ?? null) !== 'imap' || strtolower(trim($mimeType)) !== 'application/pdf') {
+            return;
+        }
+
+        $resolved = $this->resolveKbSourcePath($relativePath);
+        if ($resolved['disk'] !== $disk) {
+            throw new RuntimeException(
+                "IMAP source disk mismatch: connector used {$disk}, host resolved {$resolved['disk']}.",
+            );
+        }
+
+        $stream = Storage::disk($disk)->readStream($resolved['absolute']);
+        $signature = '';
+        if (is_resource($stream)) {
+            try {
+                $signature = (string) fread($stream, 5);
+            } finally {
+                fclose($stream);
+            }
+        }
+
+        if ($signature === '%PDF-') {
+            return;
+        }
+
+        $this->recordRejectedImapSource($tenantId, $metadata, $mimeType, $relativePath);
+
+        throw new UnsupportedIngestionSourceException(
+            'Rejected IMAP source: declared application/pdf bytes do not have a PDF signature.',
+        );
+    }
+
+    /**
+     * Persist a diagnostic without storing a path, Message-ID, or file bytes.
+     * The immutable audit row is intentionally independent of a failed queue
+     * job so operators can diagnose the reject without retrying bad content.
+     *
+     * @param array<string,mixed> $metadata
+     */
+    private function recordRejectedImapSource(
+        string $tenantId,
+        array $metadata,
+        string $mimeType,
+        string $relativePath,
+    ): void {
+        try {
+            KbCanonicalAudit::create([
+                'tenant_id' => $tenantId,
+                'project_key' => 'connector',
+                'doc_id' => null,
+                'slug' => null,
+                'event_type' => 'connector_ingestion_rejected',
+                'actor' => 'connector:imap',
+                'before_json' => null,
+                'after_json' => null,
+                'metadata_json' => [
+                    'connector_key' => 'imap',
+                    'installation_id' => filter_var(
+                        $metadata['installation_id'] ?? null,
+                        FILTER_VALIDATE_INT,
+                        ['options' => ['min_range' => 1]],
+                    ) ?: null,
+                    'metadata' => [
+                        'reason' => 'declared_mime_signature_mismatch',
+                        'declared_mime_type' => strtolower(trim($mimeType)),
+                        'source_path_sha256' => hash('sha256', $relativePath),
+                        'correlation_sha256' => hash(
+                            'sha256',
+                            (string) ($metadata['imap_doc_key'] ?? $relativePath),
+                        ),
+                    ],
+                ],
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('HostIngestionBridge rejected-source audit failed', [
+                'tenant_id' => $tenantId,
+                'installation_id' => $metadata['installation_id'] ?? null,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
         }
     }
 

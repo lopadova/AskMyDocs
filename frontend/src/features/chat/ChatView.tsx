@@ -11,6 +11,7 @@ import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
 import { SuggestedFollowups } from './SuggestedFollowups';
 import { CitationDocumentModal } from './CitationDocumentModal';
+import { ConversationDebugDownloadButton } from './ConversationDebugDownloadButton';
 import { useChatSession } from './use-chat-session';
 
 /**
@@ -181,6 +182,9 @@ export function ChatView(): ReactNode {
                                     </div>
                                 </div>
                             </div>
+                            {activeId !== null && (
+                                <ConversationDebugDownloadButton conversationId={activeId} />
+                            )}
                             <Button
                                 variant="secondary"
                                 size="sm"

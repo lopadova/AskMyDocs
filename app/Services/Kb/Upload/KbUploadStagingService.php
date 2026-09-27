@@ -302,6 +302,12 @@ final class KbUploadStagingService
                 title: pathinfo($item->original_filename, PATHINFO_FILENAME),
                 metadata: ['kb_upload_batch_item_id' => $item->id],
                 mimeType: $item->mime_type,
+                // Every committed upload batch is an intentional observation
+                // of the source at this point in time. A unique flow run key
+                // lets changed bytes at the same path reach DocumentIngestor;
+                // that service still short-circuits identical content to the
+                // existing version without duplicating its chunks.
+                runKey: 'upload-'.$item->id,
             );
         } catch (\Throwable $e) {
             $this->transitionItem($item, KbIngestBatchItem::STATUS_FAILED, [

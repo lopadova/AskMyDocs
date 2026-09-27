@@ -65,6 +65,10 @@ use App\Realtime\ProjectRealtimeUsageToFinOps;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
+use App\Services\Ui4WorkbenchAuthorizer;
+use App\Services\Ui4WorkbenchChannelAuthorizer;
+use App\Services\Ui4WorkbenchIdentityResolver;
+use App\Services\Ui4WorkbenchSandboxAdapter;
 use App\Support\KbDiskWriteSafety;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -76,6 +80,10 @@ use Padosoft\PiiRedactorAdmin\Models\PiiRedactorAdminAuditEvent;
 use Padosoft\AiActCompliance\BiasMonitoring\Contracts\CohortParityMetric;
 use Padosoft\AiActCompliance\DSAR\Contracts\UserDataDeleter;
 use Padosoft\AiActCompliance\DSAR\Contracts\UserDataExporter;
+use Ui4\Workbench\Contracts\WorkbenchAuthorizer;
+use Ui4\Workbench\Contracts\WorkbenchChannelAuthorizer;
+use Ui4\Workbench\Contracts\WorkbenchIdentityResolver;
+use Ui4\Workbench\Domain\HostAdapterRegistry;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -296,6 +304,29 @@ class AppServiceProvider extends ServiceProvider
         $this->registerInvitationsGates();
         $this->registerPiiRedactorTenancy();
         $this->registerRealtimeAgentGate();
+        $this->registerUi4WorkbenchIntegration();
+    }
+
+    /**
+     * Keeps UI4 objects in a tenant-and-user sandbox owned by AskMyDocs.
+     *
+     * The package's generic persistence metadata does not carry host tenancy,
+     * so every catalogue type goes through the host adapter. This makes the
+     * host object store the authoritative visibility boundary while retaining
+     * the package's operation, relation, proposal and layout facilities.
+     */
+    private function registerUi4WorkbenchIntegration(): void
+    {
+        // This application provider is registered before discovered package
+        // providers. Bind in boot so these host implementations replace the
+        // package's authenticated-but-deny-by-default placeholders.
+        $this->app->singleton(WorkbenchIdentityResolver::class, Ui4WorkbenchIdentityResolver::class);
+        $this->app->singleton(WorkbenchAuthorizer::class, Ui4WorkbenchAuthorizer::class);
+        $this->app->singleton(WorkbenchChannelAuthorizer::class, Ui4WorkbenchChannelAuthorizer::class);
+
+        $this->app->make(HostAdapterRegistry::class)->register(
+            $this->app->make(Ui4WorkbenchSandboxAdapter::class),
+        );
     }
 
     private function registerRealtimeAgentGate(): void

@@ -1371,6 +1371,33 @@ textarea:focus-visible {
   --button-radius: 10px;
 }
 
+.chat-header-debug-export-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.chat-header-debug-export {
+  --button-height: 32px;
+  --button-radius: 10px;
+  white-space: nowrap;
+}
+
+.chat-header-debug-export-error {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 5px);
+  right: 0;
+  width: max-content;
+  max-width: min(300px, 72vw);
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--err) 60%, transparent);
+  border-radius: 7px;
+  background: var(--panel-solid);
+  color: var(--err);
+  font-size: 11px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .22);
+}
+
 .chat-header-meta {
   min-width: 0;
   margin-top: 4px;
@@ -3023,6 +3050,14 @@ textarea:focus-visible {
   .chat-title-text { max-width: 58vw; font-size: 13.5px; }
   .chat-title-input { width: min(56vw, 360px); min-width: 150px; }
   .chat-header-more { width: 29px; height: 29px; flex-basis: 29px; }
+  .chat-header-debug-export {
+    --button-height: 29px;
+    --button-radius: 9px;
+    width: 29px;
+    min-width: 29px;
+    padding-inline: 0;
+  }
+  .chat-header-debug-export .ui-button-label { display: none; }
   .chat-model-chip { max-width: 42vw; }
   .agent-activity-card {
     width: calc(100% - 28px);

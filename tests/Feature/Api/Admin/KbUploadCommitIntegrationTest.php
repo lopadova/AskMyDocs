@@ -7,6 +7,7 @@ namespace Tests\Feature\Api\Admin;
 use App\Ai\EmbeddingsResponse;
 use App\Models\KbIngestBatch;
 use App\Models\KbIngestBatchItem;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
 use App\Services\Kb\EmbeddingCacheService;
@@ -125,6 +126,66 @@ final class KbUploadCommitIntegrationTest extends TestCase
         $resp = $this->actingAs($admin)->getJson("/api/admin/kb/uploads/{$batchId}/status")->assertOk();
         $this->assertSame(1, $resp->json('batch.counts.succeeded'));
         $this->assertSame(0, $resp->json('batch.counts.failed'));
+    }
+
+    public function test_identical_reingest_reuses_and_links_the_existing_document(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $first = $this->stageAndCommit($admin, 'same-upload.md', "# Same upload\n\nStable content.");
+        $firstItem = $first->items->sole();
+        $documentId = $firstItem->knowledge_document_id;
+        $chunkIds = KnowledgeChunk::query()
+            ->where('knowledge_document_id', $documentId)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
+        $second = $this->stageAndCommit($admin, 'same-upload.md', "# Same upload\n\nStable content.");
+        $secondItem = $second->items->sole();
+
+        $this->assertSame(KbIngestBatch::STATUS_COMPLETED, $second->status);
+        $this->assertSame(KbIngestBatchItem::STATUS_SUCCEEDED, $secondItem->status);
+        $this->assertSame($documentId, $secondItem->knowledge_document_id);
+        $this->assertSame(1, KnowledgeDocument::query()->where('source_path', 'same-upload.md')->count());
+        $this->assertSame($chunkIds, KnowledgeChunk::query()
+            ->where('knowledge_document_id', $documentId)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all());
+    }
+
+    public function test_changed_reingest_archives_the_previous_version_and_links_the_new_one(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $first = $this->stageAndCommit($admin, 'versioned-upload.md', "# Version one\n\nOriginal content.");
+        $firstDocumentId = $first->items->sole()->knowledge_document_id;
+
+        $second = $this->stageAndCommit($admin, 'versioned-upload.md', "# Version two\n\nChanged content.");
+        $secondDocumentId = $second->items->sole()->knowledge_document_id;
+
+        $this->assertNotSame($firstDocumentId, $secondDocumentId);
+        $this->assertSame('archived', KnowledgeDocument::query()->findOrFail($firstDocumentId)->status);
+        $this->assertSame('active', KnowledgeDocument::query()->findOrFail($secondDocumentId)->status);
+        $this->assertSame(1, KnowledgeDocument::query()
+            ->where('source_path', 'versioned-upload.md')
+            ->where('status', 'active')
+            ->count());
+    }
+
+    private function stageAndCommit(User $admin, string $filename, string $content): KbIngestBatch
+    {
+        $batchId = $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'engineering',
+            'files' => [UploadedFile::fake()->createWithContent($filename, $content)],
+        ])->assertStatus(201)->json('batch.id');
+
+        $this->actingAs($admin)->postJson("/api/admin/kb/uploads/{$batchId}/commit")
+            ->assertStatus(202)
+            ->assertJsonPath('batch.status', KbIngestBatch::STATUS_COMPLETED);
+
+        return KbIngestBatch::query()->with('items')->findOrFail($batchId);
     }
 
     private function makeAdmin(): User

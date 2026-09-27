@@ -71,6 +71,7 @@ import { UiFoundationsDemo } from '../features/developer/ButtonSystemDemo';
 import { GamificationInsightsPanel } from '../features/admin/engagement/GamificationInsightsPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
+import { WorkbenchStandalonePage } from '../features/workbench/WorkbenchView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequirePermission, RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
@@ -98,12 +99,17 @@ const indexRoute = createRoute({
     },
 });
 
+const loginSearchSchema = z.object({
+    returnTo: z.literal('/workbench').optional(),
+});
+
 function LoginRoute() {
     const navigate = useNavigate();
+    const { returnTo } = useSearch({ from: '/login' });
     return (
         <RedirectIfAuth>
             <LoginPage
-                onSuccess={() => navigate({ to: '/app' })}
+                onSuccess={() => navigate({ to: returnTo ?? '/app' })}
                 onNavigateForgot={() => navigate({ to: '/forgot-password' })}
                 onNavigateRegister={() => navigate({ to: '/register' })}
             />
@@ -114,6 +120,7 @@ function LoginRoute() {
 const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
+    validateSearch: loginSearchSchema,
     component: LoginRoute,
 });
 
@@ -385,6 +392,11 @@ const chatRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'chat',
     component: ChatView,
+});
+const workbenchRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/workbench',
+    component: WorkbenchStandalonePage,
 });
 // v8.8.3 — anonymous (non-persisted) chat. Declared as a STATIC sibling
 // BEFORE `chat/$conversationId` so TanStack's static-over-dynamic matching
@@ -1581,6 +1593,7 @@ const routeTree = rootRoute.addChildren([
     registerRoute,
     forgotRoute,
     resetRoute,
+    workbenchRoute,
     appRoute.addChildren([
         appIndexRoute,
         systemAdminTenantControlRoute,

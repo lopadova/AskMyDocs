@@ -218,7 +218,11 @@ export default defineConfig({
     // (not 2) to bound worst-case runner time on the single-worker job.
     // Local stays 0 for fast, honest feedback.
     retries: process.env.CI ? 1 : 0,
-    workers: process.env.CI ? 1 : undefined,
+    // Every scenario calls /testing/reset, which executes migrate:fresh on
+    // the one shared askmydocs_test database. Parallel workers can therefore
+    // drop the schema below another scenario mid-request. Keep this suite
+    // serial until its test database is isolated per worker.
+    workers: 1,
     // Per-test timeout. Default is 30s; tighter so a stuck test
     // (e.g., page.goto blocking on a slow CI server response) fails
     // before it costs serious wall-clock budget.

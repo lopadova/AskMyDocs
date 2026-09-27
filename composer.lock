@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b4674072f7761e6799d9b9df5c62ebc6",
+    "content-hash": "394215ca75726cc8afeeb8685870429b",
     "packages": [
         {
             "name": "agents-full-duplex/laravel-realtime-agent",
@@ -9258,6 +9258,41 @@
             "time": "2025-12-02T11:56:42+00:00"
         },
         {
+            "name": "ui4/laravel-workbench",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "/Users/marco/packages/Ui4VocalAgent/packages/laravel-ui4-workbench",
+                "reference": "8d2aedf4f136c79291816b9e9be5f2a24e8b3e8c"
+            },
+            "require": {
+                "illuminate/contracts": "^13.0",
+                "illuminate/support": "^13.0",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Ui4\\Workbench\\Ui4WorkbenchServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Ui4\\Workbench\\": "src/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Versioned object registry, operation engine, semantic relationships, API and MCP bridge for UI4.",
+            "transport-options": {
+                "symlink": true,
+                "relative": false
+            }
+        },
+        {
             "name": "vlucas/phpdotenv",
             "version": "v5.7.0",
             "source": {
@@ -12419,7 +12454,8 @@
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
-        "padosoft/askmydocs-connector-api": 10
+        "padosoft/askmydocs-connector-api": 10,
+        "ui4/laravel-workbench": 20
     },
     "prefer-stable": true,
     "prefer-lowest": false,

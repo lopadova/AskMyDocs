@@ -457,6 +457,18 @@ MD,
         $this->assertSame('custom-queue-name', $job->queue);
     }
 
+    public function test_uses_a_bounded_automatic_retry_schedule(): void
+    {
+        $job = new IngestDocumentJob(
+            projectKey: 'demo',
+            relativePath: 'retryable.md',
+            disk: 'kb',
+        );
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([10, 30, 60], $job->backoff);
+    }
+
 
     /**
      * Uncertainty is not ownership: with the lock store unreachable the job

@@ -23,7 +23,11 @@ final class ImapBackfillScheduler
 
     public function pumpActive(): int
     {
-        if (! Schema::hasTable('imap_backfills') || ! config('connectors.imap.backfill.enabled', true)) {
+        if (
+            ! Schema::hasTable('imap_backfills')
+            || ! config('connectors.scheduled_sync_enabled', true)
+            || ! config('connectors.imap.backfill.enabled', true)
+        ) {
             return 0;
         }
 
