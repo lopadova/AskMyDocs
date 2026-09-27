@@ -19,7 +19,7 @@
         "padosoft/askmydocs-connector-jira": "^1.2",
         "padosoft/askmydocs-connector-notion": "^1.2",
         "padosoft/askmydocs-connector-onedrive": "^1.2",
-        "padosoft/askmydocs-mcp-pack": "^1.5",
+        "padosoft/askmydocs-mcp-pack": "^2.0",
         "padosoft/eval-harness": "^1.3.0",
         "padosoft/laravel-ai-act-compliance": "^1.5.0",
         "padosoft/laravel-ai-act-compliance-admin": "^1.5.0",
