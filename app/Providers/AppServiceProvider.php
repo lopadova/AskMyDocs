@@ -68,6 +68,11 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(\App\Authorization\IamPdp::class, \App\Authorization\SpatieIamPdp::class);
+        $this->app->singleton(\App\Actions\ActionRegistry::class, static fn ($app): \App\Actions\ActionRegistry => new \App\Actions\ActionRegistry(
+            (array) config('actions.tools', [
+                'search_knowledge_base' => ['effect' => 'read', 'executable' => true],
+            ]),
+        ));
 
         $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
 
