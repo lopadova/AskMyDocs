@@ -15,6 +15,7 @@ use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Provenance\ProvenanceToolFirewall;
@@ -102,6 +103,7 @@ class MessageController extends Controller
         AiManager $ai,
         McpToolCallingService $toolCallingService,
         ChatRetrievalService $retrieval,
+        KbInvestigationService $investigation,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
@@ -112,7 +114,10 @@ class MessageController extends Controller
         }
 
         $validated = $request->validate(array_merge(
-            ['content' => ['required', 'string', 'max:10000']],
+            [
+                'content' => ['required', 'string', 'max:10000'],
+                'depth' => ['nullable', 'integer', 'min:1', 'max:5'],
+            ],
             // T2.7 — accept the same `filters.*` payload shape as
             // /api/kb/chat (validated by KbChatRequest). Inline here
             // rather than via FormRequest because MessageController
@@ -144,22 +149,30 @@ class MessageController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // 3. RAG: v8.1 P0.2 — unified retrieval. The conversation flow now
-        // runs the SAME searchWithContext() path as /api/kb/chat (primary +
-        // graph-expanded + rejected-approach context) via the shared
-        // ChatRetrievalService, so the same question yields identical
-        // grounding context + citations across the sync / stream / chat
-        // channels. T2.7 threads the user-selected filters; with no filters
-        // it falls back to the legacy single-project DTO.
-        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        // Raw user text is deliberately NOT a vector query. The investigation
+        // first interprets it using the mandatory admin profile, then performs
+        // its bounded KB-only retrieve/read/filter loop. Its SearchResult has
+        // only explicitly selected sources — no graph/rejected context can
+        // reach the final prompt.
+        $investigationResult = $investigation->investigate(
+            question: $question,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: (int) ($validated['depth'] ?? 3),
+            conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
+        );
+        $result = $investigationResult->search;
         $chunks = $result->primary;
         $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
-        // 3b. T3.3 — deterministic refusal short-circuit. If too few chunks
-        // pass the shared grounding gate (rerank_score OR vector floor, read
-        // shape-agnostically — see RetrievalGrounding), save a refusal
-        // assistant message and return WITHOUT calling the LLM.
-        if ($retrieval->shouldRefuse($result) && ! $hasLiveTools) {
+        // A project without a profile fails closed with a configuration message;
+        // insufficient or invalid investigation evidence never falls back to
+        // the old generic semantic search or an MCP tool loop.
+        if (! $investigationResult->isReady() || (
+            $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            && $retrieval->shouldRefuse($result)
+            && ! $hasLiveTools
+        )) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -168,12 +181,18 @@ class MessageController extends Controller
                 projectKey: $projectKey,
                 userId: $userId,
                 startTime: $startTime,
-                reason: 'no_relevant_context',
+                reason: $investigationResult->stopReason === 'retrieval_profile_required'
+                    ? 'retrieval_profile_required'
+                    : 'no_relevant_context',
             );
         }
 
-        // 4. Get few-shot examples from positively-rated past answers
-        $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
+        // Historical answers are not retrieval evidence. In the recursive
+        // path, omit them entirely so every factual input to the answer comes
+        // from a source selected by the investigation.
+        $fewShotExamples = $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            ? $fewShot->getExamples($userId, $projectKey)
+            : [];
 
         // 5. Build system prompt with RAG context + few-shot examples.
         // v8.1 P0.2 — pass the typed blocks (expanded + rejected) so the
@@ -184,6 +203,7 @@ class MessageController extends Controller
             [
                 'projectKey' => $projectKey,
                 'fewShotExamples' => $fewShotExamples,
+                'retrievalInvestigation' => $investigationResult->answerPromptContext(),
                 // The recap from the PREVIOUS turn — this turn's own update
                 // (below, after the assistant message is saved) only takes
                 // effect starting next turn, by design (async, off the
@@ -291,6 +311,7 @@ class MessageController extends Controller
                 'few_shot_count' => count($fewShotExamples),
                 'tool_calls_count' => count($toolCalls),
                 'tool_calls' => $toolCalls,
+                'retrieval_investigation' => $result->meta['investigation'] ?? null,
                 // T3.5 — confidence mirrored in metadata so the FE can
                 // render the badge from a single read of the message
                 // payload (no separate /confidence endpoint needed).
@@ -330,6 +351,7 @@ class MessageController extends Controller
                 'citations_count' => count($citations),
                 'tool_calls_count' => count($toolCalls),
                 'tool_calls' => $toolCalls,
+                'retrieval_investigation' => $result->meta['investigation'] ?? null,
             ],
             traceId: $traceId,
         ));

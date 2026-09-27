@@ -78,6 +78,7 @@ final class MessageControllerTest extends TestCase
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
         config()->set('kb.refusal.min_rerank_score', 0.25);
         config()->set('kb.refusal.min_chunks_required', 1);
+        config()->set('kb.investigation.enabled', false);
         config()->set('chat-log.enabled', false);
 
         // Pin the active tenant explicitly: Conversation::resolveRouteBinding()

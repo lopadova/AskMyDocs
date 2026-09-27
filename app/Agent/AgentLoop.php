@@ -24,6 +24,7 @@ use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Widget\WidgetPiiMasker;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -40,6 +41,7 @@ final readonly class AgentLoop
         private AgentAmbiguousSelectionGuard $ambiguousSelection,
         private AgentServerToolRunner $serverTools,
         private ChatRetrievalService $retrieval,
+        private KbInvestigationService $investigation,
         private AgentEvidenceFactory $evidenceFactory,
         private AgentEventPublisher $events,
         private AgentRunControl $control,
@@ -82,12 +84,28 @@ final readonly class AgentLoop
         if (! $retrieved) {
             $this->control->ensureActive($run);
             $this->events->publish($run, 'retrieval.started', 'retrieval.started');
+            $investigationResult = null;
             try {
-                $search = $this->retrieval->retrieve($question, $context->projectKey, $filters);
+                // The initial agent evidence follows the exact same
+                // profile-guided KB-only investigation as ordinary chat. The
+                // planner's later explicit tools remain governed by the agent
+                // contract; this recursive retrieval phase has no connector,
+                // external API or MCP dependency to invoke.
+                $investigationResult = $this->investigation->investigate(
+                    question: $question,
+                    projectKey: $context->projectKey,
+                    filters: $filters,
+                    depth: (int) data_get($run->input_json, 'depth', 3),
+                    conversationContext: $turnContext,
+                );
+                $search = $investigationResult->search;
                 $documents = $this->evidenceFactory->fromSearchResult($search);
                 $evidence->import($documents->jsonSerialize());
                 $budget->recordResult(0, $documents->byteSize(), true);
                 $budget->recordKnowledgeSearchResult($documents->documents() !== []);
+                if (! $investigationResult->isReady()) {
+                    $evidence->addWarning($investigationResult->stopReason, 'recursive_kb_retrieval');
+                }
                 $this->events->publish(
                     $run,
                     'retrieval.completed',
@@ -101,6 +119,12 @@ final readonly class AgentLoop
             }
             $retrieved = true;
             $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+            if ($investigationResult !== null && ! $investigationResult->isReady()) {
+                // Fail closed: without the required profile or grounded
+                // evidence, do not let the agent bypass KB retrieval by
+                // planning a connector/API/MCP call.
+                return $this->outcome('answer', $evidence, $completed, $investigationResult->stopReason);
+            }
         }
 
         while (true) {

@@ -37,6 +37,7 @@ export type SidebarSection =
     | 'wiki-indices'
     | 'wiki-explorer'
     | 'autowiki-settings'
+    | 'retrieval-profiles'
     | 'tabular-reviews'
     | 'workflows'
     | 'ai-act-compliance'
@@ -156,6 +157,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'wiki-indices', label: 'Wiki Indices', icon: 'Book', route: '/app/$teamHash/admin/kb/wiki-indices' },
             { id: 'wiki-explorer', label: 'Wiki Explorer', icon: 'Folder', route: '/app/$teamHash/admin/kb/wiki-explorer' },
             { id: 'autowiki-settings', label: 'Auto-Wiki Settings', icon: 'Sliders', route: '/app/$teamHash/admin/kb/autowiki-settings' },
+            { id: 'retrieval-profiles', label: 'Retrieval profiles', icon: 'Brain', route: '/app/$teamHash/admin/kb/retrieval-profiles' },
             { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', route: '/app/$teamHash/admin/tabular-reviews' },
             { id: 'workflows', label: 'Workflows', icon: 'Branch', route: '/app/$teamHash/admin/workflows' },
         ],

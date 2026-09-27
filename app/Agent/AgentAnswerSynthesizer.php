@@ -27,6 +27,23 @@ final readonly class AgentAnswerSynthesizer
         ?string $turnContext = null,
     ): AgentAnswer {
         $evidence = $outcome->evidence->jsonSerialize();
+        if ($outcome->stopReason === 'retrieval_profile_required') {
+            $italian = str_starts_with(strtolower($context->locale), 'it');
+
+            return new AgentAnswer(
+                $italian
+                    ? 'La ricerca per questo progetto richiede prima la configurazione del profilo aziendale da parte di un amministratore.'
+                    : 'Search for this project requires an administrator to configure its company retrieval profile first.',
+                $context->locale,
+                'insufficient',
+                [],
+                [],
+                ['retrieval_profile_required'],
+                null,
+                false,
+                ['status' => 'blocked', 'reason' => 'retrieval_profile_required'],
+            );
+        }
         $response = $this->ai->chatWithHistory(
             $this->systemPrompt($context),
             [[

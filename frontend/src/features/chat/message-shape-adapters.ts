@@ -55,7 +55,7 @@ export function isUiMessage(m: RenderableMessage): m is UIMessage {
     return 'parts' in m && Array.isArray((m as UIMessage).parts);
 }
 
-const VALID_REFUSAL_REASONS = ['no_relevant_context', 'llm_self_refusal'] as const;
+const VALID_REFUSAL_REASONS = ['no_relevant_context', 'llm_self_refusal', 'retrieval_profile_required'] as const;
 type KnownRefusalReason = typeof VALID_REFUSAL_REASONS[number];
 // Open the union with `(string & {})` so future BE-emitted reasons
 // don't silently degrade to `null` while still keeping

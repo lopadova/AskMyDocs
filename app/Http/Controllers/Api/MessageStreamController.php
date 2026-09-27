@@ -18,6 +18,7 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\Provenance\ProvenanceToolFirewall;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\Canonical\CanonicalType;
@@ -103,6 +104,7 @@ class MessageStreamController extends Controller
         AiManager $ai,
         McpToolCallingService $toolCallingService,
         ChatRetrievalService $retrieval,
+        KbInvestigationService $investigation,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
@@ -128,6 +130,7 @@ class MessageStreamController extends Controller
             $validated = $request->validate(array_merge(
                 [
                     'content' => ['required', 'string', 'max:10000'],
+                    'depth' => ['nullable', 'integer', 'min:1', 'max:5'],
                     'mcp_app_id' => ['sometimes', 'string', 'ulid'],
                 ],
                 $this->retrievalFilterRules(),
@@ -167,14 +170,18 @@ class MessageStreamController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // RAG: v8.1 P0.2 — unified retrieval via ChatRetrievalService, the
-        // SAME searchWithContext() path as /api/kb/chat + MessageController
-        // (primary + graph-expanded + rejected). $chunks stays the primary
-        // set so the downstream streaming/persistence logic is unchanged.
-        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        // Match the synchronous channel exactly: first interpret against the
+        // admin profile, then retrieve/read/assess inside the KB. The original
+        // question is never sent as a direct vector query.
+        $investigationResult = $investigation->investigate(
+            question: $question,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: (int) ($validated['depth'] ?? 3),
+            conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
+        );
+        $result = $investigationResult->search;
         $chunks = $result->primary;
-
-        $shouldRefuse = $retrieval->shouldRefuse($result);
         $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // Capture session id at controller entry — header() reads from
@@ -185,7 +192,11 @@ class MessageStreamController extends Controller
         $clientIp = $request->ip();
         $userAgent = $request->userAgent();
 
-        if ($shouldRefuse && ! $hasLiveTools) {
+        if (! $investigationResult->isReady() || (
+            $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            && $retrieval->shouldRefuse($result)
+            && ! $hasLiveTools
+        )) {
             return $this->streamRefusal(
                 request: $request,
                 conversation: $conversation,
@@ -194,14 +205,20 @@ class MessageStreamController extends Controller
                 projectKey: $projectKey,
                 userId: $userId,
                 startTime: $startTime,
-                reason: 'no_relevant_context',
+                reason: $investigationResult->stopReason === 'retrieval_profile_required'
+                    ? 'retrieval_profile_required'
+                    : 'no_relevant_context',
                 sessionId: $sessionId,
                 clientIp: $clientIp,
                 userAgent: $userAgent,
             );
         }
 
-        $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
+        // A recursively grounded answer receives no historical answer text:
+        // selected KB evidence is its only factual context.
+        $fewShotExamples = $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            ? $fewShot->getExamples($userId, $projectKey)
+            : [];
 
         // v8.1 P0.2 — typed-block prompt context (chunks + expanded +
         // rejected) so the stream prompt matches the sync + chat channels.
@@ -210,6 +227,7 @@ class MessageStreamController extends Controller
             [
                 'projectKey' => $projectKey,
                 'fewShotExamples' => $fewShotExamples,
+                'retrievalInvestigation' => $investigationResult->answerPromptContext(),
                 // Recap from the PREVIOUS turn — mirrors MessageController;
                 // keeps the two conversational surfaces in lockstep (same
                 // reason ChatRetrievalService is shared between them).
@@ -255,6 +273,7 @@ class MessageStreamController extends Controller
             history: $history,
             chunks: $chunks,
             citations: $citations,
+            investigationTrace: is_array($result->meta['investigation'] ?? null) ? $result->meta['investigation'] : [],
             question: $question,
             projectKey: $projectKey,
             userId: $userId,
@@ -424,6 +443,7 @@ class MessageStreamController extends Controller
         array $history,
         Collection $chunks,
         array $citations,
+        array $investigationTrace,
         string $question,
         ?string $projectKey,
         int $userId,
@@ -437,7 +457,7 @@ class MessageStreamController extends Controller
     ): StreamedResponse {
         return $this->streamingResponse($request, function () use (
             $ai, $confidence, $conversation, $chatLog, $systemPrompt, $history,
-            $chunks, $citations, $question, $projectKey, $userId, $startTime,
+            $chunks, $citations, $investigationTrace, $question, $projectKey, $userId, $startTime,
             $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse, $traceId
         ): void {
             // SDK v6 envelope opener — every UIMessage stream MUST
@@ -649,6 +669,7 @@ class MessageStreamController extends Controller
                     'few_shot_count' => $fewShotCount,
                     'tool_calls_count' => count($toolCallsSummary),
                     'tool_calls' => $toolCallsSummary,
+                    'retrieval_investigation' => $investigationTrace === [] ? null : $investigationTrace,
                     'confidence' => $confidenceScore,
                     'refusal_reason' => $refusalReason,
                     'streamed' => true,
@@ -721,6 +742,7 @@ class MessageStreamController extends Controller
                     'citations_count' => $isSelfRefusal ? 0 : count($citations),
                     'tool_calls_count' => count($toolCallsSummary),
                     'tool_calls' => $toolCallsSummary,
+                    'retrieval_investigation' => $investigationTrace === [] ? null : $investigationTrace,
                     'refusal_reason' => $refusalReason,
                     'confidence' => $confidenceScore,
                     'streamed' => true,

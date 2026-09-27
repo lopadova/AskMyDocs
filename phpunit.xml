@@ -40,6 +40,10 @@
              doc; the dedicated AnalyzeDocumentChangeJob / KbChangeAnalyzer
              tests enable it explicitly via config()->set. -->
         <env name="KB_CHANGE_ANALYSIS_ENABLED" value="false"/>
+        <!-- Recursive profile-guided retrieval performs two deliberate LLM
+             stages. Keep legacy transport/controller fixtures deterministic;
+             its dedicated investigation and controller tests turn it on. -->
+        <env name="KB_RECURSIVE_RETRIEVAL_ENABLED" value="false"/>
         <!-- Session recap defaults OFF in tests, same rationale as
              KB_CHANGE_ANALYSIS_ENABLED above: MessageController /
              MessageStreamController dispatch UpdateConversationRecapJob
