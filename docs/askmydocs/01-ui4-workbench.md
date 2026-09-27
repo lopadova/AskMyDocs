@@ -7,8 +7,9 @@ status: active
 
 The workbench is available only in the AskMyDocs Dev host at
 `https://askmydocsdev.test/workbench`. It is a standalone surface, outside the
-dashboard shell: its only chrome is the AskMyDocs mark and, for a guest, an access
-button. It uses the existing authenticated session, selected tenant, and Laravel
+dashboard shell. Its signed-in header carries one AskMyDocs mark in the
+Workbench's own brand position; a guest sees that mark and one access button. It
+uses the existing authenticated session, selected tenant, and Laravel
 CSRF cookie. It does not provide a guest/demo route or a second voice agent.
 
 ## Linked packages
