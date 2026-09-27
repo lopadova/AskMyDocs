@@ -89,8 +89,8 @@ start_one() {
     return 1
   fi
 
-  nohup node "$SCRIPT_DIR/$server_file" >"$RUNTIME_DIR/$name.log" 2>&1 &
-  local pid=$!
+  local pid
+  pid="$(node "$SCRIPT_DIR/spawn-server.mjs" "$SCRIPT_DIR/$server_file" "$RUNTIME_DIR/$name.log")"
   printf '%s\n' "$pid" >"$pid_file"
 
   if ! wait_for_health "$name" "$health_url"; then

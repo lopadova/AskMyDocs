@@ -60,7 +60,9 @@ dev/local-integrations/local-integrations.sh stop
 The launcher stores PID files and logs in the ignored
 `dev/local-integrations/.runtime/` directory. Before sending a signal it checks
 that the PID belongs to the expected fixture script, so it will not kill an
-unrelated Node process. `restart` stops and starts both servers. Both services
+unrelated Node process. Each Node server is detached from the launcher before
+it starts, so it remains available after the Artisan command finishes.
+`restart` stops and starts both servers. Both services
 bind only to `127.0.0.1` by default; `LOCAL_INTEGRATIONS_HOST` may only be
 `127.0.0.1`, `::1`, or `localhost`.
 

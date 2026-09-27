@@ -209,13 +209,22 @@ function normalizeLegacyEmptyParams(payload) {
     return payload.map(normalizeLegacyEmptyParams);
   }
 
-  if (
-    payload !== null
-    && typeof payload === 'object'
-    && Array.isArray(payload.params)
-    && payload.params.length === 0
-  ) {
-    return { ...payload, params: {} };
+  if (payload !== null && typeof payload === 'object') {
+    if (Array.isArray(payload.params) && payload.params.length === 0) {
+      return { ...payload, params: {} };
+    }
+
+    if (
+      payload.params !== null
+      && typeof payload.params === 'object'
+      && Array.isArray(payload.params.arguments)
+      && payload.params.arguments.length === 0
+    ) {
+      return {
+        ...payload,
+        params: { ...payload.params, arguments: {} },
+      };
+    }
   }
 
   return payload;

@@ -10,8 +10,12 @@ use Database\Seeders\CaseStudyUsersSeeder;
 use Database\Seeders\LocalIntegrationConnectorsSeeder;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
+use Padosoft\AskMyDocsConnectorMcp\Services\McpConnectionServerAdapter;
+use Padosoft\AskMyDocsConnectorMcp\Services\McpCredentialVault;
+use Padosoft\AskMyDocsConnectorMcp\Services\McpEndpointSecurityGuard;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
@@ -61,28 +65,46 @@ final class LocalIntegrationMcpInteropTest extends TestCase
     public function test_php_connector_discovers_the_real_scoped_node_mcp_server(): void
     {
         app(LocalIntegrationConnectorsSeeder::class)->run();
+        $connectorTenants = app(ConnectorTenantContext::class);
+        $previousConnectorTenant = $connectorTenants->current();
 
-        foreach (CaseStudyUsersSeeder::companyKeys() as $companyKey) {
-            $connection = McpConnection::withoutGlobalScopes()
-                ->where('tenant_id', $companyKey)
-                ->with('server')
-                ->sole();
-            $this->assertSame("http://127.0.0.1:{$this->port}/mcp/{$companyKey}", $connection->server->endpoint);
-            $this->assertSame('active', $connection->status);
-            $this->assertSame(
-                [
-                    'get_company_context',
-                    'get_operational_record',
-                    'list_operational_records',
-                    'search_operational_records',
-                ],
-                McpConnectionTool::withoutGlobalScopes()
-                    ->where('mcp_connector_connection_id', $connection->id)
-                    ->orderBy('remote_name')
-                    ->pluck('remote_name')
-                    ->all(),
-                json_encode($connection->fresh()->error_json, JSON_THROW_ON_ERROR),
-            );
+        try {
+            foreach (CaseStudyUsersSeeder::companyKeys() as $companyKey) {
+                $connectorTenants->set($companyKey);
+                $connection = McpConnection::withoutGlobalScopes()
+                    ->where('tenant_id', $companyKey)
+                    ->with('server')
+                    ->sole();
+                $this->assertSame("http://127.0.0.1:{$this->port}/mcp/{$companyKey}", $connection->server->endpoint);
+                $this->assertSame('active', $connection->status);
+                $this->assertSame(
+                    [
+                        'get_company_context',
+                        'get_operational_record',
+                        'list_operational_records',
+                        'search_operational_records',
+                    ],
+                    McpConnectionTool::withoutGlobalScopes()
+                        ->where('mcp_connector_connection_id', $connection->id)
+                        ->orderBy('remote_name')
+                        ->pluck('remote_name')
+                        ->all(),
+                    json_encode($connection->fresh()->error_json, JSON_THROW_ON_ERROR),
+                );
+                $result = McpClient::forServer(new McpConnectionServerAdapter(
+                    $connection,
+                    app(McpCredentialVault::class),
+                    app(McpEndpointSecurityGuard::class),
+                ))->callTool('get_company_context', []);
+                $content = data_get($result, 'content.0.text');
+                $this->assertIsString($content);
+                $this->assertSame(
+                    $companyKey,
+                    json_decode($content, true, 512, JSON_THROW_ON_ERROR)['company']['key'],
+                );
+            }
+        } finally {
+            $connectorTenants->set($previousConnectorTenant);
         }
     }
 

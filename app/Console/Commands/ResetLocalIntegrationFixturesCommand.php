@@ -26,6 +26,7 @@ final class ResetLocalIntegrationFixturesCommand extends Command
     protected $signature = 'dev:reset-local-integration-fixtures
         {--without-email : Do not mutate the dedicated Gmail fixture mailbox or install/sync IMAP}
         {--email-profile=gold : Generated fixture email profile: gold or demo}
+        {--resume-email : Reuse verified Gmail delivery checkpoints instead of purging the fixture dataset again}
         {--skip-smoke : Skip the final local MCP read-only smoke calls}';
 
     protected $description = 'Reset only the three local case-study tenants, then configure deterministic documents, email, API and MCP fixtures.';
@@ -59,11 +60,17 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             }
 
             $this->components->info('3/6 — Aziende, utenti e documenti');
+            $withEmail = ! (bool) $this->option('without-email');
+            $resumeEmail = $withEmail && (bool) $this->option('resume-email');
             $initArguments = [
                 '--profile' => $profile,
-                '--generate-email-dataset' => ! (bool) $this->option('without-email'),
-                '--ingest-emails' => ! (bool) $this->option('without-email'),
-                '--local-fixture-email-reset' => ! (bool) $this->option('without-email'),
+                // A retry after a transient IMAP failure preserves the
+                // operation's filesystem checkpoint and never duplicates an
+                // already confirmed mailbox message.
+                '--generate-email-dataset' => $withEmail && ! $resumeEmail,
+                '--resume' => $resumeEmail,
+                '--ingest-emails' => $withEmail,
+                '--local-fixture-email-reset' => $withEmail && ! $resumeEmail,
                 '--skip-emails' => (bool) $this->option('without-email'),
                 '--email-actor' => 'local-case-study-fixtures',
             ];
