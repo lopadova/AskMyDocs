@@ -107,6 +107,33 @@ class CaseStudyUsersSeeder extends Seeder
         throw new \LogicException("Case-study company {$companyKey} has no super-admin account.");
     }
 
+    /**
+     * Local-only credentials shown by the case-study bootstrap commands after
+     * seeding. Keeping this derived from the seeder's source of truth avoids
+     * a command displaying stale usernames when a fixture account changes.
+     *
+     * @return list<array{tenant: string, company: string, name: string, email: string, role: string, password: string}>
+     */
+    public static function localLoginCredentials(): array
+    {
+        $credentials = [];
+
+        foreach (self::COMPANIES as $tenantId => $company) {
+            foreach ($company['accounts'] as $account) {
+                $credentials[] = [
+                    'tenant' => $tenantId,
+                    'company' => $company['name'],
+                    'name' => $account['user'],
+                    'email' => $account['email'],
+                    'role' => $account['role'],
+                    'password' => self::PASSWORD,
+                ];
+            }
+        }
+
+        return $credentials;
+    }
+
     public function run(): void
     {
         // UN TENANT PER AZIENDA: tenant_id = project_key. Così l'isolamento vale

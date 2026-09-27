@@ -75,6 +75,30 @@ final class InitCaseStudiesCommandTest extends TestCase
         );
     }
 
+    public function test_it_prints_the_local_login_credentials_after_creating_users(): void
+    {
+        $credentials = array_map(
+            static fn (array $credential): array => [
+                $credential['tenant'],
+                $credential['company'],
+                $credential['name'],
+                $credential['email'],
+                $credential['role'],
+                $credential['password'],
+            ],
+            CaseStudyUsersSeeder::localLoginCredentials(),
+        );
+
+        $this->artisan('demo:init-case-studies', ['--skip-docs' => true, '--skip-emails' => true])
+            ->expectsOutputToContain('Credenziali locali create (solo ambiente di sviluppo):')
+            ->expectsTable(
+                ['Tenant', 'Azienda', 'Utente', 'Username / e-mail', 'Ruolo', 'Password'],
+                $credentials,
+            )
+            ->expectsOutputToContain('Usa l’e-mail come username per accedere a https://askmydocsdev.test.')
+            ->assertExitCode(0);
+    }
+
     public function test_skip_docs_ingests_no_documents(): void
     {
         $this->artisan('demo:init-case-studies', ['--skip-docs' => true, '--skip-emails' => true])

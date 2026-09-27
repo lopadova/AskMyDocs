@@ -40,6 +40,18 @@ final class ResetLocalIntegrationFixturesCommand extends Command
         try {
             $environment->assertLocal();
             $profile = $this->emailProfile();
+            $withEmail = ! (bool) $this->option('without-email');
+            $resumeEmail = $withEmail && (bool) $this->option('resume-email');
+
+            $this->components->info('Preparazione dell’ambiente di integrazione locale');
+            $this->line('  Tenant: Rotta Logistics, Prometeo Antincendio, PassoLibero Calzature.');
+            $this->line(sprintf(
+                '  E-mail: %s%s. Documenti, API e MCP: inclusi.',
+                $withEmail ? "profilo {$profile}" : 'saltate (--without-email)',
+                $resumeEmail ? ' (ripresa dai checkpoint)' : '',
+            ));
+            $this->newLine();
+
             $environment->enable(app()->environmentFilePath());
             // A previous local run may have cached configuration before the
             // narrow fixture gate existed. Clear only that derived cache so
@@ -48,9 +60,12 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             $this->configureCurrentProcess();
 
             $this->components->info('1/6 — Riavvio dei mock API e MCP locali');
+            $this->line('  Arresto le eventuali istanze precedenti e avvio i due servizi Node su loopback.');
             $lifecycle->restart();
+            $this->line('  ✓ Mock API e MCP disponibili.');
 
             $this->components->info('2/6 — Reset dei soli tenant case-study');
+            $this->line('  Rimuovo solo i dati delle tre aziende di prova; gli altri tenant non vengono toccati.');
             foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
                 if (Tenant::query()->where('slug', $tenantId)->exists()) {
                     $this->callChecked('tenant:reset', ['tenant' => $tenantId, '--force' => true]);
@@ -58,10 +73,10 @@ final class ResetLocalIntegrationFixturesCommand extends Command
                     $this->line("  [{$tenantId}] non esiste ancora: sarà creato dal seeder.");
                 }
             }
+            $this->line('  ✓ Reset dei tenant case-study completato.');
 
             $this->components->info('3/6 — Aziende, utenti e documenti');
-            $withEmail = ! (bool) $this->option('without-email');
-            $resumeEmail = $withEmail && (bool) $this->option('resume-email');
+            $this->line('  Creo utenti e ruoli, ingerisco i documenti e sincronizzo le e-mail previste dal profilo.');
             $initArguments = [
                 '--profile' => $profile,
                 // A retry after a transient IMAP failure preserves the
@@ -75,11 +90,15 @@ final class ResetLocalIntegrationFixturesCommand extends Command
                 '--email-actor' => 'local-case-study-fixtures',
             ];
             $this->callChecked('demo:init-case-studies', $initArguments);
+            $this->line('  ✓ Dati di base pronti; le credenziali sono nella tabella appena stampata.');
 
             $this->components->info('4/6 — Connettori API e MCP per azienda');
+            $this->line('  Configuro un connettore API statico e un connettore MCP dedicato per ogni tenant.');
             $this->callChecked('db:seed', ['--class' => LocalIntegrationConnectorsSeeder::class, '--force' => true]);
+            $this->line('  ✓ Connettori API e MCP configurati.');
 
             $this->components->info('5/6 — Attivazione runtime MCP nei tre tenant');
+            $this->line('  Abilito l’esecuzione MCP per i tre ambienti isolati.');
             $previousTenant = $tenants->current();
             try {
                 foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
@@ -89,9 +108,11 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             } finally {
                 $tenants->set($previousTenant);
             }
+            $this->line('  ✓ Runtime MCP attivo.');
 
             if (! (bool) $this->option('skip-smoke')) {
                 $this->components->info('6/6 — Smoke MCP read-only per azienda');
+                $this->line('  Verifico che ogni connettore MCP risponda con il proprio contesto aziendale.');
                 foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
                     $connection = McpConnection::withoutGlobalScopes()
                         ->where('tenant_id', $tenantId)
@@ -106,6 +127,7 @@ final class ResetLocalIntegrationFixturesCommand extends Command
                         '--tool' => 'get_company_context',
                     ]);
                 }
+                $this->line('  ✓ Smoke MCP completato per tutte le aziende.');
             } else {
                 $this->components->warn('6/6 — Smoke MCP saltato (--skip-smoke).');
             }

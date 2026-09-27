@@ -94,6 +94,7 @@ class InitCaseStudiesCommand extends Command
         if ($exitCode !== self::SUCCESS) {
             return $exitCode;
         }
+        $this->renderLocalLoginCredentials();
 
         // 2) DOCUMENTI
         if (! (bool) $this->option('skip-docs')) {
@@ -219,6 +220,28 @@ class InitCaseStudiesCommand extends Command
         );
 
         return self::SUCCESS;
+    }
+
+    private function renderLocalLoginCredentials(): void
+    {
+        $this->newLine();
+        $this->components->info('Credenziali locali create (solo ambiente di sviluppo):');
+        $this->table(
+            ['Tenant', 'Azienda', 'Utente', 'Username / e-mail', 'Ruolo', 'Password'],
+            array_map(
+                static fn (array $credential): array => [
+                    $credential['tenant'],
+                    $credential['company'],
+                    $credential['name'],
+                    $credential['email'],
+                    $credential['role'],
+                    $credential['password'],
+                ],
+                CaseStudyUsersSeeder::localLoginCredentials(),
+            ),
+        );
+        $this->line('  Usa l’e-mail come username per accedere a https://askmydocsdev.test.');
+        $this->newLine();
     }
 
     /**
