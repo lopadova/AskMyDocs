@@ -92,6 +92,15 @@ final class AgentClaimGroundingValidator
     /** @return list<string> */
     private function candidateTerms(string $question): array
     {
+        // A short spoken follow-up such as "Trovato niente?" has no named
+        // entity to attest. Do not turn its sentence-initial participle into
+        // a fictitious company/person lookup. This remains deliberately
+        // narrow: an actual entity named "Trovato" followed by other content
+        // is still validated normally.
+        if (preg_match('/^\\s*trovato(?:a|i|e)?\\s+(?:niente|nulla|qualcosa)\\s*[?!…]*\\s*$/iu', $question) === 1) {
+            return [];
+        }
+
         preg_match_all("/(?<![\\p{L}\\p{N}])(?:[A-ZÀ-ÖØ-Þ][\\p{L}\\p{M}'’_-]{1,}|[A-Z0-9][A-Z0-9_-]{1,})(?![\\p{L}\\p{N}])/u", $question, $matches);
         // Common Italian imperative-plus-clitic openers ("Parlami di...",
         // "Raccontami...", "Spiegami..."). These are capitalized ONLY
@@ -102,7 +111,7 @@ final class AgentClaimGroundingValidator
         // the unattested entity itself (see the "Figo e come funziona?"
         // test below), so this stays an explicit denylist, extended rather
         // than replaced.
-        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'descrivi', 'descrivimi', 'dimmi', 'dove', 'elenca', 'elencami', 'fammi', 'illustrami', 'mi', 'mostra', 'mostrami', 'parlami', 'perche', 'perché', 'quale', 'quali', 'raccontami', 'spiega', 'spiegami'];
+        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'descrivi', 'descrivimi', 'di', 'dimmi', 'dove', 'elenca', 'elencami', 'fammi', 'illustrami', 'mi', 'mostra', 'mostrami', 'parlami', 'perche', 'perché', 'quale', 'quali', 'raccontami', 'spiega', 'spiegami'];
 
         return array_values(array_unique(array_filter($matches[0] ?? [], static function (string $term) use ($ignored): bool {
             return ! in_array(mb_strtolower($term), $ignored, true);
@@ -113,7 +122,21 @@ final class AgentClaimGroundingValidator
     {
         $normalise = static fn (string $value): string => mb_strtolower((string) preg_replace('/\\s+/u', ' ', trim($value)));
 
-        return str_contains($normalise($haystack), $normalise($needle));
+        $haystack = $normalise($haystack);
+        $needle = $normalise($needle);
+        if (str_contains($haystack, $needle)) {
+            return true;
+        }
+
+        // The synthesizer sometimes copies a source sentence correctly but
+        // substitutes only its final comma/period while closing a quote. The
+        // words and Markdown delimiters must still match verbatim; accepting
+        // this one cosmetic terminal difference avoids a false refusal while
+        // preserving the source/hash binding.
+        $withoutTerminalPunctuation = rtrim($needle, ".,;:!?… ");
+
+        return mb_strlen($withoutTerminalPunctuation) >= 16
+            && str_contains($haystack, $withoutTerminalPunctuation);
     }
 
     /** @return array{valid:false,reason:string,terms:list<string>,claims:list<array<string,mixed>>} */

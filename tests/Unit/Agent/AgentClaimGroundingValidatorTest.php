@@ -92,6 +92,42 @@ final class AgentClaimGroundingValidatorTest extends TestCase
         $this->assertSame('quote_not_in_chunk', $result['reason']);
     }
 
+    public function test_it_accepts_a_quote_with_only_terminal_punctuation_changed(): void
+    {
+        $evidence = ['documents' => [[
+            'document_id' => 29,
+            'evidence' => [[
+                'evidence_hash' => 'hubs-hash',
+                'content' => 'La rete operativa si articola su **tre hub regionali**, ciascuno con una specializzazione.',
+            ]],
+        ]], 'api_tools' => []];
+
+        $result = $this->validator()->validate('Di cosa parla questa azienda?', $evidence, [[
+            'text' => 'La rete operativa si articola su **tre hub regionali**.',
+            'quote' => 'La rete operativa si articola su **tre hub regionali**.',
+            'document_id' => 29,
+            'tool_execution_id' => null,
+            'evidence_hash' => 'hubs-hash',
+        ]]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['terms']);
+    }
+
+    public function test_it_does_not_treat_a_short_voice_follow_up_as_an_entity(): void
+    {
+        $result = $this->validator()->validate('Trovato niente?', $this->evidence(), [[
+            'text' => 'Le notifiche push raggiungono i clienti nell’app.',
+            'quote' => 'Le notifiche push raggiungono i clienti nell’app.',
+            'document_id' => 7,
+            'tool_execution_id' => null,
+            'evidence_hash' => 'push-hash',
+        ]]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['terms']);
+    }
+
     public function test_it_accepts_a_claim_bound_to_its_document_chunk(): void
     {
         $result = $this->validator()->validate('Come funzionano le notifiche?', $this->evidence(), [[

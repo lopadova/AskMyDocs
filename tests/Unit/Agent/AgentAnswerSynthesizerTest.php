@@ -343,6 +343,53 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame('repaired', $answer->grounding['repair']['status']);
     }
 
+    public function test_it_repairs_a_short_voice_follow_up_without_treating_it_as_an_entity(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 29,
+            'title' => 'Rete hub',
+            'source_path' => 'company/hubs.md',
+            'origin' => 'primary',
+            'evidence' => [[
+                'content' => 'La rete operativa si articola su **tre hub regionali**, ciascuno con una specializzazione.',
+                'evidence_hash' => 'hubs-hash',
+            ]],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+                ],
+            ]]),
+            new AiResponse(content: '', provider: 'fake', model: 'fake-repair', toolCalls: [[
+                'name' => 'repair_agent_claims',
+                'arguments' => ['claims' => [[
+                    'text' => 'La rete operativa si articola su **tre hub regionali**.',
+                    'quote' => 'La rete operativa si articola su **tre hub regionali**.',
+                    'document_id' => 29,
+                    'tool_execution_id' => null,
+                    'evidence_hash' => 'hubs-hash',
+                ]]],
+            ]]),
+        );
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
+        ))->synthesize('Trovato niente?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+        $this->assertSame('complete', $answer->completeness);
+        $this->assertSame('La rete operativa si articola su **tre hub regionali**.', $answer->answer);
+        $this->assertSame('repaired', $answer->grounding['repair']['status']);
+    }
+
     public function test_selection_does_not_force_a_detail_result_into_a_table(): void
     {
         $evidence = app(AgentEvidenceFactory::class)->empty();
