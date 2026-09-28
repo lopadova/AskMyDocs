@@ -97,7 +97,20 @@ final readonly class AgentLoop
                     filters: $filters,
                     depth: (int) data_get($run->input_json, 'depth', 3),
                     conversationContext: $turnContext,
+                    previousCitations: $this->previousCitations($run),
+                    actor: $user instanceof User ? $user : null,
                 );
+                $understanding = $investigationResult->intent?->understanding;
+                if ($understanding !== null) {
+                    $run->forceFill(['result_json' => array_merge(is_array($run->result_json) ? $run->result_json : [], [
+                        'question_understanding' => [
+                            'language' => $understanding->language,
+                            'intent' => $understanding->intent,
+                            'mentions' => $understanding->mentionTexts(),
+                            'available' => $understanding->available,
+                        ],
+                    ])])->save();
+                }
                 $search = $investigationResult->search;
                 $documents = $this->evidenceFactory->fromSearchResult($search);
                 $evidence->import($documents->jsonSerialize());
@@ -150,7 +163,7 @@ final readonly class AgentLoop
                     $evidence,
                     $this->plannerHistory($completed),
                     $results,
-                    $turnContext,
+                    json_encode(['previous_context' => $turnContext, 'question_understanding' => data_get($run->result_json, 'question_understanding')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 );
             } catch (Throwable $exception) {
                 if (! $this->hasSuccessfulAction($completed) || ! $evidence->hasEvidence()) {
@@ -582,13 +595,37 @@ final readonly class AgentLoop
         array $results,
         bool $retrieved,
     ): void {
-        $run->forceFill(['result_json' => [
+        $run->forceFill(['result_json' => array_merge(array_intersect_key(is_array($run->result_json) ? $run->result_json : [], ['question_understanding' => true]), [
             'phase' => 'collection',
             'retrieval_completed' => $retrieved,
             'evidence' => $evidence->jsonSerialize(),
             'completed_actions' => $this->masker->maskArray($completed) ?? [],
             'action_results' => $this->masker->maskArray($results) ?? [],
-        ]])->save();
+        ])])->save();
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function previousCitations(AgentRun $run): array
+    {
+        if ($run->conversation_id === null) {
+            return [];
+        }
+        $message = $run->conversation?->messages()
+            ->when((int) data_get($run->input_json, 'user_message_id', 0) > 0,
+                fn ($query) => $query->where('id', '<', (int) data_get($run->input_json, 'user_message_id')))
+            ->where('role', 'assistant')->latest('id')->first();
+        $messageCitations = data_get($message?->metadata, 'citations');
+        if (is_array($messageCitations) && $messageCitations !== []) {
+            return $messageCitations;
+        }
+        $previous = AgentRun::query()->forTenant($run->tenant_id)
+            ->where('conversation_id', $run->conversation_id)
+            ->where('id', '<', $run->id)
+            ->whereIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL])
+            ->latest('id')->first();
+        $citations = data_get($previous?->result_json, 'response.citations', []);
+
+        return is_array($citations) ? $citations : [];
     }
 
     /** @param list<array<string,mixed>> $completed */

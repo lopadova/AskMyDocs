@@ -294,7 +294,19 @@ final class WidgetSessionTest extends TestCase
         // closure conta i turni chat e ritorna click (turno 1) poi report_done
         // (turno 2); gli embeddings sono serviti a parte.
         $chatTurn = 0;
-        Http::fake(function ($request) use (&$chatTurn) {
+        $interpretations = 0;
+        Http::fake(function ($request) use (&$chatTurn, &$interpretations) {
+            if (isset($request->data()['response_format'])) {
+                $interpretations++;
+                return Http::response([
+                    'model' => 'openai/gpt-4o-mini',
+                    'choices' => [['message' => ['role' => 'assistant', 'content' => json_encode([
+                        'language' => 'it', 'intent' => 'Salvare', 'kb_queries' => ['salvataggio'],
+                        'mentions' => [], 'references_previous_turn' => false,
+                    ])], 'finish_reason' => 'stop']],
+                    'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
+                ], 200);
+            }
             if (str_contains($request->url(), '/embeddings')) {
                 return Http::response([
                     'data' => [['index' => 0, 'embedding' => array_fill(0, 1536, 0.0)]],
@@ -343,6 +355,7 @@ final class WidgetSessionTest extends TestCase
             ->assertJsonPath('session.status', WidgetSession::STATUS_COMPLETED);
 
         $this->assertDatabaseHas('widget_session_steps', ['kind' => WidgetSessionStep::KIND_TOOL_RESULT]);
+        $this->assertSame(1, $interpretations, 'A tool-result continuation must not re-interpret the user turn.');
     }
 
     // ─── M4: /exec-tool ────────────────────────────────────────────────

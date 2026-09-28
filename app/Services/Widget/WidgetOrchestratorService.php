@@ -12,6 +12,8 @@ use App\Models\WidgetSessionStep;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbSourceReader;
+use App\Services\Chat\ChatQuestionPreprocessor;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Str;
@@ -53,6 +55,8 @@ final class WidgetOrchestratorService
         private readonly AiManager $ai,
         private readonly WidgetPiiMasker $piiMasker,
         private readonly ChatLogManager $chatLog,
+        private readonly ChatQuestionPreprocessor $preprocessor,
+        private readonly KbSourceReader $sourceReader,
     ) {}
 
     /**
@@ -158,8 +162,14 @@ final class WidgetOrchestratorService
         // niente citazioni; l'agente o esegue un'azione DOM o dichiara di non
         // avere l'informazione in KB.
         $result = null;
+        $understanding = null;
         if (is_string($userMessage) && $userMessage !== '') {
-            $retrieved = $this->retrieval->retrieve($userMessage, (string) $session->project_key, null);
+            $understanding = $this->preprocessor->interpret($userMessage);
+            $query = $understanding->kbQueries[0] ?? $userMessage;
+            $retrieved = $this->retrieval->retrieve($query, (string) $session->project_key, null);
+            if ($understanding->available && $understanding->referencesPreviousTurn) {
+                $retrieved = $this->withPreviouslyCitedSources($session, $retrieved, $understanding);
+            }
             $result = $this->retrieval->shouldRefuse($retrieved) ? null : $retrieved;
         }
         $citations = $result !== null
@@ -179,6 +189,9 @@ final class WidgetOrchestratorService
         // l'LLM a emettere tool_call: degrado pulito a solo-risposta (R43 OFF-path),
         // niente istruzioni agentiche fuorvianti.
         $systemPrompt = $this->buildSystemPrompt($snapshot, $result, $hostTools, $toolsForTurn !== []);
+        if ($understanding?->language !== null) {
+            $systemPrompt .= "\nAnswer in {$understanding->language}; preserve identifiers and citations exactly.";
+        }
         $baseMessages = $this->buildMessages($session);
         $navigateAllowlist = $this->navigateAllowlist($session);
 
@@ -337,6 +350,47 @@ final class WidgetOrchestratorService
             })
             ->values()
             ->all();
+    }
+
+    private function withPreviouslyCitedSources(WidgetSession $session, SearchResult $result, \App\Services\Chat\QuestionUnderstanding $understanding): SearchResult
+    {
+        $codes = array_column(array_filter($understanding->mentions, static fn (array $mention): bool => $mention['type'] === 'identifier'), 'text');
+        if ($codes === []) {
+            return $result;
+        }
+        $previous = $session->steps()->where('kind', WidgetSessionStep::KIND_BOT_MESSAGE)->orderByDesc('step_index')->first(['args_json']);
+        $citations = data_get($previous?->args_json, 'citations', []);
+        if (! is_array($citations)) {
+            return $result;
+        }
+        $anchors = collect();
+        foreach (array_slice($citations, 0, 12) as $citation) {
+            if (! is_array($citation) || ! is_numeric($citation['document_id'] ?? null)) {
+                continue;
+            }
+            $chunkId = (int) data_get($citation, 'chunks.0.chunk_id', 0);
+            if ($chunkId < 1) {
+                continue;
+            }
+            $source = $this->sourceReader->readCandidate([
+                'document' => ['id' => (int) $citation['document_id']], 'chunk_id' => $chunkId,
+            ], (string) $session->project_key);
+            if ($source === null || ! array_filter($codes, static fn (string $code): bool => mb_stripos($source['excerpt'], $code) !== false)) {
+                continue;
+            }
+            $anchors->push([
+                'chunk_id' => $chunkId, 'chunk_text' => $source['excerpt'],
+                'chunk_hash' => hash('sha256', $source['excerpt']),
+                'vector_score' => 1.0, 'rerank_score' => 1.0,
+                'project_key' => $session->project_key,
+                'document' => [
+                    'id' => $source['document_id'], 'title' => $source['title'],
+                    'source_path' => $source['source_path'], 'source_type' => $source['source_type'],
+                ],
+            ]);
+        }
+
+        return $anchors->isEmpty() ? $result : new SearchResult($anchors->concat($result->primary), $result->expanded, $result->rejected, $result->meta, $result->runnerUp);
     }
 
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Investigation;
 
+use App\Services\Chat\QuestionUnderstanding;
+
 /** A validated, retrieval-safe interpretation of a user request. */
 final readonly class KbInvestigationIntent
 {
@@ -21,6 +23,7 @@ final readonly class KbInvestigationIntent
         public array $requiredFacts,
         public array $ambiguities,
         public array $queries,
+        public ?QuestionUnderstanding $understanding = null,
     ) {
     }
 

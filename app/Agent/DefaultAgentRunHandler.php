@@ -76,11 +76,13 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             }
 
             $this->events->publish($run, 'synthesis.started', 'synthesis.started');
+            $run->refresh();
             $answer = $this->synthesizer->synthesize(
                 trim((string) data_get($run->input_json, 'question', '')),
                 $context,
                 $outcome,
                 $turnContext,
+                is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
             );
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL

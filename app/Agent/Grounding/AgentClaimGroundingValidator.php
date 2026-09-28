@@ -12,10 +12,13 @@ final class AgentClaimGroundingValidator
      * @param mixed $claims
      * @return array{valid:bool,reason:?string,terms:list<string>,claims:list<array<string,mixed>>}
      */
-    public function validate(string $question, array $evidence, mixed $claims): array
+    public function validate(string $question, array $evidence, mixed $claims, array $mentions = []): array
     {
+        $terms = array_values(array_unique(array_filter($mentions, static fn (mixed $term): bool => is_string($term)
+            && $term !== '' && mb_strlen($term) <= 120
+            && str_contains(mb_strtolower($question), mb_strtolower($term)))));
         if (! is_array($claims) || $claims === []) {
-            return $this->failure('missing_claims', $this->candidateTerms($question));
+            return $this->failure('missing_claims', $terms);
         }
 
         $documents = [];
@@ -45,29 +48,29 @@ final class AgentClaimGroundingValidator
         $normalisedClaims = [];
         foreach ($claims as $claim) {
             if (! is_array($claim)) {
-                return $this->failure('invalid_claim', $this->candidateTerms($question));
+                return $this->failure('invalid_claim', $terms);
             }
             $text = trim((string) ($claim['text'] ?? ''));
             $quote = trim((string) ($claim['quote'] ?? ''));
             $hash = trim((string) ($claim['evidence_hash'] ?? ''));
             if ($text === '' || $quote === '' || $hash === '') {
-                return $this->failure('invalid_claim', $this->candidateTerms($question));
+                return $this->failure('invalid_claim', $terms);
             }
 
             $documentId = $claim['document_id'] ?? null;
             $executionId = $claim['tool_execution_id'] ?? null;
             if (($documentId === null) === ($executionId === null)) {
-                return $this->failure('invalid_claim_source', $this->candidateTerms($question));
+                return $this->failure('invalid_claim_source', $terms);
             }
             if ($documentId !== null) {
                 $content = $documents[(string) $documentId][$hash] ?? null;
                 if (! is_string($content) || ! $this->contains($content, $quote)) {
-                    return $this->failure('quote_not_in_chunk', $this->candidateTerms($question));
+                    return $this->failure('quote_not_in_chunk', $terms);
                 }
             } else {
                 $tool = $tools[(string) $executionId] ?? null;
                 if ($tool === null || ! hash_equals($tool['hash'], $hash) || ! $this->contains($tool['content'], $quote)) {
-                    return $this->failure('quote_not_in_tool_result', $this->candidateTerms($question));
+                    return $this->failure('quote_not_in_tool_result', $terms);
                 }
             }
             $normalisedClaims[] = [
@@ -79,7 +82,6 @@ final class AgentClaimGroundingValidator
             ];
         }
 
-        $terms = $this->candidateTerms($question);
         foreach ($terms as $term) {
             if (! array_filter($normalisedClaims, fn (array $claim): bool => $this->contains($claim['quote'], $term))) {
                 return $this->failure('unattested_entity', [$term]);
@@ -87,31 +89,6 @@ final class AgentClaimGroundingValidator
         }
 
         return ['valid' => true, 'reason' => null, 'terms' => [], 'claims' => $normalisedClaims];
-    }
-
-    /** @return list<string> */
-    private function candidateTerms(string $question): array
-    {
-        // A short spoken follow-up such as "Trovato niente?" has no named
-        // entity to attest. Do not turn its sentence-initial participle into
-        // a fictitious company/person lookup. This remains deliberately
-        // narrow: an actual entity named "Trovato" followed by other content
-        // is still validated normally.
-        if (preg_match('/^\\s*trovato(?:a|i|e)?\\s+(?:niente|nulla|qualcosa)\\s*[?!…]*\\s*$/iu', $question) === 1) {
-            return [];
-        }
-
-        preg_match_all("/(?<![\\p{L}\\p{N}])(?:[A-ZÀ-ÖØ-Þ][\\p{L}\\p{M}'’_-]{1,}|[A-Z0-9][A-Z0-9_-]{1,})(?![\\p{L}\\p{N}])/u", $question, $matches);
-        // Common Italian question openers, including imperatives ("Parlami
-        // di...") and existence questions ("Esistono email..."), are
-        // capitalized because of their position, not because they name an
-        // entity. Keep this an explicit denylist: skipping every first word
-        // would miss a genuine unattested name ("Figo e come funziona?").
-        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'descrivi', 'descrivimi', 'di', 'dimmi', 'dove', 'elenca', 'elencami', 'esiste', 'esistono', 'fammi', 'illustrami', 'mi', 'mostra', 'mostrami', 'parlami', 'perche', 'perché', 'quale', 'quali', 'raccontami', 'spiega', 'spiegami'];
-
-        return array_values(array_unique(array_filter($matches[0] ?? [], static function (string $term) use ($ignored): bool {
-            return ! in_array(mb_strtolower($term), $ignored, true);
-        })));
     }
 
     private function contains(string $haystack, string $needle): bool

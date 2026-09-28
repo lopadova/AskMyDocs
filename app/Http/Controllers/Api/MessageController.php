@@ -133,6 +133,7 @@ class MessageController extends Controller
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
         $filters = $this->buildRetrievalFilters($request, $projectKey);
+        $previousCitations = $conversation->messages()->where('role', 'assistant')->latest('id')->first()?->metadata['citations'] ?? [];
 
         // 1. Save user message
         $userMessage = $conversation->messages()->create([
@@ -160,6 +161,8 @@ class MessageController extends Controller
             filters: $filters,
             depth: (int) ($validated['depth'] ?? 3),
             conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
+            previousCitations: is_array($previousCitations) ? $previousCitations : [],
+            actor: $request->user(),
         );
         $result = $investigationResult->search;
         $chunks = $result->primary;
@@ -184,6 +187,7 @@ class MessageController extends Controller
                 reason: $investigationResult->stopReason === 'retrieval_profile_required'
                     ? 'retrieval_profile_required'
                     : 'no_relevant_context',
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -254,6 +258,7 @@ class MessageController extends Controller
                 aiResponse: $aiResponse,
                 latencyMs: $latencyMs,
                 traceId: $traceId,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -390,9 +395,10 @@ class MessageController extends Controller
         int $userId,
         float $startTime,
         string $reason,
+        ?string $language = null,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
@@ -476,16 +482,16 @@ class MessageController extends Controller
      * key on a miss — we use that as the sentinel and never leak the
      * key to the user.
      */
-    private function localizedRefusalMessage(string $reason): string
+    private function localizedRefusalMessage(string $reason, ?string $language = null): string
     {
         $perReasonKey = "kb.refusal.{$reason}";
-        $perReasonMessage = __($perReasonKey);
+        $perReasonMessage = __($perReasonKey, [], $language);
 
         if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
             return $perReasonMessage;
         }
 
-        return (string) __('kb.no_grounded_answer');
+        return (string) __('kb.no_grounded_answer', [], $language);
     }
 
     /**
@@ -516,9 +522,10 @@ class MessageController extends Controller
         AiResponse $aiResponse,
         int $latencyMs,
         ?string $traceId = null,
+        ?string $language = null,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',

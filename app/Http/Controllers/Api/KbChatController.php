@@ -95,6 +95,7 @@ class KbChatController extends Controller
             projectKey: $projectKey,
             filters: $filters,
             depth: (int) $request->input('depth', 3),
+            actor: $request->user(),
         );
         $result = $investigationResult->search;
 
@@ -142,6 +143,7 @@ class KbChatController extends Controller
                     ? 'retrieval_profile_required'
                     : 'no_relevant_context',
                 counterfactual: $counterfactualPanels,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -168,6 +170,7 @@ class KbChatController extends Controller
                 startTime: $startTime,
                 reason: 'blocked_by_guardrails',
                 counterfactual: $counterfactualPanels,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -217,6 +220,7 @@ class KbChatController extends Controller
                 latencyMs: $latencyMs,
                 counterfactual: $counterfactualPanels,
                 traceId: $traceId,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -396,9 +400,10 @@ class KbChatController extends Controller
         float $startTime,
         string $reason,
         array $counterfactual = [],
+        ?string $language = null,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $this->chatSessionId($request),
@@ -514,16 +519,16 @@ class KbChatController extends Controller
      * generic message. Callers should NEVER receive the raw key — the
      * test suite asserts this on every refusal path.
      */
-    private function localizedRefusalMessage(string $reason): string
+    private function localizedRefusalMessage(string $reason, ?string $language = null): string
     {
         $perReasonKey = "kb.refusal.{$reason}";
-        $perReasonMessage = __($perReasonKey);
+        $perReasonMessage = __($perReasonKey, [], $language);
 
         if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
             return $perReasonMessage;
         }
 
-        return (string) __('kb.no_grounded_answer');
+        return (string) __('kb.no_grounded_answer', [], $language);
     }
 
     /**
@@ -582,9 +587,10 @@ class KbChatController extends Controller
         int $latencyMs,
         array $counterfactual = [],
         ?string $traceId = null,
+        ?string $language = null,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $this->chatSessionId($request),

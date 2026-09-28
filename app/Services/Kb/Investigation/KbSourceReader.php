@@ -6,6 +6,7 @@ namespace App\Services\Kb\Investigation;
 
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Models\User;
 use App\Support\TenantContext;
 
 /**
@@ -25,7 +26,7 @@ class KbSourceReader
      * @param array<string, mixed> $candidate
      * @return array<string, mixed>|null
      */
-    public function readCandidate(array $candidate): ?array
+    public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null): ?array
     {
         $documentId = (int) data_get($candidate, 'document.id', 0);
         $chunkId = (int) data_get($candidate, 'chunk_id', 0);
@@ -33,13 +34,20 @@ class KbSourceReader
             return null;
         }
 
-        // The document model keeps the normal ACL global scope. We never read
-        // adjacent chunks merely because a caller guessed a document id.
+        // The model keeps the normal ACL global scope in HTTP. Queue workers
+        // have no authenticated principal, so cited-source re-reads also apply
+        // the explicit actor policy below. A guessed document id is never
+        // enough to open its adjacent chunks.
         $document = KnowledgeDocument::query()
             ->forTenant($this->tenant->current())
             ->whereKey($documentId)
             ->first();
         if ($document === null) {
+            return null;
+        }
+        if (($projectKey !== null && $document->project_key !== $projectKey)
+            || ($actor === null && $projectKey !== null && $document->source_acl_enforced_at !== null)
+            || ($actor !== null && ! $actor->hasDocumentAccess($document, 'view'))) {
             return null;
         }
 

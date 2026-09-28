@@ -48,11 +48,9 @@ final class OpenAiProvider implements AiProviderInterface
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
-        // Raw Http:: /chat/completions branch for ANY tool turn — the explicit
-        // with-tools call (`tools` in options) AND the MCP loop's final answer
-        // turn (no `tools`, but the history carries assistant `tool_calls` /
-        // `role:'tool'` messages the SDK can't represent). Everything else → SDK.
-        if (array_key_exists('tools', $options) || ToolTurnDetector::historyHasToolTurn($messages)) {
+        // Raw Http:: /chat/completions for tool turns and strict JSON schema
+        // requests, which the SDK wrapper cannot pass through unchanged.
+        if (array_key_exists('tools', $options) || array_key_exists('response_format', $options) || ToolTurnDetector::historyHasToolTurn($messages)) {
             return $this->chatViaHttpWithTools($systemPrompt, $messages, $options);
         }
 
@@ -129,6 +127,10 @@ final class OpenAiProvider implements AiProviderInterface
             'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
             'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
         ];
+
+        if (array_key_exists('response_format', $options)) {
+            $payload['response_format'] = $options['response_format'];
+        }
 
         // `tools` is absent on the MCP final answer turn (tool history, no tools);
         // only attach when the caller actually offers tools this turn. `tool_choice`

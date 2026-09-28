@@ -51,7 +51,9 @@ final class AgentAnswerSynthesizerTest extends TestCase
         ));
 
         $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
-            ->synthesize('Figo e come funziona?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+            ->synthesize('Figo e come funziona?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null, [
+                'available' => true, 'language' => 'it', 'mentions' => ['Figo'],
+            ]);
 
         $this->assertSame('insufficient', $answer->completeness);
         $this->assertSame([], $answer->citations);

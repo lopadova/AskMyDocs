@@ -130,6 +130,32 @@ class OpenRouterProviderTest extends TestCase
         });
     }
 
+    public function test_strict_schema_request_requires_compatible_openrouter_routing(): void
+    {
+        $this->setupConfig();
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'openai/gpt-4o-mini',
+            'choices' => [['message' => ['role' => 'assistant', 'content' => '{"language":"it"}'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 12, 'completion_tokens' => 6, 'total_tokens' => 18],
+        ])]);
+        $format = ['type' => 'json_schema', 'json_schema' => [
+            'name' => 'test', 'strict' => true,
+            'schema' => ['type' => 'object', 'properties' => ['language' => ['type' => 'string']], 'required' => ['language'], 'additionalProperties' => false],
+        ]];
+
+        $response = $this->provider()->chatWithHistory('sys', [['role' => 'user', 'content' => 'ciao']], [
+            'model' => 'openai/gpt-4o-mini', 'response_format' => $format,
+        ]);
+
+        $this->assertSame('openai/gpt-4o-mini', $response->model);
+        Http::assertSent(static function (Request $request) use ($format): bool {
+            $body = $request->data();
+            return $body['model'] === 'openai/gpt-4o-mini'
+                && $body['response_format'] === $format
+                && $body['provider']['require_parameters'] === true;
+        });
+    }
+
     public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http(): void
     {
         // The MCP loop's final answer turn (no `tools`, but tool-role history)

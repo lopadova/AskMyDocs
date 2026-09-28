@@ -35,6 +35,34 @@ final class KbSourceReaderTest extends TestCase
         $this->assertStringContainsString('cinque giorni lavorativi', $source['excerpt']);
     }
 
+    public function test_anonymous_re_read_rejects_a_source_restricted_document(): void
+    {
+        $document = $this->document('Email privata');
+        $document->forceFill(['source_acl_enforced_at' => now()])->save();
+        $chunk = $this->chunk($document, 0, 'SPD-51230');
+
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk), 'orders'));
+    }
+
+    public function test_re_read_cannot_cross_tenant_boundary(): void
+    {
+        app(TenantContext::class)->set('other-tenant');
+        $document = KnowledgeDocument::create([
+            'tenant_id' => 'other-tenant', 'project_key' => 'orders', 'source_type' => 'text',
+            'title' => 'Foreign email', 'source_path' => 'mail/foreign', 'mime_type' => 'text/plain',
+            'status' => 'active', 'document_hash' => str_repeat('b', 64),
+            'version_hash' => bin2hex(random_bytes(16)),
+        ]);
+        $chunk = KnowledgeChunk::create([
+            'tenant_id' => 'other-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'SPD-51230'), 'chunk_text' => 'SPD-51230',
+        ]);
+        app(TenantContext::class)->set('reader-tenant');
+
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk), 'orders'));
+    }
+
     public function test_reads_only_contiguous_sections_for_a_long_manual(): void
     {
         config()->set('kb.investigation.full_source_max_chars', 40);

@@ -96,6 +96,10 @@ The following are examples of answers that users rated positively. Use them as a
 
 Project: {{ $projectKey ?? 'all' }}
 
+@if(!empty($retrievalInvestigation['language'] ?? null))
+Answer in {{ $retrievalInvestigation['language'] }}. Keep names, identifiers and citations unchanged.
+@endif
+
 @if(!empty($retrievalInvestigation['partial'] ?? false))
 ## Evidence limits from the KB investigation
 

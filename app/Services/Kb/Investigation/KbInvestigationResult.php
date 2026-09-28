@@ -35,7 +35,7 @@ final readonly class KbInvestigationResult
      * They make a partial response name the material facts the KB did not
      * establish instead of silently filling the gap from model knowledge.
      *
-     * @return array{objective:?string,required_facts:list<string>,supported_facts:list<string>,missing_facts:list<string>,partial:bool}
+     * @return array{objective:?string,required_facts:list<string>,supported_facts:list<string>,missing_facts:list<string>,partial:bool,language:?string}
      */
     public function answerPromptContext(): array
     {
@@ -45,10 +45,11 @@ final readonly class KbInvestigationResult
             'supported_facts' => $this->factMap['supported_facts'] ?? [],
             'missing_facts' => $this->factMap['missing_facts'] ?? [],
             'partial' => $this->stopReason !== 'sufficient_evidence',
+            'language' => $this->intent?->understanding?->language,
         ];
     }
 
-    /** @return array{queries:list<string>,stop_reason:string,selected_documents:int,supported_facts:list<string>,missing_facts:list<string>} */
+    /** @return array{queries:list<string>,stop_reason:string,selected_documents:int,supported_facts:list<string>,missing_facts:list<string>,language:?string} */
     public function trace(): array
     {
         return [
@@ -57,6 +58,7 @@ final readonly class KbInvestigationResult
             'selected_documents' => count($this->selectedSources),
             'supported_facts' => $this->factMap['supported_facts'] ?? [],
             'missing_facts' => $this->factMap['missing_facts'] ?? [],
+            'language' => $this->intent?->understanding?->language,
         ];
     }
 }

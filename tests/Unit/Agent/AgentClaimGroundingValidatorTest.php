@@ -10,12 +10,7 @@ use Tests\TestCase;
 
 final class AgentClaimGroundingValidatorTest extends TestCase
 {
-    /**
-     * The denylist fix in candidateTerms() (below tests) must stay a
-     * denylist, not a "skip whatever word opens the question" shortcut — a
-     * genuinely unattested entity can be the very first word, and that must
-     * still be caught.
-     */
+    /** A structured name at the start of the question still needs a source. */
     public function test_it_blocks_an_unattested_named_entity_even_when_context_is_related(): void
     {
         $result = $this->validator()->validate('Figo e come funziona?', $this->evidence(), [[
@@ -24,7 +19,7 @@ final class AgentClaimGroundingValidatorTest extends TestCase
             'document_id' => 7,
             'tool_execution_id' => null,
             'evidence_hash' => 'push-hash',
-        ]]);
+        ]], ['Figo']);
 
         $this->assertFalse($result['valid']);
         $this->assertSame('unattested_entity', $result['reason']);
@@ -168,7 +163,7 @@ final class AgentClaimGroundingValidatorTest extends TestCase
             'document_id' => 7,
             'tool_execution_id' => null,
             'evidence_hash' => 'push-hash',
-        ]]);
+        ]], ['Figo']);
 
         $this->assertFalse($result['valid']);
         $this->assertSame('unattested_entity', $result['reason']);

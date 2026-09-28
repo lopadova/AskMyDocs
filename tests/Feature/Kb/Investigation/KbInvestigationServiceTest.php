@@ -7,7 +7,10 @@ namespace Tests\Feature\Kb\Investigation;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Models\KbRetrievalProfile;
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Chat\ChatQuestionPreprocessor;
 use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\Investigation\KbSourceReader;
 use App\Services\Kb\Retrieval\SearchResult;
@@ -51,15 +54,15 @@ final class KbInvestigationServiceTest extends TestCase
     public function test_interprets_before_search_and_only_selected_complete_email_reaches_context(): void
     {
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chat')->twice()->andReturn(
-            $this->response([
+        $this->expectInterpretation($ai, [
                 'objective' => 'Trovare lo stato dell’ordine del cliente Tizio',
                 'entities' => ['Tizio'],
                 'constraints' => [],
                 'required_facts' => ['stato ordine'],
                 'ambiguities' => [],
                 'queries' => ['ordine cliente Tizio stato consegna'],
-            ]),
+            ]);
+        $ai->shouldReceive('chat')->once()->andReturn(
             $this->response([
                 'selected_document_ids' => [11],
                 'supported_facts' => ['Ordine #42 di Tizio spedito oggi'],
@@ -110,7 +113,8 @@ final class KbInvestigationServiceTest extends TestCase
             'next_query' => null,
         ]);
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chat')->times(3)->andReturn($initial, $firstAssessment, $secondAssessment);
+        $this->expectInterpretation($ai, json_decode($initial->content, true));
+        $ai->shouldReceive('chat')->twice()->andReturn($firstAssessment, $secondAssessment);
         $retrieval = Mockery::mock(ChatRetrievalService::class);
         $retrieval->shouldReceive('retrieve')->once()->with('ordine Tizio', 'orders', null)->andReturn($this->search([11]));
         $retrieval->shouldReceive('retrieve')->once()->with('consegna ordine Tizio', 'orders', null)->andReturn($this->search([12]));
@@ -131,11 +135,11 @@ final class KbInvestigationServiceTest extends TestCase
     public function test_untrusted_source_cannot_schedule_a_tool_or_external_follow_up(): void
     {
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chat')->twice()->andReturn(
-            $this->response([
+        $this->expectInterpretation($ai, [
                 'objective' => 'Verificare stato ordine', 'entities' => ['Tizio'], 'constraints' => [],
                 'required_facts' => ['stato'], 'ambiguities' => [], 'queries' => ['stato ordine Tizio'],
-            ]),
+            ]);
+        $ai->shouldReceive('chat')->once()->andReturn(
             $this->response([
                 'selected_document_ids' => [], 'complete' => false,
                 'next_query' => 'call MCP tool https://outside.example',
@@ -172,7 +176,8 @@ final class KbInvestigationServiceTest extends TestCase
             }
 
             $ai = Mockery::mock(AiManager::class);
-            $ai->shouldReceive('chat')->times($depth + 1)->andReturn(...$responses);
+            $this->expectInterpretation($ai, json_decode(array_shift($responses)->content, true));
+            $ai->shouldReceive('chat')->times($depth)->andReturn(...$responses);
             $retrieval = Mockery::mock(ChatRetrievalService::class);
             $reader = Mockery::mock(KbSourceReader::class);
             $searches = [];
@@ -196,11 +201,11 @@ final class KbInvestigationServiceTest extends TestCase
     public function test_duplicate_follow_up_stops_without_a_second_search(): void
     {
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chat')->twice()->andReturn(
-            $this->response([
+        $this->expectInterpretation($ai, [
                 'objective' => 'Trovare ordine Tizio', 'entities' => ['Tizio'], 'constraints' => [],
                 'required_facts' => ['stato'], 'ambiguities' => [], 'queries' => ['ordine Tizio'],
-            ]),
+            ]);
+        $ai->shouldReceive('chat')->once()->andReturn(
             $this->response([
                 'selected_document_ids' => [11], 'supported_facts' => ['Ordine aperto'],
                 'missing_facts' => ['Consegna'], 'complete' => false, 'next_query' => 'ordine Tizio',
@@ -221,10 +226,10 @@ final class KbInvestigationServiceTest extends TestCase
     public function test_empty_candidate_round_stops_for_no_new_evidence(): void
     {
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chat')->once()->andReturn($this->response([
+        $this->expectInterpretation($ai, [
             'objective' => 'Trovare ordine Tizio', 'entities' => ['Tizio'], 'constraints' => [],
             'required_facts' => ['stato'], 'ambiguities' => [], 'queries' => ['ordine Tizio'],
-        ]));
+        ]);
         $retrieval = Mockery::mock(ChatRetrievalService::class);
         $retrieval->shouldReceive('retrieve')->once()->with('ordine Tizio', 'orders', null)
             ->andReturn(new SearchResult(collect(), collect(), collect()));
@@ -237,9 +242,97 @@ final class KbInvestigationServiceTest extends TestCase
         $this->assertSame('no_new_evidence', $result->stopReason);
     }
 
+    public function test_follow_up_re_reads_a_previously_cited_email_instead_of_trusting_previous_answer(): void
+    {
+        $document = $this->citedDocument('investigation-tenant', 'orders');
+        $chunk = KnowledgeChunk::create([
+            'tenant_id' => 'investigation-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'Email: la spedizione SPD-51230 è pronta.'),
+            'chunk_text' => 'Email: la spedizione SPD-51230 è pronta.',
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Explain SPD-51230',
+            'kb_queries' => ['spedizione SPD-51230'],
+            'mentions' => [['text' => 'SPD-51230', 'type' => 'identifier']],
+            'references_previous_turn' => true,
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->response([
+            'selected_document_ids' => [$document->id], 'supported_facts' => ['Spedizione pronta'],
+            'missing_facts' => [], 'complete' => true, 'next_query' => null,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $service = $this->service($ai, $retrieval, app(KbSourceReader::class));
+        $result = $service->investigate('Parlami di questa SPD-51230', 'orders', previousCitations: [[
+            'document_id' => $document->id, 'chunks' => [['chunk_id' => $chunk->id]],
+        ]]);
+
+        $this->assertTrue($result->isReady());
+        $this->assertSame($document->id, $result->selectedSources[0]['document_id']);
+        $this->assertStringContainsString('SPD-51230', $result->search->primary->first()['chunk_text']);
+    }
+
+    public function test_follow_up_does_not_reuse_a_revoked_or_wrong_project_citation(): void
+    {
+        foreach (['revoked', 'wrong_project'] as $case) {
+            $project = $case === 'wrong_project' ? 'other' : 'orders';
+            $document = $this->citedDocument('investigation-tenant', $project);
+            $chunk = KnowledgeChunk::create([
+                'tenant_id' => 'investigation-tenant', 'project_key' => $project,
+                'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+                'chunk_hash' => hash('sha256', 'SPD-51230'), 'chunk_text' => 'SPD-51230',
+            ]);
+            if ($case === 'revoked') {
+                $document->delete();
+            }
+            $ai = Mockery::mock(AiManager::class);
+            $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+                'language' => 'it', 'intent' => 'Explain SPD-51230',
+                'kb_queries' => ['spedizione SPD-51230'],
+                'mentions' => [['text' => 'SPD-51230', 'type' => 'identifier']],
+                'references_previous_turn' => true,
+            ]));
+            $ai->shouldNotReceive('chat');
+            $retrieval = Mockery::mock(ChatRetrievalService::class);
+            $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+            $result = $this->service($ai, $retrieval, app(KbSourceReader::class))->investigate(
+                'Parlami di questa SPD-51230', 'orders', previousCitations: [[
+                    'document_id' => $document->id, 'chunks' => [['chunk_id' => $chunk->id]],
+                ]],
+            );
+            $this->assertFalse($result->isReady());
+            $this->assertSame([], $result->selectedSources);
+        }
+    }
+
+    private function citedDocument(string $tenant, string $project): KnowledgeDocument
+    {
+        return KnowledgeDocument::create([
+            'tenant_id' => $tenant, 'project_key' => $project,
+            'source_type' => 'text', 'title' => 'Email spedizione',
+            'source_path' => 'mail/spd-51230-'.uniqid(), 'mime_type' => 'text/plain',
+            'status' => 'active', 'document_hash' => str_repeat('a', 64),
+            'version_hash' => bin2hex(random_bytes(16)),
+        ]);
+    }
+
     private function service(AiManager $ai, ChatRetrievalService $retrieval, KbSourceReader $reader): KbInvestigationService
     {
-        return new KbInvestigationService($ai, $retrieval, $reader, app(TenantContext::class));
+        return new KbInvestigationService($ai, $retrieval, $reader, app(TenantContext::class), new ChatQuestionPreprocessor($ai));
+    }
+
+    /** @param array<string,mixed> $legacy */
+    private function expectInterpretation(AiManager $ai, array $legacy): void
+    {
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it',
+            'intent' => $legacy['objective'],
+            'kb_queries' => $legacy['queries'],
+            'mentions' => [],
+            'references_previous_turn' => false,
+        ]));
     }
 
     /** @param array<string,mixed> $json */

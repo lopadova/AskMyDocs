@@ -146,6 +146,7 @@ class MessageStreamController extends Controller
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
         $filters = $this->buildRetrievalFilters($request, $projectKey);
+        $previousCitations = $conversation->messages()->where('role', 'assistant')->latest('id')->first()?->metadata['citations'] ?? [];
         $appContext = $mcpAppContext->resolve(
             is_string($validated['mcp_app_id'] ?? null) ? $validated['mcp_app_id'] : null,
             $request->user(),
@@ -179,6 +180,8 @@ class MessageStreamController extends Controller
             filters: $filters,
             depth: (int) ($validated['depth'] ?? 3),
             conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
+            previousCitations: is_array($previousCitations) ? $previousCitations : [],
+            actor: $request->user(),
         );
         $result = $investigationResult->search;
         $chunks = $result->primary;
@@ -211,6 +214,7 @@ class MessageStreamController extends Controller
                 sessionId: $sessionId,
                 clientIp: $clientIp,
                 userAgent: $userAgent,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -308,8 +312,9 @@ class MessageStreamController extends Controller
         string $sessionId,
         ?string $clientIp,
         ?string $userAgent,
+        ?string $language = null,
     ): StreamedResponse {
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         return $this->streamingResponse($request, function () use (
             $reason, $answer, $conversation, $chatLog, $question,
@@ -628,7 +633,7 @@ class MessageStreamController extends Controller
             // the persisted shape and reconciles via the optimistic
             // dedupe path (R25).
             $persistedContent = $isSelfRefusal
-                ? $this->localizedRefusalMessage('llm_self_refusal')
+                ? $this->localizedRefusalMessage('llm_self_refusal', is_string($investigationTrace['language'] ?? null) ? $investigationTrace['language'] : null)
                 : $assistantContent;
 
             // v8.16/W3 — resolve the real per-turn cost on the grounded path. This
@@ -952,16 +957,16 @@ class MessageStreamController extends Controller
      * `kb.refusal.{reason}` first, degrades to `kb.no_grounded_answer`
      * if the per-reason key is missing.
      */
-    private function localizedRefusalMessage(string $reason): string
+    private function localizedRefusalMessage(string $reason, ?string $language = null): string
     {
         $perReasonKey = "kb.refusal.{$reason}";
-        $perReasonMessage = __($perReasonKey);
+        $perReasonMessage = __($perReasonKey, [], $language);
 
         if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
             return $perReasonMessage;
         }
 
-        return (string) __('kb.no_grounded_answer');
+        return (string) __('kb.no_grounded_answer', [], $language);
     }
 
     /**

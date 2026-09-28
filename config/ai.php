@@ -21,6 +21,11 @@ return [
 
     'default' => env('AI_PROVIDER', 'openai'),
 
+    'question_preprocessor' => [
+        'provider' => env('CHAT_PREPROCESSOR_PROVIDER', 'openrouter'),
+        'model' => env('CHAT_PREPROCESSOR_MODEL', 'openai/gpt-4o-mini'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Embeddings Provider

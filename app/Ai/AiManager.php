@@ -45,7 +45,7 @@ class AiManager
      * raw `Http::` (metered by the {@see AiCallMeter} bridge).
      *
      * The bridge therefore meters these providers ONLY on a raw-Http turn (tools
-     * present OR the history carries a tool turn — see {@see bridgeShouldMeterChat});
+     * present, a strict response_format, OR tool history — see {@see bridgeShouldMeterChat});
      * a no-tools call or an embeddings call is already SDK-metered and bridging it
      * would DOUBLE-COUNT. Mirrors `McpToolCallingService::TOOL_CAPABLE_PROVIDERS`.
      * openai + openrouter were migrated to HYBRID in v8.16/W2; anthropic + gemini
@@ -196,6 +196,7 @@ class AiManager
     {
         if (in_array($provider, self::SDK_HYBRID_TOOL_PROVIDERS, true)) {
             return array_key_exists('tools', $options)
+                || array_key_exists('response_format', $options)
                 || ToolTurnDetector::historyHasToolTurn($messages);
         }
 
@@ -238,6 +239,18 @@ class AiManager
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
+
+        if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
+            app(AiCallMeter::class)->meterChat($response, $messages);
+        }
+
+        return $response;
+    }
+
+    /** A separately configured, metered provider for strict structured chat turns. */
+    public function chatWithProvider(string $provider, string $systemPrompt, array $messages, array $options = []): AiResponse
+    {
+        $response = $this->provider($provider)->chatWithHistory($systemPrompt, $messages, $options);
 
         if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
             app(AiCallMeter::class)->meterChat($response, $messages);
