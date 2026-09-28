@@ -27,6 +27,13 @@ each case-study login:
 php artisan dev:reset-local-integration-fixtures
 ```
 
+To recreate the entire **local** database before the same fixture bootstrap,
+use the explicit destructive option:
+
+```bash
+php artisan dev:reset-local-integration-fixtures --fresh
+```
+
 It is guarded by `APP_ENV=local` and resets **only** the three case-study
 tenants. It starts these services, recreates users and Markdown documents,
 refreshes the dedicated Gmail fixture dataset, ingests those messages inline

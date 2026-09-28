@@ -26,6 +26,7 @@ use Symfony\Component\Console\Helper\ProgressBar;
 final class ResetLocalIntegrationFixturesCommand extends Command
 {
     protected $signature = 'dev:reset-local-integration-fixtures
+        {--fresh : Run migrate:fresh before rebuilding (DESTRUCTIVE: empties the entire local database)}
         {--without-email : Do not mutate the dedicated Gmail fixture mailbox or install/sync IMAP}
         {--email-profile=gold : Generated fixture email profile: gold or demo}
         {--resume-email : Reuse verified Gmail delivery checkpoints instead of purging the fixture dataset again}
@@ -46,6 +47,13 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             $profile = $this->emailProfile();
             $withEmail = ! (bool) $this->option('without-email');
             $resumeEmail = $withEmail && (bool) $this->option('resume-email');
+
+            if ((bool) $this->option('fresh')) {
+                $this->components->warn('FRESH LOCALE — svuoto l’intero database e rieseguo tutte le migration.');
+                $this->callChecked('migrate:fresh', ['--force' => true]);
+                $this->components->info('Database locale ricreato da zero. Ora preparo i case study.');
+                $this->newLine();
+            }
 
             $this->components->info('Preparazione dell’ambiente di integrazione locale');
             $this->line('  Tenant: Rotta Logistics, Prometeo Antincendio, PassoLibero Calzature.');
