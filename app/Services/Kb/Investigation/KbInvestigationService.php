@@ -86,6 +86,7 @@ class KbInvestigationService
         if ($understanding->referencesPreviousTurn && $understanding->available) {
             $selected = $this->citedSources($previousCitations, $understanding, $projectKey, $filters, $actor);
         }
+        $anchoredToPreviousCitations = $selected !== [];
         $supportedFacts = [];
         $missingFacts = [];
         $stopReason = 'depth_limit_reached';
@@ -104,7 +105,9 @@ class KbInvestigationService
                 // Only primary candidates can be selected. Related graph and
                 // rejected-approach context are deliberately not exposed to
                 // the assessor or the final answer prompt in this flow.
-                $search = $this->retrieval->retrieve($nextQuery, $projectKey, $filters);
+                $search = $round === 0 && $anchoredToPreviousCitations
+                    ? new SearchResult(collect(), collect(), collect())
+                    : $this->retrieval->retrieve($nextQuery, $projectKey, $filters);
             } catch (Throwable) {
                 $stopReason = 'retrieval_error';
                 break;
@@ -113,7 +116,7 @@ class KbInvestigationService
             $sources = $this->readCandidates($search->primary);
             // Re-read cited sources in the current tenant/project/ACL, never
             // trust the previous assistant answer as evidence.
-            if ($round === 0) {
+            if ($round === 0 && $anchoredToPreviousCitations) {
                 $sources += $selected;
             }
             if ($sources === []) {
@@ -146,6 +149,13 @@ class KbInvestigationService
 
             if ($assessment['complete'] && $selected !== []) {
                 $stopReason = 'sufficient_evidence';
+                break;
+            }
+            if ($round === 0 && $anchoredToPreviousCitations) {
+                // An elliptical follow-up is about the cited sources, not a
+                // fresh global search for another customer/reclamo. If those
+                // sources do not answer it, keep the gap explicit.
+                $stopReason = 'partial_evidence';
                 break;
             }
             $candidateNext = $assessment['next_query'];
@@ -279,8 +289,8 @@ PROMPT;
     private function citedSources(array $citations, QuestionUnderstanding $understanding, ?string $projectKey, ?RetrievalFilters $filters, ?User $actor): array
     {
         $sources = [];
-        $identifiers = array_column(array_filter($understanding->mentions, static fn (array $m): bool => $m['type'] === 'identifier'), 'text');
-        if ($identifiers === [] || $projectKey === null) {
+        $mentions = $understanding->mentionTexts();
+        if ($projectKey === null) {
             return [];
         }
         foreach (array_slice($citations, 0, 12) as $citation) {
@@ -296,7 +306,7 @@ PROMPT;
                 continue;
             }
             $source = $this->sourceReader->readCandidate(['document' => ['id' => $id], 'chunk_id' => $chunkId], $projectKey, $actor);
-            if ($source === null || ! array_filter($identifiers, static fn (string $code): bool => mb_stripos($source['excerpt'], $code) !== false)) {
+            if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => mb_stripos($source['excerpt'], $term) !== false))) {
                 continue;
             }
             $sources[$id] = $source;

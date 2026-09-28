@@ -109,6 +109,22 @@ final class AgentClaimGroundingValidatorTest extends TestCase
         $this->assertSame([], $result['terms']);
     }
 
+    public function test_it_removes_model_added_bold_only_when_plain_quote_exists_in_the_same_source(): void
+    {
+        $evidence = ['documents' => [[
+            'document_id' => 273,
+            'evidence' => [['evidence_hash' => 'source-hash', 'content' => 'Il cliente business Delta Forniture ha aperto il reclamo.']],
+        ]], 'api_tools' => []];
+        $result = $this->validator()->validate('Chi è il cliente?', $evidence, [[
+            'text' => 'Il cliente è Delta Forniture.',
+            'quote' => 'Il cliente business **Delta Forniture** ha aperto il reclamo.',
+            'document_id' => 273, 'tool_execution_id' => null, 'evidence_hash' => 'source-hash',
+        ]]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame('Il cliente business Delta Forniture ha aperto il reclamo.', $result['claims'][0]['quote']);
+    }
+
     public function test_it_does_not_treat_a_short_voice_follow_up_as_an_entity(): void
     {
         $result = $this->validator()->validate('Trovato niente?', $this->evidence(), [[

@@ -263,7 +263,7 @@ final class KbInvestigationServiceTest extends TestCase
             'missing_facts' => [], 'complete' => true, 'next_query' => null,
         ]));
         $retrieval = Mockery::mock(ChatRetrievalService::class);
-        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $retrieval->shouldNotReceive('retrieve');
         $service = $this->service($ai, $retrieval, app(KbSourceReader::class));
         $result = $service->investigate('Parlami di questa SPD-51230', 'orders', previousCitations: [[
             'document_id' => $document->id, 'chunks' => [['chunk_id' => $chunk->id]],
@@ -305,6 +305,40 @@ final class KbInvestigationServiceTest extends TestCase
             $this->assertFalse($result->isReady());
             $this->assertSame([], $result->selectedSources);
         }
+    }
+
+    public function test_elliptical_follow_up_stays_with_cited_email_instead_of_searching_an_unrelated_customer(): void
+    {
+        $document = $this->citedDocument('investigation-tenant', 'orders');
+        $chunk = KnowledgeChunk::create([
+            'tenant_id' => 'investigation-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'Reclamo per consegna a Messina. Codice RCL-2024-1102.'),
+            'chunk_text' => 'Reclamo per consegna a Messina. Codice RCL-2024-1102.',
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Ask for the code of the prior complaint',
+            'kb_queries' => ['codice del reclamo'], 'mentions' => [],
+            'references_previous_turn' => true,
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->response([
+            'selected_document_ids' => [$document->id],
+            'supported_facts' => ['Codice RCL-2024-1102'], 'missing_facts' => [],
+            'complete' => true, 'next_query' => null,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+
+        $result = $this->service($ai, $retrieval, app(KbSourceReader::class))->investigate(
+            'Il codice del reclamo?', 'orders', previousCitations: [[
+                'document_id' => $document->id, 'chunks' => [['chunk_id' => $chunk->id]],
+            ]],
+        );
+
+        $this->assertTrue($result->isReady());
+        $this->assertCount(1, $result->selectedSources);
+        $this->assertStringContainsString('RCL-2024-1102', $result->search->primary->first()['chunk_text']);
     }
 
     private function citedDocument(string $tenant, string $project): KnowledgeDocument

@@ -354,10 +354,7 @@ final class WidgetOrchestratorService
 
     private function withPreviouslyCitedSources(WidgetSession $session, SearchResult $result, \App\Services\Chat\QuestionUnderstanding $understanding): SearchResult
     {
-        $codes = array_column(array_filter($understanding->mentions, static fn (array $mention): bool => $mention['type'] === 'identifier'), 'text');
-        if ($codes === []) {
-            return $result;
-        }
+        $mentions = $understanding->mentionTexts();
         $previous = $session->steps()->where('kind', WidgetSessionStep::KIND_BOT_MESSAGE)->orderByDesc('step_index')->first(['args_json']);
         $citations = data_get($previous?->args_json, 'citations', []);
         if (! is_array($citations)) {
@@ -375,7 +372,7 @@ final class WidgetOrchestratorService
             $source = $this->sourceReader->readCandidate([
                 'document' => ['id' => (int) $citation['document_id']], 'chunk_id' => $chunkId,
             ], (string) $session->project_key);
-            if ($source === null || ! array_filter($codes, static fn (string $code): bool => mb_stripos($source['excerpt'], $code) !== false)) {
+            if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => mb_stripos($source['excerpt'], $term) !== false))) {
                 continue;
             }
             $anchors->push([
@@ -390,7 +387,7 @@ final class WidgetOrchestratorService
             ]);
         }
 
-        return $anchors->isEmpty() ? $result : new SearchResult($anchors->concat($result->primary), $result->expanded, $result->rejected, $result->meta, $result->runnerUp);
+        return $anchors->isEmpty() ? $result : new SearchResult($anchors, collect(), collect(), $result->meta, collect());
     }
 
     /**

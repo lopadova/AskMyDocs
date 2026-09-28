@@ -610,13 +610,15 @@ final readonly class AgentLoop
         if ($run->conversation_id === null) {
             return [];
         }
-        $message = $run->conversation?->messages()
+        $messages = $run->conversation?->messages()
             ->when((int) data_get($run->input_json, 'user_message_id', 0) > 0,
                 fn ($query) => $query->where('id', '<', (int) data_get($run->input_json, 'user_message_id')))
-            ->where('role', 'assistant')->latest('id')->first();
-        $messageCitations = data_get($message?->metadata, 'citations');
-        if (is_array($messageCitations) && $messageCitations !== []) {
-            return $messageCitations;
+            ->where('role', 'assistant')->latest('id')->limit(10)->get();
+        foreach ($messages ?? [] as $message) {
+            $messageCitations = data_get($message->metadata, 'citations');
+            if (is_array($messageCitations) && $messageCitations !== []) {
+                return $messageCitations;
+            }
         }
         $previous = AgentRun::query()->forTenant($run->tenant_id)
             ->where('conversation_id', $run->conversation_id)

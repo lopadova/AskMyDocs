@@ -6,6 +6,7 @@ namespace App\Services\Chat;
 
 use App\Ai\AiManager;
 use App\Support\SupportedLocale;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** One bounded, source-blind interpretation per new user message. */
@@ -54,15 +55,18 @@ final readonly class ChatQuestionPreprocessor
                 || ! is_string($data['language']) || ! is_string($data['intent'])
                 || ! is_array($data['kb_queries']) || ! is_array($data['mentions'])
                 || ! is_bool($data['references_previous_turn'])) {
+                Log::notice('Chat question preprocessing returned an invalid schema.');
                 return $fallback;
             }
             $intent = trim($data['intent']);
             if ($intent === '' || mb_strlen($intent) > 500 || count($data['kb_queries']) < 1 || count($data['kb_queries']) > 3 || count($data['mentions']) > 12) {
+                Log::notice('Chat question preprocessing exceeded server bounds.');
                 return $fallback;
             }
             $queries = [];
             foreach ($data['kb_queries'] as $query) {
                 if (! is_string($query) || ($query = trim($query)) === '' || mb_strlen($query) > 500 || preg_match('~https?://|\bcurl\b|\b(?:call|invoke|execute|chiama|esegui)\s+(?:an?\s+|un\s+)?(?:mcp|api|tool|strumento)\b~iu', $query)) {
+                    Log::notice('Chat question preprocessing returned an unsafe query.');
                     return $fallback;
                 }
                 $queries[] = $query;
@@ -76,14 +80,20 @@ final readonly class ChatQuestionPreprocessor
                     || ($text = trim($mention['text'])) === '' || mb_strlen($text) > 120
                     || ! str_contains($question, $text)
                     || ($mention['type'] === 'identifier' && preg_match('/(?<![\\p{L}\\p{N}_-])'.preg_quote($text, '/').'(?![\\p{L}\\p{N}_-])/u', $question) !== 1)) {
-                    return $fallback;
+                    // A model may copy a name from conversation context into
+                    // mentions. Drop only that mention: the rest of the
+                    // interpretation, especially language and follow-up
+                    // intent, remains useful and independently validated.
+                    Log::notice('Chat question preprocessing discarded a non-verbatim mention.');
+                    continue;
                 }
                 $mentions[] = ['text' => $text, 'type' => $mention['type']];
             }
             $language = SupportedLocale::isSupported($data['language']) ? SupportedLocale::normalize($data['language']) : null;
 
             return new QuestionUnderstanding($language, $intent, $queries, $mentions, $data['references_previous_turn']);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            Log::warning('Chat question preprocessing was unavailable.', ['exception' => $exception::class]);
             return $fallback;
         }
     }

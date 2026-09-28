@@ -64,12 +64,13 @@ final class AgentClaimGroundingValidator
             }
             if ($documentId !== null) {
                 $content = $documents[(string) $documentId][$hash] ?? null;
-                if (! is_string($content) || ! $this->contains($content, $quote)) {
+                if (! is_string($content) || ($quote = $this->literalQuote($content, $quote)) === null) {
                     return $this->failure('quote_not_in_chunk', $terms);
                 }
             } else {
                 $tool = $tools[(string) $executionId] ?? null;
-                if ($tool === null || ! hash_equals($tool['hash'], $hash) || ! $this->contains($tool['content'], $quote)) {
+                if ($tool === null || ! hash_equals($tool['hash'], $hash)
+                    || ($quote = $this->literalQuote($tool['content'], $quote)) === null) {
                     return $this->failure('quote_not_in_tool_result', $terms);
                 }
             }
@@ -110,6 +111,21 @@ final class AgentClaimGroundingValidator
 
         return mb_strlen($withoutTerminalPunctuation) >= 16
             && str_contains($haystack, $withoutTerminalPunctuation);
+    }
+
+    private function literalQuote(string $content, string $quote): ?string
+    {
+        if ($this->contains($content, $quote)) {
+            return $quote;
+        }
+        // Markdown emphasis occasionally leaks into a quote copied from a
+        // plain-text source. Remove only balanced bold delimiters, then bind
+        // the repaired quote to the same authorized source/hash as before.
+        $plain = preg_replace('/\*\*(.+?)\*\*/us', '$1', $quote);
+
+        return is_string($plain) && $plain !== $quote && $this->contains($content, $plain)
+            ? $plain
+            : null;
     }
 
     /** @return array{valid:false,reason:string,terms:list<string>,claims:list<array<string,mixed>>} */

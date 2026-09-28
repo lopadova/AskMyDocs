@@ -64,10 +64,18 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertTrue($result->referencesPreviousTurn);
     }
 
-    public function test_invalid_mention_or_json_falls_back_without_entity_gate(): void
+    public function test_invalid_json_falls_back_without_entity_gate(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse('{broken', 'fake', 'fake'));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Parlami di questa SPD-51230');
+        $this->assertFalse($result->available);
+        $this->assertSame([], $result->mentionTexts());
+    }
+
+    public function test_non_verbatim_mentions_are_dropped_without_losing_language_or_follow_up(): void
     {
         foreach ([
-            '{broken',
             json_encode([
                 'language' => 'it', 'intent' => 'Explain shipment',
                 'kb_queries' => ['spedizione SPD-51230'],
@@ -84,10 +92,36 @@ final class ChatQuestionPreprocessorTest extends TestCase
             $ai = Mockery::mock(AiManager::class);
             $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse($content, 'fake', 'fake'));
             $result = (new ChatQuestionPreprocessor($ai))->interpret('Parlami di questa SPD-51230');
-            $this->assertFalse($result->available);
+            $this->assertTrue($result->available);
             $this->assertSame([], $result->mentionTexts());
-            $this->assertSame(['Parlami di questa SPD-51230'], $result->kbQueries);
+            $this->assertSame(['spedizione SPD-51230'], $result->kbQueries);
+            $this->assertSame('it', $result->language);
+            $this->assertTrue($result->referencesPreviousTurn);
         }
+    }
+
+    public function test_context_only_identifier_does_not_invalidate_a_valid_follow_up(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Richiesta di lettura del reclamo',
+            'kb_queries' => ['Reclamo consegna a indirizzo errato'],
+            'mentions' => [
+                ['text' => 'Messina', 'type' => 'name'],
+                ['text' => 'SPD-51230', 'type' => 'identifier'],
+            ],
+            'references_previous_turn' => true,
+        ]));
+
+        $result = (new ChatQuestionPreprocessor($ai))->interpret(
+            'Quella di Messina me la fai leggere?',
+            'Earlier source mentions SPD-51230',
+        );
+
+        $this->assertTrue($result->available);
+        $this->assertSame('it', $result->language);
+        $this->assertSame(['Messina'], $result->mentionTexts());
+        $this->assertTrue($result->referencesPreviousTurn);
     }
 
     public function test_provider_failure_uses_bounded_fallback(): void

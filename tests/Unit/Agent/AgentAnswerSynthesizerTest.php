@@ -19,6 +19,34 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_it_reads_the_single_cited_email_without_summarizing_or_calling_the_model(): void
+    {
+        $content = "Oggetto: Consegna SPD-51230\nLa spedizione è arrivata a Messina anziché a Catania.";
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 252,
+            'title' => 'Reclamo consegna',
+            'source_path' => 'mail/reclamo.eml',
+            'origin' => 'primary',
+            'evidence' => [[
+                'content' => $content,
+                'evidence_hash' => 'email-hash',
+            ]],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithHistory');
+
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('Quella di Messina me la fai leggere?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null, [
+                'available' => true, 'language' => 'it', 'intent' => 'Richiesta di lettura del reclamo', 'mentions' => ['Messina'],
+            ]);
+
+        $this->assertSame('complete', $answer->completeness);
+        $this->assertStringContainsString($content, $answer->answer);
+        $this->assertSame(252, $answer->citations[0]['document_id']);
+        $this->assertSame('deterministic_source_read', $answer->grounding['model']);
+    }
+
     public function test_it_returns_a_cautious_uncited_answer_for_an_unattested_entity(): void
     {
         $evidence = app(AgentEvidenceFactory::class)->empty();

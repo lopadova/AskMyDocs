@@ -146,7 +146,9 @@ class MessageStreamController extends Controller
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
         $filters = $this->buildRetrievalFilters($request, $projectKey);
-        $previousCitations = $conversation->messages()->where('role', 'assistant')->latest('id')->first()?->metadata['citations'] ?? [];
+        $previousCitations = $conversation->messages()->where('role', 'assistant')->latest('id')->limit(10)->get()
+            ->map(static fn ($message): mixed => data_get($message->metadata, 'citations'))
+            ->first(static fn (mixed $citations): bool => is_array($citations) && $citations !== []) ?? [];
         $appContext = $mcpAppContext->resolve(
             is_string($validated['mcp_app_id'] ?? null) ? $validated['mcp_app_id'] : null,
             $request->user(),
