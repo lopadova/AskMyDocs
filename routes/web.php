@@ -196,6 +196,15 @@ Route::post('/agent-runs/{run}/continue', [AgentRunControlController::class, 're
 
 Route::get('/workbench', SpaController::class)->name('workbench');
 
+// This operational surface is intentionally served only by a local Laravel
+// process. Register it before the generic SPA fallback so a deployed app
+// cannot reach the client route by guessing its URL.
+Route::get('/app/{teamHash}/developer/local-integrations', function () {
+    abort_unless(app()->environment('local'), 404);
+
+    return app(SpaController::class)();
+})->name('developer.local-integrations');
+
 Route::get('/app/{any?}', SpaController::class)
     ->where('any', '.*')
     ->name('spa');

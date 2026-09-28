@@ -20,6 +20,7 @@ import {
   portFromEnv,
   sendJson,
 } from './server-utils.mjs';
+import { createRequestMonitor, monitorRequest } from './request-monitor.mjs';
 
 export const MCP_PORT = 4311;
 const MAX_BODY_BYTES = 1_000_000;
@@ -264,8 +265,22 @@ function invalidSession(response, message, status = 400) {
  */
 export function createMcpHttpServer() {
   const sessions = new Map();
+  const monitor = createRequestMonitor('mcp');
   const httpServer = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
+    const pathCompanyKey = url.pathname.match(/^\/mcp\/([^/]+)$/)?.[1] ?? null;
+    monitorRequest({
+      monitor,
+      request,
+      response,
+      url,
+      companyKey: pathCompanyKey ? decodeURIComponent(pathCompanyKey) : null,
+    });
+
+    if (request.method === 'GET' && url.pathname === '/_dev/metrics') {
+      sendJson(response, 200, monitor.snapshot());
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, {

@@ -69,6 +69,7 @@ import { MeDashboard } from '../features/dashboard/MeDashboard';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
 import { ConnectedAppsView } from '../features/mcp-connections/ConnectedAppsView';
 import { UiFoundationsDemo } from '../features/developer/ButtonSystemDemo';
+import { LocalIntegrationFixturesView } from '../features/developer/LocalIntegrationFixturesView';
 import { GamificationInsightsPanel } from '../features/admin/engagement/GamificationInsightsPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
@@ -461,6 +462,19 @@ const uiFoundationsRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'developer/ui',
     component: UiFoundationsRoute,
+});
+function LocalIntegrationFixturesRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <LocalIntegrationFixturesView />
+        </RequireRole>
+    );
+}
+
+const localIntegrationFixturesRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'developer/local-integrations',
+    component: LocalIntegrationFixturesRoute,
 });
 // These five paths shipped as `Coming in Phase …` placeholders in early
 // phases. The real views now live under `/app/admin/*` (DashboardView,
@@ -1551,6 +1565,7 @@ const teamChildren = [
     knowledgeRoute,
     buttonSystemDemoRoute,
     uiFoundationsRoute,
+    localIntegrationFixturesRoute,
     dashboardRoute,
     kbRoute,
     insightsRoute,

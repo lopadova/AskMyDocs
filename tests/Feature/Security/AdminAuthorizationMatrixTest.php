@@ -137,6 +137,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
             // ── Role-middleware groups — `role:` middleware, not a Gate ──
             '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
+            '/api/developer/local-integrations' => ['admin', 'super-admin'], // local-only fixture console
             // Global tenant control plane — platform permission only, no
             // active-tenant scope.
             '/api/system-admin/tenants' => ['system-admin'],

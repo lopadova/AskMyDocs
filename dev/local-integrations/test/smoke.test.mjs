@@ -32,6 +32,13 @@ test('API serves only company-scoped fixture records', async (t) => {
     `${baseUrl}/v1/companies/rotta-logistics/records/purchase-order-FRN-2024-241`,
   );
   assert.equal(crossCompanyRecord.status, 404);
+
+  const metrics = await fetch(`${baseUrl}/_dev/metrics`);
+  assert.equal(metrics.status, 200);
+  const metricPayload = await metrics.json();
+  assert.equal(metricPayload.totals.requests, 2);
+  assert.equal(metricPayload.totals.errors, 1);
+  assert.equal(metricPayload.events[0].company_key, 'rotta-logistics');
 });
 
 test('MCP exposes read-only company-scoped tools over the same fixture dataset', async (t) => {
@@ -89,4 +96,11 @@ test('MCP exposes read-only company-scoped tools over the same fixture dataset',
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
   });
   assert.equal(otherCompanyEndpoint.status, 404);
+
+  const metrics = await fetch(`${baseUrl}/_dev/metrics`);
+  assert.equal(metrics.status, 200);
+  const metricPayload = await metrics.json();
+  assert.ok(metricPayload.totals.requests >= 6);
+  assert.ok(metricPayload.events.some((event) => event.company_key === 'passolibero-calzature'));
+  assert.ok(metricPayload.events.some((event) => event.status === 404));
 });

@@ -1186,6 +1186,26 @@ Route::middleware([
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
     'tenant.authorize',
+    'role:admin|super-admin',
+])
+    ->prefix('developer/local-integrations')
+    ->group(function () {
+        // Deliberately outside /admin: this is a local-machine service
+        // console, not a deployable tenant administration surface. The
+        // controller returns 404 unless APP_ENV=local as a second boundary.
+        Route::get('/', [\App\Http\Controllers\Api\Developer\LocalIntegrationFixturesController::class, 'show'])
+            ->name('api.developer.local-integrations.show');
+        Route::post('/{action}', [\App\Http\Controllers\Api\Developer\LocalIntegrationFixturesController::class, 'control'])
+            ->whereIn('action', ['start', 'stop', 'restart'])
+            ->middleware('throttle:30,1')
+            ->name('api.developer.local-integrations.control');
+    });
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
     'role:super-admin',
 ])
     ->prefix('admin/app-settings')

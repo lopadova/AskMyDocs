@@ -74,6 +74,21 @@ LOCAL_INTEGRATIONS_MCP_PORT=4311 \
 dev/local-integrations/local-integrations.sh start
 ```
 
+## Local service console
+
+After signing in locally as an `admin` or `super-admin`, open:
+
+```text
+https://askmydocsdev.test/app/developer/local-integrations
+```
+
+The app resolves the active team automatically. The console is served only when
+`APP_ENV=local`; it can start, stop, or restart both Node fixtures, polls their
+status every two seconds, and shows a 60-second activity chart plus recent
+request metadata. The monitor retains at most 120 in-memory events and never
+records bodies, headers, credentials, or MCP tool arguments. Health and monitor
+polls are intentionally omitted from the activity view.
+
 ## API contract
 
 Health is available at `GET /health`. The API intentionally has no unscoped

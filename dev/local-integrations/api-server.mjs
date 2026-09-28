@@ -14,6 +14,7 @@ import {
   portFromEnv,
   sendJson,
 } from './server-utils.mjs';
+import { createRequestMonitor, monitorRequest } from './request-monitor.mjs';
 
 export const API_PORT = 4310;
 
@@ -37,8 +38,23 @@ function notFound(response) {
  * every operational request must name a known case-study company in its path.
  */
 export function createApiServer() {
+  const monitor = createRequestMonitor('api');
+
   return createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
+    const pathCompanyKey = url.pathname.match(/^\/v1\/companies\/([^/]+)/)?.[1] ?? null;
+    monitorRequest({
+      monitor,
+      request,
+      response,
+      url,
+      companyKey: pathCompanyKey ? decodeURIComponent(pathCompanyKey) : null,
+    });
+
+    if (request.method === 'GET' && url.pathname === '/_dev/metrics') {
+      sendJson(response, 200, monitor.snapshot());
+      return;
+    }
 
     if (request.method !== 'GET') {
       response.setHeader('Allow', 'GET');

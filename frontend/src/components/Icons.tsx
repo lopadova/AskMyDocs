@@ -247,6 +247,9 @@ export const Icon = {
     StopCircle: (p: IconProps) => (
         <I {...p} d={<><circle cx="12" cy="12" r="9" /><rect x="9" y="9" width="6" height="6" rx="1" /></>} />
     ),
+    Refresh: (p: IconProps) => (
+        <I {...p} d={<><path d="M20 11a8 8 0 0 0-14-4L4 9" /><path d="M4 4v5h5" /><path d="M4 13a8 8 0 0 0 14 4l2-2" /><path d="M20 20v-5h-5" /></>} />
+    ),
     Send: (p: IconProps) => <I {...p} d={<path d="M4 12 21 4l-8 17-2-7z" />} />,
     Chevron: (p: IconProps) => <I {...p} d={<path d="m9 6 6 6-6 6" />} />,
     ChevronDown: (p: IconProps) => <I {...p} d={<path d="m6 9 6 6 6-6" />} />,
