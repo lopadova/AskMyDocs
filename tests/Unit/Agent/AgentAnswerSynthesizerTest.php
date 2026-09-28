@@ -180,8 +180,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $evidence->addToolResult($tool, [], $catalogResult, 91);
         $catalogHash = hash('sha256', (string) json_encode($catalogResult, JSON_UNESCAPED_UNICODE));
 
-        $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(
+        $invalidResponse = new AiResponse(
             content: '',
             provider: 'fake',
             model: 'fake-agent',
@@ -204,7 +203,24 @@ final class AgentAnswerSynthesizerTest extends TestCase
                     'render_table' => false,
                 ],
             ]],
-        ));
+        );
+        $repairResponse = new AiResponse(
+            content: '',
+            provider: 'fake',
+            model: 'fake-repair',
+            toolCalls: [[
+                'name' => 'repair_agent_claims',
+                'arguments' => ['claims' => [[
+                    'text' => '**SizeCharts Manual** — guida alla gestione delle taglie.',
+                    'quote' => 'SizeCharts Manual',
+                    'document_id' => 1,
+                    'tool_execution_id' => null,
+                    'evidence_hash' => $catalogHash,
+                ]]],
+            ]],
+        );
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn($invalidResponse, $repairResponse);
 
         $answer = (new AgentAnswerSynthesizer(
             $ai,
@@ -215,6 +231,116 @@ final class AgentAnswerSynthesizerTest extends TestCase
 
         $this->assertSame('insufficient', $answer->completeness);
         $this->assertSame('quote_not_in_chunk', $answer->grounding['reason']);
+        $this->assertSame('rejected', $answer->grounding['repair']['status']);
+    }
+
+    public function test_it_repairs_a_claim_with_an_ambiguous_source_identity(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 90,
+            'title' => 'Profilo aziendale',
+            'source_path' => 'company/profile.md',
+            'origin' => 'primary',
+            'evidence' => [[
+                'content' => 'Rotta Sicura Logistics gestisce spedizioni B2B e B2C.',
+                'evidence_hash' => 'company-hash',
+            ]],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [[
+                        'text' => 'Rotta Sicura Logistics gestisce spedizioni B2B e B2C.',
+                        'quote' => 'Rotta Sicura Logistics gestisce spedizioni B2B e B2C.',
+                        'document_id' => 90,
+                        'tool_execution_id' => 77,
+                        'evidence_hash' => 'company-hash',
+                    ]],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+                ],
+            ]]),
+            new AiResponse(content: '', provider: 'fake', model: 'fake-repair', toolCalls: [[
+                'name' => 'repair_agent_claims',
+                'arguments' => ['claims' => [[
+                    'text' => 'Rotta Sicura Logistics gestisce spedizioni B2B e B2C.',
+                    'quote' => 'Rotta Sicura Logistics gestisce spedizioni B2B e B2C.',
+                    'document_id' => 90,
+                    'tool_execution_id' => null,
+                    'evidence_hash' => 'company-hash',
+                ]]],
+            ]]),
+        );
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
+        ))->synthesize('Cosa facciamo in questa azienda?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+        $this->assertSame('complete', $answer->completeness);
+        $this->assertSame('Rotta Sicura Logistics gestisce spedizioni B2B e B2C.', $answer->answer);
+        $this->assertSame([90], array_column($answer->citations, 'document_id'));
+        $this->assertSame('repaired', $answer->grounding['repair']['status']);
+        $this->assertSame('invalid_claim_source', $answer->grounding['repair']['initial_reason']);
+        $this->assertSame('fake-repair', $answer->grounding['repair']['repair_model']);
+    }
+
+    public function test_it_repairs_a_paraphrased_quote_against_the_selected_chunk(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 12,
+            'title' => 'Politica resi',
+            'source_path' => 'policy/returns.md',
+            'origin' => 'primary',
+            'evidence' => [[
+                'content' => 'La giacenza standard è mantenuta per un massimo di 10 giorni lavorativi.',
+                'evidence_hash' => 'returns-hash',
+            ]],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [[
+                        'text' => 'La giacenza dura dieci giorni lavorativi.',
+                        'quote' => 'La giacenza dura dieci giorni lavorativi.',
+                        'document_id' => 12,
+                        'tool_execution_id' => null,
+                        'evidence_hash' => 'returns-hash',
+                    ]],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+                ],
+            ]]),
+            new AiResponse(content: '', provider: 'fake', model: 'fake-repair', toolCalls: [[
+                'name' => 'repair_agent_claims',
+                'arguments' => ['claims' => [[
+                    'text' => 'La giacenza standard è mantenuta per un massimo di 10 giorni lavorativi.',
+                    'quote' => 'La giacenza standard è mantenuta per un massimo di 10 giorni lavorativi.',
+                    'document_id' => 12,
+                    'tool_execution_id' => null,
+                    'evidence_hash' => 'returns-hash',
+                ]]],
+            ]]),
+        );
+
+        $answer = (new AgentAnswerSynthesizer(
+            $ai,
+            app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class),
+            app(AgentClaimGroundingValidator::class),
+        ))->synthesize('Cosa si fa in caso di un reso?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+        $this->assertSame('complete', $answer->completeness);
+        $this->assertSame('quote_not_in_chunk', $answer->grounding['repair']['initial_reason']);
+        $this->assertSame('repaired', $answer->grounding['repair']['status']);
     }
 
     public function test_selection_does_not_force_a_detail_result_into_a_table(): void
