@@ -10,16 +10,18 @@ export interface ConversationDebugDownloadButtonProps {
 
 /**
  * Downloads the persisted forensic record for a chat. Visibility is a small
- * UX convenience only: the API applies the actual super-admin authorization.
+ * UX convenience only: the API applies the actual administrator authorization.
  */
 export function ConversationDebugDownloadButton({
     conversationId,
 }: ConversationDebugDownloadButtonProps): ReactNode {
-    const isSuperAdmin = useAuthStore((state) => state.roles.includes('super-admin'));
+    const canDownload = useAuthStore((state) => (
+        state.roles.includes('admin') || state.roles.includes('super-admin')
+    ));
     const [isDownloading, setIsDownloading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    if (!isSuperAdmin) {
+    if (!canDownload) {
         return null;
     }
 
@@ -40,7 +42,7 @@ export function ConversationDebugDownloadButton({
             // the same task, so release it shortly after the click instead.
             window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
         } catch {
-            setError('Download del debug JSON non riuscito.');
+            setError('Download del JSON completo della chat non riuscito.');
         } finally {
             setIsDownloading(false);
         }
@@ -56,13 +58,13 @@ export function ConversationDebugDownloadButton({
                 leadingIcon={<Icon.Download size={13} />}
                 className="chat-header-debug-export"
                 data-testid="chat-debug-export"
-                aria-label="Scarica il debug JSON della chat"
+                aria-label="Scarica il JSON completo della chat"
                 aria-describedby={error === null ? undefined : errorId}
-                title="Scarica il debug JSON della chat"
+                title="Scarica il JSON completo della chat"
                 busy={isDownloading}
                 onClick={() => void download()}
             >
-                Scarica JSON debug
+                Scarica JSON completo
             </Button>
             {error !== null && (
                 <span

@@ -181,7 +181,20 @@ final class ConversationDebugTranscriptTest extends TestCase
         ]);
     }
 
-    public function test_non_super_admin_cannot_download_a_debug_transcript(): void
+    public function test_admin_can_download_a_debug_transcript_for_the_active_tenant(): void
+    {
+        $admin = $this->user('admin');
+        $conversation = $this->conversation($admin, 'Admin export');
+        $this->message($conversation, 'assistant', 'Risposta finale della chat.');
+
+        $this->actingAs($admin)
+            ->getJson("/api/admin/conversations/{$conversation->id}/debug-transcript")
+            ->assertOk()
+            ->assertJsonPath('conversation.id', $conversation->id)
+            ->assertJsonPath('messages.0.content', 'Risposta finale della chat.');
+    }
+
+    public function test_non_administrator_cannot_download_a_debug_transcript(): void
     {
         $owner = $this->user('super-admin');
         $viewer = $this->user('viewer');

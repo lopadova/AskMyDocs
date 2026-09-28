@@ -21,8 +21,9 @@ use Illuminate\Routing\Controller;
  *
  * This deliberately exposes raw persisted run payloads: they contain the
  * retrieval query, returned evidence, planner decisions and tool results that
- * a super-admin needs to investigate an answer. The route middleware is the
- * authorization boundary; never reuse this controller on a reader-facing API.
+ * a tenant administrator needs to investigate an answer. The route middleware
+ * is the authorization boundary; never reuse this controller on a
+ * reader-facing API.
  */
 final class ConversationDebugTranscriptController extends Controller
 {

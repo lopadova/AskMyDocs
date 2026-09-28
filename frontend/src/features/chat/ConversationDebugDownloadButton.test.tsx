@@ -31,15 +31,15 @@ describe('ConversationDebugDownloadButton', () => {
         vi.restoreAllMocks();
     });
 
-    it('does not expose the forensic export control to a non-super-admin', () => {
+    it('does not expose the forensic export control to a non-administrator', () => {
         render(<ConversationDebugDownloadButton conversationId={42} />);
 
         expect(screen.queryByTestId('chat-debug-export')).not.toBeInTheDocument();
     });
 
-    it('downloads the JSON attachment for a super-admin', async () => {
+    it.each(['admin', 'super-admin'])('downloads the JSON attachment for a %s', async (role) => {
         const user = userEvent.setup();
-        useAuthStore.setState({ roles: ['super-admin'] });
+        useAuthStore.setState({ roles: [role] });
         download.mockResolvedValue({
             blob: new Blob(['{"schema_version":1}'], { type: 'application/json' }),
             filename: 'chat-debug-42.json',
@@ -64,7 +64,7 @@ describe('ConversationDebugDownloadButton', () => {
         await user.click(screen.getByTestId('chat-debug-export'));
 
         expect(await screen.findByTestId('chat-debug-export-error')).toHaveTextContent(
-            'Download del debug JSON non riuscito.',
+            'Download del JSON completo della chat non riuscito.',
         );
     });
 });

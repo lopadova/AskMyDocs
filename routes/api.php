@@ -1149,12 +1149,12 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
-| Admin — Conversation debug transcript (super-admin)
+| Admin — Conversation debug transcript
 |--------------------------------------------------------------------------
 |
 | A transcript contains the original messages plus persisted planner,
 | retrieval and tool-result payloads. It is intentionally stricter than the
-| general agent overview: only a tenant super-admin may download it.
+| general agent overview: only a tenant administrator may download it.
 |
 */
 Route::middleware([
@@ -1162,7 +1162,7 @@ Route::middleware([
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
     'tenant.authorize',
-    'role:super-admin',
+    'role:admin|super-admin',
 ])
     ->prefix('admin/conversations')
     ->group(function () {
