@@ -128,6 +128,53 @@ final class AgentClaimGroundingValidatorTest extends TestCase
         $this->assertSame([], $result['terms']);
     }
 
+    #[DataProvider('existenceQuestionsProvider')]
+    public function test_it_does_not_treat_an_existence_question_as_an_entity(string $question): void
+    {
+        $evidence = ['documents' => [[
+            'document_id' => 187,
+            'evidence' => [[
+                'evidence_hash' => 'delivery-alert-hash',
+                'content' => 'Il tentativo di consegna della spedizione RL-TRACK-9027 non è andato a buon fine.',
+            ]],
+        ]], 'api_tools' => []];
+
+        $result = $this->validator()->validate($question, $evidence, [[
+            'text' => 'Sì, c’è un avviso di mancata consegna.',
+            'quote' => 'Il tentativo di consegna della spedizione RL-TRACK-9027 non è andato a buon fine.',
+            'document_id' => 187,
+            'tool_execution_id' => null,
+            'evidence_hash' => 'delivery-alert-hash',
+        ]]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['terms']);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function existenceQuestionsProvider(): array
+    {
+        return [
+            'plural' => ['Esistono email di errori di spedizione?'],
+            'singular' => ['Esiste una email di mancata consegna?'],
+        ];
+    }
+
+    public function test_an_existence_question_still_requires_its_named_entity_to_be_attested(): void
+    {
+        $result = $this->validator()->validate('Esistono email di Figo?', $this->evidence(), [[
+            'text' => 'Le notifiche push raggiungono i clienti nell’app.',
+            'quote' => 'Le notifiche push raggiungono i clienti nell’app.',
+            'document_id' => 7,
+            'tool_execution_id' => null,
+            'evidence_hash' => 'push-hash',
+        ]]);
+
+        $this->assertFalse($result['valid']);
+        $this->assertSame('unattested_entity', $result['reason']);
+        $this->assertSame(['Figo'], $result['terms']);
+    }
+
     public function test_it_accepts_a_claim_bound_to_its_document_chunk(): void
     {
         $result = $this->validator()->validate('Come funzionano le notifiche?', $this->evidence(), [[

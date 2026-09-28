@@ -102,16 +102,12 @@ final class AgentClaimGroundingValidator
         }
 
         preg_match_all("/(?<![\\p{L}\\p{N}])(?:[A-ZÀ-ÖØ-Þ][\\p{L}\\p{M}'’_-]{1,}|[A-Z0-9][A-Z0-9_-]{1,})(?![\\p{L}\\p{N}])/u", $question, $matches);
-        // Common Italian imperative-plus-clitic openers ("Parlami di...",
-        // "Raccontami...", "Spiegami..."). These are capitalized ONLY
-        // because they open the sentence — the same reason "che"/"cosa"/
-        // "dove" are already ignored below — never because they name an
-        // entity. A bare position-based fix (skip whatever word starts the
-        // question) would be wrong: the question can genuinely OPEN with
-        // the unattested entity itself (see the "Figo e come funziona?"
-        // test below), so this stays an explicit denylist, extended rather
-        // than replaced.
-        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'descrivi', 'descrivimi', 'di', 'dimmi', 'dove', 'elenca', 'elencami', 'fammi', 'illustrami', 'mi', 'mostra', 'mostrami', 'parlami', 'perche', 'perché', 'quale', 'quali', 'raccontami', 'spiega', 'spiegami'];
+        // Common Italian question openers, including imperatives ("Parlami
+        // di...") and existence questions ("Esistono email..."), are
+        // capitalized because of their position, not because they name an
+        // entity. Keep this an explicit denylist: skipping every first word
+        // would miss a genuine unattested name ("Figo e come funziona?").
+        $ignored = ['che', 'chi', 'come', 'cosa', 'dammi', 'descrivi', 'descrivimi', 'di', 'dimmi', 'dove', 'elenca', 'elencami', 'esiste', 'esistono', 'fammi', 'illustrami', 'mi', 'mostra', 'mostrami', 'parlami', 'perche', 'perché', 'quale', 'quali', 'raccontami', 'spiega', 'spiegami'];
 
         return array_values(array_unique(array_filter($matches[0] ?? [], static function (string $term) use ($ignored): bool {
             return ! in_array(mb_strtolower($term), $ignored, true);
