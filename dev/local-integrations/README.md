@@ -30,8 +30,10 @@ php artisan dev:reset-local-integration-fixtures
 It is guarded by `APP_ENV=local` and resets **only** the three case-study
 tenants. It starts these services, recreates users and Markdown documents,
 refreshes the dedicated Gmail fixture dataset, ingests those messages inline
-(without draining a shared Redis queue), then creates the scoped API and MCP
-connections and runs read-only MCP smoke checks.
+(without draining a shared Redis queue), then creates the trusted company
+retrieval profile plus the scoped API and MCP connections, and runs read-only
+MCP smoke checks. The profile is already configured for each case study, so a
+case-study admin can use recursive search immediately without manual setup.
 
 The command writes the explicit local-only transport flag to `.env` and clears
 the derived configuration cache. The production API and MCP guards otherwise

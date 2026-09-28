@@ -11,6 +11,7 @@ use App\Services\Dev\LocalIntegrationFixtureLifecycle;
 use App\Support\TenantContext;
 use Database\Seeders\CaseStudyUsersSeeder;
 use Database\Seeders\LocalIntegrationConnectorsSeeder;
+use Database\Seeders\LocalIntegrationRetrievalProfilesSeeder;
 use Illuminate\Console\Command;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
@@ -92,10 +93,11 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             $this->callChecked('demo:init-case-studies', $initArguments);
             $this->line('  ✓ Dati di base pronti; le credenziali sono nella tabella appena stampata.');
 
-            $this->components->info('4/6 — Connettori API e MCP per azienda');
-            $this->line('  Configuro un connettore API statico e un connettore MCP dedicato per ogni tenant.');
+            $this->components->info('4/6 — Profili aziendali, connettori API e MCP');
+            $this->line('  Creo il profilo di recupero già pronto, un connettore API statico e un connettore MCP per ogni tenant.');
+            $this->callChecked('db:seed', ['--class' => LocalIntegrationRetrievalProfilesSeeder::class, '--force' => true]);
             $this->callChecked('db:seed', ['--class' => LocalIntegrationConnectorsSeeder::class, '--force' => true]);
-            $this->line('  ✓ Connettori API e MCP configurati.');
+            $this->line('  ✓ Profili di recupero, connettori API e MCP configurati.');
 
             $this->components->info('5/6 — Attivazione runtime MCP nei tre tenant');
             $this->line('  Abilito l’esecuzione MCP per i tre ambienti isolati.');
