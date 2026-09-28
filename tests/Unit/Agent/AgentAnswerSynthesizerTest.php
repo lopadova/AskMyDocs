@@ -19,6 +19,56 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_it_detects_a_follow_up_that_rephrases_most_of_the_previous_answer(): void
+    {
+        $synthesizer = new AgentAnswerSynthesizer(
+            Mockery::mock(AiManager::class), app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class),
+        );
+        $previous = 'La spedizione SPD-51230, partita il 9 agosto da Bergamo, è stata consegnata a un indirizzo di Messina invece che alla filiale di Catania. Laura Caruso ha segnalato l’errore e ha chiesto di aprire un reclamo urgente per recuperare la merce e consegnarla correttamente.';
+        $current = 'In caso di errore di consegna, è necessario aprire un reclamo urgente. Laura Caruso ha segnalato che la spedizione SPD-51230, partita il 9 agosto da Bergamo, è stata consegnata a un indirizzo di Messina invece che alla filiale di Catania. Ha richiesto di recuperare la merce e consegnarla correttamente, poiché il cliente finale sta sollecitando.';
+
+        $this->assertTrue((new \ReflectionMethod($synthesizer, 'sameAnswer'))->invoke($synthesizer, $current, $previous));
+    }
+
+    public function test_a_follow_up_repairs_a_verbatim_repeat_with_new_grounded_detail(): void
+    {
+        $content = 'La spedizione SPD-51230 è stata consegnata a Messina. I documenti di trasporto indicavano correttamente Catania.';
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 252, 'title' => 'Reclamo', 'source_path' => 'mail/reclamo.eml', 'origin' => 'primary',
+            'evidence' => [['content' => $content, 'evidence_hash' => 'email-hash']],
+        ]);
+        $prior = 'La spedizione SPD-51230 è stata consegnata a Messina.';
+        $focused = 'I documenti di trasporto indicavano correttamente Catania: l’errore è avvenuto nella consegna.';
+        $makeResponse = static fn (string $text, string $quote): AiResponse => new AiResponse(
+            content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer',
+                'arguments' => [
+                    'completeness' => 'complete',
+                    'claims' => [[
+                        'text' => $text, 'quote' => $quote, 'document_id' => 252,
+                        'tool_execution_id' => null, 'evidence_hash' => 'email-hash',
+                    ]],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+                ],
+            ]],
+        );
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            $makeResponse($prior, 'La spedizione SPD-51230 è stata consegnata a Messina.'),
+            $makeResponse($focused, 'I documenti di trasporto indicavano correttamente Catania.'),
+        );
+
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('Parlami di quella di Messina', $this->context(), new AgentLoopOutcome('answer', $evidence, []),
+                json_encode(['previous_runs' => [['answer' => $prior]]], JSON_THROW_ON_ERROR),
+                ['available' => true, 'language' => 'it', 'mentions' => []]);
+
+        $this->assertSame($focused, $answer->answer);
+        $this->assertSame(252, $answer->citations[0]['document_id']);
+    }
+
     public function test_it_reads_the_single_cited_email_without_summarizing_or_calling_the_model(): void
     {
         $content = "Oggetto: Consegna SPD-51230\nLa spedizione è arrivata a Messina anziché a Catania.";
