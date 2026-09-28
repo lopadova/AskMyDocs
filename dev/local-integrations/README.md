@@ -85,9 +85,11 @@ https://askmydocsdev.test/app/developer/local-integrations
 The app resolves the active team automatically. The console is served only when
 `APP_ENV=local`; it can start, stop, or restart both Node fixtures, polls their
 status every two seconds, and shows a 60-second activity chart plus recent
-request metadata. The monitor retains at most 120 in-memory events and never
-records bodies, headers, credentials, or MCP tool arguments. Health and monitor
-polls are intentionally omitted from the activity view.
+request metadata. For MCP calls it also shows the parsed JSON-RPC request and
+response, retained only in memory for the current process (up to 120 events,
+with each response capped at 32 KB). It never records headers or credentials;
+sensitive JSON fields are redacted. Health and monitor polls are intentionally
+omitted from the activity view.
 
 ## API contract
 

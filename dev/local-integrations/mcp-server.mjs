@@ -20,7 +20,7 @@ import {
   portFromEnv,
   sendJson,
 } from './server-utils.mjs';
-import { createRequestMonitor, monitorRequest } from './request-monitor.mjs';
+import { captureMcpExchange, createRequestMonitor, monitorRequest } from './request-monitor.mjs';
 
 export const MCP_PORT = 4311;
 const MAX_BODY_BYTES = 1_000_000;
@@ -269,13 +269,6 @@ export function createMcpHttpServer() {
   const httpServer = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
     const pathCompanyKey = url.pathname.match(/^\/mcp\/([^/]+)$/)?.[1] ?? null;
-    monitorRequest({
-      monitor,
-      request,
-      response,
-      url,
-      companyKey: pathCompanyKey ? decodeURIComponent(pathCompanyKey) : null,
-    });
 
     if (request.method === 'GET' && url.pathname === '/_dev/metrics') {
       sendJson(response, 200, monitor.snapshot());
@@ -293,6 +286,16 @@ export function createMcpHttpServer() {
       return;
     }
 
+    const mcpCapture = captureMcpExchange(response);
+    monitorRequest({
+      monitor,
+      request,
+      response,
+      url,
+      companyKey: pathCompanyKey ? decodeURIComponent(pathCompanyKey) : null,
+      exchange: mcpCapture.exchange,
+    });
+
     const endpoint = url.pathname.match(/^\/mcp(?:\/([^/]+))?$/);
 
     if (!endpoint) {
@@ -308,6 +311,7 @@ export function createMcpHttpServer() {
     try {
       normalizeAcceptHeaderForHostTransport(request);
       const parsedBody = normalizeLegacyEmptyParams(await parseJsonBody(request));
+      mcpCapture.setRequest(parsedBody);
       const scopeCompanyKey = endpoint[1] ? decodeURIComponent(endpoint[1]) : null;
       if (scopeCompanyKey !== null && companyContext(scopeCompanyKey) === null) {
         sendJson(response, 404, { error: 'not_found' });

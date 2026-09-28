@@ -32,7 +32,20 @@ const runningStatus: LocalIntegrationStatus = {
         metrics: {
             service: 'mcp', started_at: '2026-09-28T09:00:00+00:00', uptime_seconds: 600,
             totals: { requests: 6, errors: 0 },
-            events: [{ id: 2, at: '2026-09-28T09:59:58+00:00', method: 'POST', path: '/mcp/passolibero-calzature', status: 200, duration_ms: 8, company_key: 'passolibero-calzature' }],
+            events: [{
+                id: 2,
+                at: '2026-09-28T09:59:58+00:00',
+                method: 'POST',
+                path: '/mcp/passolibero-calzature',
+                status: 200,
+                duration_ms: 8,
+                company_key: 'passolibero-calzature',
+                exchange: {
+                    request: { jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'get_operational_record', arguments: { record_id: 'purchase-order-FRN-2024-241' } } },
+                    response: { jsonrpc: '2.0', id: 8, result: { structuredContent: { record: { title: 'Riassortimento modello Brezza' } } } },
+                    response_truncated: false,
+                },
+            }],
         },
     },
 };
@@ -48,7 +61,7 @@ describe('LocalIntegrationFixturesView', () => {
         vi.mocked(localIntegrationsApi.control).mockResolvedValue({ message: 'Done.', status: runningStatus });
     });
 
-    it('shows both service states, the activity graph, and credential-free recent calls', async () => {
+    it('shows both service states, live activity, and the latest MCP request/response', async () => {
         renderView();
 
         await waitFor(() => expect(screen.getByTestId('local-integration-call-count')).toHaveTextContent('2 mostrate'));
@@ -58,6 +71,8 @@ describe('LocalIntegrationFixturesView', () => {
         const callsTable = screen.getByRole('table');
         expect(callsTable).toHaveTextContent('v1/companies/rotta-logistics/context');
         expect(callsTable).toHaveTextContent('mcp/passolibero-calzature');
+        expect(screen.getByTestId('local-integration-mcp-request-2')).toHaveTextContent('get_operational_record');
+        expect(screen.getByTestId('local-integration-mcp-response-2')).toHaveTextContent('Riassortimento modello Brezza');
         expect(screen.getByRole('button', { name: 'Avvia servizi' })).toBeDisabled();
     });
 

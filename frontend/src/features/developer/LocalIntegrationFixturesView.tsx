@@ -50,6 +50,7 @@ export function LocalIntegrationFixturesView(): ReactNode {
     const bothStopped = status?.api.state === 'stopped' && status.mcp.state === 'stopped';
     const activity = useMemo(() => buildActivity(status), [status]);
     const calls = useMemo(() => collectCalls(status), [status]);
+    const mostRecentMcpExchange = calls.find((call) => call.service === 'mcp' && call.exchange);
 
     function controlServices(action: LocalIntegrationAction) {
         control.mutate(action);
@@ -74,7 +75,7 @@ export function LocalIntegrationFixturesView(): ReactNode {
                         API e MCP locali
                     </h1>
                     <p style={{ color: 'var(--fg-2)', fontSize: 13.5, lineHeight: 1.55, margin: 0 }}>
-                        Stato dei due mock Node, chiamate recenti e traffico degli ultimi sessanta secondi. Il pannello si aggiorna ogni 2 secondi e non è disponibile fuori da <code>APP_ENV=local</code>.
+                        Stato dei due mock Node, chiamate recenti e traffico degli ultimi sessanta secondi. Per ogni chiamata MCP puoi aprire richiesta JSON-RPC e risposta. Il pannello si aggiorna ogni 2 secondi e non è disponibile fuori da <code>APP_ENV=local</code>.
                     </p>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', alignContent: 'flex-start', gap: 8 }}>
@@ -174,7 +175,13 @@ export function LocalIntegrationFixturesView(): ReactNode {
                                 </tr>
                             </thead>
                             <tbody>
-                                {calls.map((call) => <CallRow call={call} key={`${call.service}-${call.id}-${call.at}`} />)}
+                                {calls.map((call) => (
+                                    <CallRows
+                                        call={call}
+                                        key={`${call.service}-${call.id}-${call.at}`}
+                                        openExchange={call === mostRecentMcpExchange}
+                                    />
+                                ))}
                             </tbody>
                         </table>
                     </div>
@@ -241,12 +248,86 @@ function CallRow({ call }: { call: ListedCall }): ReactNode {
     );
 }
 
+function CallRows({ call, openExchange }: { call: ListedCall; openExchange: boolean }): ReactNode {
+    return (
+        <>
+            <CallRow call={call} />
+            {call.service === 'mcp' && call.exchange ? <McpExchangeRow call={call} open={openExchange} /> : null}
+        </>
+    );
+}
+
+function McpExchangeRow({ call, open }: { call: ListedCall; open: boolean }): ReactNode {
+    const exchange = call.exchange;
+    if (!exchange) return null;
+
+    return (
+        <tr style={{ borderTop: '1px solid var(--hairline)', background: 'var(--bg-2)' }}>
+            <td colSpan={6} style={{ padding: '0 18px 14px' }}>
+                <details open={open} data-testid={`local-integration-mcp-exchange-${call.id}`}>
+                    <summary style={{ cursor: 'pointer', color: 'var(--fg-1)', fontSize: 12, fontWeight: 650, paddingTop: 12 }}>
+                        {describeMcpRequest(exchange.request)} — richiesta e risposta JSON-RPC
+                    </summary>
+                    <p style={{ color: 'var(--fg-3)', fontSize: 11.5, margin: '8px 0 12px' }}>
+                        Dati effimeri del mock locale: niente header o credenziali. Il contenuto si azzera al riavvio del servizio.
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+                        <JsonPayload title="Chiamata JSON-RPC" payload={exchange.request} testId={`local-integration-mcp-request-${call.id}`} />
+                        <JsonPayload title="Risposta MCP" payload={exchange.response} testId={`local-integration-mcp-response-${call.id}`} />
+                    </div>
+                    {exchange.response_truncated ? (
+                        <p style={{ color: '#fbbf24', fontSize: 11.5, margin: '10px 0 0' }}>Risposta troncata a 32 KB nel monitor locale.</p>
+                    ) : null}
+                </details>
+            </td>
+        </tr>
+    );
+}
+
+function JsonPayload({ title, payload, testId }: { title: string; payload: unknown; testId: string }): ReactNode {
+    return (
+        <section style={{ border: '1px solid var(--hairline)', borderRadius: 8, background: 'var(--bg-1)', overflow: 'hidden' }}>
+            <p style={{ color: 'var(--fg-2)', fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', margin: '10px 12px 0', textTransform: 'uppercase' }}>{title}</p>
+            <pre
+                data-testid={testId}
+                style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.55, margin: 0, maxHeight: 360, overflow: 'auto', padding: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            >
+                {formatPayload(payload)}
+            </pre>
+        </section>
+    );
+}
+
 function collectCalls(status?: LocalIntegrationStatus): ListedCall[] {
     if (!status) return [];
     return (['api', 'mcp'] as const)
         .flatMap((service) => (status[service].metrics?.events ?? []).map((event) => ({ ...event, service })))
         .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
         .slice(0, 24);
+}
+
+function describeMcpRequest(payload: unknown): string {
+    if (!isRecord(payload)) return 'Dettaglio MCP';
+    const method = typeof payload.method === 'string' ? payload.method : 'JSON-RPC';
+    const params = isRecord(payload.params) ? payload.params : null;
+    const toolName = params && typeof params.name === 'string' ? params.name : null;
+
+    return toolName ? `${method} · ${toolName}` : method;
+}
+
+function formatPayload(payload: unknown): string {
+    if (payload === undefined || payload === null) return 'Nessun payload disponibile';
+    if (typeof payload === 'string') return payload;
+
+    try {
+        return JSON.stringify(payload, null, 2);
+    } catch {
+        return String(payload);
+    }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function buildActivity(status?: LocalIntegrationStatus): { counts: number[]; labels: string[]; total: number } {

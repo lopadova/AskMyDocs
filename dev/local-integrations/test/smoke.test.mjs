@@ -93,7 +93,7 @@ test('MCP exposes read-only company-scoped tools over the same fixture dataset',
   const otherCompanyEndpoint = await fetch(`${baseUrl}/mcp/not-a-company`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { token: 'local-test-secret' } }),
   });
   assert.equal(otherCompanyEndpoint.status, 404);
 
@@ -103,4 +103,14 @@ test('MCP exposes read-only company-scoped tools over the same fixture dataset',
   assert.ok(metricPayload.totals.requests >= 6);
   assert.ok(metricPayload.events.some((event) => event.company_key === 'passolibero-calzature'));
   assert.ok(metricPayload.events.some((event) => event.status === 404));
+
+  const toolCall = metricPayload.events.find(
+    (event) => event.exchange?.request?.method === 'tools/call'
+      && event.exchange?.request?.params?.name === 'get_operational_record',
+  );
+  assert.equal(toolCall.exchange.request.params.arguments.record_id, 'purchase-order-FRN-2024-241');
+  assert.equal(toolCall.exchange.response.result.structuredContent.record.id, 'purchase-order-FRN-2024-241');
+
+  const rejectedRequest = metricPayload.events.find((event) => event.company_key === 'not-a-company');
+  assert.equal(rejectedRequest.exchange.request.params.token, '[redacted]');
 });

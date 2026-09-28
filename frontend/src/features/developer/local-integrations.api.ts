@@ -12,6 +12,13 @@ export interface LocalIntegrationEvent {
     status: number;
     duration_ms: number;
     company_key: string | null;
+    exchange?: LocalMcpExchange;
+}
+
+export interface LocalMcpExchange {
+    request: unknown;
+    response: unknown;
+    response_truncated: boolean;
 }
 
 export interface LocalIntegrationMetrics {
