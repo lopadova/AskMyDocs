@@ -35,6 +35,10 @@ retrieval profile plus the scoped API and MCP connections, and runs read-only
 MCP smoke checks. The profile is already configured for each case study, so a
 case-study admin can use recursive search immediately without manual setup.
 
+The command shows a six-stage progress bar. During IMAP delivery it also shows
+one progress bar per mailbox with messages sent/total, delivery rate and ETA,
+so a long reset remains observable without reading the verbose logs.
+
 The command writes the explicit local-only transport flag to `.env` and clears
 the derived configuration cache. The production API and MCP guards otherwise
 correctly reject loopback endpoints.

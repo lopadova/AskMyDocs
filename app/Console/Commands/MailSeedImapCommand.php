@@ -17,6 +17,7 @@ use App\Services\Demo\MailboxSelection;
 use App\Services\Demo\SeedOutcome;
 use Database\Seeders\TestEmailFixtures;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Helper\ProgressBar;
 use Throwable;
 
 /**
@@ -154,6 +155,8 @@ class MailSeedImapCommand extends Command
 
         $operationContext = null;
         $auditHandles = [];
+        /** @var array<string, ProgressBar> $appendProgressBars */
+        $appendProgressBars = [];
         try {
             $datasetDirectory = null;
             $manifest = null;
@@ -235,10 +238,12 @@ class MailSeedImapCommand extends Command
             $summaryOnly = (bool) $this->option('summary-only');
             $onMessage = $summaryOnly
                 ? null
-                : function (string $mailboxKey, int $index, string $subject) use ($progressEvery): void {
+                : function (string $mailboxKey, int $index, string $subject) use ($progressEvery, &$appendProgressBars): void {
                     $number = $index + 1;
                     if ($this->output->isVerbose() || $number % $progressEvery === 0) {
+                        $this->clearAppendProgressBars($appendProgressBars);
                         $this->line(sprintf('  [%s] #%d %s', $mailboxKey, $number, $subject));
+                        $this->displayAppendProgressBars($appendProgressBars);
                     }
                 };
             $lastReported = [];
@@ -252,32 +257,41 @@ class MailSeedImapCommand extends Command
             ) use (
                 &$appendStartedAt,
                 &$appendStartedFrom,
+                &$appendProgressBars,
                 &$lastReported,
                 $progressEvery,
             ): void {
                 if ($phase === ImapMailboxSeeder::PROGRESS_WAITING_LOCK) {
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line(sprintf(
                         '  [%s] attesa lock IMAP; %d e-mail previste.',
                         $mailboxKey,
                         $total ?? 0,
                     ));
+                    $this->displayAppendProgressBars($appendProgressBars);
 
                     return;
                 }
                 if ($phase === ImapMailboxSeeder::PROGRESS_LOCK_ACQUIRED) {
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line("  [{$mailboxKey}] lock IMAP acquisito.");
+                    $this->displayAppendProgressBars($appendProgressBars);
 
                     return;
                 }
                 if ($phase === ImapMailboxSeeder::PROGRESS_PURGE_RECOVERY_STARTED) {
                     $lastReported["{$mailboxKey}:purge"] = 0;
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line("  [{$mailboxKey}] recovery del purge interrotto in corso...");
+                    $this->displayAppendProgressBars($appendProgressBars);
 
                     return;
                 }
                 if ($phase === ImapMailboxSeeder::PROGRESS_PURGE_STARTED) {
                     $lastReported["{$mailboxKey}:purge"] = 0;
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line("  [{$mailboxKey}] purge selettivo in corso...");
+                    $this->displayAppendProgressBars($appendProgressBars);
 
                     return;
                 }
@@ -292,12 +306,16 @@ class MailSeedImapCommand extends Command
                     }
 
                     $lastReported[$key] = $current;
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line("  [{$mailboxKey}] purge: {$current} e-mail eliminate.");
+                    $this->displayAppendProgressBars($appendProgressBars);
 
                     return;
                 }
                 if ($phase === ImapMailboxSeeder::PROGRESS_PURGE_COMPLETED) {
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line("  [{$mailboxKey}] purge completato: {$current} e-mail eliminate.");
+                    $this->displayAppendProgressBars($appendProgressBars);
 
                     return;
                 }
@@ -305,12 +323,20 @@ class MailSeedImapCommand extends Command
                     $appendStartedAt[$mailboxKey] = microtime(true);
                     $appendStartedFrom[$mailboxKey] = $current;
                     $lastReported["{$mailboxKey}:append"] = $current;
+                    $this->clearAppendProgressBars($appendProgressBars);
                     $this->line(sprintf(
                         '  [%s] APPEND avviato: %d/%d già confermate.',
                         $mailboxKey,
                         $current,
                         $total ?? 0,
                     ));
+                    if ($total !== null && $total > 0) {
+                        $bar = $this->appendProgressBar($total);
+                        $bar->start();
+                        $bar->setProgress(min($current, $total));
+                        $bar->setMessage("{$mailboxKey} — preparazione");
+                        $appendProgressBars[$mailboxKey] = $bar;
+                    }
 
                     return;
                 }
@@ -318,13 +344,6 @@ class MailSeedImapCommand extends Command
                     return;
                 }
 
-                $key = "{$mailboxKey}:append";
-                $previous = $lastReported[$key] ?? ($appendStartedFrom[$mailboxKey] ?? 0);
-                if ($current !== $total && $current - $previous < $progressEvery) {
-                    return;
-                }
-
-                $lastReported[$key] = $current;
                 $startedAt = $appendStartedAt[$mailboxKey] ?? microtime(true);
                 $startedFrom = $appendStartedFrom[$mailboxKey] ?? 0;
                 $elapsed = max(0.001, microtime(true) - $startedAt);
@@ -335,6 +354,26 @@ class MailSeedImapCommand extends Command
                     : null;
                 $etaNote = $eta !== null ? ', ETA '.$this->formatDuration($eta) : '';
 
+                $bar = $appendProgressBars[$mailboxKey] ?? null;
+                if ($bar instanceof ProgressBar && $total !== null) {
+                    $bar->setProgress(min($current, $total));
+                    $bar->setMessage(sprintf(
+                        '%s — %.2f e-mail/s%s',
+                        $mailboxKey,
+                        $rate,
+                        $etaNote,
+                    ));
+                }
+
+                $key = "{$mailboxKey}:append";
+                $previous = $lastReported[$key] ?? ($appendStartedFrom[$mailboxKey] ?? 0);
+                $isCompleted = $total !== null && $current >= $total;
+                if (! $isCompleted && $current - $previous < $progressEvery) {
+                    return;
+                }
+
+                $lastReported[$key] = $current;
+                $this->clearAppendProgressBars($appendProgressBars);
                 $this->line(sprintf(
                     '  [%s] APPEND confermati: %d/%d (%.2f e-mail/s%s).',
                     $mailboxKey,
@@ -343,6 +382,14 @@ class MailSeedImapCommand extends Command
                     $rate,
                     $etaNote,
                 ));
+                $this->displayAppendProgressBars($appendProgressBars);
+
+                if ($bar instanceof ProgressBar && $isCompleted) {
+                    $bar->finish();
+                    $this->newLine();
+                    unset($appendProgressBars[$mailboxKey]);
+                    $this->line("  [{$mailboxKey}] APPEND completato: {$current}/{$total}.");
+                }
             };
 
             if ($usesDataset) {
@@ -379,6 +426,10 @@ class MailSeedImapCommand extends Command
                 );
             }
         } catch (Throwable $e) {
+            $this->clearAppendProgressBars($appendProgressBars);
+            if ($appendProgressBars !== []) {
+                $this->newLine();
+            }
             if ($auditHandles !== []) {
                 try {
                     $audit->fail($auditHandles, $e);
@@ -402,6 +453,8 @@ class MailSeedImapCommand extends Command
 
             return self::FAILURE;
         }
+
+        $this->finishAppendProgressBars($appendProgressBars);
 
         foreach ($outcomes as $outcome) {
             $verb = $outcome->dryRun
@@ -450,6 +503,43 @@ class MailSeedImapCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function appendProgressBar(int $total): ProgressBar
+    {
+        $bar = $this->output->createProgressBar($total);
+        $bar->setBarWidth(32);
+        $bar->setFormat('  [%bar%] %current%/%max% %percent:3s%% — %message%');
+        $bar->setBarCharacter('=');
+        $bar->setEmptyBarCharacter('-');
+        $bar->setProgressCharacter('>');
+
+        return $bar;
+    }
+
+    /** @param array<string, ProgressBar> $appendProgressBars */
+    private function clearAppendProgressBars(array $appendProgressBars): void
+    {
+        foreach ($appendProgressBars as $bar) {
+            $bar->clear();
+        }
+    }
+
+    /** @param array<string, ProgressBar> $appendProgressBars */
+    private function displayAppendProgressBars(array $appendProgressBars): void
+    {
+        foreach ($appendProgressBars as $bar) {
+            $bar->display();
+        }
+    }
+
+    /** @param array<string, ProgressBar> $appendProgressBars */
+    private function finishAppendProgressBars(array $appendProgressBars): void
+    {
+        foreach ($appendProgressBars as $bar) {
+            $bar->finish();
+            $this->newLine();
+        }
     }
 
     /**

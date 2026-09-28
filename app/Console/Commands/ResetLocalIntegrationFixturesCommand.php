@@ -16,6 +16,7 @@ use Illuminate\Console\Command;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use RuntimeException;
+use Symfony\Component\Console\Helper\ProgressBar;
 
 /**
  * Rebuilds a self-contained local integration scenario for the three case
@@ -38,6 +39,8 @@ final class ResetLocalIntegrationFixturesCommand extends Command
         AppSettingsResolver $settings,
         TenantContext $tenants,
     ): int {
+        $progress = null;
+
         try {
             $environment->assertLocal();
             $profile = $this->emailProfile();
@@ -59,25 +62,34 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             // Herd's next request reads the persisted local flag.
             $this->callChecked('config:clear', []);
             $this->configureCurrentProcess();
+            $progress = $this->stageProgress();
 
             $this->components->info('1/6 — Riavvio dei mock API e MCP locali');
             $this->line('  Arresto le eventuali istanze precedenti e avvio i due servizi Node su loopback.');
+            $progress->setMessage('Riavvio mock API e MCP');
+            $progress->display();
             $lifecycle->restart();
+            $progress->advance();
             $this->line('  ✓ Mock API e MCP disponibili.');
 
             $this->components->info('2/6 — Reset dei soli tenant case-study');
             $this->line('  Rimuovo solo i dati delle tre aziende di prova; gli altri tenant non vengono toccati.');
+            $progress->setMessage('Reset dei tenant case-study');
+            $progress->display();
             foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
                 if (Tenant::query()->where('slug', $tenantId)->exists()) {
-                    $this->callChecked('tenant:reset', ['tenant' => $tenantId, '--force' => true]);
+                    $this->callChecked('tenant:reset', ['tenant' => $tenantId, '--force' => true], $progress);
                 } else {
                     $this->line("  [{$tenantId}] non esiste ancora: sarà creato dal seeder.");
                 }
             }
+            $progress->advance();
             $this->line('  ✓ Reset dei tenant case-study completato.');
 
             $this->components->info('3/6 — Aziende, utenti e documenti');
             $this->line('  Creo utenti e ruoli, ingerisco i documenti e sincronizzo le e-mail previste dal profilo.');
+            $progress->setMessage('Aziende, documenti ed e-mail');
+            $progress->display();
             $initArguments = [
                 '--profile' => $profile,
                 // A retry after a transient IMAP failure preserves the
@@ -90,17 +102,23 @@ final class ResetLocalIntegrationFixturesCommand extends Command
                 '--skip-emails' => (bool) $this->option('without-email'),
                 '--email-actor' => 'local-case-study-fixtures',
             ];
-            $this->callChecked('demo:init-case-studies', $initArguments);
+            $this->callChecked('demo:init-case-studies', $initArguments, $progress);
+            $progress->advance();
             $this->line('  ✓ Dati di base pronti; le credenziali sono nella tabella appena stampata.');
 
             $this->components->info('4/6 — Profili aziendali, connettori API e MCP');
             $this->line('  Creo il profilo di recupero già pronto, un connettore API statico e un connettore MCP per ogni tenant.');
-            $this->callChecked('db:seed', ['--class' => LocalIntegrationRetrievalProfilesSeeder::class, '--force' => true]);
-            $this->callChecked('db:seed', ['--class' => LocalIntegrationConnectorsSeeder::class, '--force' => true]);
+            $progress->setMessage('Profili aziendali, API e MCP');
+            $progress->display();
+            $this->callChecked('db:seed', ['--class' => LocalIntegrationRetrievalProfilesSeeder::class, '--force' => true], $progress);
+            $this->callChecked('db:seed', ['--class' => LocalIntegrationConnectorsSeeder::class, '--force' => true], $progress);
+            $progress->advance();
             $this->line('  ✓ Profili di recupero, connettori API e MCP configurati.');
 
             $this->components->info('5/6 — Attivazione runtime MCP nei tre tenant');
             $this->line('  Abilito l’esecuzione MCP per i tre ambienti isolati.');
+            $progress->setMessage('Attivazione runtime MCP');
+            $progress->display();
             $previousTenant = $tenants->current();
             try {
                 foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
@@ -110,11 +128,14 @@ final class ResetLocalIntegrationFixturesCommand extends Command
             } finally {
                 $tenants->set($previousTenant);
             }
+            $progress->advance();
             $this->line('  ✓ Runtime MCP attivo.');
 
             if (! (bool) $this->option('skip-smoke')) {
                 $this->components->info('6/6 — Smoke MCP read-only per azienda');
                 $this->line('  Verifico che ogni connettore MCP risponda con il proprio contesto aziendale.');
+                $progress->setMessage('Smoke MCP per le tre aziende');
+                $progress->display();
                 foreach (CaseStudyUsersSeeder::companyKeys() as $tenantId) {
                     $connection = McpConnection::withoutGlobalScopes()
                         ->where('tenant_id', $tenantId)
@@ -127,13 +148,20 @@ final class ResetLocalIntegrationFixturesCommand extends Command
                     $this->callChecked('mcp-connectors:smoke', [
                         '--connection' => $connection->public_id,
                         '--tool' => 'get_company_context',
-                    ]);
+                    ], $progress);
                 }
                 $this->line('  ✓ Smoke MCP completato per tutte le aziende.');
             } else {
                 $this->components->warn('6/6 — Smoke MCP saltato (--skip-smoke).');
             }
+            $progress->advance();
+            $progress->finish();
+            $this->newLine();
         } catch (\Throwable $exception) {
+            if ($progress instanceof ProgressBar) {
+                $progress->clear();
+                $this->newLine();
+            }
             report($exception);
             $this->components->error($exception->getMessage());
 
@@ -175,10 +203,29 @@ final class ResetLocalIntegrationFixturesCommand extends Command
         return $profile;
     }
 
-    /** @param array<string,mixed> $arguments */
-    private function callChecked(string $command, array $arguments): void
+    private function stageProgress(): ProgressBar
     {
-        $exitCode = $this->call($command, $arguments);
+        $progress = $this->output->createProgressBar(6);
+        $progress->setBarWidth(24);
+        $progress->setFormat('  %current%/%max% [%bar%] %percent:3s%% — %message%');
+        $progress->setBarCharacter('=');
+        $progress->setEmptyBarCharacter('-');
+        $progress->setProgressCharacter('>');
+        $progress->setMessage('Preparazione');
+        $progress->start();
+
+        return $progress;
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function callChecked(string $command, array $arguments, ?ProgressBar $progress = null): void
+    {
+        $progress?->clear();
+        try {
+            $exitCode = $this->call($command, $arguments);
+        } finally {
+            $progress?->display();
+        }
         if ($exitCode !== self::SUCCESS) {
             throw new RuntimeException("Command '{$command}' failed with exit code {$exitCode}.");
         }
