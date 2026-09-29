@@ -19,6 +19,56 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_accepting_the_offer_reads_the_previously_cited_email(): void
+    {
+        $content = "Oggetto: Reclamo SPD-51230\nLa consegna è avvenuta a Messina anziché a Catania.";
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 252, 'title' => 'Reclamo', 'source_path' => 'mail/reclamo.eml', 'origin' => 'primary',
+            'evidence' => [['content' => $content, 'evidence_hash' => 'email-hash']],
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithHistory');
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('ok', $this->context(), new AgentLoopOutcome('answer', $evidence, []),
+                json_encode(['previous_runs' => [['answer' => 'Vuoi leggere la fonte completa o chiedere un dettaglio preciso?']]], JSON_THROW_ON_ERROR),
+                ['available' => true, 'language' => 'it', 'intent' => 'Conferma', 'mentions' => []]);
+
+        $this->assertStringContainsString($content, $answer->answer);
+        $this->assertSame([252], array_column($answer->citations, 'document_id'));
+    }
+
+    public function test_a_repeat_fallback_keeps_the_verified_citation_for_the_next_turn(): void
+    {
+        $content = 'La spedizione SPD-51230 è stata consegnata a Messina.';
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument([
+            'document_id' => 252, 'title' => 'Reclamo', 'source_path' => 'mail/reclamo.eml', 'origin' => 'primary',
+            'evidence' => [['content' => $content, 'evidence_hash' => 'email-hash']],
+        ]);
+        $response = new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+            'name' => 'submit_agent_answer', 'arguments' => [
+                'completeness' => 'complete',
+                'claims' => [[
+                    'text' => $content, 'quote' => $content, 'document_id' => 252,
+                    'tool_execution_id' => null, 'evidence_hash' => 'email-hash',
+                ]],
+                'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+            ],
+        ]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn($response);
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('Parlami di quella di Messina', $this->context(), new AgentLoopOutcome('answer', $evidence, []),
+                json_encode(['previous_runs' => [['answer' => $content, 'locale' => 'it']]], JSON_THROW_ON_ERROR),
+                ['available' => true, 'language' => null, 'intent' => 'Dettagli del reclamo', 'mentions' => ['Messina']]);
+
+        $this->assertSame('it', $answer->locale);
+        $this->assertStringContainsString('fonte completa', $answer->answer);
+        $this->assertSame([252], array_column($answer->citations, 'document_id'));
+    }
+
+
     public function test_it_detects_a_follow_up_that_rephrases_most_of_the_previous_answer(): void
     {
         $synthesizer = new AgentAnswerSynthesizer(

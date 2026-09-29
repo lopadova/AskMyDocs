@@ -341,6 +341,46 @@ final class KbInvestigationServiceTest extends TestCase
         $this->assertStringContainsString('RCL-2024-1102', $result->search->primary->first()['chunk_text']);
     }
 
+    public function test_lowercase_location_follow_up_selects_only_the_matching_cited_email(): void
+    {
+        $messina = $this->citedDocument('investigation-tenant', 'orders');
+        $other = $this->citedDocument('investigation-tenant', 'orders');
+        $messinaChunk = KnowledgeChunk::create([
+            'tenant_id' => 'investigation-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $messina->id, 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'Consegna a Messina anziché Catania. Documenti corretti.'),
+            'chunk_text' => 'Consegna a Messina anziché Catania. Documenti corretti.',
+        ]);
+        $otherChunk = KnowledgeChunk::create([
+            'tenant_id' => 'investigation-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $other->id, 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'Conferma reclamo per altra spedizione.'),
+            'chunk_text' => 'Conferma reclamo per altra spedizione.',
+        ]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'Italian', 'intent' => 'Dettagli della consegna a Messina',
+            'kb_queries' => ['consegna a Messina'],
+            'mentions' => [['text' => 'Messina', 'type' => 'name']],
+            'references_previous_turn' => true,
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->response([
+            'selected_document_ids' => [$messina->id], 'supported_facts' => ['Documenti corretti'],
+            'missing_facts' => [], 'complete' => true, 'next_query' => null,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+        $result = $this->service($ai, $retrieval, app(KbSourceReader::class))->investigate(
+            'parlami di quella di messina', 'orders', previousCitations: [
+                ['document_id' => $messina->id, 'chunks' => [['chunk_id' => $messinaChunk->id]]],
+                ['document_id' => $other->id, 'chunks' => [['chunk_id' => $otherChunk->id]]],
+            ],
+        );
+
+        $this->assertSame('it', $result->intent->understanding->language);
+        $this->assertSame([$messina->id], array_column($result->selectedSources, 'document_id'));
+    }
+
     private function citedDocument(string $tenant, string $project): KnowledgeDocument
     {
         return KnowledgeDocument::create([

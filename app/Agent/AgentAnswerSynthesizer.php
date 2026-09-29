@@ -28,6 +28,9 @@ final readonly class AgentAnswerSynthesizer
         ?array $understanding = null,
     ): AgentAnswer {
         $language = $understanding['language'] ?? null;
+        if (! is_string($language) || ! \App\Support\SupportedLocale::isSupported($language)) {
+            $language = $this->previousLocale($turnContext);
+        }
         if (is_string($language) && \App\Support\SupportedLocale::isSupported($language)) {
             $context = new AgentExecutionContext(
                 $context->runId, $context->tenantId, $context->projectKey,
@@ -55,7 +58,7 @@ final readonly class AgentAnswerSynthesizer
                 ['status' => 'blocked', 'reason' => 'retrieval_profile_required'],
             );
         }
-        $sourceRead = $this->readSingleSource($question, $context, $evidence, $mentions, $understanding);
+        $sourceRead = $this->readSingleSource($question, $context, $evidence, $mentions, $understanding, $turnContext);
         if ($sourceRead !== null) {
             return $sourceRead;
         }
@@ -200,7 +203,7 @@ final readonly class AgentAnswerSynthesizer
                     $italian
                         ? 'Le fonti consultate non mi permettono di aggiungere dettagli affidabili a quanto già detto. Vuoi leggere la fonte completa o chiedere un dettaglio preciso?'
                         : 'The consulted sources do not support further reliable detail beyond what I already shared. Would you like to read the full source or ask about a specific detail?',
-                    $context->locale, 'partial', [], [], ['no_new_detail'], null, false,
+                    $context->locale, 'partial', $this->selectedDocuments($evidence['documents'], $grounding['claims']), [], ['no_new_detail'], null, false,
                     ['status' => 'limited', 'reason' => 'repeated_answer'],
                 );
             }
@@ -250,11 +253,13 @@ final readonly class AgentAnswerSynthesizer
     }
 
     /** Render a requested source directly, with the same hash/quote validation. */
-    private function readSingleSource(string $question, AgentExecutionContext $context, array $evidence, array $mentions, ?array $understanding): ?AgentAnswer
+    private function readSingleSource(string $question, AgentExecutionContext $context, array $evidence, array $mentions, ?array $understanding, ?string $turnContext): ?AgentAnswer
     {
         $intent = (string) ($understanding['intent'] ?? '');
+        $acceptedOffer = preg_match('/^(?:ok(?:ay)?|s[iì]|yes|va bene|certo)[.!\s]*$/iu', trim($question)) === 1
+            && preg_match('/(?:fonte|email|testo) complet[ao]|full source|full (?:email|text)/iu', $this->previousAnswer($turnContext) ?? '') === 1;
         if (! ($understanding['available'] ?? false)
-            || preg_match('/\b(?:leggere|lettura|read|show|display|lire|lesen)\b/iu', $question.' '.$intent) !== 1
+            || (! $acceptedOffer && preg_match('/\b(?:leggere|lettura|read|show|display|lire|lesen)\b/iu', $question.' '.$intent) !== 1)
             || count($evidence['documents'] ?? []) !== 1 || ($evidence['api_tools'] ?? []) !== []) {
             return null;
         }
@@ -586,6 +591,23 @@ PROMPT;
                     && is_string($message['content'] ?? null) && trim($message['content']) !== '') {
                     return mb_substr(trim($message['content']), 0, 3000);
                 }
+            }
+        }
+
+        return null;
+    }
+
+    private function previousLocale(?string $turnContext): ?string
+    {
+        $context = $turnContext === null ? null : json_decode($turnContext, true);
+        $runs = is_array($context) ? ($context['previous_runs'] ?? []) : [];
+        if (! is_array($runs)) {
+            return null;
+        }
+        for ($i = count($runs) - 1; $i >= 0; $i--) {
+            $locale = $runs[$i]['locale'] ?? null;
+            if (is_string($locale) && \App\Support\SupportedLocale::isSupported($locale)) {
+                return \App\Support\SupportedLocale::normalize($locale);
             }
         }
 

@@ -56,6 +56,7 @@ final readonly class AgentTurnContextBuilder
             ->map(fn (AgentRun $previous): array => [
                 'question' => mb_substr((string) data_get($previous->input_json, 'question', ''), 0, 2000),
                 'answer' => mb_substr((string) data_get($previous->result_json, 'response.answer', ''), 0, 3000),
+                'locale' => data_get($previous->result_json, 'response.locale'),
                 'tool_results' => array_map(
                     fn (array $tool): array => $this->compactTool($tool),
                     array_slice(

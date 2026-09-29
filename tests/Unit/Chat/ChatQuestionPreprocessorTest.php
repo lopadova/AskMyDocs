@@ -64,6 +64,23 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertTrue($result->referencesPreviousTurn);
     }
 
+    public function test_a_lowercase_name_remains_a_verbatim_mention_and_language_names_are_normalized(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'Italian', 'intent' => 'Dettagli della consegna a Messina',
+            'kb_queries' => ['consegna Messina'],
+            'mentions' => [['text' => 'Messina', 'type' => 'name']],
+            'references_previous_turn' => true,
+        ]));
+
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('parlami di quella di messina');
+
+        $this->assertSame('it', $result->language);
+        $this->assertSame(['messina'], $result->mentionTexts());
+        $this->assertTrue($result->referencesPreviousTurn);
+    }
+
     public function test_invalid_json_falls_back_without_entity_gate(): void
     {
         $ai = Mockery::mock(AiManager::class);
