@@ -8,11 +8,10 @@ import * as z from 'zod/v4';
 import {
   COMPANY_KEYS,
   DATASET_REVISION,
-  companyContext,
-  findRecord,
-  recordsForCompany,
-  searchRecords,
-} from './dataset.mjs';
+  MCP_ENTITY_TYPES,
+  recentOrders,
+  searchEntities,
+} from './catalog-v2.mjs';
 import {
   closeOnSignal,
   listen,
@@ -25,6 +24,14 @@ import { captureMcpExchange, createRequestMonitor, monitorRequest } from './requ
 export const MCP_PORT = 4311;
 const MAX_BODY_BYTES = 1_000_000;
 const companyKeySchema = z.enum(COMPANY_KEYS);
+const dateSchema = z.iso.date();
+const filterInput = {
+  query: z.string().max(200).optional().default(''),
+  from_date: dateSchema.optional(),
+  to_date: dateSchema.optional(),
+  name: z.string().max(100).optional(),
+  limit: z.number().int().min(1).max(100).optional().default(20),
+};
 const readOnlyAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -57,7 +64,7 @@ function resolveCompanyKey(scopeCompanyKey, argumentsObject) {
  * requires `company_key` on every tool call.
  */
 export function createMcpFixtureServer({ scopeCompanyKey = null } = {}) {
-  if (scopeCompanyKey !== null && companyContext(scopeCompanyKey) === null) {
+  if (scopeCompanyKey !== null && !COMPANY_KEYS.includes(scopeCompanyKey)) {
     throw new Error(`Unknown local fixture company scope: ${scopeCompanyKey}`);
   }
 
@@ -74,87 +81,36 @@ export function createMcpFixtureServer({ scopeCompanyKey = null } = {}) {
     },
   );
 
-  server.registerTool(
-    'get_company_context',
-    {
-      title: 'Get local company context',
-      description:
-        'Returns the selected local case-study company identity, its configured mailbox keys and its correlated document IDs.',
-      inputSchema: companyScopeInput,
-      annotations: readOnlyAnnotations,
-    },
-    async (argumentsObject) => {
-      const companyKey = resolveCompanyKey(scopeCompanyKey, argumentsObject);
-      const context = companyContext(companyKey);
-      return context === null ? unknownCompanyResult(companyKey) : asToolResult({ datasetRevision: DATASET_REVISION, ...context });
-    },
-  );
-
-  server.registerTool(
-    'list_operational_records',
-    {
-      title: 'List local operational records',
-      description:
-        'Lists static operational records for exactly one selected local case-study company. Optional filters never cross company boundaries.',
-      inputSchema: {
-        ...companyScopeInput,
-        kind: z.string().min(1).optional(),
-        status: z.string().min(1).optional(),
+  for (const type of MCP_ENTITY_TYPES) {
+    server.registerTool(
+      `search_${type}`,
+      {
+        title: `Search local ${type}`,
+        description: `Search ${type} in this company by optional query or name. Empty filters list available records. For orders, from_date and to_date filter the date of the cited email (observedAt), not an invented creation date; results are newest first. Dates use YYYY-MM-DD. Limit 1–100. Returns explicit relationships.`,
+        inputSchema: { ...companyScopeInput, ...filterInput },
+        annotations: readOnlyAnnotations,
       },
-      annotations: readOnlyAnnotations,
-    },
-    async (argumentsObject) => {
-      const companyKey = resolveCompanyKey(scopeCompanyKey, argumentsObject);
-      const { kind, status } = argumentsObject;
-      const records = recordsForCompany(companyKey, { kind, status });
-      return records === null ? unknownCompanyResult(companyKey) : asToolResult({ datasetRevision: DATASET_REVISION, ...records });
-    },
-  );
-
-  server.registerTool(
-    'get_operational_record',
-    {
-      title: 'Get local operational record',
-      description:
-        'Reads one static operational record only within the selected case-study company. A record ID from another company is not disclosed.',
-      inputSchema: {
-        ...companyScopeInput,
-        record_id: z.string().min(1),
+      async (argumentsObject) => {
+        const companyKey = resolveCompanyKey(scopeCompanyKey, argumentsObject);
+        const result = searchEntities(companyKey, type, argumentsObject.query, {
+          fromDate: argumentsObject.from_date, toDate: argumentsObject.to_date,
+          name: argumentsObject.name, limit: argumentsObject.limit,
+        });
+        return result === null ? unknownCompanyResult(companyKey) : asToolResult({ datasetRevision: DATASET_REVISION, ...result });
       },
-      annotations: readOnlyAnnotations,
-    },
-    async (argumentsObject) => {
-      const companyKey = resolveCompanyKey(scopeCompanyKey, argumentsObject);
-      const recordId = argumentsObject.record_id;
-      const result = findRecord(companyKey, recordId);
-      return result === null
-        ? {
-            content: [{ type: 'text', text: 'The requested record is not available for this local fixture company.' }],
-            isError: true,
-          }
-        : asToolResult({ datasetRevision: DATASET_REVISION, ...result });
-    },
-  );
+    );
+  }
 
-  server.registerTool(
-    'search_operational_records',
-    {
-      title: 'Search local operational records',
-      description:
-        'Performs a case-insensitive search over the static records of one local case-study company only.',
-      inputSchema: {
-        ...companyScopeInput,
-        query: z.string().max(200),
-      },
-      annotations: readOnlyAnnotations,
-    },
-    async (argumentsObject) => {
-      const companyKey = resolveCompanyKey(scopeCompanyKey, argumentsObject);
-      const query = argumentsObject.query;
-      const result = searchRecords(companyKey, query);
-      return result === null ? unknownCompanyResult(companyKey) : asToolResult({ datasetRevision: DATASET_REVISION, ...result });
-    },
-  );
+  server.registerTool('list_recent_orders', {
+    title: 'List recent local orders',
+    description: 'List the latest orders of this company without a required search query. Optional from_date, to_date (YYYY-MM-DD), name (customer or supplier), and limit (1–100). Dates are the dates of the cited fixture emails, exposed as observedAt, not asserted order creation dates.',
+    inputSchema: { ...companyScopeInput, from_date: dateSchema.optional(), to_date: dateSchema.optional(), name: z.string().max(100).optional(), limit: z.number().int().min(1).max(100).optional().default(20) },
+    annotations: readOnlyAnnotations,
+  }, async (argumentsObject) => {
+    const companyKey = resolveCompanyKey(scopeCompanyKey, argumentsObject);
+    const result = recentOrders(companyKey, { fromDate: argumentsObject.from_date, toDate: argumentsObject.to_date, name: argumentsObject.name, limit: argumentsObject.limit });
+    return result === null ? unknownCompanyResult(companyKey) : asToolResult({ datasetRevision: DATASET_REVISION, ...result });
+  });
 
   return server;
 }
@@ -313,7 +269,7 @@ export function createMcpHttpServer() {
       const parsedBody = normalizeLegacyEmptyParams(await parseJsonBody(request));
       mcpCapture.setRequest(parsedBody);
       const scopeCompanyKey = endpoint[1] ? decodeURIComponent(endpoint[1]) : null;
-      if (scopeCompanyKey !== null && companyContext(scopeCompanyKey) === null) {
+      if (scopeCompanyKey !== null && !COMPANY_KEYS.includes(scopeCompanyKey)) {
         sendJson(response, 404, { error: 'not_found' });
         return;
       }

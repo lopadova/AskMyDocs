@@ -2,11 +2,13 @@ import { createServer } from 'node:http';
 
 import {
   DATASET_REVISION,
-  companyContext,
-  findRecord,
-  listCompanies,
-  recordsForCompany,
-} from './dataset.mjs';
+  COMPANY_KEYS,
+  claimsForCompany,
+  findClaim,
+  findInventory,
+  inventoryForCompany,
+  recentOrders,
+} from './catalog-v2.mjs';
 import {
   closeOnSignal,
   listen,
@@ -34,8 +36,8 @@ function notFound(response) {
 }
 
 /**
- * Local, static API. There is intentionally no unscoped records collection:
- * every operational request must name a known case-study company in its path.
+ * Complementary HTTP surfaces: claims and inventory only. Operational entity
+ * search belongs to MCP, so the two connectors do not duplicate each other.
  */
 export function createApiServer() {
   const monitor = createRequestMonitor('api');
@@ -67,15 +69,7 @@ export function createApiServer() {
       return;
     }
 
-    if (url.pathname === '/v1/companies') {
-      sendJson(response, 200, {
-        datasetRevision: DATASET_REVISION,
-        companies: listCompanies(),
-      });
-      return;
-    }
-
-    const path = url.pathname.match(/^\/v1\/companies\/([^/]+)(?:\/(context|records)(?:\/([^/]+))?)?$/);
+    const path = url.pathname.match(/^\/v1\/companies\/([^/]+)\/(claims|inventory|orders)(?:\/([^/]+))?$/);
 
     if (!path) {
       notFound(response);
@@ -85,40 +79,38 @@ export function createApiServer() {
     const companyKey = decodeURIComponent(path[1]);
     const collection = path[2];
     const recordId = path[3] ? decodeURIComponent(path[3]) : null;
+    if (!COMPANY_KEYS.includes(companyKey)) return notFound(response);
 
-    if (collection === 'context') {
-      const context = companyContext(companyKey);
-      if (context === null) {
-        notFound(response);
+    if (collection === 'orders') {
+      if (recordId !== null) return notFound(response);
+      const fromDate = url.searchParams.get('from_date') || undefined;
+      const toDate = url.searchParams.get('to_date') || undefined;
+      const limitRaw = url.searchParams.get('limit');
+      const limit = limitRaw === null ? 20 : Number(limitRaw);
+      if ((fromDate && !/^\d{4}-\d{2}-\d{2}$/.test(fromDate))
+        || (toDate && !/^\d{4}-\d{2}-\d{2}$/.test(toDate))
+        || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        sendJson(response, 400, { error: 'invalid_filter', message: 'Dates must use YYYY-MM-DD; limit must be 1–100.' });
         return;
       }
-
-      sendJson(response, 200, { datasetRevision: DATASET_REVISION, ...context });
+      sendJson(response, 200, { datasetRevision: DATASET_REVISION, ...recentOrders(companyKey, {
+        fromDate, toDate, name: url.searchParams.get('name') || undefined, limit,
+      }) });
       return;
     }
 
-    if (collection === 'records' && recordId !== null) {
-      const result = findRecord(companyKey, recordId);
-      if (result === null) {
-        notFound(response);
-        return;
-      }
+    const result = collection === 'claims'
+      ? recordId === null
+        ? claimsForCompany(companyKey, {
+            shipmentId: url.searchParams.get('shipment_id') || undefined,
+            orderId: url.searchParams.get('order_id') || undefined,
+          })
+        : findClaim(companyKey, recordId)
+      : recordId === null
+        ? inventoryForCompany(companyKey, { productId: url.searchParams.get('product_id') || undefined })
+        : findInventory(companyKey, recordId);
 
-      sendJson(response, 200, { datasetRevision: DATASET_REVISION, ...result });
-      return;
-    }
-
-    if (collection === 'records') {
-      const result = recordsForCompany(companyKey, {
-        kind: url.searchParams.get('kind') || undefined,
-        status: url.searchParams.get('status') || undefined,
-      });
-
-      if (result === null) {
-        notFound(response);
-        return;
-      }
-
+    if (result !== null) {
       sendJson(response, 200, { datasetRevision: DATASET_REVISION, ...result });
       return;
     }

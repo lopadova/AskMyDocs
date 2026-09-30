@@ -29,7 +29,7 @@ final class LocalIntegrationConnectorsSeeder extends Seeder
 
     private const MCP_LABEL = 'Fixture MCP operativo locale';
 
-    public function run(): void
+    public function run(?string $onlyCompanyKey = null): void
     {
         if (! LocalIntegrationFixtureEnvironment::enabled()) {
             throw new RuntimeException(
@@ -45,7 +45,11 @@ final class LocalIntegrationConnectorsSeeder extends Seeder
         $previousConnectorTenant = $connectorTenants->current();
 
         try {
-            foreach (CaseStudyUsersSeeder::companyKeys() as $companyKey) {
+            $companyKeys = CaseStudyUsersSeeder::companyKeys();
+            if ($onlyCompanyKey !== null && ! in_array($onlyCompanyKey, $companyKeys, true)) {
+                throw new RuntimeException("Unknown case-study tenant: {$onlyCompanyKey}.");
+            }
+            foreach ($onlyCompanyKey === null ? $companyKeys : [$onlyCompanyKey] as $companyKey) {
                 $hostTenants->set($companyKey);
                 $connectorTenants->set($companyKey);
 
@@ -80,52 +84,113 @@ final class LocalIntegrationConnectorsSeeder extends Seeder
         $this->upsertRoute(
             connector: $connector,
             companyKey: $companyKey,
-            slug: 'fixture_company_context',
-            name: 'Contesto aziendale locale',
-            description: 'Recupera identità, caselle e documenti correlati della sola azienda corrente.',
-            url: $baseUrl.'/context',
-            endpointType: 'detail',
-            itemsPath: null,
-            properties: [],
-            required: [],
-            parameters: [],
-        );
-        $this->upsertRoute(
-            connector: $connector,
-            companyKey: $companyKey,
-            slug: 'fixture_list_operational_records',
-            name: 'Elenco dati operativi locali',
-            description: 'Elenca i dati operativi statici correlati alla sola azienda corrente; può filtrare per tipo o stato.',
-            url: $baseUrl.'/records',
+            slug: 'fixture_recent_orders',
+            name: 'Ultimi ordini locali',
+            description: 'Elenca gli ordini più recenti del tenant. Data = data dell’email citata, non data di creazione dell’ordine. Filtri facoltativi: dal/al (YYYY-MM-DD), nome cliente o fornitore e limite 1–100.',
+            url: $baseUrl.'/orders',
             endpointType: 'list',
-            itemsPath: 'records',
+            itemsPath: 'orders',
             properties: [
-                'kind' => ['type' => 'string', 'description' => 'Tipo di record operativo, se noto.'],
-                'status' => ['type' => 'string', 'description' => 'Stato operativo, se noto.'],
+                'from_date' => ['type' => 'string', 'description' => 'Data minima YYYY-MM-DD.'],
+                'to_date' => ['type' => 'string', 'description' => 'Data massima YYYY-MM-DD.'],
+                'name' => ['type' => 'string', 'description' => 'Nome cliente o fornitore.'],
+                'limit' => ['type' => 'string', 'description' => 'Numero massimo di ordini (1–100).'],
             ],
             required: [],
             parameters: [
-                ['name' => 'kind', 'location' => 'query', 'required' => false],
-                ['name' => 'status', 'location' => 'query', 'required' => false],
+                ['name' => 'from_date', 'location' => 'query', 'required' => false],
+                ['name' => 'to_date', 'location' => 'query', 'required' => false],
+                ['name' => 'name', 'location' => 'query', 'required' => false],
+                ['name' => 'limit', 'location' => 'query', 'required' => false],
             ],
         );
         $this->upsertRoute(
             connector: $connector,
             companyKey: $companyKey,
-            slug: 'fixture_get_operational_record',
-            name: 'Dettaglio dato operativo locale',
-            description: 'Recupera il dettaglio di un record operativo noto della sola azienda corrente.',
-            url: $baseUrl.'/records/{record_id}',
+            slug: 'fixture_list_claims',
+            name: 'Reclami locali',
+            description: 'Elenca reclami e segnalazioni del tenant, filtrabili per spedizione o ordine.',
+            url: $baseUrl.'/claims',
+            endpointType: 'list',
+            itemsPath: 'claims',
+            properties: [
+                'shipment_id' => ['type' => 'string', 'description' => 'Identificativo spedizione.'],
+                'order_id' => ['type' => 'string', 'description' => 'Identificativo ordine.'],
+            ],
+            required: [],
+            parameters: [
+                ['name' => 'shipment_id', 'location' => 'query', 'required' => false],
+                ['name' => 'order_id', 'location' => 'query', 'required' => false],
+            ],
+        );
+        $this->upsertRoute(
+            connector: $connector,
+            companyKey: $companyKey,
+            slug: 'fixture_get_claim',
+            name: 'Dettaglio reclamo locale',
+            description: 'Recupera un reclamo del tenant tramite il suo identificativo.',
+            url: $baseUrl.'/claims/{claim_id}',
             endpointType: 'detail',
             itemsPath: null,
             properties: [
-                'record_id' => ['type' => 'string', 'description' => 'Identificativo del record operativo.'],
+                'claim_id' => ['type' => 'string', 'description' => 'Identificativo reclamo.'],
             ],
-            required: ['record_id'],
+            required: ['claim_id'],
             parameters: [
-                ['name' => 'record_id', 'location' => 'path', 'required' => true],
+                ['name' => 'claim_id', 'location' => 'path', 'required' => true],
             ],
         );
+        $this->upsertRoute(
+            connector: $connector,
+            companyKey: $companyKey,
+            slug: 'fixture_list_inventory',
+            name: 'Giacenze locali',
+            description: 'Elenca disponibilità o arrivi previsti, distinguendo quantità note da quantità non confermate.',
+            url: $baseUrl.'/inventory',
+            endpointType: 'list',
+            itemsPath: 'inventory',
+            properties: [
+                'product_id' => ['type' => 'string', 'description' => 'Identificativo prodotto.'],
+            ],
+            required: [],
+            parameters: [
+                ['name' => 'product_id', 'location' => 'query', 'required' => false],
+            ],
+        );
+        $this->upsertRoute(
+            connector: $connector,
+            companyKey: $companyKey,
+            slug: 'fixture_get_inventory',
+            name: 'Dettaglio giacenza locale',
+            description: 'Recupera una voce di giacenza del tenant tramite identificativo.',
+            url: $baseUrl.'/inventory/{inventory_id}',
+            endpointType: 'detail',
+            itemsPath: null,
+            properties: [
+                'inventory_id' => ['type' => 'string', 'description' => 'Identificativo giacenza.'],
+            ],
+            required: ['inventory_id'],
+            parameters: [
+                ['name' => 'inventory_id', 'location' => 'path', 'required' => true],
+            ],
+        );
+        $this->pruneLegacyFixtureRoutes($connector, $companyKey);
+    }
+
+    private function pruneLegacyFixtureRoutes(ApiConnector $connector, string $companyKey): void
+    {
+        $legacy = ApiRoute::query()
+            ->where('tenant_id', $companyKey)
+            ->where('project_key', $companyKey)
+            ->where('api_connector_id', $connector->id)
+            ->whereIn('slug', [
+                'fixture_company_context', 'fixture_list_operational_records', 'fixture_get_operational_record',
+            ])
+            ->get();
+        foreach ($legacy as $route) {
+            ApiRouteParameter::query()->where('tenant_id', $companyKey)->where('api_route_id', $route->id)->delete();
+            $route->delete();
+        }
     }
 
     /**
@@ -146,6 +211,14 @@ final class LocalIntegrationConnectorsSeeder extends Seeder
         array $required,
         array $parameters,
     ): void {
+        $existing = ApiRoute::query()
+            ->where('tenant_id', $companyKey)
+            ->where('project_key', $companyKey)
+            ->where('slug', $slug)
+            ->first();
+        if ($existing instanceof ApiRoute && $existing->api_connector_id !== $connector->id) {
+            throw new RuntimeException("Route {$slug} belongs to another connector; refusing to replace it.");
+        }
         $schema = [
             'type' => 'object',
             'properties' => $properties,

@@ -46,12 +46,12 @@ final class LocalIntegrationConnectorsSeederTest extends TestCase
             ];
             $transport->responses['tools/list'] = ['tools' => [
                 [
-                    'name' => 'get_company_context',
+                    'name' => 'search_shipments',
                     'inputSchema' => ['type' => 'object', 'properties' => []],
                     'annotations' => ['readOnlyHint' => true, 'idempotentHint' => true],
                 ],
                 [
-                    'name' => 'list_operational_records',
+                    'name' => 'search_orders',
                     'inputSchema' => ['type' => 'object', 'properties' => []],
                     'annotations' => ['readOnlyHint' => true, 'idempotentHint' => true],
                 ],
@@ -90,12 +90,14 @@ final class LocalIntegrationConnectorsSeederTest extends TestCase
                 ->where('tenant_id', $companyKey)
                 ->orderBy('slug')
                 ->get();
-            $this->assertCount(3, $routes);
+            $this->assertCount(5, $routes);
             $this->assertSame(
                 [
-                    'fixture_company_context',
-                    'fixture_get_operational_record',
-                    'fixture_list_operational_records',
+                    'fixture_get_claim',
+                    'fixture_get_inventory',
+                    'fixture_list_claims',
+                    'fixture_list_inventory',
+                    'fixture_recent_orders',
                 ],
                 $routes->pluck('slug')->all(),
             );
@@ -123,7 +125,7 @@ final class LocalIntegrationConnectorsSeederTest extends TestCase
         }
 
         $this->assertSame(3, ApiConnector::withoutGlobalScopes()->count());
-        $this->assertSame(9, ApiRoute::withoutGlobalScopes()->count());
+        $this->assertSame(15, ApiRoute::withoutGlobalScopes()->count());
         $this->assertSame(3, McpConnection::withoutGlobalScopes()->count());
     }
 

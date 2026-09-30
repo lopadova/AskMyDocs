@@ -7,16 +7,26 @@ checked-in dataset:
 - **Static API** — `http://127.0.0.1:4310`
 - **Streamable HTTP MCP** — `http://127.0.0.1:4311/mcp/{company_key}`
 
-It never contacts Gmail, a database, or any external service. `dataset.mjs` is
-the single source of truth for the company keys, case-study account identities,
-mailbox keys, expected document IDs and operational records. The identifiers
-are deliberately correlated with the existing Laravel case-study seeders:
+It never contacts Gmail, a database, or any external service. `catalog-v2.mjs`
+is the versioned source of truth for curated customers, products, orders,
+shipments, claims and inventory. Every record carries a mailbox, exact gold
+email subject and reference; automated tests verify those links against the
+checked-in email seed files. Ambiguous identifiers in conflicting emails are
+excluded from this curated catalogue.
 
-| Tenant / project key | Mailbox keys | API + MCP records |
+| Tenant / project key | Curated cross-source examples |
 | --- | --- | --- |
-| `rotta-logistics` | `rotta-logistics-1`, `rotta-logistics-2` | shipments |
-| `prometeo-antincendio` | `prometeo-antincendio-1`, `prometeo-antincendio-2` | safety inspections and supply orders |
-| `passolibero-calzature` | `passolibero-calzature-1`, `passolibero-calzature-2` | purchase orders and returns |
+| `rotta-logistics` | Messina shipment, split order, requested claim |
+| `prometeo-antincendio` | supplier order, extinguishing products, incoming stock |
+| `passolibero-calzature` | supplier order, related shipment, customer packaging claim |
+
+The curated catalog now has 3 Rotta orders, 4 Prometeo orders or accepted
+quote references, and 9 PassoLibero orders. These are historical 2024 fixture
+records: “latest” means newest **within this fixture**, not live orders. An
+accepted quote reference is explicitly marked `identifierKind`, so it is not
+misrepresented as an assigned order number. Some API collections, such as
+Rotta inventory, remain empty when the emails do not establish a trustworthy
+quantity; the mock does not invent stock.
 
 ## Complete local scenario
 
@@ -58,6 +68,24 @@ php artisan dev:reset-local-integration-fixtures --without-email
 
 The default `gold` email profile is the quicker functional scenario;
 `--email-profile=demo` selects the larger deterministic corpus.
+
+## Update only API and MCP
+
+After the case-study tenants have been created once, refresh their local
+connectors and both shared Node services without changing Gmail, ingested
+email, documents, users or tenants:
+
+```bash
+php artisan dev:refresh-local-integration-connectors
+php artisan dev:refresh-local-integration-connectors --tenant=rotta-logistics
+```
+
+The command is local-only, requires the existing fixture flag and target
+tenants, restarts the two shared servers, reconciles only fixture-owned API
+routes and MCP tools, enables the MCP runtime, and probes both services.
+`--tenant` limits database configuration changes and smoke tests to one tenant;
+the shared servers still restart for all three. Re-running it is safe. It
+prints the outcome for each tenant and fails if an endpoint is unhealthy.
 
 ## Lifecycle
 
@@ -106,14 +134,16 @@ omitted from the activity view.
 
 ## API contract
 
-Health is available at `GET /health`. The API intentionally has no unscoped
-operational-record endpoint; every record request includes its company key:
+Health is available at `GET /health`. The API contains claims, inventory and a
+summary list of recent orders (MCP retains detailed entity searches). Every request
+includes the company key:
 
 ```text
-GET /v1/companies
-GET /v1/companies/{company_key}/context
-GET /v1/companies/{company_key}/records?kind={kind}&status={status}
-GET /v1/companies/{company_key}/records/{record_id}
+GET /v1/companies/{company_key}/claims?shipment_id={shipment_id}&order_id={order_id}
+GET /v1/companies/{company_key}/claims/{claim_id}
+GET /v1/companies/{company_key}/inventory?product_id={product_id}
+GET /v1/companies/{company_key}/inventory/{inventory_id}
+GET /v1/companies/{company_key}/orders?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD&name={customer_or_supplier}&limit=20
 ```
 
 Unknown companies and records outside the selected company return `404`. This
@@ -126,19 +156,26 @@ The MCP endpoint is stateful Streamable HTTP and has a health endpoint at
 `GET /health`. It uses the installed `@modelcontextprotocol/sdk`. Configure a
 tenant connector with its dedicated endpoint, for example
 `POST /mcp/rotta-logistics`; the endpoint itself fixes the company boundary and
-the tools do not accept a second company key. All four tools are read-only:
+the tools do not accept a second company key. All four tools are read-only
+searches; `query` is optional (empty lists available records), and may be an exact identifier or a name. `name`, `from_date`, `to_date` and `limit` are optional filters; order results are newest first:
 
-- `get_company_context`
-- `list_operational_records`
-- `get_operational_record`
-- `search_operational_records`
+- `search_shipments`
+- `search_orders`
+- `search_products`
+- `search_customers`
+- `list_recent_orders` (no query needed; concise latest-order list)
+
+Order dates are `observedAt`: the date of the cited fixture email, **not** an
+invented order creation date. Dates use `YYYY-MM-DD`, inclusive; `limit` is 1–100.
+For example, call `list_recent_orders` with `{}` or use the API order endpoint
+with `?from_date=2024-07-01&name=Chiara&limit=5`. To follow an order to its
+products and shipments, call `search_orders` with its identifier.
 
 The MCP connector configuration should point each tenant at its own path:
 `http://127.0.0.1:4311/mcp/{tenant_id}`. A generic `POST /mcp` is also present
 for protocol exploration and requires `company_key` on every tool call; do not
 use it for tenant connector configuration. The Artisan command above creates
-one API and one MCP connector per tenant and seeds matching email/document
-identifiers from `dataset.mjs`. It includes narrowly scoped compatibility for
+one API and one MCP connector per tenant. It includes narrowly scoped compatibility for
 the installed PHP MCP transport: it supplies the Streamable HTTP `Accept`
 values and translates only an empty legacy parameter list into the MCP object
 form. All current SDK clients use the standard session flow unchanged.

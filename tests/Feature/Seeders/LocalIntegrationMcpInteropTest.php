@@ -79,10 +79,11 @@ final class LocalIntegrationMcpInteropTest extends TestCase
                 $this->assertSame('active', $connection->status);
                 $this->assertSame(
                     [
-                        'get_company_context',
-                        'get_operational_record',
-                        'list_operational_records',
-                        'search_operational_records',
+                        'list_recent_orders',
+                        'search_customers',
+                        'search_orders',
+                        'search_products',
+                        'search_shipments',
                     ],
                     McpConnectionTool::withoutGlobalScopes()
                         ->where('mcp_connector_connection_id', $connection->id)
@@ -95,12 +96,16 @@ final class LocalIntegrationMcpInteropTest extends TestCase
                     $connection,
                     app(McpCredentialVault::class),
                     app(McpEndpointSecurityGuard::class),
-                ))->callTool('get_company_context', []);
+                ))->callTool('search_orders', ['query' => match ($companyKey) {
+                    'rotta-logistics' => 'ORD-4471',
+                    'prometeo-antincendio' => 'ORD-2024-3471',
+                    'passolibero-calzature' => 'FRN-2024-241',
+                }]);
                 $content = data_get($result, 'content.0.text');
                 $this->assertIsString($content);
                 $this->assertSame(
                     $companyKey,
-                    json_decode($content, true, 512, JSON_THROW_ON_ERROR)['company']['key'],
+                    json_decode($content, true, 512, JSON_THROW_ON_ERROR)['companyKey'],
                 );
             }
         } finally {

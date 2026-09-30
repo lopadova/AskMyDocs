@@ -153,9 +153,15 @@ final class ResetLocalIntegrationFixturesCommand extends Command
                     if (! $connection instanceof McpConnection) {
                         throw new RuntimeException("Missing local MCP fixture connection for {$tenantId}.");
                     }
+                    $query = match ($tenantId) {
+                        'rotta-logistics' => 'SPD-51230',
+                        'prometeo-antincendio' => 'ORD-2024-3471',
+                        'passolibero-calzature' => 'FRN-2024-241',
+                    };
                     $this->callChecked('mcp-connectors:smoke', [
                         '--connection' => $connection->public_id,
-                        '--tool' => 'get_company_context',
+                        '--tool' => $tenantId === 'rotta-logistics' ? 'search_shipments' : 'search_orders',
+                        '--query' => $query,
                     ], $progress);
                 }
                 $this->line('  ✓ Smoke MCP completato per tutte le aziende.');

@@ -17,7 +17,7 @@ use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 
 final class SmokeMcpConnectorCommand extends Command
 {
-    protected $signature = 'mcp-connectors:smoke {--connection= : Connection public ULID} {--tool= : Optional read-only remote tool name} {--json : Emit machine-readable JSON}';
+    protected $signature = 'mcp-connectors:smoke {--connection= : Connection public ULID} {--tool= : Optional read-only remote tool name} {--query= : Query for a read-only search tool} {--json : Emit machine-readable JSON}';
 
     protected $description = 'Run a redacted protocol/catalog smoke test against a configured MCP connection.';
 
@@ -87,7 +87,11 @@ final class SmokeMcpConnectorCommand extends Command
                 if (! $tool instanceof McpConnectionTool) {
                     throw new \RuntimeException('Smoke calls are restricted to enabled read-only tools in the discovered catalog.');
                 }
-                $result = $client->callToolResult($remoteTool, []);
+                $query = trim((string) $this->option('query'));
+                $result = $client->callToolResult($remoteTool, $query === '' ? [] : ['query' => $query]);
+                if ($result->isError) {
+                    throw new \RuntimeException('The MCP smoke tool returned an error.');
+                }
                 $payload['tool_call'] = [
                     'name' => $remoteTool,
                     'is_error' => $result->isError,
