@@ -96,6 +96,11 @@
     "prefer-stable": true,
     "repositories": [
         {
+            "name": "ui4-workbench",
+            "type": "vcs",
+            "url": "https://github.com/padosoft/laravel-ui4-workbench"
+        },
+        {
             "name": "ui4",
             "type": "path",
             "url": "/Users/marco/packages/Ui4VocalAgent/packages/laravel-ui4-workbench",
