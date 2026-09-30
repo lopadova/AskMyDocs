@@ -327,6 +327,8 @@ export const adminPermissionsApi = {
 export type KbTreeMode = 'canonical' | 'raw' | 'all';
 
 export interface KbTreeDocMeta {
+    source_type?: string | null;
+    mime_type?: string | null;
     id: number;
     project_key: string;
     slug: string | null;
@@ -360,12 +362,16 @@ export interface KbTreeCounts {
 }
 
 export interface KbTreeResponse {
+    pagination?: { has_more: boolean; next_cursor: number | null; loaded: number; limit: number };
     tree: KbTreeNode[];
     counts: KbTreeCounts;
     generated_at: string;
 }
 
 export interface KbTreeQuery {
+    limit?: number;
+    after?: number;
+    q?: string;
     project?: string | null;
     mode?: KbTreeMode;
     with_trashed?: boolean;
@@ -376,6 +382,9 @@ function buildKbTreeParams(q: KbTreeQuery): Record<string, string> {
     if (q.project && q.project.trim() !== '') p.project = q.project;
     if (q.mode) p.mode = q.mode;
     if (q.with_trashed) p.with_trashed = '1';
+    if (q.limit) p.limit = String(q.limit);
+    if (q.after) p.after = String(q.after);
+    if (q.q) p.q = q.q;
     return p;
 }
 

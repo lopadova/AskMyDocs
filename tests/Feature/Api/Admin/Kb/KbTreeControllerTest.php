@@ -38,6 +38,36 @@ class KbTreeControllerTest extends TestCase
         Cache::flush();
     }
 
+    public function test_cursor_pages_are_bounded_and_search_reaches_later_documents(): void
+    {
+        $admin = $this->makeAdmin();
+        for ($i = 0; $i < 205; $i++) {
+            $this->makeDoc('mail', "inbox/message-{$i}.eml", canonical: false, slug: null);
+        }
+        $first = $this->actingAs($admin)->getJson('/api/admin/kb/tree?limit=200')->assertOk();
+        $first->assertJsonPath('counts.docs', 205)->assertJsonPath('pagination.loaded', 200)
+            ->assertJsonPath('pagination.has_more', true);
+        $second = $this->getJson('/api/admin/kb/tree?limit=200&after='.$first->json('pagination.next_cursor'))->assertOk();
+        $second->assertJsonPath('pagination.loaded', 5)->assertJsonPath('pagination.has_more', false);
+        $this->assertEmpty(array_intersect($this->collectDocPaths($first->json('tree')), $this->collectDocPaths($second->json('tree'))));
+        $search = $this->getJson('/api/admin/kb/tree?limit=200&q=message-204')->assertOk();
+        $search->assertJsonPath('counts.docs', 1)->assertJsonPath('pagination.loaded', 1);
+        $this->assertContains('inbox/message-204.eml', $this->collectDocPaths($search->json('tree')));
+        $this->getJson('/api/admin/kb/tree?limit=201')->assertUnprocessable();
+    }
+
+    public function test_paged_search_treats_wildcards_as_literals_and_respects_filters(): void
+    {
+        $admin = $this->makeAdmin();
+        $this->makeDoc('mail', 'inbox/a_b.eml', canonical: false, slug: null);
+        $this->makeDoc('mail', 'inbox/axb.eml', canonical: false, slug: null);
+        $this->makeDoc('other', 'inbox/a_b.eml', canonical: false, slug: null);
+        $this->actingAs($admin)->getJson('/api/admin/kb/tree?limit=200&project=mail&q=A_B')
+            ->assertOk()->assertJsonPath('counts.docs', 1)->assertJsonPath('pagination.loaded', 1);
+        $this->getJson('/api/admin/kb/tree?limit=200&mode=canonical')
+            ->assertOk()->assertJsonPath('pagination.loaded', 0);
+    }
+
     // ------------------------------------------------------------------
     // Empty baseline
     // ------------------------------------------------------------------

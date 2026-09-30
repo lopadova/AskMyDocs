@@ -1,3 +1,7 @@
+import { ColumnResizeHandle, useFileColumnWidth } from './ColumnResizeHandle';
+import { BookOpen } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import './kb-reader.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
@@ -61,6 +65,9 @@ function syncUrl(docId: number | null, tab: KbDetailTab) {
 
 export function KbView() {
     const initial = useMemo(parseInitialUrl, []);
+    const column = useFileColumnWidth();
+    const [search, setSearch] = useState('');
+    const [cursors, setCursors] = useState<number[]>([0]);
 
     const [project, setProject] = useState<string>('');
     const [mode, setMode] = useState<KbTreeMode>('all');
@@ -73,7 +80,15 @@ export function KbView() {
     const [uploadSeed, setUploadSeed] = useState<{ projectKey: string | null; subPath: string; files: File[] } | null>(null);
     const [uploadOpen, setUploadOpen] = useState(false);
 
+    useEffect(() => {
+        const timer = window.setTimeout(() => { setSearch(q.trim()); setCursors([0]); }, 300);
+        return () => window.clearTimeout(timer);
+    }, [q]);
+
     const treeQuery = useKbTree({
+        limit: 200,
+        after: cursors[cursors.length - 1],
+        q: search,
         project: project || null,
         mode,
         with_trashed: withTrashed || undefined,
@@ -135,23 +150,14 @@ export function KbView() {
         <AdminShell section="kb">
             <div
                 data-testid="kb-view"
-                style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 14,
-                    minHeight: 0,
-                    height: '100%',
-                }}
+                className="kb-workspace"
             >
                 <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 10,
-                    }}
+                    className="kb-workspace-toolbar"
                 >
-                    <div>
+                    <div className="kb-workspace-brand">
+                        <BookOpen size={30} aria-hidden />
+                        <div>
                         <h1
                             style={{
                                 fontSize: 20,
@@ -172,6 +178,7 @@ export function KbView() {
                         >
                             Browse the canonical + raw document tree. Select a doc to preview it.
                         </p>
+                        </div>
                     </div>
                     <div
                         data-testid="kb-project-picker"
@@ -193,8 +200,9 @@ export function KbView() {
                         </label>
                         <select
                             data-testid="kb-project-select"
+                            aria-label="Project"
                             value={project}
-                            onChange={(e) => setProject(e.target.value)}
+                            onChange={(e) => { setProject(e.target.value); setCursors([0]); }}
                             style={{
                                 padding: '6px 8px',
                                 fontSize: 12.5,
@@ -211,41 +219,24 @@ export function KbView() {
                                 </option>
                             ))}
                         </select>
-                        <button
-                            type="button"
+                        <Button
+                            variant="primary" size="sm"
+                            leadingIcon={<Icon.Upload size={14} />}
                             data-testid="kb-upload-open"
                             aria-label="Upload documents"
                             onClick={() => {
                                 setUploadSeed({ projectKey: project || null, subPath: '', files: [] });
                                 setUploadOpen(true);
                             }}
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                padding: '6px 12px',
-                                fontSize: 12.5,
-                                background: 'var(--accent, #6366f1)',
-                                border: '1px solid var(--accent, #6366f1)',
-                                borderRadius: 8,
-                                color: 'white',
-                                cursor: 'pointer',
-                            }}
                         >
-                            <Icon.Upload size={14} />
                             Upload
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
                 <div
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'minmax(280px, 380px) 1fr',
-                        gap: 14,
-                        flex: 1,
-                        minHeight: 0,
-                    }}
+                    className="kb-workspace-columns"
+                    style={column.style}
                 >
                     <TreeView
                         data={treeQuery.data}
@@ -253,22 +244,24 @@ export function KbView() {
                         q={q}
                         onQChange={setQ}
                         mode={mode}
-                        onModeChange={setMode}
+                        onModeChange={(next) => { setMode(next); setCursors([0]); }}
                         withTrashed={withTrashed}
-                        onWithTrashedChange={setWithTrashed}
+                        onWithTrashedChange={(next) => { setWithTrashed(next); setCursors([0]); }}
                         selectedPath={selectedPath}
                         onSelect={handleSelect}
+                        serverSearch
+                        pageNumber={cursors.length}
+                        onPreviousPage={() => setCursors(previous => previous.slice(0, -1))}
+                        onNextPage={() => {
+                            const next = treeQuery.data?.pagination?.next_cursor;
+                            if (next != null) setCursors(previous => [...previous, next]);
+                        }}
                     />
 
+                    <ColumnResizeHandle width={column.width} onChange={column.update} />
                     <div
                         data-testid="kb-detail-pane"
-                        style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 12,
-                            minHeight: 0,
-                            overflow: 'hidden',
-                        }}
+                        className="kb-detail-pane"
                     >
                         {selectedDocId === null ? (
                             <div
@@ -340,7 +333,7 @@ function EmptyDetail() {
                 Select a document to view its details
             </div>
             <div style={{ fontSize: 11, color: 'var(--fg-3)', maxWidth: 360 }}>
-                Source editor lands in Phase G3; graph + PDF renderers in G4.
+                Explore the document tree or search by file name to start reading.
             </div>
         </div>
     );
