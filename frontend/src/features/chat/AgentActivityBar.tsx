@@ -2,6 +2,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
+import { Badge } from '../../components/ui/badge';
+import { researchTasks, researchTaskCopy } from '../agent/research-tasks';
+import { AgentResearchTasks } from './AgentResearchTasks';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 
 export interface AgentActivityBarProps {
@@ -16,7 +19,7 @@ export interface AgentActivityBarProps {
     children?: (activityInfo: ReactNode) => ReactNode;
 }
 
-type ActivityState = 'active' | 'settled' | 'confirmation' | 'failed';
+type ActivityState = 'active' | 'settled' | 'confirmation' | 'failed' | 'disconnected';
 type ActivityStageKind = 'starting' | 'documents' | 'planning' | 'api' | 'mcp' | 'analyzing' | 'ready' | 'confirmation' | 'error';
 
 interface ActivityStage {
@@ -48,6 +51,11 @@ export function AgentActivityBar({
     const timelineId = `agent-activity-timeline-${instanceId ?? generatedId}`;
     const latest = events[events.length - 1];
     const locale = latest?.locale?.toLowerCase().startsWith('it') ? 'it' : 'en';
+    const tasks = researchTasks(events);
+    const taskCopy = researchTaskCopy(locale);
+    const eventTask = (event: AgentRunEvent | undefined) => event?.run_id === latest?.run_id
+        ? tasks.find((task) => task.id === event?.data.research_flow_id)
+        : undefined;
     const copy = locale === 'it'
         ? {
             fallback: 'L’assistente sta lavorando.',
@@ -97,7 +105,8 @@ export function AgentActivityBar({
             copied: 'Copied',
             copyFailed: 'Copy failed',
         };
-    const progress = latest?.progress;
+    // Child counters belong to one branch, not to the entire multi-question turn.
+    const progress = tasks.length > 1 && latest?.data.research_flow_id != null ? null : latest?.progress;
     const physical = progress?.physical;
     const logical = progress?.logical;
     const metric = physical && physical.estimated.likely > 0 ? physical : logical;
@@ -110,13 +119,18 @@ export function AgentActivityBar({
             ? 'active'
             : terminalFailure
                 ? 'failed'
-                : 'settled';
+                : latest?.type === 'run.completed' || latest?.type === 'run.partial' || children !== undefined
+                    ? 'settled'
+                    : 'disconnected';
     const percent = activityPercent(latest, likely, completed, state);
     const stage = activityStage(latest, state, locale);
     const timelineEvents = events.filter((event) => (
         (typeof event.message === 'string' && event.message !== '')
         || mcpDebugData(event) !== null
         || kbDebugData(event) !== null
+        // Per-question document searches carry a status, not a translated message.
+        || (event.type === 'research.task' && eventTask(event) !== undefined
+            && typeof event.data.task_status === 'string' && Object.hasOwn(taskCopy.labels, event.data.task_status))
     ));
     const progressOffset = RING_CIRCUMFERENCE * (1 - percent / 100);
 
@@ -145,6 +159,29 @@ export function AgentActivityBar({
 
     if (events.length === 0 && !active && !awaitingConfirmation) return children?.(null) ?? null;
 
+    const renderQuestionBadge = (event: AgentRunEvent | undefined) => {
+        if (!event || tasks.length < 2 || event.run_id !== latest?.run_id) return null;
+        const task = eventTask(event);
+        // Events without a branch belong to the shared turn. An unknown branch
+        // must not be presented as either a known question or a global search.
+        const shared = event.data.research_flow_id == null && event.data.research_run_id == null;
+        const label = task ? taskCopy.question(task.id) : shared ? taskCopy.allQuestions : taskCopy.unknownQuestion;
+
+        return (
+            <Badge
+                variant="outline"
+                className="agent-research-badge"
+                data-scope={task ? 'question' : shared ? 'shared' : 'unknown'}
+                data-question-id={task?.id}
+                title={task ? `${label}: ${task.question}` : label}
+            >
+                {label}
+                {task && <span className="sr-only">: {task.question}</span>}
+            </Badge>
+        );
+    };
+    const currentQuestionBadge = renderQuestionBadge(latest);
+
     const renderTimeline = () => (
         <section className="agent-activity-details" id={timelineId} data-testid="agent-activity-timeline">
             <div className="agent-activity-details-header">
@@ -163,6 +200,7 @@ export function AgentActivityBar({
                                 ? 'settled'
                                 : 'active';
                     const eventStage = activityStage(event, eventState, locale);
+                    const message = event.message || (event.type === 'research.task' ? eventTask(event)?.question : null);
 
                     return (
                         <li
@@ -174,9 +212,10 @@ export function AgentActivityBar({
                             <div className="agent-activity-event-content">
                                 <div className="agent-activity-event-heading">
                                     <strong>{eventStage.title}</strong>
+                                    {renderQuestionBadge(event)}
                                     {event.created_at && <time dateTime={event.created_at}>{eventTime(event.created_at, locale)}</time>}
                                 </div>
-                                {event.message && <span className="agent-activity-event-message">{event.message}</span>}
+                                {message && <span className="agent-activity-event-message">{message}</span>}
                                 {debug && (
                                     <details className="agent-mcp-debug" data-testid={`agent-mcp-debug-${event.sequence}`}>
                                         <summary>
@@ -308,6 +347,7 @@ export function AgentActivityBar({
             aria-busy={active}
             className={embedded ? 'agent-activity-card is-embedded' : 'agent-activity-card'}
         >
+            <AgentResearchTasks tasks={tasks} locale={locale} />
             <div className="agent-activity-main">
                 <div
                     className="agent-activity-ring"
@@ -346,8 +386,11 @@ export function AgentActivityBar({
                             {progress?.eta_ms != null && <span>{Math.ceil(progress.eta_ms / 1000)} {copy.seconds}</span>}
                         </div>
                     </div>
-                    <div data-testid="agent-activity-message" className="agent-activity-message">
-                        {stage.detail || latest?.message || copy.fallback}
+                    <div data-testid="agent-activity-message" className={`agent-activity-message${currentQuestionBadge ? ' has-question' : ''}`}>
+                        {currentQuestionBadge}
+                        <span className="agent-activity-message-text">
+                            {stage.detail || latest?.message || (active && eventTask(latest)?.question) || copy.fallback}
+                        </span>
                     </div>
                 </div>
                 {timelineEvents.length > 0 && (
@@ -429,7 +472,12 @@ export function AgentActivityBar({
                         {progress?.eta_ms != null && <span>{Math.ceil(progress.eta_ms / 1000)} {copy.seconds}</span>}
                     </DialogDescription>
                 </DialogHeader>
-                {isModalOpen && renderTimeline()}
+                {isModalOpen && (
+                    <div className="agent-activity-modal-body">
+                        <AgentResearchTasks tasks={tasks} locale={locale} />
+                        {renderTimeline()}
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     );
@@ -460,6 +508,15 @@ function activityStage(
     locale: 'it' | 'en',
 ): ActivityStage {
     const italian = locale === 'it';
+    if (state === 'disconnected') {
+        return {
+            kind: 'error',
+            title: italian ? 'Aggiornamenti interrotti' : 'Activity updates interrupted',
+            detail: italian
+                ? 'Lo stato della ricerca non è confermato: non è ancora disponibile una risposta finale.'
+                : 'The search status is unconfirmed: a final answer is not yet available.',
+        };
+    }
     if (state === 'confirmation') {
         return {
             kind: 'confirmation',
@@ -481,6 +538,17 @@ function activityStage(
             kind: 'ready',
             title: italian ? 'Risultato pronto' : 'Result ready',
             detail: event?.message ?? '',
+        };
+    }
+    if (event?.type.startsWith('research.')) {
+        const copy = researchTaskCopy(locale);
+        const status = event.data.task_status;
+        return {
+            kind: status === 'documents' ? 'documents' : ['failed', 'partial', 'cancelled'].includes(String(status)) ? 'error' : 'planning',
+            title: event.type === 'research.planned' ? copy.title
+                : typeof status === 'string' && status in copy.labels ? copy.labels[status as keyof typeof copy.labels]
+                    : italian ? 'Ricerche indipendenti' : 'Independent research',
+            detail: event.type === 'research.planned' ? copy.subtitle : event.message ?? '',
         };
     }
 

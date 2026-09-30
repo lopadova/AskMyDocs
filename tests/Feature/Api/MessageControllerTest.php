@@ -323,4 +323,30 @@ final class MessageControllerTest extends TestCase
         $this->assertSame([], data_get($message, 'metadata.agent_activity.1.data'));
         $this->assertArrayNotHasKey('agent_run_id', $message);
     }
+
+    public function test_history_keeps_the_public_task_list_and_per_task_results_without_raw_response_payloads(): void
+    {
+        $run = AgentRun::create([
+            'run_id' => (string) Str::uuid(), 'tenant_id' => 'default', 'project_key' => 'hr-portal',
+            'user_id' => $this->user->id, 'conversation_id' => $this->conversation->id,
+            'channel' => 'chat', 'actor_type' => 'user', 'actor_id' => (string) $this->user->id,
+            'locale' => 'it', 'timezone' => 'Europe/Rome', 'status' => AgentRun::STATUS_PARTIAL,
+        ]);
+        $events = [
+            ['research.planned', ['tasks' => [['id' => 0, 'question' => 'Dettagli di HUB-AA'], ['id' => 1, 'question' => 'Stato di ORDER-BB']]]],
+            ['research.task', ['research_flow_id' => 0, 'task_status' => 'documents']],
+            ['research.finished', ['tasks' => [['id' => 0, 'task_status' => 'unverified'], ['id' => 1, 'task_status' => 'answered']]]],
+        ];
+        foreach ($events as $index => [$type, $data]) {
+            $run->events()->create(['sequence' => $index + 1, 'type' => $type, 'phase' => 'research', 'locale' => 'it',
+                'payload_json' => ['data' => [...$data, 'response' => ['answer' => 'raw content'], 'private_context' => 'never display']]]);
+        }
+        Message::create(['conversation_id' => $this->conversation->id, 'agent_run_id' => $run->id, 'role' => 'assistant', 'content' => 'Risposta parziale.']);
+        $activity = $this->actingAs($this->user)->getJson('/conversations/'.$this->conversation->id.'/messages')
+            ->assertOk()->json('0.metadata.agent_activity');
+        foreach ($events as $index => [$type, $data]) {
+            $this->assertSame($type, $activity[$index]['type']);
+            $this->assertSame($data, $activity[$index]['data']);
+        }
+    }
 }

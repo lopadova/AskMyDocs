@@ -25,6 +25,113 @@ const progressEvent: AgentRunEvent = {
 
 describe('AgentActivityBar', () => {
     afterEach(() => vi.useRealTimers());
+    it('does not claim success when observation stops without a terminal event or a saved answer', () => {
+        render(<AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false}
+            onCancel={vi.fn()} onContinue={vi.fn()} />);
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Aggiornamenti interrotti');
+        expect(screen.getByTestId('agent-activity-bar')).toHaveAttribute('data-state', 'disconnected');
+        expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow', '100');
+        expect(screen.queryByText('Risultato pronto')).not.toBeInTheDocument();
+    });
+    it('shows detected questions above progress and preserves independent validation states in history', async () => {
+        const plan: AgentRunEvent = { ...progressEvent, sequence: 1, type: 'research.planned', progress: null, message: null,
+            data: { tasks: [{ id: 0, question: 'Quali servizi offre HUB-MI-07?' }, { id: 1, question: 'Dettagli della spedizione RL-TRACK-9355' }] } };
+        const live: AgentRunEvent = { ...plan, sequence: 2, type: 'research.task', data: { research_flow_id: 0, task_status: 'documents' } };
+        const props = { events: [plan, live], active: true, awaitingConfirmation: false, onCancel: vi.fn(), onContinue: vi.fn() };
+        const { rerender } = render(<AgentActivityBar {...props} />);
+        const panel = screen.getByTestId('agent-research-tasks');
+        expect(panel).toHaveTextContent('0 di 2 concluse');
+        expect(within(panel).getAllByRole('listitem')[0]).toHaveTextContent('Ricerca nei documenti');
+        expect(within(panel).getAllByRole('listitem')[1]).toHaveTextContent('In attesa');
+        expect(screen.getByTestId('agent-activity-bar').firstElementChild).toBe(panel);
+        expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('Domanda 1');
+        expect(within(screen.getByTestId('agent-activity-message')).getByTitle('Domanda 1: Quali servizi offre HUB-MI-07?'))
+            .toHaveAttribute('data-question-id', '0');
+
+        const finished: AgentRunEvent = { ...plan, sequence: 3, type: 'research.finished', data: { tasks: [
+            { id: 0, task_status: 'unverified' }, { id: 1, task_status: 'answered' },
+        ] } };
+        rerender(<AgentActivityBar {...props} events={[plan, live, finished, { ...plan, sequence: 4, type: 'run.partial', data: {} }]}
+            active={false}>{(info) => <footer>{info}</footer>}</AgentActivityBar>);
+        await userEvent.click(await screen.findByRole('button', { name: 'Informazioni sulla risposta' }));
+        const history = within(screen.getByRole('dialog')).getByTestId('agent-research-tasks');
+        expect(history).toHaveTextContent('2 di 2 concluse');
+        expect(history).toHaveTextContent('Non verificata');
+        expect(history).toHaveTextContent('Risposta verificata');
+        expect(history).toHaveTextContent('RL-TRACK-9355');
+        const timeline = within(screen.getByRole('dialog')).getByTestId('agent-activity-timeline');
+        expect(within(timeline).getByTitle('Domanda 1: Quali servizi offre HUB-MI-07?')).toHaveAttribute('data-slot', 'badge');
+        expect(timeline).toHaveTextContent('Ricerca nei documenti');
+    });
+
+    it('labels shared activities and each independent search with its actual question, including flow zero', async () => {
+        const plan: AgentRunEvent = { ...progressEvent, sequence: 3, type: 'research.planned', progress: null, message: null,
+            data: { tasks: [{ id: 0, question: 'Quali servizi offre HUB-MI-07?' }, { id: 1, question: 'Dettagli della spedizione RL-TRACK-9355' }] } };
+        const events: AgentRunEvent[] = [
+            { ...plan, sequence: 1, type: 'run.started', message: 'Avvio della ricerca', data: {} },
+            { ...plan, sequence: 2, type: 'retrieval.started', message: 'Ricerca iniziale', data: {} },
+            plan,
+            { ...plan, sequence: 4, type: 'research.task', data: { research_flow_id: 0, task_status: 'documents' } },
+            { ...plan, sequence: 5, type: 'research.task', data: { research_flow_id: 1, task_status: 'documents' } },
+            { ...progressEvent, sequence: 6, data: { tool_kind: 'mcp', tool_display_name: 'search_shipments', research_flow_id: 1 } },
+        ];
+        render(<AgentActivityBar events={events} active awaitingConfirmation={false} onCancel={vi.fn()} onContinue={vi.fn()} />);
+        expect(within(screen.getByTestId('agent-activity-message')).getByTitle('Domanda 2: Dettagli della spedizione RL-TRACK-9355'))
+            .toHaveAttribute('data-slot', 'badge');
+        await userEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
+        const rows = within(screen.getByTestId('agent-activity-timeline')).getAllByRole('listitem');
+        expect(rows).toHaveLength(5);
+        for (const row of rows.slice(0, 2)) {
+            expect(within(row).getByText('Tutte le domande')).toHaveAttribute('data-scope', 'shared');
+        }
+        expect(within(rows[2]).getByTitle('Domanda 1: Quali servizi offre HUB-MI-07?')).toHaveAttribute('data-question-id', '0');
+        expect(within(rows[2]).getByText('Quali servizi offre HUB-MI-07?')).toBeVisible();
+        expect(rows[2]).toHaveTextContent('Ricerca nei documenti');
+        for (const row of rows.slice(3)) {
+            expect(within(row).getByTitle('Domanda 2: Dettagli della spedizione RL-TRACK-9355')).toHaveAttribute('data-question-id', '1');
+        }
+    });
+
+    it.each([9, '0', -1])('does not attribute an unknown or malformed branch %s to a question or to all questions', async (flowId) => {
+        const plan: AgentRunEvent = { ...progressEvent, sequence: 1, type: 'research.planned', message: null,
+            data: { tasks: [{ id: 0, question: 'Hub details' }, { id: 1, question: 'Order details' }] } };
+        render(<AgentActivityBar events={[plan, { ...progressEvent, data: { research_flow_id: flowId } }]}
+            active awaitingConfirmation={false} onCancel={vi.fn()} onContinue={vi.fn()} />);
+        expect(within(screen.getByTestId('agent-activity-message')).getByText('Domanda non associata')).toHaveAttribute('data-scope', 'unknown');
+        await userEvent.click(screen.getByRole('button', { name: 'Mostra attività' }));
+        expect(within(screen.getByTestId('agent-activity-timeline')).getByText('Domanda non associata')).toHaveAttribute('data-scope', 'unknown');
+        expect(screen.queryByText('Tutte le domande')).not.toBeInTheDocument();
+    });
+
+    it('keeps the full question accessible in an English badge without interpreting markup', async () => {
+        const question = ('<img src=x onerror=alert(1)> ' + 'Shipment details and delivery instructions. '.repeat(12)).trim();
+        const plan: AgentRunEvent = { ...progressEvent, locale: 'en', sequence: 1, type: 'research.planned', message: null,
+            data: { tasks: [{ id: 0, question }, { id: 1, question: 'Order details' }] } };
+        const { container } = render(<AgentActivityBar events={[plan, { ...plan, sequence: 2, type: 'research.task',
+            data: { research_flow_id: 0, task_status: 'documents' } }]}
+            active awaitingConfirmation={false} onCancel={vi.fn()} onContinue={vi.fn()} />);
+        const badge = within(screen.getByTestId('agent-activity-message')).getByTitle(`Question 1: ${question}`);
+        expect(badge).toHaveTextContent(`Question 1: ${question.trim()}`);
+        await userEvent.click(screen.getByRole('button', { name: 'Show activity' }));
+        expect(within(screen.getByTestId('agent-activity-timeline')).getByTitle(`Question 1: ${question}`)).toBeVisible();
+        expect(container.querySelector('img')).toBeNull();
+    });
+
+    it('keeps single-request and older runs unchanged, and safely renders English task text', () => {
+        const props = { active: true, awaitingConfirmation: false, onCancel: vi.fn(), onContinue: vi.fn() };
+        const { rerender } = render(<AgentActivityBar {...props} events={[progressEvent]} />);
+        expect(screen.queryByTestId('agent-research-tasks')).not.toBeInTheDocument();
+        expect(screen.getByTestId('agent-activity-bar').querySelector('[data-slot="badge"]')).toBeNull();
+        rerender(<AgentActivityBar {...props} events={[{ ...progressEvent, type: 'research.planned',
+            data: { tasks: [{ id: 0, question: 'One question' }] } }, { ...progressEvent, sequence: 3, data: { research_flow_id: 0 } }]} />);
+        expect(screen.getByTestId('agent-activity-bar').querySelector('[data-slot="badge"]')).toBeNull();
+        rerender(<AgentActivityBar {...props} events={[{ ...progressEvent, locale: 'en', type: 'research.planned', message: null,
+            data: { tasks: [{ id: 0, question: '<img src=x onerror=alert(1)>' }, { id: 1, question: 'Order details' }] } }]} />);
+        const panel = screen.getByTestId('agent-research-tasks');
+        expect(panel).toHaveTextContent('Detected requests');
+        expect(panel).toHaveTextContent('<img src=x onerror=alert(1)>');
+        expect(panel.querySelector('img')).toBeNull();
+    });
     it('renders localized live progress and cancellation', () => {
         const cancel = vi.fn();
         render(<AgentActivityBar events={[progressEvent]} active awaitingConfirmation={false} onCancel={cancel} onContinue={() => undefined} />);

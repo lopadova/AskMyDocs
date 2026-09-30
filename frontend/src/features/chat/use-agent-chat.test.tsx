@@ -235,6 +235,69 @@ describe('useAgentChat', () => {
         expect(chatApi.listMessages).toHaveBeenCalledWith(7);
     });
 
+    it('keeps the original voice run subscribed when adopted twice or another request arrives', async () => {
+        const start = vi.spyOn(chatApi, 'startAgentTurn');
+        const cancel = vi.spyOn(chatApi, 'cancelAgentRun');
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        let finishEvents!: (response: Response) => void;
+        const request = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>((resolve) => { finishEvents = resolve; }));
+        vi.stubGlobal('fetch', request);
+        const { result } = renderHook(() => useAgentChat({ conversationId: 7, filters: {}, initialMessages: emptyMessages }));
+        const run = {
+            run_id: 'run-1', status: 'running', locale: 'it-IT',
+            events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage,
+        };
+        let observing!: Promise<void>;
+        act(() => { observing = result.current.adoptExternalRun(run); });
+        await waitFor(() => expect(result.current.status).toBe('streaming'));
+        await act(async () => {
+            await result.current.adoptExternalRun(run);
+            await expect(result.current.sendMessage({ text: 'Un altro ordine' })).rejects.toThrow('una cosa alla volta');
+            await expect(result.current.adoptExternalRun({ ...run, run_id: 'another-run' })).rejects.toThrow('already in progress');
+        });
+        expect(request).toHaveBeenCalledOnce();
+        expect(request.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+        expect(start).not.toHaveBeenCalled();
+        expect(cancel).not.toHaveBeenCalled();
+        await act(async () => { finishEvents(eventResponse(completedEvent())); await observing; });
+        expect(result.current.messages).toEqual([userMessage, assistantMessage]);
+        expect(result.current.status).toBe('ready');
+    });
+
+    it('retains the question/task list across a long activity stream', async () => {
+        vi.spyOn(chatApi, 'listMessages').mockResolvedValue([userMessage, assistantMessage]);
+        const planned: AgentRunEvent = { ...completedEvent(), sequence: 1, type: 'research.planned',
+            data: { tasks: [{ id: 'customer', question: 'Chi è il cliente?' }, { id: 'orders', question: 'Quali sono gli ordini?' }] } };
+        const events = [planned, ...Array.from({ length: 60 }, (_, index) => ({
+            ...completedEvent(), sequence: index + 2, type: 'tool.started', data: {},
+        })), { ...completedEvent(), sequence: 62 }];
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(events.map((event) =>
+            `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''),
+        { headers: { 'Content-Type': 'text/event-stream' } })));
+        const { result } = renderHook(() => useAgentChat({ conversationId: 7, filters: {}, initialMessages: emptyMessages }));
+        await act(async () => result.current.adoptExternalRun({
+            run_id: 'run-1', status: 'running', locale: 'it-IT',
+            events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage,
+        }));
+        expect(result.current.events[0]).toEqual(planned);
+        expect(result.current.events).toHaveLength(51);
+        expect(result.current.events.at(-1)?.type).toBe('run.completed');
+    });
+
+    it('can recover a failed early subscription from the final voice receipt', async () => {
+        vi.spyOn(chatApi, 'listMessages').mockRejectedValueOnce(new Error('Temporary history failure'))
+            .mockResolvedValueOnce([userMessage, assistantMessage]);
+        vi.stubGlobal('fetch', vi.fn(async () => eventResponse(completedEvent())));
+        const { result } = renderHook(() => useAgentChat({ conversationId: 7, filters: {}, initialMessages: emptyMessages }));
+        const run = { run_id: 'run-1', status: 'completed', locale: 'it-IT',
+            events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage };
+        await act(async () => { await expect(result.current.adoptExternalRun(run)).rejects.toThrow('Temporary history failure'); });
+        expect(result.current.status).toBe('error');
+        await act(async () => result.current.adoptExternalRun(run));
+        expect(result.current.messages).toEqual([userMessage, assistantMessage]);
+        expect(result.current.status).toBe('ready');
+    });
+
     it('cancels the current backend run when stopped', async () => {
         let resolveStart: ((value: Awaited<ReturnType<typeof chatApi.startAgentTurn>>) => void) | undefined;
         vi.spyOn(chatApi, 'startAgentTurn').mockImplementation(() => new Promise((resolve) => { resolveStart = resolve; }));

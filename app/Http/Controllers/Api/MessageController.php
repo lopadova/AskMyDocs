@@ -30,6 +30,8 @@ use Illuminate\Support\Str;
 
 class MessageController extends Controller
 {
+    use \App\Http\Controllers\Api\Concerns\RespondsWithProvenance;
+
     /**
      * T3.4 — same sentinel as KbChatController. Centralizing on a class
      * constant per controller (not pulling into a shared trait yet) so
@@ -41,6 +43,7 @@ class MessageController extends Controller
     private const AGENT_ACTIVITY_DATA_KEYS = [
         'tool', 'tool_kind', 'tool_display_name', 'mcp_server_name',
         'mcp_tool_name', 'mcp_debug', 'kb_debug', 'action_id', 'error_code',
+        'tasks', 'research_flow_id', 'task_status',
     ];
 
     public function index(
@@ -165,8 +168,23 @@ class MessageController extends Controller
             conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
             previousCitations: is_array($previousCitations) ? $previousCitations : [],
             actor: $request->user(),
+            memoryOwner: $conversation,
+            turnRecord: $userMessage,
         );
         $result = $investigationResult->search;
+        if ($investigationResult->stopReason === 'answer_provenance') {
+            return $this->provenanceResponse($request, $conversation, $userMessage, $filters,
+                $investigationResult->intent?->understanding?->language, $chatLog, $startTime);
+        }
+        if (config('reasoning.enabled')) {
+            $history = array_values(array_filter($history, fn ($message) => $message['role'] === 'user'));
+            $history[] = ['role' => 'user', 'content' => json_encode([
+                'server_turn_context' => $investigationResult->intent?->understanding?->toArray(),
+                'reasoning' => $investigationResult->intent?->understanding?->available && $conversation->project_key === $projectKey
+                    ? app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->context($conversation, $request->user(), $filters) : [],
+                'policy' => 'Answer the active focus. Already communicated text is ONLY a repetition hint, not evidence. Do not repeat it unless explicitly requested or needed to explain an update. Use only current retrieved sources for facts. '.\App\Services\Chat\QuestionAction::ANSWER_INSTRUCTIONS,
+            ])];
+        }
         $chunks = $result->primary;
         $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
@@ -190,6 +208,7 @@ class MessageController extends Controller
                     ? 'retrieval_profile_required'
                     : 'no_relevant_context',
                 language: $investigationResult->intent?->understanding?->language,
+                clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );
         }
 
@@ -214,7 +233,7 @@ class MessageController extends Controller
                 // (below, after the assistant message is saved) only takes
                 // effect starting next turn, by design (async, off the
                 // request path).
-                'sessionRecap' => $conversation->session_recap,
+                'sessionRecap' => config('reasoning.enabled') ? null : $conversation->session_recap,
             ],
         ))->render();
 
@@ -328,6 +347,9 @@ class MessageController extends Controller
         ]);
 
         $conversation->touch();
+        app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
+            $conversation, $userMessage, $assistantMessage, ['documents' => $citations],
+        );
 
         // 8b. Async, incremental session-recap update — off the request
         // path so a slow/failed update never adds latency to (or breaks)
@@ -398,9 +420,14 @@ class MessageController extends Controller
         float $startTime,
         string $reason,
         ?string $language = null,
+        ?string $clarification = null,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
         $answer = $this->localizedRefusalMessage($reason, $language);
+        if ($clarification !== null && $clarification !== '') {
+            $answer = $clarification;
+            $reason = 'focus_ambiguous';
+        }
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',

@@ -121,6 +121,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/{conversation}/realtime-agent', [RealtimeAgentSessionController::class, 'store'])
             ->middleware($chatPostMiddleware)
             ->name('conversations.realtime-agent.store');
+        Route::get('/{conversation}/realtime-agent/{session}/run', [RealtimeAgentSessionController::class, 'run']);
         Route::post('/{conversation}/generate-title', [ConversationController::class, 'generateTitle']);
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Agent\AgentChatTurnStarter;
+use App\Agent\AgentConversationBusy;
 use App\Agent\AgentExecutionContextFactory;
 use App\Http\Requests\AgentChatScopeRules;
 use App\Mcp\Apps\McpAppTurnContext;
@@ -80,17 +81,21 @@ final class AgentMessageController extends Controller
         if (is_array($validated['live_sources'] ?? null)) {
             $input['live_sources'] = $validated['live_sources'];
         }
-        $turn = $turns->start(
-            $context,
-            $conversation,
-            $user,
-            $content,
-            $input,
-            $selection === null ? null : [
-                'agent_selection' => $selection,
-                'locale' => $context->locale,
-            ],
-        );
+        try {
+            $turn = $turns->start(
+                $context,
+                $conversation,
+                $user,
+                $content,
+                $input,
+                $selection === null ? null : [
+                    'agent_selection' => $selection,
+                    'locale' => $context->locale,
+                ],
+            );
+        } catch (AgentConversationBusy $exception) {
+            return response()->json(['error' => 'agent_conversation_busy', 'message' => $exception->getMessage()], 409);
+        }
         $message = $turn->message;
         $run = $turn->run;
 

@@ -160,7 +160,7 @@ final class WidgetAgentRunController extends Controller
         AgentExecutionContextFactory $contexts,
         AgentRunDispatcher $runs,
     ): JsonResponse {
-        if ($session->agentRuns()->whereNotIn('status', [
+        if ($session->agentRuns()->whereNull('input_json->research_parent_id')->whereNotIn('status', [
             AgentRun::STATUS_COMPLETED,
             AgentRun::STATUS_PARTIAL,
             AgentRun::STATUS_FAILED,

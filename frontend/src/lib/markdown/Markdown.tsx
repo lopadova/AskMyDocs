@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
@@ -7,24 +7,21 @@ import { remarkObsidianTag } from './remark-obsidian-tag';
 import { remarkCallout } from './remark-callout';
 import { WikiLink } from '../../features/chat/WikilinkHover';
 import { Icon } from '../../components/Icons';
+import { Button } from '../../components/Button';
+import './markdown.css';
 
 /*
- * Shared markdown renderer for chat messages + (later) the KB viewer.
+ * Shared markdown renderer for chat messages and KB/document previews.
  * The plugin stack is small on purpose: remark-gfm for tables/checklists,
  * remark-frontmatter so YAML frontmatter in source docs is silently
  * stripped, and three custom plugins for wikilinks / tags / callouts.
  *
- * Tokens drive every visual decision (see styles/tokens.css) — no
- * tailwind utilities here so the design-reference port stays 1:1.
+ * Answer typography is opt-in; colours and controls use the application
+ * tokens so light/dark themes share the same semantic content.
  */
 
-const CALLOUT_PALETTE: Record<string, { color: string; label: string }> = {
-    note: { color: '#22d3ee', label: 'Note' },
-    warning: { color: '#f59e0b', label: 'Warning' },
-    tip: { color: '#10b981', label: 'Tip' },
-    info: { color: '#8b5cf6', label: 'Info' },
-    important: { color: '#f97316', label: 'Important' },
-    caution: { color: '#ef4444', label: 'Caution' },
+const CALLOUT_LABELS: Record<string, string> = {
+    note: 'Note', warning: 'Warning', tip: 'Tip', info: 'Info', important: 'Important', caution: 'Caution',
 };
 
 type ExtraComponents = {
@@ -59,34 +56,19 @@ function Tag({ 'data-label': label }: { 'data-label'?: string }): ReactNode {
 }
 
 function Callout({ 'data-kind': kind = 'note', 'data-title': title, children }: { 'data-kind'?: string; 'data-title'?: string; children?: ReactNode }): ReactNode {
-    const palette = CALLOUT_PALETTE[kind] ?? CALLOUT_PALETTE.note;
+    const label = CALLOUT_LABELS[kind] ?? CALLOUT_LABELS.note;
+    const Mark = ['warning', 'caution', 'important'].includes(kind) ? Icon.Alert : kind === 'tip' ? Icon.Check : Icon.Info;
     return (
         <div
             data-testid={`chat-callout-${kind}`}
-            style={{
-                margin: '12px 0',
-                padding: '10px 14px',
-                background: `${palette.color}15`,
-                border: `1px solid ${palette.color}40`,
-                borderLeft: `3px solid ${palette.color}`,
-                borderRadius: 8,
-                fontSize: 13,
-            }}
+            className="markdown-callout"
+            data-kind={kind}
         >
-            <div
-                style={{
-                    fontSize: 10.5,
-                    color: palette.color,
-                    textTransform: 'uppercase',
-                    letterSpacing: '.08em',
-                    fontWeight: 600,
-                    marginBottom: 3,
-                    fontFamily: 'var(--font-mono)',
-                }}
-            >
-                {title ? `${palette.label} · ${title}` : palette.label}
+            <div className="markdown-callout-title">
+                <span aria-hidden="true"><Mark size={16} /></span>
+                <strong>{title || label}</strong>
             </div>
-            <div style={{ color: 'var(--fg-1)', lineHeight: 1.55 }}>{children}</div>
+            <div className="markdown-callout-content">{children}</div>
         </div>
     );
 }
@@ -94,11 +76,13 @@ function Callout({ 'data-kind': kind = 'note', 'data-title': title, children }: 
 export interface MarkdownProps {
     source: string;
     project?: string;
+    /** Editorial answer typography is opt-in; document previews keep their density. */
+    variant?: 'default' | 'answer';
 }
 
 /**
- * v4.5/W7 Tier 1 #7 — copy-code-block button. Wraps every fenced code
- * block in a `<div>` with a hover-revealed copy button. Stable testid
+ * Wraps every fenced code block with a language label and an always
+ * discoverable copy button, including on touch screens. Stable testid
  * `markdown-codeblock-copy` for Playwright.
  *
  * The component reads the textContent of the rendered `<code>` to
@@ -109,6 +93,12 @@ export interface MarkdownProps {
  */
 function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
     const [copied, setCopied] = useState(false);
+    const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
+    const code = Children.toArray(children).find((child) => isValidElement<{ className?: string }>(child));
+    const language = isValidElement<{ className?: string }>(code)
+        ? /(?:^|\s)language-([\w+-]+)/.exec(code.props.className ?? '')?.[1]
+        : undefined;
 
     const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
         const pre = e.currentTarget.closest('[data-testid="markdown-codeblock"]');
@@ -124,7 +114,8 @@ function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
         try {
             await navigator.clipboard.writeText(code.textContent ?? '');
             setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
+            if (resetTimer.current) clearTimeout(resetTimer.current);
+            resetTimer.current = setTimeout(() => setCopied(false), 1500);
         } catch {
             setCopied(false);
         }
@@ -133,48 +124,37 @@ function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
     return (
         <div
             data-testid="markdown-codeblock"
-            style={{ position: 'relative', margin: '12px 0' }}
+            className="markdown-codeblock"
         >
-            <button
-                type="button"
-                data-testid="markdown-codeblock-copy"
-                data-state={copied ? 'copied' : 'idle'}
-                onClick={handleCopy}
-                aria-label="Copy code"
-                className="btn icon sm ghost"
-                style={{
-                    position: 'absolute',
-                    top: 6,
-                    right: 6,
-                    opacity: 0.7,
-                    background: 'var(--bg-3)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 6,
-                }}
-            >
-                {copied ? <Icon.Check size={11} /> : <Icon.Copy size={11} />}
-            </button>
-            <pre
-                style={{
-                    margin: 0,
-                    padding: '10px 12px',
-                    paddingRight: 36,
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 8,
-                    overflow: 'auto',
-                    fontSize: 12.5,
-                    fontFamily: 'var(--font-mono)',
-                    lineHeight: 1.5,
-                }}
-            >
-                {children}
-            </pre>
+            <div className="markdown-codeblock-toolbar">
+                <span className="markdown-codeblock-language"><span aria-hidden="true"><Icon.Terminal size={14} /></span>{language ?? 'Code'}</span>
+                <Button
+                    variant="quiet"
+                    size="sm"
+                    data-testid="markdown-codeblock-copy"
+                    data-state={copied ? 'copied' : 'idle'}
+                    onClick={handleCopy}
+                    aria-label="Copy code"
+                    title="Copy code"
+                    leadingIcon={copied ? <Icon.Check size={13} /> : <Icon.Copy size={13} />}
+                >
+                    <span role="status">{copied ? 'Copied' : 'Copy'}</span>
+                </Button>
+            </div>
+            <pre tabIndex={0} aria-label={language ? `${language} code` : 'Code block'}>{children}</pre>
         </div>
     );
 }
 
-export function Markdown({ source, project }: MarkdownProps): ReactNode {
+function MarkdownTable({ children }: { children?: ReactNode }): ReactNode {
+    return (
+        <div className="markdown-table-scroll" role="region" aria-label="Data table" tabIndex={0}>
+            <table>{children}</table>
+        </div>
+    );
+}
+
+export function Markdown({ source, project, variant = 'default' }: MarkdownProps): ReactNode {
     const components = useMemo(
         () =>
             ({
@@ -183,12 +163,13 @@ export function Markdown({ source, project }: MarkdownProps): ReactNode {
                 callout: Callout,
                 // v4.5/W7 — override <pre> to inject copy button.
                 pre: CodeBlock,
-            }) satisfies ExtraComponents & { pre: ComponentType<{ children?: ReactNode }> },
+                table: MarkdownTable,
+            }) satisfies ExtraComponents & { pre: ComponentType<{ children?: ReactNode }>; table: ComponentType<{ children?: ReactNode }> },
         [project],
     );
 
     return (
-        <div className="markdown-body" style={{ fontSize: 13.5, color: 'var(--fg-1)', lineHeight: 1.65 }}>
+        <div className={`markdown-body${variant === 'answer' ? ' markdown-body--answer' : ''}`}>
             <ReactMarkdown
                 remarkPlugins={[
                     remarkGfm,

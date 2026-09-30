@@ -144,4 +144,17 @@ describe('MessageThread agent activity', () => {
         expect(alert).toHaveTextContent('The live source did not respond.');
         expect(alert.querySelector('[data-slot="alert-icon"]')).not.toBeNull();
     });
+
+    it('keeps the interrupted research visible without a false ready badge after stream failure', () => {
+        const started = { ...completedEvent, type: 'research.planned', sequence: 1,
+            data: { tasks: [{ id: 0, question: 'Hub?' }, { id: 1, question: 'Spedizione?' }] } };
+        renderThread(<MessageThread conversationId={4}
+            messages={[message(30, 'user', 'Hub e spedizione', { agent_run_id: 'run-1' })]}
+            sdkStatus="error" error={new Error('Event stream disconnected')}
+            activeAgentRunId="run-1" agentEvents={[started]} />);
+        expect(screen.getByTestId('agent-research-tasks')).toHaveTextContent('Hub?');
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Aggiornamenti interrotti');
+        expect(screen.getByTestId('chat-thread-error')).toHaveTextContent('Event stream disconnected');
+        expect(screen.queryByText('Risultato pronto')).not.toBeInTheDocument();
+    });
 });

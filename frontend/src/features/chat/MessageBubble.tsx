@@ -243,7 +243,7 @@ export function MessageBubble({
                         data-testid={`chat-message-${messageId}-body`}
                         className="chat-message-body"
                     >
-                        <Markdown source={textContent} project={projectKey ?? undefined} />
+                        <Markdown source={textContent} project={projectKey ?? undefined} variant="answer" />
                         {streaming && <span className="caret" />}
                     </div>
                 )}

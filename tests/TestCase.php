@@ -8,6 +8,7 @@ abstract class TestCase extends OrchestraTestCase
 {
     private const FALLBACK_TEST_TENANT = 'test-tenant';
 
+
     /**
      * Most feature tests exercise an operational route rather than the
      * no-membership boundary itself. Give those synthetic users an explicit
@@ -337,6 +338,8 @@ abstract class TestCase extends OrchestraTestCase
         ]);
 
         $app['config']->set('ai', require __DIR__.'/../config/ai.php');
+        $app['config']->set('reasoning', require __DIR__.'/../config/reasoning.php');
+        $app['config']->set('decisions', require __DIR__.'/../config/decisions.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
         // T1.4 — pluggable ingestion pipeline registry config. Without this,
         // PipelineRegistry boots with an empty converter/chunker list under
@@ -725,6 +728,8 @@ abstract class TestCase extends OrchestraTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Existing unit fixtures target the legacy gate; batch-specific tests opt in.
+        config()->set('agent.grounding.batch.enabled', false);
 
         // Process-global "warned once" flags of the artifact store must not
         // leak between tests (R16: restore the global state you mutate).

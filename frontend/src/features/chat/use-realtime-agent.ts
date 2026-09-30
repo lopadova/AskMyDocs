@@ -52,6 +52,7 @@ interface UseRealtimeAgentOptions {
     availability?: RealtimeAgentFeatureStatus;
     onRequireConversation: () => Promise<number | null>;
     onAdoptRun: (run: AgentTurnStarted) => Promise<void>;
+    requestInFlight?: boolean;
 }
 
 export interface UseRealtimeAgentResult {
@@ -76,6 +77,11 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     const [error, setError] = useState<Error | null>(null);
     const [active, setActive] = useState(false);
     const clientRef = useRef<RealtimeAgentClient | null>(null);
+    const controlRef = useRef<ObservingControlTransport | null>(null);
+    const pendingRef = useRef(false);
+    const adoptedRunsRef = useRef(new Set<string>());
+    const requestInFlightRef = useRef(options.requestInFlight ?? false);
+    requestInFlightRef.current = options.requestInFlight ?? false;
     const sessionConversationRef = useRef<number | null>(null);
     const onAdoptRunRef = useRef(onAdoptRun);
     onAdoptRunRef.current = onAdoptRun;
@@ -83,6 +89,10 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     const release = useCallback(async (finish: boolean): Promise<void> => {
         const client = clientRef.current;
         clientRef.current = null;
+        controlRef.current?.dispose();
+        controlRef.current = null;
+        pendingRef.current = false;
+        adoptedRunsRef.current.clear();
         sessionConversationRef.current = null;
         setActive(false);
         if (!client) return;
@@ -97,20 +107,30 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
         setStatus('idle');
     }, [release]);
 
+    const adoptRun = useCallback((run: AgentTurnStarted): void => {
+        if (adoptedRunsRef.current.has(run.run_id)) return;
+        adoptedRunsRef.current.add(run.run_id);
+        // Observe immediately, but do not make the spoken answer wait for UI/SSE recovery.
+        void onAdoptRunRef.current(run).catch(() => {
+            // Allow the final receipt to recover a failed early UI subscription.
+            adoptedRunsRef.current.delete(run.run_id);
+        });
+    }, []);
+
     const handleToolResult = useCallback(async (result: ToolResult): Promise<void> => {
         const output = result.output;
         const run = parseAgentRun(output?.run);
         if (run) {
             // The provider response must not be lost if the visual stream refresh
             // fails; adoptExternalRun already surfaces that error in the chat.
-            await onAdoptRunRef.current(run).catch(() => undefined);
+            adoptRun(run);
         }
 
         if (isHandoff(output?.handoff)) {
             setStatus('paused');
             await clientRef.current?.switchToText().catch(() => undefined);
         }
-    }, []);
+    }, [adoptRun]);
 
     const start = useCallback(async (): Promise<void> => {
         if (availability?.available !== true) {
@@ -130,7 +150,19 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             const control = new ObservingControlTransport(
                 new LaravelControlTransport(descriptor.session_id, '/realtime-agent', request),
                 handleToolResult,
+                {
+                    receiptUrl: `/conversations/${targetId}/realtime-agent/${encodeURIComponent(descriptor.session_id)}/run`,
+                    request,
+                    onRun: adoptRun,
+                    onPending: (pending) => {
+                        pendingRef.current = pending;
+                        setStatus((current) => pending ? 'processing' : current === 'processing' ? 'listening' : current);
+                    },
+                    isBusy: () => requestInFlightRef.current,
+                    busyMessage: descriptor.busy_message ?? 'Un attimo, una cosa alla volta. Sto ancora completando la richiesta precedente.',
+                },
             );
+            controlRef.current = control;
             const surfaces = new SurfaceRegistry();
             surfaces.register({
                 id: 'chat.conversation',
@@ -175,7 +207,10 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             clientRef.current = client;
             sessionConversationRef.current = targetId;
             setActive(true);
-            client.on((event) => handleClientEvent(event, setStatus, setError, setActive));
+            client.on((event) => {
+                if (clientRef.current !== client) return; // Ignore callbacks from an ended/previous session.
+                handleClientEvent(event, (next) => setStatus(pendingRef.current && next === 'listening' ? 'processing' : next), setError, setActive);
+            });
             await client.connect(descriptor as unknown as ConnectionDescriptor);
         } catch (reason) {
             // The server session already exists by the time a browser/provider
@@ -188,7 +223,7 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             setStatus('error');
             throw next;
         }
-    }, [availability, conversationId, filters, handleToolResult, liveSources, onRequireConversation, release, status]);
+    }, [adoptRun, availability, conversationId, filters, handleToolResult, liveSources, onRequireConversation, release, status]);
 
     useEffect(() => {
         const sessionConversation = sessionConversationRef.current;
@@ -232,17 +267,87 @@ export function realtimeAgentConnectionError(reason: unknown): Error {
     return error;
 }
 
+interface LiveTurnObservation {
+    receiptUrl: string;
+    request: typeof fetch;
+    onRun: (run: AgentTurnStarted) => void;
+    onPending: (pending: boolean) => void;
+    isBusy: () => boolean;
+    busyMessage: string;
+}
+
 class ObservingControlTransport implements ControlTransport {
+    private pending = false;
+    private disposed = false;
+    private observation: AbortController | null = null;
+
     constructor(
         private readonly inner: ControlTransport,
         private readonly onToolResult: (result: ToolResult) => Promise<void>,
+        private readonly live?: LiveTurnObservation,
     ) {}
 
     async executeTool(input: ToolCallInput): Promise<ToolResult> {
-        const result = await this.inner.executeTool(input);
-        await this.onToolResult(result);
+        if (this.disposed) throw new DOMException('The voice session ended.', 'AbortError');
+        const chatTurn = input.name === 'askmydocs.chat_turn';
+        if (chatTurn && (this.pending || this.live?.isBusy())) {
+            // Return a spoken control notice, never queue or replace the pending business request.
+            return { call_id: input.id, status: 'completed', state_revision: input.base_revision,
+                output: { busy: true, retry: false, response: { answer: this.live?.busyMessage ?? 'One moment, one thing at a time.' } } };
+        }
+        if (chatTurn) {
+            this.pending = true;
+            this.live?.onPending(true);
+            this.observation = new AbortController();
+            void this.observeRun(input.id, this.observation.signal);
+        }
+        try {
+            const result = await this.inner.executeTool(input);
+            if (this.disposed) throw new DOMException('The voice session ended.', 'AbortError');
+            await this.onToolResult(result);
+            return result;
+        } finally {
+            if (chatTurn) {
+                this.observation?.abort();
+                this.observation = null;
+                this.pending = false;
+                if (!this.disposed) this.live?.onPending(false);
+            }
+        }
+    }
 
-        return result;
+    dispose(): void {
+        this.disposed = true;
+        this.observation?.abort();
+        this.observation = null;
+    }
+
+    private async observeRun(callId: string, signal: AbortSignal): Promise<void> {
+        if (!this.live) return;
+        while (!signal.aborted) {
+            try {
+                const response = await this.live.request(`${this.live.receiptUrl}?call_id=${encodeURIComponent(callId)}`, {
+                    headers: { Accept: 'application/json' }, cache: 'no-store', signal,
+                });
+                if ([401, 403, 404, 410].includes(response.status)) return;
+                if (response.ok) {
+                    const body = await response.json() as { run?: unknown };
+                    const run = parseAgentRun(body.run);
+                    if (run && !signal.aborted && !this.disposed) {
+                        this.live.onRun(run);
+                        return;
+                    }
+                }
+            } catch {
+                // Visual observation is best effort; the canonical tool still owns its answer.
+            }
+            if (signal.aborted) return;
+            await new Promise<void>((resolve) => {
+                const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
+                const timer = setTimeout(finish, 750);
+                signal.addEventListener('abort', finish, { once: true });
+            });
+        }
     }
 
     refreshState(): Promise<AgentState> { return this.inner.refreshState(); }

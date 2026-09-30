@@ -288,7 +288,7 @@ function AnonymousTurnBlock({ index, turn }: { index: number; turn: AnonymousTur
 
             {turn.answer !== null && refusal === null && (
                 <div data-testid={`anonymous-chat-turn-${index}-answer`} data-role="assistant" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
-                    <Markdown source={turn.answer.answer} />
+                    <Markdown source={turn.answer.answer} variant="answer" />
                     {citations.length > 0 && <CitationsPopover citations={citations} />}
                 </div>
             )}

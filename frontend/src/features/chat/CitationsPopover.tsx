@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { MessageCitation } from './chat.api';
+import { Button } from '../../components/Button';
 
 export interface CitationsPopoverProps {
     citations: MessageCitation[];
@@ -84,16 +85,8 @@ export function CitationsPopover({ citations, onOpenSource }: CitationsPopoverPr
     const [openIdx, setOpenIdx] = useState<number | null>(null);
 
     return (
-        <div data-testid="chat-citations" data-count={citations.length} style={{ marginTop: 10 }}>
-            <div
-                style={{
-                    fontSize: 10.5,
-                    color: 'var(--fg-3)',
-                    fontFamily: 'var(--font-mono)',
-                    letterSpacing: '.04em',
-                    marginBottom: 6,
-                }}
-            >
+        <div data-testid="chat-citations" data-count={citations.length} className="chat-source-strip">
+            <div className="chat-source-strip-label">
                 Sources · {citations.length}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -210,8 +203,10 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                 }
             }}
         >
-            <button
-                type="button"
+            <Button
+                variant="secondary"
+                size="sm"
+                className="chat-source-chip"
                 data-testid={`chat-citation-${index}`}
                 data-origin={origin}
                 data-tier={citation.generation_source ?? 'human'}
@@ -224,20 +219,6 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                 aria-describedby={open ? popoverId : undefined}
                 title={citation.source_path ?? citation.title}
                 onClick={canOpen ? () => onOpenSource?.(citation) : undefined}
-                style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    maxWidth: 300,
-                    padding: '4px 10px 4px 4px',
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 99,
-                    cursor: canOpen ? 'pointer' : 'default',
-                    color: 'var(--fg-1)',
-                    fontSize: 11.5,
-                    transition: 'border-color .12s ease, background .12s ease',
-                }}
             >
                 <span
                     aria-hidden="true"
@@ -258,7 +239,7 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                 >
                     {index + 1}
                 </span>
-                <span className="mono" style={{ ...ELLIPSIS, flex: '0 1 auto', fontSize: 11 }}>
+                <span className="chat-source-filename" style={{ ...ELLIPSIS, flex: '0 1 auto', fontSize: 12 }}>
                     {label}
                 </span>
                 {citation.generation_source === 'auto' && (
@@ -294,7 +275,7 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                         </span>
                     </>
                 )}
-            </button>
+            </Button>
             {open && (
                 <span
                     id={popoverId}

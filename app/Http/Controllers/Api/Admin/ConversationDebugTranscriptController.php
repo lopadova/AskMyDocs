@@ -60,7 +60,7 @@ final class ConversationDebugTranscriptController extends Controller
 
         $exportedAt = now();
         $payload = [
-            'schema_version' => 1,
+            'schema_version' => 2,
             'kind' => 'askmydocs.conversation_debug_transcript',
             'exported_at' => $exportedAt->toIso8601String(),
             'tenant_id' => $tenantId,
@@ -76,6 +76,7 @@ final class ConversationDebugTranscriptController extends Controller
             'coverage' => [
                 'messages' => 'All persisted messages in the conversation, in chronological order.',
                 'agent_runs' => 'All persisted planner, retrieval, evidence, event and tool-execution data linked to this conversation.',
+                'validation' => 'The deterministic grounding result and recorded semantic decision checks. Older runs may have no semantic trace.',
                 'note' => 'Provider traffic that was never persisted by the application cannot be reconstructed.',
             ],
         ];
@@ -133,6 +134,7 @@ final class ConversationDebugTranscriptController extends Controller
             'archived_at' => $conversation->archived_at?->toIso8601String(),
             'importance' => $conversation->importance?->value,
             'session_recap' => $conversation->session_recap,
+            'reasoning_state' => $conversation->reasoning_state,
             'created_at' => $conversation->created_at?->toIso8601String(),
             'updated_at' => $conversation->updated_at?->toIso8601String(),
         ];
@@ -149,6 +151,7 @@ final class ConversationDebugTranscriptController extends Controller
             'role' => $message->role,
             'content' => $message->content,
             'metadata' => $message->metadata,
+            'validation' => $this->validation(data_get($message->metadata, 'grounding')),
             'rating' => $message->rating,
             'confidence' => $message->confidence,
             'refusal_reason' => $message->refusal_reason,
@@ -179,6 +182,7 @@ final class ConversationDebugTranscriptController extends Controller
             'budget_json' => $run->budget_json,
             'counters_json' => $run->counters_json,
             'result_json' => $run->result_json,
+            'validation' => $this->validation(data_get($run->result_json, 'response.grounding')),
             'error_code' => $run->error_code,
             'last_sequence' => $run->last_sequence,
             'started_at' => $run->started_at?->toIso8601String(),
@@ -198,6 +202,38 @@ final class ConversationDebugTranscriptController extends Controller
                 ->map(fn (AgentPlannerShadowReport $report): array => $this->plannerShadowReport($report))
                 ->values()
                 ->all(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function validation(mixed $grounding): array
+    {
+        $grounding = is_array($grounding) ? $grounding : [];
+        $checks = $grounding['semantic_validation'] ?? null;
+        $checks = is_array($checks) ? array_values(array_filter($checks, 'is_array')) : [];
+        $last = $checks === [] ? null : $checks[array_key_last($checks)];
+        foreach ($checks as $check) {
+            if (($check['used'] ?? false) === true) {
+                $last = $check;
+            }
+        }
+
+        return [
+            'deterministic' => [
+                'status' => $grounding['status'] ?? 'not_recorded',
+                'reason' => $grounding['reason'] ?? null,
+            ],
+            'semantic' => [
+                'attempted' => $checks === [] ? null : (bool) array_filter($checks, static fn (array $check): bool => (bool) ($check['attempted'] ?? false)),
+                'used' => $checks === [] ? null : (bool) array_filter($checks, static fn (array $check): bool => (bool) ($check['used'] ?? false)),
+                'status' => $last['status'] ?? 'not_recorded',
+                'answer' => $last['answer'] ?? null,
+                'claims' => is_array($last['checks'] ?? null) ? $last['checks'] : [],
+                'model' => $last['model'] ?? null,
+                'usage' => $last['usage'] ?? [],
+                'latency_ms' => $last['latency_ms'] ?? null,
+                'checks' => $checks,
+            ],
         ];
     }
 

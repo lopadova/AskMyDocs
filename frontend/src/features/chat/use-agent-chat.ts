@@ -110,7 +110,11 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         lastSequenceRef.current = Math.max(lastSequenceRef.current, event.sequence);
         setEvents((current) => {
             if (current.some((item) => item.sequence === event.sequence)) return current;
-            return [...current, event].slice(-50);
+            const next = [...current, event];
+            // Keep the task list/states while bounding the detailed timeline.
+            // Otherwise a long multi-task turn loses its header after 50 events.
+            const detailSequences = new Set(next.filter((item) => !item.type.startsWith('research.')).slice(-50).map((item) => item.sequence));
+            return next.filter((item) => item.type.startsWith('research.') || detailSequences.has(item.sequence));
         });
     }, []);
 
@@ -174,6 +178,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         messageOptions?: AgentMessageOptions,
     ): Promise<void> => {
         if (conversationId === null) throw new Error('A conversation is required.');
+        if (turnInFlightRef.current) throw new Error('Un attimo, una cosa alla volta. La richiesta precedente è ancora in corso.');
         const generation = ++generationRef.current;
         abortRef.current?.abort();
         const controller = new AbortController();
@@ -244,6 +249,8 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
 
     const adoptExternalRun = useCallback(async (run: AgentTurnStarted): Promise<void> => {
         if (conversationId === null) throw new Error('A conversation is required.');
+        if (runRef.current?.run_id === run.run_id && turnInFlightRef.current) return;
+        if (turnInFlightRef.current) throw new Error('A request is already in progress.');
         const generation = ++generationRef.current;
         abortRef.current?.abort();
         const controller = new AbortController();

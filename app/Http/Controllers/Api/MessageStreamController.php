@@ -90,6 +90,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MessageStreamController extends Controller
 {
+    use \App\Http\Controllers\Api\Concerns\RespondsWithProvenance;
+
     /**
      * Mirror of MessageController::SELF_REFUSAL_SENTINEL — the LLM
      * emits this token when it can't ground the answer in the
@@ -184,8 +186,23 @@ class MessageStreamController extends Controller
             conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
             previousCitations: is_array($previousCitations) ? $previousCitations : [],
             actor: $request->user(),
+            memoryOwner: $conversation,
+            turnRecord: $userMessage,
         );
         $result = $investigationResult->search;
+        if ($investigationResult->stopReason === 'answer_provenance') {
+            return $this->provenanceResponse($request, $conversation, $userMessage, $filters,
+                $investigationResult->intent?->understanding?->language, $chatLog, $startTime, stream: true);
+        }
+        if (config('reasoning.enabled')) {
+            $history = array_values(array_filter($history, fn ($message) => $message['role'] === 'user'));
+            $history[] = ['role' => 'user', 'content' => json_encode([
+                'server_turn_context' => $investigationResult->intent?->understanding?->toArray(),
+                'reasoning' => $investigationResult->intent?->understanding?->available && $conversation->project_key === $projectKey
+                    ? app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->context($conversation, $request->user(), $filters) : [],
+                'policy' => 'Answer the active focus. Already communicated text is ONLY a repetition hint, not evidence. Do not repeat it unless explicitly requested or needed to explain an update. Use only current retrieved sources for facts. '.\App\Services\Chat\QuestionAction::ANSWER_INSTRUCTIONS,
+            ])];
+        }
         $chunks = $result->primary;
         $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
@@ -217,6 +234,7 @@ class MessageStreamController extends Controller
                 clientIp: $clientIp,
                 userAgent: $userAgent,
                 language: $investigationResult->intent?->understanding?->language,
+                clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );
         }
 
@@ -237,7 +255,7 @@ class MessageStreamController extends Controller
                 // Recap from the PREVIOUS turn — mirrors MessageController;
                 // keeps the two conversational surfaces in lockstep (same
                 // reason ChatRetrievalService is shared between them).
-                'sessionRecap' => $conversation->session_recap,
+                'sessionRecap' => config('reasoning.enabled') ? null : $conversation->session_recap,
             ],
         ))->render();
         if ($appContext !== null) {
@@ -279,7 +297,7 @@ class MessageStreamController extends Controller
             history: $history,
             chunks: $chunks,
             citations: $citations,
-            investigationTrace: is_array($result->meta['investigation'] ?? null) ? $result->meta['investigation'] : [],
+            investigationTrace: array_merge(is_array($result->meta['investigation'] ?? null) ? $result->meta['investigation'] : [], ['reasoning_user_message_id' => $userMessage->id]),
             question: $question,
             projectKey: $projectKey,
             userId: $userId,
@@ -315,8 +333,13 @@ class MessageStreamController extends Controller
         ?string $clientIp,
         ?string $userAgent,
         ?string $language = null,
+        ?string $clarification = null,
     ): StreamedResponse {
         $answer = $this->localizedRefusalMessage($reason, $language);
+        if ($clarification !== null && $clarification !== '') {
+            $answer = $clarification;
+            $reason = 'focus_ambiguous';
+        }
 
         return $this->streamingResponse($request, function () use (
             $reason, $answer, $conversation, $chatLog, $question,
@@ -684,6 +707,13 @@ class MessageStreamController extends Controller
             ]);
 
             $conversation->touch();
+
+            $reasoningTurn = $conversation->messages()->find($investigationTrace['reasoning_user_message_id'] ?? 0);
+            if ($reasoningTurn !== null) {
+                app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
+                    $conversation, $reasoningTurn, $assistantMessage, ['documents' => $isSelfRefusal ? [] : $citations],
+                );
+            }
 
             // Async, incremental session-recap update — off the request
             // path (streaming has already flushed the response). Skipped on

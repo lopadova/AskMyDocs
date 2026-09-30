@@ -1,3 +1,4 @@
+import '../chat-reader.css';
 import { type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ConversationTitle } from '../ConversationTitle';
@@ -124,7 +125,7 @@ export function SessionsView(): ReactNode {
             >
                 {(historyToggle) => (
                     <div
-                        className="chat-main-column grid-bg"
+                        className="chat-main-column chat-reader"
                         style={{
                             flex: 1,
                             display: 'flex',

@@ -72,7 +72,24 @@ final class ConversationDebugTranscriptTest extends TestCase
             'completed_at' => now(),
         ]);
 
-        $assistantMessage->forceFill(['agent_run_id' => $run->id])->save();
+        $validationGrounding = [
+            'status' => 'grounded',
+            'semantic_validation' => [[
+                'stage' => 'initial_answer', 'attempted' => true, 'used' => true,
+                'status' => 'accepted', 'answer' => true, 'probability_true' => 0.96,
+                'threshold' => 0.9, 'model' => 'typesafe/jev-1.13',
+                'state_layout' => 'shared_sources_v1', 'state_bytes' => 11798, 'pair_count' => 9, 'source_count' => 4,
+                'checks' => [['claim_id' => 'claim_3', 'status' => 'accepted', 'source' => ['tool_execution_id' => 86],
+                    'source_resolution' => ['method' => 'unique_evidence_hash', 'original_source' => ['evidence_hash' => 'original-hash']]]],
+            ]],
+        ];
+        $assistantMessage->forceFill([
+            'agent_run_id' => $run->id,
+            'metadata' => ['source' => 'test', 'grounding' => $validationGrounding],
+        ])->save();
+        $run->forceFill(['result_json' => array_replace_recursive($run->result_json, [
+            'response' => ['grounding' => $validationGrounding],
+        ])])->save();
 
         $run->events()->create([
             'sequence' => 1,
@@ -154,14 +171,21 @@ final class ConversationDebugTranscriptTest extends TestCase
             ->getJson("/api/admin/conversations/{$conversation->id}/debug-transcript")
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertJsonPath('schema_version', 1)
+            ->assertJsonPath('schema_version', 2)
             ->assertJsonPath('kind', 'askmydocs.conversation_debug_transcript')
             ->assertJsonPath('conversation.id', $conversation->id)
             ->assertJsonPath('messages.0.content', 'Come funzionano le notifiche push?')
             ->assertJsonPath('messages.1.agent_run_id', $run->id)
+            ->assertJsonPath('messages.1.validation.semantic.used', true)
+            ->assertJsonPath('messages.1.validation.semantic.answer', true)
             ->assertJsonCount(2, 'messages')
             ->assertJsonCount(1, 'agent_runs')
             ->assertJsonPath('agent_runs.0.run_id', $run->run_id)
+            ->assertJsonPath('agent_runs.0.validation.semantic.checks.0.probability_true', 0.96)
+            ->assertJsonPath('agent_runs.0.validation.semantic.checks.0.state_layout', 'shared_sources_v1')
+            ->assertJsonPath('agent_runs.0.validation.semantic.checks.0.state_bytes', 11798)
+            ->assertJsonPath('agent_runs.0.validation.semantic.claims.0.source_resolution.method', 'unique_evidence_hash')
+            ->assertJsonPath('messages.1.validation.semantic.claims.0.source.tool_execution_id', 86)
             ->assertJsonPath('agent_runs.0.input_json.question', 'Come funzionano le notifiche push?')
             ->assertJsonPath('agent_runs.0.result_json.evidence.documents.0.title', 'Manuale notifiche push')
             ->assertJsonPath('agent_runs.0.events.0.payload_json.data.query', 'notifiche push')

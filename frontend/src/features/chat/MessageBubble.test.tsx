@@ -12,6 +12,18 @@ function renderWithClient(ui: ReactElement) {
 }
 
 describe('MessageBubble', () => {
+    it('uses the same answer typography for persisted and streaming replies', () => {
+        const content = '## Spedizione\n\nIl codice è `RL-TRACK-9355`.\n\n## Cliente\n\nVeronica Longo.';
+        const message: Message = { id: 125, role: 'assistant', content, metadata: null, rating: null, created_at: '2026-09-30T09:00:00+00:00' };
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { container, rerender } = render(<QueryClientProvider client={client}><MessageBubble conversationId={8} message={message} /></QueryClientProvider>);
+        expect(container.querySelector('.markdown-body--answer')).toBeInTheDocument();
+        expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2);
+        rerender(<QueryClientProvider client={client}><MessageBubble conversationId={8} streaming message={{ id: '125', role: 'assistant', parts: [{ type: 'text', text: content }] }} /></QueryClientProvider>);
+        expect(container.querySelector('.markdown-body--answer')).toBeInTheDocument();
+        expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2);
+    });
+
     it('hides the model JSON and renders a readable selection receipt', () => {
         const message: Message = {
             id: 120,

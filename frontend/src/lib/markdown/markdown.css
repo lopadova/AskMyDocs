@@ -1,0 +1,175 @@
+/* Answer typography: an editorial reading rhythm on the existing app canvas.
+   No rewriting, decorative status badges or interpretation of source values. */
+.markdown-body {
+  color: var(--fg-1);
+  font-size: .84375rem;
+  line-height: 1.65;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.markdown-body--answer {
+  --answer-heading: var(--fg-0);
+  --answer-accent: color-mix(in srgb, var(--accent-a) 60%, var(--fg-1));
+  --answer-surface: color-mix(in srgb, var(--bg-1) 84%, var(--bg-2));
+  --answer-rule: var(--panel-border-strong);
+  --answer-paragraph-gap: .85em;
+  --answer-section-gap: 1.8em;
+  font-size: .96875rem;
+  line-height: 1.8;
+}
+.markdown-body--answer :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--answer-heading);
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -.025em;
+  text-wrap: pretty;
+  margin-block: var(--answer-section-gap) .7em;
+}
+.markdown-body--answer h1 { font-size: 1.55em; }
+.markdown-body--answer h2 {
+  font-size: 1.23em;
+  padding-block-start: 1.05em;
+  border-block-start: 1px solid var(--answer-rule);
+}
+.markdown-body--answer h3 { font-size: 1.075em; }
+.markdown-body--answer :is(h4, h5, h6) { font-size: 1em; }
+.markdown-body--answer > :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-block-start: 0;
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+.markdown-body--answer :is(h1, h2, h3) + :is(h2, h3, h4) {
+  margin-block-start: 1em;
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+.markdown-body--answer p { margin-block: 0 var(--answer-paragraph-gap); }
+.markdown-body--answer > :last-child { margin-block-end: 0; }
+.markdown-body--answer strong { color: var(--answer-heading); font-weight: 650; }
+.markdown-body--answer em { font-style: italic; }
+.markdown-body--answer :is(ul, ol) {
+  padding-inline-start: 1.5em;
+  margin-block: .6em 1.1em;
+}
+.markdown-body--answer ul { list-style: disc outside; }
+.markdown-body--answer ol { list-style: decimal outside; }
+.markdown-body--answer li { padding-inline-start: .25em; margin-block: .35em; }
+.markdown-body--answer li::marker { color: var(--answer-accent); font-weight: 600; }
+.markdown-body--answer li > p { margin-block-end: .35em; }
+.markdown-body--answer li > :is(ul, ol) { margin-block: .35em .6em; }
+.markdown-body--answer ul ul { list-style-type: circle; }
+.markdown-body--answer .contains-task-list { list-style: none; padding-inline-start: 0; }
+.markdown-body--answer .task-list-item { padding-inline-start: 0; }
+.markdown-body--answer .task-list-item input { margin-inline-end: .6em; accent-color: var(--accent-a); }
+.markdown-body--answer a {
+  color: var(--answer-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: .2em;
+  text-decoration-thickness: 1px;
+}
+.markdown-body--answer a:hover { text-decoration-color: currentColor; }
+.markdown-body--answer :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: .86em;
+  font-weight: 500;
+  color: var(--answer-heading);
+  background: var(--bg-2);
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  padding: .12em .38em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.markdown-body--answer blockquote {
+  margin: 1.1em 0;
+  padding: .8em 1.05em;
+  border-inline-start: 3px solid color-mix(in srgb, var(--accent-a) 50%, var(--panel-border));
+  background: var(--answer-surface);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.markdown-body--answer blockquote > :last-child { margin-block-end: 0; }
+.markdown-body--answer hr { border: 0; border-block-start: 1px solid var(--answer-rule); margin-block: 1.75em; }
+.markdown-body--answer img { max-width: 100%; height: auto; border-radius: var(--radius); }
+
+/* A wide table scrolls inside the answer, never the entire conversation. */
+.markdown-table-scroll { max-width: 100%; overflow-x: auto; margin-block: 1em; }
+.markdown-body--answer .markdown-table-scroll {
+  border: 1px solid var(--answer-rule);
+  border-radius: var(--radius);
+  background: var(--answer-surface);
+}
+.markdown-body--answer table { width: 100%; border-collapse: collapse; font-size: .875em; line-height: 1.55; }
+.markdown-body--answer :is(th, td) {
+  text-align: start;
+  vertical-align: top;
+  padding: .85em 1em;
+  min-width: 7.5rem;
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+}
+.markdown-body--answer th { background: var(--bg-2); color: var(--fg-0); font-weight: 600; }
+.markdown-body--answer td { border-block-start: 1px solid var(--panel-border); font-variant-numeric: tabular-nums; }
+.markdown-body--answer tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-2) 40%, transparent); }
+.markdown-body--answer td :is(ul, ol, p) { margin-block: 0; }
+
+.markdown-codeblock {
+  margin-block: 1em;
+  border: 1px solid var(--panel-border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+  overflow: hidden;
+  max-width: 100%;
+}
+.markdown-codeblock-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .35rem .65rem .35rem 1rem;
+  background: var(--bg-2);
+  border-block-end: 1px solid var(--panel-border);
+}
+.markdown-codeblock-language { display: flex; align-items: center; gap: .5rem; font: 500 .75rem/1.5 var(--font-mono); color: var(--fg-2); }
+.markdown-codeblock-language svg { display: block; flex-shrink: 0; }
+.markdown-codeblock pre {
+  margin: 0;
+  padding: 1rem;
+  overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  font: 400 .8125rem/1.7 var(--font-mono);
+  color: var(--fg-1);
+}
+.markdown-codeblock pre code { font: inherit; padding: 0; border: 0; background: none; }
+.markdown-callout {
+  --callout-tone: var(--accent-a);
+  margin-block: 1em;
+  padding: .85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--callout-tone) 25%, var(--panel-border));
+  border-inline-start-width: 3px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--callout-tone) 5%, var(--bg-1));
+}
+.markdown-callout[data-kind="tip"] { --callout-tone: var(--ok); }
+.markdown-callout[data-kind="warning"], .markdown-callout[data-kind="important"] { --callout-tone: var(--warn); }
+.markdown-callout[data-kind="caution"] { --callout-tone: var(--err); }
+.markdown-callout-title { display: flex; align-items: center; gap: .55rem; color: var(--fg-0); font-size: .9em; margin-block-end: .4em; }
+.markdown-callout-title svg { display: block; color: color-mix(in srgb, var(--callout-tone) 50%, var(--fg-1)); }
+.markdown-callout-content { color: var(--fg-1); }
+.markdown-callout-content > :last-child { margin-block-end: 0; }
+.markdown-callout-content > p:empty { display: none; }
+.markdown-body :is(a, .markdown-table-scroll, pre):focus-visible { outline: 2px solid var(--accent-a); outline-offset: 3px; }
+.markdown-codeblock pre:focus-visible { outline-offset: -3px; }
+
+@media (max-width: 640px) {
+  .markdown-body--answer { font-size: 1rem; line-height: 1.75; }
+  .markdown-body--answer h2 { font-size: 1.17em; }
+  .markdown-body--answer :is(th, td) { padding: .7em .8em; }
+  .chat-assistant-row { gap: 8px; }
+  .markdown-codeblock-toolbar .ui-button { min-height: 48px; }
+  .chat-message-controls .ui-button { min-height: 48px; min-width: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-assistant-row.popin, .chat-message-body .caret { animation: none; }
+}

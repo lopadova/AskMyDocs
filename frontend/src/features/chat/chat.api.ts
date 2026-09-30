@@ -343,6 +343,7 @@ export interface RealtimeAgentConnection {
         session: Record<string, unknown> & { id: string; revision: number; status: string };
     };
     conversation_id: number;
+    busy_message?: string;
     expires_at: string;
 }
 

@@ -649,6 +649,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         availability: realtimeAvailability,
         onRequireConversation: requireConversation,
         onAdoptRun: chat.adoptExternalRun,
+        requestInFlight: chat.status === 'submitted' || chat.status === 'streaming' || chat.confirmation !== null,
     });
 
     // Deferred-send queue. When the user sends the first message on

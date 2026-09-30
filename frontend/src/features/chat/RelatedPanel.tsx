@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Button } from '../../components/Button';
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getRelated, type RelatedNode } from './related.api';
@@ -36,19 +38,13 @@ export function RelatedPanel({ projectKey, slugs }: { projectKey: string | null;
 
     return (
         <div data-testid="chat-related-panel" data-state={state} aria-busy={enabled && query.isFetching} style={{ marginTop: 8 }}>
-            <button
-                type="button"
+            <Button variant="quiet" size="sm"
                 data-testid="chat-related-toggle"
                 aria-expanded={open}
                 onClick={() => setOpen((v) => !v)}
-                style={{
-                    fontSize: 11.5, color: 'var(--fg-2)', background: 'transparent',
-                    border: '1px solid var(--panel-border, rgba(255,255,255,.12))', borderRadius: 6,
-                    padding: '2px 10px', cursor: 'pointer',
-                }}
-            >
-                {open ? '▾' : '▸'} Related
-            </button>
+                leadingIcon={open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}>
+                Related
+            </Button>
 
             {open && (
                 <div data-testid="chat-related-body" style={{ marginTop: 6 }}>

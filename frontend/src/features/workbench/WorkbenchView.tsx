@@ -55,7 +55,6 @@ export function WorkbenchView() {
                 transport={workbenchTransport}
                 headers={workbenchHeaders}
                 header={ASK_MY_DOCS_WORKBENCH_HEADER}
-                voiceEnabled={false}
                 onRequestError={handleRequestError}
             />
         </div>
