@@ -200,6 +200,40 @@ final class AgentClaimGroundingValidatorTest extends TestCase
         $this->assertSame('push-hash', $result['claims'][0]['evidence_hash']);
     }
 
+    public function test_it_accepts_an_exact_structured_subset_of_the_same_tool_record(): void
+    {
+        $quote = '{"id":"PO-5582","observedAt":"2024-08-01","status":"accepted_for_dispatch","customerId":"RO-LONGO","productIds":["RO-LAMPO-24H"],"shipmentIds":["RL-2024-1120"]}';
+        $result = $this->validator()->validate('Dettagli di PO-5582', $this->orderEvidence(), [[
+            'text' => 'PO-5582 è stato accettato per la spedizione.',
+            'quote' => $quote,
+            'document_id' => null, 'tool_execution_id' => 44, 'evidence_hash' => 'order-hash',
+        ]], ['PO-5582']);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame($quote, $result['claims'][0]['quote']);
+    }
+
+    public function test_structured_tool_quote_cannot_invent_a_field_or_cross_the_source_boundary(): void
+    {
+        $claim = [
+            'text' => 'PO-5582 è stato annullato.',
+            'quote' => '{"id":"PO-5582","status":"cancelled"}',
+            'document_id' => null, 'tool_execution_id' => 44, 'evidence_hash' => 'order-hash',
+        ];
+        $this->assertSame('quote_not_in_tool_result', $this->validator()
+            ->validate('Dettagli di PO-5582', $this->orderEvidence(), [$claim])['reason']);
+
+        $claim['quote'] = '{"id":"PO-5582"}';
+        $claim['evidence_hash'] = 'another-hash';
+        $this->assertSame('quote_not_in_tool_result', $this->validator()
+            ->validate('Dettagli di PO-5582', $this->orderEvidence(), [$claim])['reason']);
+
+        $claim['evidence_hash'] = 'order-hash';
+        $claim['tool_execution_id'] = 45;
+        $this->assertSame('quote_not_in_tool_result', $this->validator()
+            ->validate('Dettagli di PO-5582', $this->orderEvidence(), [$claim])['reason']);
+    }
+
     private function validator(): AgentClaimGroundingValidator
     {
         return app(AgentClaimGroundingValidator::class);
@@ -215,5 +249,19 @@ final class AgentClaimGroundingValidatorTest extends TestCase
                 'content' => 'Le notifiche push raggiungono i clienti nell’app.',
             ]],
         ]], 'api_tools' => []];
+    }
+
+    /** @return array<string,mixed> */
+    private function orderEvidence(): array
+    {
+        return ['documents' => [], 'api_tools' => [[
+            'execution_id' => 44, 'evidence_hash' => 'order-hash',
+            'result' => ['records' => [[
+                'id' => 'PO-5582', 'observedAt' => '2024-08-01',
+                'status' => 'accepted_for_dispatch', 'customerId' => 'RO-LONGO',
+                'productIds' => ['RO-LAMPO-24H'], 'shipmentIds' => ['RL-2024-1120'],
+                'emailEvidence' => [['subject' => 'Conferma spedizione ordine urgente']],
+            ]]],
+        ]]];
     }
 }

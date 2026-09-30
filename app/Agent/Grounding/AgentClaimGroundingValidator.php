@@ -42,6 +42,7 @@ final class AgentClaimGroundingValidator
             $tools[(string) $tool['execution_id']] = [
                 'hash' => (string) ($tool['evidence_hash'] ?? ''),
                 'content' => json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '',
+                'result' => $tool['result'] ?? [],
             ];
         }
 
@@ -70,7 +71,7 @@ final class AgentClaimGroundingValidator
             } else {
                 $tool = $tools[(string) $executionId] ?? null;
                 if ($tool === null || ! hash_equals($tool['hash'], $hash)
-                    || ($quote = $this->literalQuote($tool['content'], $quote)) === null) {
+                    || ($quote = $this->toolQuote($tool, $quote)) === null) {
                     return $this->failure('quote_not_in_tool_result', $terms);
                 }
             }
@@ -126,6 +127,65 @@ final class AgentClaimGroundingValidator
         return is_string($plain) && $plain !== $quote && $this->contains($content, $plain)
             ? $plain
             : null;
+    }
+
+    /**
+     * A tool may return a structured record with additional fields. A quote
+     * containing an exact subset of one record is evidence-bound even though
+     * its serialized JSON is not a literal substring of the whole result.
+     * Never use this relaxation for document text or for a different tool/hash.
+     *
+     * @param array{content:string,result:mixed} $tool
+     */
+    private function toolQuote(array $tool, string $quote): ?string
+    {
+        $literal = $this->literalQuote($tool['content'], $quote);
+        if ($literal !== null) {
+            return $literal;
+        }
+        $decoded = json_decode($quote, true);
+        if (! is_array($decoded) || $decoded === [] || array_is_list($decoded)) {
+            return null;
+        }
+
+        return $this->matchesNestedRecord($decoded, $tool['result']) ? $quote : null;
+    }
+
+    /** @param array<string,mixed> $expected */
+    private function matchesNestedRecord(array $expected, mixed $actual): bool
+    {
+        if (! is_array($actual)) {
+            return false;
+        }
+        if ($this->isSubset($expected, $actual)) {
+            return true;
+        }
+        foreach ($actual as $child) {
+            if ($this->matchesNestedRecord($expected, $child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isSubset(mixed $expected, mixed $actual): bool
+    {
+        if (! is_array($expected) || ! is_array($actual)) {
+            return $expected === $actual;
+        }
+        if (array_is_list($expected) || array_is_list($actual)) {
+            if (! array_is_list($expected) || ! array_is_list($actual) || count($expected) !== count($actual)) {
+                return false;
+            }
+        }
+        foreach ($expected as $key => $value) {
+            if (! array_key_exists($key, $actual) || ! $this->isSubset($value, $actual[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** @return array{valid:false,reason:string,terms:list<string>,claims:list<array<string,mixed>>} */
