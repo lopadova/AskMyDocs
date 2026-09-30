@@ -101,7 +101,7 @@ final class WidgetCitationPersistenceTest extends TestCase
         $this->assertSame('Account > Contact', $citation['chunks'][0]['heading']);
         $this->assertStringContainsString('[EMAIL]', $citation['chunks'][0]['snippet']);
         $this->assertArrayNotHasKey('score', $citation['chunks'][0]);
-        $this->assertArrayNotHasKey('evidence_hash', $citation['chunks'][0]);
+        $this->assertSame(str_repeat('a', 64), $citation['chunks'][0]['evidence_hash']);
 
         $replay = $this->withHeaders($headers)
             ->getJson("/api/widget/sessions/{$session->public_session_id}/replay");

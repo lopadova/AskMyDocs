@@ -20,6 +20,16 @@ final readonly class AgentTurnContextBuilder
     /** @return array<string, mixed> */
     public function build(AgentRun $run, ?string $mcpAppContext = null): array
     {
+        $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+        $owner = $memory->runOwner($run);
+        if ($memory->enabled() && $owner !== null) {
+            $context = AgentExecutionContext::fromArray($run->only(['run_id', 'tenant_id', 'project_key', 'channel', 'actor_type', 'actor_id', 'locale', 'timezone']));
+            $filters = app(AgentRetrievalFiltersFactory::class)->forRun($run, $context);
+            return ['reasoning' => $owner->project_key === $run->project_key && data_get($run->result_json, 'question_understanding.available') !== false
+                ? $memory->context($owner, $run->user, $filters) : [],
+                'current_selection' => array_intersect_key((array) data_get($run->input_json, 'selection.record', []),
+                    array_flip(['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode']))];
+        }
         $conversation = $run->conversation;
         if (! $conversation instanceof Conversation) {
             return $this->redactor->redact($this->masker->maskArray(array_filter([

@@ -26,11 +26,14 @@ class KbSourceReader
      * @param array<string, mixed> $candidate
      * @return array<string, mixed>|null
      */
-    public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null): ?array
+    public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters = null): ?array
     {
         $documentId = (int) data_get($candidate, 'document.id', 0);
         $chunkId = (int) data_get($candidate, 'chunk_id', 0);
         if ($documentId < 1 || $chunkId < 1) {
+            return null;
+        }
+        if ($filters !== null && ! app(\App\Services\Kb\KbSearchService::class)->allowsMemoryCandidate($documentId, $chunkId, $filters)) {
             return null;
         }
 
@@ -42,7 +45,7 @@ class KbSourceReader
             ->forTenant($this->tenant->current())
             ->whereKey($documentId)
             ->first();
-        if ($document === null) {
+        if ($document === null || $document->status === 'archived') {
             return null;
         }
         if (($projectKey !== null && $document->project_key !== $projectKey)

@@ -24,6 +24,7 @@ final readonly class AgentEvidenceFactory
     {
         $envelope = $this->empty();
         $fullTextByHash = [];
+        $flowIdsByHash = [];
         foreach ([$result->primary, $result->expanded, $result->rejected] as $chunks) {
             foreach ($chunks as $chunk) {
                 $text = (string) data_get($chunk, 'chunk_text', '');
@@ -31,11 +32,14 @@ final readonly class AgentEvidenceFactory
                     ?? data_get($chunk, 'metadata.chunk_hash')
                     ?? hash('sha256', $text));
                 $fullTextByHash[$hash] = $text;
+                if (isset($chunk['research_flow_id'])) {
+                    $flowIdsByHash[$hash][] = $chunk['research_flow_id'];
+                }
             }
         }
 
         foreach ($this->retrieval->buildCitations($result) as $citation) {
-            $citation['evidence'] = array_map(static function (array $chunk) use ($fullTextByHash): array {
+            $citation['evidence'] = array_map(static function (array $chunk) use ($fullTextByHash, $flowIdsByHash): array {
                 $hash = (string) ($chunk['evidence_hash'] ?? '');
 
                 return [
@@ -44,6 +48,7 @@ final readonly class AgentEvidenceFactory
                     'score' => (float) ($chunk['score'] ?? 0),
                     'content' => $fullTextByHash[$hash] ?? (string) ($chunk['snippet'] ?? ''),
                     'evidence_hash' => $hash !== '' ? $hash : null,
+                    ...isset($flowIdsByHash[$hash]) ? ['research_flow_ids' => array_values(array_unique($flowIdsByHash[$hash]))] : [],
                 ];
             }, is_array($citation['chunks'] ?? null) ? $citation['chunks'] : []);
             unset($citation['chunks']);

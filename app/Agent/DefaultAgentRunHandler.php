@@ -28,6 +28,22 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
     public function handle(AgentRun $run): void
     {
+        // A redelivered parent must not finalize a snapshot while another worker
+        // is still collecting its branches. Child locks alone cannot prevent it.
+        $lock = \Illuminate\Support\Facades\Cache::lock('agent-run:'.$run->tenant_id.':'.$run->run_id,
+            max(120, (int) config('agent.job_timeout_seconds', 120)) + 60);
+        if (! $lock->get()) {
+            return;
+        }
+        try {
+            $this->handleOwned($run);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function handleOwned(AgentRun $run): void
+    {
         $run->refresh();
         if ($run->isTerminal() || in_array($run->status, [
             AgentRun::STATUS_AWAITING_CONFIRMATION,
@@ -77,29 +93,60 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
             $this->events->publish($run, 'synthesis.started', 'synthesis.started');
             $run->refresh();
+            if (config('reasoning.enabled')) {
+                $safe = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+                $safe->import(app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $outcome->evidence->jsonSerialize(),
+                    data_get($run->result_json, 'question_understanding.transition') === 'recap'));
+                $outcome = new AgentLoopOutcome($outcome->decision, $safe, $outcome->completedActions, $outcome->stopReason);
+                $turnContext = $this->turnContext($run);
+                $owner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
+                if ($owner !== null) {
+                    $decodedContext = json_decode($turnContext ?? '{}', true) ?: [];
+                    $decodedContext['reasoning']['already_communicated'] = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)
+                        ->communicatedForEvidence($owner, $safe->jsonSerialize());
+                    $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                }
+            }
             $answer = $this->synthesizer->synthesize(
                 trim((string) data_get($run->input_json, 'question', '')),
                 $context,
                 $outcome,
                 $turnContext,
                 is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
+                durableRunId: $run->run_id,
             );
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL
                 : AgentRun::STATUS_COMPLETED;
-            $checkpoint = is_array($run->result_json) ? $run->result_json : [];
-            $run->forceFill([
-                'status' => $status,
-                'result_json' => array_merge($checkpoint, [
-                    'phase' => 'final',
-                    'decision' => $outcome->decision,
-                    'stop_reason' => $outcome->stopReason,
-                    'response' => $answer->jsonSerialize(),
-                ]),
-                'completed_at' => now(),
-                'error_code' => null,
-            ])->save();
+            $saved = \Illuminate\Support\Facades\DB::transaction(function () use ($run, $status, $outcome, $answer): bool {
+                $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                if ($locked->isTerminal()) {
+                    return false;
+                }
+                $run->forceFill([
+                    'status' => $status,
+                    'result_json' => array_merge((array) $locked->result_json, [
+                        'phase' => 'final', 'decision' => $outcome->decision,
+                        'stop_reason' => $outcome->stopReason, 'response' => $answer->jsonSerialize(),
+                    ]),
+                    'completed_at' => now(), 'error_code' => null,
+                ])->save();
+                return true;
+            });
+            if (! $saved) {
+                return;
+            }
             $this->projector->project($run, $answer);
+            app(AgentResearchProgress::class)->finished($run, $answer);
+            $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+            $owner = $memory->runOwner($run);
+            $turn = $memory->runTurn($run);
+            $savedAnswer = $run->channel === 'widget'
+                ? \App\Models\WidgetSessionStep::query()->where('agent_run_id', $run->id)->first()
+                : \App\Models\Message::query()->where('agent_run_id', $run->id)->first();
+            if ($owner !== null && $turn !== null && $savedAnswer !== null) {
+                $memory->finish($owner, $turn, $savedAnswer, $outcome->evidence->jsonSerialize(), $answer->grounding['claims'] ?? [], $answer->grounding['subquestions'] ?? []);
+            }
             $this->events->publish(
                 $run,
                 $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',

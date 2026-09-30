@@ -187,12 +187,27 @@ final class AgentBudgetTracker
 
     private function limit(string $key, int $default): int
     {
+        $allocation = data_get($this->run->budget_json, 'research_allocation.'.$key);
+        if (is_int($allocation)) {
+            return max(0, $allocation);
+        }
         $base = max(1, (int) config('agent.limits.'.$key, $default));
         if (! in_array($key, self::DEPTH_SCALED_LIMITS, true)) {
             return $base;
         }
 
         return max(1, (int) round($base * $this->depthMultiplier()));
+    }
+
+    /** Divide a parent budget between independent branches instead of multiplying it. */
+    public function researchAllocation(int $index, int $count): array
+    {
+        $limits = [];
+        foreach (['logical_soft' => 12, 'logical_hard' => 25, 'physical_hard' => 100, 'evidence_bytes' => 524288] as $key => $default) {
+            $total = $this->limit($key, $default);
+            $limits[$key] = intdiv($total, $count) + ($index < $total % $count ? 1 : 0);
+        }
+        return $limits;
     }
 
     /**

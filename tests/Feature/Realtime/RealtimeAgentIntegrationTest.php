@@ -33,6 +33,10 @@ final class RealtimeAgentIntegrationTest extends TestCase
             '/test-conversations/{conversation}/realtime-agent',
             [RealtimeAgentSessionController::class, 'store'],
         );
+        Route::middleware(['api', 'auth'])->get('/test-conversations/{conversation}/realtime-agent/{session}/run',
+            [RealtimeAgentSessionController::class, 'run']);
+        Route::middleware(['api', 'auth'])->post('/test-conversations/{conversation}/messages/agent',
+            [\App\Http\Controllers\Api\AgentMessageController::class, 'store']);
     }
 
     public function test_start_is_default_off_and_fake_start_is_tenant_linked(): void
@@ -117,6 +121,75 @@ final class RealtimeAgentIntegrationTest extends TestCase
         $this->assertSame($conversation->id, $run->conversation_id);
         $this->assertSame('Qual è la policy ferie?', data_get($run->input_json, 'question'));
         $this->assertSame($sessionId, data_get($conversation->messages()->sole()->metadata, 'realtime_agent_session_id'));
+    }
+
+    public function test_receipt_is_visible_while_the_voice_tool_is_still_running_and_is_scoped_to_call_and_owner(): void
+    {
+        [$user, $conversation] = $this->chatFixture();
+        config(['realtime-agent.enabled' => true, 'realtime-agent.default' => 'fake']);
+        $sessionId = $this->actingAs($user)->postJson("/test-conversations/{$conversation->id}/realtime-agent")
+            ->assertCreated()->json('session_id');
+        $url = "/test-conversations/{$conversation->id}/realtime-agent/{$sessionId}/run?call_id=call-live";
+        $this->getJson($url)->assertOk()->assertJsonPath('run', null);
+        $this->app->bind(AgentRunHandler::class, fn () => new class($this, $url) implements AgentRunHandler
+        {
+            public function __construct(private $test, private string $url) {}
+            public function handle(AgentRun $run): void
+            {
+                $run->forceFill(['status' => AgentRun::STATUS_RUNNING])->save();
+                $this->test->getJson($this->url)->assertOk()
+                    ->assertJsonPath('run.run_id', $run->run_id)
+                    ->assertJsonPath('run.status', 'running')
+                    ->assertJsonPath('run.user_message.content', 'Hub e ordine');
+                $run->forceFill(['status' => AgentRun::STATUS_COMPLETED,
+                    'result_json' => ['response' => ['answer' => 'Risposta canonica.']]])->save();
+            }
+        });
+        $session = app(AgentSessionManager::class)->resume($sessionId);
+        $result = app(\App\Realtime\HandleRealtimeChatTurn::class)->handle($session,
+            new \AgentsFullDuplex\RealtimeAgent\Data\ToolCall('call-live', 'askmydocs.chat_turn', ['question' => 'Hub e ordine'], 1, 'call-live'));
+        $this->assertSame('Risposta canonica.', $result['response']['answer']);
+        $this->getJson(str_replace('call-live', 'another-call', $url))->assertOk()->assertJsonPath('run', null);
+        $this->getJson(str_replace($sessionId, 'unknown-session', $url))->assertNotFound();
+        app(TenantContext::class)->set('another-tenant');
+        $this->getJson($url)->assertNotFound();
+        app(TenantContext::class)->set('acme');
+        $other = User::create(['name' => 'Other', 'email' => 'other-live@example.test', 'password' => Hash::make('test')]);
+        $this->actingAs($other)->getJson($url)->assertForbidden();
+        $this->actingAs($user);
+        RealtimeAgentSessionLink::whereKey($sessionId)->update(['expires_at' => now()->subMinute()]);
+        $this->getJson($url)->assertNotFound();
+    }
+
+    public function test_busy_conversation_rejects_voice_and_text_without_creating_or_cancelling_turns(): void
+    {
+        [$user, $conversation] = $this->chatFixture();
+        config(['realtime-agent.enabled' => true, 'realtime-agent.default' => 'fake']);
+        \Illuminate\Support\Facades\Queue::fake();
+        $context = app(\App\Agent\AgentExecutionContextFactory::class)->forUser($user, $conversation->project_key);
+        $turn = app(\App\Agent\AgentChatTurnStarter::class)->start($context, $conversation, $user, 'Prima domanda', ['question' => 'Prima domanda']);
+        $sessionId = $this->actingAs($user)->postJson("/test-conversations/{$conversation->id}/realtime-agent")
+            ->assertCreated()->json('session_id');
+        $session = app(AgentSessionManager::class)->resume($sessionId);
+        foreach ([AgentRun::STATUS_QUEUED, AgentRun::STATUS_RUNNING, AgentRun::STATUS_AWAITING_CONFIRMATION] as $status) {
+            $turn->run->forceFill(['status' => $status])->save();
+            $result = app(\App\Realtime\HandleRealtimeChatTurn::class)->handle($session,
+                new \AgentsFullDuplex\RealtimeAgent\Data\ToolCall('overlap-'.$status, 'askmydocs.chat_turn', ['question' => 'Seconda domanda'], 1, 'overlap-'.$status));
+            $this->assertTrue($result['busy']);
+            $this->assertFalse($result['retry']);
+            $this->assertStringContainsString('Un attimo, una cosa alla volta', $result['response']['answer']);
+            $this->assertArrayNotHasKey('run', $result);
+            $this->postJson("/test-conversations/{$conversation->id}/messages/agent", ['content' => 'Da un’altra scheda'])
+                ->assertStatus(409)->assertJsonPath('error', 'agent_conversation_busy');
+            $this->assertSame($status, $turn->run->fresh()->status);
+            $this->assertSame(1, AgentRun::count());
+            $this->assertSame(1, $conversation->messages()->count());
+        }
+        // The next explicit request is allowed once the prior request ends.
+        $turn->run->forceFill(['status' => AgentRun::STATUS_COMPLETED])->save();
+        $this->postJson("/test-conversations/{$conversation->id}/messages/agent", ['content' => 'Ora la seconda domanda'])->assertStatus(202);
+        $this->assertSame(2, $conversation->messages()->count());
+        $this->assertSame(2, AgentRun::count());
     }
 
     public function test_usage_is_projected_to_finops_once_and_dsars_follow_the_session_link(): void

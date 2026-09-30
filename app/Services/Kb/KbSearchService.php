@@ -880,6 +880,50 @@ class KbSearchService
      * a `connector_type` column is added (currently the value lives in
      * `metadata.connector` JSON which is brittle to query under SQLite).
      */
+    /** Read-only revalidation for memory references, using the SAME filters as fresh retrieval. */
+    public function allowsMemoryCandidate(int $documentId, int $chunkId, RetrievalFilters $filters): bool
+    {
+        $query = KnowledgeChunk::query()->forTenant(app(TenantContext::class)->current())
+            ->whereKey($chunkId)->where('knowledge_document_id', $documentId)->with('document');
+        $this->applyFilters($query, $filters);
+        return $this->filterByFolderGlobs($query->get(), $filters->folderGlobs)->isNotEmpty();
+    }
+
+    /**
+     * Literal navigation for server-validated identifiers, independent of embeddings.
+     * These are candidates, not grounded facts: KbSourceReader must recheck the actor
+     * and the assessor must establish relevance. No synthetic similarity score.
+     */
+    public function exactIdentifierCandidates(array $identifiers, ?string $projectKey, ?RetrievalFilters $filters = null): Collection
+    {
+        $identifiers = array_slice(array_values(array_unique(array_filter($identifiers,
+            fn ($id) => is_string($id) && trim($id) !== '' && mb_strlen($id) <= 120))), 0, 12);
+        if ($identifiers === []) {
+            return collect();
+        }
+        $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
+        $tenant = app(TenantContext::class)->current();
+        $query = KnowledgeChunk::query()->forTenant($tenant)
+            ->with(['document' => fn ($q) => $q->forTenant($tenant)])
+            ->whereHas('document', fn ($q) => $q->forTenant($tenant)->where('status', '!=', 'archived')
+                ->when($effectiveFilters->projectKeys !== [], fn ($q) => $q->whereIn('project_key', $effectiveFilters->projectKeys))
+                ->when($projectKey !== null, fn ($q) => $q->where('project_key', $projectKey)))
+            ->when($projectKey !== null, fn ($q) => $q->where('knowledge_chunks.project_key', $projectKey))
+            ->where(function ($q) use ($identifiers): void {
+                foreach ($identifiers as $id) {
+                    $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
+                    $q->orWhereRaw("LOWER(chunk_text) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+                }
+            });
+        $this->applyFilters($query, $effectiveFilters);
+        // Bound DB work; an incomplete candidate list must never imply global absence.
+        $chunks = $this->filterByFolderGlobs($query->orderBy('knowledge_chunks.id')->limit(64)->get(), $effectiveFilters->folderGlobs);
+        return $chunks->filter(fn ($chunk) => array_filter($identifiers,
+            fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)) !== [])
+            ->map(fn ($chunk) => [...$this->mapChunkToArray($chunk), 'chunk_hash' => $chunk->chunk_hash,
+                'retrieval_method' => 'exact_identifier'])->values();
+    }
+
     private function applyFilters(Builder $q, RetrievalFilters $f): void
     {
         if ($f->projectKeys !== []) {

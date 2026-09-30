@@ -29,6 +29,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
         public readonly int $agentRunId,
         public readonly string $tenantId,
     ) {
+        $this->timeout = max(30, (int) config('agent.job_timeout_seconds', 120));
         $this->onQueue((string) config('agent.queue', 'agent'));
     }
 

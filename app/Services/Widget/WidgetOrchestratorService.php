@@ -125,9 +125,11 @@ final class WidgetOrchestratorService
      */
     private function runTurn(WidgetSession $session, array $snapshot, ?string $userMessage, ?array $toolResult): array
     {
+        $turn = null;
         if (is_string($userMessage) && $userMessage !== '') {
-            $this->addStep($session, WidgetSessionStep::KIND_USER_MESSAGE, args: ['content' => $userMessage]);
+            $turn = $this->addStep($session, WidgetSessionStep::KIND_USER_MESSAGE, args: ['content' => $userMessage]);
         }
+        $turn ??= $session->steps()->where('kind', WidgetSessionStep::KIND_USER_MESSAGE)->latest('id')->first();
         if (is_array($toolResult)) {
             $this->addStep(
                 $session,
@@ -164,7 +166,24 @@ final class WidgetOrchestratorService
         $result = null;
         $understanding = null;
         if (is_string($userMessage) && $userMessage !== '') {
-            $understanding = $this->preprocessor->interpret($userMessage);
+            $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+            $understanding = $memory->enabled() && $turn !== null
+                ? $memory->prepare($session, $turn, $userMessage)
+                : $this->preprocessor->interpret($userMessage);
+            if ($turn !== null && $understanding->asksForProvenance()) {
+                $attribution = app(\App\Services\Chat\AnswerProvenance::class)->explain($session, $turn, null, $understanding->language ?? $session->locale);
+                return $this->finishWithAnswer($session, $snapshot, new AiResponse(
+                    content: $attribution->answer, provider: 'server', model: 'answer-provenance',
+                ), null, $attribution->citations, microtime(true), $userMessage, $turn,
+                    ['grounding' => $attribution->grounding, 'tool_sources' => $attribution->toolSources]);
+            }
+            if ($memory->enabled() && $understanding->needsClarification) {
+                return $this->finishWithAnswer($session, $snapshot, new AiResponse(
+                    content: $understanding->clarification ?: (str_starts_with((string) $session->locale, 'it')
+                        ? 'A quale elemento ti riferisci?' : 'Which item do you mean?'),
+                    provider: 'server', model: 'focus-clarification',
+                ), null, [], microtime(true), $userMessage, $turn);
+            }
             $query = $understanding->kbQueries[0] ?? $userMessage;
             $retrieved = $this->retrieval->retrieve($query, (string) $session->project_key, null);
             if ($understanding->available && $understanding->referencesPreviousTurn) {
@@ -192,6 +211,15 @@ final class WidgetOrchestratorService
         if ($understanding?->language !== null) {
             $systemPrompt .= "\nAnswer in {$understanding->language}; preserve identifiers and citations exactly.";
         }
+        if (config('reasoning.enabled')) {
+            $savedUnderstanding = data_get($turn?->args_json, 'reasoning.understanding');
+            $systemPrompt .= "\nCurrent turn (server interpretation, not evidence): ".json_encode($understanding?->toArray() ?? $savedUnderstanding);
+            if (($understanding?->available ?? ($savedUnderstanding['available'] ?? false))) {
+                $systemPrompt .= "\nMemory navigation and repetition hints, NOT evidence: ".json_encode(app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->context($session));
+            }
+            $systemPrompt .= "\nAnswer only the active focus. If needs_clarification is true, ask the supplied clarification without inventing facts or calling tools. Earlier assistant prose is not evidence.";
+            $systemPrompt .= "\n".\App\Services\Chat\QuestionAction::ANSWER_INSTRUCTIONS;
+        }
         $baseMessages = $this->buildMessages($session);
         $navigateAllowlist = $this->navigateAllowlist($session);
 
@@ -208,7 +236,7 @@ final class WidgetOrchestratorService
             $response = $this->ai->chatWithHistory($systemPrompt, array_merge($baseMessages, $extra), $options);
 
             if ($response->toolCalls === []) {
-                return $this->finishWithAnswer($session, $snapshot, $response, $result, $citations, $start, $userMessage);
+                return $this->finishWithAnswer($session, $snapshot, $response, $result, $citations, $start, $userMessage, $turn);
             }
 
             $call = $response->toolCalls[0];
@@ -261,6 +289,8 @@ final class WidgetOrchestratorService
         array $citations,
         float $start,
         ?string $userMessage = null,
+        ?WidgetSessionStep $turn = null,
+        array $attributionMetadata = [],
     ): array
     {
         $latency = (int) ((microtime(true) - $start) * 1000);
@@ -273,18 +303,25 @@ final class WidgetOrchestratorService
             )
             : 0;
 
-        $this->addStep(
+        $answer = $this->addStep(
             $session,
             WidgetSessionStep::KIND_BOT_MESSAGE,
             args: [
                 'content' => $response->content,
                 'citations' => $this->compactCitations($citations),
+                ...$attributionMetadata,
             ],
             snapshotIn: $snapshot,
             tokensIn: $response->promptTokens,
             tokensOut: $response->completionTokens,
             latency: $latency,
         );
+        if ($turn !== null && config('reasoning.enabled')) {
+            // Only the final saved answer finishes a turn. A tool-call preamble is not a completed fact.
+            app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
+                $session, $turn, $answer, $attributionMetadata !== [] ? [] : ['documents' => $citations],
+            );
+        }
         $this->resetErrors($session, WidgetSession::STATUS_ACTIVE);
 
         // #30 — logga il turno Q&A su chat_logs come ogni altra channel (web,
@@ -305,7 +342,7 @@ final class WidgetOrchestratorService
 
     /**
      * Persist only the citation fields needed to replay source chips and open
-     * the source viewer. Scores and evidence hashes remain response-only;
+     * the source viewer. Hashes are retained for memory revalidation; scores remain response-only;
      * snippets/headings are retained and pass through addStep's PII masker.
      *
      * @param  list<array<string, mixed>>  $citations
@@ -320,6 +357,7 @@ final class WidgetOrchestratorService
                     ->filter(fn (mixed $chunk): bool => is_array($chunk))
                     ->map(static fn (array $chunk): array => [
                         'chunk_id' => $chunk['chunk_id'] ?? null,
+                        'evidence_hash' => $chunk['evidence_hash'] ?? null,
                         'heading' => is_string($chunk['heading'] ?? null) ? $chunk['heading'] : null,
                         'snippet' => is_string($chunk['snippet'] ?? null) ? $chunk['snippet'] : '',
                     ])
@@ -354,9 +392,13 @@ final class WidgetOrchestratorService
 
     private function withPreviouslyCitedSources(WidgetSession $session, SearchResult $result, \App\Services\Chat\QuestionUnderstanding $understanding): SearchResult
     {
-        $mentions = $understanding->mentionTexts();
+        $mentions = $understanding->targetIdentifiers() ?: $understanding->mentionTexts();
+        if ($mentions === [] && config('reasoning.enabled') && $understanding->transition !== 'recap') {
+            return $result;
+        }
         $previous = $session->steps()->where('kind', WidgetSessionStep::KIND_BOT_MESSAGE)->orderByDesc('step_index')->first(['args_json']);
-        $citations = data_get($previous?->args_json, 'citations', []);
+        $citations = array_merge(data_get($previous?->args_json, 'citations', []),
+            config('reasoning.enabled') ? app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->citations($session) : []);
         if (! is_array($citations)) {
             return $result;
         }
@@ -372,7 +414,7 @@ final class WidgetOrchestratorService
             $source = $this->sourceReader->readCandidate([
                 'document' => ['id' => (int) $citation['document_id']], 'chunk_id' => $chunkId,
             ], (string) $session->project_key);
-            if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => mb_stripos($source['excerpt'], $term) !== false))) {
+            if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => \App\Services\Chat\Reasoning\EvidenceProjector::contains($source['excerpt'], $term)))) {
                 continue;
             }
             $anchors->push([
@@ -422,9 +464,14 @@ final class WidgetOrchestratorService
             ->first(['args_json']);
         $citations = data_get($citationStep?->args_json, 'citations');
 
-        return is_array($citations)
-            ? array_values(array_filter($citations, 'is_array'))
-            : [];
+        $citations = is_array($citations) ? array_values(array_filter($citations, 'is_array')) : [];
+        if (! config('reasoning.enabled')) {
+            return $citations;
+        }
+        return array_values(array_filter($citations, fn ($citation) => $this->sourceReader->readCandidate([
+            'document' => ['id' => $citation['document_id'] ?? 0],
+            'chunk_id' => data_get($citation, 'chunks.0.chunk_id', 0),
+        ], (string) $session->project_key) !== null));
     }
 
     /**
@@ -622,14 +669,20 @@ final class WidgetOrchestratorService
         // persistito (user_message/bot_message/tool_call/tool_result) produce
         // sempre un content NON vuoto in stepToMessage — non esistono step a
         // content vuoto che falserebbero il conteggio.
+        $currentTurn = config('reasoning.enabled')
+            ? $session->steps()->where('kind', WidgetSessionStep::KIND_USER_MESSAGE)->max('step_index') : null;
         $steps = $session->steps()
             ->select(['step_index', 'kind', 'tool', 'args_json'])
+            ->when($currentTurn !== null, fn ($query) => $query->where('step_index', '>=', $currentTurn))
             ->orderByDesc('step_index')
             ->limit(self::HISTORY_LIMIT)
             ->get()
             ->reverse();
 
         foreach ($steps as $step) {
+            if (config('reasoning.enabled') && $step->kind === WidgetSessionStep::KIND_BOT_MESSAGE) {
+                continue; // The current authorized sources, not old assistant prose, supply facts.
+            }
             [$role, $content] = $this->stepToMessage($step);
             if ($content !== '') {
                 $messages[] = ['role' => $role, 'content' => $content];
@@ -687,7 +740,7 @@ final class WidgetOrchestratorService
         ?int $tokensIn = null,
         ?int $tokensOut = null,
         ?int $latency = null,
-    ): void {
+    ): WidgetSessionStep {
         $nextIndex = (int) ($session->steps()->max('step_index') ?? -1) + 1;
 
         // M5.6 — PII mascherata PRIMA del salvataggio (difesa in profondità).
@@ -697,7 +750,7 @@ final class WidgetOrchestratorService
             ? $this->piiMasker->maskJsonString($this->json($snapshotIn))
             : null;
 
-        $session->steps()->create([
+        $step = $session->steps()->create([
             'step_index' => $nextIndex,
             'kind' => $kind,
             'tool' => $tool !== '' ? $tool : null,
@@ -708,6 +761,7 @@ final class WidgetOrchestratorService
             'tokens_out' => $tokensOut,
             'latency_ms' => $latency,
         ]);
+        return $step;
     }
 
     private function resetErrors(WidgetSession $session, string $status): void

@@ -22,6 +22,8 @@ class WidgetSession extends Model
     use BelongsToTenant;
     use \Illuminate\Database\Eloquent\Factories\HasFactory;
 
+    protected $hidden = ['reasoning_state'];
+
     public const STATUS_ACTIVE = 'active';
     public const STATUS_WAITING_USER = 'waiting_user';
     public const STATUS_WAITING_TOOL = 'waiting_tool';
@@ -49,6 +51,7 @@ class WidgetSession extends Model
 
     protected $casts = [
         'meta' => 'array',
+        'reasoning_state' => 'array', // Server owned; never accepted from widget input.
     ];
 
     /** Risolve la sessione via UUID pubblico nelle route, non via id. */

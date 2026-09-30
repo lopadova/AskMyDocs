@@ -632,6 +632,53 @@ final class AgentLoopTest extends TestCase
         $this->assertSame('Ordine Tizio #42 consegnato.', $documents[0]['evidence'][0]['content']);
     }
 
+    public function test_empty_recursive_kb_does_not_prevent_authorized_connector_research(): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        $this->route('search_shipments', 'http://erp.example.test/shipments');
+        Http::fake(['erp.example.test/*' => Http::response(['id' => 'SHIP-53', 'status' => 'shipped'])]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            $this->planResponse(['decision' => 'tools', 'actions' => [[
+                'id' => 'shipment', 'tool' => 'search_shipments', 'arguments' => [],
+                'depends_on' => [], 'purpose' => 'Find shipment in the authorized connector',
+            ]]]), $this->planResponse(['decision' => 'answer', 'actions' => []]));
+        $this->app->instance(AiManager::class, $ai);
+        $investigation = Mockery::mock(KbInvestigationService::class);
+        $investigation->shouldReceive('investigate')->once()->andReturn(new KbInvestigationResult(
+            'no_evidence', 'no_new_evidence', new SearchResult(collect(), collect(), collect()),
+            attempts: [['query' => 'shipment emails', 'outcome' => 'no_readable_sources']]));
+        $this->app->instance(KbInvestigationService::class, $investigation);
+
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame('search_shipments', $run->toolExecutions()->sole()->tool_name);
+        $this->assertCount(1, $outcome->evidence->apiTools());
+        $this->assertSame('no_readable_sources', data_get($run->fresh()->result_json, 'knowledge_investigation.attempts.0.outcome'));
+        Http::assertSentCount(1);
+    }
+
+    public function test_missing_profile_or_ambiguous_focus_remain_hard_stops_even_after_resume(): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        foreach (['profile_required' => 'retrieval_profile_required', 'clarify' => 'focus_ambiguous'] as $status => $reason) {
+            $ai = Mockery::mock(AiManager::class);
+            $ai->shouldNotReceive('chatWithHistory');
+            $this->app->instance(AiManager::class, $ai);
+            $investigation = Mockery::mock(KbInvestigationService::class);
+            $investigation->shouldReceive('investigate')->once()->andReturn(new KbInvestigationResult(
+                $status, $reason, new SearchResult(collect(), collect(), collect())));
+            $this->app->instance(KbInvestigationService::class, $investigation);
+            $run = $this->makeRun();
+            $loop = app(AgentLoop::class);
+            $this->assertSame($reason, $loop->run($run, $this->context($run))->stopReason);
+            $this->assertSame($reason, $loop->run($run->fresh(), $this->context($run))->stopReason);
+            $this->assertSame(0, $run->toolExecutions()->count());
+        }
+    }
+
     /** @param array<string,mixed> $payload */
     private function planResponse(array $payload): AiResponse
     {

@@ -8,6 +8,7 @@ use AgentsFullDuplex\RealtimeAgent\Contracts\ToolHandlerContract;
 use AgentsFullDuplex\RealtimeAgent\Data\AgentSession;
 use AgentsFullDuplex\RealtimeAgent\Data\ToolCall;
 use App\Agent\AgentChatTurnStarter;
+use App\Agent\AgentConversationBusy;
 use App\Agent\AgentExecutionContextFactory;
 use App\Models\AgentRun;
 use App\Models\Conversation;
@@ -50,40 +51,33 @@ final readonly class HandleRealtimeChatTurn implements ToolHandlerContract
         $input = [
             'question' => $question,
             'filters' => is_array($link->filters) ? $link->filters : [],
+            'realtime_session_id' => $session->id,
+            'realtime_call_id' => $call->id,
         ];
         if (is_array($link->live_sources)) {
             $input['live_sources'] = $link->live_sources;
         }
 
-        $turn = $this->turns->start(
-            $context,
-            $conversation,
-            $user,
-            $question,
-            $input,
-            [
-                'realtime_agent_session_id' => $session->id,
-                'interaction_mode' => 'voice',
-            ],
-            inline: true,
-        );
+        try {
+            $turn = $this->turns->start(
+                $context,
+                $conversation,
+                $user,
+                $question,
+                $input,
+                [
+                    'realtime_agent_session_id' => $session->id,
+                    'interaction_mode' => 'voice',
+                ],
+                inline: true,
+            );
+        } catch (AgentConversationBusy $exception) {
+            // No user message/run is created, and the first request keeps running.
+            return $exception->voiceResponse();
+        }
         $run = $turn->run->refresh();
         $payload = [
-            'run' => [
-                'run_id' => $run->run_id,
-                'status' => $run->status,
-                'locale' => $run->locale,
-                'events_url' => '/agent-runs/'.$run->run_id.'/events',
-                'cancel_url' => '/agent-runs/'.$run->run_id.'/cancel',
-                'continue_url' => '/agent-runs/'.$run->run_id.'/continue',
-                'user_message' => [
-                    'id' => $turn->message->id,
-                    'role' => $turn->message->role,
-                    'content' => $turn->message->content,
-                    'metadata' => $turn->message->metadata,
-                    'created_at' => $turn->message->created_at,
-                ],
-            ],
+            'run' => app(RealtimeChatRunPresenter::class)->present($run),
         ];
 
         if (in_array($run->status, [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)) {

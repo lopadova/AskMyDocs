@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Contracts\AgentRunHandler;
+use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +44,18 @@ final readonly class AgentChatTurnStarter
             $input,
             $messageMetadata,
         ): AgentChatTurn {
+            // Serialize creation, not the long research itself. Voice and text
+            // share this fence; internal research branches are not new turns.
+            Conversation::query()->forTenant($context->tenantId)->whereKey($conversation->id)
+                ->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $busy = AgentRun::query()->forTenant($context->tenantId)
+                ->where('conversation_id', $conversation->id)
+                ->whereNull('input_json->research_parent_id')
+                ->whereNotIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL, AgentRun::STATUS_FAILED, AgentRun::STATUS_CANCELLED])
+                ->exists();
+            if ($busy) {
+                throw new AgentConversationBusy($context->locale);
+            }
             $message = $conversation->messages()->create([
                 'role' => 'user',
                 'content' => $displayContent,

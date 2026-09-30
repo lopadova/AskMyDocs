@@ -13,6 +13,8 @@ class Conversation extends Model
 {
     use BelongsToTenant;
 
+    protected $hidden = ['reasoning_state'];
+
     protected $fillable = [
         'tenant_id',
         'user_id',
@@ -32,6 +34,7 @@ class Conversation extends Model
         // in $fillable so a mass-assignment from an HTTP request can never
         // forge it.
         'session_recap' => 'array',
+        'reasoning_state' => 'array', // Server owned; deliberately not mass assignable.
     ];
 
     /**

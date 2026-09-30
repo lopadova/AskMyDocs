@@ -63,6 +63,37 @@ final class AgentEventPublisherTest extends TestCase
         $this->assertTrue($serialized['can_cancel']);
     }
 
+    public function test_saving_a_stale_run_does_not_rewind_events_published_by_parallel_research(): void
+    {
+        $run = $this->makeRun('it-IT');
+        $publisher = app(AgentEventPublisher::class);
+        $publisher->publish($run, 'run.started');
+        $publisher->publish($run, 'retrieval.started');
+
+        // The KB observer uses a fresh instance/process while the caller keeps $run.
+        $observer = $run->fresh();
+        $publisher->publish($observer, 'research.planned');
+        $publisher->publish($observer, 'research.task');
+        $this->assertFalse($run->isDirty('last_sequence'));
+        $run->forceFill(['result_json' => ['retrieval_completed' => true]])->save();
+
+        $this->assertSame(4, $run->fresh()->last_sequence);
+        $this->assertSame(5, $publisher->publish($run, 'retrieval.completed')->sequence);
+        $this->assertSame([1, 2, 3, 4, 5], $run->events()->orderBy('sequence')->pluck('sequence')->all());
+    }
+
+    public function test_publishing_recovers_a_counter_behind_the_existing_event_log(): void
+    {
+        $run = $this->makeRun('it-IT');
+        $publisher = app(AgentEventPublisher::class);
+        $publisher->publish($run, 'run.started');
+        $publisher->publish($run, 'research.planned');
+        AgentRun::query()->whereKey($run->id)->update(['last_sequence' => 1]);
+
+        $this->assertSame(3, $publisher->publish($run, 'run.failed', 'run.failed', canCancel: false)->sequence);
+        $this->assertSame(3, $run->fresh()->last_sequence);
+    }
+
     public function test_progress_rejects_incoherent_estimates(): void
     {
         $this->expectException(\InvalidArgumentException::class);

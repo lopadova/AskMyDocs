@@ -51,6 +51,60 @@ final class KbInvestigationServiceTest extends TestCase
         $this->assertTrue($result->search->isEmpty());
     }
 
+    public function test_four_independent_questions_retrieve_and_assess_separately_even_when_one_fails(): void
+    {
+        config(['reasoning.enabled' => true, 'reasoning.parallel_research' => true]);
+        $actor = \App\Models\User::create(['name' => 'Researcher', 'email' => 'research@example.test', 'password' => bcrypt('test')]);
+        \App\Models\ProjectMembership::create(['tenant_id' => 'investigation-tenant', 'project_key' => 'orders', 'user_id' => $actor->id, 'role' => 'member']);
+        $subs = [];
+        foreach (['HUB-AA', 'ORDER-BB', 'PRODUCT-CC', 'CUSTOMER-DD'] as $id) {
+            $subs[] = ['topic' => $id, 'identifiers' => [$id], 'aspect' => 'details', 'fields' => ['*'],
+                'question' => 'Details of '.$id, 'kb_queries' => [$id]];
+        }
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'en', 'intent' => 'Four unrelated questions', 'kb_queries' => ['HUB-AA'],
+            'mentions' => array_map(fn ($id) => ['text' => $id, 'type' => 'identifier'], array_column($subs, 'topic')),
+            'references_previous_turn' => false, 'transition' => 'new',
+            'focus' => array_intersect_key($subs[0], array_flip(['topic', 'identifiers', 'aspect', 'fields'])),
+            'subquestions' => $subs, 'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $ai->shouldReceive('chat')->twice()->andReturnUsing(function ($system, $payload) {
+            $data = json_decode($payload, true);
+            $this->assertCount(1, $data['sources']);
+            $source = $data['sources'][0];
+            $this->assertStringContainsString($source['content'], $data['intent']['objective']);
+            return $this->response(['selected_document_ids' => [$source['document_id']], 'supported_facts' => [],
+                'missing_facts' => [], 'complete' => true, 'next_query' => null]);
+        });
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->with('HUB-AA', 'orders', null)->andReturn($this->search([11]));
+        $retrieval->shouldReceive('retrieve')->once()->with('ORDER-BB', 'orders', null)->andReturn($this->search([12]));
+        $retrieval->shouldReceive('retrieve')->once()->with('PRODUCT-CC', 'orders', null)->andThrow(new \RuntimeException('failed'));
+        $retrieval->shouldReceive('retrieve')->once()->with('CUSTOMER-DD', 'orders', null)->andReturn($this->search([]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->twice()->withArgs(fn ($candidate, $project, $principal, $filters) => $project === 'orders'
+            && $principal?->id === $actor->id && auth()->id() === $actor->id)
+            ->andReturn($this->source(11, 'HUB-AA', true), $this->source(12, 'ORDER-BB', true));
+        $service = $this->service($ai, $retrieval, $reader);
+        $this->app->instance(KbInvestigationService::class, $service);
+        $progress = [];
+        $result = $service->investigate('HUB-AA ORDER-BB PRODUCT-CC CUSTOMER-DD', 'orders', actor: $actor,
+            onResearchProgress: function ($type, $data) use (&$progress) { $progress[] = [$type, $data]; });
+        $this->assertSame('research.planned', $progress[0][0]);
+        $this->assertSame(array_column($subs, 'question'), array_column($progress[0][1]['tasks'], 'question'));
+        $this->assertSame([0, 1, 2, 3], array_column(array_filter(array_column($progress, 1), fn ($data) => ($data['task_status'] ?? null) === 'documents'), 'research_flow_id'));
+        $this->assertCount(9, $progress); // One plan, then start/end for each independent branch.
+        $this->assertTrue($result->isReady());
+        $this->assertCount(4, $result->researchFlows);
+        $this->assertSame(['HUB-AA', 'ORDER-BB', 'PRODUCT-CC', 'CUSTOMER-DD'], $result->queries);
+        $this->assertCount(2, $result->search->primary);
+        $this->assertSame([0, 1], $result->search->primary->pluck('research_flow_id')->all());
+        $this->assertSame('retrieval_error', $result->researchFlows[2]['stop_reason']);
+        $this->assertSame('no_new_evidence', $result->researchFlows[3]['stop_reason']);
+        $this->assertNull(auth()->user());
+    }
+
     public function test_interprets_before_search_and_only_selected_complete_email_reaches_context(): void
     {
         $ai = Mockery::mock(AiManager::class);
@@ -242,6 +296,143 @@ final class KbInvestigationServiceTest extends TestCase
         $this->assertSame('no_new_evidence', $result->stopReason);
     }
 
+    public function test_empty_searches_consume_alternative_queries_within_depth_without_reinterpreting(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $this->expectInterpretation($ai, ['objective' => 'Find delivery emails',
+            'queries' => ['delivery emails', 'shipment communications', 'delivery confirmation']]);
+        $ai->shouldReceive('chat')->once()->andReturn($this->response([
+            'selected_document_ids' => [11], 'supported_facts' => ['Delivery confirmation found'],
+            'missing_facts' => [], 'complete' => true, 'next_query' => null,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->with('delivery emails', 'orders', null)->andReturn($this->search([]));
+        $retrieval->shouldReceive('retrieve')->once()->with('shipment communications', 'orders', null)->andReturn($this->search([]));
+        $retrieval->shouldReceive('retrieve')->once()->with('delivery confirmation', 'orders', null)->andReturn($this->search([11]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'Delivery confirmation', true));
+
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Are there delivery emails?', 'orders', depth: 3);
+
+        $this->assertTrue($result->isReady());
+        $this->assertSame(['delivery emails', 'shipment communications', 'delivery confirmation'], $result->queries);
+        $this->assertSame(['no_readable_sources', 'no_readable_sources', 'sources_selected'], array_column($result->trace()['attempts'], 'outcome'));
+    }
+
+    public function test_unused_queries_remain_bounded_by_depth_even_when_all_results_are_empty(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $this->expectInterpretation($ai, ['objective' => 'Find email', 'queries' => ['first', 'second', 'third']]);
+        $ai->shouldNotReceive('chat');
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->with('first', 'orders', null)->andReturn($this->search([]));
+        $retrieval->shouldReceive('retrieve')->once()->with('second', 'orders', null)->andReturn($this->search([]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldNotReceive('readCandidate');
+
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Find email', 'orders', depth: 2);
+
+        $this->assertSame(['first', 'second'], $result->queries);
+        $this->assertFalse($result->isReady());
+    }
+
+    public function test_irrelevant_or_repeated_follow_up_does_not_discard_unused_interpreted_queries(): void
+    {
+        foreach ([[[], null], [[], 'first query'], [[11], 'first query']] as [$selected, $next]) {
+            $ai = Mockery::mock(AiManager::class);
+            $this->expectInterpretation($ai, ['objective' => 'Find email', 'queries' => ['first query', 'alternative query']]);
+            $ai->shouldReceive('chat')->twice()->andReturn(
+                $this->response(['selected_document_ids' => $selected, 'supported_facts' => [],
+                    'missing_facts' => ['Confirmation email'], 'complete' => false, 'next_query' => $next]),
+                $this->response(['selected_document_ids' => [12], 'supported_facts' => ['Confirmation email'],
+                    'missing_facts' => [], 'complete' => true, 'next_query' => null]));
+            $retrieval = Mockery::mock(ChatRetrievalService::class);
+            $retrieval->shouldReceive('retrieve')->once()->with('first query', 'orders', null)->andReturn($this->search([11]));
+            $retrieval->shouldReceive('retrieve')->once()->with('alternative query', 'orders', null)->andReturn($this->search([12]));
+            $reader = Mockery::mock(KbSourceReader::class);
+            $reader->shouldReceive('readCandidate')->twice()->andReturn($this->source(11, 'Partial information', true),
+                $this->source(12, 'Confirmation email', true));
+
+            $result = $this->service($ai, $retrieval, $reader)->investigate('Find email', 'orders', depth: 3);
+
+            $this->assertTrue($result->isReady());
+            $this->assertSame(['first query', 'alternative query'], $result->queries);
+            $this->assertContains(12, array_column($result->selectedSources, 'document_id'));
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('semanticSearchFailures')]
+    public function test_chat_53_tracking_code_recovers_email_even_when_semantic_search_fails(bool $throws): void
+    {
+        $document = $this->citedDocument('investigation-tenant', 'orders');
+        $text = 'Conferma spedizione RL-2024-1120, tracking RL-TRACK-9355, ordine PO-5582.';
+        KnowledgeChunk::create(['tenant_id' => 'investigation-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+            'chunk_text' => $text, 'chunk_hash' => hash('sha256', $text)]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider'); // The same persisted interpretation is reused.
+        $ai->shouldReceive('chat')->once()->withArgs(function ($system, $payload) use ($document, $text) {
+            $source = json_decode($payload, true)['sources'][0];
+            $this->assertSame($document->id, $source['document_id']);
+            $this->assertStringContainsString($text, $source['content']);
+            return true;
+        })->andReturn($this->response(['selected_document_ids' => [$document->id],
+            'supported_facts' => ['Confirmation email found'], 'missing_facts' => [], 'complete' => true, 'next_query' => null]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $expectation = $retrieval->shouldReceive('retrieve')->once();
+        if ($throws) {
+            $expectation->andThrow(new \RuntimeException('Embedding service unavailable'));
+        } else {
+            $expectation->andReturn($this->search([]));
+        }
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Email relative alla spedizione RL-TRACK-9355',
+            ['Email relative alla spedizione RL-TRACK-9355'], [], true,
+            focus: ['topic' => 'shipment', 'identifiers' => ['RL-TRACK-9355'], 'aspect' => 'emails', 'fields' => []],
+            resolvedReferences: ['RL-TRACK-9355']);
+
+        $result = $this->service($ai, $retrieval, app(KbSourceReader::class))->investigate(
+            'Ci sono email su quella spedizione?', 'orders', preparedUnderstanding: $understanding);
+
+        $this->assertTrue($result->isReady());
+        $this->assertSame([$document->id], array_column($result->selectedSources, 'document_id'));
+        $this->assertStringContainsString($text, $result->search->primary->first()['chunk_text']);
+        $this->assertSame(0, $result->attempts[0]['primary_candidates']);
+        $this->assertSame(1, $result->attempts[0]['exact_candidates']);
+        $this->assertSame('exact_identifier', $result->selectedSources[0]['candidate']['retrieval_method']);
+        $this->assertSame($throws, $result->attempts[0]['semantic_lookup_error'] ?? false);
+    }
+
+    public static function semanticSearchFailures(): array
+    {
+        return ['empty search' => [false], 'embedding failure' => [true]];
+    }
+
+    public function test_literal_identifier_candidate_still_requires_llm_relevance_assessment(): void
+    {
+        $document = $this->citedDocument('investigation-tenant', 'orders');
+        KnowledgeChunk::create(['tenant_id' => 'investigation-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+            'chunk_text' => 'RO-LONGO appare solo in un esempio non pertinente.', 'chunk_hash' => 'example']);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Email su RO-LONGO', 'kb_queries' => ['email RO-LONGO'],
+            'mentions' => [['text' => 'RO-LONGO', 'type' => 'identifier']], 'references_previous_turn' => false,
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->response([
+            'selected_document_ids' => [], 'supported_facts' => [], 'missing_facts' => ['Email cliente'],
+            'complete' => false, 'next_query' => null,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([]));
+
+        $result = $this->service($ai, $retrieval, app(KbSourceReader::class))->investigate('Email su RO-LONGO', 'orders');
+
+        $this->assertFalse($result->isReady());
+        $this->assertSame([], $result->selectedSources);
+        $this->assertSame(1, $result->attempts[0]['exact_candidates']);
+        $this->assertSame('no_relevant_sources', $result->attempts[0]['outcome']);
+    }
+
     public function test_follow_up_re_reads_a_previously_cited_email_instead_of_trusting_previous_answer(): void
     {
         $document = $this->citedDocument('investigation-tenant', 'orders');
@@ -412,6 +603,9 @@ final class KbInvestigationServiceTest extends TestCase
     /** @param array<string,mixed> $json */
     private function response(array $json): AiResponse
     {
+        if (array_key_exists('references_previous_turn', $json)) {
+            $json += ['action' => 'research'];
+        }
         return new AiResponse((string) json_encode($json), 'fake', 'fake-model');
     }
 

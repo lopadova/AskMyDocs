@@ -29,6 +29,22 @@ final class DefaultAgentRunHandlerTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_concurrent_redelivery_does_not_finalize_or_restart_the_owned_run(): void
+    {
+        $run = AgentRun::create(['run_id' => (string) Str::uuid(), 'tenant_id' => 'acme', 'project_key' => 'crm',
+            'channel' => 'chat', 'actor_type' => 'user', 'locale' => 'it', 'timezone' => 'UTC', 'status' => 'running']);
+        $lock = \Illuminate\Support\Facades\Cache::lock('agent-run:acme:'.$run->run_id, 60);
+        $this->assertTrue($lock->get());
+        try {
+            app(AgentRunHandler::class)->handle($run);
+            $this->assertSame('running', $run->fresh()->status);
+            $this->assertSame(0, $run->events()->count());
+            $this->assertSame(0, $run->toolExecutions()->count());
+        } finally {
+            $lock->release();
+        }
+    }
+
     public function test_handler_fails_closed_when_actor_and_linked_user_do_not_match(): void
     {
         $owner = User::create([
@@ -202,12 +218,12 @@ final class DefaultAgentRunHandlerTest extends TestCase
         $this->assertSame('it-IT', data_get($run->result_json, 'response.locale'));
         $this->assertSame('insufficient', data_get($run->result_json, 'response.completeness'));
         $this->assertSame(
-            'Non trovo ‘Tizio’ nelle fonti disponibili. Puoi indicare lo spelling corretto o una fonte?',
+            'La ricerca non ha restituito dati per questa richiesta.',
             data_get($run->result_json, 'response.answer'),
         );
         $this->assertSame([], data_get($run->result_json, 'response.citations'));
         $this->assertSame([], data_get($run->result_json, 'response.tool_sources'));
-        $this->assertSame(['missing_claims'], data_get($run->result_json, 'response.limitations'));
+        $this->assertSame(['no_evidence'], data_get($run->result_json, 'response.limitations'));
         $this->assertStringContainsString('The selected region is Europe.', (string) $requests[0]['turn_context']);
         $turnContext = json_decode((string) $requests[1]['turn_context'], true, flags: JSON_THROW_ON_ERROR);
         $this->assertStringContainsString('"region":"EU"', (string) data_get($turnContext, 'mcp_app'));

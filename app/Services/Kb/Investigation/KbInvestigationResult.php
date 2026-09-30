@@ -22,6 +22,8 @@ final readonly class KbInvestigationResult
         public array $queries = [],
         public ?KbInvestigationIntent $intent = null,
         public array $factMap = ['supported_facts' => [], 'missing_facts' => []],
+        public array $researchFlows = [],
+        public array $attempts = [],
     ) {
     }
 
@@ -46,6 +48,7 @@ final readonly class KbInvestigationResult
             'missing_facts' => $this->factMap['missing_facts'] ?? [],
             'partial' => $this->stopReason !== 'sufficient_evidence',
             'language' => $this->intent?->understanding?->language,
+            'research_flows' => $this->researchFlows,
         ];
     }
 
@@ -53,12 +56,15 @@ final readonly class KbInvestigationResult
     public function trace(): array
     {
         return [
+            'status' => $this->status,
             'queries' => $this->queries,
             'stop_reason' => $this->stopReason,
             'selected_documents' => count($this->selectedSources),
             'supported_facts' => $this->factMap['supported_facts'] ?? [],
             'missing_facts' => $this->factMap['missing_facts'] ?? [],
             'language' => $this->intent?->understanding?->language,
+            'research_flows' => $this->researchFlows,
+            'attempts' => $this->attempts,
         ];
     }
 }

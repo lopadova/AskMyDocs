@@ -15,7 +15,7 @@ final class AskMyDocsChatTurnTool implements ToolContract
     public function definition(): ToolDefinition
     {
         return Tool::make('askmydocs.chat_turn')
-            ->description('Submit one user question to the canonical AskMyDocs agent pipeline. Always use this tool for substantive answers and read the returned canonical response verbatim.')
+            ->description('Submit one user request (including all its questions) to the canonical AskMyDocs agent pipeline. Always use this tool for substantive answers and read the returned canonical response verbatim. Only one request may be in progress: while it is pending, ask the user to wait instead of starting another. A busy result is a waiting notice, not permission to retry.')
             ->input([
                 'type' => 'object',
                 'properties' => [

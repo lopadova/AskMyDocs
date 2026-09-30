@@ -159,6 +159,9 @@ final class AgentEvidenceEnvelope implements JsonSerializable
                 continue;
             }
             $hash = (string) ($item['evidence_hash'] ?? hash('sha256', (string) json_encode($item)));
+            if (isset($unique[$hash]['research_flow_ids']) || isset($item['research_flow_ids'])) {
+                $item['research_flow_ids'] = array_values(array_unique([...($unique[$hash]['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? [])]));
+            }
             $unique[$hash] = $item;
         }
 

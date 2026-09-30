@@ -35,6 +35,22 @@ final readonly class AgentEventPublisher
     ): AgentRunEvent {
         $this->assertEventName($type);
 
+        // Surface progress of every independent branch in the original chat event stream.
+        $parentId = data_get($run->input_json, 'research_parent_id');
+        if ($parentId !== null) {
+            $parent = AgentRun::query()->forTenant($run->tenant_id)->find($parentId);
+            $flow = data_get($run->input_json, 'research_flow_id');
+            if ($parent !== null && data_get($parent->result_json, 'research_runs.'.$flow) === $run->id) {
+                $data = [...$data, 'research_flow_id' => $flow, 'research_run_id' => $run->run_id];
+                if (in_array($type, ['run.awaiting_confirmation', 'run.mcp_interaction_required'], true)) {
+                    $data['branch_event'] = $type;
+                    $type = 'research.limited';
+                    $messageKey = null;
+                }
+                $run = $parent;
+            }
+        }
+
         return DB::transaction(function () use (
             $run, $type, $messageKey, $messageParameters, $data, $progress, $canCancel,
         ): AgentRunEvent {
@@ -44,7 +60,9 @@ final readonly class AgentEventPublisher
                 ->whereKey($run->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $sequence = $locked->last_sequence + 1;
+            // The append log is authoritative, including runs affected by an older
+            // stale-model save. The run-row lock serializes all branch publishers.
+            $sequence = max((int) $locked->last_sequence, (int) $locked->events()->max('sequence')) + 1;
             $safeParameters = $this->masker->maskArray($messageParameters) ?? [];
             if (array_key_exists('mcp_debug', $data)) {
                 if (! $this->mcpDebug->enabled()) {
@@ -88,7 +106,10 @@ final readonly class AgentEventPublisher
             ]);
 
             $locked->forceFill(['last_sequence' => $sequence])->save();
-            $run->setAttribute('last_sequence', $sequence);
+            // This value has ALREADY been saved by $locked. Leaving it dirty on
+            // the caller would overwrite newer events when the caller next saves
+            // a retrieval checkpoint after the parallel observers have advanced it.
+            $run->setAttribute('last_sequence', $sequence)->syncOriginalAttribute('last_sequence');
 
             return $event;
         }, 3);

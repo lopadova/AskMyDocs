@@ -47,11 +47,11 @@ final class AgentResultProjector
                 'refusal_reason' => $answer->completeness === 'insufficient' ? 'insufficient_data' : null,
                 'metadata' => [
                     'agent_run_id' => $run->run_id,
-                    'provider' => 'agent',
-                    'model' => 'planner+synthesizer',
+                    'provider' => ($answer->grounding['status'] ?? '') === 'provenance' ? 'server' : 'agent',
+                    'model' => ($answer->grounding['status'] ?? '') === 'provenance' ? 'answer-provenance' : 'planner+synthesizer',
                     'citations' => $answer->citations,
                     'tool_sources' => $answer->toolSources,
-                    'tool_calls_count' => count($answer->toolSources),
+                    'tool_calls_count' => ($answer->grounding['status'] ?? '') === 'provenance' ? 0 : count($answer->toolSources),
                     // "Livello di approfondimento" visibility: how many KB
                     // searches and MCP/API calls this run actually attempted
                     // over its WHOLE lifetime — not just the ones that ended
@@ -62,7 +62,7 @@ final class AgentResultProjector
                         'id' => (string) ($source['execution_id'] ?? ''),
                         'name' => (string) ($source['tool'] ?? ''),
                         'status' => 'ok',
-                    ], $answer->toolSources),
+                    ], ($answer->grounding['status'] ?? '') === 'provenance' ? [] : $answer->toolSources),
                     'completeness' => $answer->completeness,
                     'limitations' => $answer->limitations,
                     'locale' => $answer->locale,
@@ -91,16 +91,24 @@ final class AgentResultProjector
      */
     private function searchStats(AgentRun $run): array
     {
-        $attempted = $run->toolExecutions()
+        if (data_get($run->result_json, 'stop_reason') === 'answer_provenance') {
+            return ['kb_searches' => 0, 'tool_calls' => 0];
+        }
+        $children = AgentRun::query()->forTenant($run->tenant_id)
+            ->whereIn('id', data_get($run->result_json, 'research_runs', []))->get()
+            ->filter(fn ($child) => data_get($child->input_json, 'research_parent_id') === $run->id)->pluck('id')->all();
+        $attempted = \App\Models\AgentToolExecution::query()->whereIn('agent_run_id', [$run->id, ...$children])
             ->whereIn('status', ['completed', 'failed'])
             ->get(['tool_kind']);
+
+        $kbSearches = collect(data_get($run->result_json, 'research_kb_flows', []))->sum(fn ($flow) => count($flow['queries'] ?? []));
 
         return [
             // 'catalog' (list_knowledge_documents) counts as a document
             // search too — it's a lookup ABOUT the KB, same as 'knowledge',
             // just by title instead of by content. Omitting it here would
             // make a catalog-tool call invisible in the badge.
-            'kb_searches' => 1 + $attempted->whereIn('tool_kind', ['knowledge', 'catalog'])->count(),
+            'kb_searches' => max(1, $kbSearches) + $attempted->whereIn('tool_kind', ['knowledge', 'catalog'])->count(),
             'tool_calls' => $attempted->whereIn('tool_kind', ['mcp', 'api'])->count(),
         ];
     }

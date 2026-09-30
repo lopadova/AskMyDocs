@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
     'queue' => env('AGENT_QUEUE', 'agent'),
+    // Must remain below the queue connection's retry_after. See the reasoning runbook.
+    'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),
     'planner' => [
         'mode' => env('AGENT_PLANNER_MODE', 'classic'),
         'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 8),
@@ -15,6 +17,14 @@ return [
         // configurable only as an emergency rollback; production defaults to
         // fail closed for every agent surface.
         'enabled' => (bool) env('AGENT_CLAIM_GROUNDING_ENABLED', true),
+        // Batch Jev validation is the default on every agent surface. Disable
+        // this switch to roll back to the previous literal-quote gate.
+        'batch' => ['enabled' => (bool) env('AGENT_BATCH_SEMANTIC_GROUNDING_ENABLED', true)],
+        'semantic' => [
+            'enabled' => (bool) env('AGENT_SEMANTIC_GROUNDING_ENABLED', false),
+            // No universal default: calibrate this on labeled agent turns before enabling.
+            'threshold' => env('AGENT_SEMANTIC_GROUNDING_THRESHOLD', 0.8),
+        ],
     ],
     'events' => [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),

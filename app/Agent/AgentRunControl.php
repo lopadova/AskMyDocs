@@ -136,6 +136,13 @@ final readonly class AgentRunControl
 
     public function ensureActive(AgentRun $run): void
     {
+        $parentId = data_get($run->input_json, 'research_parent_id');
+        if ($parentId !== null) {
+            $parent = AgentRun::query()->forTenant($run->tenant_id)->find($parentId);
+            if ($parent === null || $parent->isTerminal()) {
+                throw new AgentRunCancelledException($run->run_id);
+            }
+        }
         $status = AgentRun::query()
             ->forTenant($run->tenant_id)
             ->whereKey($run->id)

@@ -24,7 +24,7 @@ use Throwable;
  * later query is validated LLM output and is executed through the existing
  * tenant/project/ACL-aware retrieval service. Source text is untrusted data:
  * it cannot cause a tool call because this service owns no connector or MCP
- * dependency and only ever calls ChatRetrievalService.
+ * dependency. Literal identifier lookup only adds local, untrusted candidates.
  */
 class KbInvestigationService
 {
@@ -48,7 +48,36 @@ class KbInvestigationService
         ?string $conversationContext = null,
         array $previousCitations = [],
         ?User $actor = null,
+        ?\Illuminate\Database\Eloquent\Model $memoryOwner = null,
+        ?\Illuminate\Database\Eloquent\Model $turnRecord = null,
+        ?QuestionUnderstanding $preparedUnderstanding = null,
+        ?\Closure $onResearchProgress = null,
     ): KbInvestigationResult {
+        $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+        $prepared = $preparedUnderstanding;
+        $profile = (bool) config('kb.investigation.enabled', true) ? $this->profileFor($projectKey, $filters) : null;
+        if ($prepared === null && $memory->enabled() && $memoryOwner !== null && $turnRecord !== null && $memoryOwner->project_key === $projectKey) {
+            $prepared = $memory->prepare($memoryOwner, $turnRecord, $question, $profile === null ? null : [
+                'context' => $profile->company_context, 'glossary' => $profile->glossary ?? [],
+                'relevant_entities' => $profile->relevant_entities ?? [], 'expected_facts' => $profile->expected_facts ?? [],
+                'preferred_source_types' => $profile->preferred_source_types ?? [],
+            ], $actor, $filters);
+            if (! $prepared->asksForProvenance()) {
+                $previousCitations = array_merge($previousCitations, $memory->citations($memoryOwner, $actor, $filters));
+            }
+            if ($prepared->needsClarification) {
+                return $this->empty('clarify', 'focus_ambiguous', intent: new KbInvestigationIntent(
+                    $prepared->intent, $prepared->targetIdentifiers(), [], [], [], $prepared->kbQueries, $prepared,
+                ));
+            }
+        }
+        if ($prepared?->asksForProvenance()) {
+            // Attribution audits the preceding answer; no profile or vector search is
+            // needed. This also covers a resumed turn's already prepared interpretation.
+            return $this->empty('provenance', 'answer_provenance', intent: new KbInvestigationIntent(
+                $prepared->intent, $prepared->targetIdentifiers(), [], [], [], [], $prepared,
+            ));
+        }
         // A deployment-level rollback switch for incident recovery. It is ON by
         // default and never exposed to users; when intentionally disabled it
         // preserves the pre-feature retrieval path while the operator repairs
@@ -57,22 +86,35 @@ class KbInvestigationService
             return new KbInvestigationResult(
                 'ready',
                 'recursive_retrieval_disabled',
-                $this->retrieval->retrieve($question, $projectKey, $filters),
+                $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey, $filters),
+                intent: $prepared === null ? null : new KbInvestigationIntent($prepared->intent, $prepared->targetIdentifiers(), [], [], [], $prepared->kbQueries, $prepared),
             );
         }
-        $profile = $this->profileFor($projectKey, $filters);
         if ($profile === null) {
             return $this->empty('profile_required', 'retrieval_profile_required');
         }
 
         $depth = min(5, max(1, $depth));
-        $understanding = $this->preprocessor->interpret($question, $conversationContext, [
+        $understanding = $prepared ?? $this->preprocessor->interpret($question, $conversationContext, [
             'context' => $profile->company_context,
             'glossary' => $profile->glossary ?? [],
             'relevant_entities' => $profile->relevant_entities ?? [],
             'expected_facts' => $profile->expected_facts ?? [],
             'preferred_source_types' => $profile->preferred_source_types ?? [],
-        ]);
+        ], $memory->enabled() ? [] : null);
+        if ($understanding->needsClarification) {
+            return $this->empty('clarify', 'focus_ambiguous', intent: new KbInvestigationIntent(
+                $understanding->intent, $understanding->targetIdentifiers(), [], [], [], $understanding->kbQueries, $understanding,
+            ));
+        }
+        if (config('reasoning.parallel_research') && $understanding->available && count($understanding->subquestions) > 1) {
+            $tasks = [];
+            foreach ($understanding->subquestions as $index => $sub) {
+                $tasks[] = ['id' => $index, 'question' => $understanding->forSubquestion($index)->intent];
+            }
+            $onResearchProgress?->__invoke('research.planned', ['tasks' => $tasks]);
+            return $this->investigateBranches($understanding, $projectKey, $filters, $depth, $previousCitations, $actor, $onResearchProgress);
+        }
         $intent = new KbInvestigationIntent(
             $understanding->intent,
             $understanding->mentionTexts(),
@@ -90,7 +132,9 @@ class KbInvestigationService
         $supportedFacts = [];
         $missingFacts = [];
         $stopReason = 'depth_limit_reached';
-        $nextQuery = $intent->queries[0];
+        $pendingQueries = $intent->queries;
+        $nextQuery = $this->nextUnseenQuery($pendingQueries, $seenQueries);
+        $attempts = [];
 
         for ($round = 0; $round < $depth && $nextQuery !== null; $round++) {
             $normalized = $this->normalizeQuery($nextQuery);
@@ -100,6 +144,20 @@ class KbInvestigationService
             }
             $seenQueries[$normalized] = true;
             $queries[] = $nextQuery;
+            $attempt = ['query' => $nextQuery, 'primary_candidates' => 0, 'exact_candidates' => 0,
+                'readable_sources' => 0, 'selected_document_ids' => [], 'outcome' => null];
+            $exact = collect();
+            if ($round === 0 && ! $anchoredToPreviousCitations && $understanding->available) {
+                try {
+                    $literalIds = array_column(array_filter($understanding->mentions,
+                        fn ($mention) => is_array($mention) && ($mention['type'] ?? '') === 'identifier'), 'text');
+                    $exact = app(\App\Services\Kb\KbSearchService::class)->exactIdentifierCandidates(
+                        array_merge($understanding->targetIdentifiers(), $literalIds), $projectKey, $filters);
+                    $attempt['exact_candidates'] = $exact->count();
+                } catch (Throwable) {
+                    $attempt['exact_lookup_error'] = true;
+                }
+            }
 
             try {
                 // Only primary candidates can be selected. Related graph and
@@ -108,27 +166,39 @@ class KbInvestigationService
                 $search = $round === 0 && $anchoredToPreviousCitations
                     ? new SearchResult(collect(), collect(), collect())
                     : $this->retrieval->retrieve($nextQuery, $projectKey, $filters);
+                $attempt['primary_candidates'] = $search->primary->count();
             } catch (Throwable) {
-                $stopReason = 'retrieval_error';
-                break;
+                $attempt['semantic_lookup_error'] = true;
+                if ($exact->isEmpty()) {
+                    $stopReason = 'retrieval_error';
+                    $attempts[] = [...$attempt, 'outcome' => 'retrieval_error'];
+                    break;
+                }
+                $search = new SearchResult(collect(), collect(), collect());
             }
 
-            $sources = $this->readCandidates($search->primary);
+            $sources = $this->readCandidates($exact->concat($search->primary)->unique('chunk_id'), $projectKey, $actor, $filters);
             // Re-read cited sources in the current tenant/project/ACL, never
             // trust the previous assistant answer as evidence.
             if ($round === 0 && $anchoredToPreviousCitations) {
                 $sources += $selected;
             }
+            $attempt['readable_sources'] = count($sources);
             if ($sources === []) {
                 $stopReason = 'no_new_evidence';
-                break;
+                $attempts[] = [...$attempt, 'outcome' => 'no_readable_sources'];
+                $nextQuery = $this->nextUnseenQuery($pendingQueries, $seenQueries);
+                continue;
             }
 
             $assessment = $this->assess($intent, $sources);
             if ($assessment === null) {
                 $stopReason = 'assessment_failed';
+                $attempts[] = [...$attempt, 'outcome' => 'assessment_failed'];
                 break;
             }
+            $attempts[] = [...$attempt, 'outcome' => $assessment['selected_ids'] === [] ? 'no_relevant_sources' : 'sources_selected',
+                'selected_document_ids' => $assessment['selected_ids']];
 
             $selectedThisRound = 0;
             foreach ($assessment['selected_ids'] as $documentId) {
@@ -151,7 +221,7 @@ class KbInvestigationService
                 $stopReason = 'sufficient_evidence';
                 break;
             }
-            if ($round === 0 && $anchoredToPreviousCitations) {
+            if ($round === 0 && $anchoredToPreviousCitations && ($understanding->asksToReadSource() || $understanding->transition === 'recap')) {
                 // An elliptical follow-up is about the cited sources, not a
                 // fresh global search for another customer/reclamo. If those
                 // sources do not answer it, keep the gap explicit.
@@ -161,17 +231,19 @@ class KbInvestigationService
             $candidateNext = $assessment['next_query'];
             if ($candidateNext === null) {
                 $stopReason = $selected === [] ? 'no_relevant_evidence' : 'partial_evidence';
-                break;
+                $nextQuery = $this->nextUnseenQuery($pendingQueries, $seenQueries);
+                continue;
             }
-            if ($selectedThisRound === 0 && isset($seenQueries[$this->normalizeQuery($candidateNext) ?? ''])) {
-                $stopReason = 'no_new_evidence';
-                break;
+            if (isset($seenQueries[$this->normalizeQuery($candidateNext) ?? ''])) {
+                $stopReason = $selectedThisRound === 0 ? 'no_new_evidence' : 'duplicate_query';
+                $nextQuery = $this->nextUnseenQuery($pendingQueries, $seenQueries);
+                continue;
             }
             $nextQuery = $candidateNext;
         }
 
         if ($selected === []) {
-            return $this->empty('no_evidence', $stopReason, $queries, $intent, $this->factMap($supportedFacts, $missingFacts));
+            return $this->empty('no_evidence', $stopReason, $queries, $intent, $this->factMap($supportedFacts, $missingFacts), $attempts);
         }
 
         $chunks = collect(array_values($selected))
@@ -188,12 +260,14 @@ class KbInvestigationService
                     'supported_facts' => array_values($supportedFacts),
                     'missing_facts' => array_values($missingFacts),
                     'language' => $understanding->language,
+                    'attempts' => $attempts,
                 ],
             ], collect()),
             selectedSources: array_values($selected),
             queries: $queries,
             intent: $intent,
             factMap: $this->factMap($supportedFacts, $missingFacts),
+            attempts: $attempts,
         );
     }
 
@@ -261,7 +335,7 @@ PROMPT;
     }
 
     /** @param Collection<int, mixed> $candidates @return array<int, array<string,mixed>> */
-    private function readCandidates(Collection $candidates): array
+    private function readCandidates(Collection $candidates, ?string $projectKey = null, ?User $actor = null, ?RetrievalFilters $filters = null): array
     {
         $sources = [];
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
@@ -273,7 +347,7 @@ PROMPT;
             if ($documentId < 1 || isset($sources[$documentId])) {
                 continue;
             }
-            $source = $this->sourceReader->readCandidate($candidate);
+            $source = $this->sourceReader->readCandidate($candidate, $projectKey, $actor, $filters);
             if ($source !== null) {
                 $sources[$documentId] = $source;
             }
@@ -289,7 +363,10 @@ PROMPT;
     private function citedSources(array $citations, QuestionUnderstanding $understanding, ?string $projectKey, ?RetrievalFilters $filters, ?User $actor): array
     {
         $sources = [];
-        $mentions = $understanding->mentionTexts();
+        $mentions = $understanding->targetIdentifiers() ?: $understanding->mentionTexts();
+        if ($mentions === [] && config('reasoning.enabled') && $understanding->transition !== 'recap') {
+            return []; // A follow-up is not permission to import every prior source.
+        }
         if ($projectKey === null) {
             return [];
         }
@@ -305,8 +382,8 @@ PROMPT;
             if ($chunkId < 1) {
                 continue;
             }
-            $source = $this->sourceReader->readCandidate(['document' => ['id' => $id], 'chunk_id' => $chunkId], $projectKey, $actor);
-            if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => mb_stripos($source['excerpt'], $term) !== false))) {
+            $source = $this->sourceReader->readCandidate(['document' => ['id' => $id], 'chunk_id' => $chunkId], $projectKey, $actor, $filters);
+            if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => \App\Services\Chat\Reasoning\EvidenceProjector::contains($source['excerpt'], $term)))) {
                 continue;
             }
             $sources[$id] = $source;
@@ -339,9 +416,9 @@ PROMPT;
     }
 
     /** @param array{supported_facts:list<string>,missing_facts:list<string>} $factMap */
-    private function empty(string $status, string $reason, array $queries = [], ?KbInvestigationIntent $intent = null, array $factMap = ['supported_facts' => [], 'missing_facts' => []]): KbInvestigationResult
+    private function empty(string $status, string $reason, array $queries = [], ?KbInvestigationIntent $intent = null, array $factMap = ['supported_facts' => [], 'missing_facts' => []], array $attempts = []): KbInvestigationResult
     {
-        $result = new KbInvestigationResult($status, $reason, new SearchResult(collect(), collect(), collect()), [], $queries, $intent, $factMap);
+        $result = new KbInvestigationResult($status, $reason, new SearchResult(collect(), collect(), collect()), [], $queries, $intent, $factMap, attempts: $attempts);
 
         return new KbInvestigationResult(
             $status,
@@ -351,6 +428,7 @@ PROMPT;
             $queries,
             $intent,
             $factMap,
+            attempts: $attempts,
         );
     }
 
@@ -413,5 +491,91 @@ PROMPT;
         $query = $this->boundedString($query, self::MAX_QUERY_LENGTH);
 
         return $query === null ? null : mb_strtolower(preg_replace('/\s+/u', ' ', $query) ?? $query);
+    }
+
+    /** Consume bounded, already interpreted alternatives; never repeat an exhausted query. */
+    private function nextUnseenQuery(array &$pending, array $seen): ?string
+    {
+        while ($pending !== []) {
+            $query = array_shift($pending);
+            $normalized = $this->normalizeQuery($query);
+            if ($normalized !== null && ! isset($seen[$normalized])) {
+                return $query;
+            }
+        }
+        return null;
+    }
+
+    private function investigateBranches(QuestionUnderstanding $understanding, ?string $projectKey, ?RetrievalFilters $filters,
+        int $depth, array $citations, ?User $actor, ?\Closure $onResearchProgress = null): KbInvestigationResult
+    {
+        $tasks = [];
+        foreach ($understanding->subquestions as $index => $sub) {
+            $payload = ['tenant' => $this->tenant->current(), 'project' => $projectKey, 'filters' => $filters,
+                'actor_id' => $actor?->id, 'depth' => $depth, 'citations' => $citations,
+                'understanding' => $understanding->forSubquestion($index)->toArray()];
+            $tasks[$index] = static function () use ($payload, $index, $onResearchProgress) {
+                $onResearchProgress?->__invoke('research.task', ['research_flow_id' => $index, 'task_status' => 'documents']);
+                $result = app(self::class)->runBranch($payload);
+                $onResearchProgress?->__invoke('research.task', ['research_flow_id' => $index, 'task_status' => 'awaiting_tools']);
+                return $result;
+            };
+        }
+        $branches = app(\App\Services\Chat\Reasoning\ResearchFanout::class)->run($tasks);
+        $chunks = collect();
+        $sources = $queries = $flows = $supported = $missing = [];
+        foreach ($branches as $index => $result) {
+            if ($result instanceof \App\Services\Chat\Reasoning\ResearchFailure) {
+                $result = $this->empty('no_evidence', $result->reason);
+                $onResearchProgress?->__invoke('research.task', ['research_flow_id' => $index, 'task_status' => 'awaiting_tools']);
+            }
+            foreach ($result->search->primary as $chunk) {
+                $chunk['research_flow_id'] = $index;
+                $chunks->push($chunk);
+            }
+            $sources = [...$sources, ...$result->selectedSources];
+            $queries = [...$queries, ...$result->queries];
+            $supported = [...$supported, ...($result->factMap['supported_facts'] ?? [])];
+            $missing = [...$missing, ...($result->factMap['missing_facts'] ?? [])];
+            $flows[] = ['id' => $index, 'question' => $understanding->forSubquestion($index)->intent,
+                'status' => $result->status, ...$result->trace()];
+        }
+        $complete = ! array_filter($flows, fn ($flow) => $flow['stop_reason'] !== 'sufficient_evidence');
+        return new KbInvestigationResult($chunks->isEmpty() ? 'no_evidence' : 'ready',
+            $complete ? 'sufficient_evidence' : 'partial_evidence',
+            new SearchResult($chunks, collect(), collect(), ['investigation' => ['research_flows' => $flows]]),
+            $sources, $queries, new KbInvestigationIntent($understanding->intent, $understanding->targetIdentifiers(), [], [], [], $understanding->kbQueries, $understanding),
+            ['supported_facts' => $supported, 'missing_facts' => $missing], $flows);
+    }
+
+    /** Process boundary restores scope and principal; no additional preprocessing or memory write. */
+    public function runBranch(array $payload): KbInvestigationResult
+    {
+        $tenant = $this->tenant->current();
+        $previousUser = auth()->user();
+        try {
+            $this->tenant->set($payload['tenant']);
+            // Users are cross-tenant identities; access comes from current-tenant
+            // memberships and document ACLs, not a nonexistent users.tenant_id.
+            $actor = $payload['actor_id'] === null ? null : User::query()->where('is_active', true)->findOrFail($payload['actor_id']);
+            auth()->forgetUser();
+            if ($actor !== null) {
+                auth()->setUser($actor);
+                if ($payload['project'] !== null && ! array_intersect([User::PROJECT_WILDCARD, $payload['project']], $actor->allowedProjects())) {
+                    throw new \DomainException('research_project_access_revoked');
+                }
+            }
+            $understanding = QuestionUnderstanding::fromArray($payload['understanding']);
+            return $this->investigate($understanding->intent, $payload['project'], $payload['filters'], $payload['depth'],
+                previousCitations: $payload['citations'], actor: $actor, preparedUnderstanding: $understanding);
+        } catch (Throwable) {
+            return $this->empty('no_evidence', 'research_branch_failed');
+        } finally {
+            $this->tenant->set($tenant);
+            auth()->forgetUser();
+            if ($previousUser !== null) {
+                auth()->setUser($previousUser);
+            }
+        }
     }
 }

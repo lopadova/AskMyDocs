@@ -19,7 +19,145 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
-    public function test_accepting_the_offer_reads_the_previously_cited_email(): void
+    public function test_empty_search_is_not_misreported_as_provider_outage_or_proof_of_absence(): void
+    {
+        foreach (['no_new_evidence', 'no_relevant_evidence', 'duplicate_call_avoided', 'timeout', 'retrieval_error', 'assessment_failed'] as $warning) {
+            $evidence = app(AgentEvidenceFactory::class)->empty();
+            $evidence->addWarning($warning, 'test_retrieval');
+            $ai = Mockery::mock(AiManager::class);
+            $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer', 'arguments' => [
+                    'completeness' => 'complete', 'claims' => [[
+                        'text' => 'Non ci sono email.', 'quote' => 'Non ci sono email.',
+                        'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => 'no_new_evidence',
+                    ]], 'limitations' => [], 'requires_selection' => false, 'render_table' => false,
+                ],
+            ]]));
+            $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class),
+                app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+
+            $answer = $synthesizer->synthesize('Ci sono email su quella spedizione?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+
+            $technical = in_array($warning, ['timeout', 'retrieval_error', 'assessment_failed'], true);
+            $this->assertSame($technical ? 'retrieval_unavailable' : 'no_evidence', $answer->grounding['reason'], $warning);
+            $this->assertStringNotContainsString('Non ci sono email.', $answer->answer);
+            $this->assertStringContainsString($technical ? 'Non posso completare la verifica' : 'Questo non dimostra che i dati non esistano.', $answer->answer);
+        }
+    }
+
+    public function test_normal_and_independent_drafts_receive_the_formatting_rules(): void
+    {
+        $prompts = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system) use (&$prompts) {
+            $prompts[] = $system;
+
+            return new AiResponse('', 'fake', 'formatting-test');
+        });
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        $draft = new \ReflectionMethod($synthesizer, 'draft');
+        $outcome = new AgentLoopOutcome('answer', app(AgentEvidenceFactory::class)->empty(), []);
+        $draft->invoke($synthesizer, 'Hub e spedizione', $this->context(), $outcome, null);
+        $draft->invoke($synthesizer, 'Spedizione', $this->context(), $outcome, null, null, 3);
+
+        foreach ($prompts as $prompt) {
+            $this->assertStringContainsString('one clearly separated section per topic', $prompt);
+            $this->assertStringContainsString("Never repeat, quote or rephrase the user's questions as headings", $prompt);
+            $this->assertStringContainsString('Headings are neutral noun phrases', $prompt);
+            $this->assertStringContainsString('A rules section starts with actual rules', $prompt);
+            $this->assertStringContainsString('group related aspects into short paragraphs', $prompt);
+            $this->assertStringContainsString('Never repeat the section heading for each claim', $prompt);
+            $this->assertStringContainsString('Add a blank line before and after every list, heading, table and code block', $prompt);
+            $this->assertStringContainsString('State missing or unverified details only in the relevant section', $prompt);
+            $this->assertStringContainsString('Keep claims atomic and source-bound', $prompt);
+            $this->assertStringContainsString('Respect the render_table handoff instructions', $prompt);
+        }
+        $this->assertStringNotContainsString('## Independent research task', $prompts[0]);
+        $this->assertStringContainsString('Submit at most 3 atomic source-bound claims', $prompts[1]);
+        $this->assertStringContainsString('Provide section_title as a short, neutral topic label', $prompts[1]);
+        $this->assertStringContainsString('Write only the section body: do not emit a # or ## heading', $prompts[1]);
+        $this->assertStringContainsString('never mix source records in one claim', $prompts[1]);
+        $this->assertStringContainsString('set render_table=false', $prompts[1]);
+        $repair = (new \ReflectionMethod($synthesizer, 'repairSystemPrompt'))->invoke($synthesizer, $this->context());
+        $this->assertStringContainsString('Preserve the original topic grouping, headings, short paragraphs, lists and tables', $repair);
+    }
+
+    public function test_multi_question_composition_preserves_paragraphs_lists_and_tables_under_their_own_heading(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithHistory');
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        $hub = "L'hub **HUB-X** gestisce le merci pericolose.";
+        $rules = "Per l'accettazione sono richiesti:\n\n- Scheda di sicurezza.\n- Etichettatura UN.";
+        $table = "| Spedizione | Stato |\n| --- | --- |\n| SHIP-Y | scheduled_for_dispatch |";
+        $grounding = ['claims' => [
+            ['subquestion_id' => 1, 'text' => $table],
+            ['subquestion_id' => 0, 'text' => $hub],
+            ['subquestion_id' => 0, 'text' => $rules],
+        ]];
+        $answer = (new \ReflectionMethod($synthesizer, 'composeResearch'))->invoke($synthesizer,
+            ['subquestions' => [
+                ['question' => "Mi dici cos'è HUB-X?", 'identifiers' => ['HUB-X']],
+                ['question' => 'Qual è lo stato di SHIP-Y?', 'identifiers' => ['SHIP-Y']],
+                ['question' => 'E ORDER-Z?', 'identifiers' => ['ORDER-Z']],
+            ]], $grounding, ['research_drafts' => [
+                ['section_title' => 'Hub HUB-X'], ['section_title' => 'Spedizione SHIP-Y'], ['status' => 'draft_failed'],
+            ]], 'it');
+
+        $this->assertSame("## Hub HUB-X\n\n{$hub}\n\n{$rules}\n\n## Spedizione SHIP-Y\n\n{$table}"
+            ."\n\n## Dettagli — ORDER-Z\n\nNon è stato possibile completare questa parte della risposta.", $answer);
+    }
+
+    public function test_research_titles_reject_question_echoes_and_markup_with_localized_checkpoint_fallback(): void
+    {
+        $synthesizer = app(AgentAnswerSynthesizer::class);
+        $title = new \ReflectionMethod($synthesizer, 'researchTitle');
+        $sub = ['question' => 'Quali regole si applicano a HUB-X?', 'identifiers' => ['HUB-X'], 'aspect' => 'rules'];
+        foreach ([null, '', str_repeat('x', 101), 'Quali regole si applicano a HUB-X?', 'Quali regole si applicano a HUB-X',
+            "Regole\n## Altri fatti", '<script>alert(1)</script>', '[Regole](https://example.test)', 'Regole?', ['invalid']] as $proposed) {
+            $this->assertSame('Regole operative — HUB-X', $title->invoke($synthesizer, $sub, $proposed, 'it'));
+        }
+        $this->assertSame('Operating rules — HUB-X', $title->invoke($synthesizer, $sub, null, 'en'));
+        $this->assertSame('Regole di accettazione', $title->invoke($synthesizer, $sub, 'Regole di accettazione', 'it'));
+        $this->assertSame('Résumé de livraison', $title->invoke($synthesizer, $sub, 'Résumé de livraison', 'fr'));
+        $this->assertSame('Scheda SHIP\\_X', $title->invoke($synthesizer, $sub, 'Scheda SHIP_X', 'it'));
+        $schema = (new \ReflectionMethod($synthesizer, 'submissionTool'))->invoke($synthesizer)['function']['parameters'];
+        $this->assertSame(100, $schema['properties']['section_title']['maxLength']);
+        $this->assertNotContains('section_title', $schema['required']); // Older provider outputs/checkpoints remain usable.
+    }
+
+    public function test_chat_39_style_uses_topic_titles_and_never_promotes_a_rejected_branch_title(): void
+    {
+        $subs = [
+            ['question' => 'Dammi informazioni su HUB-X', 'identifiers' => ['HUB-X'], 'aspect' => 'details'],
+            ['question' => 'Qual è lo stato di SHIP-Y?', 'identifiers' => ['SHIP-Y'], 'aspect' => 'status'],
+            ['question' => 'Di chi è SHIP-Y?', 'identifiers' => ['SHIP-Y'], 'aspect' => 'identity'],
+            ['question' => 'Ci sono regole particolari per HUB-X?', 'identifiers' => ['HUB-X'], 'aspect' => 'rules'],
+        ];
+        $claims = [
+            ['subquestion_id' => 0, 'text' => 'HUB-X dispone di area compartimentata.'],
+            ['subquestion_id' => 1, 'text' => 'La spedizione è in stato `scheduled_for_dispatch`.'],
+            ['subquestion_id' => 2, 'text' => 'Cliente associato: **CUSTOMER-A**.'],
+        ];
+        $drafts = array_map(fn ($label) => ['section_title' => $label], ['Hub HUB-X', 'Stato della spedizione', 'Cliente associato', 'Tutte le merci sono ammesse']);
+        $answer = (new \ReflectionMethod(AgentAnswerSynthesizer::class, 'composeResearch'))->invoke(app(AgentAnswerSynthesizer::class),
+            ['subquestions' => $subs], ['claims' => $claims], ['research_drafts' => $drafts], 'it');
+        foreach ($subs as $sub) {
+            $this->assertStringNotContainsString($sub['question'], $answer);
+        }
+        foreach ($claims as $claim) {
+            $this->assertStringContainsString($claim['text'], $answer);
+        }
+        $this->assertStringContainsString("## Stato della spedizione\n\n", $answer);
+        $this->assertStringContainsString("## Cliente associato\n\n", $answer);
+        $this->assertStringContainsString("## Regole operative — HUB-X\n\nHo trovato dati", $answer);
+        $this->assertStringNotContainsString('Tutte le merci sono ammesse', $answer);
+        $this->assertSame(4, substr_count($answer, '## '));
+    }
+
+    public function test_model_resolved_acceptance_reads_the_previously_cited_email(): void
     {
         $content = "Oggetto: Reclamo SPD-51230\nLa consegna è avvenuta a Messina anziché a Catania.";
         $evidence = app(AgentEvidenceFactory::class)->empty();
@@ -31,8 +169,8 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $ai->shouldNotReceive('chatWithHistory');
         $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
             ->synthesize('ok', $this->context(), new AgentLoopOutcome('answer', $evidence, []),
-                json_encode(['previous_runs' => [['answer' => 'Vuoi leggere la fonte completa o chiedere un dettaglio preciso?']]], JSON_THROW_ON_ERROR),
-                ['available' => true, 'language' => 'it', 'intent' => 'Conferma', 'mentions' => []]);
+                json_encode(['previous_runs' => [['answer' => 'Vuoi leggere la fonte completa?']]], JSON_THROW_ON_ERROR),
+                ['available' => true, 'language' => 'it', 'intent' => 'Conferma', 'action' => 'read_source', 'mentions' => []]);
 
         $this->assertStringContainsString($content, $answer->answer);
         $this->assertSame([252], array_column($answer->citations, 'document_id'));
@@ -138,13 +276,42 @@ final class AgentAnswerSynthesizerTest extends TestCase
 
         $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
             ->synthesize('Quella di Messina me la fai leggere?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null, [
-                'available' => true, 'language' => 'it', 'intent' => 'Richiesta di lettura del reclamo', 'mentions' => ['Messina'],
+                'available' => true, 'language' => 'it', 'intent' => 'Richiesta di lettura del reclamo', 'action' => 'read_source', 'mentions' => ['Messina'],
             ]);
 
         $this->assertSame('complete', $answer->completeness);
         $this->assertStringContainsString($content, $answer->answer);
         $this->assertSame(252, $answer->citations[0]['document_id']);
         $this->assertSame('deterministic_source_read', $answer->grounding['model']);
+    }
+
+    public function test_direct_read_uses_only_the_typed_action_and_keeps_evidence_guards(): void
+    {
+        $content = 'Oggetto: conferma TRACK-55. Consegna domani.';
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument(['document_id' => 252, 'title' => 'Conferma', 'origin' => 'primary',
+            'evidence' => [['content' => $content, 'evidence_hash' => 'hash']]]);
+        $synthesizer = app(AgentAnswerSynthesizer::class);
+        $read = new \ReflectionMethod($synthesizer, 'readSingleSource');
+        foreach (["Fammi vedere l'email di conferma", 'Aprila', 'Montre-la', '見せて'] as $question) {
+            $answer = $read->invoke($synthesizer, $question, $this->context(), $evidence->jsonSerialize(), [],
+                ['available' => true, 'intent' => 'Testo originale', 'action' => 'read_source']);
+            $this->assertStringContainsString($content, $answer->answer);
+            $this->assertSame(252, $answer->citations[0]['document_id']);
+        }
+        foreach ([['action' => 'research'], [], ['action' => 'read_source', 'available' => false],
+            ['action' => 'read_source', 'needs_clarification' => true],
+            ['action' => 'read_source', 'subquestions' => [[], []]]] as $state) {
+            $this->assertNull($read->invoke($synthesizer, 'read show leggere lettura', $this->context(), $evidence->jsonSerialize(), [],
+                $state + ['available' => true, 'intent' => 'Read full source']));
+        }
+        // A model action cannot make a missing source or an unattested target valid.
+        $understanding = ['available' => true, 'intent' => 'Testo originale', 'action' => 'read_source'];
+        $this->assertNull($read->invoke($synthesizer, 'Aprila', $this->context(), ['documents' => []], [], $understanding));
+        $this->assertNull($read->invoke($synthesizer, 'TRACK-OTHER', $this->context(), $evidence->jsonSerialize(), ['TRACK-OTHER'], $understanding));
+        $two = $evidence->jsonSerialize();
+        $two['documents'][] = $two['documents'][0];
+        $this->assertNull($read->invoke($synthesizer, 'Aprila', $this->context(), $two, [], $understanding));
     }
 
     public function test_it_returns_a_cautious_uncited_answer_for_an_unattested_entity(): void
@@ -518,6 +685,68 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertSame('complete', $answer->completeness);
         $this->assertSame('La rete operativa si articola su **tre hub regionali**.', $answer->answer);
         $this->assertSame('repaired', $answer->grounding['repair']['status']);
+    }
+
+    public function test_it_preserves_verified_mcp_claims_when_an_email_quote_remains_invalid(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->import([
+            'documents' => [[
+                'document_id' => 121, 'title' => 'Conferma ordine', 'origin' => 'primary',
+                'evidence' => [[
+                    'evidence_hash' => 'email-hash',
+                    'content' => "L'ordine PO-5582 partirà in serata.\nLe confermo il tracking RL-TRACK-9355. Consegna domani entro le 13:00.",
+                ]],
+            ]],
+            'api_tools' => [
+                ['execution_id' => 45, 'tool' => 'search_orders', 'kind' => 'mcp', 'evidence_hash' => 'order-hash',
+                    'result' => ['records' => [[
+                        'id' => 'PO-5582', 'status' => 'accepted_for_dispatch', 'customerId' => 'RO-LONGO',
+                        'emailEvidence' => [['subject' => 'Conferma ordine']],
+                    ]]]],
+                ['execution_id' => 46, 'tool' => 'search_shipments', 'kind' => 'mcp', 'evidence_hash' => 'shipment-hash',
+                    'result' => ['records' => [[
+                        'id' => 'RL-2024-1120', 'orderId' => 'PO-5582', 'trackingCode' => 'RL-TRACK-9355',
+                        'status' => 'scheduled_for_dispatch', 'emailEvidence' => [['subject' => 'Conferma ordine']],
+                    ]]]],
+            ],
+        ]);
+        $claims = [
+            ['text' => 'L’ordine PO-5582 è accettato per la spedizione.',
+                'quote' => '{"id":"PO-5582","status":"accepted_for_dispatch","customerId":"RO-LONGO"}',
+                'document_id' => null, 'tool_execution_id' => 45, 'evidence_hash' => 'order-hash'],
+            ['text' => 'La spedizione RL-2024-1120 ha tracking RL-TRACK-9355.',
+                'quote' => '{"id":"RL-2024-1120","orderId":"PO-5582","trackingCode":"RL-TRACK-9355","status":"scheduled_for_dispatch"}',
+                'document_id' => null, 'tool_execution_id' => 46, 'evidence_hash' => 'shipment-hash'],
+            ['text' => 'La consegna è prevista entro le 13:00.',
+                'quote' => 'L\'ordine PO-5582 partirà in serata. Consegna domani entro le 13:00.',
+                'document_id' => 121, 'tool_execution_id' => null, 'evidence_hash' => 'email-hash'],
+        ];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [[
+                'name' => 'submit_agent_answer', 'arguments' => [
+                    'completeness' => 'complete', 'claims' => $claims, 'limitations' => [],
+                    'requires_selection' => false, 'render_table' => false,
+                ],
+            ]]),
+            new AiResponse(content: '', provider: 'fake', model: 'fake-repair', toolCalls: [[
+                'name' => 'repair_agent_claims', 'arguments' => ['claims' => $claims],
+            ]]),
+        );
+
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('Dammi i dettagli di PO-5582', $this->context(), new AgentLoopOutcome('answer', $evidence, []),
+                null, ['available' => true, 'language' => 'it', 'mentions' => ['PO-5582']]);
+
+        $this->assertSame('partial', $answer->completeness);
+        $this->assertSame('partially_repaired', $answer->grounding['repair']['status']);
+        $this->assertSame(1, $answer->grounding['repair']['omitted_claims']);
+        $this->assertCount(2, $answer->toolSources);
+        $this->assertSame([], $answer->citations);
+        $this->assertStringContainsString('RL-2024-1120', $answer->answer);
+        $this->assertStringNotContainsString('13:00', $answer->answer);
     }
 
     public function test_selection_does_not_force_a_detail_result_into_a_table(): void
