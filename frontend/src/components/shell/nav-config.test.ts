@@ -20,8 +20,7 @@ describe('nav-config route identity', () => {
         expect(new Set(ids).size).toBe(ids.length);
     });
 
-    it('registers the standalone workbench, sessions, and browse-KB routes', () => {
-        expect(SECTION_ROUTES.workbench).toBe('/workbench');
+    it('registers the sessions and browse-KB entries with distinct routes', () => {
         expect(SECTION_ROUTES.sessions).toBe('/app/$teamHash/sessions');
         expect(SECTION_ROUTES['kb-browse']).toBe('/app/$teamHash/knowledge');
         // The admin explorer keeps its own id and route.
@@ -45,11 +44,6 @@ describe('deriveSection', () => {
     it('resolves the sessions list and a single session to Sessions', () => {
         expect(deriveSection(matcherFor('/app/$teamHash/sessions'))).toBe('sessions');
         expect(deriveSection(matcherFor('/app/$teamHash/sessions/12'))).toBe('sessions');
-    });
-
-    it('keeps the UI4 workbench outside the team dashboard route tree', () => {
-        expect(deriveSection(matcherFor('/workbench'))).toBe('workbench');
-        expect(deriveSection(matcherFor('/app/$teamHash/workbench'))).toBeNull();
     });
 
     it('does not let Sessions shadow Chat', () => {

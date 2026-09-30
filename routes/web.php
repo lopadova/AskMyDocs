@@ -184,18 +184,15 @@ Route::post('/agent-runs/{run}/continue', [AgentRunControlController::class, 're
 
 /*
 |--------------------------------------------------------------------------
-| React SPA (dashboard and standalone surfaces)
+| React SPA (catch-all for /app/*)
 |--------------------------------------------------------------------------
 |
-| Serves the React application. Authentication is handled inside React via
-| `/api/auth/me` + guard components, so the routes themselves have no
-| middleware. `/workbench` is intentionally a standalone product surface;
-| its shell renders only the AskMyDocs mark and access control, not the
-| dashboard frame. The legacy `/chat` Blade flow is untouched.
+| Serves the React application. Authentication is handled inside React
+| via `/api/auth/me` + guard components, so the route itself has no
+| middleware — the SPA redirects to /login when the me endpoint returns
+| 401. The legacy `/chat` Blade flow is untouched.
 |
 */
-
-Route::get('/workbench', SpaController::class)->name('workbench');
 
 // This operational surface is intentionally served only by a local Laravel
 // process. Register it before the generic SPA fallback so a deployed app
@@ -205,7 +202,6 @@ Route::get('/app/{teamHash}/developer/local-integrations', function () {
 
     return app(SpaController::class)();
 })->name('developer.local-integrations');
-
 Route::get('/app/{any?}', SpaController::class)
     ->where('any', '.*')
     ->name('spa');
