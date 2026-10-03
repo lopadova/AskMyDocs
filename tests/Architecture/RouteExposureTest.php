@@ -80,6 +80,12 @@ class RouteExposureTest extends TestCase
         'api/auth/reset-password' => '*',
         'api/auth/token' => '*',
         'api/auth/register-token' => '*',
+        // OAuth backchannel bootstrap proves a registered client, single-use
+        // authorization code and PKCE verifier rather than a prior session.
+        'oauth/token' => ['POST'],
+        // RFC 7009 revocation proves possession of the matching client's key;
+        // repeat/unknown tokens are an intentionally indistinguishable 200.
+        'oauth/revoke' => ['POST'],
         'api/widget/user-token' => '*',
         'csp-report' => '*',
         // v8.37/W3b round 7 — Laravel\Mcp\Server\Registrar::web() registers

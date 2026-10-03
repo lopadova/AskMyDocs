@@ -303,6 +303,7 @@ abstract class TestCase extends OrchestraTestCase
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.
         $app->register(\Laravel\Sanctum\SanctumServiceProvider::class);
+        $app->register(\App\Providers\OAuthServiceProvider::class);
         // Spatie permissions — registered via the same manual pattern because
         // bootstrap/providers.php uses explicit registration (no package
         // discovery). Without this the Role / Permission models throw

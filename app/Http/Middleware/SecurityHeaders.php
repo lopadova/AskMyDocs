@@ -93,6 +93,11 @@ class SecurityHeaders
         /** @var array<string, string|null> $headers */
         $headers = (array) config('security-headers.headers', []);
         foreach ($headers as $name => $value) {
+            // OAuth consent/token responses prohibit referrers entirely so
+            // authorization handles cannot leak through same-origin requests.
+            if (strcasecmp($name, 'Referrer-Policy') === 0 && $response->headers->get($name) === 'no-referrer') {
+                continue;
+            }
             if ($value !== null && $value !== '') {
                 $response->headers->set($name, $value);
             }
