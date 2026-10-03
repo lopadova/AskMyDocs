@@ -14,6 +14,11 @@ this page is the navigable map.
 
 ## Conventions
 
+For an external application's **Connect AskMyDocs** button, use the
+[OAuth authorization code flow with PKCE](/external-oauth). It issues a
+company-bound API key after user consent through `/oauth/authorize` and
+`/oauth/token`; discovery is at `/.well-known/oauth-authorization-server`.
+
 - **Auth.** Most routes require `auth:sanctum` (SPA cookie or a personal access
   token). Admin routes additionally carry a `role:` or `can:` gate. The
   embeddable widget authenticates with a `widget.key` (public key + minted

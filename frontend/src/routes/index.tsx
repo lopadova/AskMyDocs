@@ -76,6 +76,8 @@ import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequirePermission, RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
+import { OAuthConsentPage } from '../features/oauth/OAuthConsentPage';
+import { OAuthConnectionsPage } from '../features/oauth/OAuthConnectionsPage';
 import { RegisterPage } from '../features/auth/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
@@ -117,6 +119,22 @@ const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
     component: LoginRoute,
+});
+
+const oauthConsentRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/oauth/consent',
+    validateSearch: z.object({ request: z.string().default('') }),
+    component: function OAuthConsentRoute() {
+        const { request } = oauthConsentRoute.useSearch();
+        return <OAuthConsentPage key={request} requestId={request} />;
+    },
+});
+
+const oauthConnectionsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/oauth/connections',
+    component: OAuthConnectionsPage,
 });
 
 function RegisterRoute() {
@@ -1611,6 +1629,8 @@ const teamChildren = [
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
+    oauthConsentRoute,
+    oauthConnectionsRoute,
     registerRoute,
     forgotRoute,
     resetRoute,

@@ -33,7 +33,7 @@ export const api: AxiosInstance = axios.create({
  *   registry itself; target scoping is explicit in its service queries.
  * - `/testing/*`: E2E reset/seed endpoints operate deployment-wide.
  */
-const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/system-admin/', '/sanctum/', '/testing/'];
+const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/oauth/', '/api/system-admin/', '/sanctum/', '/testing/'];
 
 api.interceptors.request.use((config) => {
     const team = useTeamStore.getState().currentTeam;

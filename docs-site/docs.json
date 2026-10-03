@@ -79,6 +79,7 @@
           "ai-providers",
           "mcp-server",
           "desktop-client",
+          "external-oauth",
           "sister-packages"
         ]
       },
