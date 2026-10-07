@@ -67,6 +67,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbEdge::class,
         \App\Models\KbCanonicalAudit::class,
         \App\Models\ProjectMembership::class,
+        \App\Models\OAuthAccessToken::class,
+        \App\Models\OAuthAuthorizationCode::class,
         // v8.9 — first-class project registry (admin Projects page).
         \App\Models\Project::class,
         \App\Models\KbTag::class,

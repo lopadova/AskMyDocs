@@ -2,6 +2,7 @@
 
 $providers = [
     App\Providers\AppServiceProvider::class,
+    App\Providers\OAuthServiceProvider::class,
     App\Providers\AiServiceProvider::class,
     App\Providers\ChatLogServiceProvider::class,
     // v8.9 — UI drag-and-drop upload progress wiring: KnowledgeDocument

@@ -1,0 +1,204 @@
+---
+title: "Connect external applications with OAuth"
+description: "Let an external application obtain an AskMyDocs API key after account login and explicit consent."
+icon: "key"
+---
+
+AskMyDocs acts as the OAuth authorization server. An external application's
+**Connect AskMyDocs** button opens AskMyDocs, the user signs in and chooses a
+company, and the application exchanges a short-lived code for a Bearer API key.
+The external application never receives the user's password.
+
+The supported flow is OAuth authorization code with **mandatory S256 PKCE**.
+Clients are registered public clients with no client secret. Password grants,
+implicit grants, refresh tokens and OpenID Connect are not supported. Exchange
+the code from the external application's backend and store the key in its
+encrypted credential store.
+
+## Register the application
+
+Apply the database migration and build the frontend when deploying this feature:
+
+```bash
+php artisan migrate
+npm run build
+```
+
+The AskMyDocs operator registers each application and its exact callback URLs:
+
+```bash
+php artisan oauth:client "My external app" \
+  --redirect-uri="https://my-app.example/oauth/askmydocs/callback" \
+  --scope="kb:read" --scope="kb:chat"
+```
+
+The command prints the **client ID**. Repeat `--redirect-uri` to register more
+callbacks; omitting `--scope` permits both supported scopes. Callbacks require
+HTTPS and cannot contain fragments, credentials or reserved response parameters.
+In `local` or `testing`, HTTP callbacks on `.test` or loopback hosts are also
+accepted. URL matching is exact, including path, port and query string.
+
+For the Herd project `AskMyDocsDev`, the authorization-server base URL is
+`https://askmydocsdev.test`. Use `APP_URL` for other deployments. No OAuth
+provider credentials are needed on AskMyDocs.
+
+## Implement the connect button
+
+Generate a new verifier and state for **each** connection attempt. Keep both in
+the external application's server-side session, associated with the signed-in
+user. A backend route handling the button can use Node's built-in crypto:
+
+```javascript
+import { randomBytes, createHash } from 'node:crypto';
+
+const verifier = randomBytes(32).toString('base64url');
+const state = randomBytes(32).toString('base64url');
+const challenge = createHash('sha256').update(verifier).digest('base64url');
+
+// Persist in the external application's session; expire after 10 minutes.
+req.session.askmydocs = { verifier, state, startedAt: Date.now() };
+
+const params = new URLSearchParams({
+  client_id: process.env.ASKMYDOCS_CLIENT_ID,
+  redirect_uri: 'https://my-app.example/oauth/askmydocs/callback',
+  response_type: 'code',
+  scope: 'kb:read kb:chat',
+  state,
+  code_challenge: challenge,
+  code_challenge_method: 'S256',
+});
+
+res.redirect(`https://askmydocsdev.test/oauth/authorize?${params}`);
+```
+
+The user sees the application name, callback origin, requested permissions,
+signed-in account and company selector. Consent is explicit on every attempt.
+An account without membership in an active company cannot approve the request.
+An unauthenticated user signs in inside this flow; session regeneration retains
+the pending request.
+
+## Handle the callback and obtain the API key
+
+AskMyDocs redirects to the registered callback with `code`, the original
+`state`, and `iss`. On cancellation it returns `error=access_denied`, `state`
+and `iss`. The API key is returned only by the token endpoint, never in the
+browser's callback URL.
+
+The external backend must verify `state` against the saved session and verify
+`iss` against the expected AskMyDocs base URL **before** using the code. Consume
+the saved connection attempt once and handle `error` before exchanging:
+
+```javascript
+const pending = req.session.askmydocs;
+delete req.session.askmydocs;
+const issuer = 'https://askmydocsdev.test';
+
+if (!pending || typeof req.query.state !== 'string' ||
+    req.query.state !== pending.state || req.query.iss !== issuer ||
+    Date.now() - pending.startedAt > 10 * 60 * 1000) {
+  return res.status(400).send('Invalid or expired connection attempt');
+}
+if (req.query.error) return res.status(400).send('Connection was not authorised');
+if (typeof req.query.code !== 'string') return res.status(400).send('Missing code');
+
+const response = await fetch(`${issuer}/oauth/token`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+  body: new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: process.env.ASKMYDOCS_CLIENT_ID,
+    redirect_uri: 'https://my-app.example/oauth/askmydocs/callback',
+    code: req.query.code,
+    code_verifier: pending.verifier,
+  }),
+});
+const result = await response.json();
+if (!response.ok) return res.status(400).send('Unable to connect AskMyDocs');
+
+// Save result.access_token, result.tenant_id and the calculated expiry in
+// your encrypted credential store, bound to the signed-in external user.
+// Never log the token or put it into a redirect URL.
+```
+
+JSON request bodies are also supported. A successful token response is:
+
+```json
+{
+  "access_token": "<Sanctum API key>",
+  "token_type": "Bearer",
+  "expires_in": 2592000,
+  "scope": "kb:read kb:chat",
+  "tenant_id": "acme"
+}
+```
+
+Codes expire after **5 minutes** and can be redeemed once. Pending consent
+requests expire after **10 minutes**. API keys expire after at most **30 days**;
+a shorter global Sanctum expiration is also honoured. Reconnect when the key
+expires. OAuth responses use `Cache-Control: no-store` and `Referrer-Policy:
+no-referrer`; consent pages cannot be embedded in a frame.
+
+## Call the service
+
+Send `Authorization: Bearer <access_token>`. The company is resolved from the
+key automatically. If you also send `X-Tenant-Id`, it must match the authorised
+company. A key cannot switch companies, even when the user belongs to both.
+
+| Scope | Permitted endpoints |
+| --- | --- |
+| `kb:read` | `GET /api/kb/documents/search`, `GET /api/kb/tree`, `GET /api/kb/documents/{id}/preview` |
+| `kb:chat` | `POST /api/kb/chat` |
+| Any issued OAuth key | `GET /oauth/userinfo`, `POST /api/auth/token/revoke` |
+
+Document ACLs, project memberships, lifecycle checks and the user's existing
+permissions continue to apply. OAuth keys cannot access administrative,
+ingestion, account-management or consent endpoints, including keys granted by
+an administrator. An unavailable scope or disallowed route fails authentication
+with `401`. Use `/oauth/userinfo` for the authorised account/company; first-party
+`/api/auth/me` is intentionally outside this external API surface.
+
+```bash
+curl https://askmydocsdev.test/oauth/userinfo \
+  -H "Authorization: Bearer $ASKMYDOCS_API_KEY"
+```
+
+## Disconnect and operate
+
+Users can revoke individual connections at **`/oauth/connections`**, also linked
+from the application's **Connected Apps** page. This screen is session-only and
+shows only the current user's connections across companies.
+
+An external backend can revoke its own key with `POST /oauth/revoke`:
+
+```javascript
+await fetch(`${issuer}/oauth/revoke`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({ client_id: clientId, token: apiKey }),
+});
+```
+
+Revocation returns `200` even for an unknown, already revoked or mismatched
+token, without revoking a different application's key. The operator can disable
+an entire application and revoke all its keys:
+
+```bash
+php artisan oauth:client-disable <client-id>
+```
+
+Disabling an app, disabling the account, losing company membership or
+suspending/archiving the company invalidates existing keys. Password resets
+revoke both keys and outstanding authorization codes. The daily scheduler runs
+`oauth:prune` to delete expired or consumed codes; the command is also available
+manually. Sanctum's normal token pruning removes expired keys and their OAuth
+metadata through the database foreign key.
+
+Discovery metadata is available at **`/.well-known/oauth-authorization-server`**.
+Both public backchannel POST endpoints are rate-limited to 30 requests per
+minute per IP. Browser consent submissions use Laravel's session and request
+forgery protection. Third-party browsers use top-level navigation for consent;
+the token exchange is a server-to-server call and needs no cross-origin cookies.
+
+The protocol checks follow [OAuth security BCP (RFC 9700)](https://www.rfc-editor.org/rfc/rfc9700.html),
+[PKCE (RFC 7636)](https://www.rfc-editor.org/rfc/rfc7636.html) and
+[token revocation (RFC 7009)](https://www.rfc-editor.org/rfc/rfc7009.html).

@@ -40,6 +40,8 @@ final class TenantReadScopeTest extends TestCase
         'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbTextCorrectionCandidate', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpConnectorShadowReport', 'AgentPlannerShadowReport', 'McpServer',
         'UnmappedSourcePrincipal',
+        'KbRetrievalProfile',
+        'OAuthAccessToken', 'OAuthAuthorizationCode',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',
@@ -55,6 +57,9 @@ final class TenantReadScopeTest extends TestCase
      * @var array<string, string>
      */
     private const ALLOWLIST = [
+        'app/Console/Commands/OAuthPruneCommand.php' => 'Global retention sweep of expired/used authorization codes.',
+        'app/Console/Commands/OAuthDisableClientCommand.php' => 'Operator disables a global client and revokes its grants across all tenants.',
+        'app/Http/Controllers/Api/Auth/PasswordResetController.php' => 'Password reset revokes every grant/code owned by the authenticated reset identity across tenants.',
         // Scheduler sweep is intentionally cross-tenant; each queued job captures
         // the row's tenant and rebinds both tenant contexts before any work.
         'app/Connectors/Scheduling/ImapBackfillScheduler.php' => 'Cross-tenant scheduled dispatcher; jobs are tenant-captured.',

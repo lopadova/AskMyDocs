@@ -47,6 +47,7 @@ class PasswordResetController extends Controller
                 if (method_exists($user, 'tokens')) {
                     $user->tokens()->delete();
                 }
+                \App\Models\OAuthAuthorizationCode::where('user_id', $user->getAuthIdentifier())->delete();
 
                 event(new PasswordResetEvent($user));
             }
