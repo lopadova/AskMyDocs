@@ -87,6 +87,7 @@ async function addRouteAndTest(
     await page.getByTestId('api-route-form-http_method').selectOption('GET');
     await page.getByTestId('api-route-form-url').fill(opts.url);
     if (opts.withIdParam) {
+        await page.getByRole('tab', { name: /^Parametri/ }).click();
         await page.getByTestId('api-route-form-param-add').click();
         await page.getByTestId('api-route-form-param-0-name').fill('id');
         await page.getByTestId('api-route-form-param-0-location').selectOption('path');
@@ -94,6 +95,7 @@ async function addRouteAndTest(
         await page.getByTestId('api-route-form-param-0-type').selectOption('integer');
     }
     if (opts.exampleArgs) {
+        await page.getByRole('tab', { name: 'Prova', exact: true }).click();
         await page.getByTestId('api-route-form-example-args').fill(opts.exampleArgs);
     }
 
@@ -164,10 +166,7 @@ test.describe('Admin API Connectors', () => {
         await page.getByTestId('api-route-form-name').fill('List users');
         await page.getByTestId('api-route-form-http_method').selectOption('GET');
         await page.getByTestId('api-route-form-url').fill(LIST_FIXTURE);
-        // Mode is locked to `tool`; ingest/both are Fase 2 (the select is disabled).
-        const mode = page.getByTestId('api-route-form-mode');
-        await expect(mode).toBeDisabled();
-        await expect(mode).toHaveValue('tool');
+        await expect(routeForm.getByRole('tab', { name: 'Richiesta', exact: true })).toHaveAttribute('aria-selected', 'true');
 
         // Testa the config BEFORE saving (dry-run against JSON), then Save —
         // which persists + runs the final test that promotes draft→tested.
@@ -346,6 +345,7 @@ test.describe('Admin API Connectors', () => {
         await page.getByTestId('api-route-form-name').fill('Paged catalog');
         await page.getByTestId('api-route-form-http_method').selectOption('GET');
         await page.getByTestId('api-route-form-url').fill(PAGED_FIXTURE);
+        await page.getByRole('tab', { name: /^Parametri/ }).click();
         await page.getByTestId('api-route-form-param-add').click();
         await page.getByTestId('api-route-form-param-0-name').fill('q');
         await page.getByTestId('api-route-form-param-0-location').selectOption('query');
@@ -353,6 +353,7 @@ test.describe('Admin API Connectors', () => {
         await page.getByTestId('api-route-form-param-0-type').selectOption('string');
 
         // Testa the in-memory config BEFORE saving — `q` flavours the fixture names.
+        await page.getByRole('tab', { name: 'Prova', exact: true }).click();
         await page.getByTestId('api-route-form-example-args').fill('{"q":"boot"}');
         await page.getByTestId('api-route-form-test').click();
         const testRes = page.getByTestId('api-route-form-test-result');
@@ -363,6 +364,7 @@ test.describe('Admin API Connectors', () => {
         await expect(page.getByTestId('api-route-form-response')).toContainText('match boot');
 
         // Deterministic cursor detection from meta.next_cursor → into the config.
+        await page.getByRole('tab', { name: 'Risposta', exact: true }).click();
         await page.getByTestId('api-route-form-pagination-detect').click();
         await expect(page.getByTestId('api-route-form-pagination-source')).toBeVisible({ timeout: 20_000 });
         await expect(page.getByTestId('api-route-form-pagination-type')).toHaveValue('cursor');

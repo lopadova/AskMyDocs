@@ -48,7 +48,7 @@ function testResult(over = {}) {
 
 describe('RouteConfigModal', () => {
     beforeEach(() => {
-        [createMutate, updateMutate, testRouteMutate, testMutate, produceMutate].forEach((m) => m.mockClear());
+        [createMutate, updateMutate, testRouteMutate, testMutate, produceMutate].forEach((m) => m.mockReset());
         createState = stub(createMutate);
         updateState = stub(updateMutate);
         testRouteState = stub(testRouteMutate);
@@ -61,7 +61,7 @@ describe('RouteConfigModal', () => {
 
         // The single-modal win: the test action exists in create mode (no save-first).
         expect(screen.getByTestId('api-route-form-test')).toBeInTheDocument();
-        expect(screen.getByTestId('api-route-form')).toHaveAttribute('aria-label', 'New route');
+        expect(screen.getByRole('dialog', { name: 'Nuova rotta' })).toBeInTheDocument();
 
         fireEvent.change(screen.getByTestId('api-route-form-name'), { target: { value: 'Prodotti' } });
         fireEvent.change(screen.getByTestId('api-route-form-url'), { target: { value: '/products' } });
@@ -127,7 +127,7 @@ describe('RouteConfigModal', () => {
         // The whole form reflects the produced config.
         expect(screen.getByTestId('api-route-form-name')).toHaveValue('list_catalog');
         expect(screen.getByTestId('api-route-form-description')).toHaveValue('Elenca il catalogo.');
-        expect(screen.getByTestId('api-route-form-endpoint_type-list')).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByTestId('api-route-form-endpoint_type-list')).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByTestId('api-route-form-items_path')).toHaveValue('data');
         expect(screen.getByTestId('api-route-form-param-0-name')).toHaveValue('q');
         // Verdict strip + dirty.
@@ -155,5 +155,75 @@ describe('RouteConfigModal', () => {
         expect(result).toHaveAttribute('data-ok', 'true');
         expect(screen.getByTestId('api-route-form-test-endpoint-type')).toHaveAttribute('data-endpoint-type', 'list');
         expect(screen.getByTestId('api-route-form-response')).toBeInTheDocument();
+    });
+
+    it('explains a Cloudflare challenge, hides unknown taxonomy and keeps HTML as inert text', () => {
+        const html = '<html><script src="https://challenges.cloudflare.com/test.js"></script></html>';
+        testMutate.mockImplementation((_vars, opts) => opts.onSuccess({
+            test: testResult({ ok: false, status: 403, status_label: 'http_403', is_json: false, body: html, headers: { 'CF-Mitigated': 'challenge', 'CF-Ray': 'example-ray' } }),
+            endpoint_type: 'unknown', item_count: null,
+        }));
+        render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-form-test'));
+
+        expect(screen.getByRole('tab', { name: 'Prova' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Cloudflare ha bloccato la chiamata');
+        expect(screen.getByRole('alert')).toHaveTextContent('Questo risultato non permette di verificare le credenziali');
+        expect(screen.getByRole('alert')).toHaveTextContent('HTTP 403');
+        expect(screen.queryByTestId('api-route-form-test-endpoint-type')).not.toBeInTheDocument();
+        expect(screen.getByTestId('api-route-form-response').textContent).toBe(html);
+        expect(screen.getByTestId('api-route-form-response').querySelector('script')).toBeNull();
+        expect(screen.getByTestId('api-route-form-response').closest('details')).not.toHaveAttribute('open');
+    });
+
+    it('does not blame Cloudflare for a JSON 403 passing through its proxy', () => {
+        testMutate.mockImplementation((_vars, opts) => opts.onSuccess({
+            test: testResult({ ok: false, status: 403, body: { message: 'Forbidden' }, headers: { server: 'cloudflare', 'cf-ray': 'example-ray' } }),
+            endpoint_type: 'unknown',
+        }));
+        render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-form-test'));
+        expect(screen.getByRole('alert')).toHaveTextContent('Accesso negato');
+        expect(screen.getByRole('alert')).not.toHaveTextContent('Cloudflare ha bloccato');
+    });
+
+    it('keeps a saved route open after a failed final test and retries with update instead of creating a duplicate', () => {
+        const close = vi.fn();
+        const saved = vi.fn();
+        createMutate.mockImplementation((_vars, opts) => opts.onSuccess({ id: 42 }));
+        testRouteMutate.mockImplementation((_vars, opts) => opts.onSuccess({
+            test: testResult({ ok: false, status: 403, is_json: false, body: 'Denied' }),
+            endpoint_type: 'unknown',
+        }));
+        render(<RouteConfigModal connector={connector} route={null} onClose={close} onSaved={saved} />);
+        fireEvent.change(screen.getByTestId('api-route-form-name'), { target: { value: 'Ordini' } });
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+
+        expect(screen.getByTestId('api-route-form-save-notice')).toHaveTextContent('Configurazione salvata. Il test non è riuscito');
+        expect(screen.getByTestId('api-route-form-status')).toHaveTextContent('Salvata');
+        expect(close).not.toHaveBeenCalled();
+        expect(saved).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+        expect(createMutate).toHaveBeenCalledTimes(1);
+        expect(updateMutate).toHaveBeenCalledWith({ routeId: 42, config: expect.anything() }, expect.anything());
+    });
+
+    it('blocks saving invalid test arguments without losing the form', () => {
+        render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} />);
+        fireEvent.change(screen.getByTestId('api-route-form-name'), { target: { value: 'Ordini' } });
+        fireEvent.change(screen.getByTestId('api-route-form-example-args'), { target: { value: '[1]' } });
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+        expect(createMutate).not.toHaveBeenCalled();
+        expect(screen.getByTestId('api-route-form-example-args-error')).toHaveTextContent('oggetto JSON');
+        expect(screen.getByTestId('api-route-form-name')).toHaveValue('Ordini');
+    });
+
+    it('describes inherited authentication instead of promising an anonymous call', () => {
+        const inherited = { ...connector, default_auth_profile_id: 5, auth_profiles: [{ id: 5, type: 'basic' }] } as ApiConnector;
+        const route = { id: 2, config: config() } as ApiRoute;
+        render(<RouteConfigModal connector={inherited} route={route} onClose={vi.fn()} />);
+        expect(screen.getByTestId('api-route-form-auth_profile_id')).toHaveValue('');
+        expect(screen.getByRole('option', { name: 'Predefinito del connettore (#5)' })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: 'Nessuno (chiamata anonima)' })).not.toBeInTheDocument();
     });
 });
