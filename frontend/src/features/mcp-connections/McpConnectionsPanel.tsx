@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../lib/auth-store';
 import { Button } from '../../components/Button';
+import { X } from 'lucide-react';
+import { SourceAvatar } from '../admin/connectors/SourceAvatar';
 import { modalBackdropStyle, modalPanelStyle } from '../admin/api-connectors/styles';
 import { toAdminError, type AdminApiError } from '../admin/shared/errors';
 import { McpConnectionErrorDialog } from './McpConnectionErrorDialog';
@@ -237,7 +239,8 @@ export function McpConnectionsPanel({
                         style={{ ...modalPanelStyle(720), minWidth: 0, padding: 0, gap: 0, overflow: 'hidden' }}
                     >
                         <div style={modalHeaderStyle}>
-                            <div>
+                            <SourceAvatar connectorKey="mcp" displayName="MCP" size={38} radius={10} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
                                 <h2 id="mcp-connection-form-title" style={{ margin: 0, color: 'var(--fg-0)', fontSize: 17 }}>
                                     New MCP connection
                                 </h2>
@@ -255,7 +258,7 @@ export function McpConnectionsPanel({
                                 onClick={closeForm}
                                 style={{ flex: 'none' }}
                             >
-                                ×
+                                <X size={16} aria-hidden="true" />
                             </Button>
                         </div>
 
@@ -430,10 +433,8 @@ function ConnectionCard({
     return (
         <article data-testid={`mcp-connection-${connection.public_id}`} style={cardStyle}>
             <div style={cardHeaderStyle}>
-                <span aria-hidden="true" style={mcpAvatarStyle}>
-                    <McpIcon />
-                </span>
-                <div style={{ flex: 1, minWidth: 210 }}>
+                <SourceAvatar connectorKey="mcp" displayName="MCP" />
+                <div style={{ flex: 1, minWidth: 150 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                         <strong style={{ color: 'var(--fg-0)', fontSize: 13.5 }}>{connection.label}</strong>
                         <StatusBadge status={connection.status} />
@@ -692,17 +693,6 @@ function InfoIcon() {
     );
 }
 
-function McpIcon() {
-    return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="6" cy="7" r="2.5" />
-            <circle cx="18" cy="7" r="2.5" />
-            <circle cx="12" cy="17" r="2.5" />
-            <path d="m8.2 8.2 2.6 6.5M15.8 8.2l-2.6 6.5M8.5 7h7" />
-        </svg>
-    );
-}
-
 function AuthenticationIcon({ kind }: { kind: McpAuthenticationMethod }) {
     if (kind === 'oauth') {
         return (
@@ -782,7 +772,6 @@ const groupHeadingStyle: CSSProperties = { margin: 0, fontSize: 12, fontWeight: 
 const cardStyle: CSSProperties = { position: 'relative', border: '1px solid var(--hairline)', borderRadius: 12, background: 'var(--bg-1)', boxShadow: '0 1px 0 rgba(255,255,255,.02)' };
 const cardHeaderStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: 13, flexWrap: 'wrap' };
 const cardActionsStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' };
-const mcpAvatarStyle: CSSProperties = { width: 36, height: 36, display: 'grid', placeItems: 'center', flex: 'none', borderRadius: 9, color: '#67e8f9', background: 'rgba(34,211,238,.09)', border: '1px solid rgba(34,211,238,.2)' };
 const endpointStyle: CSSProperties = { marginTop: 4, color: 'var(--fg-3)', fontSize: 11.5, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const summaryBadgeStyle: CSSProperties = { borderRadius: 999, padding: '3px 8px', background: 'var(--bg-2)', color: 'var(--fg-2)', fontSize: 10.5, whiteSpace: 'nowrap' };
 const detailsStyle: CSSProperties = { display: 'grid', gap: 12, padding: '0 13px 13px', borderTop: '1px solid var(--hairline)' };

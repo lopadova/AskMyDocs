@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import type { ApiConnector, ConnectorPayload } from './api-connectors.api';
+import { SourceAvatar } from '../connectors/SourceAvatar';
 import {
     buttonStyle,
     errorTextStyle,
@@ -111,9 +112,12 @@ export function ConnectorForm({
                 onSubmit={handleSubmit}
                 style={modalPanelStyle(480)}
             >
-                <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                    {isEdit ? `Edit connector: ${connector?.name}` : 'New API connector'}
-                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <SourceAvatar connectorKey="api" displayName="API" size={38} radius={10} />
+                    <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
+                        {isEdit ? `Edit connector: ${connector?.name}` : 'New API connector'}
+                    </h2>
+                </div>
 
                 <label htmlFor="api-connector-form-name" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>

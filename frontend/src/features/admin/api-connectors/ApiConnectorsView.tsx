@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
+import { SourceAvatar } from '../connectors/SourceAvatar';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import type {
@@ -710,7 +711,8 @@ function ConnectorCard({
             }}
         >
             <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-                <div>
+                <SourceAvatar connectorKey="api" displayName="API" />
+                <div style={{ flex: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 15, color: 'var(--fg-0)' }}>
                         {connector.name}
                         {!connector.is_active && (
