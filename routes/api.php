@@ -1029,6 +1029,10 @@ Route::middleware([
 ])
     ->prefix('admin/connectors')
     ->group(function () {
+        Route::get('/{installationId}/actions/{action}', [\App\Http\Controllers\Api\Admin\ConnectorInstallationActionController::class, 'show'])
+            ->whereNumber('installationId')->name('api.admin.connectors.actions.show');
+        Route::post('/{installationId}/actions/{action}', [\App\Http\Controllers\Api\Admin\ConnectorInstallationActionController::class, 'store'])
+            ->whereNumber('installationId')->name('api.admin.connectors.actions.store');
         Route::get('/', [ConnectorAdminController::class, 'index'])
             ->name('api.admin.connectors.index');
         Route::get('/{name}/install', [ConnectorAdminController::class, 'startInstall'])

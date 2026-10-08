@@ -11,7 +11,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
 /**
- * PRE-SAVE connection test for a credential connector (IMAP today). Given the
+ * PRE-SAVE connection test for a credential connector. Given the
  * SUBMITTED credential-form values it pings the server and reports whether the
  * login works — WITHOUT persisting anything: no `connector_installations` row,
  * no vault write, no audit. It is the "Test connection" button behind the
@@ -23,7 +23,8 @@ use Throwable;
  * `connection` values build the client, the single `secret` is the login
  * credential), but this one never writes and never keeps a client open.
  *
- * IMAP-focused by design, mirroring {@see ConnectorEmailProbeService}: it
+ * Registered connector probes handle additional credential providers. The
+ * IMAP fallback mirrors {@see ConnectorEmailProbeService}: it
  * rebuilds the client from the connector's own {@see ImapClientFactoryInterface}
  * (already the per-mailbox serializing decorator, so it honours the one-live-
  * connection-per-mailbox guarantee and releases the lock via close()). Only
@@ -49,11 +50,20 @@ final class ConnectorConnectionTestService
      *
      * @param  array<string,mixed>  $payload  The submitted credential-form values (schema-keyed).
      *
-     * @throws NotFoundHttpException             unknown / non-credential connector
-     * @throws ConnectorConnectionTestException  unreachable / rejected / missing fields / unsupported auth mode
+     * @throws NotFoundHttpException unknown / non-credential connector
+     * @throws ConnectorConnectionTestException unreachable / rejected / missing fields / unsupported auth mode
      */
     public function test(string $name, array $payload): void
     {
+        if (app()->bound('connectors.probe.'.$name)) {
+            try {
+                app('connectors.probe.'.$name)($payload);
+            } catch (Throwable $exception) {
+                throw new ConnectorConnectionTestException($exception->getMessage(), previous: $exception);
+            }
+
+            return;
+        }
         if ($name !== 'imap') {
             throw new NotFoundHttpException("Connector '{$name}' does not support pre-save connection testing.");
         }
@@ -128,7 +138,7 @@ final class ConnectorConnectionTestService
      *
      * @param  list<array<string,mixed>>  $schema
      * @param  array<string,mixed>  $payload
-     * @return array{0: array<string,mixed>, 1: ?string}  [connection, secret]
+     * @return array{0: array<string,mixed>, 1: ?string} [connection, secret]
      */
     private function extractConnectionAndSecret(array $schema, array $payload, string $authMode): array
     {

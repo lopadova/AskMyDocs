@@ -11,9 +11,11 @@ use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteStatus;
+use Padosoft\AskMyDocsConnectorFreshdesk\Tools\FreshdeskTools;
 
 final readonly class AgentToolRegistry
 {
@@ -39,6 +41,7 @@ final readonly class AgentToolRegistry
         ];
         $this->mergeMcpTools($tools, $context, $user);
         $this->mergeApiTools($tools, $context);
+        $this->mergeFreshdeskTools($tools, $context, $user);
 
         foreach ($clientTools as $tool) {
             if ($tool instanceof AgentToolDefinition && ! isset($tools[$tool->name])) {
@@ -47,6 +50,27 @@ final readonly class AgentToolRegistry
         }
 
         return $tools;
+    }
+
+    private function mergeFreshdeskTools(array &$tools, AgentExecutionContext $context, ?User $user): void
+    {
+        if ($context->channel === 'widget' || $user === null || $context->projectKey === null
+            || $context->tenantId !== app(\Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->current()
+            || $context->tenantId !== app(TenantContext::class)->current()
+            || (string) $user->getKey() !== $context->actorId
+            || ! ($user->canReadAllProjects() || in_array($context->projectKey, $user->allowedProjects(), true))
+            || ! class_exists(FreshdeskTools::class)) {
+            return;
+        }
+        foreach (app(FreshdeskTools::class)->catalog($context->projectKey) as $source) {
+            $name = $source['name'];
+            $tools[$name] = new AgentToolDefinition(
+                name: $name, displayName: 'Freshdesk · '.$source['account_label'], description: $source['description'], kind: 'api', inputSchema: $source['inputSchema'],
+                readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 3,
+                executorReference: $name,
+                metadata: ['source_runtime' => 'freshdesk', 'source_key' => 'freshdesk:'.$source['installation_id'], 'source_name' => 'Freshdesk · '.$source['account_label'], 'source_project_key' => $context->projectKey, 'provenance' => $source['provenance']],
+            );
+        }
     }
 
     private function knowledgeTool(): AgentToolDefinition

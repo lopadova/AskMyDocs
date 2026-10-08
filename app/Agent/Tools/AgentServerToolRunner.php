@@ -12,9 +12,11 @@ use App\Mcp\Client\ToolInvoker;
 use App\Models\AgentRun;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteStatus;
+use Padosoft\AskMyDocsConnectorFreshdesk\Tools\FreshdeskTools;
 use Padosoft\AskMyDocsConnectorMcp\Exceptions\McpInvocationException;
 
 /** Executes server-side API and MCP tools after a final scope revalidation. */
@@ -83,6 +85,9 @@ final readonly class AgentServerToolRunner
         AgentBudgetTracker $budget,
         ?callable $progress,
     ): AgentToolActionResult {
+        if (($tool->metadata['source_runtime'] ?? null) === 'freshdesk') {
+            return $this->executeFreshdesk($tool, $arguments, $context, $budget);
+        }
         $scopes = $context->projectKey === null || $context->projectKey === ''
             ? ['']
             : ['', $context->projectKey];
@@ -104,6 +109,39 @@ final readonly class AgentServerToolRunner
         return AgentToolActionResult::fromApi(
             $this->api->collect($route, $arguments, $context, $budget, $progress),
         );
+    }
+
+    private function executeFreshdesk(AgentToolDefinition $tool, array $arguments, AgentExecutionContext $context, AgentBudgetTracker $budget): AgentToolActionResult
+    {
+        $user = User::query()->find($context->actorId);
+        if ($context->channel === 'widget' || $user === null || $context->projectKey === null
+            || $context->tenantId !== app(\Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->current()
+            || $context->tenantId !== app(TenantContext::class)->current()
+            || ! ($user->canReadAllProjects() || in_array($context->projectKey, $user->allowedProjects(), true))) {
+            throw new \DomainException('freshdesk_tool_scope_mismatch');
+        }
+        $requests = 0;
+        try {
+            $result = app(FreshdeskTools::class)->execute(
+                $tool->name, $arguments, $context->projectKey,
+                function () use ($budget, &$requests): void {
+                    if (! $budget->canIssuePhysical($requests + 1)->allowed()) {
+                        throw new \DomainException('physical_hard_limit');
+                    }
+                    $requests++;
+                },
+            );
+            $body = $result['data'] ?? ['error' => $result['error'] ?? 'Freshdesk request failed.'];
+            $success = ! isset($result['error']);
+            $budget->recordResult($requests, $this->bytes($body), $success);
+
+            return new AgentToolActionResult($body, $requests, $success, stopReason: $result['error'] ?? null, stats: ['freshdesk' => $result['provenance']]);
+        } catch (\Throwable $exception) {
+            $body = ['error' => $exception->getMessage()];
+            $budget->recordResult($requests, $this->bytes($body), false);
+
+            return new AgentToolActionResult($body, $requests, false, $exception->getMessage());
+        }
     }
 
     /** @param array<string,mixed> $arguments */
