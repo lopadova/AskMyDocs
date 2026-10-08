@@ -687,7 +687,7 @@ const errorVm: ConnectionVM | null =
                                 data-testid="admin-connectors-grid"
                                 style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',
                                     gap: 12,
                                 }}
                             >
