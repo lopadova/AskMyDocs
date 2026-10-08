@@ -90,7 +90,7 @@ async function addRouteAndTest(
         await page.getByRole('tab', { name: /^Parametri/ }).click();
         await page.getByTestId('api-route-form-param-add').click();
         await page.getByTestId('api-route-form-param-0-name').fill('id');
-        await page.getByTestId('api-route-form-param-0-location').selectOption('path');
+        await page.getByTestId('api-route-form-param-0-location-path').click();
         await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
         await page.getByTestId('api-route-form-param-0-type').selectOption('integer');
     }
@@ -348,7 +348,7 @@ test.describe('Admin API Connectors', () => {
         await page.getByRole('tab', { name: /^Parametri/ }).click();
         await page.getByTestId('api-route-form-param-add').click();
         await page.getByTestId('api-route-form-param-0-name').fill('q');
-        await page.getByTestId('api-route-form-param-0-location').selectOption('query');
+        await page.getByTestId('api-route-form-param-0-location-query').click();
         await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
         await page.getByTestId('api-route-form-param-0-type').selectOption('string');
 
