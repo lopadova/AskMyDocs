@@ -18,7 +18,22 @@ import { api } from '../../../lib/api';
 
 export type ConnectorStatus = 'pending' | 'active' | 'disabled' | 'errored';
 
+export interface ConnectorActionDescriptor {
+    key: string;
+    label: string;
+    description: string;
+    enabled: boolean;
+}
+export interface ConnectorActionStatus {
+    id: number;
+    mode: string;
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    counts: Record<string, number>;
+    error: string | null;
+    phase: string | null;
+}
 export interface ConnectorInstallationDto {
+    actions?: ConnectorActionDescriptor[];
     id: number;
     // v8.20 multi-account: `label` disambiguates the N accounts a tenant connects
     // on one connector; `project_key` is the optional KB project binding (null =
@@ -453,5 +468,16 @@ export const adminConnectorsApi = {
 
     async destroy(installationId: number): Promise<void> {
         await api.delete(`/api/admin/connectors/${installationId}`);
+    },
+};
+
+export const connectorActionsApi = {
+    async status(installationId: number, key: string): Promise<ConnectorActionStatus | null> {
+        const { data } = await api.get<{ data: ConnectorActionStatus | null }>(`/api/admin/connectors/${installationId}/actions/${encodeURIComponent(key)}`);
+        return data.data;
+    },
+    async start(installationId: number, key: string): Promise<ConnectorActionStatus> {
+        const { data } = await api.post<{ data: ConnectorActionStatus }>(`/api/admin/connectors/${installationId}/actions/${encodeURIComponent(key)}`);
+        return data.data;
     },
 };

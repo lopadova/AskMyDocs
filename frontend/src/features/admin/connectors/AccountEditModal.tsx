@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toAdminError } from '../shared/errors';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
+import { ConnectorInstallationActions } from './ConnectorInstallationActions';
 import { ConnectionSettingsForm } from './ConnectionSettingsForm';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
 import { SourceAvatar } from './SourceAvatar';
@@ -338,6 +339,7 @@ export function AccountEditModal({
                             isSubmitting={submitting}
                         />
                     )}
+                    {tab === 'settings' && <ConnectorInstallationActions account={account} />}
                 </div>
 
                 {/* ── Sticky footer ─────────────────────────────────────────── */}

@@ -182,6 +182,30 @@ class AppServiceProvider extends ServiceProvider
             fn ($app) => new ChatToolSourceRegistry($app->tagged(ChatToolSourceContract::class)),
         );
 
+        $this->app->singleton(\App\Services\Admin\Connectors\ConnectorInstallationActionRegistry::class, function ($app) {
+            $registry = new \App\Services\Admin\Connectors\ConnectorInstallationActionRegistry;
+            if (class_exists(\Padosoft\AskMyDocsConnectorFreshdesk\FreshdeskServiceProvider::class)) {
+                $registry->register('freshdesk', 'historical-import', $app->make(\App\Services\Admin\Connectors\FreshdeskHistoricalImportAction::class));
+            }
+
+            return $registry;
+        });
+        if (class_exists(\Padosoft\AskMyDocsConnectorFreshdesk\FreshdeskServiceProvider::class)) {
+            $this->app->bind('connectors.probe.freshdesk', fn () => static function (array $payload): void {
+                (new \Padosoft\AskMyDocsConnectorFreshdesk\Http\FreshdeskClient((string) ($payload['domain'] ?? ''), (string) ($payload['api_key'] ?? '')))->get('/agents/me');
+            });
+            $this->app->register(\Padosoft\AskMyDocsConnectorFreshdesk\FreshdeskServiceProvider::class);
+            config(['connector-freshdesk.sync.middleware' => [\App\Connectors\ConnectorTenantScopeMiddleware::class]]);
+            // Long batches need a reservation longer than their 600s timeout.
+            // A separate Redis queue keeps ordinary workers' shorter leases safe.
+            config(['queue.connections.freshdesk' => array_replace(config('queue.connections.redis'), ['retry_after' => 660])]);
+            if (config('connector-freshdesk.sync.connection') === null) {
+                config(['connector-freshdesk.sync.connection' => 'freshdesk']);
+            }
+            $this->app->singleton(\App\Ai\Tools\Sources\FreshdeskChatToolSource::class);
+            $this->app->tag([\App\Ai\Tools\Sources\FreshdeskChatToolSource::class], ChatToolSourceContract::class);
+        }
+
         // v4.6 — bind the IoC contract that connector packages call
         // into for ingest dispatch, PII redaction, audit emission,
         // and provider-side deletion. R26 redaction + R30 tenant

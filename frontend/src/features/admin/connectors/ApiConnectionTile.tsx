@@ -1,4 +1,5 @@
 import type { ApiConnector } from '../api-connectors/api-connectors.api';
+import { SourceAvatar } from './SourceAvatar';
 
 /**
  * A gallery card for ONE saved API connection (spec Obj — "salvare una
@@ -51,8 +52,8 @@ export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compa
                 background: 'var(--bg-1)',
             }}
         >
-            {compact && <span aria-hidden="true" style={apiAvatarStyle}><ApiIcon /></span>}
-            <div style={{ flex: 1, minWidth: 210 }}>
+            <SourceAvatar connectorKey="api" displayName="API" />
+            <div style={{ flex: 1, minWidth: compact ? 150 : 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--fg-0)' }}>{connector.name}</span>
                     {!connector.is_active && (
@@ -131,28 +132,6 @@ export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compa
         </div>
     );
 }
-
-function ApiIcon() {
-    return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m8 9-3 3 3 3" />
-            <path d="m16 9 3 3-3 3" />
-            <path d="m14 5-4 14" />
-        </svg>
-    );
-}
-
-const apiAvatarStyle: React.CSSProperties = {
-    width: 36,
-    height: 36,
-    display: 'grid',
-    placeItems: 'center',
-    flex: 'none',
-    borderRadius: 9,
-    color: '#c4b5fd',
-    background: 'rgba(139,92,246,.09)',
-    border: '1px solid rgba(139,92,246,.2)',
-};
 
 const disabledBadgeStyle: React.CSSProperties = {
     fontSize: 10.5,

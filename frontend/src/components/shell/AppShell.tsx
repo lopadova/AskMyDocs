@@ -128,7 +128,7 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
         >
             <Sidebar
                 active={section}
-                collapsed={section === 'chat' && compactNavigation}
+                collapsed={compactNavigation && (section === 'chat' || section === 'connectors')}
                 onNav={onNav}
                 user={sidebarUser}
                 projectCount={projectCount}
