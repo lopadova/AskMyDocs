@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8095e87f962da0ddcca5a378813eca49",
+    "content-hash": "8c271d095405506e8d1be277e0859f04",
     "packages": [
         {
             "name": "agents-full-duplex/laravel-realtime-agent",
@@ -3625,6 +3625,99 @@
                 "issues": "https://github.com/padosoft/askmydocs-connector-fabric/issues"
             },
             "time": "2026-08-29T15:22:22+00:00"
+        },
+        {
+            "name": "padosoft/askmydocs-connector-freshdesk",
+            "version": "1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-freshdesk.git",
+                "reference": "c6066c02ec44d6bb6d35bb5af29537062e93d90d"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-freshdesk/zipball/c6066c02ec44d6bb6d35bb5af29537062e93d90d",
+                "reference": "c6066c02ec44d6bb6d35bb5af29537062e93d90d",
+                "shasum": ""
+            },
+            "require": {
+                "ext-curl": "*",
+                "ext-fileinfo": "*",
+                "ext-zip": "*",
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/queue": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "league/html-to-markdown": "^5.1",
+                "padosoft/askmydocs-connector-base": "^1.6",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\AskMyDocsConnectorFreshdesk\\FreshdeskServiceProvider"
+                    ]
+                },
+                "askmydocs": {
+                    "connectors": [
+                        "Padosoft\\AskMyDocsConnectorFreshdesk\\FreshdeskConnector"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorFreshdesk\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorFreshdesk\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit"
+                ],
+                "analyse": [
+                    "phpstan analyse --memory-limit=512M"
+                ],
+                "format": [
+                    "pint"
+                ]
+            },
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Padosoft",
+                    "homepage": "https://github.com/padosoft"
+                }
+            ],
+            "description": "Freshdesk connector for AskMyDocs: resumable ticket and knowledge base ingestion, attachments and read-only live tools.",
+            "homepage": "https://github.com/padosoft/askmydocs-connector-freshdesk",
+            "keywords": [
+                "askmydocs",
+                "connectors",
+                "freshdesk",
+                "knowledge-base",
+                "laravel",
+                "rag"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/askmydocs-connector-freshdesk/issues",
+                "source": "https://github.com/padosoft/askmydocs-connector-freshdesk"
+            },
+            "time": "2026-10-09T11:45:01+02:00"
         },
         {
             "name": "padosoft/askmydocs-connector-google-drive",
@@ -12431,7 +12524,7 @@
     "platform": {
         "php": "^8.3"
     },
-    "platform-dev": {},
+    "platform-dev": [],
     "platform-overrides": {
         "php": "8.3.0"
     },

@@ -15,6 +15,7 @@
         "padosoft/askmydocs-connector-confluence": "^1.2",
         "padosoft/askmydocs-connector-evernote": "^1.2",
         "padosoft/askmydocs-connector-fabric": "^1.2",
+        "padosoft/askmydocs-connector-freshdesk": "^1.0",
         "padosoft/askmydocs-connector-google-drive": "^1.2",
         "padosoft/askmydocs-connector-imap": "^1.6.1",
         "padosoft/askmydocs-connector-jira": "^1.2",
@@ -94,6 +95,10 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/padosoft/askmydocs-connector-freshdesk"
+        },
         {
             "type": "vcs",
             "url": "https://github.com/padosoft/askmydocs-connector-api"

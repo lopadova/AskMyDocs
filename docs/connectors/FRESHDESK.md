@@ -1,8 +1,18 @@
-# Freshdesk: installazione locale e operatività
+# Freshdesk: installazione e operatività
 
-Il pacchetto vive in `/Users/marco/packages/askmydocs-connector-freshdesk`. L'app abilita provider, probe, strumenti chat e recupero storico soltanto quando la classe del pacchetto è disponibile. Il widget pubblico non espone questi strumenti.
+Il pacchetto pubblico è [padosoft/askmydocs-connector-freshdesk](https://github.com/padosoft/askmydocs-connector-freshdesk), richiesto con vincolo `^1.0` nel `composer.json` condiviso e risolto dal repository GitHub VCS. L'app abilita provider, probe, strumenti chat e recupero storico quando la classe del pacchetto è disponibile. Il widget pubblico non espone questi strumenti.
 
-## Installare senza modificare il manifest condiviso
+## Installare dal lockfile condiviso
+
+```bash
+composer install --no-interaction
+php artisan vendor:publish --tag=connector-freshdesk-assets
+php artisan migrate
+```
+
+Il provider è scoperto automaticamente da Laravel e carica le migrazioni dal pacchetto. In produzione usare `composer install --no-dev --optimize-autoloader` e il normale flusso di deploy dell'app. Il checkout in `/Users/marco/packages/askmydocs-connector-freshdesk` serve allo sviluppo locale e non è richiesto sul server.
+
+## Sviluppare con un symlink locale
 
 Dalla cartella AskMyDocsDev:
 
@@ -10,11 +20,10 @@ Dalla cartella AskMyDocsDev:
 php scripts/install-freshdesk-local.php
 COMPOSER=composer.local.json composer update padosoft/askmydocs-connector-freshdesk --no-interaction
 php artisan vendor:publish --tag=connector-freshdesk-assets
-php artisan migrate --path=/Users/marco/packages/askmydocs-connector-freshdesk/database/migrations --realpath
-npm run build
+php artisan migrate
 ```
 
-Lo script conserva gli eventuali override locali già presenti, aggiunge il repository `path` con symlink e tiene `composer.local.json` e `composer.local.lock` in `.git/info/exclude`. Non modifica `composer.json` o `composer.lock`. I successivi comandi Composer per questa installazione devono usare `COMPOSER=composer.local.json`; un normale `composer install` ripristina l'insieme condiviso delle dipendenze.
+Lo script conserva gli eventuali override locali già presenti, aggiunge il repository `path` con symlink e tiene `composer.local.json` e `composer.local.lock` in `.git/info/exclude`. Non modifica `composer.json` o `composer.lock`. I successivi comandi Composer per questa installazione devono usare `COMPOSER=composer.local.json`; un normale `composer install` ripristina la versione rilasciata dal lockfile condiviso.
 
 Aprire [AskMyDocsDev su Herd](https://askmydocsdev.test), scegliere **Connectors → Freshdesk**, indicare dominio `azienda.freshdesk.com`, API key, etichetta e progetto. **Test connection** verifica le credenziali; il salvataggio ripete la verifica prima di scrivere nel vault. La API key resta fuori da configurazione esportata e risposte.
 
