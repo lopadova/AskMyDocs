@@ -91,6 +91,28 @@ final class ImapInternalDateResponseTest extends TestCase
         $client->internalDate('INBOX', 2290);
     }
 
+    public function test_message_sizes_read_only_metadata_and_ignore_unsolicited_uids(): void
+    {
+        [$client, $protocol] = $this->client([
+            "* 1 FETCH (UID 2290 RFC822.SIZE 33189313)\r\n",
+            "* 2 FETCH (RFC822.SIZE 12345 UID 2291)\r\n",
+            "* 3 FETCH (UID 9999 RFC822.SIZE 5)\r\n",
+            "TAG1 OK Success\r\n",
+        ]);
+
+        $this->assertSame([2290 => 33189313, 2291 => 12345], $client->messageSizes('INBOX', [2290, 2291]));
+        $this->assertSame(['TAG1 UID FETCH 2290,2291 (RFC822.SIZE)'], $protocol->commands);
+    }
+
+    public function test_missing_size_cannot_be_treated_as_a_small_message(): void
+    {
+        [$client] = $this->client(["* 1 FETCH (UID 2291 RFC822.SIZE 12345)\r\n", "TAG1 OK Success\r\n"]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('RFC822.SIZE for UID 2290');
+        $client->messageSizes('INBOX', [2290, 2291]);
+    }
+
     private function client(array $lines): array
     {
         $protocol = new InternalDateWireProtocol($lines);

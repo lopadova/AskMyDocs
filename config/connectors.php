@@ -253,6 +253,7 @@ return [
             'batch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_BATCH_SIZE', 10),
             'max_messages_per_job' => (int) env('CONNECTOR_IMAP_BACKFILL_MAX_MESSAGES_PER_JOB', 10),
             'fetch_size' => (int) env('CONNECTOR_IMAP_BACKFILL_FETCH_SIZE', 5),
+            'fetch_max_bytes' => (int) env('CONNECTOR_IMAP_BACKFILL_FETCH_MAX_BYTES', 8 * 1024 * 1024),
             'stale_after_minutes' => (int) env('CONNECTOR_IMAP_BACKFILL_STALE_MINUTES', 20),
             'absolute_start' => env('CONNECTOR_IMAP_BACKFILL_ABSOLUTE_START', '1970-01-01'),
         ],

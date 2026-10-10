@@ -23,7 +23,7 @@ use Webklex\PHPIMAP\Message;
  * Date-range UID searches use the server-side IMAP SINCE/BEFORE predicates;
  * only the selected UIDs are fetched with bodies.
  */
-final class ImapBackfillMailboxClient implements ImapBackfillClient
+final class ImapBackfillMailboxClient implements ImapBackfillClient, ImapBackfillMessageSizer
 {
     private const BOUNDED_UID_INITIAL_SPAN = 1000;
 
@@ -113,6 +113,27 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         return $this->client->fetchMessage($mailbox, $uid);
     }
 
+    public function messageSizes(string $mailbox, array $uids): ?array
+    {
+        if ($uids === []) {
+            return [];
+        }
+        $this->validateUids($uids);
+        $this->selectMailbox($mailbox);
+        $values = $this->rawClient->getConnection()
+            ->fetch(['RFC822.SIZE'], $uids, null, IMAP::ST_UID)->validatedData();
+        $sizes = [];
+        foreach ($uids as $uid) {
+            $value = $values[$uid] ?? null;
+            if ((! is_int($value) && (! is_string($value) || ! ctype_digit($value))) || (int) $value < 0) {
+                throw new RuntimeException("IMAP did not return RFC822.SIZE for UID {$uid}.");
+            }
+            $sizes[$uid] = (int) $value;
+        }
+
+        return $sizes;
+    }
+
     public function internalDate(string $mailbox, int $uid): Carbon
     {
         $this->selectMailbox($mailbox);
@@ -176,11 +197,7 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
         }
         // The raw UID search criterion below must contain only protocol numbers,
         // never arbitrary strings supplied through PHP's untyped array elements.
-        foreach ($uids as $uid) {
-            if (! is_int($uid) || $uid < 1 || $uid > 4294967295) {
-                throw new InvalidArgumentException('IMAP UIDs must be positive 32-bit integers.');
-            }
-        }
+        $this->validateUids($uids);
         $folder = $this->rawClient->getFolder($mailbox);
         if ($folder === null) {
             throw new RuntimeException("Mailbox not found: {$mailbox}");
@@ -220,6 +237,16 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
     public function close(): void
     {
         $this->client->close();
+    }
+
+    /** @param list<int> $uids */
+    private function validateUids(array $uids): void
+    {
+        foreach ($uids as $uid) {
+            if (! is_int($uid) || $uid < 1 || $uid > 4294967295) {
+                throw new InvalidArgumentException('IMAP UIDs must be positive 32-bit integers.');
+            }
+        }
     }
 
     /**

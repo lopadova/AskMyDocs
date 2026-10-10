@@ -68,13 +68,27 @@ final class ImapBackfillImporter
             $dispatched = 0;
             $lastUid = (int) $window->last_uid;
 
-            $fetchSize = max(1, (int) config('connectors.imap.backfill.fetch_size', 20));
-            foreach (array_chunk($batch, $fetchSize) as $uidChunk) {
+            $fetchSize = max(1, (int) config('connectors.imap.backfill.fetch_size', 5));
+            $sizes = $batch !== [] && $client instanceof ImapBackfillMessageSizer
+                ? $trace->measure('message_sizes', fn () => $client->messageSizes($window->mailbox, $batch), ['uids' => $batch])
+                : null;
+            $chunks = ImapBackfillFetchPlan::chunks(
+                $batch, $sizes, $fetchSize,
+                (int) config('connectors.imap.backfill.fetch_max_bytes', 8 * 1024 * 1024),
+            );
+            foreach ($chunks as $uidChunk) {
                 $messages = $trace->measure('fetch_messages', fn () => $client->fetchMessages($window->mailbox, $uidChunk), [
                     'uids' => $uidChunk,
                 ]);
                 $byUid = [];
+                $requestedUids = array_fill_keys($uidChunk, true);
                 foreach ($messages as $message) {
+                    if (! isset($requestedUids[$message->uid])) {
+                        throw new RuntimeException("IMAP bulk fetch returned unrequested UID {$message->uid}");
+                    }
+                    if (isset($byUid[$message->uid])) {
+                        throw new RuntimeException("IMAP bulk fetch returned duplicate UID {$message->uid}");
+                    }
                     $byUid[$message->uid] = $message;
                 }
 
@@ -98,6 +112,9 @@ final class ImapBackfillImporter
                     $processed++;
                     $lastUid = $uid;
                 }
+                // Release parsed MIME bodies before the next wire fetch. The
+                // byte budget protects only one chunk at a time.
+                unset($messages, $byUid, $message);
             }
 
             $result = new ImapBackfillBatchResult(
