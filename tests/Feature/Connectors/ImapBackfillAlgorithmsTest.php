@@ -229,6 +229,13 @@ final class ImapBackfillAlgorithmsTest extends TestCase
             $this->assertSame($primary, $exception);
         }
         $this->assertTrue($client->closed);
+        Log::shouldHaveReceived('info')->withArgs(fn (string $event, array $context): bool =>
+            $event === '[imap-download] phase started'
+            && $context['phase'] === 'fetch_messages'
+            && $context['window_id'] === $window->id
+            && $context['uids'] === [101]
+            && isset($context['php_memory_limit'], $context['memory_mb'])
+        )->once();
         Log::shouldHaveReceived('error')->withArgs(fn (string $event, array $context): bool =>
             $event === '[imap-download] phase failed'
             && $context['phase'] === 'fetch_messages'

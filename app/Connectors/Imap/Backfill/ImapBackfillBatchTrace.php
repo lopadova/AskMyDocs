@@ -39,13 +39,17 @@ final class ImapBackfillBatchTrace
     public function measure(string $phase, callable $operation, array $context = []): mixed
     {
         $startedAt = microtime(true);
+        // A platform OOM kill cannot execute a PHP catch/finally. Persist the
+        // operation and UIDs before it starts so the last trace still identifies
+        // the interrupted fetch, rather than pointing at the preceding phase.
+        $this->event('phase started', $context + ['phase' => $phase] + ImapBackfillDiagnostics::runtime());
         try {
             $result = $operation();
             $this->event('phase completed', $context + [
                 'phase' => $phase,
                 'elapsed_ms' => ImapBackfillDiagnostics::elapsedMs($startedAt),
                 'result_count' => is_array($result) ? count($result) : null,
-            ]);
+            ] + ImapBackfillDiagnostics::runtime());
 
             return $result;
         } catch (Throwable $exception) {

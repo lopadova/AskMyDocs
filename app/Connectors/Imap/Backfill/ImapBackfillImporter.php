@@ -79,6 +79,7 @@ final class ImapBackfillImporter
             foreach ($chunks as $uidChunk) {
                 $messages = $trace->measure('fetch_messages', fn () => $client->fetchMessages($window->mailbox, $uidChunk), [
                     'uids' => $uidChunk,
+                    'rfc822_bytes' => $sizes === null ? null : array_sum(array_intersect_key($sizes, array_fill_keys($uidChunk, true))),
                 ]);
                 $byUid = [];
                 $requestedUids = array_fill_keys($uidChunk, true);

@@ -133,6 +133,43 @@ flag reread after its local Seen-restoration no-op can reuse the flags just read
 later independent reads always reach the server. Metadata reads explicitly open
 the folder, because STATUS alone does not select it.
 
+## Worker restarts or memory exhaustion on one UID
+
+An IMAP message can be tens of MiB while parsing uses several times its size.
+Base64 payloads, raw wire response lines, multipart splitting and decoded
+attachments can coexist in memory. An `Allowed memory size ... exhausted` error
+describes the PHP process, not the size of an attachment. Reducing the batch to
+one message cannot remove copies of that single message.
+
+The host protocol now reads counted literals in 64 KiB chunks and excludes their
+payload from the raw response journal. It preserves the parsed literal's bytes,
+including binary data, and rejects an interrupted literal. For messages above
+8 MiB, both backfill and incremental sync use the same MIME parser: it scans
+boundaries by offsets, keeps Webklex's header/charset/attachment decoders, releases
+the original body before decoding and collects parsed Message/Attachment cycles
+after mapping the result. Small messages retain the existing package path.
+Missing multipart closing boundaries fail explicitly; they do not confirm a UID
+with a silently omitted final attachment. The size threshold selects a parser;
+it does not impose an attachment-size limit or guarantee a fixed memory ceiling.
+
+Every phase logs `phase started` before its operation, with current/peak PHP
+memory and `php_memory_limit`. `fetch_messages` also logs requested UIDs and their
+combined `rfc822_bytes`. If a process is killed before PHP can catch the error,
+correlate the last start without a completion/failure with platform worker logs
+and restart events. `RFC822.SIZE` is supplied by the server and may differ from
+the transferred MIME size. PHP's memory limit and the container's physical RAM
+are separate constraints.
+
+For Laravel Cloud managed queues, inspect **Cloud Monitoring / Queues** and the
+worker's platform logs. An empty application `failed_jobs` table does not prove
+the Cloud queue has no failed jobs. Ensure the worker deployment contains the
+fix, then verify that the affected window advances beyond its saved UID. If the
+campaign has already reached a terminal failure, resume it through the existing
+full-history action, retaining its windows and checkpoints. Do not reset the
+campaign or purge queues as a memory fix. A killed process can leave a mailbox
+lock until its configured TTL expires; a lock's presence alone does not authorize
+force-unlocking a possibly active session.
+
 For a download-only validation, use an isolated local verification journal and
 sink rather than the ingestion contract or production queues. Record the selected
 UIDs under `(mailbox, UIDVALIDITY, UID)`, hash-check bodies and attachments after
