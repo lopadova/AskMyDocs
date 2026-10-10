@@ -21,6 +21,40 @@ final class ReadOnlyImapProtocol extends ImapProtocol
 
     private float $lastWireActivityAt = 0;
 
+    private int $literalBytesRemaining = 0;
+
+    public function nextLine(Response $response): string
+    {
+        if ($this->literalBytesRemaining > 0) {
+            // A literal is a counted byte string, not a sequence of lines.
+            // Webklex otherwise reads MIME payloads one byte at a time and
+            // retains every base64 line in Response as well as the full body.
+            // Keep one payload copy and read bounded chunks, including binary
+            // data and messages which have no trailing newline.
+            $chunk = fread($this->stream, min(64 * 1024, $this->literalBytesRemaining));
+            if ($chunk === false || $chunk === '') {
+                throw new RuntimeException('IMAP literal ended before its declared byte count.');
+            }
+            $this->literalBytesRemaining -= strlen($chunk);
+
+            return $chunk;
+        }
+
+        $line = fgets($this->stream);
+        if ($line === false) {
+            throw new RuntimeException('empty response');
+        }
+        $response->addResponse($line);
+        if (preg_match('/\{([0-9]+)\+?\}\r?\n\z/', $line, $match)) {
+            $this->literalBytesRemaining = (int) $match[1];
+        }
+        if ($this->debug) {
+            echo '<< '.$line;
+        }
+
+        return $line;
+    }
+
     public function connected(): bool
     {
         if (! is_resource($this->stream) || feof($this->stream)) {

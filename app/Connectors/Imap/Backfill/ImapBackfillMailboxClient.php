@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Connectors\Imap\Backfill;
 
+use App\Connectors\Imap\MemoryBoundedImapMessage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -31,6 +32,9 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient, ImapBackfil
 
     /** @var array<string,int> */
     private array $uidValidity = [];
+
+    /** @var array<string,array<int,int>> */
+    private array $messageSizes = [];
 
     public function __construct(
         private readonly Client $rawClient,
@@ -131,6 +135,8 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient, ImapBackfil
             $sizes[$uid] = (int) $value;
         }
 
+        $this->messageSizes[$mailbox] = $sizes;
+
         return $sizes;
     }
 
@@ -201,6 +207,36 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient, ImapBackfil
         $folder = $this->rawClient->getFolder($mailbox);
         if ($folder === null) {
             throw new RuntimeException("Mailbox not found: {$mailbox}");
+        }
+
+        $large = array_filter(
+            $uids,
+            fn (int $uid): bool => ($this->messageSizes[$mailbox][$uid] ?? 0) > MemoryBoundedImapMessage::RAW_SIZE_THRESHOLD,
+        );
+        if ($large !== []) {
+            // Large UIDs are isolated by the fetch planner. Keep their MIME
+            // parsing independent too, rather than copying multipart payloads
+            // repeatedly through the standard library's split/substring loop.
+            $this->rawClient->openFolder($folder->path);
+            $messages = [];
+            foreach ($uids as $uid) {
+                $connection = $this->rawClient->getConnection();
+                $flags = $connection->flags([$uid], IMAP::ST_UID)->validatedData();
+                $headers = $connection->headers([$uid], 'RFC822', IMAP::ST_UID)->validatedData();
+                $contents = $connection->content([$uid], 'RFC822', IMAP::ST_UID)->validatedData();
+                if (! isset($flags[$uid], $headers[$uid], $contents[$uid])) {
+                    throw new RuntimeException("IMAP did not return complete message data for UID {$uid}.");
+                }
+                $message = MemoryBoundedImapMessage::fromRaw($this->rawClient, $uid, $headers[$uid], $contents[$uid], $flags[$uid]);
+                $messages[] = $this->mapMessage($mailbox, $message);
+                unset($message, $contents);
+                // Webklex attachments refer back to their Message. Collect this
+                // cycle now so encoded MIME bodies do not survive into the next
+                // large fetch while the returned DTO keeps only decoded bytes.
+                gc_collect_cycles();
+            }
+
+            return $messages;
         }
 
         try {

@@ -8,6 +8,7 @@ use App\Connectors\Imap\ReadOnlyImapProtocol;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Webklex\PHPIMAP\ClientManager;
+use Webklex\PHPIMAP\Connection\Protocols\Response;
 
 final class ReadOnlyImapProtocolTest extends TestCase
 {
@@ -116,6 +117,69 @@ final class ReadOnlyImapProtocolTest extends TestCase
             $protocol->stream = false;
             fclose($clientStream);
             fclose($serverStream);
+        }
+    }
+
+    public function test_large_multiline_literal_is_complete_without_retaining_a_second_wire_copy(): void
+    {
+        $body = str_repeat("base64-line-of-private-attachment\r\n", 100_000);
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig());
+        $stream = fopen('php://temp', 'w+');
+        $protocol->stream = $stream;
+        $response = Response::empty();
+        $tokens = [];
+        try {
+            fwrite($stream, '* 1 FETCH (UID 7 BODY[TEXT] {'.strlen($body)."}\r\n".$body.")\r\nTAG1 OK FETCH completed\r\n");
+            rewind($stream);
+            $protocol->readLine($response, $tokens);
+
+            $this->assertSame(hash('sha256', $body), hash('sha256', $tokens[2][3]));
+            $this->assertLessThan(150, strlen(implode('', $response->getResponse())));
+            $this->assertStringNotContainsString('private-attachment', implode('', $response->getResponse()));
+            $this->assertTrue($protocol->readLine($response, $tokens, 'TAG1'));
+            $this->assertSame(['OK', 'FETCH', 'completed'], $tokens);
+        } finally {
+            $protocol->stream = false;
+            fclose($stream);
+        }
+    }
+
+    public function test_counted_literals_preserve_binary_data_and_the_next_response(): void
+    {
+        $body = "a\0b\r\nc\n) UID 999"; // Delimiters inside a literal are opaque bytes.
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig());
+        $stream = fopen('php://temp', 'w+');
+        $protocol->stream = $stream;
+        $response = Response::empty();
+        $tokens = [];
+        try {
+            fwrite($stream, "* 1 FETCH (UID 7 BODY[HEADER] {0}\r\n BODY[TEXT] {".strlen($body)."}\r\n".$body." FLAGS (\\Seen))\r\nTAG1 OK done\r\n");
+            rewind($stream);
+            $protocol->readLine($response, $tokens);
+            $this->assertSame(['UID', '7', 'BODY[HEADER]', '', 'BODY[TEXT]', $body, 'FLAGS', ['\\Seen']], $tokens[2]);
+            $this->assertTrue($protocol->readLine($response, $tokens, 'TAG1'));
+            $this->assertSame(['OK', 'done'], $tokens);
+        } finally {
+            $protocol->stream = false;
+            fclose($stream);
+        }
+    }
+
+    public function test_truncated_literal_fails_without_synthesizing_missing_bytes(): void
+    {
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig());
+        $stream = fopen('php://temp', 'w+');
+        $protocol->stream = $stream;
+        try {
+            fwrite($stream, "* 1 FETCH (UID 7 BODY[TEXT] {20}\r\nshort");
+            rewind($stream);
+            $tokens = [];
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('IMAP literal ended before its declared byte count.');
+            $protocol->readLine(Response::empty(), $tokens);
+        } finally {
+            $protocol->stream = false;
+            fclose($stream);
         }
     }
 }

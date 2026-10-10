@@ -7,6 +7,7 @@ namespace Tests\Feature\Connectors;
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
 use App\Connectors\Imap\Backfill\ImapBackfillMessageSizer;
+use App\Connectors\Imap\MemoryBoundedImapClient;
 use App\Connectors\Imap\ReconnectingImapBackfillClient;
 use App\Connectors\Imap\ReconnectingImapClient;
 use App\Connectors\Imap\SerializingImapBackfillClient;
@@ -54,6 +55,8 @@ final class ImapDecoratorCompositionTest extends TestCase
             $inner,
             'reconnect must be nested INSIDE the serialization lock (Serializing(Reconnecting(raw)))',
         );
+        $downloads = (new ReflectionProperty(ReconnectingImapClient::class, 'inner'))->getValue($inner);
+        $this->assertInstanceOf(MemoryBoundedImapClient::class, $downloads, 'incremental sync must also bound large MIME parsing');
     }
 
     public function test_backfill_bulk_client_uses_the_same_reconnect_and_serialization_chain(): void

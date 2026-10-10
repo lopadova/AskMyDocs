@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxClient;
+use App\Connectors\Imap\MemoryBoundedImapClient;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +16,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Webklex\PHPIMAP\Client;
+use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\Connection\Protocols\ImapProtocol;
 use Webklex\PHPIMAP\Connection\Protocols\ProtocolInterface;
 use Webklex\PHPIMAP\Connection\Protocols\Response;
@@ -92,6 +94,115 @@ final class ImapBackfillMailboxClientTest extends TestCase
         foreach ($folder->ranges as [$from, $to]) {
             $this->assertLessThanOrEqual(50000, $to - $from + 1);
         }
+    }
+
+    public function test_oversized_message_uses_the_bounded_parser_and_keeps_attachments(): void
+    {
+        $protocol = new OversizedMimeTestProtocol;
+        $rawClient = new OversizedMimeTestClient($protocol);
+        $client = new ImapBackfillMailboxClient($rawClient, new HeaderlessImapClient);
+        $client->messageSizes('INBOX', [42]);
+
+        $messages = $client->fetchMessages('INBOX', [42]);
+
+        $this->assertCount(1, $messages);
+        $this->assertSame(42, $messages[0]->uid);
+        $this->assertSame(77, $messages[0]->uidValidity);
+        $this->assertSame('body', $messages[0]->textBody);
+        $this->assertCount(1, $messages[0]->attachments);
+        $this->assertSame('%PDF-1.7 attachment', $messages[0]->attachments[0]->contents);
+        $this->assertSame(['sizes', 'flags', 'headers', 'content'], $protocol->calls);
+    }
+
+    public function test_incremental_sync_uses_the_same_oversized_parser_instead_of_the_package_fetch(): void
+    {
+        $protocol = new OversizedMimeTestProtocol;
+        $rawClient = new OversizedMimeTestClient($protocol);
+        // This package client rejects fetchMessage, so delegating there would
+        // fail the test and reproduce the old unbounded single-message path.
+        $package = new HeaderlessImapClient;
+        $client = new MemoryBoundedImapClient($package, new ImapBackfillMailboxClient($rawClient, $package));
+
+        $message = $client->fetchMessage('INBOX', 42);
+
+        $this->assertSame('body', $message->textBody);
+        $this->assertSame('%PDF-1.7 attachment', $message->attachments[0]->contents);
+        $this->assertSame(['sizes', 'flags', 'headers', 'content'], $protocol->calls);
+    }
+}
+
+final class OversizedMimeTestProtocol extends ImapProtocol
+{
+    public array $calls = [];
+
+    public function __construct() {}
+
+    public function __destruct() {}
+
+    public function fetch(array|string $items, array|int $from, mixed $to = null, int|string $uid = IMAP::ST_UID): Response
+    {
+        $this->calls[] = 'sizes';
+
+        return Response::empty()->setResult([42 => 32 * 1024 * 1024]);
+    }
+
+    public function flags(int|array $uids, int|string $uid = IMAP::ST_UID): Response
+    {
+        $this->calls[] = 'flags';
+
+        return Response::empty()->setResult([42 => ['\\Seen']]);
+    }
+
+    public function headers(int|array $uids, string $rfc = 'RFC822', int|string $uid = IMAP::ST_UID): Response
+    {
+        $this->calls[] = 'headers';
+
+        return Response::empty()->setResult([42 => "Content-Type: multipart/mixed; boundary=bound\r\n"]);
+    }
+
+    public function content(int|array $uids, string $rfc = 'RFC822', int|string $uid = IMAP::ST_UID): Response
+    {
+        $this->calls[] = 'content';
+
+        return Response::empty()->setResult([42 => "--bound\r\nContent-Type: text/plain\r\n\r\nbody\r\n"
+            ."--bound\r\nContent-Type: application/pdf; name=report.pdf\r\nContent-Disposition: attachment\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+            .base64_encode('%PDF-1.7 attachment')."\r\n--bound--\r\n"]);
+    }
+}
+
+final class OversizedMimeTestClient extends Client
+{
+    public function __construct(private readonly ProtocolInterface $testConnection)
+    {
+        parent::__construct((new ClientManager)->getConfig());
+    }
+
+    public function getConnection(): ProtocolInterface
+    {
+        return $this->testConnection;
+    }
+
+    public function getFolderPath(): string
+    {
+        return 'INBOX';
+    }
+
+    public function getFolder(string $folder_name, ?string $delimiter = null, bool $utf7 = false): ?Folder
+    {
+        $folder = new FailingBulkFolder;
+        $folder->path = $folder_name;
+
+        return $folder;
+    }
+
+    public function openFolder(string $folder_path, bool $force_select = false): array
+    {
+        return [];
+    }
+
+    public function disconnect(): Client
+    {
+        return $this;
     }
 }
 
