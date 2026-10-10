@@ -270,6 +270,38 @@ final class ConnectorEmailProbeTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), 'oauth2.googleapis.com/token'));
     }
 
+    public function test_app_only_probe_uses_exchange_even_with_missing_or_stale_connection_parameters(): void
+    {
+        Queue::fake();
+        $admin = $this->makeSuperAdmin();
+        $this->bindImapFactory(lastUid: 5, message: $this->sampleMessage(5));
+        $client = app(ImapClientFactoryInterface::class)->make([], '', 'basic');
+        $factory = \Mockery::mock(ImapClientFactoryInterface::class);
+        $factory->shouldReceive('make')->twice()->with([
+            'username' => 'ops@acme.test',
+            'host' => 'outlook.office365.com',
+            'port' => 993,
+            'encryption' => 'ssl',
+        ], 'app-password', 'xoauth2_client_credentials')->andReturn($client);
+        $this->app->instance(ImapClientFactoryInterface::class, $factory);
+        $this->app->forgetInstance(ConnectorRegistry::class);
+        $installation = $this->makeImapInstallation('test-tenant');
+
+        foreach ([
+            ['username' => 'ops@acme.test'],
+            ['username' => 'ops@acme.test', 'host' => 'stale.example.test', 'port' => 143, 'encryption' => 'tls'],
+        ] as $connection) {
+            $installation->forceFill(['config_json' => [
+                'auth_mode' => 'xoauth2_client_credentials', 'connection' => $connection,
+            ]])->save();
+
+            $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/test-fetch")
+                ->assertOk()->assertJsonPath('data.message.uid', 5);
+        }
+
+        Queue::assertNothingPushed();
+    }
+
     public function test_non_imap_connector_is_404(): void
     {
         $admin = $this->makeSuperAdmin();

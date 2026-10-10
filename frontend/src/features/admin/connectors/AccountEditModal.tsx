@@ -357,7 +357,7 @@ export function AccountEditModal({
                     {/* The save-failure message renders IN the active tab body
                         (next to the fields it belongs to) — one error surface, not
                         a duplicate footer copy. */}
-                    <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-3)' }}>Changes apply on next sync.</span>
+                    <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-3)' }}>{account.connection_settings_schema?.some((field) => field.name === 'ingestion.enabled') ? 'Feature switches apply when saved. Content changes apply on next sync.' : 'Changes apply on next sync.'}</span>
                     <button
                         type="button"
                         data-testid={`${idBase}-cancel`}

@@ -144,6 +144,15 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
             ])->save();
         });
 
+        Log::info('[imap-download] window checkpoint saved', [
+            'backfill_id' => $backfill->id,
+            'window_id' => $this->windowId,
+            'tenant_id' => $this->tenantId,
+            'last_uid' => $result->lastUid,
+            'processed_messages' => $result->processedMessages,
+            'window_completed' => ! $result->hasMore,
+        ]);
+
         PumpImapBackfillJob::dispatch($backfill->id, $this->tenantId)
             ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
     }

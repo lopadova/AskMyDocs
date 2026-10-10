@@ -10,6 +10,7 @@ $kbFilesystemDisk ??= env('LARAVEL_CLOUD_DISK_CONFIG') !== null
     : 'kb';
 
 return [
+    'freshdesk_case_studies' => ['enabled' => env('CONNECTOR_FRESHDESK_CASE_STUDIES_ENABLED', true)],
     'embeddings_dimensions' => env('KB_EMBEDDINGS_DIMENSIONS', 1536),
     'default_min_similarity' => env('KB_MIN_SIMILARITY', 0.30),
     'default_limit' => env('KB_DEFAULT_LIMIT', 8),

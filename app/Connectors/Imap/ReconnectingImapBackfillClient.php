@@ -6,6 +6,7 @@ namespace App\Connectors\Imap;
 
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
+use App\Connectors\Imap\Backfill\ImapBackfillMessageSizer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -14,7 +15,7 @@ use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 
 /** Reconnect-on-transient-drop decorator for the host bulk backfill client. */
-final class ReconnectingImapBackfillClient implements ImapBackfillClient
+final class ReconnectingImapBackfillClient implements ImapBackfillClient, ImapBackfillMessageSizer
 {
     /** @var list<string> */
     private const TRANSIENT_NEEDLES = [
@@ -76,6 +77,13 @@ final class ReconnectingImapBackfillClient implements ImapBackfillClient
     public function fetchMessages(string $mailbox, array $uids): array
     {
         return $this->attempt('backfill.fetchMessages', fn (): array => $this->inner->fetchMessages($mailbox, $uids));
+    }
+
+    public function messageSizes(string $mailbox, array $uids): ?array
+    {
+        return $this->inner instanceof ImapBackfillMessageSizer
+            ? $this->attempt('backfill.messageSizes', fn (): ?array => $this->inner->messageSizes($mailbox, $uids))
+            : null;
     }
 
     public function close(): void

@@ -6,6 +6,7 @@ namespace App\Services\Admin\Connectors;
 
 use Illuminate\Support\Facades\Schema;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorFreshdesk\Support\Features;
 use Padosoft\AskMyDocsConnectorFreshdesk\Sync\SyncManager;
 
 final readonly class FreshdeskHistoricalImportAction implements ConnectorInstallationAction
@@ -14,7 +15,7 @@ final readonly class FreshdeskHistoricalImportAction implements ConnectorInstall
 
     public function descriptor(ConnectorInstallation $installation): array
     {
-        return ['label' => 'Prendi tutto', 'description' => 'Importa lo storico disponibile una volta, mantenendo il periodo configurato.', 'enabled' => Schema::hasTable('freshdesk_sync_runs') && in_array($installation->status, ['active', 'errored'], true)];
+        return ['label' => 'Prendi tutto', 'description' => 'Importa lo storico disponibile una volta, mantenendo il periodo configurato.', 'enabled' => Features::ingestion($installation) && Schema::hasTable('freshdesk_sync_runs') && in_array($installation->status, ['active', 'errored'], true)];
     }
 
     public function status(ConnectorInstallation $installation): ?array

@@ -142,10 +142,10 @@ final class FreshdeskIntegrationTest extends TestCase
         $context = AgentExecutionContext::fromArray($run->toArray());
         $tools = app(AgentToolRegistry::class)->forContext($context, $user);
         $name = 'freshdesk_'.$installation->id.'_get_ticket';
-        $this->assertCount(8, $tools);
+        $this->assertCount(11, $tools);
         $this->assertSame('api', $tools[$name]->kind);
         $this->assertSame($name, $tools[$name]->executorReference);
-        $this->assertCount(6, app(FreshdeskChatToolSource::class)->catalog($user, 'support'));
+        $this->assertCount(9, app(FreshdeskChatToolSource::class)->catalog($user, 'support'));
         $this->assertSame([], app(FreshdeskChatToolSource::class)->catalog($user, 'other-project'));
         $this->assertArrayNotHasKey($name, app(AgentToolRegistry::class)->forContext(AgentExecutionContext::fromArray(array_replace($run->toArray(), ['channel' => 'widget', 'actor_type' => 'anonymous_widget', 'actor_id' => null])), $user));
         app(PackageTenantContext::class)->set('another-tenant');
@@ -233,6 +233,52 @@ final class FreshdeskIntegrationTest extends TestCase
         $this->assertSame('another-tenant', app(TenantContext::class)->current());
         $this->assertSame('another-tenant', app(PackageTenantContext::class)->current());
         $this->assertSame('test-tenant', KbCanonicalAudit::withoutGlobalScopes()->where('event_type', 'connector_sync_completed')->firstOrFail()->tenant_id);
+    }
+
+    public function test_ui_settings_round_trip_feature_flags_without_remote_writes_or_losing_credentials(): void
+    {
+        $installation = $this->installation();
+        $other = $this->installation();
+        $this->actingAs($this->user());
+        $listed = collect($this->getJson('/api/admin/connectors')->assertOk()->json('data'))->firstWhere('key', 'freshdesk');
+        $account = collect($listed['installations'])->firstWhere('id', $installation->id);
+        foreach (['ingestion.enabled', 'chat_tools.enabled', 'case_studies.enabled'] as $name) {
+            $this->assertContains($name, array_column($account['connection_settings_schema'], 'name'));
+            $this->assertTrue(data_get($account['settings'], $name));
+        }
+        $uri = '/api/admin/connectors/'.$installation->id;
+        $this->patchJson($uri, ['settings' => [
+            'ingestion' => ['enabled' => false], 'chat_tools' => ['enabled' => false], 'case_studies' => ['enabled' => false],
+        ]])->assertOk()->assertJsonPath('data.settings.ingestion.enabled', false)
+            ->assertJsonPath('data.settings.chat_tools.enabled', false)->assertJsonPath('data.settings.case_studies.enabled', false);
+        $this->assertSame('example.freshdesk.com', data_get($installation->fresh()->config_json, 'connection.domain'));
+        $this->assertSame(45, $installation->fresh()->config_json['date_window_days']);
+        $this->assertSame('freshdesk-test-key', app(OAuthCredentialVault::class)->getAccessToken($installation->id));
+        $this->assertNull(data_get($other->fresh()->config_json, 'ingestion.enabled'));
+        $this->assertCount(9, app(FreshdeskChatToolSource::class)->catalog(auth()->user(), 'support'));
+        $this->patchJson($uri, ['settings' => ['chat_tools' => ['enabled' => true]]])->assertOk();
+        $this->assertFalse(data_get($installation->fresh()->config_json, 'ingestion.enabled'));
+        $this->assertFalse(data_get($installation->fresh()->config_json, 'case_studies.enabled'));
+        $this->assertCount(18, app(FreshdeskChatToolSource::class)->catalog(auth()->user(), 'support'));
+        $this->patchJson($uri, ['settings' => ['ingestion' => ['enabled' => 'invalid']]])->assertUnprocessable()
+            ->assertJsonValidationErrors('settings.ingestion.enabled');
+        $this->patchJson($uri, ['settings' => ['unknown_feature' => ['enabled' => false]]])->assertUnprocessable();
+        Http::assertNothingSent();
+    }
+
+    public function test_disabling_ingestion_blocks_both_ui_actions_and_scheduler_work(): void
+    {
+        $installation = $this->installation();
+        $installation->update(['config_json' => array_replace_recursive($installation->config_json, ['ingestion' => ['enabled' => false]])]);
+        $this->actingAs($this->user());
+        $this->postJson('/api/admin/connectors/'.$installation->id.'/sync-now')->assertUnprocessable();
+        $this->postJson('/api/admin/connectors/'.$installation->id.'/actions/historical-import')->assertUnprocessable();
+        $listed = collect($this->getJson('/api/admin/connectors')->assertOk()->json('data'))->firstWhere('key', 'freshdesk');
+        $this->assertFalse($listed['installations'][0]['actions'][0]['enabled']);
+        (new StartSync($installation->id, 'test-tenant'))->handle(app(SyncManager::class), app(PackageTenantContext::class));
+        $this->assertSame(0, SyncRun::count());
+        Queue::assertNotPushed(ProcessSyncBatch::class);
+        Http::assertNothingSent();
     }
 
     private function createRun(User $user): AgentRun

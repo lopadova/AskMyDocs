@@ -91,4 +91,22 @@ final class MailboxLockKeyTest extends TestCase
         );
         $this->assertNull(MailboxLockKey::forInstallation(null));
     }
+
+    public function test_app_only_installations_lock_the_effective_exchange_endpoint(): void
+    {
+        $expected = MailboxLockKey::forConnection([
+            'host' => 'outlook.office365.com', 'port' => 993, 'username' => 'ops@acme.test',
+        ]);
+
+        foreach ([
+            ['username' => 'ops@acme.test'],
+            ['host' => 'stale.example.test', 'port' => 143, 'encryption' => 'tls', 'username' => 'ops@acme.test'],
+        ] as $connection) {
+            $installation = new ConnectorInstallation(['config_json' => [
+                'auth_mode' => 'xoauth2_client_credentials', 'connection' => $connection,
+            ]]);
+
+            $this->assertSame($expected, MailboxLockKey::forInstallation($installation));
+        }
+    }
 }

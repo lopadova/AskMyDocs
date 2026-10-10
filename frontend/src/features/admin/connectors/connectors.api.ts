@@ -27,7 +27,7 @@ export interface ConnectorActionDescriptor {
 export interface ConnectorActionStatus {
     id: number;
     mode: string;
-    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    status: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
     counts: Record<string, number>;
     error: string | null;
     phase: string | null;

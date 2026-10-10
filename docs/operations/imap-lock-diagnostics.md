@@ -96,3 +96,46 @@ selectable parent with children remains importable. LIST/authentication failures
 still fail discovery explicitly instead of being treated as an empty mailbox.
 This host-side filter applies to backfills; the package's folder-picker listing
 and incremental-sync implementation are unchanged.
+
+## Independent download windows and phase logs
+
+Each `ImapBackfillWindow` owns its half-open date range `[start, end)`, mailbox,
+snapshot UIDVALIDITY/max UID, last confirmed UID, attempts, heartbeat and error.
+A completed window stays completed when another window is retried. A terminal
+failure is recorded on that window; the pump continues the remaining windows and
+settles the campaign after all windows have reached a terminal state. Resuming a
+failed campaign retains completed windows and saved UID checkpoints.
+
+Application logs prefixed `[imap-download]` correlate each batch with a fresh
+`diagnostic_id`, installation/tenant/window IDs, mailbox hash, date range and UID
+checkpoint. Phases cover client creation, mailbox selection, UID search, size
+metadata, body download, local persistence and close. They record elapsed time,
+UIDs, byte/attachment counts, runtime memory and exception chains. The queue job
+logs `window checkpoint saved` only after the database transaction commits. Mail
+bodies, subjects, attachment contents and authentication tokens are not fields in
+these events. If both download and close fail, the original download error is
+retained and the close failure receives its own phase event.
+
+Backfill fetch planning uses `RFC822.SIZE` metadata before downloading bodies.
+`CONNECTOR_IMAP_BACKFILL_FETCH_SIZE` limits messages per fetch (default 5), and
+`CONNECTOR_IMAP_BACKFILL_FETCH_MAX_BYTES` limits their combined raw size (default
+8 MiB). Oversized messages are fetched alone; clients without size metadata also
+fetch one message at a time. Parsed message arrays are released between chunks.
+Raw size is a planning budget, not a strict PHP memory cap: MIME parsing needs
+additional memory, and one oversized message can exceed the budget. The existing
+per-job message cap and worker timeout remain in effect.
+
+The host read-only protocol opens folders with `EXAMINE` and downloads with
+`BODY.PEEK`, rejecting remote mutations. Recent successful wire reads avoid
+redundant library NOOP checks for 15 seconds; idle connections still receive a
+fresh check and failed reads invalidate the shortcut. The library's immediate
+flag reread after its local Seen-restoration no-op can reuse the flags just read;
+later independent reads always reach the server. Metadata reads explicitly open
+the folder, because STATUS alone does not select it.
+
+For a download-only validation, use an isolated local verification journal and
+sink rather than the ingestion contract or production queues. Record the selected
+UIDs under `(mailbox, UIDVALIDITY, UID)`, hash-check bodies and attachments after
+writing, confirm each message transactionally, and rerun the same sample to check
+that no confirmed message is fetched again. Verify server flags before and after
+the test. Keep diagnostic artifacts under ignored storage, outside Git.

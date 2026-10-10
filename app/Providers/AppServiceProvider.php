@@ -196,6 +196,8 @@ class AppServiceProvider extends ServiceProvider
             });
             $this->app->register(\Padosoft\AskMyDocsConnectorFreshdesk\FreshdeskServiceProvider::class);
             config(['connector-freshdesk.sync.middleware' => [\App\Connectors\ConnectorTenantScopeMiddleware::class]]);
+            config(['connector-freshdesk.case_studies.enabled' => config('kb.freshdesk_case_studies.enabled', true)]);
+            $this->app->bind(\Padosoft\AskMyDocsConnectorFreshdesk\CaseStudies\CaseStudyGeneratorContract::class, \App\Connectors\Freshdesk\OpenRouterCaseStudyGenerator::class);
             // Long batches need a reservation longer than their 600s timeout.
             // A separate Redis queue keeps ordinary workers' shorter leases safe.
             config(['queue.connections.freshdesk' => array_replace(config('queue.connections.redis'), ['retry_after' => 660])]);

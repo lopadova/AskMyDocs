@@ -24,7 +24,7 @@ final class ConnectorInstallationActionController extends Controller
     {
         $installation = $this->installations->findOr404($installationId);
         $handler = $this->actions->get($installation, $action);
-        abort_unless($handler->descriptor($installation)['enabled'] ?? false, 422, 'Enable this installation before starting an import.');
+        abort_unless($handler->descriptor($installation)['enabled'] ?? false, 422, 'Import is disabled for this connection. Check its status and sync settings.');
 
         return response()->json(['data' => $handler->execute($installation)], 202);
     }

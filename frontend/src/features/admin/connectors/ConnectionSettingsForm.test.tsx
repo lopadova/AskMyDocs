@@ -161,3 +161,28 @@ describe('ConnectionSettingsForm', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 });
+
+
+it('renders independent Freshdesk feature switches and submits explicit false values', () => {
+    const onSubmit = vi.fn();
+    const schema = [
+        field({ name: 'ingestion.enabled', label: 'Import into knowledge base', type: 'checkbox', default: true, group: 'Features' }),
+        field({ name: 'chat_tools.enabled', label: 'Live consultation', type: 'checkbox', default: true, group: 'Features' }),
+        field({ name: 'case_studies.enabled', label: 'Case sheets', type: 'checkbox', default: true, group: 'Features' }),
+    ];
+    render(<ConnectionSettingsForm connectorKey="freshdesk"
+        account={{ ...makeAccount({ chat_tools: { enabled: false } }), connection_settings_schema: schema }}
+        onSubmit={onSubmit} onClose={vi.fn()} />);
+    const ingestion = screen.getByRole('checkbox', { name: 'Import into knowledge base' });
+    const live = screen.getByRole('checkbox', { name: 'Live consultation' });
+    const cases = screen.getByRole('checkbox', { name: 'Case sheets' });
+    expect(ingestion).toBeChecked();
+    expect(live).not.toBeChecked();
+    expect(cases).toBeChecked();
+    fireEvent.click(ingestion);
+    fireEvent.click(cases);
+    fireEvent.submit(screen.getByTestId('connector-freshdesk-settings-form'));
+    expect(onSubmit).toHaveBeenCalledWith({
+        ingestion: { enabled: false }, chat_tools: { enabled: false }, case_studies: { enabled: false },
+    });
+});

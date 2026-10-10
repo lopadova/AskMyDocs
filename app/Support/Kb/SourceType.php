@@ -31,6 +31,7 @@ namespace App\Support\Kb;
  */
 enum SourceType: string
 {
+    case FRESHDESK_CASE_STUDY = 'freshdesk_case_study';
     case MARKDOWN = 'markdown';
     case TEXT = 'text';
     case PDF = 'pdf';
@@ -72,6 +73,7 @@ enum SourceType: string
         $normalizedMimeType = strtolower(trim(explode(';', $mimeType, 2)[0]));
 
         return match ($normalizedMimeType) {
+            'application/vnd.askmydocs.freshdesk-case+markdown' => self::FRESHDESK_CASE_STUDY,
             'text/markdown', 'text/x-markdown' => self::MARKDOWN,
             'text/plain' => self::TEXT,
             'application/pdf' => self::PDF,
@@ -118,6 +120,7 @@ enum SourceType: string
     public function toMime(): string
     {
         return match ($this) {
+            self::FRESHDESK_CASE_STUDY => 'application/vnd.askmydocs.freshdesk-case+markdown',
             self::MARKDOWN => 'text/markdown',
             self::TEXT => 'text/plain',
             self::PDF => 'application/pdf',
