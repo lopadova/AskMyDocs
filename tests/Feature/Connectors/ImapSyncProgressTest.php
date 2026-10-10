@@ -10,6 +10,7 @@ use App\Connectors\Imap\ProgressTrackingIngestionBridge;
 use App\Connectors\SerializedConnectorSyncJob;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
@@ -30,6 +31,107 @@ use Tests\TestCase;
 final class ImapSyncProgressTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_worker_timeout_surfaces_on_the_account_and_keeps_its_checkpoint(): void
+    {
+        $tenant = app(TenantContext::class);
+        $tenant->set('default');
+        $vault = app(OAuthCredentialVault::class);
+        $installation = $this->installation(maxMessages: 5000);
+        $vault->setCredentials($installation->id, accessToken: 'secret', extra: [
+            'mailboxes_state' => ['INBOX' => ['uidvalidity' => 1, 'last_uid' => 42]],
+        ]);
+        $job = new SerializedConnectorSyncJob($installation->id, 'default');
+        $this->assertTrue($job->failOnTimeout);
+        $this->assertLessThan(90, $job->timeout);
+        $job->failed(new \RuntimeException('Worker timeout during IMAP download'));
+
+        $this->assertSame(ConnectorInstallation::STATUS_ERRORED, $installation->fresh()->status);
+        $this->assertSame('Worker timeout during IMAP download', $installation->fresh()->error_json['message']);
+        $this->assertSame(42, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
+        $installation->forceFill(['status' => ConnectorInstallation::STATUS_DISABLED])->save();
+        $job->failed(new \RuntimeException('A stale queued job failed'));
+        $this->assertSame(ConnectorInstallation::STATUS_DISABLED, $installation->fresh()->status);
+    }
+
+    public function test_large_sync_chains_short_batches_and_advances_date_only_after_completion(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        config(['connectors.imap.sync.max_messages_per_job' => 2]);
+        $tenant = app(TenantContext::class);
+        $tenant->set('default');
+        $vault = app(OAuthCredentialVault::class);
+        $installation = $this->installation(maxMessages: 5000);
+        $vault->setCredentials($installation->id, accessToken: 'secret');
+        $progress = new ImapSyncProgressContext($vault, $tenant);
+        $recording = new RecordingIngestionContract;
+        $connector = $this->connector(
+            new ArrayImapClient(['INBOX' => [$this->message(1), $this->message(2), $this->message(3)]]),
+            $vault, $tenant, $progress, $recording,
+        );
+        $registry = Mockery::mock(ConnectorRegistry::class);
+        $registry->shouldReceive('get')->with('imap')->andReturn($connector);
+        $job = new SerializedConnectorSyncJob($installation->id, 'default');
+
+        $job->handle($registry, $tenant, $progress);
+        $this->assertSame([1, 2], $recording->imapUids);
+        $this->assertSame(2, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
+        $this->assertNull($installation->fresh()->last_sync_at);
+        Queue::assertPushed(SerializedConnectorSyncJob::class, 1);
+
+        $job->handle($registry, $tenant, $progress);
+        $this->assertSame([1, 2, 3], $recording->imapUids);
+        $this->assertSame(3, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
+        $this->assertNotNull($installation->fresh()->last_sync_at);
+        Queue::assertPushed(SerializedConnectorSyncJob::class, 1);
+    }
+
+    public function test_batch_budget_is_shared_across_folders_and_fetch_errors_do_not_chain(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        config(['connectors.imap.sync.max_messages_per_job' => 2]);
+        $tenant = app(TenantContext::class);
+        $tenant->set('default');
+        $vault = app(OAuthCredentialVault::class);
+        $installation = $this->installation(maxMessages: 5000);
+        $vault->setCredentials($installation->id, accessToken: 'secret');
+        $progress = new ImapSyncProgressContext($vault, $tenant);
+        $progress->begin($installation);
+        $inner = new ArrayImapClient([
+            'INBOX' => [$this->message(1), $this->message(2), $this->message(3)],
+            'Other' => [$this->message(4)],
+        ]);
+        $client = new \App\Connectors\Imap\ProgressTrackingImapClient($inner, $progress, 2);
+        $client->selectMailbox('INBOX');
+        $this->assertSame([1, 2], $client->searchUids('INBOX', null, null));
+        $client->selectMailbox('Other');
+        $this->assertSame([], $client->searchUids('Other', null, null));
+        $progress->finish();
+
+        $connector = Mockery::mock(ConnectorInterface::class);
+        $connector->shouldReceive('syncIncremental')->once()->andReturnUsing(function () use ($progress, $installation): SyncResult {
+            $progress->observeSearch('INBOX', 1, [1, 2, 3]);
+            $progress->deferSearchWork();
+            $message = $this->message(1);
+            $progress->observeFetched($message);
+            $progress->recordSuccessfulDispatch($this->metadata($message, $installation->id), 'default');
+
+            return new SyncResult(
+                documentsAdded: 1, documentsUpdated: 0, documentsRemoved: 0,
+                errors: ['INBOX uid 2: connection reset'], completedAt: now(),
+            );
+        });
+        $registry = Mockery::mock(ConnectorRegistry::class);
+        $registry->shouldReceive('get')->with('imap')->andReturn($connector);
+        (new SerializedConnectorSyncJob($installation->id, 'default'))->handle($registry, $tenant, $progress);
+
+        Queue::assertNothingPushed();
+        $this->assertNull($installation->fresh()->last_sync_at);
+        $this->assertSame(1, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
+        $this->assertSame('INBOX uid 2: connection reset', $installation->fresh()->error_json['partial_errors'][0]);
+    }
 
     public function test_truncated_sync_checkpoints_and_next_run_resumes_after_the_cap(): void
     {

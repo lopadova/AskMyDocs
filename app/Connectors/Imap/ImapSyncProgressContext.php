@@ -67,6 +67,10 @@ final class ImapSyncProgressContext
      */
     private bool $hasUnconfirmedWork = false;
 
+    private bool $deferredSearchWork = false;
+
+    private int $confirmedMessages = 0;
+
     public function __construct(
         private readonly OAuthCredentialVault $vault,
         private readonly TenantContext $tenantContext,
@@ -95,6 +99,8 @@ final class ImapSyncProgressContext
         $this->activeMailbox = null;
         $this->confirmedSinceCheckpoint = 0;
         $this->hasUnconfirmedWork = false;
+        $this->deferredSearchWork = false;
+        $this->confirmedMessages = 0;
     }
 
     public function isActive(): bool
@@ -117,6 +123,16 @@ final class ImapSyncProgressContext
         }
 
         return $this->hasUnconfirmedWork || $this->activeMailboxIsIncomplete();
+    }
+
+    public function deferSearchWork(): void
+    {
+        $this->deferredSearchWork = true;
+    }
+
+    public function canContinueBatch(): bool
+    {
+        return $this->deferredSearchWork && $this->confirmedMessages > 0;
     }
 
     /**
@@ -264,6 +280,8 @@ final class ImapSyncProgressContext
             $this->activeMailbox = null;
             $this->confirmedSinceCheckpoint = 0;
             $this->hasUnconfirmedWork = false;
+            $this->deferredSearchWork = false;
+            $this->confirmedMessages = 0;
         }
     }
 
@@ -339,6 +357,7 @@ final class ImapSyncProgressContext
         $this->activeMailbox['pending_uid'] = null;
         $this->activeMailbox['pending_dispatches'] = 0;
         $this->confirmedSinceCheckpoint++;
+        $this->confirmedMessages++;
 
         if ($this->confirmedSinceCheckpoint >= max(1, $this->checkpointEvery)) {
             $this->persist();

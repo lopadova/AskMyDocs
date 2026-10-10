@@ -203,6 +203,12 @@ return [
     |
     */
     'imap' => [
+        // Bound ordinary incremental syncs too: the package's 5000-message cap
+        // can outlive a worker on large mailboxes. The host preserves the UID
+        // checkpoint and queues the next short batch after a clean partial run.
+        'sync' => [
+            'max_messages_per_job' => (int) env('CONNECTOR_IMAP_SYNC_MAX_MESSAGES_PER_JOB', 10),
+        ],
         'serialize_connections' => (bool) env('CONNECTOR_IMAP_SERIALIZE_CONNECTIONS', true),
         'mailbox_lock' => [
             'wait_seconds' => (int) env('CONNECTOR_IMAP_MAILBOX_LOCK_WAIT', 15),

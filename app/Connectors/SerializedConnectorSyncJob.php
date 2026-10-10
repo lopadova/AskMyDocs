@@ -44,6 +44,11 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
      */
     public int $maxExceptions = 3;
 
+    // Below the default Redis visibility timeout (90s) and Flex worker ceiling.
+    public int $timeout = 75;
+
+    public bool $failOnTimeout = true;
+
     /**
      * Busy-mailbox re-queues can increment attempts; keep them from hitting a max-attempts cap.
      */
@@ -203,6 +208,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         $priorTenant = $tenantContext->current();
         $progressStarted = false;
         $priorLastSyncAt = null;
+        $completed = false;
 
         try {
             $tenantContext->set($this->tenantId);
@@ -237,6 +243,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
 
             try {
                 parent::handle($registry, $tenantContext);
+                $completed = true;
             } catch (MailboxBusyException) {
                 $this->recoverFromMailboxBusy();
 
@@ -247,6 +254,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             try {
                 if ($progressStarted) {
                     $hasUnconfirmedWork = $progress->hasUnconfirmedWork();
+                    $continueBatch = $completed && $progress->canContinueBatch();
 
                     try {
                         $progress->finish();
@@ -259,6 +267,20 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                             $priorLastSyncAt,
                             $hasUnconfirmedWork,
                         );
+                    }
+
+                    if ($continueBatch) {
+                        $installation = ConnectorInstallation::query()
+                            ->where('id', $this->installationId)
+                            ->where('tenant_id', $this->tenantId)
+                            ->first();
+                        // A clean capped batch can continue immediately. Actual
+                        // fetch/dispatch errors stay visible and must not spin an
+                        // endless chain around the same unconfirmed UID.
+                        if ($installation?->status === ConnectorInstallation::STATUS_ACTIVE
+                            && empty($installation->error_json['partial_errors'])) {
+                            self::dispatchFor($installation);
+                        }
                     }
                 }
             } finally {
@@ -286,6 +308,26 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             ->where('connector_installation_id', $installation->id)
             ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
             ->exists();
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        // A hard worker timeout never reaches the connector's catch/finally.
+        // Surface that terminal failure on the account instead of leaving an
+        // apparently active installation which silently stopped downloading.
+        $installation = ConnectorInstallation::query()
+            ->where('id', $this->installationId)
+            ->where('tenant_id', $this->tenantId)
+            ->where('status', ConnectorInstallation::STATUS_ACTIVE)
+            ->first();
+        $installation?->forceFill([
+            'status' => ConnectorInstallation::STATUS_ERRORED,
+            'error_json' => [
+                'message' => $exception?->getMessage() ?: 'IMAP sync stopped after exhausting worker retries.',
+                'class' => $exception === null ? null : $exception::class,
+                'recorded_at' => now()->toIso8601String(),
+            ],
+        ])->save();
     }
 
     /**
