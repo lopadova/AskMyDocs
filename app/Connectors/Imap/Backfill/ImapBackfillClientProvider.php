@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Connectors\Imap\Backfill;
 
+use App\Connectors\Imap\ImapConnectionParameters;
 use Padosoft\AskMyDocsConnectorBase\BaseConnector;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -32,16 +33,7 @@ final class ImapBackfillClientProvider implements ImapBackfillClientProviderCont
 
         $config = (array) ($installation->config_json ?? []);
         $authMode = (string) ($config['auth_mode'] ?? 'basic');
-        $connection = (array) ($config['connection'] ?? []);
-
-        // Never send a freshly minted Microsoft app-only token to a configurable
-        // host. This mirrors the connector package's own security boundary.
-        if ($authMode === 'xoauth2_client_credentials') {
-            $provider = (array) config('connectors.providers.imap.client_credentials.microsoft', []);
-            $connection['host'] = (string) ($provider['imap_host'] ?? 'outlook.office365.com');
-            $connection['port'] = (int) ($provider['imap_port'] ?? 993);
-            $connection['encryption'] = (string) ($provider['imap_encryption'] ?? 'ssl');
-        }
+        $connection = ImapConnectionParameters::forConfig($config);
 
         if (! $this->factory instanceof ImapBackfillClientFactory) {
             throw new RuntimeException('The resolved IMAP factory does not support durable backfills.');
