@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Queue\Job as QueueJobContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
@@ -176,6 +177,40 @@ final class ImapBackfillAlgorithmsTest extends TestCase
         $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
         $this->assertSame(MailboxBusyException::class, $backfill->fresh()->error_json['type']);
         Queue::assertNotPushed(PumpImapBackfillJob::class);
+    }
+
+    public function test_failed_download_logs_its_window_and_keeps_the_primary_error_when_close_also_fails(): void
+    {
+        Log::spy();
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, ['batch_size' => 1]);
+        $window = $this->window($installation, $backfill, ['snapshot_uid_validity' => 77, 'snapshot_max_uid' => 101]);
+        $client = new AlgorithmFakeImapClient;
+        $client->state = new MailboxState(77, 101);
+        $client->betweenUidValues = [101];
+        $primary = $client->fetchException = new RuntimeException('connection reset');
+        $client->closeException = new RuntimeException('close failed');
+
+        try {
+            (new ImapBackfillImporter($this->provider($client), new RecordingConnectorIngestion))
+                ->importBatch($installation, $backfill, $window);
+            $this->fail('A failed fetch must not advance the window');
+        } catch (RuntimeException $exception) {
+            $this->assertSame($primary, $exception);
+        }
+        $this->assertTrue($client->closed);
+        Log::shouldHaveReceived('error')->withArgs(fn (string $event, array $context): bool =>
+            $event === '[imap-download] phase failed'
+            && $context['phase'] === 'fetch_messages'
+            && $context['window_id'] === $window->id
+            && $context['window_start'] === '2026-01-01'
+            && $context['window_end'] === '2026-02-01'
+            && $context['uids'] === [101]
+            && isset($context['diagnostic_id'], $context['elapsed_ms'], $context['exception_chain'])
+        )->once();
+        Log::shouldHaveReceived('error')->withArgs(fn (string $event, array $context): bool =>
+            $event === '[imap-download] phase failed' && $context['phase'] === 'close_client'
+        )->once();
     }
 
     public function test_import_rejects_a_changed_uidvalidity_snapshot(): void
@@ -396,6 +431,8 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
     public int $fetchMessageCalls = 0;
     public bool $closed = false;
     public ?\Throwable $selectMailboxException = null;
+    public ?\Throwable $fetchException = null;
+    public ?\Throwable $closeException = null;
 
     public function __construct()
     {
@@ -439,10 +476,19 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient
 
     public function fetchMessages(string $mailbox, array $uids): array
     {
+        if ($this->fetchException !== null) {
+            throw $this->fetchException;
+        }
         return array_values(array_intersect_key($this->bulkMessages, array_flip($uids)));
     }
 
-    public function close(): void { $this->closed = true; }
+    public function close(): void
+    {
+        $this->closed = true;
+        if ($this->closeException !== null) {
+            throw $this->closeException;
+        }
+    }
 }
 
 final class RecordingConnectorIngestion implements ConnectorIngestionContract

@@ -29,7 +29,6 @@ final class ImapBackfillImporter
         ImapBackfill $backfill,
         ImapBackfillWindow $window,
     ): ImapBackfillBatchResult {
-        $client = $this->clients->forInstallation($installation);
         $config = $this->resolvedConfig((array) ($backfill->settings_json ?? []));
         // Campaigns created before the Flex-worker guard may have persisted a
         // much larger batch (historically 100). Clamp at execution time too, so
@@ -39,9 +38,12 @@ final class ImapBackfillImporter
             (int) $backfill->batch_size,
             (int) config('connectors.imap.backfill.max_messages_per_job', 10),
         ));
+        $trace = new ImapBackfillBatchTrace($installation, $window, $limit);
+        $client = $trace->measure('create_client', fn () => $this->clients->forInstallation($installation));
+        $primaryException = null;
 
         try {
-            $state = $client->selectMailbox($window->mailbox);
+            $state = $trace->measure('select_mailbox', fn () => $client->selectMailbox($window->mailbox));
             if ($window->snapshot_uid_validity > 0 && $state->uidValidity !== $window->snapshot_uid_validity) {
                 throw new RuntimeException(
                     "UIDVALIDITY changed for {$window->mailbox}; start a new backfill snapshot."
@@ -49,14 +51,14 @@ final class ImapBackfillImporter
             }
             // Ask the IMAP server for one item beyond the batch so hasMore is
             // known without transferring every remaining UID in the window.
-            $uids = $client->uidsBetween(
+            $uids = $trace->measure('search_uids', fn () => $client->uidsBetween(
                 $window->mailbox,
                 $window->window_start->copy()->startOfDay(),
                 $window->window_end->copy()->startOfDay(),
                 (int) $window->last_uid,
                 (int) $window->snapshot_max_uid,
                 $limit + 1,
-            );
+            ));
 
             $expected = (int) $window->processed_messages + count($uids);
             $batch = array_slice($uids, 0, $limit);
@@ -68,7 +70,9 @@ final class ImapBackfillImporter
 
             $fetchSize = max(1, (int) config('connectors.imap.backfill.fetch_size', 20));
             foreach (array_chunk($batch, $fetchSize) as $uidChunk) {
-                $messages = $client->fetchMessages($window->mailbox, $uidChunk);
+                $messages = $trace->measure('fetch_messages', fn () => $client->fetchMessages($window->mailbox, $uidChunk), [
+                    'uids' => $uidChunk,
+                ]);
                 $byUid = [];
                 foreach ($messages as $message) {
                     $byUid[$message->uid] = $message;
@@ -82,22 +86,48 @@ final class ImapBackfillImporter
                         throw new RuntimeException("IMAP bulk fetch did not return UID {$uid}");
                     }
                     if ($filter->passes($message)) {
-                        $dispatched += $this->persistMessage($installation, $config, $message, $policy);
+                        $dispatched += $trace->measure('persist_message', fn () => $this->persistMessage($installation, $config, $message, $policy), [
+                            'uid' => $uid,
+                            'attachment_count' => count($message->attachments),
+                            'body_bytes' => strlen($message->textBody ?? '') + strlen($message->htmlBody ?? ''),
+                            'attachment_bytes' => array_sum(array_map(static fn ($attachment): int => strlen($attachment->contents), $message->attachments)),
+                        ]);
+                    } else {
+                        $trace->event('message filtered', ['uid' => $uid]);
                     }
                     $processed++;
                     $lastUid = $uid;
                 }
             }
 
-            return new ImapBackfillBatchResult(
+            $result = new ImapBackfillBatchResult(
                 expectedMessages: $expected,
                 processedMessages: $processed,
                 dispatchedDocuments: $dispatched,
                 lastUid: $lastUid,
                 hasMore: count($uids) > count($batch),
             );
+            $trace->completed($result);
+
+            return $result;
+        } catch (\Throwable $exception) {
+            $primaryException = $exception;
+            $trace->failed($exception, [
+                'last_persisted_uid' => $lastUid ?? (int) $window->last_uid,
+                'processed_messages' => $processed ?? 0,
+            ]);
+
+            throw $exception;
         } finally {
-            $client->close();
+            try {
+                $trace->measure('close_client', fn () => $client->close());
+            } catch (\Throwable $closeException) {
+                if ($primaryException === null) {
+                    throw $closeException;
+                }
+                // The close failure is already traced. Preserve the download
+                // error which identifies the window/UID that actually failed.
+            }
         }
     }
 
