@@ -61,6 +61,14 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
     public function selectMailbox(string $mailbox): MailboxState
     {
         $state = $this->client->selectMailbox($mailbox);
+        $folder = $this->rawClient->getFolder($mailbox);
+        if ($folder === null) {
+            throw new RuntimeException("Mailbox not found: {$mailbox}");
+        }
+        // The package's selectMailbox() reads STATUS, which does not select a
+        // folder on the wire. Metadata FETCH must also work immediately after
+        // selection or reconnect, without relying on a prior SEARCH to open it.
+        $this->rawClient->openFolder($folder->path);
         $this->uidValidity[$mailbox] = $state->uidValidity;
 
         return $state;
@@ -107,6 +115,7 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient
 
     public function internalDate(string $mailbox, int $uid): Carbon
     {
+        $this->selectMailbox($mailbox);
         $connection = $this->rawClient->getConnection();
         if (! method_exists($connection, 'fetch')) {
             throw new RuntimeException('The configured IMAP protocol cannot fetch INTERNALDATE.');

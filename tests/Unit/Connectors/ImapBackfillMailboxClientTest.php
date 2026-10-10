@@ -46,6 +46,7 @@ final class ImapBackfillMailboxClientTest extends TestCase
         $this->assertSame(['INTERNALDATE'], $connection->items);
         $this->assertSame([$uid], $connection->from);
         $this->assertSame(IMAP::ST_UID, $connection->sequence);
+        $this->assertSame(['INBOX'], $rawClient->openedFolders);
     }
 
     public function test_bulk_failure_recovers_a_headerless_message_without_dropping_its_uid(): void
@@ -126,6 +127,7 @@ final class RecordingInternalDateProtocol extends ImapProtocol
 
 final class InternalDateTestClient extends Client
 {
+    public array $openedFolders = [];
     public function __construct(
         private readonly ProtocolInterface $testConnection,
         private readonly ?Folder $testFolder = null,
@@ -138,7 +140,17 @@ final class InternalDateTestClient extends Client
 
     public function getFolder(string $folder_name, ?string $delimiter = null, bool $utf7 = false): ?Folder
     {
-        return $this->testFolder;
+        $folder = $this->testFolder ?? new FailingBulkFolder;
+        $folder->path = $folder_name;
+
+        return $folder;
+    }
+
+    public function openFolder(string $folder_path, bool $force_select = false): array
+    {
+        $this->openedFolders[] = $folder_path;
+
+        return [];
     }
 
     public function disconnect(): Client

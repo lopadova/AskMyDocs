@@ -6,6 +6,7 @@ namespace Tests\Unit\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxClient;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
+use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -14,6 +15,7 @@ use Webklex\PHPIMAP\Config;
 use Webklex\PHPIMAP\Connection\Protocols\ImapProtocol;
 use Webklex\PHPIMAP\Connection\Protocols\Response;
 use Webklex\PHPIMAP\Exceptions\ResponseException;
+use Webklex\PHPIMAP\Folder;
 
 final class ImapInternalDateResponseTest extends TestCase
 {
@@ -94,8 +96,13 @@ final class ImapInternalDateResponseTest extends TestCase
         $protocol = new InternalDateWireProtocol($lines);
         $raw = $this->createStub(InternalDateWireClient::class);
         $raw->method('getConnection')->willReturn($protocol);
+        $folder = $this->createStub(Folder::class);
+        $folder->path = 'INBOX';
+        $raw->method('getFolder')->willReturn($folder);
+        $inner = $this->createStub(ImapClientInterface::class);
+        $inner->method('selectMailbox')->willReturn(new MailboxState(77, 5000000));
 
-        return [new ImapBackfillMailboxClient($raw, $this->createStub(ImapClientInterface::class)), $protocol];
+        return [new ImapBackfillMailboxClient($raw, $inner), $protocol];
     }
 }
 
