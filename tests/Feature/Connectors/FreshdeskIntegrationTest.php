@@ -142,10 +142,10 @@ final class FreshdeskIntegrationTest extends TestCase
         $context = AgentExecutionContext::fromArray($run->toArray());
         $tools = app(AgentToolRegistry::class)->forContext($context, $user);
         $name = 'freshdesk_'.$installation->id.'_get_ticket';
-        $this->assertCount(8, $tools);
+        $this->assertCount(11, $tools);
         $this->assertSame('api', $tools[$name]->kind);
         $this->assertSame($name, $tools[$name]->executorReference);
-        $this->assertCount(6, app(FreshdeskChatToolSource::class)->catalog($user, 'support'));
+        $this->assertCount(9, app(FreshdeskChatToolSource::class)->catalog($user, 'support'));
         $this->assertSame([], app(FreshdeskChatToolSource::class)->catalog($user, 'other-project'));
         $this->assertArrayNotHasKey($name, app(AgentToolRegistry::class)->forContext(AgentExecutionContext::fromArray(array_replace($run->toArray(), ['channel' => 'widget', 'actor_type' => 'anonymous_widget', 'actor_id' => null])), $user));
         app(PackageTenantContext::class)->set('another-tenant');

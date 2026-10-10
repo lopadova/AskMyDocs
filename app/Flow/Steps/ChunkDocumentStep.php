@@ -51,6 +51,9 @@ final class ChunkDocumentStep implements FlowStepHandler
             : [];
 
         $sourceType = $this->resolveSourceType($mimeType);
+        if ($sourceType === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->assertValid((array) ($context->input['metadata'] ?? []), (string) ($context->input['project_key'] ?? ''));
+        }
 
         $converted = new ConvertedDocument(
             markdown: $markdown,

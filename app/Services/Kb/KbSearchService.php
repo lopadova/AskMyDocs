@@ -1036,6 +1036,10 @@ class KbSearchService
      */
     public function filterByFolderGlobs(Collection $chunks, array $globs): Collection
     {
+        // Shared by semantic, hybrid, runner-up, literal and remembered candidate reads.
+        $chunks = $chunks->filter(fn ($chunk): bool => data_get($chunk, 'document.source_type') !== \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE
+            || ($chunk->document instanceof \App\Models\KnowledgeDocument
+                && app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->allows($chunk->document)))->values();
         if ($globs === []) {
             return $chunks;
         }

@@ -63,6 +63,17 @@ class KbSourceReader
             return null;
         }
 
+        if ($document->source_type === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            $excerpt = app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->originalEvidence($document);
+            if ($excerpt === null || trim($excerpt) === '') {
+                return null;
+            }
+            return ['document_id' => (int) $document->id, 'title' => (string) $document->title,
+                'source_path' => (string) $document->source_path, 'source_type' => (string) $document->source_type,
+                'excerpt' => $excerpt, 'complete_source' => false, 'chunk_ids' => [$chunkId], 'candidate' => $candidate,
+                'evidence_origin' => 'original_freshdesk_quotes'];
+        }
+
         $chunks = KnowledgeChunk::query()
             ->forTenant($this->tenant->current())
             ->where('knowledge_document_id', $document->id)
