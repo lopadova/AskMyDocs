@@ -157,3 +157,14 @@ describe('ConnectionsCards', () => {
         expect(card).toHaveAttribute('aria-label', 'team@acme.io on Email (IMAP) — active');
     });
 });
+
+
+it('hides sync for an active connection with ingestion disabled', () => {
+    const rows = buildConnections(entries([
+        installation(1, 'live only', 'active', { settings: { ingestion: { enabled: false } } }),
+        installation(2, 'indexed', 'active'),
+    ]));
+    render(<ConnectionsCards rows={rows} menuId={null} actions={noopActions()} inflight={noInflight()} />);
+    expect(screen.queryByTestId('connector-connection-1-sync')).not.toBeInTheDocument();
+    expect(screen.getByTestId('connector-connection-2-sync')).toBeEnabled();
+});

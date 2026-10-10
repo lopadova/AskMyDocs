@@ -1,5 +1,5 @@
 import { ConnectionActionsMenu } from './ConnectionActionsMenu';
-import type { ConnectionVM } from './connection-vm';
+import { canSync, type ConnectionVM } from './connection-vm';
 import { SourceAvatar } from './SourceAvatar';
 import {
     rowFlags,
@@ -89,7 +89,7 @@ function ConnectionRow({
     vm: ConnectionVM;
 } & Pick<ConnectionsListProps, 'menuId' | 'actions' | 'inflight'>) {
     const flags = rowFlags(vm.id, inflight);
-    const showSync = vm.status === 'active' || vm.status === 'errored';
+    const showSync = canSync(vm);
     const base = `connector-connection-${vm.id}`;
 
     return (

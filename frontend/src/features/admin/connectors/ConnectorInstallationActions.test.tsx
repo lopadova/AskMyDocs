@@ -58,3 +58,14 @@ describe('connector installation actions', () => {
         expect(connectorActionsApi.status).not.toHaveBeenCalled();
     });
 });
+
+
+it('shows a paused import and lets an enabled connection resume it', async () => {
+    vi.mocked(connectorActionsApi.status).mockResolvedValue({ ...running, status: 'paused' });
+    vi.mocked(connectorActionsApi.start).mockResolvedValue({ ...running, status: 'queued' });
+    mount();
+    await screen.findByText('Importazione sospesa: riattiva l’ingest nelle impostazioni e premi per riprendere');
+    await userEvent.click(screen.getByRole('button', { name: 'Prendi tutto' }));
+    await screen.findByText('In coda');
+    expect(connectorActionsApi.start).toHaveBeenCalledWith(7, 'historical-import');
+});

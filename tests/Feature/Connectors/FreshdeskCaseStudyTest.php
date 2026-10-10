@@ -247,6 +247,23 @@ final class FreshdeskCaseStudyTest extends TestCase
         $lineage->assertValid($source->metadata, 'support');
     }
 
+    public function test_account_case_switch_blocks_retrieval_and_restores_it_without_reingestion(): void
+    {
+        [$source, , $installation] = $this->fixture();
+        $this->embeddings();
+        $document = app(DocumentIngestor::class)->ingest('support', $source, 'Caso #42');
+        $chunks = $document->chunks()->with('document')->get();
+        $candidate = ['document' => ['id' => $document->id], 'chunk_id' => $chunks[0]->id];
+        $installation->update(['config_json' => array_replace_recursive($installation->config_json, ['case_studies' => ['enabled' => false]])]);
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($candidate, 'support'));
+        $this->assertCount(0, app(KbSearchService::class)->filterByFolderGlobs($chunks, []));
+        $this->assertSame(1, KnowledgeDocument::count());
+        $installation->update(['config_json' => array_replace_recursive($installation->config_json, ['case_studies' => ['enabled' => true], 'ingestion' => ['enabled' => false]])]);
+        $this->assertNotNull(app(KbSourceReader::class)->readCandidate($candidate, 'support'));
+        $this->assertCount(2, app(KbSearchService::class)->filterByFolderGlobs($chunks, []));
+        Http::assertNothingSent();
+    }
+
     public function test_case_file_cannot_override_its_verified_ledger_facts(): void
     {
         [$source] = $this->fixture();

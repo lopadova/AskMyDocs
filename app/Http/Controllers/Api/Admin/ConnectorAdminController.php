@@ -32,6 +32,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Padosoft\AskMyDocsConnectorFreshdesk\Support\Features;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -406,6 +407,14 @@ final class ConnectorAdminController extends Controller
         if ($installation->status === ConnectorInstallation::STATUS_DISABLED) {
             return response()->json([
                 'error' => 'This account is disabled — enable it before syncing.',
+            ], 422);
+        }
+
+        if ($installation->connector_name === 'freshdesk'
+            && class_exists(Features::class)
+            && ! Features::ingestion($installation)) {
+            return response()->json([
+                'error' => 'Freshdesk ingestion is disabled for this account. Enable it in connection settings before importing.',
             ], 422);
         }
 

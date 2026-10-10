@@ -23,7 +23,7 @@ function InstallationAction({ account, action }: { account: ConnectorInstallatio
     });
     const active = ['queued', 'running'].includes(status.data?.status ?? '');
     const error = start.error ?? status.error;
-    const labels = { queued: 'In coda', running: 'Importazione in corso', completed: 'Importazione completata', failed: 'Importazione interrotta: premi per riprendere', cancelled: 'Importazione annullata' };
+    const labels = { queued: 'In coda', running: 'Importazione in corso', paused: 'Importazione sospesa: riattiva l’ingest nelle impostazioni e premi per riprendere', completed: 'Importazione completata', failed: 'Importazione interrotta: premi per riprendere', cancelled: 'Importazione annullata' };
     return (
         <section style={{ marginTop: 20, display: 'grid', gap: 8 }} aria-label={action.label}>
             <p style={{ margin: 0, color: 'var(--fg-3)', fontSize: 13 }}>{action.description}</p>
