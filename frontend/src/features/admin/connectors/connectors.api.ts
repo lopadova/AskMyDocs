@@ -33,6 +33,7 @@ export interface ConnectorActionStatus {
     phase: string | null;
 }
 export interface ConnectorInstallationDto {
+    supports_email_triage?: boolean;
     actions?: ConnectorActionDescriptor[];
     id: number;
     // v8.20 multi-account: `label` disambiguates the N accounts a tenant connects
