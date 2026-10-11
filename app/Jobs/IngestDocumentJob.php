@@ -276,6 +276,9 @@ class IngestDocumentJob implements ShouldQueue
             $documentId = $persistResult instanceof \Padosoft\LaravelFlow\FlowStepResult
                 ? ($persistResult->output['knowledge_document_id'] ?? null)
                 : null;
+            app(\App\Services\EmailTriage\EmailTriageService::class)->indexed(
+                $this->tenantId, $this->metadata, $documentId === null ? null : (int) $documentId,
+            );
 
             Log::info('IngestDocumentJob completed', [
                 'document_id' => $documentId,
@@ -357,6 +360,7 @@ class IngestDocumentJob implements ShouldQueue
         // carried by a forced OCR re-run is released here, never on a retry.
         // Owner-bound: a lock a newer re-run took over is left to its owner.
         OcrService::releaseRerunLock($this->metadata);
+        app(\App\Services\EmailTriage\EmailTriageService::class)->indexed($this->tenantId, $this->metadata, null, true);
 
         Log::error('IngestDocumentJob failed after retries', [
             'project_key' => $this->projectKey,

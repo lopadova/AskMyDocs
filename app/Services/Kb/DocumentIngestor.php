@@ -788,6 +788,7 @@ class DocumentIngestor
         // still-trashed row would stay invisible to it and the insert would
         // die on `uq_kb_doc_tenant_version` — the same crash R10 point 4
         // describes for the ACL/canonical scopes, one guard short of here.
+        app(\App\Services\EmailTriage\EmailTriageService::class)->assertProjection($tenantId, $projectKey, $sourcePath, $metadata, lock: true);
         $existingVersion = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
         $isNewVersion = $existingVersion === null;
         if ($existingVersion !== null) {
@@ -826,6 +827,9 @@ class DocumentIngestor
             $attributes,
         );
 
+        if ($isNewVersion) {
+            app(\App\Services\EmailTriage\EmailTriageService::class)->inheritAccess($document, $metadata);
+        }
         $this->archivePreviousVersions($projectKey, $sourcePath, $document->id);
 
         // v8.23 (Ciclo 4, PR5) — on a forced re-embed the document row is the

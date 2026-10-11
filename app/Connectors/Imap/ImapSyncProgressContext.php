@@ -203,6 +203,8 @@ final class ImapSyncProgressContext
 
         $this->activeMailbox['pending_uid'] = $message->uid;
         $this->activeMailbox['pending_dispatches'] = $this->expectedDispatchCount($message);
+        $installation = ConnectorInstallation::query()->where('tenant_id', $this->tenantId)->findOrFail($this->installationId);
+        app(\App\Services\EmailTriage\EmailTriageService::class)->register($installation, $message, $this->attachmentPolicy);
     }
 
     /**

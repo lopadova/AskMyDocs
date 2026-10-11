@@ -33,6 +33,7 @@ final class TenantReadScopeTest extends TestCase
     private const TENANT_AWARE_MODELS = [
         'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentRun',
         'EmailDatasetOperationNonce',
+        'EmailTriageProfile', 'EmailTriageMessage', 'EmailTriageEvaluation', 'EmailTriageCampaign', 'EmailTriageCampaignItem',
         'ChatFilterPreset', 'ChatFolder', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
@@ -63,6 +64,7 @@ final class TenantReadScopeTest extends TestCase
         // Scheduler sweep is intentionally cross-tenant; each queued job captures
         // the row's tenant and rebinds both tenant contexts before any work.
         'app/Connectors/Scheduling/ImapBackfillScheduler.php' => 'Cross-tenant scheduled dispatcher; jobs are tenant-captured.',
+        'app/Console/Commands/PumpEmailTriageCommand.php' => 'Cross-tenant durable outbox dispatcher; jobs capture the row tenant and scope all analysis/campaign work.',
         // Cross-tenant by design: the embedding cache + the deleter's
         // legacy unscoped sweep both log/justify the cross-tenant access
         // inline, and DocumentDeleter applies forTenant CONDITIONALLY

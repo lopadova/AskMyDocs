@@ -29,6 +29,15 @@ return [
     */
 
     'connections' => [
+        // Dedicated Redis lease exceeds the 150-second triage job timeout.
+        'email-triage' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'email-triage',
+            'retry_after' => 240,
+            'block_for' => 1,
+            'after_commit' => true,
+        ],
 
         'sync' => [
             'driver' => 'sync',

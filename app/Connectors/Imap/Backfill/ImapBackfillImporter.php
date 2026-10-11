@@ -157,6 +157,7 @@ final class ImapBackfillImporter
         AttachmentPolicy $policy,
     ): int {
         $projectKey = $this->projectKey($installation);
+        app(\App\Services\EmailTriage\EmailTriageService::class)->register($installation, $message, $policy);
         $mailboxSlug = sprintf(
             '%s-%s',
             Str::slug($message->mailbox) ?: 'folder',

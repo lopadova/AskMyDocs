@@ -58,6 +58,7 @@ final class ConnectorInstallationResource extends JsonResource
             // ConnectorInstallationService::installationArray (one contract, R44).
             'connection_settings_schema' => $schema,
             'settings' => $settings->currentSettings($this->resource, $schema),
+            'supports_email_triage' => app(\App\Services\EmailTriage\TriageProfiles::class)->supports($this->resource),
             'actions' => app(\App\Services\Admin\Connectors\ConnectorInstallationActionRegistry::class)->descriptors($this->resource),
         ];
     }

@@ -58,8 +58,9 @@ final class JevDecisionModel implements DecisionModel
         if (! is_array($usage)) {
             throw new DecisionException('Decision provider returned invalid usage.');
         }
-        foreach (['cost', 'input_tokens', 'output_tokens'] as $field) {
-            if (isset($usage[$field]) && (! is_numeric($usage[$field]) || (float) $usage[$field] < 0)) {
+        $usage = array_intersect_key($usage, array_flip(['cost', 'input_tokens', 'output_tokens', 'total_tokens']));
+        foreach (array_keys($usage) as $field) {
+            if (isset($usage[$field]) && (! is_numeric($usage[$field]) || ! is_finite((float) $usage[$field]) || (float) $usage[$field] < 0)) {
                 throw new DecisionException('Decision provider returned invalid usage.');
             }
         }
@@ -121,6 +122,9 @@ final class JevDecisionModel implements DecisionModel
         }
         $this->assertProbability($answer['confidence'] ?? null);
 
+        if (abs(array_sum($answer['probabilities']) - 1.0) > 0.01) {
+            throw new DecisionException('Decision provider returned an inconsistent score distribution.');
+        }
         return ['type' => 'score', 'score' => (float) $score,
             'probabilities' => $answer['probabilities'], 'confidence' => (float) $answer['confidence'],
             'criteria' => $criteria];

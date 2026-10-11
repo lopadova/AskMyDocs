@@ -1029,6 +1029,15 @@ Route::middleware([
 ])
     ->prefix('admin/connectors')
     ->group(function () {
+        $triage = \App\Http\Controllers\Api\Admin\EmailTriageController::class;
+        Route::get('/{installationId}/email-triage', [$triage, 'show'])->whereNumber('installationId');
+        Route::put('/{installationId}/email-triage', [$triage, 'save'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/preview', [$triage, 'preview'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/campaign-preview', [$triage, 'campaignPreview'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/campaigns', [$triage, 'startCampaign'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/campaigns/{campaignId}', [$triage, 'controlCampaign'])->whereNumber(['installationId', 'campaignId']);
+        Route::post('/{installationId}/email-triage/campaigns/{campaignId}/items/{itemId}/retry', [$triage, 'retryCampaignItem'])->whereNumber(['installationId', 'campaignId', 'itemId']);
+        Route::post('/{installationId}/email-triage/messages/{messageId}/retry', [$triage, 'retry'])->whereNumber(['installationId', 'messageId']);
         Route::get('/{installationId}/actions/{action}', [\App\Http\Controllers\Api\Admin\ConnectorInstallationActionController::class, 'show'])
             ->whereNumber('installationId')->name('api.admin.connectors.actions.show');
         Route::post('/{installationId}/actions/{action}', [\App\Http\Controllers\Api\Admin\ConnectorInstallationActionController::class, 'store'])

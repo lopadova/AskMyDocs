@@ -87,6 +87,11 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\AdminCommandAudit::class,
         \App\Models\AdminCommandNonce::class,
         \App\Models\EmailDatasetOperationNonce::class,
+        \App\Models\EmailTriageProfile::class,
+        \App\Models\EmailTriageMessage::class,
+        \App\Models\EmailTriageEvaluation::class,
+        \App\Models\EmailTriageCampaign::class,
+        \App\Models\EmailTriageCampaignItem::class,
         \App\Models\AdminInsightsSnapshot::class,
         // v8.15/W1 — engagement & intelligence suite.
         \App\Models\KbContributionEvent::class,

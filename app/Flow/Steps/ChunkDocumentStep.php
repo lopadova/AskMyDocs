@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Flow\Steps;
 
 use App\Services\Kb\Pii\ChunkRedactor;
+use App\Services\Kb\Chunking\Support\DerivedMetadataReader;
+use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\ConvertedDocument;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use Padosoft\LaravelFlow\FlowContext;
@@ -64,6 +66,15 @@ final class ChunkDocumentStep implements FlowStepHandler
 
         $chunker = $this->registry->resolveChunker($sourceType);
         $chunkDrafts = $chunker->chunk($converted);
+        if (isset($extractionMeta['email_triage']['evaluation_id'])) {
+            // Markdown chunking does not carry connector tags by itself. Every
+            // email fragment must expose the same normalized tags to retrieval.
+            $derived = (new DerivedMetadataReader)->read($converted);
+            $chunkDrafts = array_map(static fn (ChunkDraft $draft) => new ChunkDraft(
+                $draft->text, $draft->order, $draft->headingPath,
+                array_merge($draft->metadata, $derived, ['email_triage' => $extractionMeta['email_triage']]),
+            ), $chunkDrafts);
+        }
 
         // v8.23 (Ciclo 4) — PII redaction of the chunk text HERE, so the
         // downstream embed-chunks + persist-chunks steps (which both read

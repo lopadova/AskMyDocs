@@ -125,6 +125,7 @@ final class ConnectorInstallationService
             // exposes connection/auth/secret config.
             'connection_settings_schema' => $schema,
             'settings' => $this->settings->currentSettings($i, $schema),
+            'supports_email_triage' => app(\App\Services\EmailTriage\TriageProfiles::class)->supports($i),
             'actions' => app(ConnectorInstallationActionRegistry::class)->descriptors($i),
         ];
     }

@@ -60,15 +60,19 @@ final class ParseMarkdownStep implements FlowStepHandler
             : (string) config('kb.sources.path_prefix', '');
         $fullPath = $this->resolveStoragePath($normalizedPath, $prefix);
         $storage = Storage::disk($disk);
+        $triaged = app(\App\Services\EmailTriage\EmailTriageService::class)->sourceForIngest(
+            (string) ($input['tenant_id'] ?? app(\App\Support\TenantContext::class)->current()),
+            $projectKey, $normalizedPath, $metadata,
+        );
 
-        if (! $storage->exists($fullPath)) {
+        if ($triaged === null && ! $storage->exists($fullPath)) {
             // R4 / R14 — fail loud, do NOT return success-with-empty.
             throw new RuntimeException(
                 "ParseMarkdownStep: file not found on disk [{$disk}]: {$fullPath}"
             );
         }
 
-        $bytes = $storage->get($fullPath);
+        $bytes = $triaged ?? $storage->get($fullPath);
         if ($bytes === null) {
             throw new RuntimeException(
                 "ParseMarkdownStep: failed to read file [{$disk}]: {$fullPath}"
@@ -118,7 +122,10 @@ final class ParseMarkdownStep implements FlowStepHandler
             'mime_type' => $mimeType,
             'markdown' => $converted->markdown,
             'media_items' => $converted->mediaItems,
-            'extraction_meta' => $converted->extractionMeta,
+            'extraction_meta' => $triaged === null ? $converted->extractionMeta : array_merge(
+                $converted->extractionMeta,
+                ['_derived' => $metadata['_derived'] ?? [], 'imap' => $metadata['imap'] ?? [], 'email_triage' => $metadata['email_triage']],
+            ),
             'metadata' => $combinedMetadata,
             'canonical' => $canonical === null ? null : [
                 'frontmatter' => $canonical->frontmatter,

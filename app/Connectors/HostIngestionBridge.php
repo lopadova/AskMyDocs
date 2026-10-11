@@ -106,6 +106,9 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // does not re-present the same attachment every run; re-enabling OCR
         // and re-syncing (backfill) picks it up.
         if ($this->refusesImageWithoutOcr($mimeType)) {
+            app(\App\Services\EmailTriage\EmailTriageService::class)->receive(
+                $projectKey, $relativePath, $disk, $title, $metadata, $tenantId, 'ocr_disabled',
+            );
             $this->recordRefusedImage($projectKey, $relativePath, $mimeType, $metadata, $tenantId, $disk);
             $this->imapSyncProgress->recordSuccessfulDispatch($progressMetadata, $tenantId);
 
@@ -136,15 +139,20 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             metadata: $metadata,
         );
 
-        IngestDocumentJob::dispatch(
-            projectKey: $projectKey,
-            relativePath: $relativePath,
-            disk: $disk,
-            title: $title,
-            metadata: $metadata,
-            mimeType: $mimeType,
-            tenantId: $tenantId,
+        $gated = app(\App\Services\EmailTriage\EmailTriageService::class)->receive(
+            $projectKey, $relativePath, $disk, $title, $metadata, $tenantId,
         );
+        if (! $gated) {
+            IngestDocumentJob::dispatch(
+                projectKey: $projectKey,
+                relativePath: $relativePath,
+                disk: $disk,
+                title: $title,
+                metadata: $metadata,
+                mimeType: $mimeType,
+                tenantId: $tenantId,
+            );
+        }
 
         // v8.21 (Ciclo 2) — count this document against the connector sync run
         // currently executing in this worker (no-op outside a sync, e.g. the

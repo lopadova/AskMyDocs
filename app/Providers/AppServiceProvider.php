@@ -924,6 +924,8 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->commands([
+            \App\Console\Commands\PumpEmailTriageCommand::class,
+            \App\Console\Commands\PilotEmailTriageCommand::class,
             PruneEmbeddingCacheCommand::class,
             PruneChatLogsCommand::class,
             PruneRealtimeAgentSessionsCommand::class,
