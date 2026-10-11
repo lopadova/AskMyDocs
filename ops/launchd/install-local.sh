@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-# Install the three local AskMyDocs services in the current user's launchd
+# Install local AskMyDocs services in the current user's launchd
 # domain. Templates deliberately contain no environment secrets: Laravel reads
 # the existing application .env from the configured project root.
 set -euo pipefail
@@ -21,6 +21,9 @@ mkdir -p "${launch_agents_dir}"
 
 for template in "${script_dir}"/*.plist.template; do
     label="${${template:t}%.plist.template}"
+    if [[ "${1:-}" == "--triage-only" && "${label}" != com.askmydocsdev.queue-email-triage-* ]]; then
+        continue
+    fi
     destination="${launch_agents_dir}/${label}.plist"
 
     sed \
