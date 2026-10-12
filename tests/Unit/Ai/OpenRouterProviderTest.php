@@ -150,10 +150,50 @@ class OpenRouterProviderTest extends TestCase
         $this->assertSame('openai/gpt-4o-mini', $response->model);
         Http::assertSent(static function (Request $request) use ($format): bool {
             $body = $request->data();
-            return $body['model'] === 'openai/gpt-4o-mini'
+            return str_contains($request->url(), '/chat/completions') && $body['model'] === 'openai/gpt-4o-mini'
                 && $body['response_format'] === $format
                 && $body['provider']['require_parameters'] === true;
         });
+    }
+
+    public function test_optional_sampling_uses_catalog_capabilities_without_weakening_required_schema(): void
+    {
+        $this->setupConfig();
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/models/vendor/native-sampling/endpoints' => Http::response(['data' => ['endpoints' => [
+                ['supported_parameters' => ['response_format', 'tools', 'tool_choice', 'max_tokens']],
+            ]]]),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => '{}']]]]),
+        ]);
+        $options = ['model' => 'vendor/native-sampling', 'temperature' => 0,
+            'response_format' => ['type' => 'json_schema'], 'tools' => [], 'tool_choice' => 'auto'];
+        $this->provider()->chat('sys', 'data', $options);
+        $this->provider()->chat('sys', 'data', $options);
+
+        Http::assertSentCount(3); // One cached public capability read, two actual turns.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/chat/completions')
+            && ! isset($request['temperature']) && $request['response_format'] === $options['response_format']
+            && $request['provider']['require_parameters'] === true && $request['tool_choice'] === 'auto');
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/models/')
+            && ! $request->hasHeader('Authorization'));
+    }
+
+    public function test_unknown_or_compatible_catalog_preserves_explicit_sampling(): void
+    {
+        $this->setupConfig();
+        Http::fake([
+            '*/models/vendor/compatible/endpoints' => Http::response(['data' => ['endpoints' => [
+                ['supported_parameters' => ['temperature']],
+            ]]]),
+            '*/models/vendor/unknown/endpoints' => Http::response([], 503),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => '{}']]]]),
+        ]);
+        foreach (['vendor/compatible', 'vendor/unknown'] as $model) {
+            $this->provider()->chat('sys', 'data', ['model' => $model, 'temperature' => .15, 'tools' => []]);
+            Http::assertSent(fn ($request) => str_contains($request->url(), '/chat/completions')
+                && $request['model'] === $model && $request['temperature'] === .15);
+        }
     }
 
     public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http(): void

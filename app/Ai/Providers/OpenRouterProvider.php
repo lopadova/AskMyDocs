@@ -9,6 +9,7 @@ use App\Ai\Providers\Concerns\FallbackStreaming;
 use App\Ai\Providers\Concerns\SdkChat;
 use App\Ai\Support\ToolTurnDetector;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * OpenRouter provider — HYBRID adapter (v8.16/W2).
@@ -164,6 +165,12 @@ final class OpenRouterProvider implements AiProviderInterface
         }
 
         $baseUrl = rtrim($this->config['url'] ?? 'https://openrouter.ai/api/v1', '/');
+        $parameters = $this->supportedParameters($baseUrl, $payload['model']);
+        if ($parameters !== null && ! in_array('temperature', $parameters, true)) {
+            // Sampling is optional. Keep required tools/schema unchanged while
+            // using the model's native sampling when its catalog disallows it.
+            unset($payload['temperature']);
+        }
 
         $response = Http::withToken($this->config['key'])
             ->withHeaders([
@@ -187,6 +194,25 @@ final class OpenRouterProvider implements AiProviderInterface
             finishReason: $data['choices'][0]['finish_reason'] ?? null,
             toolCalls: $this->normalizeToolCalls($message['tool_calls'] ?? null),
         );
+    }
+
+    /** Unknown capabilities preserve the request; never guess from model names. */
+    private function supportedParameters(string $baseUrl, string $model): ?array
+    {
+        try {
+            return Cache::remember('openrouter-parameters:'.hash('sha256', $baseUrl.'|'.$model), 3600, function () use ($baseUrl, $model) {
+                $response = Http::timeout(10)->get($baseUrl.'/models/'.str_replace('%2F', '/', rawurlencode($model)).'/endpoints');
+                $endpoints = $response->successful() ? $response->json('data.endpoints') : null;
+                if (! is_array($endpoints) || $endpoints === []
+                    || array_filter($endpoints, fn ($endpoint) => ! is_array($endpoint['supported_parameters'] ?? null))) {
+                    return null;
+                }
+
+                return array_values(array_unique(array_merge(...array_column($endpoints, 'supported_parameters'))));
+            });
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function normalizeToolCalls(mixed $rawToolCalls): array
