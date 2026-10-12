@@ -114,6 +114,7 @@ class KbSearchService
         int $limit = 8,
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
+        bool $includeAuxiliaryContext = true,
     ): SearchResult {
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
         // Resolve a representative project_key for the legacy meta payload
@@ -142,7 +143,9 @@ class KbSearchService
         // Each runner-up carries a `reason` field so the FE can
         // surface "Considered but not used" with a demotion-cause
         // badge. NOT fed to the LLM — visible only in the chat UI.
-        $runnerUp = $this->fetchRunnerUp(
+        // Recursive investigations consume primary sources only. Do not make
+        // them wait for a second vector query or unused graph/context reads.
+        $runnerUp = $includeAuxiliaryContext ? $this->fetchRunnerUp(
             query: $query,
             primary: $primary,
             projectKey: $projectKey,
@@ -150,9 +153,9 @@ class KbSearchService
             filters: $effectiveFilters,
             limit: (int) config('kb.runner_up.limit', 15),
             precomputedEmbedding: $queryEmbedding,
-        );
-        $expanded = $this->graphExpander->expand($primary, $effectiveProject);
-        $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
+        ) : collect();
+        $expanded = $includeAuxiliaryContext ? $this->graphExpander->expand($primary, $effectiveProject) : collect();
+        $rejected = $includeAuxiliaryContext ? $this->rejectedInjector->pick($query, $effectiveProject) : collect();
 
         $retrievalMs = (int) ((microtime(true) - $retrievalStart) * 1000);
 
@@ -218,8 +221,8 @@ class KbSearchService
                     'semantic_enabled' => true,  // pgvector is always on
                     'fts_enabled' => (bool) config('kb.hybrid_search.enabled', false),
                     'fusion_method' => $this->resolveFusionMethod(),
-                    'graph_expansion_enabled' => (bool) config('kb.graph.expansion_enabled', true),
-                    'rejected_injection_enabled' => (bool) config('kb.rejected.injection_enabled', true),
+                    'graph_expansion_enabled' => $includeAuxiliaryContext && (bool) config('kb.graph.expansion_enabled', true),
+                    'rejected_injection_enabled' => $includeAuxiliaryContext && (bool) config('kb.rejected.injection_enabled', true),
                     'filters_applied' => $filtersSelected,
                 ],
 

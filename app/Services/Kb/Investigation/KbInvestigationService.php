@@ -174,7 +174,7 @@ class KbInvestigationService
                 // the assessor or the final answer prompt in this flow.
                 $search = $round === 0 && $anchoredToPreviousCitations && $understanding->requiresResearch === null
                     ? new SearchResult(collect(), collect(), collect())
-                    : $this->retrieval->retrieve($nextQuery, $projectKey, $filters);
+                    : $this->retrieval->retrieve($nextQuery, $projectKey, $filters, includeAuxiliaryContext: false);
                 $attempt['primary_candidates'] = $search->primary->count();
             } catch (Throwable) {
                 $attempt['semantic_lookup_error'] = true;
