@@ -130,7 +130,7 @@ final readonly class AgentAnswerSynthesizer
         $repair = null;
         if ($selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
             && ($grounding['reason'] ?? null) !== 'no_new_detail') {
-            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims']);
+            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims'], $understanding ?? []);
             $grounding['coverage_validation'] = $coverage;
             $providerFailed = array_filter($grounding['semantic_validation'] ?? [], fn ($stage) => ($stage['status'] ?? null) === 'error');
             if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)) {
@@ -164,7 +164,7 @@ final readonly class AgentAnswerSynthesizer
                         data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
                         data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])), repairAttempt: true);
                     $repairedCoverage = $repaired['valid']
-                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims']) : null;
+                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims'], $understanding ?? []) : null;
                     $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
                     $repair['candidate_coverage'] = $repairedCoverage;
                     $repair['candidate_reason'] = $repaired['reason'] ?? null;

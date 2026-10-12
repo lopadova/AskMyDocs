@@ -9,11 +9,19 @@ use App\Decisions\Decisions;
 /** Coverage can request one better draft; it never authorizes a factual claim. */
 final class AnswerCoverageEvaluator
 {
-    public function evaluate(string $question, array $evidence, array $claims): array
+    public function evaluate(string $question, array $evidence, array $claims, array $understanding = []): array
     {
         $documentIds = array_values(array_filter(array_column($claims, 'document_id')));
+        $scopes = array_filter(array_column($understanding['subquestions'] ?? [], 'identifiers'));
+        if ($scopes === [] && ($understanding['focus']['identifiers'] ?? []) !== []) {
+            $scopes = [$understanding['focus']['identifiers']];
+        }
         foreach ($evidence['documents'] ?? [] as $document) {
-            if (array_filter($document['evidence'] ?? [], fn ($chunk) => ($chunk['verified_identifier_hashes'] ?? []) !== [])) {
+            if (array_filter($scopes, fn ($ids) => ! array_filter($ids, fn ($id) =>
+                ! \App\Services\Chat\Reasoning\EvidenceProjector::contains($document['title'] ?? '', $id)
+                && ! array_filter($document['evidence'] ?? [], fn ($chunk) =>
+                    \App\Services\Chat\Reasoning\EvidenceProjector::contains($chunk['content'] ?? '', $id)
+                    || in_array(hash('sha256', $id), $chunk['verified_identifier_hashes'] ?? [], true))))) {
                 $documentIds[] = $document['document_id'];
             }
         }
