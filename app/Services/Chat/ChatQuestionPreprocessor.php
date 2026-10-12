@@ -10,12 +10,27 @@ use App\Support\SupportedLocale;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/** One bounded, source-blind interpretation per new user message. */
+/** One validated, source-blind interpretation, with one bounded contract repair. */
 final readonly class ChatQuestionPreprocessor
 {
     public function __construct(private AiManager $ai) {}
 
     public function interpret(string $question, ?string $conversationContext = null, ?array $profile = null, ?array $reasoningContext = null, ?AgentCapabilitySnapshot $capabilities = null): QuestionUnderstanding
+    {
+        $correction = null;
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $result = $this->attempt($question, $conversationContext, $profile, $reasoningContext, $capabilities, $correction);
+            if ($result->available || $result->failureReason === 'provider_unavailable') {
+                return $result;
+            }
+            $correction = $result->failureReason;
+        }
+
+        return $result;
+    }
+
+    private function attempt(string $question, ?string $conversationContext, ?array $profile, ?array $reasoningContext,
+        ?AgentCapabilitySnapshot $capabilities, ?string $correction): QuestionUnderstanding
     {
         $fallback = new QuestionUnderstanding(null, trim($question), [mb_substr(trim($question), 0, 500)], [], false, false);
         $failureStage = 'provider_unavailable';
@@ -46,6 +61,8 @@ First decide the relationship to the ordered dialogue, independently of what nee
 - context_mode=new: a standalone new request without a dependency on prior discussion.
 - context_mode=mixed: one message combines a contextual task and an independent new request. Keep BOTH as separate subquestions.
 Then set requires_research: false when this task only greets, explains assistant capabilities, explains/summarizes known source content, reads an already identified source, or asks clarification; true when new facts, sources or refreshed live records are needed. A contextual request can still need research ("check its CURRENT status"); context_mode alone must never authorize reusing old live data as current. For mixed messages set these fields independently on EVERY subquestion; parent requires_research is true if ANY task needs research. Searches must target only the new/missing information. For a context-only task return kb_queries=[]; the host re-reads authorized sources without a global search.
+Parent context_mode must equal the common subquestion mode, or mixed when subquestion modes differ; references_previous_turn is false only when the parent mode is new. Never label the parent conversation while every subquestion is new. A request to describe what happened does not implicitly request current news: preserve the requested time and scope without inventing additional obligations.
+If validation_error is supplied, your previous interpretation violated the server contract. Correct that contract error using the SAME original message and authorized context. Do not invent identifiers, relations or another user request to make validation pass.
 Resolve references and the real goal BEFORE choosing searches. If the target, required identifier or requested operation cannot be resolved from the current message and registered dialogue, use action=clarify, requires_research=false and a short clarification. Do not invent a broad business objective to replace a vague conversational turn. Knowing what the user asks but not yet knowing the answer is different: that is research, not clarification.
 Example: after showing an email, "explain it" is conversation with requires_research=false; "find ORDER-B" is new with requires_research=true; "summarize that email and find ORDER-B" is mixed with TWO tasks, one false and one true. "refresh that order" is conversation with requires_research=true.
 
@@ -112,6 +129,7 @@ FOCUS;
                     'company_profile' => $profile,
                     'reasoning_context' => $modelContext,
                     'available_capabilities' => $capabilities?->compact(),
+                    ...$correction === null ? [] : ['validation_error' => $correction],
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]],
                 [
                     'model' => (string) config('ai.question_preprocessor.model', 'openai/gpt-4o-mini'),

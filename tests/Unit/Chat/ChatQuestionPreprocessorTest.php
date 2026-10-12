@@ -17,7 +17,7 @@ final class ChatQuestionPreprocessorTest extends TestCase
     {
         $focus = ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'current', 'fields' => ['status']];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturn($this->response([
             'language' => 'it', 'intent' => 'Stato attuale ORDER-B', 'action' => 'research', 'kb_queries' => [],
             'mentions' => [['text' => 'ORDER-B', 'type' => 'identifier']], 'references_previous_turn' => false,
             'context_mode' => 'new', 'requires_research' => false, 'transition' => 'new', 'focus' => $focus,
@@ -104,7 +104,7 @@ final class ChatQuestionPreprocessorTest extends TestCase
     public function test_invalid_json_falls_back_without_entity_gate(): void
     {
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse('{broken', 'fake', 'fake'));
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturn(new AiResponse('{broken', 'fake', 'fake'));
         $result = (new ChatQuestionPreprocessor($ai))->interpret('Parlami di questa SPD-51230');
         $this->assertFalse($result->available);
         $this->assertSame([], $result->mentionTexts());
@@ -168,6 +168,34 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $result = (new ChatQuestionPreprocessor($ai))->interpret('Esistono email di Figo?');
         $this->assertFalse($result->available);
         $this->assertSame([], $result->mentions);
+    }
+
+    public function test_one_contract_repair_receives_server_feedback_and_preserves_the_original_request(): void
+    {
+        $focus = ['topic' => 'customer', 'identifiers' => ['Ada Rossi'], 'aspect' => 'case', 'fields' => ['*']];
+        $valid = ['language' => 'it', 'intent' => 'Il caso di Ada Rossi', 'action' => 'research',
+            'kb_queries' => ['Ada Rossi'], 'mentions' => [['text' => 'Ada Rossi', 'type' => 'name']],
+            'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+            'transition' => 'new', 'focus' => $focus, 'subquestions' => [$focus + [
+                'question' => 'Che cosa è successo ad Ada Rossi?', 'kb_queries' => ['Ada Rossi'],
+                'context_mode' => 'new', 'requires_research' => true]],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => ''];
+        $invalid = [...$valid, 'references_previous_turn' => true, 'context_mode' => 'conversation'];
+        $calls = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->twice()->withArgs(function ($provider, $prompt, $messages) use (&$calls): bool {
+            $calls[] = json_decode($messages[0]['content'], true);
+
+            return true;
+        })->andReturn($this->response($invalid), $this->response($valid));
+
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Che cosa è successo ad Ada Rossi?', reasoningContext: []);
+
+        $this->assertTrue($result->available);
+        $this->assertSame(['Ada Rossi'], $result->targetIdentifiers());
+        $this->assertArrayNotHasKey('validation_error', $calls[0]);
+        $this->assertSame('invalid_focus_contract', $calls[1]['validation_error']);
+        $this->assertSame($calls[0]['question'], $calls[1]['question']);
     }
 
     #[DataProvider('assistantConversations')]
@@ -321,7 +349,7 @@ final class ChatQuestionPreprocessorTest extends TestCase
     {
         foreach ([[], ['action' => 'execute_tool'], ['action' => ['read_source']]] as $extra) {
             $ai = Mockery::mock(AiManager::class);
-            $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse(json_encode([
+            $ai->shouldReceive('chatWithProvider')->twice()->andReturn(new AiResponse(json_encode([
                 'language' => 'it', 'intent' => 'Leggere la fonte completa', 'kb_queries' => ['conferma'],
                 'mentions' => [], 'references_previous_turn' => true, ...$extra,
             ]), 'fake', 'test'));
@@ -337,7 +365,7 @@ final class ChatQuestionPreprocessorTest extends TestCase
     {
         $focus = ['topic' => 'email', 'identifiers' => [], 'aspect' => 'text', 'fields' => []];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturn($this->response([
             'language' => 'it', 'intent' => 'Testo della conferma', 'action' => 'read_source',
             'kb_queries' => ['conferma'], 'mentions' => [], 'references_previous_turn' => true,
             'transition' => 'recap', 'focus' => $focus, 'subquestions' => [$focus],
@@ -401,7 +429,7 @@ final class ChatQuestionPreprocessorTest extends TestCase
     public function test_empty_active_subquestions_do_not_silently_reuse_the_old_focus(): void
     {
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturn($this->response([
             'language' => 'en', 'intent' => 'identify customer', 'kb_queries' => ['customer'], 'mentions' => [],
             'references_previous_turn' => true, 'transition' => 'continue',
             'focus' => ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'details', 'fields' => []],
@@ -435,7 +463,7 @@ final class ChatQuestionPreprocessorTest extends TestCase
     {
         $focus = ['topic' => 'hub', 'identifiers' => ['INVENTED'], 'aspect' => 'details', 'fields' => []];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturn($this->response([
             'language' => 'it', 'intent' => 'Dettagli hub', 'kb_queries' => ['INVENTED'], 'mentions' => [],
             'references_previous_turn' => true, 'transition' => 'continue', 'focus' => $focus, 'subquestions' => [$focus],
             'resolved_references' => ['INVENTED'], 'needs_clarification' => false, 'clarification' => '',

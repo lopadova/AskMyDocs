@@ -67,7 +67,7 @@ class ConversationReasoningTest extends TestCase
 
     public function test_invented_context_reference_leaves_previous_focus_unchanged(): void
     {
-        $this->ai($this->interpretation('TRACK-55'), $this->interpretation('INVENTED', true));
+        $this->ai($this->interpretation('TRACK-55'), $this->interpretation('INVENTED', true), $this->interpretation('INVENTED', true));
         $conversation = $this->conversation();
         $memory = app(ConversationReasoning::class);
         $turn = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-55']);
