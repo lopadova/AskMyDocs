@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { EmailTriagePanel } from './EmailTriagePanel';
-import { emailTriageApi, type TriageStatus } from './email-triage.api';
+import { emailTriageApi, type TriageStatus, type TriageSuggestion } from './email-triage.api';
 
-vi.mock('./email-triage.api', () => ({ emailTriageApi: { status: vi.fn(), save: vi.fn(), preview: vi.fn(), campaignPreview: vi.fn(), start: vi.fn(), control: vi.fn(), retry: vi.fn() } }));
+vi.mock('./email-triage.api', () => ({ emailTriageApi: { status: vi.fn(), save: vi.fn(), suggest: vi.fn(), preview: vi.fn(), campaignPreview: vi.fn(), start: vi.fn(), control: vi.fn(), retry: vi.fn() } }));
 const status: TriageStatus = { profile: null, versions: [], readiness: { credentials: true, worker: true, asynchronous_queue: true }, counts: {}, campaign: null, sample_documents: [{ id: 42, title: 'Delayed parcel' }], messages: [] };
 function mount() {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -64,4 +64,87 @@ it('only permits a campaign after an explicit preview and invalidates it when fi
     await userEvent.type(screen.getByLabelText('Cartella'), 'INBOX');
     expect(screen.queryByRole('button', { name: 'Avvia triage e aggiorna ingest' })).not.toBeInTheDocument();
     expect(emailTriageApi.start).not.toHaveBeenCalled();
+});
+
+const suggestion: TriageSuggestion = { summary: 'Riconosce le richieste urgenti.', model: 'openai/gpt-4o-mini', latency_ms: 400, usage: { input_tokens: 100, output_tokens: 200 },
+    rules: [{ key: 'urgency', label: 'Urgenza', type: 'score', enabled: true, instructions: 'Valuta scadenze esplicite e conseguenze del ritardo.', threshold: 0.85,
+        options: [{ key: 'ordinary', label: 'Ordinaria', criterion: 'Non ci sono scadenze vicine.', text: 'Urgenza ordinaria', tag: null },
+            { key: 'immediate', label: 'Immediata', criterion: 'Scadenza immediata o danno operativo.', text: 'Urgenza alta', tag: 'urgente' }] }],
+    examples: [{ email: 'La merce deve arrivare oggi, altrimenti fermiamo la produzione.', expected_tags: ['urgente'] }] };
+
+it('fills a concrete example without making a paid request automatically', async () => {
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Ordini e spedizioni' }));
+    expect((screen.getByRole('textbox', { name: 'Cosa vuoi riconoscere nelle email?' }) as HTMLTextAreaElement).value).toContain('tracking');
+    expect(emailTriageApi.suggest).not.toHaveBeenCalled();
+    expect(emailTriageApi.save).not.toHaveBeenCalled();
+});
+
+it('reviews and applies a generated draft only on request, preserving the activation choice', async () => {
+    let finish!: (value: TriageSuggestion) => void;
+    vi.mocked(emailTriageApi.suggest).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(emailTriageApi.save).mockImplementation(async (_, config) => ({ ...config, id: 2, revision: 2, model: 'typesafe/jev-1.13' }));
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Assistenza clienti' }));
+    const prepare = screen.getByRole('button', { name: 'Prepara le regole' });
+    prepare.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(prepare).toHaveAttribute('aria-busy', 'true'));
+    expect(screen.getByRole('button', { name: 'Aggiungi caratteristica' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Cosa vuoi riconoscere nelle email?' })).toBeDisabled();
+    finish(suggestion);
+    await screen.findByRole('button', { name: 'Usa questa bozza' });
+    expect(screen.queryByRole('checkbox', { name: 'Urgenza' })).not.toBeInTheDocument();
+    expect(emailTriageApi.save).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Usa questa bozza' }));
+    expect(screen.getByRole('checkbox', { name: 'Urgenza' })).toBeChecked();
+    expect(screen.getByRole('heading', { name: 'Le tue caratteristiche' })).toHaveFocus();
+    expect(screen.getByRole('checkbox', { name: 'Attiva triage sulle nuove email' })).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Usa questa bozza' })).not.toBeInTheDocument();
+    expect(emailTriageApi.save).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Salva regole' }));
+    await screen.findByText(/Regole v2 salvate/);
+    expect(emailTriageApi.save).toHaveBeenCalledWith(10, { enabled: false, rules: suggestion.rules });
+    expect(emailTriageApi.start).not.toHaveBeenCalled();
+    expect(emailTriageApi.preview).not.toHaveBeenCalled();
+});
+
+it('keeps current rules on assistant failure and invalidates proposals after manual edits', async () => {
+    vi.mocked(emailTriageApi.suggest).mockRejectedValueOnce({ response: { status: 422, data: { message: 'Non riesco a preparare una bozza valida.' } } }).mockResolvedValue(suggestion);
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Aggiungi esempio lamentela' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Assistenza clienti' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Prepara le regole' }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('checkbox', { name: 'Lamentela' })).toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Prepara le regole' }));
+    await screen.findByRole('button', { name: 'Usa questa bozza' });
+    expect(screen.getByText(/sostituisci la caratteristica/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Lamentela' }));
+    expect(screen.queryByRole('button', { name: 'Usa questa bozza' })).not.toBeInTheDocument();
+    const liveForm = screen.getByRole('button', { name: 'Salva regole' }).closest('form')!;
+    expect(within(liveForm).queryByText('Urgenza')).not.toBeInTheDocument();
+    expect(emailTriageApi.save).not.toHaveBeenCalled();
+});
+
+it('keeps manual setup usable when the assistant is unavailable', async () => {
+    vi.mocked(emailTriageApi.status).mockResolvedValue({ ...status, readiness: { ...status.readiness, credentials: false } });
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Assistenza clienti' }));
+    expect(screen.getByRole('button', { name: 'Prepara le regole' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Aggiungi esempio lamentela' }));
+    expect(screen.getByRole('checkbox', { name: 'Lamentela' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Salva regole' })).toBeEnabled();
+});
+
+it('starts with compact summaries and opens hidden fields when validation fails', async () => {
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Aggiungi esempio lamentela' }));
+    const key = screen.getByLabelText('Chiave stabile');
+    expect(key.closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('Modifica caratteristica').closest('details')).not.toHaveAttribute('open');
+    fireEvent.invalid(key);
+    expect(key.closest('details')).toHaveAttribute('open');
+    expect(screen.getByText('Modifica caratteristica').closest('details')).toHaveAttribute('open');
+    expect(emailTriageApi.save).not.toHaveBeenCalled();
 });

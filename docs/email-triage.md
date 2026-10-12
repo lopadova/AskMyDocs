@@ -14,6 +14,36 @@ Each option has a criterion, deterministic footer text and an optional search ta
 Each save creates an immutable profile revision; existing installations retain
 their unrelated connector settings and credentials.
 
+### Configuration assistant
+
+The panel starts with **Configura con un prompt**. Describe the characteristics
+to recognize, or choose an example for customer support, orders/shipments or
+commercial requests. **Prepara le regole** makes one generative OpenRouter call
+and returns a proposed set of rules plus fictional email examples. The assistant
+receives only the masked prompt and editable rule definitions; it never reads
+mailbox messages, installation credentials or documents.
+
+Review the proposed labels, tags and examples, then choose **Usa questa bozza**.
+This replaces the editable rule list while preserving the account activation
+choice. **Salva regole** is a separate action. Generating or applying a draft
+does not save a profile, enable triage, launch a campaign or ingest an email.
+Manual changes discard an unapplied proposal so stale suggestions cannot
+overwrite later edits.
+
+The panel shows compact rule summaries. Open **Modifica caratteristica** for
+labels, criteria, card text and tags; stable keys and confidence thresholds live
+under **Parametri avanzati**. Email previews, historical campaigns, profile
+history and service details are collapsible sections.
+
+The helper uses the existing metered `AiManager` integration with OpenRouter;
+`EMAIL_TRIAGE_ASSISTANT_MODEL` overrides its model (otherwise the configured
+`CHAT_PREPROCESSOR_MODEL`, default `openai/gpt-4o-mini`). It requests strict JSON
+Schema, validates the response again with the real profile rules and rejects
+malformed, truncated, over-limit or inconsistent proposals. At most six requests
+per user and tenant per minute can reach the model. Prompt text, rule text and
+generated examples are absent from the administrative audit; model, counts,
+token usage and duration are recorded. Email classification still uses Jev.
+
 One combined Jev request asks every active question. The initial configurable
 threshold is 0.85; calibrate it on labeled examples before broad activation.
 Uncertain results are recorded as “Non determinabile” and generate no positive
@@ -117,6 +147,8 @@ The authenticated `manageConnectors` API lives below
 
 - `GET` status, profile history, recent email execution/coverage/index state.
 - `PUT` a validated profile revision.
+- `POST /suggest` with `prompt` and optional editable `profile`: generate a
+  validated configuration proposal without saving or enabling the account.
 - `POST /preview` with `document_id` and optional draft `profile`: paid analysis,
   no source staging or ingestion.
 - `POST /campaign-preview` and `/campaigns` with filters and the previewed

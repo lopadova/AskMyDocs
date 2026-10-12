@@ -17,6 +17,7 @@ export interface TriageStatus {
     messages: { id: number; subject: string | null; status: string; stale: boolean; coverage: TriageCoverage | null; index_status: string | null; indexed_revision: number | null; error_code: string | null }[];
 }
 export interface TriagePreview { card: string; coverage: TriageCoverage; tags: string[]; latency_ms: number; usage: { cost?: number; input_tokens?: number }; result: { fields: { key: string; label: string; text: string; confidence: number }[] } }
+export interface TriageSuggestion { summary: string; rules: TriageRule[]; examples: { email: string; expected_tags: string[] }[]; model: string; latency_ms: number; usage: { input_tokens: number | null; output_tokens: number | null } }
 export interface CampaignFilters { project: string; mailbox: string; from: string; to: string; state: 'never' | 'stale' | 'failed' | 'all' }
 export interface CampaignPreview { total: number; profile_id: number; availability_sample: { checked: number; available: number; unavailable: number; unchecked: number }; estimated_decision_usd: number | null; estimated_reindex_usd: number | null }
 
@@ -25,6 +26,7 @@ async function post<T>(path: string, payload: unknown): Promise<T> { return (awa
 export const emailTriageApi = {
     status: async (id: number): Promise<TriageStatus> => (await api.get<{ data: TriageStatus }>(root(id))).data.data,
     save: async (id: number, config: TriageConfig): Promise<TriageProfile> => (await api.put<{ data: TriageProfile }>(root(id), config)).data.data,
+    suggest: (id: number, prompt: string, profile: TriageConfig) => post<TriageSuggestion>(`${root(id)}/suggest`, { prompt, profile }),
     preview: (id: number, documentId: number, profile: TriageConfig) => post<TriagePreview>(`${root(id)}/preview`, { document_id: documentId, profile }),
     campaignPreview: (id: number, filters: CampaignFilters) => post<CampaignPreview>(`${root(id)}/campaign-preview`, filters),
     start: (id: number, filters: CampaignFilters, profileId: number) => post<TriageCampaign>(`${root(id)}/campaigns`, { ...filters, profile_id: profileId }),
