@@ -41,12 +41,16 @@ $codeRevision = $revision->isSuccessful() ? trim($revision->getOutput()) : null;
 $only = isset($options['only']) ? explode(',', $options['only']) : null;
 $masker = app(App\Services\Widget\WidgetPiiMasker::class);
 $providerReplies = [];
-$app['events']->listen(Illuminate\Http\Client\Events\ResponseReceived::class, function ($event) use (&$providerReplies): void {
+$fatalProviderError = null;
+$app['events']->listen(Illuminate\Http\Client\Events\ResponseReceived::class, function ($event) use (&$providerReplies, &$fatalProviderError): void {
     if (parse_url($event->request->url(), PHP_URL_HOST) === 'openrouter.ai') {
         $data = $event->response->json();
         if (is_array($data)) {
             $providerReplies[] = array_filter(['model' => $data['model'] ?? null, 'choices' => $data['choices'] ?? null,
                 'error' => is_array($data['error'] ?? null) ? array_intersect_key($data['error'], array_flip(['code', 'message'])) : null], fn ($value) => $value !== null);
+            if (in_array((int) data_get($data, 'error.code'), [401, 402], true)) {
+                $fatalProviderError = array_intersect_key($data['error'], array_flip(['code', 'message']));
+            }
         }
     }
 });
@@ -93,6 +97,7 @@ foreach ($cases['cases'] as $case) {
         $cases['project_key'], 'chat', 'user', (string) $user->id, $cases['locale'] ?? 'it', $cases['timezone'] ?? 'Europe/Rome');
     $context->activate();
     $providerReplies = [];
+    $fatalProviderError = null;
     $started = microtime(true);
     echo json_encode(['case' => $id, 'round' => $round, 'started' => $context->runId, 'conversation_id' => $conversation->id]).PHP_EOL;
     $turn = app(App\Agent\AgentChatTurnStarter::class)->start($context, $conversation, $user, $case['question'],
@@ -108,8 +113,9 @@ foreach ($cases['cases'] as $case) {
         'elapsed_seconds' => round(microtime(true) - $started, 2), 'answer' => $message?->content,
         'response' => data_get($run->result_json, 'response'), 'result' => $run->result_json,
         'tool_executions' => $run->toolExecutions()->get()->toArray(),
-        'events' => $run->events()->get()->toArray(), 'provider_replies' => $providerReplies, 'evaluation' => null];
-    if ($message !== null) {
+        'events' => $run->events()->get()->toArray(), 'provider_replies' => $providerReplies,
+        'external_blocker' => $fatalProviderError, 'evaluation' => null];
+    if ($message !== null && $fatalProviderError === null) {
         try {
             $decision = App\Decisions\Decisions::using()->withState(['question' => $case['question'],
                 'expected_facts' => $case['expected'], 'sources' => $sources, 'answer' => $message->content])
@@ -130,4 +136,9 @@ foreach ($cases['cases'] as $case) {
         'outcome' => data_get($report, 'evaluation.answers.outcome.choice'),
         'confidence' => data_get($report, 'evaluation.answers.outcome.confidence'),
         'seconds' => $report['elapsed_seconds'], 'path' => $resultPath]).PHP_EOL;
+    if ($fatalProviderError !== null) {
+        echo json_encode(['batch_stopped' => 'provider_unavailable', 'code' => $fatalProviderError['code'],
+            'resume' => 'After restoring provider access, use a new round with the same --reopen source.']).PHP_EOL;
+        exit(2);
+    }
 }
