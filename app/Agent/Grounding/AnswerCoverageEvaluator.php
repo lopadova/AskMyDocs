@@ -31,7 +31,14 @@ final class AnswerCoverageEvaluator
                 continue;
             }
             foreach ($document['evidence'] ?? [] as $chunk) {
-                $sources[$chunk['evidence_hash']] = ['document_id' => $document['document_id'],
+                // Hash aliases can survive a fresh, authorized full read. They
+                // identify one textual snapshot, not multiple source bodies.
+                $snapshot = hash('sha256', json_encode([$document['document_id'], $chunk['content']], JSON_THROW_ON_ERROR));
+                if (isset($sources[$snapshot])) {
+                    $sources[$snapshot]['complete_source'] = $sources[$snapshot]['complete_source'] || ($chunk['complete_source'] ?? false);
+                    continue;
+                }
+                $sources[$snapshot] = ['document_id' => $document['document_id'],
                     'title' => $chunk['source_title'] ?? $document['title'] ?? '', 'text' => $chunk['content'],
                     'complete_source' => $chunk['complete_source'] ?? false];
             }
