@@ -3,6 +3,7 @@
 return [
     'enabled' => (bool) env('CHAT_REASONING_ENABLED', true),
     'selective_validation' => (bool) env('AGENT_SELECTIVE_VALIDATION_ENABLED', true),
+    'selective_repair' => (bool) env('AGENT_SELECTIVE_REPAIR_ENABLED', true),
     'threshold' => (float) env('AGENT_SELECTIVE_VALIDATION_THRESHOLD', 0.8),
     'max_evidence' => max(1, (int) env('CHAT_REASONING_MAX_EVIDENCE', 100)),
     'max_state_bytes' => max(4096, (int) env('CHAT_REASONING_MAX_STATE_BYTES', 65536)),

@@ -128,6 +128,62 @@ final readonly class AgentAnswerSynthesizer
             $grounding = $this->semanticGate($question, $grounding, $presentationOnly);
         }
         $repair = null;
+        if ($selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
+            && ($grounding['reason'] ?? null) !== 'no_new_detail') {
+            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims']);
+            $grounding['coverage_validation'] = $coverage;
+            $providerFailed = array_filter($grounding['semantic_validation'] ?? [], fn ($stage) => ($stage['status'] ?? null) === 'error');
+            if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)) {
+                $repair = ['attempted' => true, 'status' => 'unchanged', 'initial_reason' => $grounding['reason'] ?? null,
+                    'initial_semantic_validation' => $grounding['semantic_validation'] ?? [], 'initial_coverage' => $coverage];
+                try {
+                    $feedback = json_decode($turnContext ?? '{}', true) ?: [];
+                    $feedback['validation_feedback'] = ['claims' => $payload['claims'] ?? [],
+                        'checks' => array_merge([], ...array_column($grounding['semantic_validation'] ?? [], 'checks')),
+                        'coverage' => $coverage, 'instruction' => 'Make one corrected, complete source-bound draft. Answer every requested aspect the sources permit, preserving actors and chronology. Do not repeat unsupported details or add unrelated cases. Missing confirmation in a complete ticket must be stated explicitly. Copy original source identities.'];
+                    $repairEvidence = $evidence;
+                    if ($coverage['source_document_ids'] !== []) {
+                        $repairEvidence['documents'] = array_values(array_filter($evidence['documents'],
+                            fn ($document) => in_array($document['document_id'], $coverage['source_document_ids'], true)));
+                    }
+                    $envelope = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+                    $envelope->import($repairEvidence);
+                    $repairedResponse = $this->draft($question, $context,
+                        new AgentLoopOutcome($outcome->decision, $envelope, $outcome->completedActions, $outcome->stopReason),
+                        $understanding, json_encode($feedback, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), repairAttempt: true);
+                    $repairedPayload = $this->payload($repairedResponse->toolCalls, $repairedResponse->content);
+                    // Repair is factual synthesis, never a new artifact/selection handoff.
+                    $repairedPayload['render_table'] = false;
+                    $repairedPayload['requires_selection'] = $payload['requires_selection'] ?? false;
+                    if ($independent) {
+                        $repairedPayload['claims'] = $this->bindRepairTasks($repairedPayload['claims'] ?? [], $repairEvidence);
+                        $repairedPayload['research_drafts'] = $payload['research_drafts'] ?? [];
+                    }
+                    $repaired = app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $repairEvidence,
+                        $repairedPayload['claims'] ?? [], $understanding ?? [], $context->projectKey, $context->tenantId,
+                        data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
+                        data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])));
+                    $repairedCoverage = $repaired['valid']
+                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims']) : null;
+                    $improved = ! $grounding['valid'] || ($repairedCoverage['sufficient'] ?? false)
+                        || (($repairedCoverage['probability_true'] ?? 0) > ($coverage['probability_true'] ?? 1)
+                            && count($repaired['claims']) >= count($grounding['claims']));
+                    if ($repaired['valid'] && $improved) {
+                        $grounding = $repaired;
+                        $payload = $repairedPayload;
+                        $response = $repairedResponse;
+                        $repair['status'] = 'accepted';
+                        $grounding['coverage_validation'] = $repairedCoverage;
+                    }
+                } catch (\Throwable $exception) {
+                    $repair['status'] = 'unavailable';
+                    $repair['exception_class'] = $exception::class;
+                }
+            }
+            if (($grounding['coverage_validation']['sufficient'] ?? null) === false) {
+                $grounding['partial'] = true;
+            }
+        }
         if (! $grounding['valid'] && ($evidence['documents'] ?? []) === [] && ($evidence['api_tools'] ?? []) === []) {
             $grounding['reason'] = 'no_evidence'; // There is no source identity a repair call could fix.
             if (array_intersect(array_column($evidence['warnings'] ?? [], 'code'), [
@@ -349,15 +405,19 @@ final readonly class AgentAnswerSynthesizer
                 'subquestions' => $grounding['subquestions'] ?? [],
                 'repair' => $repair,
                 'semantic_validation' => $grounding['semantic_validation'],
+                'coverage_validation' => $grounding['coverage_validation'] ?? null,
             ], static fn (mixed $value): bool => $value !== null),
         );
     }
 
     private function draft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
-        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null): \App\Ai\AiResponse
+        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false): \App\Ai\AiResponse
     {
         $evidence = $outcome->evidence->jsonSerialize();
         $system = $this->systemPrompt($context);
+        if ($repairAttempt) {
+            $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
+        }
         if ($claimBudget !== null) {
             $system .= <<<PROMPT
 
@@ -372,6 +432,11 @@ Order related claims together as short paragraphs within this section. Use a ###
 This branch overrides the separate-artifact handoff instructions: set render_table=false and put factual content in claims. For collections, render a record's requested fields in a compact Markdown table within its own source-bound claim; never mix source records in one claim. Mark completeness=partial if the claim budget cannot cover the requested collection.
 PROMPT;
         }
+        $model = config('agent.synthesis.model');
+        $repairModel = config('agent.synthesis.repair_model');
+        if ($repairAttempt && is_string($repairModel) && $repairModel !== '') {
+            $model = $repairModel;
+        }
         return $this->ai->chatWithHistory(
             $system,
             [['role' => 'user', 'content' => json_encode([
@@ -380,9 +445,43 @@ PROMPT;
                 'evidence' => config('reasoning.selective_validation')
                     ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forPrompt($evidence) : $evidence,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]],
-            ['temperature' => 0, 'tools' => [$this->submissionTool()],
+            ['temperature' => 0, ...is_string($model) && $model !== '' ? ['model' => $model] : [], 'tools' => [$this->submissionTool()],
                 'tool_choice' => ['type' => 'function', 'function' => ['name' => 'submit_agent_answer']]],
         );
+    }
+
+    /** Repair claims inherit only server-owned source/task associations. */
+    private function bindRepairTasks(array $claims, array $evidence): array
+    {
+        $kept = [];
+        foreach ($claims as $claim) {
+            $flows = [];
+            foreach ($evidence['documents'] ?? [] as $document) {
+                if (($claim['document_id'] ?? null) !== ($document['document_id'] ?? null)) {
+                    continue;
+                }
+                foreach ($document['evidence'] ?? [] as $chunk) {
+                    if (($chunk['evidence_hash'] ?? null) === ($claim['evidence_hash'] ?? null)) {
+                        $flows = [...$flows, ...($chunk['research_flow_ids'] ?? [])];
+                    }
+                }
+            }
+            foreach ($evidence['api_tools'] ?? [] as $tool) {
+                if (($claim['tool_execution_id'] ?? null) === ($tool['execution_id'] ?? null)
+                    && ($claim['evidence_hash'] ?? null) === ($tool['evidence_hash'] ?? null)) {
+                    $flows = [...$flows, ...($tool['research_flow_ids'] ?? [])];
+                }
+            }
+            $flows = array_values(array_unique($flows));
+            if (count($flows) === 1) {
+                $claim['subquestion_id'] = $flows[0];
+            }
+            if (in_array($claim['subquestion_id'] ?? null, $flows, true)) {
+                $kept[] = $claim;
+            }
+        }
+
+        return $kept;
     }
 
     /** Each draft sees only its own question and authorized flow evidence; JEV runs later once. */
@@ -573,6 +672,7 @@ Sources marked historical_context are previous observations, even in a mixed req
 When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 Copy the selected source's claim_source fields into the claim when provided. Use exactly the JSON keys "document_id", "tool_execution_id" and "evidence_hash". Example of a TOOL claim source: {"document_id": null, "tool_execution_id": 42, "evidence_hash": "copy-the-exact-supplied-hash"}. These are three separate properties: never put assignments, commas or values inside a property name. For tool records also copy the selected record_path from record_paths.
 For a case history, read the entire supplied conversation and cover the requested problem, customer response and latest documented merchant response, rather than stopping at the opening notice. Preserve who performed each action. Never invent a message date from another case or from retrieval time. State recorded observations as historical; a document retrieved now does not establish current availability or an action completed today. A promised refund or shipment is not proof of execution.
+When the question asks for confirmation by a specific speaker, identify that speaker's actual statement. A customer's question, inference or restatement cannot become a merchant's confirmation merely because it appears in the same thread. If no such confirmation appears in a complete source, state that bounded lack of confirmation and attribute the actual assertion to its speaker.
 Answer a specific confirmation question directly. When complete_source=true and this document contains no confirmation of the requested event, you may submit a source-bound claim saying "The consulted ticket does not confirm ...", alongside the actual documented request or promise. This is a statement about the complete document, not proof that the event never occurred elsewhere. Do not assert absence from an incomplete excerpt or mix in another customer's procedure. Keep the source identity on these bounded negative claims too.
 document_id and tool_execution_id are NOT the same thing as an `id` field INSIDE a document's frontmatter or a tool result's payload. Select document_id ONLY from evidence.documents[].document_id; select tool_execution_id ONLY from evidence.api_tools[].execution_id. A list_knowledge_documents result is TOOL evidence: its nested document IDs are payload values, not claim-source identities. Set the unused source property to JSON null.
 Return the result only through submit_agent_answer. The answer supports CommonMark; do not emit raw HTML.
@@ -901,6 +1001,7 @@ PROMPT;
             'terms' => $grounding['terms'],
             'repair' => $repair,
             'semantic_validation' => $grounding['semantic_validation'] ?? [],
+            'coverage_validation' => $grounding['coverage_validation'] ?? null,
             'subquestions' => $grounding['subquestions'] ?? [],
         ], static fn (mixed $value): bool => $value !== null));
     }

@@ -12,6 +12,11 @@ return [
         'router_catalog_limit' => (int) env('AGENT_ROUTER_CATALOG_LIMIT', 40),
         'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
     ],
+    'synthesis' => [
+        // Provider-native model ids; null inherits the selected chat model.
+        'model' => env('AGENT_ANSWER_MODEL'),
+        'repair_model' => env('AGENT_ANSWER_REPAIR_MODEL'),
+    ],
     'grounding' => [
         // Agent answers are assembled from evidence-bound claims. This remains
         // configurable only as an emergency rollback; production defaults to
