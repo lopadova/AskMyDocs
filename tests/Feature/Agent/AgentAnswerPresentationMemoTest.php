@@ -33,7 +33,10 @@ final class AgentAnswerPresentationMemoTest extends TestCase
         ]]));
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'luna-test', toolCalls: [[
-            'name' => 'present_verified_answer', 'arguments' => ['paragraphs' => [['text' => 'Il cambio costa 13 €.', 'claim_ids' => [0]]]],
+            'name' => 'present_verified_answer', 'arguments' => ['paragraphs' => [['text' => 'Il cambio costa 13 €.', 'claim_ids' => [0], 'causal_links' => []]]],
+        ]]));
+        $ai->shouldReceive('chat')->once()->andReturn(new AiResponse('', 'fake', 'luna-parser', toolCalls: [[
+            'name' => 'extract_answer_relations', 'arguments' => ['links' => []],
         ]]));
         $service = new AgentAnswerPresenter($ai);
         $claims = [['text' => 'Il cambio costa 13 euro.', 'document_id' => 9, 'evidence_hash' => 'hash']];
@@ -42,6 +45,7 @@ final class AgentAnswerPresentationMemoTest extends TestCase
         $this->assertSame('accepted', $one['trace']['status']);
         $this->assertSame($one['paragraphs'], $two['paragraphs']);
         $this->assertSame('completed', $run->fresh()->result_json['answer_presentation_decision']['status']);
+        $this->assertSame('completed', $run->fresh()->result_json['answer_presentation_causal_extraction']['status']);
         $claims[0]['text'] = 'Il cambio costa 20 euro.';
         $this->assertNull($service->present('Costo?', $context, $claims, $run->run_id)['paragraphs']);
         Http::assertSentCount(1);

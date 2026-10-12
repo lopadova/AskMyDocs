@@ -37,6 +37,20 @@ final class AgentAnswerPresenterTest extends TestCase
         });
     }
 
+    private function ai(): \Mockery\MockInterface
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chat')->byDefault()->andReturn($this->extraction([]));
+        return $ai;
+    }
+
+    private function extraction(array $links): AiResponse
+    {
+        return new AiResponse('', 'fake', 'luna-parser', toolCalls: [[
+            'name' => 'extract_answer_relations', 'arguments' => ['links' => $links],
+        ]]);
+    }
+
     private function context(): AgentExecutionContext
     {
         return new AgentExecutionContext('presentation-test', 'acme', 'demo', 'chat', 'user', '1', 'it', 'Europe/Rome');
@@ -63,7 +77,7 @@ final class AgentAnswerPresenterTest extends TestCase
     {
         $this->decisions();
         $original = $this->claims();
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->withArgs(function ($system, $history, $options) use ($original) {
             $data = json_decode($history[0]['content'], true);
             $this->assertSame(array_column($original, 'text'), array_column($data['verified_facts'], 'text'));
@@ -101,7 +115,7 @@ final class AgentAnswerPresenterTest extends TestCase
         if ($twoTopics) {
             $claims[1]['subquestion_id'] = 1;
         }
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response($paragraphs));
         $result = (new AgentAnswerPresenter($ai))->present('CASE-A', $this->context(), $claims);
         $this->assertNull($result['paragraphs']);
@@ -117,7 +131,7 @@ final class AgentAnswerPresenterTest extends TestCase
     public function test_unfaithful_incomplete_or_uncertain_rewrites_are_not_shown(float $faithful, float $complete): void
     {
         $this->decisions($faithful, $complete);
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([['text' => 'CASE-A: cambio gratuito e già consegnato.', 'claim_ids' => [0, 1]]]));
         $result = (new AgentAnswerPresenter($ai))->present('CASE-A', $this->context(), $this->claims());
         $this->assertNull($result['paragraphs']);
@@ -127,7 +141,7 @@ final class AgentAnswerPresenterTest extends TestCase
 
     public function test_a_generation_failure_keeps_the_safe_fallback_without_a_retry(): void
     {
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->andThrow(new \RuntimeException('Provider unavailable'));
         $result = (new AgentAnswerPresenter($ai))->present('CASE-A', $this->context(), $this->claims());
         $this->assertNull($result['paragraphs']);
@@ -155,7 +169,7 @@ final class AgentAnswerPresenterTest extends TestCase
             }
             return Http::response(['model' => 'jev-test', 'answers' => $answers]);
         });
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response($paragraphs));
         $result = (new AgentAnswerPresenter($ai))->present('Explain', $this->context(), $claims);
         $this->assertSame('rejected', $result['trace']['status']);
@@ -171,7 +185,7 @@ final class AgentAnswerPresenterTest extends TestCase
             ['text' => 'CASE-A: rimborso promesso.', 'quote' => 'Gianni Rossi CASE-A', 'subquestion_id' => 0],
             ['text' => 'CASE-B: spedizione annunciata.', 'quote' => 'Mauro Verdi CASE-B', 'subquestion_id' => 1],
         ];
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
             ['text' => 'Per Gianni Rossi è promesso un rimborso.', 'claim_ids' => [0]],
             ['text' => 'Per Mauro Verdi è annunciata una spedizione.', 'claim_ids' => [1]],
@@ -204,7 +218,7 @@ final class AgentAnswerPresenterTest extends TestCase
             $claim['quote'] .= ' Gianni Rossi.';
         }
         unset($claim);
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->withArgs(function ($system, $history) {
             $input = json_decode($history[0]['content'], true);
             $this->assertContains('Gianni Rossi', $input['reference_labels_attested_in_original_sources']);
@@ -228,7 +242,7 @@ final class AgentAnswerPresenterTest extends TestCase
         $claims = [['text' => 'Per l’ordine '.$identifier.' il rimborso è promesso.',
             'quote' => 'Ordine '.$identifier.': rimborso promesso.', 'subquestion_id' => 0,
             'entity_identifiers' => [$identifier]]];
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->once()->withArgs(function ($system, $history) use ($identifier) {
             $input = json_decode($history[0]['content'], true);
             $this->assertSame([$identifier], $input['reference_labels_attested_in_original_sources']);
@@ -247,6 +261,118 @@ final class AgentAnswerPresenterTest extends TestCase
         });
     }
 
+    public function test_causal_support_uses_only_linked_facts_and_cannot_borrow_candidate_prose(): void
+    {
+        $claims = [['text' => 'CASE-A: pickup is unavailable; the system registered home delivery.',
+            'quote' => 'CASE-A: pickup is unavailable; the system registered home delivery.', 'subquestion_id' => 0]];
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'CASE-A: pickup is unavailable because the system registered home delivery.', 'claim_ids' => [0],
+                'causal_links' => [['cause' => 'The system registered home delivery.', 'effect' => 'Pickup is unavailable.']]],
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->extraction([[
+            'paragraph_id' => 0, 'quote' => 'pickup is unavailable because the system registered home delivery.', 'kind' => 'causal',
+            'from' => 'the system registered home delivery', 'to' => 'pickup is unavailable',
+        ]]));
+        Http::fake(function ($request) use ($claims) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                if ($question['type'] === 'choice') {
+                    $state = $request['state'];
+                    $this->assertArrayNotHasKey('blocks', $state);
+                    $this->assertArrayNotHasKey('case_reference_contexts', $state);
+                    $this->assertSame([array_column($claims, 'text')], array_values($state['approved_fact_sets']));
+                    $answers[$key] = ['type' => 'choice', 'choice' => 'absent', 'confidence' => .94,
+                        'probabilities' => ['explicit' => .03, 'absent' => .97, 'reversed' => 0]];
+                } else {
+                    $answers[$key] = ['type' => 'noul', 'noul' => .99];
+                }
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $result = (new AgentAnswerPresenter($ai))->present('Explain CASE-A', $this->context(), $claims);
+        $this->assertSame('rejected', $result['trace']['status']);
+        $this->assertEquals(0, $result['trace']['verification']['answers']['faithful']['probability_true']);
+        $this->assertNull($result['paragraphs']);
+        Http::assertSentCount(2);
+    }
+
+    #[DataProvider('invalidCausalSpans')]
+    public function test_unbound_causal_spans_are_rejected_before_fact_verification(array $link): void
+    {
+        Http::preventStrayRequests();
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'CASE-A: the exchange is free.', 'claim_ids' => [0, 1]],
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->extraction([$link]));
+        $result = (new AgentAnswerPresenter($ai))->present('CASE-A?', $this->context(), $this->claims());
+        $this->assertSame('unavailable', $result['trace']['status']);
+        $this->assertNull($result['paragraphs']);
+        Http::assertNothingSent();
+    }
+
+    public static function invalidCausalSpans(): array
+    {
+        $link = ['paragraph_id' => 0, 'kind' => 'causal', 'quote' => 'CASE-A: the exchange is free.', 'from' => 'CASE-A', 'to' => 'the exchange is free'];
+        return [
+            'wrong paragraph' => [[...$link, 'paragraph_id' => 1]],
+            'invented quote' => [[...$link, 'quote' => 'An unrelated causal statement.']],
+            'invented cause' => [[...$link, 'from' => 'A different event']],
+        ];
+    }
+
+    public function test_a_documented_causal_link_can_pass_its_independent_source_check(): void
+    {
+        Http::fake(function ($request) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                $answers[$key] = $question['type'] === 'choice'
+                    ? ['type' => 'choice', 'choice' => 'explicit', 'confidence' => .98,
+                        'probabilities' => ['explicit' => .99, 'absent' => .01, 'reversed' => 0]]
+                    : ['type' => 'noul', 'noul' => .99];
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'Shipment was released because payment cleared.', 'claim_ids' => [0],
+                'causal_links' => [['cause' => 'Payment cleared.', 'effect' => 'Shipment was released.']]],
+        ]));
+        $ai->shouldReceive('chat')->once()->andReturn($this->extraction([[
+            'paragraph_id' => 0, 'quote' => 'Shipment was released because payment cleared.', 'kind' => 'causal',
+            'from' => 'payment cleared', 'to' => 'Shipment was released',
+        ]]));
+        $result = (new AgentAnswerPresenter($ai))->present('What happened?', $this->context(),
+            [['text' => 'Shipment was released because payment cleared.', 'subquestion_id' => 0]]);
+        $this->assertSame('accepted', $result['trace']['status']);
+        $this->assertSame(1, $result['trace']['verification']['causal_proofs']['count']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_temporal_links_use_visible_text_and_are_not_sent_as_causal_hypotheses(): void
+    {
+        $this->decisions();
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'For CASE-A, **shipment and pickup** occur together.', 'claim_ids' => [0]],
+        ]));
+        $ai->shouldReceive('chat')->once()->withArgs(function ($system, $user) {
+            $input = json_decode($user, true);
+            $this->assertSame('For CASE-A, shipment and pickup occur together.', $input['paragraphs'][0]['text']);
+            $this->assertArrayNotHasKey('verified_facts', $input);
+            return true;
+        })->andReturn($this->extraction([[
+            'paragraph_id' => 0, 'quote' => 'shipment and pickup occur together.', 'kind' => 'temporal', 'from' => 'shipment', 'to' => 'pickup',
+        ]]));
+        $result = (new AgentAnswerPresenter($ai))->present('CASE-A?', $this->context(),
+            [['text' => 'CASE-A: shipment and pickup happen at the same time.', 'subquestion_id' => 0]]);
+        $this->assertSame('accepted', $result['trace']['status']);
+        $this->assertSame(0, $result['trace']['causal_extraction']['causal_count']);
+        $this->assertSame(.8, config('reasoning.threshold'));
+        Http::assertSentCount(1);
+    }
+
     public function test_the_synthesizer_displays_the_rewrite_but_cites_and_remembers_the_original_claims(): void
     {
         config(['reasoning.selective_validation' => false, 'agent.grounding.batch.enabled' => false, 'agent.grounding.semantic.enabled' => false]);
@@ -256,7 +382,7 @@ final class AgentAnswerPresenterTest extends TestCase
         $evidence->addDocument(['document_id' => 7, 'title' => 'CASE-A', 'source_path' => 'case-a.md', 'origin' => 'primary',
             'evidence' => [['content' => $source, 'evidence_hash' => 'hash']]]);
         $claims = $this->claims();
-        $ai = Mockery::mock(AiManager::class);
+        $ai = $this->ai();
         $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
             new AiResponse('', 'fake', 'draft', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
                 'claims' => $claims, 'completeness' => 'complete', 'limitations' => [], 'requires_selection' => false, 'render_table' => false,
