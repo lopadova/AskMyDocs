@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /** Local, source-backed probes through the real chat pipeline; private cases stay outside Git. */
-$options = getopt('', ['cases:', 'output:', 'round:', 'only:', 'reopen:', 'help']);
+$options = getopt('', ['cases:', 'output:', 'round:', 'only:', 'reopen:', 'answer-model:', 'repair-model:', 'interpretation-model:', 'help']);
 if (isset($options['help']) || ! isset($options['cases'], $options['output'], $options['round'])) {
     echo "Usage: php scripts/qa/agent-kb-probe.php --cases=/private/cases.json --output=/private/results --round=baseline [--only=case-id] [--reopen=baseline]\n";
     exit(isset($options['help']) ? 0 : 1);
@@ -20,6 +20,15 @@ if (! is_dir($output) && ! mkdir($output, 0700, true)) {
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+if (isset($options['answer-model'])) {
+    config(['agent.synthesis.model' => $options['answer-model']]);
+}
+if (isset($options['repair-model'])) {
+    config(['agent.synthesis.repair_model' => $options['repair-model']]);
+}
+if (isset($options['interpretation-model'])) {
+    config(['ai.question_preprocessor.model' => $options['interpretation-model']]);
+}
 if (! $app->environment('local', 'testing')) {
     throw new RuntimeException('Live probes are restricted to local/test environments.');
 }
@@ -32,8 +41,9 @@ $providerReplies = [];
 $app['events']->listen(Illuminate\Http\Client\Events\ResponseReceived::class, function ($event) use (&$providerReplies): void {
     if (parse_url($event->request->url(), PHP_URL_HOST) === 'openrouter.ai') {
         $data = $event->response->json();
-        if (is_array($data) && isset($data['choices'])) {
-            $providerReplies[] = ['model' => $data['model'] ?? null, 'choices' => $data['choices']];
+        if (is_array($data)) {
+            $providerReplies[] = array_filter(['model' => $data['model'] ?? null, 'choices' => $data['choices'] ?? null,
+                'error' => is_array($data['error'] ?? null) ? array_intersect_key($data['error'], array_flip(['code', 'message'])) : null], fn ($value) => $value !== null);
         }
     }
 });
@@ -88,6 +98,8 @@ foreach ($cases['cases'] as $case) {
     $run = $turn->run->fresh();
     $message = App\Models\Message::query()->where('agent_run_id', $run->id)->first();
     $report = ['case' => $id, 'round' => $round, 'question' => $case['question'], 'expected' => $case['expected'],
+        'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
+        'interpretation_model' => config('ai.question_preprocessor.model'),
         'document_ids' => $case['document_ids'], 'conversation_id' => $conversation->id, 'run_id' => $run->run_id,
         'agent_run_id' => $run->id, 'message_id' => $message?->id, 'status' => $run->status, 'error_code' => $run->error_code,
         'elapsed_seconds' => round(microtime(true) - $started, 2), 'answer' => $message?->content,
