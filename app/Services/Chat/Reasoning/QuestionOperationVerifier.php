@@ -17,6 +17,7 @@ final class QuestionOperationVerifier
             QuestionAction::ReadSource => 'Show the original text of an identified source.',
             QuestionAction::Greeting => 'Respond to a social greeting without a factual research request.',
             QuestionAction::Capabilities => 'Explain the assistant capabilities/access, without a separate factual research request.',
+            QuestionAction::Clarify => 'Resolve an ambiguous user target or requested operation before answering. Missing facts or a discoverable source are research needs, not ambiguity. A named subject with a clear question about its recorded reply does not require the user to paste that reply.',
             default => throw new \LogicException('Only conversation shortcuts require this check.'),
         };
         $result = Decisions::using()->withState(['current_message' => $question, 'proposed_operation' => $meaning,

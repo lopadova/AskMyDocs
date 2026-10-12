@@ -66,6 +66,34 @@ final class QuestionOperationVerifierTest extends TestCase
         $this->assertTrue(app(QuestionOperationVerifier::class)->matches('Quali fonti hai usato?', QuestionAction::Provenance, [], []));
     }
 
+    public function test_a_clear_question_about_a_named_source_is_not_blocked_by_a_request_to_paste_it(): void
+    {
+        $this->setupRoute(.02);
+        $data = json_decode($this->interpretation(true)->content, true);
+        $data['action'] = 'clarify';
+        $data['transition'] = 'continue';
+        $data['needs_clarification'] = true;
+        $data['clarification'] = 'Puoi incollare la risposta?';
+        $data['focus']['identifiers'] = [];
+        $data['subquestions'][0]['identifiers'] = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturn(
+            new AiResponse(json_encode($data), 'fake', 'test'), $this->interpretation(false),
+        );
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Quali sono i prezzi di SKU-A secondo la risposta?', reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertSame(QuestionAction::Research, $result->effectiveAction());
+        $this->assertTrue($result->needsResearch());
+        $this->assertFalse($result->needsClarification);
+        Http::assertSentCount(1);
+    }
+
+    public function test_a_genuinely_ambiguous_request_can_still_ask_for_clarification(): void
+    {
+        $this->setupRoute(.99);
+        $this->assertTrue(app(QuestionOperationVerifier::class)->matches('Quale dei due intendevi?', QuestionAction::Clarify, [], []));
+    }
+
     public function test_an_unavailable_route_verifier_does_not_trigger_a_second_generation_call(): void
     {
         $this->setupRoute(null);
