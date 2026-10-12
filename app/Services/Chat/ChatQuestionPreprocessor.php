@@ -33,6 +33,24 @@ final readonly class ChatQuestionPreprocessor
         ?AgentCapabilitySnapshot $capabilities, ?string $correction): QuestionUnderstanding
     {
         $fallback = new QuestionUnderstanding(null, trim($question), [mb_substr(trim($question), 0, 500)], [], false, false);
+        $references = [];
+        $masker = app(\App\Services\Widget\WidgetPiiMasker::class);
+        $providerQuestion = preg_replace_callback('/(?<![\pL\pN_-])\d+(?![\pL\pN_-])/u', function ($match) use (&$references, $masker, $question) {
+            if ($masker->maskString($match[0]) === $match[0]) {
+                return $match[0];
+            }
+            $existing = array_search($match[0], $references, true);
+            if ($existing !== false) {
+                return $existing;
+            }
+            $index = count($references);
+            do {
+                $reference = 'opaque_reference_'.$index++;
+            } while (str_contains($question, $reference) || isset($references[$reference]));
+            $references[$reference] = $match[0];
+
+            return $reference;
+        }, $question);
         $failureStage = 'provider_unavailable';
         $schema = [
             'type' => 'object',
@@ -63,6 +81,7 @@ First decide the relationship to the ordered dialogue, independently of what nee
 Then set requires_research: false when this task only greets, explains assistant capabilities, explains/summarizes known source content, reads an already identified source, or asks clarification; true when new facts, sources or refreshed live records are needed. A contextual request can still need research ("check its CURRENT status"); context_mode alone must never authorize reusing old live data as current. For mixed messages set these fields independently on EVERY subquestion; parent requires_research is true if ANY task needs research. Searches must target only the new/missing information. For a context-only task return kb_queries=[]; the host re-reads authorized sources without a global search.
 Parent context_mode must equal the common subquestion mode, or mixed when subquestion modes differ; references_previous_turn is false only when the parent mode is new. Never label the parent conversation while every subquestion is new. A request to describe what happened does not implicitly request current news: preserve the requested time and scope without inventing additional obligations.
 If validation_error is supplied, your previous interpretation violated the server contract. Correct that contract error using the SAME original message and authorized context. Do not invent identifiers, relations or another user request to make validation pass.
+opaque_reference values are exact literal references protected by the host. Copy them verbatim when they identify the requested entity; do not translate, expand or replace them with a generic redaction marker.
 Resolve references and the real goal BEFORE choosing searches. If the target, required identifier or requested operation cannot be resolved from the current message and registered dialogue, use action=clarify, requires_research=false and a short clarification. Do not invent a broad business objective to replace a vague conversational turn. Knowing what the user asks but not yet knowing the answer is different: that is research, not clarification.
 Example: after showing an email, "explain it" is conversation with requires_research=false; "find ORDER-B" is new with requires_research=true; "summarize that email and find ORDER-B" is mixed with TWO tasks, one false and one true. "refresh that order" is conversation with requires_research=true.
 
@@ -102,7 +121,7 @@ Return focus={"topic":"hub","identifiers":["HUB-A"],"aspect":"details","fields":
 For "Information about HUB-A and TRACK-B", include BOTH entities as two subquestions; fields=["*"] for each. Do not invent a request for SLA, carriers or actions.
 For every subquestion additionally provide question (a self-contained question in the user's language), context_mode, requires_research and kb_queries (empty when requires_research=false, otherwise 1-3 searches for that question only). Three or four unrelated requests require three or four independent subquestions, not one combined search. Related dependent steps such as finding a customer then its orders belong to the same question. The examples above abbreviate these mandatory fields.
 Preserve EVERY explicit user request, including trailing clauses and topics outside the company profile or the knowledge base. Never silently drop weather, general questions or a task whose tool might be unavailable. Tool availability is decided later; here those requests still require their own subquestion. Before submitting, check the whole original message against your task list, not just the primary business topic. For a request about hub details, shipment details, shipment owner, hub rules AND today's weather in a city, return all FIVE tasks; never invent a weather result or merge it into the hub rules.
-The primary focus is NOT already a research task by itself: it MUST ALSO appear in subquestions with question and kb_queries. For a hub, order, customer and product request, subquestions must contain all FOUR, beginning with the hub; do not return only the last three.
+The primary focus is NOT already a research task by itself: it MUST ALSO appear in subquestions with question and kb_queries. For a hub, order, customer and product request, subquestions must contain all FOUR, beginning with the hub; do not return only the last three. Several aspects of ONE case, customer or order form ONE research task: problem, customer choice and final response are a single case history, not independent subjects. Keep the full standalone question in that task. Split different subjects or genuinely independent requests, not successive steps of one story.
 First understand the user's real goal from the current message AND the ordered dialogue, persistent objective, open tasks and registered references.
 Never drop a person explicitly named in the CURRENT message by copying an old generic focus or subquestion. A named subject must remain in the relevant task's identifiers and searches. If the user types a full registered name, it is a literal mention. If they type only a surname that unambiguously matches ONE known_identifiers full name, keep the literal surname in mentions and put the exact registered full name in focus/subquestions.identifiers AND resolved_references. If more than one person matches, clarify.
 Example: known_identifiers=["Valentina Rinaldi"], recent dialogue shows her email requesting GestiClaim access, but previous_focus incorrectly says general logistics services. Current message "Cosa possiamo fare con Rinaldi" requires focus on Valentina Rinaldi and next steps about her email, not generic shipping services. Return mentions=[{"text":"Rinaldi","type":"name"}], resolved_references=["Valentina Rinaldi"], a task question explicitly asking how to handle Valentina Rinaldi's request, and searches containing Valentina Rinaldi. The user's explicit subject overrides the old generic task. Repair spelling, fragments and conversational shorthand in your interpretation, never in literal mentions. Set intent to the updated goal, and rewrite each task as an explicit standalone question. "quindi?" / "so?" after discussing ORDER-A is not a search for the word "so": ask for further details/implications about ORDER-A if that is clear from the dialogue; otherwise ask what aspect the user wants clarified. Do not invent a relationship merely because a customer and an order are mentioned together: investigate both independently unless a relationship is documented. Prior assistant dialogue acts explain what was answered, not whether the business facts are true.
@@ -124,7 +143,7 @@ FOCUS;
                 (string) config('ai.question_preprocessor.provider', 'openrouter'),
                 $system,
                 [['role' => 'user', 'content' => json_encode([
-                    'question' => mb_substr($question, 0, 10000),
+                    'question' => mb_substr($providerQuestion, 0, 10000),
                     'conversation_context' => $conversationContext === null ? null : mb_substr($conversationContext, 0, 3000),
                     'company_profile' => $profile,
                     'reasoning_context' => $modelContext,
@@ -138,7 +157,7 @@ FOCUS;
                 ],
             );
             $failureStage = 'invalid_json';
-            $data = json_decode(trim($response->content), true, 512, JSON_THROW_ON_ERROR);
+            $data = json_decode(strtr(trim($response->content), $references), true, 512, JSON_THROW_ON_ERROR);
             if (! is_array($data)
                 || array_diff(array_diff($schema['required'], ['context_mode', 'requires_research']), array_keys($data)) !== []
                 || array_diff(array_keys($data), $schema['required']) !== []
@@ -195,6 +214,9 @@ FOCUS;
                 // using exact word boundaries; never register an invented reference.
                 $focuses = [$data['focus'] ?? [], ...(is_array($data['subquestions'] ?? null) ? $data['subquestions'] : [])];
                 $literalMap = [];
+                foreach ($mentions as $mention) {
+                    $literalMap[$mention['text']] = $mention['text'];
+                }
                 foreach ($focuses as $proposed) {
                     foreach (is_array($proposed) && is_array($proposed['identifiers'] ?? null) ? $proposed['identifiers'] : [] as $id) {
                         if (! is_string($id) || $id === '' || mb_strlen($id) > 120

@@ -84,6 +84,52 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertTrue($result->referencesPreviousTurn);
     }
 
+    public function test_a_literal_mention_is_not_an_unregistered_context_reference_when_focus_is_generic(): void
+    {
+        $focus = ['topic' => 'invoice', 'identifiers' => [], 'aspect' => 'requests', 'fields' => ['*']];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Richieste di Ada Rossi per la fattura', 'action' => 'research',
+            'kb_queries' => ['Ada Rossi fattura'], 'mentions' => [['text' => 'Ada Rossi', 'type' => 'name']],
+            'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+            'transition' => 'new', 'focus' => $focus, 'subquestions' => [$focus + [
+                'question' => 'Quali richieste ha fatto Ada Rossi per la fattura?', 'kb_queries' => ['Ada Rossi fattura'],
+                'context_mode' => 'new', 'requires_research' => true]],
+            'resolved_references' => ['Ada Rossi'], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Quali richieste ha fatto Ada Rossi per la fattura?', reasoningContext: []);
+
+        $this->assertTrue($result->available);
+        $this->assertSame(['Ada Rossi'], $result->mentionTexts());
+        $this->assertSame([], $result->resolvedReferences);
+    }
+
+    public function test_numeric_references_redacted_as_phones_are_hidden_from_the_provider_and_restored_before_validation(): void
+    {
+        $identifier = '3331234567';
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturnUsing(function ($provider, $prompt, $messages) use ($identifier) {
+            $input = json_decode($messages[0]['content'], true);
+            $this->assertStringNotContainsString($identifier, $input['question']);
+            $this->assertStringContainsString('opaque_reference_0', $input['question']);
+            $focus = ['topic' => 'order', 'identifiers' => ['opaque_reference_0'], 'aspect' => 'status', 'fields' => ['status']];
+
+            return $this->response(['language' => 'it', 'intent' => 'Stato ordine opaque_reference_0', 'action' => 'research',
+                'kb_queries' => ['opaque_reference_0'], 'mentions' => [['text' => 'opaque_reference_0', 'type' => 'identifier']],
+                'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+                'transition' => 'new', 'focus' => $focus, 'subquestions' => [$focus + [
+                    'question' => 'Stato di opaque_reference_0?', 'kb_queries' => ['opaque_reference_0'],
+                    'context_mode' => 'new', 'requires_research' => true]],
+                'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '']);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Stato ordine '.$identifier, reasoningContext: []);
+
+        $this->assertTrue($result->available);
+        $this->assertSame([$identifier], $result->targetIdentifiers());
+        $this->assertSame([$identifier], $result->kbQueries);
+        $this->assertSame([$identifier], $result->mentionTexts());
+    }
+
     public function test_a_lowercase_name_remains_a_verbatim_mention_and_language_names_are_normalized(): void
     {
         $ai = Mockery::mock(AiManager::class);
@@ -99,6 +145,23 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertSame('it', $result->language);
         $this->assertSame(['messina'], $result->mentionTexts());
         $this->assertTrue($result->referencesPreviousTurn);
+    }
+
+    public function test_a_user_literal_cannot_collide_with_an_opaque_numeric_reference(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturnUsing(function ($provider, $prompt, $messages) {
+            $input = json_decode($messages[0]['content'], true);
+            $this->assertStringContainsString('opaque_reference_1', $input['question']);
+
+            return $this->response(['language' => 'it', 'intent' => 'Spiega opaque_reference_0',
+                'kb_queries' => ['opaque_reference_0'], 'mentions' => [['text' => 'opaque_reference_0', 'type' => 'identifier']],
+                'references_previous_turn' => false]);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Spiega opaque_reference_0, ordine 3331234567');
+
+        $this->assertTrue($result->available);
+        $this->assertSame(['opaque_reference_0'], $result->mentionTexts());
     }
 
     public function test_invalid_json_falls_back_without_entity_gate(): void
