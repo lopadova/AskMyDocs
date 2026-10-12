@@ -47,8 +47,12 @@ final class AgentResultProjector
                 'refusal_reason' => $answer->completeness === 'insufficient' ? 'insufficient_data' : null,
                 'metadata' => [
                     'agent_run_id' => $run->run_id,
-                    'provider' => ($answer->grounding['status'] ?? '') === 'provenance' ? 'server' : 'agent',
-                    'model' => ($answer->grounding['status'] ?? '') === 'provenance' ? 'answer-provenance' : 'planner+synthesizer',
+                    'provider' => in_array($answer->grounding['status'] ?? '', ['provenance', 'conversational', 'host_verified'], true) ? 'server' : 'agent',
+                    'model' => match ($answer->grounding['status'] ?? '') {
+                        'provenance' => 'answer-provenance',
+                        'conversational', 'host_verified' => 'assistant-conversation',
+                        default => 'planner+synthesizer',
+                    },
                     'citations' => $answer->citations,
                     'tool_sources' => $answer->toolSources,
                     'tool_calls_count' => ($answer->grounding['status'] ?? '') === 'provenance' ? 0 : count($answer->toolSources),

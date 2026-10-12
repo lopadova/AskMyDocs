@@ -89,6 +89,36 @@ final class RecursiveKbChatProfileGateTest extends TestCase
         $this->assertStringContainsString('retrieval_profile_required', $response->streamedContent());
     }
 
+    public function test_assistant_document_capabilities_work_on_all_surfaces_without_business_sources(): void
+    {
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Accesso ai documenti', [], [], false,
+            focus: ['topic' => 'documents', 'identifiers' => [], 'aspect' => 'capabilities', 'fields' => []],
+            action: \App\Services\Chat\QuestionAction::Capabilities);
+        $investigation = Mockery::mock(KbInvestigationService::class);
+        $investigation->shouldReceive('investigate')->times(3)->andReturn(new KbInvestigationResult(
+            'conversational', 'assistant_conversation', new SearchResult(collect(), collect(), collect()),
+            intent: new \App\Services\Kb\Investigation\KbInvestigationIntent('Accesso ai documenti', [], [], [], [], [], $understanding),
+        ));
+        $this->app->instance(KbInvestigationService::class, $investigation);
+        Http::preventStrayRequests();
+        $stateless = $this->actingAs($this->user)->postJson('/kb/chat', ['question' => 'Hai accesso ai documenti?', 'project_key' => 'orders']);
+        $stateless->assertOk()->assertJsonPath('citations', [])->assertJsonPath('refusal_reason', null)
+            ->assertJsonPath('meta.grounding.status', 'host_verified');
+        $expected = $stateless->json('answer');
+        $this->assertStringContainsString('nei limiti dei tuoi permessi', $expected);
+        $sync = $this->actingAs($this->user)->postJson('/conversations/'.$this->conversation->id.'/messages', ['content' => 'Hai accesso ai documenti?']);
+        $sync->assertOk()->assertJsonPath('content', $expected)->assertJsonPath('metadata.citations', [])
+            ->assertJsonPath('metadata.grounding.connectivity_verified', false);
+        $stream = $this->actingAs($this->user)->withHeaders(['Accept' => 'text/event-stream'])
+            ->postJson('/conversations/'.$this->conversation->id.'/messages/stream', ['content' => 'Hai accesso ai documenti?']);
+        $stream->assertOk();
+        $this->assertStringContainsString('text-delta', $stream->streamedContent());
+        $message = $this->conversation->fresh()->messages()->where('role', 'assistant')->latest('id')->firstOrFail();
+        $this->assertSame($expected, $message->content);
+        $this->assertSame('complete', $message->metadata['completeness']);
+        Http::assertNothingSent();
+    }
+
     public function test_all_chat_channels_render_only_the_sources_selected_by_the_shared_investigation(): void
     {
         // The profile-gate test above deliberately binds a strict retrieval

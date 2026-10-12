@@ -79,7 +79,8 @@ final readonly class ConversationReasoning
                 $locked = $owner->newQuery()->whereKey($owner->getKey())->lockForUpdate()->firstOrFail();
                 $state = $this->state($locked);
                 // Late completion/retry cannot take the focus away from a newer user message.
-                if ($understanding->available && ! $understanding->asksForProvenance() && $turn->getKey() >= $state['focus_turn']) {
+                if ($understanding->available && ! $understanding->asksForProvenance() && ! $understanding->isAssistantConversation()
+                    && $turn->getKey() >= $state['focus_turn']) {
                     foreach ($state['subquestions'] as &$sub) {
                         if (($sub['status'] ?? '') === 'open') {
                             $sub['status'] = 'suspended';

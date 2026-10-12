@@ -730,6 +730,59 @@ final class AgentLoopTest extends TestCase
         ]);
     }
 
+    public function test_greeting_bypasses_document_retrieval_planning_and_factual_synthesis(): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse(json_encode([
+            'language' => 'it', 'intent' => 'Salutare', 'action' => 'greeting', 'kb_queries' => [],
+            'mentions' => [], 'references_previous_turn' => false,
+        ]), 'fake', 'test'));
+        $ai->shouldNotReceive('chatWithHistory');
+        $ai->shouldNotReceive('chat');
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        Http::preventStrayRequests();
+        $run = $this->makeRun();
+        $run->forceFill(['input_json' => ['question' => 'Ciao']])->save();
+        $context = $this->context($run);
+        $outcome = app(AgentLoop::class)->run($run, $context);
+        $this->assertSame('assistant_conversation', $outcome->stopReason);
+        $this->assertSame([], $outcome->evidence->documents());
+        $this->assertNull($run->refresh()->plan_json);
+        $this->assertCount(0, $run->toolExecutions);
+        $answer = app(\App\Agent\AgentAnswerSynthesizer::class)->synthesize('Ciao', $context, $outcome,
+            understanding: $run->result_json['question_understanding']);
+        $this->assertSame('Ciao! Come posso aiutarti?', $answer->answer);
+        $this->assertSame([], $answer->citations);
+        $this->assertSame('complete', $answer->completeness);
+        Http::assertNothingSent();
+    }
+
+    public function test_capability_reply_uses_selected_project_tools_without_claiming_connectivity(): void
+    {
+        $route = $this->route('get_orders', 'http://erp.example.test/orders');
+        $other = $this->route('get_customers', 'http://erp.example.test/customers');
+        $other->forceFill(['project_key' => 'other-project'])->save();
+        Http::preventStrayRequests();
+        $run = $this->makeRun();
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Accesso agli ordini', [], [], false,
+            focus: ['topic' => 'orders', 'identifiers' => [], 'aspect' => 'capabilities', 'fields' => []],
+            action: \App\Services\Chat\QuestionAction::Capabilities);
+        $responder = app(\App\Services\Chat\AssistantConversationResponder::class);
+        $answer = $responder->answer($understanding, $this->context($run), selection: ['api' => ['api:'.$route->api_connector_id], 'mcp' => []]);
+        $this->assertStringContainsString('get_orders', $answer->answer);
+        $this->assertStringNotContainsString('get_customers', $answer->answer);
+        $this->assertFalse($answer->grounding['connectivity_verified']);
+        $this->assertSame([], $answer->citations);
+        $excluded = $responder->answer($understanding, $this->context($run), selection: ['api' => [], 'mcp' => []]);
+        $this->assertStringNotContainsString('get_orders', $excluded->answer);
+        $this->assertNotContains('get_orders', $excluded->grounding['available_tools']);
+        Http::assertNothingSent();
+    }
+
     private function makeRun(): AgentRun
     {
         return AgentRun::create([

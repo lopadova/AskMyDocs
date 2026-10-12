@@ -69,6 +69,13 @@ final readonly class QuestionUnderstanding
         };
     }
 
+    public function isAssistantConversation(): bool
+    {
+        return $this->available && ! $this->needsClarification
+            && in_array($this->effectiveAction(), [QuestionAction::Greeting, QuestionAction::Capabilities], true)
+            && $this->subquestions === [] && $this->kbQueries === [];
+    }
+
     public function toArray(): array
     {
         return ['language' => $this->language, 'intent' => $this->intent, 'action' => $this->effectiveAction()->value, 'kb_queries' => $this->kbQueries,

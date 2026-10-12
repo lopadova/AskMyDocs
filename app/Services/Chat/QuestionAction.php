@@ -16,6 +16,8 @@ enum QuestionAction: string
     case Recap = 'recap';
     case Recheck = 'recheck';
     case Clarify = 'clarify';
+    case Greeting = 'greeting';
+    case Capabilities = 'capabilities';
 
     public static function schema(): array
     {

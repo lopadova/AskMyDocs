@@ -98,6 +98,22 @@ class KbChatController extends Controller
             actor: $request->user(),
         );
         $result = $investigationResult->search;
+        if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
+            $understanding = $investigationResult->intent->understanding;
+            $context = new \App\Agent\AgentExecutionContext('stateless', $tenants->current(), $projectKey, 'chat',
+                'user', (string) $request->user()->id, \App\Support\SupportedLocale::normalize($understanding->language), 'UTC');
+            $answer = app(\App\Services\Chat\AssistantConversationResponder::class)->answer($understanding, $context, $request->user());
+            $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+            $chatLog->log(new ChatLogEntry(sessionId: $this->chatSessionId($request), userId: $request->user()->id,
+                question: $question, answer: $answer->answer, projectKey: $projectKey, aiProvider: 'server', aiModel: 'assistant-conversation',
+                chunksCount: 0, sources: [], promptTokens: 0, completionTokens: 0, totalTokens: 0, latencyMs: $latencyMs,
+                clientIp: $request->ip(), userAgent: $request->userAgent(), anonymous: $anonymous, extra: ['grounding' => $answer->grounding]));
+            $response = $this->buildSuccessResponse($answer->answer, [], 0,
+                new AiResponse($answer->answer, 'server', 'assistant-conversation'), $result, $latencyMs);
+            $response['confidence'] = null;
+            $response['meta']['grounding'] = $answer->grounding;
+            return response()->json($response);
+        }
 
         // v8.0/W3.4 — Counterfactual mini-retrieval against up to 3
         // other projects the user has membership in. RBAC-critical:

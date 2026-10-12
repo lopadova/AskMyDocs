@@ -23,7 +23,23 @@ trait RespondsWithProvenance
     {
         $answer = app(AnswerProvenance::class)->explain($conversation, $turn, $request->user(),
             $language ?? $request->user()->locale ?? 'en', $filters);
-        $metadata = ['provider' => 'server', 'model' => 'answer-provenance', 'locale' => $answer->locale,
+        return $this->serverAnswerResponse($request, $conversation, $turn, $answer, $log, $startTime, $stream, 'answer-provenance');
+    }
+
+    private function assistantConversationResponse(Request $request, Conversation $conversation, Message $turn,
+        \App\Services\Chat\QuestionUnderstanding $understanding, ChatLogManager $log, float $startTime, bool $stream = false): mixed
+    {
+        $context = new \App\Agent\AgentExecutionContext('conversation-'.$conversation->id,
+            $conversation->tenant_id, $conversation->project_key, 'chat', 'user', (string) $request->user()->id,
+            \App\Support\SupportedLocale::normalize($understanding->language ?? $request->user()->locale ?? 'en'), 'UTC');
+        $answer = app(\App\Services\Chat\AssistantConversationResponder::class)->answer($understanding, $context, $request->user());
+        return $this->serverAnswerResponse($request, $conversation, $turn, $answer, $log, $startTime, $stream, 'assistant-conversation');
+    }
+
+    private function serverAnswerResponse(Request $request, Conversation $conversation, Message $turn, \App\Agent\AgentAnswer $answer,
+        ChatLogManager $log, float $startTime, bool $stream, string $model): mixed
+    {
+        $metadata = ['provider' => 'server', 'model' => $model, 'locale' => $answer->locale,
             'citations' => $answer->citations, 'tool_sources' => $answer->toolSources,
             'grounding' => $answer->grounding, 'completeness' => $answer->completeness, 'limitations' => $answer->limitations,
             'tool_calls' => [], 'tool_calls_count' => 0, 'search_stats' => ['kb_searches' => 0, 'tool_calls' => 0],
@@ -36,7 +52,7 @@ trait RespondsWithProvenance
         $conversation->touch();
         $log->log(new ChatLogEntry(sessionId: $request->header('X-Session-Id', (string) Str::uuid()), userId: $request->user()->id,
             question: $turn->content, answer: $answer->answer, projectKey: $conversation->project_key,
-            aiProvider: 'server', aiModel: 'answer-provenance', chunksCount: 0,
+            aiProvider: 'server', aiModel: $model, chunksCount: 0,
             sources: array_map(fn ($citation) => '#doc-'.$citation['document_id'], $answer->citations), promptTokens: null, completionTokens: null, totalTokens: null,
             latencyMs: $metadata['latency_ms'], clientIp: $request->ip(), userAgent: $request->userAgent(), extra: ['grounding' => $answer->grounding]));
         if (! $stream) {

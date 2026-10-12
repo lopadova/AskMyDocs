@@ -33,10 +33,11 @@ final class FocusContract
 
     public static function validate(array $data, array $known, array $literal): array
     {
+        $conversation = in_array($data['action'] ?? null, ['greeting', 'capabilities'], true);
         if (! in_array($data['transition'] ?? null, self::schema()['transition']['enum'], true)
             || ! is_bool($data['needs_clarification'] ?? null) || ! is_string($data['clarification'] ?? null)
             || mb_strlen($data['clarification']) > 500 || ! is_array($data['subquestions'] ?? null)
-            || ! array_is_list($data['subquestions']) || count($data['subquestions']) < 1 || count($data['subquestions']) > 10) {
+            || ! array_is_list($data['subquestions']) || (! $conversation && count($data['subquestions']) < 1) || count($data['subquestions']) > 10) {
             throw new \UnexpectedValueException('Invalid focus contract.');
         }
         $resolved = self::strings($data['resolved_references'] ?? null);
@@ -56,6 +57,15 @@ final class FocusContract
                 || array_filter($focus['kb_queries'], fn ($query) => ! self::safeQuery($query)))) {
                 throw new \UnexpectedValueException('Invalid research question.');
             }
+        }
+        if ($conversation) {
+            if ($data['subquestions'] !== [] || $data['kb_queries'] !== [] || $resolved !== []
+                || $data['needs_clarification'] || $data['clarification'] !== '' || $data['transition'] !== 'new'
+                || $data['focus']['identifiers'] !== [] || $data['focus']['fields'] !== []
+                || $data['focus']['aspect'] !== $data['action'] || trim($data['focus']['topic']) === '') {
+                throw new \UnexpectedValueException('Invalid assistant conversation focus.');
+            }
+            return array_intersect_key($data, self::schema());
         }
         $data['subquestions'] = self::activeSubquestions($data['focus'], $data['subquestions']);
         if (count($data['subquestions']) > 10) {

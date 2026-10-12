@@ -172,6 +172,11 @@ class MessageController extends Controller
             turnRecord: $userMessage,
         );
         $result = $investigationResult->search;
+        if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
+            return $this->assistantConversationResponse($request, $conversation, $userMessage,
+                $investigationResult->intent->understanding, $chatLog, $startTime);
+        }
+
         if ($investigationResult->stopReason === 'answer_provenance') {
             return $this->provenanceResponse($request, $conversation, $userMessage, $filters,
                 $investigationResult->intent?->understanding?->language, $chatLog, $startTime);

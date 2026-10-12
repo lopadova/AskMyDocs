@@ -71,6 +71,18 @@ class KbInvestigationService
                 ));
             }
         }
+        if ($prepared === null && (bool) config('kb.investigation.enabled', true)) {
+            $prepared = $this->preprocessor->interpret($question, $conversationContext, $profile === null ? null : [
+                'context' => $profile->company_context, 'glossary' => $profile->glossary ?? [],
+                'relevant_entities' => $profile->relevant_entities ?? [], 'expected_facts' => $profile->expected_facts ?? [],
+                'preferred_source_types' => $profile->preferred_source_types ?? [],
+            ], $memory->enabled() ? [] : null);
+        }
+        if ($prepared?->isAssistantConversation()) {
+            return $this->empty('conversational', 'assistant_conversation', intent: new KbInvestigationIntent(
+                $prepared->intent, [], [], [], [], [], $prepared,
+            ));
+        }
         if ($prepared?->asksForProvenance()) {
             // Attribution audits the preceding answer; no profile or vector search is
             // needed. This also covers a resumed turn's already prepared interpretation.

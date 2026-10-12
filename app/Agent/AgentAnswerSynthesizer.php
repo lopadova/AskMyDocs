@@ -32,7 +32,8 @@ final readonly class AgentAnswerSynthesizer
         ?array $understanding = null,
         ?string $durableRunId = null,
     ): AgentAnswer {
-        if (config('reasoning.selective_validation') && $understanding !== null) {
+        if (config('reasoning.selective_validation') && $understanding !== null
+            && ! \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->isAssistantConversation()) {
             $understanding['subquestions'] = \App\Services\Chat\Reasoning\FocusContract::activeSubquestions(
                 $understanding['focus'] ?? [], $understanding['subquestions'] ?? [],
             );
@@ -46,6 +47,16 @@ final readonly class AgentAnswerSynthesizer
                 $context->runId, $context->tenantId, $context->projectKey,
                 $context->channel, $context->actorType, $context->actorId,
                 \App\Support\SupportedLocale::normalize($language), $context->timezone,
+            );
+        }
+        if ($understanding !== null && \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->isAssistantConversation()) {
+            $run = $durableRunId === null ? null : \App\Models\AgentRun::query()->forTenant($context->tenantId)
+                ->where('run_id', $durableRunId)->firstOrFail();
+            $actor = \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->effectiveAction() === \App\Services\Chat\QuestionAction::Greeting
+                ? null : ($run?->user ?? ($context->actorType === 'user' ? \App\Models\User::find($context->actorId) : null));
+            return app(\App\Services\Chat\AssistantConversationResponder::class)->answer(
+                \App\Services\Chat\QuestionUnderstanding::fromArray($understanding), $context, $actor,
+                $run === null ? null : data_get($run->input_json, 'live_sources'),
             );
         }
         $mentions = ($understanding['available'] ?? false) && is_array($understanding['mentions'] ?? null)

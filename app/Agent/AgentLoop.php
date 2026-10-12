@@ -163,6 +163,9 @@ final readonly class AgentLoop
             $retrieved = true;
             $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
         }
+        if (data_get($run->result_json, 'knowledge_investigation.status') === 'conversational') {
+            return $this->outcome('answer', $evidence, [], 'assistant_conversation');
+        }
         if (in_array(data_get($run->result_json, 'knowledge_investigation.status'), ['profile_required', 'clarify'], true)) {
             // Keep mandatory scope/clarification gates across resumed turns too.
             // Empty KB evidence is not a connector authorization failure: the

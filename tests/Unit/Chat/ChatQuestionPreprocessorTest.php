@@ -152,6 +152,49 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertSame([], $result->mentions);
     }
 
+    #[DataProvider('assistantConversations')]
+    public function test_assistant_conversation_has_no_research_tasks(string $question, string $action, string $topic): void
+    {
+        $focus = ['topic' => $topic, 'identifiers' => [], 'aspect' => $action, 'fields' => []];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => $question, 'action' => $action, 'kb_queries' => [], 'mentions' => [],
+            'references_previous_turn' => false, 'transition' => 'new', 'focus' => $focus, 'subquestions' => [],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret($question, reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertTrue($result->isAssistantConversation());
+        $this->assertSame([], $result->kbQueries);
+        $this->assertSame([], $result->subquestions);
+        $this->assertTrue(\App\Services\Chat\QuestionUnderstanding::fromArray($result->toArray())->isAssistantConversation());
+    }
+
+    public static function assistantConversations(): array
+    {
+        return [
+            ['Ciao', 'greeting', 'assistant'], ['Hello!', 'greeting', 'assistant'],
+            ['Hai accesso ai documenti?', 'capabilities', 'documents'],
+            ['Can you read orders?', 'capabilities', 'orders'], ['What can you do?', 'capabilities', 'assistant'],
+        ];
+    }
+
+    public function test_a_social_prefix_does_not_shortcut_a_business_request(): void
+    {
+        $focus = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status', 'fields' => ['status']];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Stato ordine ORDER-A', 'action' => 'research', 'kb_queries' => ['ORDER-A stato'],
+            'mentions' => [['text' => 'ORDER-A', 'type' => 'identifier']], 'references_previous_turn' => false,
+            'transition' => 'new', 'focus' => $focus, 'subquestions' => [$focus], 'resolved_references' => [],
+            'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Ciao, dimmi lo stato di ORDER-A', reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertFalse($result->isAssistantConversation());
+        $this->assertSame(['ORDER-A'], $result->targetIdentifiers());
+    }
+
     private function response(array $payload): AiResponse
     {
         $payload += ['action' => 'research'];
