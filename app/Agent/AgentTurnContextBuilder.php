@@ -25,7 +25,12 @@ final readonly class AgentTurnContextBuilder
         if ($memory->enabled() && $owner !== null) {
             $context = AgentExecutionContext::fromArray($run->only(['run_id', 'tenant_id', 'project_key', 'channel', 'actor_type', 'actor_id', 'locale', 'timezone']));
             $filters = app(AgentRetrievalFiltersFactory::class)->forRun($run, $context);
-            return ['reasoning' => $owner->project_key === $run->project_key && data_get($run->result_json, 'question_understanding.available') !== false
+            $turn = $memory->runTurn($run);
+            $before = $turn === null || $owner->project_key !== $run->project_key ? []
+                : $memory->context($owner, $run->user, $filters, (int) $turn->getKey());
+            return ['original_question_context' => array_intersect_key(is_array($before) ? $before : [],
+                array_flip(['dialogue', 'known_identifiers', 'verified_relations', 'references', 'objective'])),
+                'reasoning' => $owner->project_key === $run->project_key && data_get($run->result_json, 'question_understanding.available') !== false
                 ? $memory->context($owner, $run->user, $filters) : [],
                 'current_selection' => array_intersect_key((array) data_get($run->input_json, 'selection.record', []),
                     array_flip(['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode']))];

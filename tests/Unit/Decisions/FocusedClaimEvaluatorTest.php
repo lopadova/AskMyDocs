@@ -27,6 +27,10 @@ class FocusedClaimEvaluatorTest extends TestCase
         Http::fake(function ($request) use ($categories, $probability) {
             $answers = [];
             foreach ($request['questions'] as $key => $question) {
+                if ($question['type'] === 'noul') {
+                    $answers[$key] = ['type' => 'noul', 'noul' => .95];
+                    continue;
+                }
                 $category = $categories[$key] ?? 'supported_relevant';
                 $probabilities = array_fill_keys(array_keys($question['criteria']), (1 - $probability) / 4);
                 $probabilities[$category] = $probability;
@@ -48,7 +52,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertTrue($result['partial']);
         $this->assertSame('unverified', $result['subquestions'][1]['status']);
         $this->assertContains('source_hash_mismatch', array_column($result['semantic_validation'][0]['checks'], 'reason'));
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_followup_does_not_include_previous_hub_paragraph(): void
@@ -58,7 +62,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $result = app(FocusedClaimEvaluator::class)->evaluate('Ora la spedizione', $evidence, $claims, $u, 'demo', 'acme');
         $this->assertCount(1, $result['claims']);
         $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
-        Http::assertSent(fn ($r) => $r['state']['focus']['identifiers'] === ['TRACK-55']
+        Http::assertSent(fn ($r) => ($r['state']['focus']['identifiers'] ?? null) === ['TRACK-55']
             && ! str_contains($r['state']['sources'][$r['state']['pairs'][0]['source_ref']], 'artifact'));
     }
 
@@ -76,7 +80,9 @@ class FocusedClaimEvaluatorTest extends TestCase
     public function test_provider_error_renders_only_requested_exact_fields(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
-        Http::fake(['*' => Http::response([], 503)]);
+        Http::fake(fn ($request) => isset($request['state']['original_question'])
+            ? Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => ['relevance_0' => ['type' => 'noul', 'noul' => .95]]])
+            : Http::response([], 503));
         [$evidence, $claims, $u] = $this->fixture();
         $result = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
         $this->assertTrue($result['valid']);
@@ -116,7 +122,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $evidence['api_tools'][0]['tenant_id'] = 'other';
         $result = app(FocusedClaimEvaluator::class)->evaluate('Who?', $evidence, [$claims[0]], $u, 'demo', 'acme');
         $this->assertFalse($result['valid']);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_size_limits_do_not_truncate_a_necessary_passage(): void
@@ -153,7 +159,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         [$evidence, $claims, $u] = $this->fixture();
         $result = app(FocusedClaimEvaluator::class)->evaluate('Status', $evidence, array_fill(0, 11, $claims[0]), $u, 'demo', 'acme');
         $this->assertContains('claim_limit', array_column($result['semantic_validation'][0]['checks'], 'reason'));
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         Http::assertSent(fn ($r) => count($r['questions']) === 10);
     }
 
@@ -198,7 +204,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(2, $result['claims']);
         $this->assertSame(['answered', 'answered'], array_column($result['subquestions'], 'status'));
         $this->assertNotContains('entity_mismatch', array_column($result['semantic_validation'][0]['checks'], 'reason'));
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_partial_field_availability_does_not_erase_the_existing_requested_field(): void
@@ -244,8 +250,8 @@ class FocusedClaimEvaluatorTest extends TestCase
         $excluded = collect($result['semantic_validation'][0]['checks'])->firstWhere('claim_index', 1);
         $this->assertSame('source_not_in_authorized_evidence', $excluded['reason']);
         $this->assertSame(0, $excluded['subquestion_id']);
-        Http::assertSentCount(1);
-        Http::assertSent(fn ($r) => count($r['state']['pairs']) === 1);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($r) => count($r['state']['pairs'] ?? []) === 1);
     }
 
     public function test_chat_37_validates_all_nine_candidates_without_repeating_original_passages(): void
@@ -271,7 +277,7 @@ class FocusedClaimEvaluatorTest extends TestCase
             $this->assertSame(4101, $check['source']['tool_execution_id']);
             $this->assertSame('passed', $check['deterministic']['status']);
         }
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
         $this->assertCount(4, $state['sources']); // Three complete documents + one identical MCP record, from two executions.
@@ -339,7 +345,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(1, $result['claims']);
         $this->assertSame($claims[1]['text'], $result['claims'][0]['text']);
         $this->assertSame('state_limit', collect($result['semantic_validation'][0]['checks'])->firstWhere('claim_index', 0)['reason']);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame([$evidence['documents'][0]['evidence'][0]['content']], array_values($state['sources']));
         $this->assertCount(1, $state['pairs']);
@@ -363,7 +369,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(9, $result['claims']);
         $this->assertFalse($result['partial']);
         $this->assertSame(['answered', 'answered', 'answered', 'answered'], array_column($result['subquestions'], 'status'));
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
         // Full documents AND overlapping passages remain original and distinct.
@@ -390,13 +396,13 @@ class FocusedClaimEvaluatorTest extends TestCase
         $exact = app(FocusedClaimEvaluator::class)->evaluate('Hub?', $evidence, [$claims[1]], $u, 'demo', 'acme');
         $this->assertTrue($exact['valid']);
         $this->assertSame(0, $exact['semantic_validation'][0]['state_limit_count']);
-        Http::assertSentCount(2);
+        Http::assertSentCount(4);
 
         config(['decisions.max_state_bytes' => $bytes - 1]);
         $tooLarge = app(FocusedClaimEvaluator::class)->evaluate('Hub?', $evidence, [$claims[1]], $u, 'demo', 'acme');
         $this->assertFalse($tooLarge['valid']);
         $this->assertSame('state_limit', $tooLarge['semantic_validation'][0]['checks'][0]['reason']);
         $this->assertSame(1, $tooLarge['semantic_validation'][0]['checks'][0]['state_overflow_bytes']);
-        Http::assertSentCount(2); // No provider attempt for the over-budget candidate.
+        Http::assertSentCount(4); // No provider attempt for the over-budget candidate.
     }
 }

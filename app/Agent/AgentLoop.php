@@ -671,7 +671,7 @@ final readonly class AgentLoop
                 return;
             }
             // A stale worker must never erase a concurrently persisted JEV dispatch marker.
-            $run->forceFill(['result_json' => array_merge(array_intersect_key((array) $locked->result_json, ['question_understanding' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true]), [
+            $run->forceFill(['result_json' => array_merge(array_intersect_key((array) $locked->result_json, ['question_understanding' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true]), [
                 'phase' => 'collection',
                 'retrieval_completed' => $retrieved,
                 'evidence' => $evidence->jsonSerialize(),

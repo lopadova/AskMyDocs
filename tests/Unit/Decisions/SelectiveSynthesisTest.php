@@ -25,6 +25,11 @@ class SelectiveSynthesisTest extends TestCase
     {
         config(['reasoning.enabled' => true, 'reasoning.selective_validation' => true, 'ai.providers.openrouter.key' => 'test']);
         Http::fake(function ($request) {
+            if (isset($request['state']['original_question'])) {
+                return Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => array_fill_keys(
+                    array_keys($request['questions']), ['type' => 'noul', 'noul' => .96])]);
+            }
+
             return Http::response(['id' => 'decision', 'model' => 'jev-test', 'usage' => ['cost' => .001], 'answers' => [
                 'claim_0' => ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .96,
                     'probabilities' => ['supported_relevant' => .96, 'supported_off_topic' => .01, 'unsupported' => .01, 'conflicting' => .01, 'insufficient_context' => .01]],
@@ -48,7 +53,7 @@ class SelectiveSynthesisTest extends TestCase
         $this->assertSame('TRACK-55 parte alle 18:00.', $answer->answer);
         $this->assertSame($source, $answer->grounding['claims'][0]['quote']);
         $this->assertCount(1, $answer->citations);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_rollback_keeps_text_and_sources_instead_of_clearing_claims(): void
@@ -74,10 +79,16 @@ class SelectiveSynthesisTest extends TestCase
     public function test_malformed_mcp_source_reference_is_recovered_before_selective_synthesis(string $channel, string $actor, ?string $actorId): void
     {
         config(['reasoning.enabled' => true, 'reasoning.selective_validation' => true, 'ai.providers.openrouter.key' => 'test']);
-        Http::fake(['*' => Http::response(['id' => 'decision', 'model' => 'jev-test', 'answers' => [
+        Http::fake(function ($request) {
+            if (isset($request['state']['original_question'])) {
+                return Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => array_fill_keys(
+                    array_keys($request['questions']), ['type' => 'noul', 'noul' => .96])]);
+            }
+            return Http::response(['id' => 'decision', 'model' => 'jev-test', 'answers' => [
             'claim_0' => ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .96,
                 'probabilities' => ['supported_relevant' => .96, 'supported_off_topic' => .01, 'unsupported' => .01, 'conflicting' => .01, 'insufficient_context' => .01]],
-        ]])]);
+        ]]);
+        });
         $record = ['id' => 'SHIP-1', 'trackingCode' => 'TRACK-55', 'status' => 'scheduled'];
         $evidence = app(AgentEvidenceFactory::class)->empty();
         $evidence->import(['api_tools' => [['execution_id' => 86, 'evidence_hash' => 'tool-hash', 'result' => ['records' => [$record]]]]]);
@@ -101,7 +112,7 @@ class SelectiveSynthesisTest extends TestCase
         $this->assertSame(86, $answer->grounding['claims'][0]['tool_execution_id']);
         $this->assertSame(json_encode($record), $answer->grounding['claims'][0]['quote']);
         $this->assertSame('unique_evidence_hash', $answer->grounding['semantic_validation'][0]['checks'][0]['source_resolution']['method']);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     #[DataProvider('channels')]
@@ -109,6 +120,11 @@ class SelectiveSynthesisTest extends TestCase
     {
         config(['reasoning.enabled' => true, 'reasoning.selective_validation' => true, 'ai.providers.openrouter.key' => 'test']);
         Http::fake(function ($request) {
+            if (isset($request['state']['original_question'])) {
+                return Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => array_fill_keys(
+                    array_keys($request['questions']), ['type' => 'noul', 'noul' => .96])]);
+            }
+
             $state = $request['state'];
             $this->assertCount(3, $state['pairs']);
             $answers = [];
@@ -164,6 +180,6 @@ class SelectiveSynthesisTest extends TestCase
         $this->assertStringNotContainsString('Tell me about', $answer->answer);
         $this->assertSame('partial', $answer->completeness);
         $this->assertCount(2, $answer->citations);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 }

@@ -109,7 +109,8 @@ final readonly class AgentAnswerSynthesizer
         $grounding = $selective
             ? app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $evidence, $payload['claims'] ?? [],
                 $understanding ?? [], $context->projectKey, $context->tenantId,
-                data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId)
+                data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
+                data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])))
             : ($batchEnabled
             ? ($this->batchEvaluator ?? app(AgentClaimBatchEvaluator::class))
                 ->evaluate($question, $evidence, $payload['claims'] ?? null, $mentions, $context->projectKey, $context->tenantId)
@@ -220,6 +221,11 @@ final readonly class AgentAnswerSynthesizer
                 ]);
             }
         }
+        if (! $selective && ! $presentationOnly && config('agent.grounding.enabled', true)
+            && ($batchEnabled || config('agent.grounding.semantic.enabled', false))) {
+            $grounding = app(\App\Agent\Grounding\OriginalQuestionRelevanceEvaluator::class)->apply(
+                $question, $grounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []), $durableRunId);
+        }
         if (! $grounding['valid'] && ! $independent) {
             Log::notice('Agent claim grounding blocked an answer.', [
                 'project_key' => $context->projectKey,
@@ -257,6 +263,10 @@ final readonly class AgentAnswerSynthesizer
                 $focusedPayload = $this->payload($focusedResponse->toolCalls, $focusedResponse->content);
                 $focusedGrounding = $this->grounding->validate($question, $evidence, $focusedPayload['claims'] ?? null, $mentions);
                 $focusedGrounding = $this->semanticGate($question, $focusedGrounding, false, $grounding['semantic_validation'], 'focused_answer');
+                if (config('agent.grounding.semantic.enabled', false)) {
+                    $focusedGrounding = app(\App\Agent\Grounding\OriginalQuestionRelevanceEvaluator::class)->apply(
+                        $question, $focusedGrounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []));
+                }
                 if ($focusedGrounding['valid'] && ! $this->sameAnswer(implode("\n\n", array_column($focusedGrounding['claims'], 'text')), $previousAnswer)) {
                     $payload = $focusedPayload;
                     $grounding = $focusedGrounding;
@@ -861,6 +871,10 @@ PROMPT;
             $answer = $grounding['reason'] === 'conflicting_evidence'
                 ? ($italian ? 'Le fonti disponibili riportano dati in conflitto; non posso confermare una versione unica.' : 'The available sources conflict; I cannot confirm a single version.')
                 : ($italian ? 'Ho trovato dei dati, ma non posso verificarne il supporto e la pertinenza alla richiesta attuale.' : 'I found data, but cannot verify its support and relevance to the current request.');
+        }
+        if (in_array($grounding['reason'], ['off_topic_original_question', 'original_question_unverified'], true)) {
+            $answer = $italian ? 'Ho trovato delle fonti, ma non riesco a verificarne la pertinenza alla tua domanda.'
+                : 'I found sources, but cannot verify their relevance to your question.';
         }
         if ($grounding['reason'] === 'no_evidence') {
             $answer = $italian ? 'Non ho recuperato fonti utilizzabili per questa richiesta. Questo non dimostra che i dati non esistano.'

@@ -13,7 +13,7 @@ final readonly class FocusedClaimEvaluator
 {
     public function __construct(private AgentClaimGroundingValidator $validator, private EvidenceProjector $projector) {}
 
-    public function evaluate(string $question, array $evidence, mixed $claims, array $understanding, ?string $project = '', string $tenant = '', array $communicated = [], ?string $runId = null): array
+    public function evaluate(string $question, array $evidence, mixed $claims, array $understanding, ?string $project = '', string $tenant = '', array $communicated = [], ?string $runId = null, array $navigation = []): array
     {
         $project ??= '';
         $threshold = (float) config('reasoning.threshold', 0.8);
@@ -163,6 +163,7 @@ final readonly class FocusedClaimEvaluator
                 'threshold' => (float) config('reasoning.threshold', 0.8), 'fallback' => $fallback, 'record_path' => $pair['bound']['path'],
                 'missing_fields' => $fallback === null ? [] : array_values(array_diff($pair['sub']['fields'] ?? [], ['*'], array_keys($pair['bound']['record'])))];
             if ($claim !== null && ! $repeated && ! $duplicate) {
+                $checks[$key]['fact_id'] = $fingerprint;
                 $accepted[$fingerprint] = [...$claim, 'fact_id' => $fingerprint, 'subquestion_id' => $pair['check']['subquestion_id']];
                 $renderedTexts[$textKey] = true;
             }
@@ -179,10 +180,10 @@ final readonly class FocusedClaimEvaluator
         if ($checks !== [] && array_diff(array_column($checks, 'reason'), ['already_communicated', 'duplicate_fact']) === []) {
             $reason = 'no_new_detail';
         }
-        return ['valid' => $accepted !== [], 'reason' => $accepted === [] ? $reason : null, 'terms' => [],
+        return app(OriginalQuestionRelevanceEvaluator::class)->apply($question, ['valid' => $accepted !== [], 'reason' => $accepted === [] ? $reason : null, 'terms' => [],
             'claims' => array_values($accepted), 'semantic_validation' => [$meta], 'subquestions' => $coverage,
             'partial' => count($accepted) < count(array_filter($checks, fn ($c) => ! in_array($c['reason'], ['duplicate_fact', 'already_communicated'], true)))
-                || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []];
+                || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId);
     }
 
     /** Content-addressed storage saves bytes without changing source text or authority. */

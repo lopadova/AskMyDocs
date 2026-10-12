@@ -218,7 +218,7 @@ final class DefaultAgentRunHandlerTest extends TestCase
         $this->assertSame('it-IT', data_get($run->result_json, 'response.locale'));
         $this->assertSame('insufficient', data_get($run->result_json, 'response.completeness'));
         $this->assertSame(
-            'La ricerca non ha restituito dati per questa richiesta.',
+            'Non ho recuperato fonti utilizzabili per questa richiesta. Questo non dimostra che i dati non esistano.',
             data_get($run->result_json, 'response.answer'),
         );
         $this->assertSame([], data_get($run->result_json, 'response.citations'));

@@ -38,6 +38,29 @@ class DecisionOnceTest extends TestCase
         $this->assertSame('completed', $run->fresh()->result_json['focused_decision']['status']);
     }
 
+    public function test_support_and_original_question_relevance_are_cached_independently(): void
+    {
+        $run = $this->runFixture();
+        $service = new DecisionOnce;
+        $calls = 0;
+        $call = function () use (&$calls) {
+            $calls++;
+            return new DecisionResult('id', 'test', [], [], 1.0);
+        };
+        foreach (['focused_decision', 'original_question_relevance_decision'] as $slot) {
+            $service->run($run->run_id, $slot, $call, $slot);
+            $service->run($run->run_id, $slot, $call, $slot);
+        }
+        (new \ReflectionMethod(\App\Agent\AgentLoop::class, 'checkpoint'))->invoke(app(\App\Agent\AgentLoop::class),
+            $run, app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty(), [], [], true);
+        foreach (['focused_decision', 'original_question_relevance_decision'] as $slot) {
+            $service->run($run->run_id, $slot, $call, $slot);
+        }
+        $this->assertSame(2, $calls);
+        $this->assertSame('completed', $run->fresh()->result_json['focused_decision']['status']);
+        $this->assertSame('completed', $run->fresh()->result_json['original_question_relevance_decision']['status']);
+    }
+
     public function test_timeout_does_not_trigger_an_automatic_second_billable_request(): void
     {
         $run = $this->runFixture();

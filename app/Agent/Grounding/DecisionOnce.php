@@ -11,21 +11,21 @@ use Illuminate\Support\Facades\DB;
 /** A durable dispatch marker prevents retry/repair from charging for a second semantic decision. */
 final class DecisionOnce
 {
-    public function run(?string $runId, string $signature, \Closure $call): DecisionResult
+    public function run(?string $runId, string $signature, \Closure $call, string $slot = 'focused_decision'): DecisionResult
     {
         if ($runId === null) {
             return $call();
         }
-        $memo = DB::transaction(function () use ($runId, $signature): array {
+        $memo = DB::transaction(function () use ($runId, $signature, $slot): array {
             $run = AgentRun::query()->where('run_id', $runId)->lockForUpdate()->first();
             if ($run === null) {
                 return ['ephemeral' => true]; // Unit-level/non-durable synthesizer use.
             }
             $payload = $run->result_json ?? [];
-            if (isset($payload['focused_decision'])) {
-                return $payload['focused_decision'];
+            if (isset($payload[$slot])) {
+                return $payload[$slot];
             }
-            $payload['focused_decision'] = ['signature' => $signature, 'status' => 'dispatched'];
+            $payload[$slot] = ['signature' => $signature, 'status' => 'dispatched'];
             $run->forceFill(['result_json' => $payload])->save();
             return ['new' => true];
         });
@@ -37,9 +37,9 @@ final class DecisionOnce
         }
         $result = $call();
         if (! isset($memo['ephemeral'])) {
-            DB::transaction(function () use ($runId, $signature, $result): void {
+            DB::transaction(function () use ($runId, $signature, $result, $slot): void {
                 $run = AgentRun::query()->where('run_id', $runId)->lockForUpdate()->firstOrFail();
-                $run->forceFill(['result_json' => [...($run->result_json ?? []), 'focused_decision' => [
+                $run->forceFill(['result_json' => [...($run->result_json ?? []), $slot => [
                     'signature' => $signature, 'status' => 'completed', 'id' => $result->id, 'model' => $result->model,
                     'answers' => $result->answers, 'usage' => $result->usage, 'latency_ms' => $result->latencyMs,
                 ]]])->save();

@@ -122,6 +122,11 @@ class IndependentResearchTest extends TestCase
         \Illuminate\Support\Facades\Http::fake(function ($request) {
             $answers = [];
             foreach ($request['questions'] as $key => $question) {
+                if ($question['type'] === 'noul') {
+                    $answers[$key] = ['type' => 'noul', 'noul' => .96];
+                    continue;
+                }
+
                 $probabilities = array_fill_keys(array_keys($question['criteria']), .01);
                 $probabilities['supported_relevant'] = .96;
                 $answers[$key] = ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .96, 'probabilities' => $probabilities];
@@ -146,7 +151,7 @@ class IndependentResearchTest extends TestCase
             \App\Agent\AgentExecutionContext::fromArray($parent->getAttributes()), $outcome,
             understanding: $parent->result_json['question_understanding'], durableRunId: $parent->run_id);
         $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
-        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        \Illuminate\Support\Facades\Http::assertSentCount(2);
     }
 
     public function test_four_tasks_have_separate_plans_budgets_and_retry_checkpoints_without_new_interpretations(): void

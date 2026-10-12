@@ -137,10 +137,13 @@ final class AgentClaimBatchEvaluatorTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function test_agent_renders_the_original_email_and_mcp_citations_after_one_batch_call(): void
+    public function test_agent_renders_original_citations_after_support_and_original_question_validation(): void
     {
         config()->set('agent.grounding.batch.enabled', true);
-        Http::fake(['*' => Http::response($this->decision([0.97, 0.96, 0.93]))]);
+        Http::fake(fn ($request) => isset($request['state']['original_question'])
+            ? Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => array_fill_keys(
+                array_keys($request['questions']), ['type' => 'noul', 'noul' => .97])])
+            : Http::response($this->decision([0.97, 0.96, 0.93])));
         [$data, $claims] = $this->orderCase();
         $evidence = app(AgentEvidenceFactory::class)->empty();
         $evidence->import($data);
@@ -164,7 +167,8 @@ final class AgentClaimBatchEvaluatorTest extends TestCase
         $this->assertCount(2, $answer->toolSources);
         $this->assertStringContainsString('13:00', $answer->answer);
         $this->assertSame('completed', $answer->grounding['semantic_validation'][0]['status']);
-        Http::assertSentCount(1);
+        $this->assertSame('original_question_relevance', $answer->grounding['semantic_validation'][1]['stage']);
+        Http::assertSentCount(2);
     }
 
     public function test_customer_code_without_digits_selects_its_record_before_bounding_the_jev_state(): void
