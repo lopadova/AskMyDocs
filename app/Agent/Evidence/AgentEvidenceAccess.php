@@ -25,6 +25,7 @@ final readonly class AgentEvidenceAccess
         $context->assertMatches($run);
         $filters = $this->filters->forRun($run, $context);
         $allowed = $this->selection->apply($this->registry->forContext($context, $run->user), data_get($run->input_json, 'live_sources'));
+        $identifiers = \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding', []))->targetIdentifiers();
         $safe = ['documents' => [], 'api_tools' => [], 'warnings' => $evidence['warnings'] ?? []];
         foreach ($evidence['documents'] ?? [] as $document) {
             $chunks = [];
@@ -35,7 +36,15 @@ final readonly class AgentEvidenceAccess
                 $original = $chunk['content'] ?? '';
                 // A changed or revoked passage loses its old verification; never silently rebind its hash.
                 if ($current !== '' && is_string($original) && $original !== '' && str_contains($current, $original)) {
-                    $chunks[] = $chunk;
+                    // Match exact request tokens BEFORE PII masking, against the
+                    // current authorized source and title. Persist only hashes;
+                    // distinct order numbers must not collapse to one [PHONE].
+                    $identityText = $source['title']."\n".$source['excerpt'];
+                    $matches = array_values(array_filter($identifiers,
+                        fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains($identityText, $id)));
+                    $chunks[] = [...$chunk, 'source_title' => $this->masker->maskString($source['title']),
+                        'verified_identifier_hashes' => array_map(fn ($id) => hash('sha256', $id), $matches),
+                        'complete_source' => ($source['complete_source'] ?? false) && trim($current) === trim($original)];
                 } else {
                     $safe['warnings'][] = ['code' => 'source_changed_or_revoked', 'source' => 'document'];
                 }

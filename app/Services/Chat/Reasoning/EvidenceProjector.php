@@ -143,10 +143,12 @@ final class EvidenceProjector
                         continue;
                     }
                     $text = $chunk['content'] ?? '';
-                    if (! is_string($text) || array_filter($ids, fn ($id) => ! self::contains($text, $id))) {
+                    if (! is_string($text) || array_filter($ids, fn ($id) => ! $this->documentSubjectMatches($chunk, $text, $id))) {
                         return ['reason' => 'entity_mismatch'];
                     }
-                    return ['quote' => $text, 'record' => null, 'path' => $chunk['chunk_id'] ?? null];
+                    return ['quote' => $text, 'record' => null, 'path' => $chunk['chunk_id'] ?? null,
+                        'source_title' => $chunk['source_title'] ?? $source['title'] ?? '',
+                        'complete_source' => $chunk['complete_source'] ?? false];
                 }
                 return ['reason' => 'source_hash_mismatch'];
             }
@@ -169,8 +171,20 @@ final class EvidenceProjector
         return ['reason' => 'source_not_in_authorized_evidence'];
     }
 
+    private function documentSubjectMatches(array $chunk, string $text, string $identifier): bool
+    {
+        if (self::contains($text, $identifier)
+            || in_array(hash('sha256', $identifier), $chunk['verified_identifier_hashes'] ?? [], true)) {
+            return true;
+        }
+        // Opaque record tokens require an exact match. A prose subject (such as
+        // a product phrase or full name) belongs to the semantic decision: its
+        // formatting, word order or punctuation may differ from the source.
+        return preg_match('/^[\pL\pN_-]+$/u', $identifier) !== 1;
+    }
+
     /** Include other current evidence about the same entity, even when the draft did not cite it. */
-    public function alternatives(array $evidence, array $ids, string $quote, string $tenant, string $project): array
+    public function alternatives(array $evidence, array $ids, string $quote, string $tenant, string $project, ?int $documentId = null): array
     {
         if ($ids === []) {
             return [];
@@ -178,6 +192,13 @@ final class EvidenceProjector
         $alternatives = [];
         foreach ($evidence['documents'] ?? [] as $document) {
             foreach ($document['evidence'] ?? [] as $chunk) {
+                // Semantic matching of a prose subject is allowed for its paired
+                // document, not a license to add every unrelated search result.
+                if (($document['document_id'] ?? null) !== $documentId
+                    && ! array_filter($ids, fn ($id) => self::contains(($chunk['source_title'] ?? $document['title'] ?? '')."\n".($chunk['content'] ?? ''), $id)
+                        || in_array(hash('sha256', $id), $chunk['verified_identifier_hashes'] ?? [], true))) {
+                    continue;
+                }
                 $bound = $this->bind($evidence, ['document_id' => $document['document_id'], 'evidence_hash' => $chunk['evidence_hash']], $ids, $tenant, $project);
                 if (isset($bound['quote']) && $bound['quote'] !== $quote) {
                     $alternatives[hash('sha256', $bound['quote'])] = ['source' => $bound['quote'], 'document_id' => $document['document_id']];

@@ -55,6 +55,23 @@ class FocusedClaimEvaluatorTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_prose_subject_formatting_is_evaluated_semantically_with_document_title_context(): void
+    {
+        $this->fake();
+        $source = 'The customer reports prices of 100 and 120 euros. Support replies: the selected product costs 125 euros.';
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'ALPINE WC RACE + BINDING',
+            'evidence' => [['chunk_id' => 1, 'evidence_hash' => 'h', 'content' => $source]]],
+            ['document_id' => 2, 'title' => 'OTHER PRODUCT', 'evidence' => [['chunk_id' => 2, 'evidence_hash' => 'other', 'content' => 'It costs 999 euros.']]]]];
+        $focus = ['topic' => 'product', 'identifiers' => ['ALPINE WC RACE'], 'aspect' => 'price', 'fields' => ['price']];
+        $claim = ['text' => 'Support quoted 125 euros for ALPINE WC RACE.', 'document_id' => 1, 'evidence_hash' => 'h'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What price did support quote for ALPINE WC RACE?',
+            $evidence, [$claim], ['focus' => $focus, 'subquestions' => [$focus]], 'demo', 'acme');
+
+        $this->assertTrue($result['valid']);
+        Http::assertSent(fn ($request) => ($request['state']['pairs'][0]['source_title'] ?? null) === 'ALPINE WC RACE + BINDING'
+            && count($request['state']['sources']) === 1);
+    }
+
     public function test_followup_does_not_include_previous_hub_paragraph(): void
     {
         $this->fake();

@@ -158,6 +158,30 @@ class EvidenceAccessTest extends TestCase
         $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
     }
 
+    public function test_exact_source_identity_is_verified_before_masking_and_forged_matches_are_replaced(): void
+    {
+        $run = $this->runFixture();
+        $requested = '3331234567';
+        $other = '987654321098';
+        $run->forceFill(['result_json' => ['question_understanding' => ['focus' => ['identifiers' => [$requested, $other]]]]])->save();
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'text',
+            'title' => 'Order '.$requested, 'source_path' => 'fixture/order', 'status' => 'active', 'document_hash' => str_repeat('a', 64)]);
+        $text = 'The merchant has accepted the refund request.';
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => $text, 'chunk_hash' => hash('sha256', $text)]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $text, 'evidence_hash' => $chunk->chunk_hash, 'verified_identifier_hashes' => [hash('sha256', $other)]]]]]];
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), $evidence);
+
+        $this->assertSame([hash('sha256', $requested)], $safe['documents'][0]['evidence'][0]['verified_identifier_hashes']);
+        $this->assertTrue($safe['documents'][0]['evidence'][0]['complete_source']);
+        $this->assertStringNotContainsString($requested, $safe['documents'][0]['evidence'][0]['source_title']);
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $claim = ['document_id' => $document->id, 'evidence_hash' => $chunk->chunk_hash];
+        $this->assertSame($text, $projector->bind($safe, $claim, [$requested], 'default', 'demo')['quote']);
+        $this->assertSame('entity_mismatch', $projector->bind($safe, $claim, [$other], 'default', 'demo')['reason']);
+    }
+
     public function test_revoked_document_is_also_removed_from_a_catalog_tool_result(): void
     {
         $run = $this->runFixture();
