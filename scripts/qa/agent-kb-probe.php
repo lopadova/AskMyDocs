@@ -5,7 +5,7 @@ declare(strict_types=1);
 /** Local, source-backed probes through the real chat pipeline; private cases stay outside Git. */
 $options = getopt('', ['cases:', 'output:', 'round:', 'only:', 'reopen:', 'answer-model:', 'repair-model:', 'interpretation-model:', 'help']);
 if (isset($options['help']) || ! isset($options['cases'], $options['output'], $options['round'])) {
-    echo "Usage: php scripts/qa/agent-kb-probe.php --cases=/private/cases.json --output=/private/results --round=baseline [--only=case-id] [--reopen=baseline]\n";
+    echo "Usage: php scripts/qa/agent-kb-probe.php --cases=/private/cases.json --output=/private/results --round=baseline [--only=case-id] [--reopen=baseline] [--interpretation-model=provider/model] [--answer-model=provider/model] [--repair-model=provider/model]\n";
     exit(isset($options['help']) ? 0 : 1);
 }
 $cases = json_decode(file_get_contents($options['cases']), true, flags: JSON_THROW_ON_ERROR);
@@ -35,6 +35,9 @@ if (! $app->environment('local', 'testing')) {
 app(App\Support\TenantContext::class)->set($cases['tenant_id']);
 app(Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->set($cases['tenant_id']);
 $user = App\Models\User::findOrFail($cases['actor_id']);
+$revision = new Symfony\Component\Process\Process(['git', 'rev-parse', 'HEAD'], dirname(__DIR__, 2));
+$revision->setTimeout(5)->run();
+$codeRevision = $revision->isSuccessful() ? trim($revision->getOutput()) : null;
 $only = isset($options['only']) ? explode(',', $options['only']) : null;
 $masker = app(App\Services\Widget\WidgetPiiMasker::class);
 $providerReplies = [];
@@ -97,7 +100,7 @@ foreach ($cases['cases'] as $case) {
         ['qa_case' => $id, 'qa_round' => $round], inline: true);
     $run = $turn->run->fresh();
     $message = App\Models\Message::query()->where('agent_run_id', $run->id)->first();
-    $report = ['case' => $id, 'round' => $round, 'question' => $case['question'], 'expected' => $case['expected'],
+    $report = ['case' => $id, 'round' => $round, 'code_revision' => $codeRevision, 'question' => $case['question'], 'expected' => $case['expected'],
         'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
         'interpretation_model' => config('ai.question_preprocessor.model'),
         'document_ids' => $case['document_ids'], 'conversation_id' => $conversation->id, 'run_id' => $run->run_id,
