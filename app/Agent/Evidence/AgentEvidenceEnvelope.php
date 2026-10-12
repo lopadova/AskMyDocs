@@ -159,6 +159,25 @@ final class AgentEvidenceEnvelope implements JsonSerializable
                 continue;
             }
             $hash = (string) ($item['evidence_hash'] ?? hash('sha256', (string) json_encode($item)));
+            foreach ($unique as $existingHash => $existing) {
+                if (! isset($item['chunk_id'], $existing['chunk_id']) || $item['chunk_id'] !== $existing['chunk_id']
+                    || ! is_string($item['content'] ?? null) || $item['content'] === ''
+                    || ! is_string($existing['content'] ?? null) || $existing['content'] === '') {
+                    continue;
+                }
+                if (str_contains($existing['content'], $item['content'])) {
+                    $unique[$existingHash]['research_flow_ids'] = array_values(array_unique([
+                        ...($existing['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? []),
+                    ]));
+                    continue 2;
+                }
+                if (str_contains($item['content'], $existing['content'])) {
+                    $item['research_flow_ids'] = array_values(array_unique([
+                        ...($existing['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? []),
+                    ]));
+                    unset($unique[$existingHash]);
+                }
+            }
             if (isset($unique[$hash]['research_flow_ids']) || isset($item['research_flow_ids'])) {
                 $item['research_flow_ids'] = array_values(array_unique([...($unique[$hash]['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? [])]));
             }

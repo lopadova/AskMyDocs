@@ -69,4 +69,33 @@ final class AgentEvidenceEnvelopeTest extends TestCase
         $this->assertNotEmpty($api['evidence_hash']);
         $this->assertTrue($envelope->hasEvidence());
     }
+
+    public function test_an_expanded_passage_supersedes_its_contained_excerpt_in_either_merge_order(): void
+    {
+        $brief = ['chunk_id' => 10, 'content' => 'The customer requested a refund.', 'evidence_hash' => 'brief', 'research_flow_ids' => [0]];
+        $full = ['chunk_id' => 10, 'content' => 'The item was unavailable. The customer requested a refund. The merchant confirmed cancellation.',
+            'evidence_hash' => 'full', 'research_flow_ids' => [1]];
+        foreach ([[$brief, $full], [$full, $brief]] as $passages) {
+            $envelope = app(AgentEvidenceFactory::class)->empty();
+            foreach ($passages as $passage) {
+                $envelope->addDocument(['document_id' => 1, 'evidence' => [$passage]]);
+            }
+            $result = $envelope->documents()[0]['evidence'];
+            $this->assertCount(1, $result);
+            $this->assertSame('full', $result[0]['evidence_hash']);
+            $this->assertSame($full['content'], $result[0]['content']);
+            $this->assertEqualsCanonicalizing([0, 1], $result[0]['research_flow_ids']);
+        }
+    }
+
+    public function test_noncontained_or_different_chunk_passages_are_not_discarded(): void
+    {
+        $envelope = app(AgentEvidenceFactory::class)->empty();
+        $envelope->addDocument(['document_id' => 1, 'evidence' => [
+            ['chunk_id' => 10, 'content' => 'Refund requested.', 'evidence_hash' => 'a'],
+            ['chunk_id' => 10, 'content' => 'Refund declined.', 'evidence_hash' => 'b'],
+            ['chunk_id' => 11, 'content' => 'Refund requested. Cancellation accepted.', 'evidence_hash' => 'c'],
+        ]]);
+        $this->assertCount(3, $envelope->documents()[0]['evidence']);
+    }
 }
