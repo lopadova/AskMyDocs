@@ -68,7 +68,9 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         $queue = (string) config('connectors.sync_job_queue', 'connectors');
 
         if ($installation->connector_name === 'freshdesk' && class_exists(\Padosoft\AskMyDocsConnectorFreshdesk\Sync\StartSync::class)) {
-            \Padosoft\AskMyDocsConnectorFreshdesk\Sync\StartSync::dispatch($installation->id, $installation->tenant_id)->onQueue($queue);
+            \Padosoft\AskMyDocsConnectorFreshdesk\Sync\StartSync::dispatch($installation->id, $installation->tenant_id)
+                ->onConnection(config('connector-freshdesk.sync.connection'))
+                ->onQueue((string) config('connector-freshdesk.sync.queue', 'freshdesk'));
 
             return;
         }

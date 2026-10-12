@@ -185,7 +185,8 @@ final class FreshdeskIntegrationTest extends TestCase
     {
         $installation = $this->installation();
         SerializedConnectorSyncJob::dispatchFor($installation);
-        Queue::assertPushed(StartSync::class, fn ($job) => $job->installationId === $installation->id);
+        Queue::assertPushed(StartSync::class, fn ($job) => $job->installationId === $installation->id
+            && $job->connection === 'freshdesk' && $job->queue === 'freshdesk');
         (new StartSync($installation->id, 'test-tenant'))->handle(app(SyncManager::class), app(PackageTenantContext::class));
         $this->assertNull($installation->fresh()->last_sync_at);
         $this->assertSame('queued', SyncRun::firstOrFail()->status);
