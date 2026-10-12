@@ -19,6 +19,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRouteParameter;
@@ -631,6 +632,58 @@ final class AgentLoopTest extends TestCase
         $this->assertCount(1, $documents);
         $this->assertSame(11, $documents[0]['document_id']);
         $this->assertSame('Ordine Tizio #42 consegnato.', $documents[0]['evidence'][0]['content']);
+    }
+
+    public static function initialPlanningEvidence(): array
+    {
+        return ['original source already read' => [true, false], 'no evidence' => [false, false],
+            'required live coverage still blocks' => [true, true]];
+    }
+
+    #[DataProvider('initialPlanningEvidence')]
+    public function test_invalid_initial_plans_only_recover_when_a_source_was_already_read(bool $withEvidence, bool $coverageFailure): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        Http::preventStrayRequests();
+        $ai = Mockery::mock(AiManager::class);
+        $this->expectResearchInterpretation($ai);
+        $payload = $coverageFailure ? ['decision' => 'answer', 'actions' => []] : [
+            'decision' => 'tools', 'actions' => [[
+                'id' => 'fetch_café', 'tool' => 'search_knowledge_base',
+                'arguments' => ['query' => 'café'], 'depends_on' => [], 'purpose' => 'Read the source',
+            ]],
+        ];
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn($this->planResponse($payload));
+        $this->app->instance(AiManager::class, $ai);
+        $source = ['chunk_id' => 101, 'chunk_hash' => 'source-hash',
+            'chunk_text' => 'The recorded reply promises a replacement.', 'project_key' => 'crm', 'vector_score' => .9,
+            'document' => ['id' => 11, 'title' => 'Recorded reply', 'source_path' => 'mail/reply', 'source_type' => 'text']];
+        $sources = $withEvidence ? [$source] : [];
+        $investigation = Mockery::mock(KbInvestigationService::class);
+        $investigation->shouldReceive('investigate')->once()->andReturn(new KbInvestigationResult(
+            'ready', 'no_new_evidence', new SearchResult(collect($sources), collect(), collect()), $sources,
+        ));
+        $this->app->instance(KbInvestigationService::class, $investigation);
+        $run = $this->makeRun();
+        if ($coverageFailure) {
+            $this->route('search_people', 'http://erp.example.test/people');
+            $run->forceFill(['input_json' => ['question' => 'Cerca tutto quello che riesci a trovare su Tizio']])->save();
+            $this->expectException(\App\Agent\Planning\AgentPlanValidationException::class);
+            $this->expectExceptionMessage('exhaustive search');
+        }
+        if (! $withEvidence) {
+            $this->expectException(\UnexpectedValueException::class);
+            $this->expectExceptionMessage('invalid or duplicated');
+        }
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('planner_recovery', $outcome->stopReason);
+        $this->assertSame('The recorded reply promises a replacement.', $outcome->evidence->documents()[0]['evidence'][0]['content']);
+        $this->assertSame([], $outcome->completedActions);
+        $this->assertNull($run->fresh()->plan_json);
+        $this->assertSame(0, $run->toolExecutions()->count());
+        Http::assertNothingSent();
     }
 
     public function test_empty_recursive_kb_does_not_prevent_authorized_connector_research(): void

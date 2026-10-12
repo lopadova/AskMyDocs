@@ -258,11 +258,16 @@ final readonly class AgentLoop
                         'question_understanding' => data_get($run->result_json, 'question_understanding')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 );
             } catch (Throwable $exception) {
-                if (! $this->hasSuccessfulAction($completed) || ! $evidence->hasEvidence()) {
+                // Initial KB reads are evidence too. A malformed plan must never
+                // dispatch actions, but it need not discard already read sources.
+                if (! $evidence->hasEvidence()
+                    || (! $this->hasSuccessfulAction($completed)
+                        && (! $exception instanceof \UnexpectedValueException
+                            || $exception instanceof \App\Agent\Planning\AgentPlanValidationException))) {
                     throw $exception;
                 }
 
-                Log::warning('Agent replanning failed after evidence was collected; continuing to synthesis.', [
+                Log::warning('Agent planning failed after evidence was collected; continuing to synthesis.', [
                     'run_id' => $run->run_id,
                     'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
                     'completed_action_count' => count($completed),
