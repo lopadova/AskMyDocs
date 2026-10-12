@@ -68,4 +68,37 @@ class EvidenceSourceIdentityTest extends TestCase
         $incomplete = ['documents' => [['evidence' => [['content' => 'Incomplete source']]]], 'api_tools' => [[]]];
         $this->assertSame($incomplete, (new EvidenceProjector)->forPrompt($incomplete));
     }
+
+    public function test_an_exact_prose_subject_anchor_excludes_an_unrelated_case_procedure(): void
+    {
+        $evidence = ['documents' => [
+            ['document_id' => 1, 'title' => 'ADA ROSSI refund', 'evidence' => [['content' => 'Refund requested.', 'evidence_hash' => 'ada']]],
+            ['document_id' => 2, 'title' => 'Bruno Verdi return', 'evidence' => [['content' => 'Refund uses original payment method.', 'evidence_hash' => 'bruno']]],
+        ]];
+        $projector = new EvidenceProjector;
+        $this->assertSame('entity_mismatch', $projector->bind($evidence,
+            ['document_id' => 2, 'evidence_hash' => 'bruno'], ['Ada Rossi'], 'default', 'demo')['reason']);
+        $this->assertSame('Refund requested.', $projector->bind($evidence,
+            ['document_id' => 1, 'evidence_hash' => 'ada'], ['Ada Rossi'], 'default', 'demo')['quote']);
+    }
+
+    public function test_same_document_context_is_paired_even_when_interpretation_has_no_identifiers(): void
+    {
+        $evidence = $this->evidence();
+        $evidence['documents'][0]['evidence'][] = ['content' => 'Original subject and final response.', 'evidence_hash' => 'full'];
+        $alternatives = (new EvidenceProjector)->alternatives($evidence, [], 'Original passage', 'default', 'demo', 12);
+        $this->assertSame('Original subject and final response.', $alternatives[0]['source']);
+        $this->assertCount(1, $alternatives);
+    }
+
+    public function test_prose_actor_and_subject_are_resolved_in_the_same_document_without_requiring_literal_actor_in_each_reply(): void
+    {
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'ALPINE MAP compatibility', 'evidence' => [
+            ['content' => 'Is ALPINE MAP compatible with Device X?', 'evidence_hash' => 'question'],
+            ['content' => 'Unfortunately it is not compatible.', 'evidence_hash' => 'reply'],
+        ]]]];
+        $bound = (new EvidenceProjector)->bind($evidence, ['document_id' => 1, 'evidence_hash' => 'reply'],
+            ['Merchant', 'ALPINE MAP', 'Device X'], 'default', 'demo');
+        $this->assertSame('Unfortunately it is not compatible.', $bound['quote']);
+    }
 }

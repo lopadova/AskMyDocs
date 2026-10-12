@@ -385,7 +385,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(1, $state['pairs']);
     }
 
-    public function test_chat_39_nine_facts_and_eleven_distinct_sources_fit_the_new_default_in_one_call(): void
+    public function test_chat_39_nine_facts_and_all_same_document_context_fit_the_default_in_one_call(): void
     {
         $this->fake();
         $this->assertSame(32768, config('decisions.max_state_bytes'));
@@ -395,7 +395,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $meta = $result['semantic_validation'][0];
         $this->assertSame('completed', $meta['status']);
         $this->assertSame(9, $meta['pair_count']);
-        $this->assertSame(11, $meta['source_count']);
+        $this->assertSame(12, $meta['source_count']);
         $this->assertSame(0, $meta['state_limit_count']);
         $this->assertSame('sanitized_json_utf8', $meta['state_byte_encoding']);
         $this->assertGreaterThan(16000, $meta['state_bytes']);

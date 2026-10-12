@@ -143,7 +143,7 @@ final class EvidenceProjector
                         continue;
                     }
                     $text = $chunk['content'] ?? '';
-                    if (! is_string($text) || array_filter($ids, fn ($id) => ! $this->documentSubjectMatches($chunk, $text, $id))) {
+                    if (! is_string($text) || ! $this->documentSubjectsMatch($evidence, $source, $ids)) {
                         return ['reason' => 'entity_mismatch'];
                     }
                     return ['quote' => $text, 'record' => null, 'path' => $chunk['chunk_id'] ?? null,
@@ -171,24 +171,30 @@ final class EvidenceProjector
         return ['reason' => 'source_not_in_authorized_evidence'];
     }
 
-    private function documentSubjectMatches(array $chunk, string $text, string $identifier): bool
+    private function documentSubjectsMatch(array $evidence, array $source, array $identifiers): bool
     {
-        if (self::contains($text, $identifier)
-            || in_array(hash('sha256', $identifier), $chunk['verified_identifier_hashes'] ?? [], true)) {
-            return true;
+        $matches = static fn ($document, $identifier) => self::contains($document['title'] ?? '', $identifier)
+            || array_filter($document['evidence'] ?? [], fn ($chunk) => self::contains(($chunk['source_title'] ?? '')."\n".($chunk['content'] ?? ''), $identifier)
+                || in_array(hash('sha256', $identifier), $chunk['verified_identifier_hashes'] ?? [], true));
+        $opaque = array_filter($identifiers, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id)
+            && preg_match('/[\pN_-]/u', $id));
+        if (array_filter($opaque, fn ($id) => ! $matches($source, $id))) {
+            return false;
         }
-        // Opaque record tokens require an exact match. A prose subject (such as
-        // a product phrase or full name) belongs to the semantic decision: its
-        // formatting, word order or punctuation may differ from the source.
-        return preg_match('/^[\pL\pN_-]+$/u', $identifier) !== 1;
+        $prose = array_diff($identifiers, $opaque);
+        // When this request has an exact subject anchor, a similar unrelated
+        // case cannot supply its procedure. Prose names may also be actors or
+        // attributes: do not demand that every name repeat in every reply.
+        if ($prose !== [] && ! array_filter($prose, fn ($id) => $matches($source, $id))) {
+            return ! array_filter($evidence['documents'] ?? [], fn ($document) => array_filter($prose, fn ($id) => $matches($document, $id)));
+        }
+
+        return true;
     }
 
     /** Include other current evidence about the same entity, even when the draft did not cite it. */
     public function alternatives(array $evidence, array $ids, string $quote, string $tenant, string $project, ?int $documentId = null): array
     {
-        if ($ids === []) {
-            return [];
-        }
         $alternatives = [];
         foreach ($evidence['documents'] ?? [] as $document) {
             foreach ($document['evidence'] ?? [] as $chunk) {
@@ -205,7 +211,7 @@ final class EvidenceProjector
                 }
             }
         }
-        foreach ($evidence['api_tools'] ?? [] as $tool) {
+        foreach ($ids === [] ? [] : ($evidence['api_tools'] ?? []) as $tool) {
             foreach (self::records($tool) as $entry) {
                 $bound = $this->bind($evidence, ['tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash'], 'record_path' => $entry['path']], $ids, $tenant, $project);
                 if (isset($bound['quote']) && $bound['quote'] !== $quote) {
