@@ -164,6 +164,35 @@ final class AgentAnswerPresenterTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_reference_context_keeps_only_the_same_case_and_subjects_attested_in_its_sources(): void
+    {
+        $this->decisions();
+        $claims = [
+            ['text' => 'CASE-A: rimborso promesso.', 'quote' => 'Gianni Rossi CASE-A', 'subquestion_id' => 0],
+            ['text' => 'CASE-B: spedizione annunciata.', 'quote' => 'Mauro Verdi CASE-B', 'subquestion_id' => 1],
+        ];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'Per Gianni Rossi è promesso un rimborso.', 'claim_ids' => [0]],
+            ['text' => 'Per Mauro Verdi è annunciata una spedizione.', 'claim_ids' => [1]],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Confronta', $this->context(), $claims, understanding: [
+            'mentions' => ['Gianni Rossi', 'Mauro Verdi'], 'subquestions' => [
+                ['identifiers' => ['CASE-A', 'Gianni Rossi', 'Unattested label']],
+                ['identifiers' => ['CASE-B', 'Mauro Verdi']],
+            ],
+        ]);
+        $this->assertSame('accepted', $result['trace']['status']);
+        Http::assertSent(function ($request) {
+            $contexts = $request['state']['case_reference_contexts'];
+            $this->assertSame(['CASE-A', 'Gianni Rossi'], $contexts[0]['subject_labels_attested_in_bound_sources']);
+            $this->assertNotContains('Mauro Verdi', $contexts[0]['reference_labels_attested_in_bound_sources']);
+            $this->assertSame(['CASE-A: rimborso promesso.'], $contexts[0]['verified_facts_for_reference_resolution_only']);
+            $this->assertArrayNotHasKey('candidate_passages_for_reference_resolution_only', $contexts[0]);
+            return true;
+        });
+    }
+
     public function test_related_aspects_share_a_paragraph_and_only_attested_names_resolve_abbreviations(): void
     {
         $this->decisions();
