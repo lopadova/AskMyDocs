@@ -198,9 +198,11 @@ final readonly class AgentAnswerSynthesizer
         }
         if ($batchEnabled && ($grounding['partial'] ?? false)) {
             $payload['completeness'] = 'partial';
-            $payload['limitations'][] = str_starts_with($context->locale, 'it')
-                ? 'Alcuni dettagli non sono stati confermati semanticamente o sono stati omessi.'
-                : 'Some details were not semantically confirmed or were omitted.';
+            if (data_get($grounding, 'coverage_validation.sufficient') !== true) {
+                $payload['limitations'][] = str_starts_with($context->locale, 'it')
+                    ? 'Alcuni dettagli non sono stati confermati semanticamente o sono stati omessi.'
+                    : 'Some details were not semantically confirmed or were omitted.';
+            }
         }
 
         // A model can produce an otherwise useful answer while attaching an
@@ -357,9 +359,23 @@ final readonly class AgentAnswerSynthesizer
                 );
             }
         }
-        $answer = $independent ? $this->composeResearch($understanding, $grounding, $payload, $context->locale)
-            : implode("\n\n", array_column($grounding['claims'], 'text'));
-        if ($selective && ! $independent && ($grounding['partial'] ?? false)) {
+        $displayGrounding = $grounding;
+        $presentation = null;
+        $presentationParagraphs = null;
+        if (config('agent.presentation.enabled') && $grounding['valid'] && ! $presentationOnly
+            && ! ($payload['render_table'] ?? false) && ! ($payload['requires_selection'] ?? false)) {
+            $presented = app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? []);
+            $presentation = $presented['trace'];
+            if ($presented['paragraphs'] !== null) {
+                // Presentation never replaces the original facts used for citations or memory.
+                $displayGrounding['claims'] = $presented['paragraphs'];
+                $presentationParagraphs = $presented['paragraphs'];
+            }
+        }
+        $answer = $independent ? $this->composeResearch($understanding, $displayGrounding, $payload, $context->locale, $presentationParagraphs)
+            : implode("\n\n", array_column($displayGrounding['claims'], 'text'));
+        if ($selective && ! $independent && ($grounding['partial'] ?? false)
+            && data_get($grounding, 'coverage_validation.sufficient') !== true) {
             $answer .= "\n\n".(str_starts_with($context->locale, 'it')
                 ? 'Posso confermare solo questi dati; gli altri dettagli richiesti non sono stati verificati.'
                 : 'I can confirm only these details; the remaining requested details could not be verified.');
@@ -409,6 +425,7 @@ final readonly class AgentAnswerSynthesizer
                 'repair' => $repair,
                 'semantic_validation' => $grounding['semantic_validation'],
                 'coverage_validation' => $grounding['coverage_validation'] ?? null,
+                'presentation' => $presentation,
             ], static fn (mixed $value): bool => $value !== null),
         );
     }
@@ -546,21 +563,39 @@ PROMPT;
     }
 
     /** Concatenation, not an extra free-form rewrite: one unrelated task cannot erase another. */
-    private function composeResearch(array $understanding, array $grounding, array $payload, string $locale): string
+    private function composeResearch(array $understanding, array $grounding, array $payload, string $locale, ?array $presentation = null): string
     {
         $sections = [];
+        $renderedGroups = [];
+        $coveredTasks = $presentation === null ? [] : array_unique(array_merge(...array_column($presentation, 'subquestion_ids')));
+        $oneTopic = $presentation !== null && count(array_unique(array_column($presentation, 'presentation_group'))) === 1
+            && count($coveredTasks) === count($understanding['subquestions']);
         $italian = str_starts_with($locale, 'it');
         foreach ($understanding['subquestions'] as $index => $sub) {
             $claims = array_values(array_filter($grounding['claims'], fn ($claim) => $claim['subquestion_id'] === $index));
+            $sectionTasks = [$index];
+            if ($presentation !== null) {
+                $blocks = array_values(array_filter($presentation, fn ($p) => in_array($index, $p['subquestion_ids'], true)));
+                if ($blocks !== []) {
+                    $group = $blocks[0]['presentation_group'];
+                    if (isset($renderedGroups[$group])) {
+                        continue;
+                    }
+                    $renderedGroups[$group] = true;
+                    $claims = $blocks;
+                    $sectionTasks = $blocks[0]['subquestion_ids'];
+                }
+            }
             // Headings describe the subject, never replay the research question.
             // A failed branch gets a neutral server label, not a draft conclusion.
             $title = $this->researchTitle($sub, $claims === [] ? null : ($payload['research_drafts'][$index]['section_title'] ?? null), $locale);
             if ($claims !== []) {
                 $body = implode("\n\n", array_column($claims, 'text'));
-                $checks = array_filter(data_get($grounding, 'semantic_validation.0.checks', []), fn ($check) => ($check['subquestion_id'] ?? null) === $index);
-                if (($payload['research_drafts'][$index]['partial'] ?? false)
+                $checks = array_filter(data_get($grounding, 'semantic_validation.0.checks', []), fn ($check) => in_array($check['subquestion_id'] ?? null, $sectionTasks, true));
+                $draftPartial = array_filter($sectionTasks, fn ($task) => $payload['research_drafts'][$task]['partial'] ?? false);
+                if (data_get($grounding, 'coverage_validation.sufficient') !== true && ($draftPartial
                     || array_filter($checks, fn ($check) => ($check['fallback'] ?? null) !== null
-                        || (($check['status'] ?? '') !== 'accepted' && ! in_array($check['reason'] ?? '', ['already_communicated', 'duplicate_fact'], true)))) {
+                        || (($check['status'] ?? '') !== 'accepted' && ! in_array($check['reason'] ?? '', ['already_communicated', 'duplicate_fact'], true))))) {
                     $body .= "\n\n".($italian ? 'Per questa domanda posso confermare solo i dati riportati; gli altri dettagli non sono verificati.'
                         : 'For this question I can confirm only the reported data; other details are not verified.');
                 }
@@ -580,7 +615,7 @@ PROMPT;
                         : ($italian ? 'Ho trovato dati, ma non ho potuto verificarli per questa domanda.' : 'I found data, but could not verify it for this question.'),
                 };
             }
-            $sections[] = '## '.$title."\n\n".$body;
+            $sections[] = $oneTopic ? $body : '## '.$title."\n\n".$body;
         }
         return implode("\n\n", $sections);
     }

@@ -17,6 +17,11 @@ return [
         'model' => env('AGENT_ANSWER_MODEL'),
         'repair_model' => env('AGENT_ANSWER_REPAIR_MODEL'),
     ],
+    'presentation' => [
+        'enabled' => (bool) env('AGENT_PRESENTATION_ENABLED', true),
+        // Inherits the answer model unless a separate provider-native id is chosen.
+        'model' => env('AGENT_PRESENTATION_MODEL'),
+    ],
     'grounding' => [
         // Agent answers are assembled from evidence-bound claims. This remains
         // configurable only as an emergency rollback; production defaults to
