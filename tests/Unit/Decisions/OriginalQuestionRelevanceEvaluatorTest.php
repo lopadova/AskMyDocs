@@ -73,6 +73,10 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
                 'Rotta Sicura Logistics offre tre livelli di servizio, differenziati per tempo di resa e prezzo.',
                 ['available' => true, 'language' => 'it', 'action' => 'research', 'focus' => array_intersect_key($wrongTask,
                     array_flip(['topic', 'identifiers', 'aspect', 'fields'])), 'subquestions' => [$wrongTask]]],
+            'customer assertion substituted for merchant confirmation' => ['Did the merchant confirm that ITEM-B is ready?',
+                'The customer says ITEM-B is ready.', ['available' => true, 'action' => 'research',
+                    'focus' => ['topic' => 'item', 'identifiers' => ['ITEM-B'], 'aspect' => 'merchant_confirmation', 'fields' => []],
+                    'subquestions' => []]],
         ];
     }
 
