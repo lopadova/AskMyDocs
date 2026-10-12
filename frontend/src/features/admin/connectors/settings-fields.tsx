@@ -208,7 +208,7 @@ export function FieldRow({
         );
     }
 
-    // number | text
+    // number | date | text
     return (
         <label htmlFor={base} style={fieldCol()}>
             {label}
@@ -216,7 +216,9 @@ export function FieldRow({
             <input
                 id={base}
                 data-testid={base}
-                type={field.type === 'number' ? 'number' : 'text'}
+                type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                min={field.type === 'date' ? field.min : undefined}
+                max={field.type === 'date' ? field.max : undefined}
                 value={String(value ?? '')}
                 onChange={(e) => onChange(e.target.value)}
                 style={inputStyle()}
@@ -430,7 +432,7 @@ export function buildSettingsPayload(
             }
             continue;
         }
-        setPath(settings, f.name, v);
+        setPath(settings, f.name, f.type === 'date' && !v ? null : v);
     }
     return settings;
 }

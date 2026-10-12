@@ -281,6 +281,55 @@ final class FreshdeskIntegrationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_historical_date_round_trips_through_settings_and_the_action_without_remote_writes(): void
+    {
+        $installation = $this->installation();
+        $this->actingAs($this->user());
+        $settingsUri = '/api/admin/connectors/'.$installation->id;
+        $actionUri = $settingsUri.'/actions/historical-import';
+        $this->patchJson($settingsUri, ['settings' => ['history' => ['start_date' => '2024-01-01']]])
+            ->assertOk()->assertJsonPath('data.settings.history.start_date', '2024-01-01');
+        $this->assertSame(45, $installation->fresh()->config_json['date_window_days']);
+        $this->assertSame('freshdesk-test-key', app(OAuthCredentialVault::class)->getAccessToken($installation->id));
+        $listed = collect($this->getJson('/api/admin/connectors')->assertOk()->json('data'))->firstWhere('key', 'freshdesk');
+        $account = collect($listed['installations'])->firstWhere('id', $installation->id);
+        $this->assertSame('Importa storico dalla data', $account['actions'][0]['label']);
+        $this->assertStringContainsString('2024-01-01 (UTC)', $account['actions'][0]['description']);
+        $this->postJson($actionUri)->assertStatus(202)->assertJsonPath('data.updated_since', '2024-01-01T00:00:00Z');
+        $this->getJson($actionUri)->assertOk()->assertJsonPath('data.updated_since', '2024-01-01T00:00:00Z');
+        $this->patchJson($settingsUri, ['settings' => ['history' => ['start_date' => null]]])->assertOk()
+            ->assertJsonPath('data.settings.history.start_date', null);
+        $this->assertNull(data_get($installation->fresh()->config_json, 'history.start_date'));
+        // Clearing the next import's date must not replace an unfinished checkpoint.
+        $this->postJson($actionUri)->assertStatus(202)->assertJsonPath('data.updated_since', '2024-01-01T00:00:00Z');
+        SyncRun::query()->where('installation_id', $installation->id)->update(['status' => 'cancelled']);
+        $this->postJson($actionUri)->assertStatus(202)->assertJsonPath('data.updated_since', '1970-01-01T00:00:00Z');
+        Http::assertNothingSent();
+    }
+
+    public function test_historical_date_validation_rejects_invalid_calendar_dates_and_future_or_pre_epoch_values(): void
+    {
+        $installation = $this->installation();
+        $this->actingAs($this->user());
+        foreach (['2024-02-30', '01/01/2024', '1969-12-31', now('UTC')->addDay()->toDateString(), ['2024-01-01']] as $date) {
+            $this->patchJson('/api/admin/connectors/'.$installation->id, ['settings' => ['history' => ['start_date' => $date]]])
+                ->assertUnprocessable()->assertJsonValidationErrors('settings.history.start_date');
+            $this->assertNull(data_get($installation->fresh()->config_json, 'history.start_date'));
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_invalid_programmatic_history_date_is_reported_as_a_field_error_before_any_job_or_http(): void
+    {
+        $installation = $this->installation();
+        $installation->update(['config_json' => array_replace_recursive($installation->config_json, ['history' => ['start_date' => '2024-02-30']])]);
+        $this->actingAs($this->user())->postJson('/api/admin/connectors/'.$installation->id.'/actions/historical-import')
+            ->assertUnprocessable()->assertJsonValidationErrors('settings.history.start_date');
+        $this->assertSame(0, SyncRun::count());
+        Queue::assertNotPushed(ProcessSyncBatch::class);
+        Http::assertNothingSent();
+    }
+
     private function createRun(User $user): AgentRun
     {
         $conversation = Conversation::create(['tenant_id' => 'test-tenant', 'user_id' => $user->id, 'title' => 'Freshdesk', 'project_key' => 'support']);

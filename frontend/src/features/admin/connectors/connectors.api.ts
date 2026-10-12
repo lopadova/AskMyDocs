@@ -31,6 +31,7 @@ export interface ConnectorActionStatus {
     counts: Record<string, number>;
     error: string | null;
     phase: string | null;
+    updated_since?: string | null;
 }
 export interface ConnectorInstallationDto {
     supports_email_triage?: boolean;
@@ -73,7 +74,7 @@ export interface CredentialFieldSchema {
     name: string;
     // v8.25 — `multiselect` (a list chosen from a fixed or live option set) and
     // `tags` (an open free-text string list) are the connection-settings types.
-    type: 'text' | 'number' | 'password' | 'select' | 'checkbox' | 'multiselect' | 'tags';
+    type: 'text' | 'number' | 'date' | 'password' | 'select' | 'checkbox' | 'multiselect' | 'tags';
     label: string;
     target: 'auth_mode' | 'provider' | 'connection' | 'secret' | 'config';
     required: boolean;
@@ -87,6 +88,9 @@ export interface CredentialFieldSchema {
     // queries to populate the choices (`'folders'` → the live folder list).
     // Optional (additive); the BE emits it (null for non-discovery fields).
     discovery?: string | null;
+    /** Optional ISO date boundaries advertised by the connector. */
+    min?: string;
+    max?: string;
 }
 
 export interface ConnectorEntry {

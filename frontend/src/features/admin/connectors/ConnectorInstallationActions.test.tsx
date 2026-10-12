@@ -69,3 +69,11 @@ it('shows a paused import and lets an enabled connection resume it', async () =>
     await screen.findByText('In coda');
     expect(connectorActionsApi.start).toHaveBeenCalledWith(7, 'historical-import');
 });
+
+
+it('shows the actual historical checkpoint boundary when settings have since changed', async () => {
+    vi.mocked(connectorActionsApi.status).mockResolvedValue({ ...running, status: 'paused', updated_since: '2024-01-01T00:00:00Z' });
+    mount({ ...account, settings: { history: { start_date: '2025-01-01' } } });
+    await screen.findByText('Ticket aggiornati dal 2024-01-01 (UTC)', { exact: false });
+    expect(screen.getByRole('status')).not.toHaveTextContent('2025-01-01');
+});

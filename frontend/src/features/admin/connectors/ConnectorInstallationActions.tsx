@@ -30,7 +30,7 @@ function InstallationAction({ account, action }: { account: ConnectorInstallatio
             <div><Button variant="secondary" size="sm" leadingIcon={<Download size={15} />} busy={start.isPending || active}
                 disabled={!action.enabled || status.isLoading || status.isError} onClick={() => start.mutate()} data-testid={`connector-action-${action.key}`}>{action.label}</Button></div>
             <div role="status" aria-live="polite" style={{ fontSize: 13, color: 'var(--fg-2)' }}>
-                {status.data && <><span>{labels[status.data.status]}</span><span> · {status.data.counts.documents_added ?? 0} nuovi · {status.data.counts.documents_updated ?? 0} aggiornati · {status.data.counts.attachments_skipped ?? 0} allegati esclusi</span></>}
+                {status.data && <><span>{labels[status.data.status]}</span>{status.data.mode === 'history' && status.data.updated_since && <span> · Ticket aggiornati dal {status.data.updated_since.slice(0, 10)} (UTC)</span>}<span> · {status.data.counts.documents_added ?? 0} nuovi · {status.data.counts.documents_updated ?? 0} aggiornati · {status.data.counts.attachments_skipped ?? 0} allegati esclusi</span></>}
             </div>
             {(error || status.data?.error) && <p role="alert" style={{ margin: 0, color: 'var(--err)' }}>{error ? toAdminError(error).message : status.data?.error}</p>}
         </section>
