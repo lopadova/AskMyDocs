@@ -42,13 +42,13 @@ final readonly class AgentAnswerPresenter
                 $facts[] = ['id' => $index, 'task_id' => $task, 'presentation_group' => $groupKeys[$key], 'text' => $claim['text']];
                 foreach (array_unique([...$mentions, ...$scope, ...($claim['entity_identifiers'] ?? [])]) as $reference) {
                     if (is_string($reference) && EvidenceProjector::contains($claim['quote'] ?? '', $reference)) {
-                        $references[$reference] = true;
+                        $references[$reference] = $reference;
                     }
                 }
             }
             usort($facts, fn ($a, $b) => $a['presentation_group'] <=> $b['presentation_group']);
             $input = ['locale' => $context->locale, 'question_for_reference_resolution_only' => $question,
-                'reference_labels_attested_in_original_sources' => array_keys($references), 'verified_facts' => $facts];
+                'reference_labels_attested_in_original_sources' => array_values($references), 'verified_facts' => $facts];
             if (strlen(json_encode($input, JSON_THROW_ON_ERROR)) > 12000) {
                 throw new \UnexpectedValueException('Presentation input exceeds the bounded verification state.');
             }
@@ -73,7 +73,7 @@ final readonly class AgentAnswerPresenter
             }
             $trace['model'] = $memo['model'];
             $paragraphs = $this->validate($memo['paragraphs'], $claims, array_column($facts, 'presentation_group', 'id'));
-            $verification = $this->verify($paragraphs, $claims, array_keys($references), $context, $runId, $understanding);
+            $verification = $this->verify($paragraphs, $claims, array_values($references), $context, $runId, $understanding);
             $trace['verification'] = $verification;
             $trace['verification_layout'] = 'linked_paragraphs_v2';
             if (($verification['answers']['faithful']['probability_true'] ?? 0) < $threshold
@@ -102,19 +102,19 @@ final readonly class AgentAnswerPresenter
                 $contexts[$group]['verified_facts_for_reference_resolution_only'][] = $claim['text'];
                 foreach ($references as $label) {
                     if (EvidenceProjector::contains($claim['quote'] ?? '', $label)) {
-                        $contexts[$group]['reference_labels_attested_in_bound_sources'][$label] = true;
+                        $contexts[$group]['reference_labels_attested_in_bound_sources'][$label] = $label;
                     }
                 }
                 foreach ($understanding['subquestions'][$claim['subquestion_id'] ?? 0]['identifiers'] ?? [] as $label) {
                     if (EvidenceProjector::contains($claim['quote'] ?? '', $label)) {
-                        $contexts[$group]['subject_labels_attested_in_bound_sources'][$label] = true;
+                        $contexts[$group]['subject_labels_attested_in_bound_sources'][$label] = $label;
                     }
                 }
             }
         }
         foreach ($contexts as &$case) {
-            $case['subject_labels_attested_in_bound_sources'] = array_keys($case['subject_labels_attested_in_bound_sources'] ?? []);
-            $case['reference_labels_attested_in_bound_sources'] = array_keys($case['reference_labels_attested_in_bound_sources'] ?? []);
+            $case['subject_labels_attested_in_bound_sources'] = array_values($case['subject_labels_attested_in_bound_sources'] ?? []);
+            $case['reference_labels_attested_in_bound_sources'] = array_values($case['reference_labels_attested_in_bound_sources'] ?? []);
         }
         unset($case);
         $batches = [];

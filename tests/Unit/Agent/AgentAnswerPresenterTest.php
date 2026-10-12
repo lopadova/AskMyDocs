@@ -219,6 +219,32 @@ final class AgentAnswerPresenterTest extends TestCase
         $this->assertSame([0, 1], $result['paragraphs'][0]['subquestion_ids']);
     }
 
+    public function test_numeric_reference_labels_remain_strings_through_generation_and_verification(): void
+    {
+        $this->decisions();
+        $identifier = '12345678901';
+        $claims = [['text' => 'Per l’ordine '.$identifier.' il rimborso è promesso.',
+            'quote' => 'Ordine '.$identifier.': rimborso promesso.', 'subquestion_id' => 0,
+            'entity_identifiers' => [$identifier]]];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->withArgs(function ($system, $history) use ($identifier) {
+            $input = json_decode($history[0]['content'], true);
+            $this->assertSame([$identifier], $input['reference_labels_attested_in_original_sources']);
+            return true;
+        })->andReturn($this->response([['text' => 'Per l’ordine **'.$identifier.'**, il rimborso è promesso.', 'claim_ids' => [0]]]));
+
+        $result = (new AgentAnswerPresenter($ai))->present('Qual è l’esito?', $this->context(), $claims, understanding: [
+            'mentions' => [$identifier], 'subquestions' => [['identifiers' => [$identifier]]],
+        ]);
+        $this->assertSame('accepted', $result['trace']['status']);
+        Http::assertSent(function ($request) use ($identifier) {
+            $case = $request['state']['case_reference_contexts'][0];
+            $this->assertSame([$identifier], $case['reference_labels_attested_in_bound_sources']);
+            $this->assertSame([$identifier], $case['subject_labels_attested_in_bound_sources']);
+            return true;
+        });
+    }
+
     public function test_the_synthesizer_displays_the_rewrite_but_cites_and_remembers_the_original_claims(): void
     {
         config(['reasoning.selective_validation' => false, 'agent.grounding.batch.enabled' => false, 'agent.grounding.semantic.enabled' => false]);
