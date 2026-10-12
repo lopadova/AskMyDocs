@@ -45,11 +45,20 @@ final readonly class AgentEvidenceAccess
                     $chunks[] = [...$chunk, 'source_title' => $this->masker->maskString($source['title']),
                         'verified_identifier_hashes' => array_map(fn ($id) => hash('sha256', $id), $matches),
                         'complete_source' => ($source['complete_source'] ?? false) && trim($current) === trim($original)];
+                    if (($source['complete_source'] ?? false) && $current !== $original) {
+                        // A fresh full read is separate evidence, never a new
+                        // interpretation of the persisted excerpt's old hash.
+                        $chunks[] = [...end($chunks), 'content' => $current,
+                            'evidence_hash' => hash('sha256', $current), 'complete_source' => true];
+                    }
                 } else {
                     $safe['warnings'][] = ['code' => 'source_changed_or_revoked', 'source' => 'document'];
                 }
             }
             if ($chunks !== []) {
+                $envelope = new AgentEvidenceEnvelope($this->masker);
+                $envelope->addDocument([...$document, 'evidence' => $chunks]);
+                $chunks = $envelope->documents()[0]['evidence'];
                 $safe['documents'][] = [...$document, 'evidence' => $chunks, 'chunks_used' => count($chunks)];
             }
         }

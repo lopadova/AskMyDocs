@@ -182,6 +182,29 @@ class EvidenceAccessTest extends TestCase
         $this->assertSame('entity_mismatch', $projector->bind($safe, $claim, [$other], 'default', 'demo')['reason']);
     }
 
+    public function test_revalidated_excerpt_expands_to_a_fresh_complete_short_source_with_its_own_hash(): void
+    {
+        $run = $this->runFixture();
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'text',
+            'title' => 'Case history', 'source_path' => 'fixture/history', 'status' => 'active', 'document_hash' => str_repeat('a', 64)]);
+        $opening = 'The customer requested a refund.';
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => $opening, 'chunk_hash' => hash('sha256', $opening)]);
+        KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 1, 'chunk_text' => 'The merchant accepted the request.', 'chunk_hash' => str_repeat('b', 64)]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $opening, 'evidence_hash' => $chunk->chunk_hash, 'research_flow_ids' => [2]]]]]];
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), $evidence);
+        $full = $safe['documents'][0]['evidence'][0];
+
+        $this->assertCount(1, $safe['documents'][0]['evidence']);
+        $this->assertTrue($full['complete_source']);
+        $this->assertStringContainsString('merchant accepted', $full['content']);
+        $this->assertSame(hash('sha256', $full['content']), $full['evidence_hash']);
+        $this->assertNotSame($chunk->chunk_hash, $full['evidence_hash']);
+        $this->assertSame([2], $full['research_flow_ids']);
+    }
+
     public function test_revoked_document_is_also_removed_from_a_catalog_tool_result(): void
     {
         $run = $this->runFixture();
