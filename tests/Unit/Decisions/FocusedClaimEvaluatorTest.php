@@ -216,7 +216,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->fake();
         [$evidence, $claims, $u] = $this->fixture();
         $first = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
-        foreach ([['new', 'research'], ['continue', 'recheck']] as [$transition, $action]) {
+        foreach ([['new', 'research'], ['continue', 'research'], ['continue', 'recheck']] as [$transition, $action]) {
             $u['transition'] = $transition;
             $u['action'] = $action;
             $next = app(FocusedClaimEvaluator::class)->evaluate('Verify TRACK-55 status', $evidence, [$claims[0]], $u,

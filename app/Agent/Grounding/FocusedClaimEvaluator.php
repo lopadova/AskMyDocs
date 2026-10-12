@@ -155,8 +155,7 @@ final readonly class FocusedClaimEvaluator
             }
             $fingerprint = $claim === null ? null : hash('sha256', $claim['quote'].'|'.mb_strtolower(trim(strip_tags($claim['text']))));
             $repeated = $fingerprint !== null && in_array($fingerprint, $communicated, true)
-                && (($understanding['action'] ?? null) === 'refine' || ($understanding['transition'] ?? 'new') === 'continue')
-                && ! in_array($understanding['action'] ?? null, ['recap', 'recheck'], true);
+                && ($understanding['action'] ?? null) === 'refine';
             $textKey = $claim === null ? null : mb_strtolower(trim(strip_tags($claim['text'])));
             $duplicate = $textKey !== null && isset($renderedTexts[$textKey]);
             $checks[$key] = [...$pair['check'], 'status' => $repeated || $duplicate ? 'excluded' : ($claim !== null ? 'accepted' : ($confident ? 'rejected' : 'inconclusive')),
