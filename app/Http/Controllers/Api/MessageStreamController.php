@@ -209,7 +209,8 @@ class MessageStreamController extends Controller
             ])];
         }
         $chunks = $result->primary;
-        $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
+        $hasLiveTools = $investigationResult->isReady() && ($investigationResult->intent?->understanding?->needsResearch() ?? true)
+            && $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // Capture session id at controller entry — header() reads from
         // request state which we want to lock before the streaming
@@ -232,9 +233,7 @@ class MessageStreamController extends Controller
                 projectKey: $projectKey,
                 userId: $userId,
                 startTime: $startTime,
-                reason: $investigationResult->stopReason === 'retrieval_profile_required'
-                    ? 'retrieval_profile_required'
-                    : 'no_relevant_context',
+                reason: $investigationResult->refusalReason(),
                 sessionId: $sessionId,
                 clientIp: $clientIp,
                 userAgent: $userAgent,

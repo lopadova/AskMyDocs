@@ -17,6 +17,9 @@ return [
     'refusal' => [
         'no_relevant_context' => 'No documents in the knowledge base match this question.',
         'retrieval_profile_required' => 'Search for this project requires an administrator to configure its company retrieval profile first.',
+        'focus_ambiguous' => 'Which item do you mean?',
+        'question_interpretation_unavailable' => 'I cannot reliably interpret this request. Please try again shortly.',
+        'context_evidence_unavailable' => 'I cannot retrieve the source we are discussing. Which document or result would you like to explore?',
         'llm_self_refusal' => 'The AI cannot answer this question based on the provided documents.',
         'blocked_by_guardrails' => 'This request was blocked by the input guardrails and was not processed.',
     ],

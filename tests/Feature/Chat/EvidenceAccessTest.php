@@ -83,6 +83,45 @@ class EvidenceAccessTest extends TestCase
         $this->assertSame([], $access->current($run, $this->context($run), ['api_tools' => [$tool]])['api_tools']);
     }
 
+    public function test_mixed_turn_reuses_observations_only_for_its_contextual_task_and_current_permissions(): void
+    {
+        $previous = $this->runFixture();
+        $tool = $this->tool($previous);
+        $previous->forceFill(['result_json' => ['evidence' => ['api_tools' => [$tool]]]])->save();
+        $memory = app(ConversationReasoning::class);
+        $conversation = $previous->conversation;
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $memory->references($conversation, ['api_tools' => [$tool]])]])->save();
+        $current = $this->runFixture($conversation);
+        $tasks = [
+            ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'explanation', 'fields' => [],
+                'question' => 'Spiega il risultato precedente', 'kb_queries' => [], 'context_mode' => 'conversation', 'requires_research' => false],
+            ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'current', 'fields' => ['status'],
+                'question' => 'Controlla anche lo stato attuale', 'kb_queries' => ['TRACK-55 stato attuale'],
+                'context_mode' => 'conversation', 'requires_research' => true],
+        ];
+        $u = new \App\Services\Chat\QuestionUnderstanding('it', 'Spiega e aggiorna', [], [], true, subquestions: $tasks,
+            contextMode: \App\Services\Chat\QuestionContextMode::Conversation, requiresResearch: true);
+        $current->forceFill(['result_json' => ['question_understanding' => $u->toArray()]])->save();
+        $recalled = $memory->recapEvidence($current);
+        $this->assertCount(1, $recalled);
+        $this->assertTrue($recalled[0]['historical_context']);
+        $scoped = \App\Agent\Evidence\ResearchEvidence::recapTools($recalled, $tasks);
+        $this->assertSame([0], $scoped[0]['research_flow_ids']);
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertCount(1, $access->current($current, $this->context($current), ['api_tools' => $scoped])['api_tools']);
+        $current->forceFill(['result_json' => ['question_understanding' => $u->forSubquestion(1)->toArray()]])->save();
+        $this->assertSame([], $memory->recapEvidence($current));
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => $scoped])['api_tools']);
+        $current->forceFill(['result_json' => ['question_understanding' => $u->forSubquestion(0)->toArray()]])->save();
+        $corrupted = $recalled[0];
+        $corrupted['result']['records'][0]['status'] = 'invented';
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => [$corrupted]])['api_tools']);
+        $current->forceFill(['input_json' => ['question' => 'Spiegami', 'live_sources' => ['api' => [], 'mcp' => []]]])->save();
+        // Knowledge tools remain available independently of live connector selection.
+        $scoped[0]['tool'] = 'revoked_connector';
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => $scoped])['api_tools']);
+    }
+
     public function test_only_registered_child_runs_can_supply_live_evidence_to_their_parent(): void
     {
         $parent = $this->runFixture();

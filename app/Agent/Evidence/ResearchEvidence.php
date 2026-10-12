@@ -14,7 +14,8 @@ final class ResearchEvidence
         foreach ($tools as $tool) {
             $identities = array_merge([], ...array_map(fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identities($entry['record']),
                 \App\Services\Chat\Reasoning\EvidenceProjector::records($tool)));
-            $flows = array_keys(array_filter($subquestions, fn ($sub) => array_intersect($sub['identifiers'] ?? [], $identities) !== []));
+            $flows = array_keys(array_filter($subquestions, fn ($sub) => ($sub['requires_research'] ?? false) === false
+                && array_intersect($sub['identifiers'] ?? [], $identities) !== []));
             if ($flows !== []) {
                 $scoped[] = [...$tool, 'research_flow_ids' => $flows];
             }

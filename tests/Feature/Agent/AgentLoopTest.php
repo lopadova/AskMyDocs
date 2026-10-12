@@ -592,6 +592,7 @@ final class AgentLoopTest extends TestCase
     {
         config()->set('kb.investigation.enabled', true);
         $ai = Mockery::mock(AiManager::class);
+        $this->expectResearchInterpretation($ai);
         $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->planResponse(['decision' => 'answer', 'actions' => []]));
         $this->app->instance(AiManager::class, $ai);
 
@@ -638,6 +639,7 @@ final class AgentLoopTest extends TestCase
         $this->route('search_shipments', 'http://erp.example.test/shipments');
         Http::fake(['erp.example.test/*' => Http::response(['id' => 'SHIP-53', 'status' => 'shipped'])]);
         $ai = Mockery::mock(AiManager::class);
+        $this->expectResearchInterpretation($ai);
         $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
             $this->planResponse(['decision' => 'tools', 'actions' => [[
                 'id' => 'shipment', 'tool' => 'search_shipments', 'arguments' => [],
@@ -677,6 +679,58 @@ final class AgentLoopTest extends TestCase
             $this->assertSame($reason, $loop->run($run->fresh(), $this->context($run))->stopReason);
             $this->assertSame(0, $run->toolExecutions()->count());
         }
+    }
+
+    private function expectResearchInterpretation(AiManager $ai): void
+    {
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse(json_encode([
+            'language' => 'it', 'intent' => 'Stato dell’ordine del cliente Tizio', 'action' => 'research',
+            'kb_queries' => ['ordine cliente Tizio stato consegna'], 'mentions' => [],
+            'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+        ]), 'fake', 'test'));
+    }
+
+    public function test_ambiguous_or_unavailable_interpretation_stops_before_any_search_or_tools_even_on_resume(): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        $this->route('get_orders', 'http://erp.example.test/orders');
+        Http::preventStrayRequests();
+        foreach (['focus_ambiguous', 'question_interpretation_unavailable'] as $reason) {
+            $ai = Mockery::mock(AiManager::class);
+            $interpretation = $ai->shouldReceive('chatWithProvider')->once();
+            if ($reason === 'focus_ambiguous') {
+                $interpretation->andReturn(new AiResponse(json_encode([
+                    'language' => 'it', 'intent' => 'Quale ordine vuoi controllare?', 'action' => 'clarify',
+                    'kb_queries' => [], 'mentions' => [], 'references_previous_turn' => false,
+                    'context_mode' => 'new', 'requires_research' => false,
+                ]), 'fake', 'test'));
+            } else {
+                $interpretation->andThrow(new \RuntimeException('Interpretation provider unavailable'));
+            }
+            $ai->shouldNotReceive('chatWithHistory');
+            $ai->shouldNotReceive('chat');
+            $this->app->instance(AiManager::class, $ai);
+            $this->app->forgetInstance(\App\Services\Chat\ChatTurnInterpreter::class);
+            $this->app->forgetInstance(\App\Services\Chat\ChatQuestionPreprocessor::class);
+            $retrieval = Mockery::mock(ChatRetrievalService::class);
+            $retrieval->shouldNotReceive('retrieve');
+            $this->app->instance(ChatRetrievalService::class, $retrieval);
+            $run = $this->makeRun();
+            $run->forceFill(['input_json' => ['question' => 'Controllalo']])->save();
+            $loop = app(AgentLoop::class);
+            $outcome = $loop->run($run, $this->context($run));
+            $this->assertSame($reason, $outcome->stopReason);
+            $this->assertSame($reason, $loop->run($run->fresh(), $this->context($run))->stopReason);
+            $this->assertSame(0, $run->events()->where('type', 'retrieval.started')->count());
+            $this->assertSame(0, $run->events()->where('type', 'retrieval.completed')->count());
+            $this->assertSame(0, $run->toolExecutions()->count());
+            $this->assertNull($run->refresh()->plan_json);
+            $answer = app(\App\Agent\AgentAnswerSynthesizer::class)->synthesize('Controllalo', $this->context($run), $outcome,
+                understanding: $run->result_json['question_understanding']);
+            $this->assertSame('partial', $answer->completeness);
+            $this->assertSame('clarify', $answer->grounding['status']);
+        }
+        Http::assertNothingSent();
     }
 
     /** @param array<string,mixed> $payload */
@@ -781,6 +835,36 @@ final class AgentLoopTest extends TestCase
         $this->assertStringNotContainsString('erp_get_orders', $excluded->answer);
         $this->assertNotContains('erp_get_orders', $excluded->grounding['available_tools']);
         Http::assertNothingSent();
+    }
+
+    public function test_interpreter_receives_selected_capabilities_before_any_search(): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        $selected = $this->route('get_orders', 'http://erp.example.test/orders');
+        $unselectedConnector = ApiConnector::create(['tenant_id' => 'acme', 'project_key' => 'crm', 'name' => 'Other', 'is_active' => true]);
+        $unselected = $this->route('get_customers', 'http://erp.example.test/customers');
+        $unselected->forceFill(['api_connector_id' => $unselectedConnector->id])->save();
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->withArgs(function ($provider, $prompt, $messages) {
+            $input = json_decode($messages[0]['content'], true);
+            $names = array_column($input['available_capabilities'], 'tool');
+            $this->assertContains('get_orders', $names);
+            $this->assertNotContains('get_customers', $names);
+            return true;
+        })->andReturn(new AiResponse(json_encode(['language' => 'it', 'intent' => 'Salutare', 'action' => 'greeting',
+            'kb_queries' => [], 'mentions' => [], 'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => false]), 'fake', 'test'));
+        $ai->shouldNotReceive('chatWithHistory');
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = $this->makeRun();
+        $run->forceFill(['input_json' => ['question' => 'Ciao', 'live_sources' => ['api' => ['api:'.$selected->api_connector_id], 'mcp' => []]]])->save();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('assistant_conversation', $outcome->stopReason);
+        $this->assertFalse($run->events()->where('type', 'retrieval.started')->exists());
+        $this->assertSame('new', $run->fresh()->result_json['question_understanding']['context_mode']);
+        $this->assertNotNull($run->result_json['capability_manifest']['hash']);
     }
 
     private function makeRun(): AgentRun

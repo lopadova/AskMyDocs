@@ -72,6 +72,15 @@ final class RecursiveKbChatProfileGateTest extends TestCase
 
     public function test_sync_stateless_and_streaming_chat_require_the_same_profile_without_searching(): void
     {
+        $ai = Mockery::mock(\App\Ai\AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->times(3)->andReturn(new \App\Ai\AiResponse(json_encode([
+            'language' => 'it', 'intent' => 'Cercare ordine cliente Tizio', 'action' => 'research',
+            'kb_queries' => ['ordine cliente Tizio'], 'mentions' => [['text' => 'Tizio', 'type' => 'name']],
+            'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+        ]), 'fake', 'test'));
+        $ai->shouldNotReceive('chat');
+        $this->app->instance(\App\Ai\AiManager::class, $ai);
+        Http::preventStrayRequests();
         $this->actingAs($this->user)
             ->postJson('/kb/chat', ['question' => 'Cercami l’ordine di Tizio', 'project_key' => 'orders', 'depth' => 3])
             ->assertOk()
@@ -116,6 +125,30 @@ final class RecursiveKbChatProfileGateTest extends TestCase
         $message = $this->conversation->fresh()->messages()->where('role', 'assistant')->latest('id')->firstOrFail();
         $this->assertSame($expected, $message->content);
         $this->assertSame('complete', $message->metadata['completeness']);
+        Http::assertNothingSent();
+    }
+
+    public function test_clarification_is_returned_immediately_on_all_chat_surfaces(): void
+    {
+        $u = new \App\Services\Chat\QuestionUnderstanding('it', 'Quale ordine vuoi controllare?', [], [], false,
+            needsClarification: true, clarification: 'Quale ordine vuoi controllare?', action: \App\Services\Chat\QuestionAction::Clarify,
+            contextMode: \App\Services\Chat\QuestionContextMode::NewRequest, requiresResearch: false);
+        $investigation = Mockery::mock(KbInvestigationService::class);
+        $investigation->shouldReceive('investigate')->times(3)->andReturn(new KbInvestigationResult(
+            'clarify', 'focus_ambiguous', new SearchResult(collect(), collect(), collect()),
+            intent: new \App\Services\Kb\Investigation\KbInvestigationIntent($u->intent, [], [], [], [], [], $u)));
+        $this->app->instance(KbInvestigationService::class, $investigation);
+        Http::preventStrayRequests();
+        $this->actingAs($this->user)->postJson('/kb/chat', ['question' => 'Controllalo', 'project_key' => 'orders'])
+            ->assertOk()->assertJsonPath('answer', $u->clarification)->assertJsonPath('refusal_reason', 'focus_ambiguous');
+        $this->actingAs($this->user)->postJson('/conversations/'.$this->conversation->id.'/messages', ['content' => 'Controllalo'])
+            ->assertOk()->assertJsonPath('content', $u->clarification)->assertJsonPath('refusal_reason', 'focus_ambiguous');
+        $stream = $this->actingAs($this->user)->withHeaders(['Accept' => 'text/event-stream'])
+            ->postJson('/conversations/'.$this->conversation->id.'/messages/stream', ['content' => 'Controllalo']);
+        $stream->assertOk();
+        $stream->streamedContent();
+        $answer = $this->conversation->fresh()->messages()->where('role', 'assistant')->latest('id')->firstOrFail();
+        $this->assertSame($u->clarification, $answer->content);
         Http::assertNothingSent();
     }
 

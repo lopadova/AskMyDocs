@@ -58,16 +58,30 @@ final readonly class AgentEvidenceAccess
                 && $sourceRun->actor_type === $run->actor_type && $sourceRun->actor_id === $run->actor_id;
             if ($definition !== null && $execution !== null && $execution->status === 'completed'
                 && $execution->tool_name === $tool['tool'] && $sameConversation
-                && ($sourceRun->id === $run->id || $researchChild || $historicalRecap)
+                && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $this->contextTaskAllows($run, $tool))
                 && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool))
                 && ($tool['executor_reference'] ?? null) === $definition->executorReference
                 && hash_equals((string) ($tool['evidence_hash'] ?? ''), hash('sha256', (string) json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE)))) {
-                $safe['api_tools'][] = $tool;
+                $safe['api_tools'][] = $sourceRun->id !== $run->id && ! $researchChild
+                    ? [...$tool, 'historical_context' => true] : $tool;
             } else {
                 $safe['warnings'][] = ['code' => 'live_source_unavailable', 'source' => $tool['tool'] ?? null];
             }
         }
         return $safe;
+    }
+
+    private function contextTaskAllows(AgentRun $run, array $tool): bool
+    {
+        $tasks = \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding', []))->contextOnlyTasks();
+        $identities = array_merge([], ...array_map(fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identities($entry['record']),
+            \App\Services\Chat\Reasoning\EvidenceProjector::records($tool)));
+        foreach ($tasks as $task) {
+            if (array_intersect($task['identifiers'] ?? [], $identities) !== []) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** A KB catalog result is not exempt from document ACLs just because it is shaped like a tool. */

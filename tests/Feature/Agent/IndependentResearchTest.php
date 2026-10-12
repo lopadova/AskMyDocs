@@ -22,6 +22,46 @@ class IndependentResearchTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_mixed_tasks_only_invoke_the_planner_for_new_research(): void
+    {
+        config(['reasoning.enabled' => true, 'reasoning.parallel_research' => true, 'agent.planner.mode' => 'classic']);
+        app(TenantContext::class)->set('default');
+        $user = User::create(['name' => 'Tester', 'email' => 'mixed@example.test', 'password' => bcrypt('test')]);
+        $conversation = Conversation::create(['user_id' => $user->id, 'project_key' => 'demo']);
+        $tasks = [
+            ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'explanation', 'fields' => [],
+                'question' => 'Explain the previous ORDER-A result', 'kb_queries' => [], 'context_mode' => 'conversation', 'requires_research' => false],
+            ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'status', 'fields' => ['status'],
+                'question' => 'Find the status of ORDER-B', 'kb_queries' => ['ORDER-B'], 'context_mode' => 'new', 'requires_research' => true],
+        ];
+        $u = new QuestionUnderstanding('en', 'Explain and search', ['ORDER-B'], [], true, subquestions: $tasks,
+            contextMode: \App\Services\Chat\QuestionContextMode::Mixed, requiresResearch: true);
+        $parent = AgentRun::create(['run_id' => (string) Str::uuid(), 'tenant_id' => 'default', 'project_key' => 'demo',
+            'user_id' => $user->id, 'conversation_id' => $conversation->id, 'channel' => 'chat', 'actor_type' => 'user',
+            'actor_id' => (string) $user->id, 'locale' => 'en', 'timezone' => 'UTC', 'status' => 'running',
+            'input_json' => ['question' => 'Explain that order and find ORDER-B'], 'result_json' => ['question_understanding' => $u->toArray()]]);
+        $initial = app(AgentEvidenceFactory::class)->empty();
+        $initial->import(ResearchEvidence::tagged(['documents' => [['document_id' => 1,
+            'evidence' => [['chunk_id' => 1, 'content' => 'ORDER-A is scheduled.', 'evidence_hash' => 'test-hash']]]]], 0));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->andReturn(['excerpt' => 'ORDER-A is scheduled.']);
+        $this->app->instance(KbSourceReader::class, $reader);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider');
+        $ai->shouldReceive('chatWithHistory')->once()->withArgs(function ($system, $messages) {
+            $input = json_decode($messages[0]['content'], true);
+            $this->assertSame('Find the status of ORDER-B', $input['question']);
+            $this->assertStringNotContainsString('ORDER-A', json_encode($input['evidence_summary']));
+            return true;
+        })->andReturn(new AiResponse('', 'fake', 'test', toolCalls: [['name' => 'submit_agent_plan', 'arguments' => ['decision' => 'answer', 'actions' => []]]]));
+        $this->app->instance(AiManager::class, $ai);
+        app(AgentResearchCoordinator::class)->collect($parent, $initial, $u);
+        $flows = $parent->fresh()->result_json['research_flows'];
+        $this->assertSame('context_only', $flows[0]['stop_reason']);
+        $this->assertSame(['completed', 'completed'], array_column($flows, 'status'));
+        $this->assertSame(0, $parent->events()->where('type', 'retrieval.started')->count());
+    }
+
     public function test_public_task_results_distinguish_partial_unverified_conflicting_and_failed_answers(): void
     {
         $run = AgentRun::create(['run_id' => (string) Str::uuid(), 'project_key' => 'demo', 'channel' => 'chat',

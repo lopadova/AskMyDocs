@@ -191,7 +191,8 @@ class MessageController extends Controller
             ])];
         }
         $chunks = $result->primary;
-        $hasLiveTools = $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
+        $hasLiveTools = $investigationResult->isReady() && ($investigationResult->intent?->understanding?->needsResearch() ?? true)
+            && $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // A project without a profile fails closed with a configuration message;
         // insufficient or invalid investigation evidence never falls back to
@@ -209,9 +210,7 @@ class MessageController extends Controller
                 projectKey: $projectKey,
                 userId: $userId,
                 startTime: $startTime,
-                reason: $investigationResult->stopReason === 'retrieval_profile_required'
-                    ? 'retrieval_profile_required'
-                    : 'no_relevant_context',
+                reason: $investigationResult->refusalReason(),
                 language: $investigationResult->intent?->understanding?->language,
                 clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );

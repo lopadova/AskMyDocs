@@ -56,27 +56,15 @@ class KbInvestigationService
         $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
         $prepared = $preparedUnderstanding;
         $profile = (bool) config('kb.investigation.enabled', true) ? $this->profileFor($projectKey, $filters) : null;
-        if ($prepared === null && $memory->enabled() && $memoryOwner !== null && $turnRecord !== null && $memoryOwner->project_key === $projectKey) {
-            $prepared = $memory->prepare($memoryOwner, $turnRecord, $question, $profile === null ? null : [
-                'context' => $profile->company_context, 'glossary' => $profile->glossary ?? [],
-                'relevant_entities' => $profile->relevant_entities ?? [], 'expected_facts' => $profile->expected_facts ?? [],
-                'preferred_source_types' => $profile->preferred_source_types ?? [],
-            ], $actor, $filters);
-            if (! $prepared->asksForProvenance()) {
-                $previousCitations = array_merge($previousCitations, $memory->citations($memoryOwner, $actor, $filters));
-            }
-            if ($prepared->needsClarification) {
-                return $this->empty('clarify', 'focus_ambiguous', intent: new KbInvestigationIntent(
-                    $prepared->intent, $prepared->targetIdentifiers(), [], [], [], $prepared->kbQueries, $prepared,
-                ));
-            }
+        $prepared ??= (new \App\Services\Chat\ChatTurnInterpreter($this->preprocessor))->prepare(
+            $question, $projectKey, $filters, $conversationContext, $actor, $memoryOwner, $turnRecord);
+        if ($prepared !== null && (! $prepared->available || $prepared->needsClarification)) {
+            return $this->empty('clarify', $prepared->needsClarification ? 'focus_ambiguous' : 'question_interpretation_unavailable',
+                intent: new KbInvestigationIntent($prepared->intent, [], [], [], [], [], $prepared));
         }
-        if ($prepared === null && (bool) config('kb.investigation.enabled', true)) {
-            $prepared = $this->preprocessor->interpret($question, $conversationContext, $profile === null ? null : [
-                'context' => $profile->company_context, 'glossary' => $profile->glossary ?? [],
-                'relevant_entities' => $profile->relevant_entities ?? [], 'expected_facts' => $profile->expected_facts ?? [],
-                'preferred_source_types' => $profile->preferred_source_types ?? [],
-            ], $memory->enabled() ? [] : null);
+        if ($prepared !== null && $memory->enabled() && $memoryOwner !== null && $memoryOwner->project_key === $projectKey
+            && $prepared->referencesPreviousTurn && ! $prepared->asksForProvenance()) {
+            $previousCitations = array_merge($previousCitations, $memory->citations($memoryOwner, $actor, $filters));
         }
         if ($prepared?->isAssistantConversation()) {
             return $this->empty('conversational', 'assistant_conversation', intent: new KbInvestigationIntent(
@@ -89,6 +77,24 @@ class KbInvestigationService
             return $this->empty('provenance', 'answer_provenance', intent: new KbInvestigationIntent(
                 $prepared->intent, $prepared->targetIdentifiers(), [], [], [], [], $prepared,
             ));
+        }
+        if ($prepared !== null && config('reasoning.parallel_research') && $prepared->available && count($prepared->subquestions) > 1) {
+            $tasks = [];
+            foreach ($prepared->subquestions as $index => $sub) {
+                $tasks[] = ['id' => $index, 'question' => $prepared->forSubquestion($index)->intent];
+            }
+            $onResearchProgress?->__invoke('research.planned', ['tasks' => $tasks]);
+            return $this->investigateBranches($prepared, $projectKey, $filters, min(5, max(1, $depth)), $previousCitations, $actor, $onResearchProgress);
+        }
+        if ($prepared !== null && ! $prepared->needsResearch()) {
+            $intent = new KbInvestigationIntent($prepared->intent, $prepared->mentionTexts(), [], [], [], [], $prepared);
+            $sources = $this->citedSources($previousCitations, $prepared, $projectKey, $filters, $actor);
+            if ($sources === [] && $prepared->effectiveAction() !== \App\Services\Chat\QuestionAction::Recap) {
+                return $this->empty('context_unavailable', 'context_evidence_unavailable', intent: $intent);
+            }
+            return new KbInvestigationResult('ready', 'context_only',
+                new SearchResult(collect(array_values($sources))->map(fn ($source) => $this->contextChunk($source)), collect(), collect()),
+                array_values($sources), intent: $intent);
         }
         // A deployment-level rollback switch for incident recovery. It is ON by
         // default and never exposed to users; when intentionally disabled it
@@ -118,14 +124,6 @@ class KbInvestigationService
             return $this->empty('clarify', 'focus_ambiguous', intent: new KbInvestigationIntent(
                 $understanding->intent, $understanding->targetIdentifiers(), [], [], [], $understanding->kbQueries, $understanding,
             ));
-        }
-        if (config('reasoning.parallel_research') && $understanding->available && count($understanding->subquestions) > 1) {
-            $tasks = [];
-            foreach ($understanding->subquestions as $index => $sub) {
-                $tasks[] = ['id' => $index, 'question' => $understanding->forSubquestion($index)->intent];
-            }
-            $onResearchProgress?->__invoke('research.planned', ['tasks' => $tasks]);
-            return $this->investigateBranches($understanding, $projectKey, $filters, $depth, $previousCitations, $actor, $onResearchProgress);
         }
         $intent = new KbInvestigationIntent(
             $understanding->intent,
@@ -175,7 +173,7 @@ class KbInvestigationService
                 // Only primary candidates can be selected. Related graph and
                 // rejected-approach context are deliberately not exposed to
                 // the assessor or the final answer prompt in this flow.
-                $search = $round === 0 && $anchoredToPreviousCitations
+                $search = $round === 0 && $anchoredToPreviousCitations && $understanding->requiresResearch === null
                     ? new SearchResult(collect(), collect(), collect())
                     : $this->retrieval->retrieve($nextQuery, $projectKey, $filters);
                 $attempt['primary_candidates'] = $search->primary->count();
@@ -376,7 +374,7 @@ PROMPT;
     {
         $sources = [];
         $mentions = $understanding->targetIdentifiers() ?: $understanding->mentionTexts();
-        if ($mentions === [] && config('reasoning.enabled') && $understanding->transition !== 'recap') {
+        if ($mentions === [] && config('reasoning.enabled') && $understanding->transition !== 'recap' && $understanding->needsResearch()) {
             return []; // A follow-up is not permission to import every prior source.
         }
         if ($projectKey === null) {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Chat\Reasoning;
 
+use App\Services\Chat\QuestionContextMode;
+
 /** Strict model output is still untrusted. Context references must be server-known. */
 final class FocusContract
 {
@@ -16,10 +18,12 @@ final class FocusContract
                 'aspect' => ['type' => 'string'], 'fields' => $strings + ['description' => 'Use ["*"] for general information/all details. For a specific attribute use canonical machine keys such as status, trackingCode, name; do not translate keys or invent extra attributes. Use [] when no structured attribute is requested.'],
             ]];
         $subquestion = $focus;
-        $subquestion['required'] = [...$focus['required'], 'question', 'kb_queries'];
+        $subquestion['required'] = [...$focus['required'], 'question', 'kb_queries', 'context_mode', 'requires_research'];
         $subquestion['properties'] += [
+            'context_mode' => QuestionContextMode::schema(),
+            'requires_research' => ['type' => 'boolean'],
             'question' => ['type' => 'string', 'description' => 'A standalone question in the user language for ONLY this request, with resolved references.'],
-            'kb_queries' => $strings + ['description' => '1-3 independent KB searches serving ONLY this question.'],
+            'kb_queries' => $strings + ['description' => 'Empty when requires_research=false, otherwise 1-3 independent KB searches serving ONLY this question.'],
         ];
         return [
             'transition' => ['type' => 'string', 'enum' => ['new', 'continue', 'switch', 'correct', 'recap', 'provenance']],
@@ -45,15 +49,22 @@ final class FocusContract
             throw new \UnexpectedValueException('Unregistered context reference.');
         }
         foreach ([$data['focus'], ...$data['subquestions']] as $focus) {
-            if (! is_array($focus) || ! in_array(count($focus), [4, 6], true) || ! is_string($focus['topic'] ?? null)
+            if (! is_array($focus) || ! in_array(count($focus), [4, 6, 8], true) || ! is_string($focus['topic'] ?? null)
                 || ! is_string($focus['aspect'] ?? null) || mb_strlen($focus['topic']) > 300 || mb_strlen($focus['aspect']) > 300
                 || array_diff(self::strings($focus['identifiers'] ?? null), [...$literal, ...$resolved]) !== []) {
                 throw new \UnexpectedValueException('Invalid focus reference.');
             }
             self::strings($focus['fields'] ?? null);
-            if (count($focus) === 6 && (! self::safeQuery($focus['question'] ?? null)
+            if (count($focus) === 8 && (! is_string($focus['context_mode'] ?? null)
+                || QuestionContextMode::tryFrom($focus['context_mode']) === null
+                || ! is_bool($focus['requires_research'] ?? null))) {
+                throw new \UnexpectedValueException('Invalid task information route.');
+            }
+
+            if (count($focus) >= 6 && (! self::safeQuery($focus['question'] ?? null)
                 || ! is_array($focus['kb_queries'] ?? null) || ! array_is_list($focus['kb_queries'])
-                || count($focus['kb_queries']) < 1 || count($focus['kb_queries']) > 3
+                || (count($focus['kb_queries']) < 1 && ($focus['requires_research'] ?? true)) || count($focus['kb_queries']) > 3
+                || (($focus['requires_research'] ?? null) === false && $focus['kb_queries'] !== [])
                 || array_filter($focus['kb_queries'], fn ($query) => ! self::safeQuery($query)))) {
                 throw new \UnexpectedValueException('Invalid research question.');
             }
@@ -85,9 +96,24 @@ final class FocusContract
                 && ! array_filter($ids, fn ($id) => ! EvidenceProjector::contains($query, $id))
                 && ! array_filter($otherIds, fn ($id) => EvidenceProjector::contains($query, $id))));
             $sub['question'] = $queries[0] ?? trim(implode(' ', [$sub['topic'], implode(' ', $ids), $sub['aspect']]));
-            $sub['kb_queries'] = array_slice($queries ?: [$sub['question']], 0, 3);
+            $sub['kb_queries'] = ($data['requires_research'] ?? true) ? array_slice($queries ?: [$sub['question']], 0, 3) : [];
+            if (isset($data['context_mode'])) {
+                if ($data['context_mode'] === 'mixed') {
+                    throw new \UnexpectedValueException('Missing primary task information route.');
+                }
+                $sub['context_mode'] = $data['context_mode'];
+                $sub['requires_research'] = $data['requires_research'];
+            }
         }
         unset($sub);
+        if (isset($data['requires_research']) && array_filter($data['subquestions'], fn ($sub) => isset($sub['requires_research'])) !== []
+            && $data['requires_research'] !== (array_filter($data['subquestions'], fn ($sub) => $sub['requires_research'] ?? true) !== [])) {
+            throw new \UnexpectedValueException('Inconsistent task research route.');
+        }
+        $modes = array_values(array_unique(array_column($data['subquestions'], 'context_mode')));
+        if (isset($data['context_mode']) && $modes !== [] && $data['context_mode'] !== (count($modes) > 1 ? 'mixed' : $modes[0])) {
+            throw new \UnexpectedValueException('Inconsistent task context route.');
+        }
         return array_intersect_key($data, self::schema());
     }
 

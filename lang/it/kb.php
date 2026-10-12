@@ -12,6 +12,9 @@ return [
     'refusal' => [
         'no_relevant_context' => 'Nessun documento nella knowledge base corrisponde a questa domanda.',
         'retrieval_profile_required' => 'La ricerca per questo progetto richiede prima la configurazione del profilo aziendale da parte di un amministratore.',
+        'focus_ambiguous' => 'A quale elemento ti riferisci?',
+        'question_interpretation_unavailable' => 'Non riesco a interpretare la richiesta in modo affidabile. Riprova tra poco.',
+        'context_evidence_unavailable' => 'Non riesco a recuperare la fonte di cui stiamo parlando. Quale documento o risultato vuoi approfondire?',
         'llm_self_refusal' => "L'AI non può rispondere a questa domanda basandosi sui documenti forniti.",
         'blocked_by_guardrails' => 'Questa richiesta è stata bloccata dai guardrail di sicurezza e non è stata elaborata.',
     ],

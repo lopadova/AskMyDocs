@@ -155,11 +155,10 @@ class KbChatController extends Controller
                 projectKey: $projectKey,
                 result: $result,
                 startTime: $startTime,
-                reason: $investigationResult->stopReason === 'retrieval_profile_required'
-                    ? 'retrieval_profile_required'
-                    : 'no_relevant_context',
+                reason: $investigationResult->refusalReason(),
                 counterfactual: $counterfactualPanels,
                 language: $investigationResult->intent?->understanding?->language,
+                clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );
         }
 
@@ -417,9 +416,14 @@ class KbChatController extends Controller
         string $reason,
         array $counterfactual = [],
         ?string $language = null,
+        ?string $clarification = null,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
         $answer = $this->localizedRefusalMessage($reason, $language);
+        if ($clarification !== null && $clarification !== '') {
+            $answer = $clarification;
+            $reason = 'focus_ambiguous';
+        }
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $this->chatSessionId($request),

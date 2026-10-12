@@ -54,14 +54,14 @@ final readonly class ConversationReasoning
         ];
     }
 
-    public function prepare(Model $owner, Model $turn, string $question, ?array $profile = null, ?User $actor = null, ?RetrievalFilters $filters = null): QuestionUnderstanding
+    public function prepare(Model $owner, Model $turn, string $question, ?array $profile = null, ?User $actor = null, ?RetrievalFilters $filters = null, ?\App\Agent\Capabilities\AgentCapabilitySnapshot $capabilities = null): QuestionUnderstanding
     {
         $this->assertOwner($owner, $turn);
         if (! $this->enabled()) {
-            return $this->preprocessor->interpret($question, null, $profile);
+            return $this->preprocessor->interpret($question, null, $profile, capabilities: $capabilities);
         }
         // Only retries for the SAME turn share a lock. Never hold a DB transaction during an LLM call.
-        return Cache::lock('reasoning:'.$turn->getTable().':'.$turn->getKey(), 120)->block(10, function () use ($owner, $turn, $question, $profile, $actor, $filters) {
+        return Cache::lock('reasoning:'.$turn->getTable().':'.$turn->getKey(), 120)->block(10, function () use ($owner, $turn, $question, $profile, $actor, $filters, $capabilities) {
             $column = $this->metadataColumn($turn);
             $turn->refresh();
             $cached = data_get($turn->{$column}, 'reasoning.understanding');
@@ -74,7 +74,7 @@ final readonly class ConversationReasoning
                 // An older in-flight message must not resolve pronouns using a later user's focus.
                 $before = ['focus' => [], 'known_identifiers' => [], 'verified_relations' => [], 'references' => []];
             }
-            $understanding = $this->preprocessor->interpret($question, null, $profile, $before);
+            $understanding = $this->preprocessor->interpret($question, null, $profile, $before, $capabilities);
             DB::transaction(function () use ($owner, $turn, $column, $before, $understanding): void {
                 $locked = $owner->newQuery()->whereKey($owner->getKey())->lockForUpdate()->firstOrFail();
                 $state = $this->state($locked);
@@ -290,18 +290,24 @@ final readonly class ConversationReasoning
         return $references;
     }
 
-    /** Only an explicit recap may load old live snapshots; authorization is still checked NOW. */
+    /** Historical context is allowed only for recap or explicitly context-only tasks. */
     public function recapEvidence(AgentRun $run): array
     {
-        if (! $this->enabled() || data_get($run->result_json, 'question_understanding.transition') !== 'recap') {
+        $understanding = \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding', []));
+        $tasks = $understanding->contextOnlyTasks();
+        $recap = $understanding->transition === 'recap';
+        if (! $this->enabled() || (! $recap && $tasks === [])) {
             return [];
         }
         $owner = $this->runOwner($run);
         if ($owner === null || $owner->project_key !== $run->project_key) {
             return [];
         }
-        $ids = array_values(array_unique(array_merge(data_get($run->result_json, 'question_understanding.focus.identifiers', []),
-            ...array_map(fn ($sub) => $sub['identifiers'] ?? [], data_get($run->result_json, 'question_understanding.subquestions', [])))));
+        $ids = array_values(array_unique(array_merge($recap ? ($understanding->focus['identifiers'] ?? []) : [],
+            ...array_map(fn ($sub) => $sub['identifiers'] ?? [], $recap ? $understanding->subquestions : $tasks))));
+        if (! $recap && $ids === []) {
+            return []; // An unresolved contextual task cannot import every previous record.
+        }
         $snapshots = [];
         foreach ($this->state($owner)['evidence'] as $reference) {
             if (($reference['kind'] ?? '') !== 'tool' || ($ids !== [] && array_intersect($ids, $reference['identifiers'] ?? []) === [])
@@ -313,7 +319,7 @@ final readonly class ConversationReasoning
                 if (($tool['execution_id'] ?? null) === $reference['execution_id']) {
                     $trial = [...$snapshots, $tool];
                     if (strlen(json_encode($trial)) <= 32000) {
-                        $snapshots[$reference['execution_id']] = $tool;
+                        $snapshots[$reference['execution_id']] = [...$tool, 'historical_context' => true];
                     }
                 }
             }

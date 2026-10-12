@@ -36,15 +36,16 @@ final class KbInvestigationServiceTest extends TestCase
         ]);
     }
 
-    public function test_missing_profile_fails_closed_without_llm_or_generic_search(): void
+    public function test_missing_profile_blocks_research_after_interpretation_without_generic_search(): void
     {
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldNotReceive('chat');
+        $this->expectInterpretation($ai, ['objective' => 'Stato ordine ORDER-A', 'queries' => ['ORDER-A']]);
         $retrieval = Mockery::mock(ChatRetrievalService::class);
         $retrieval->shouldNotReceive('retrieve');
         $reader = Mockery::mock(KbSourceReader::class);
 
-        $result = $this->service($ai, $retrieval, $reader)->investigate('Dov’è il mio ordine?', 'unknown');
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Dov’è ORDER-A?', 'unknown');
 
         $this->assertSame('profile_required', $result->status);
         $this->assertSame('retrieval_profile_required', $result->stopReason);
@@ -570,6 +571,91 @@ final class KbInvestigationServiceTest extends TestCase
 
         $this->assertSame('it', $result->intent->understanding->language);
         $this->assertSame([$messina->id], array_column($result->selectedSources, 'document_id'));
+    }
+
+    public function test_context_only_turn_reads_authorized_source_without_search_or_assessment(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chat');
+        $ai->shouldNotReceive('chatWithProvider');
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'Valentina Rinaldi richiede accesso al portale.', true));
+        $focus = ['topic' => 'email', 'identifiers' => ['Valentina Rinaldi'], 'aspect' => 'explanation', 'fields' => []];
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Spiega la richiesta di Valentina Rinaldi', [], [], true,
+            focus: $focus, subquestions: [$focus], contextMode: \App\Services\Chat\QuestionContextMode::Conversation, requiresResearch: false);
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Spiegamela', 'orders',
+            previousCitations: [['document_id' => 11, 'chunks' => [['chunk_id' => 101]]]], preparedUnderstanding: $understanding);
+        $this->assertTrue($result->isReady());
+        $this->assertSame('context_only', $result->stopReason);
+        $this->assertSame([], $result->queries);
+        $this->assertSame([11], array_column($result->selectedSources, 'document_id'));
+    }
+
+    public function test_unknown_interpretation_does_not_search_the_raw_message(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chat');
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+        $result = $this->service($ai, $retrieval, Mockery::mock(KbSourceReader::class))->investigate('quindi?', 'orders',
+            preparedUnderstanding: new \App\Services\Chat\QuestionUnderstanding(null, 'quindi?', ['quindi?'], [], false, false));
+        $this->assertSame('clarify', $result->status);
+        $this->assertSame('question_interpretation_unavailable', $result->stopReason);
+        $this->assertSame([], $result->queries);
+    }
+
+    public function test_mixed_turn_only_searches_the_new_task_and_keeps_context_sources_separate(): void
+    {
+        config(['reasoning.enabled' => true, 'reasoning.parallel_research' => true]);
+        $subs = [
+            ['topic' => 'email', 'identifiers' => ['Valentina Rinaldi'], 'aspect' => 'explanation', 'fields' => [],
+                'question' => 'Spiega la richiesta di Valentina Rinaldi', 'kb_queries' => [],
+                'context_mode' => 'conversation', 'requires_research' => false],
+            ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'status', 'fields' => ['status'],
+                'question' => 'Qual è lo stato di ORDER-B?', 'kb_queries' => ['ORDER-B'],
+                'context_mode' => 'new', 'requires_research' => true],
+        ];
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Spiega email e cerca ordine', ['ORDER-B'], [], true,
+            subquestions: $subs, contextMode: \App\Services\Chat\QuestionContextMode::Mixed, requiresResearch: true);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider');
+        $ai->shouldReceive('chat')->once()->andReturnUsing(function ($system, $payload) {
+            $this->assertSame([12], array_column(json_decode($payload, true)['sources'], 'document_id'));
+            return $this->response(['selected_document_ids' => [12], 'supported_facts' => [],
+                'missing_facts' => [], 'complete' => true, 'next_query' => null]);
+        });
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->with('ORDER-B', 'orders', null)->andReturn($this->search([12]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->twice()->andReturnUsing(fn ($candidate) => $candidate['document']['id'] === 11
+            ? $this->source(11, 'Valentina Rinaldi richiede accesso.', true) : $this->source(12, 'ORDER-B shipped.', true));
+        $service = $this->service($ai, $retrieval, $reader);
+        $this->app->instance(KbInvestigationService::class, $service);
+        $result = $service->investigate('Spiega quella email e cerca ORDER-B', 'orders',
+            previousCitations: [['document_id' => 11, 'chunks' => [['chunk_id' => 110]]]], preparedUnderstanding: $understanding);
+        $this->assertSame(['ORDER-B'], $result->queries);
+        $this->assertSame([11, 12], array_column($result->selectedSources, 'document_id'));
+        $this->assertSame([0, 1], $result->search->primary->pluck('research_flow_id')->all());
+    }
+
+    public function test_contextual_request_for_current_facts_searches_even_with_an_old_source(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider');
+        $ai->shouldReceive('chat')->once()->andReturn($this->response(['selected_document_ids' => [11],
+            'supported_facts' => [], 'missing_facts' => [], 'complete' => true, 'next_query' => null]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->with('ORDER-A stato attuale', 'orders', null)->andReturn($this->search([]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'ORDER-A previously scheduled.', true));
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Controlla lo stato attuale di ORDER-A',
+            ['ORDER-A stato attuale'], [['text' => 'ORDER-A', 'type' => 'identifier']], true,
+            contextMode: \App\Services\Chat\QuestionContextMode::Conversation, requiresResearch: true);
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Controlla il suo stato attuale', 'orders',
+            previousCitations: [['document_id' => 11, 'chunks' => [['chunk_id' => 110]]]], preparedUnderstanding: $understanding);
+        $this->assertSame(['ORDER-A stato attuale'], $result->queries);
     }
 
     private function citedDocument(string $tenant, string $project): KnowledgeDocument

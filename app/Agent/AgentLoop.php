@@ -100,10 +100,28 @@ final readonly class AgentLoop
             unset($action);
         }
 
+        $understanding = is_array(data_get($run->result_json, 'question_understanding'))
+            ? \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding')) : null;
+        if (! $retrieved && $understanding === null) {
+            $this->control->ensureActive($run);
+            $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+            $understanding = app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
+                $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot);
+            if ($understanding !== null) {
+                \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $capabilitySnapshot): void {
+                    $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                    $run->forceFill(['result_json' => [...($locked->result_json ?? []), 'question_understanding' => $understanding->toArray(),
+                        'capability_manifest' => ['hash' => $capabilitySnapshot->hash, 'capabilities' => $capabilitySnapshot->compact()]]])->save();
+                });
+            }
+        }
         if (! $retrieved) {
             $this->control->ensureActive($run);
-            $this->events->publish($run, 'retrieval.started', 'retrieval.started');
+            if ($understanding === null || $understanding->needsResearch()) {
+                $this->events->publish($run, 'retrieval.started', 'retrieval.started');
+            }
             $investigationResult = null;
+            $researchStarted = $understanding === null || $understanding->needsResearch();
             try {
                 // The initial agent evidence follows the exact same
                 // profile-guided KB-only investigation as ordinary chat. The
@@ -121,8 +139,22 @@ final readonly class AgentLoop
                     memoryOwner: app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run),
                     turnRecord: app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runTurn($run),
                     onResearchProgress: app(AgentResearchProgress::class)->observer($run),
+                    preparedUnderstanding: $understanding,
                 );
                 $understanding = $investigationResult->intent?->understanding;
+                $recap = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->recapEvidence($run);
+                if ($recap !== []) {
+                    $recap = app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, ['api_tools' => $recap],
+                        $understanding?->transition === 'recap')['api_tools'];
+                    if (count($understanding?->subquestions ?? []) > 1) {
+                        $recap = \App\Agent\Evidence\ResearchEvidence::recapTools($recap, $understanding->subquestions);
+                    }
+                    if ($recap !== [] && $investigationResult->status === 'context_unavailable') {
+                        $investigationResult = new \App\Services\Kb\Investigation\KbInvestigationResult('ready', 'context_only',
+                            $investigationResult->search, intent: $investigationResult->intent);
+                    }
+                    $evidence->import(['api_tools' => $recap]);
+                }
                 \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $investigationResult): void {
                     $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
                     $updates = ['knowledge_investigation' => $investigationResult->trace()];
@@ -135,13 +167,6 @@ final readonly class AgentLoop
                     $run->forceFill(['result_json' => array_merge((array) $locked->result_json, $updates)])->save();
                 });
                 $search = $investigationResult->search;
-                $recap = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->recapEvidence($run);
-                if ($recap !== [] && count($understanding?->subquestions ?? []) > 1) {
-                    $recap = \App\Agent\Evidence\ResearchEvidence::recapTools($recap, $understanding->subquestions);
-                }
-                if ($recap !== []) {
-                    $evidence->import(['api_tools' => $recap]);
-                }
                 $documents = $this->evidenceFactory->fromSearchResult($search);
                 $evidence->import($documents->jsonSerialize());
                 $budget->recordResult(0, $documents->byteSize(), true);
@@ -149,13 +174,15 @@ final readonly class AgentLoop
                 if (! $investigationResult->isReady()) {
                     $evidence->addWarning($investigationResult->stopReason, 'recursive_kb_retrieval');
                 }
-                $this->events->publish(
-                    $run,
-                    'retrieval.completed',
-                    'retrieval.completed',
-                    ['count' => count($evidence->documents())],
-                    ['sources' => count($evidence->documents())],
-                );
+                if ($researchStarted) {
+                    $this->events->publish(
+                        $run,
+                        'retrieval.completed',
+                        'retrieval.completed',
+                        ['count' => count($evidence->documents())],
+                        ['sources' => count($evidence->documents())],
+                    );
+                }
             } catch (Throwable) {
                 $evidence->addWarning('knowledge_retrieval_failed', 'search_knowledge_base');
                 $this->events->publish($run, 'retrieval.failed', 'tool.failed', ['tool' => 'Knowledge base']);
@@ -166,7 +193,7 @@ final readonly class AgentLoop
         if (data_get($run->result_json, 'knowledge_investigation.status') === 'conversational') {
             return $this->outcome('answer', $evidence, [], 'assistant_conversation');
         }
-        if (in_array(data_get($run->result_json, 'knowledge_investigation.status'), ['profile_required', 'clarify'], true)) {
+        if (in_array(data_get($run->result_json, 'knowledge_investigation.status'), ['profile_required', 'clarify', 'context_unavailable'], true)) {
             // Keep mandatory scope/clarification gates across resumed turns too.
             // Empty KB evidence is not a connector authorization failure: the
             // bounded planner may still use its authorized tools.
@@ -176,6 +203,10 @@ final readonly class AgentLoop
         $understanding = data_get($run->result_json, 'question_understanding');
         if (is_array($understanding) && \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->asksForProvenance()) {
             return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
+        }
+        if (is_array($understanding) && ! \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->needsResearch()
+            && (count($understanding['subquestions'] ?? []) <= 1 || ! config('reasoning.parallel_research') || ! config('reasoning.enabled'))) {
+            return $this->outcome('answer', $evidence, $completed, 'context_only');
         }
         if (config('reasoning.parallel_research') && config('reasoning.enabled') && is_array($understanding)
             && ($understanding['available'] ?? false) && count($understanding['subquestions'] ?? []) > 1
@@ -671,7 +702,7 @@ final readonly class AgentLoop
                 return;
             }
             // A stale worker must never erase a concurrently persisted JEV dispatch marker.
-            $run->forceFill(['result_json' => array_merge(array_intersect_key((array) $locked->result_json, ['question_understanding' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true]), [
+            $run->forceFill(['result_json' => array_merge(array_intersect_key((array) $locked->result_json, ['question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true]), [
                 'phase' => 'collection',
                 'retrieval_completed' => $retrieved,
                 'evidence' => $evidence->jsonSerialize(),

@@ -13,6 +13,24 @@ use Tests\TestCase;
 
 final class ChatQuestionPreprocessorTest extends TestCase
 {
+    public function test_parent_cannot_disable_research_required_by_a_mixed_task(): void
+    {
+        $focus = ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'current', 'fields' => ['status']];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Stato attuale ORDER-B', 'action' => 'research', 'kb_queries' => [],
+            'mentions' => [['text' => 'ORDER-B', 'type' => 'identifier']], 'references_previous_turn' => false,
+            'context_mode' => 'new', 'requires_research' => false, 'transition' => 'new', 'focus' => $focus,
+            'subquestions' => [[...$focus, 'question' => 'Qual è lo stato attuale di ORDER-B?', 'kb_queries' => ['ORDER-B'],
+                'context_mode' => 'new', 'requires_research' => true]],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Stato attuale di ORDER-B', reasoningContext: []);
+        $this->assertFalse($result->available);
+        $this->assertSame('invalid_focus_contract', $result->failureReason);
+        $this->assertFalse($result->needsResearch());
+    }
+
     #[DataProvider('languages')]
     public function test_interprets_multilingual_questions_once(string $question, string $language, ?string $supportedLanguage): void
     {
@@ -224,6 +242,49 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertSame(['Valentina Rinaldi'], $result->resolvedReferences);
         $this->assertSame('refine', $result->toArray()['action']);
         $this->assertFalse($result->asksToReadSource());
+    }
+
+    public function test_mixed_turn_preserves_context_and_new_research_as_independent_routes(): void
+    {
+        $email = ['topic' => 'email', 'identifiers' => ['Valentina Rinaldi'], 'aspect' => 'explanation', 'fields' => [],
+            'question' => "Spiega l'email di Valentina Rinaldi", 'kb_queries' => [], 'context_mode' => 'conversation', 'requires_research' => false];
+        $order = ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'status', 'fields' => ['status'],
+            'question' => 'Trova lo stato di ORDER-B', 'kb_queries' => ['ORDER-B stato'], 'context_mode' => 'new', 'requires_research' => true];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Spiegazione email e ricerca ordine', 'action' => 'research',
+            'kb_queries' => ['ORDER-B stato'], 'mentions' => [['text' => 'ORDER-B', 'type' => 'identifier']],
+            'references_previous_turn' => true, 'context_mode' => 'mixed', 'requires_research' => true,
+            'transition' => 'continue', 'focus' => array_intersect_key($email, array_flip(['topic', 'identifiers', 'aspect', 'fields'])),
+            'subquestions' => [$email, $order], 'resolved_references' => ['Valentina Rinaldi'], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Spiega quella email e trova ORDER-B', reasoningContext: ['known_identifiers' => ['Valentina Rinaldi']]);
+        $this->assertTrue($result->available);
+        $this->assertSame('mixed', $result->toArray()['context_mode']);
+        $this->assertTrue($result->needsResearch());
+        $this->assertFalse($result->forSubquestion(0)->needsResearch());
+        $this->assertSame([], $result->forSubquestion(0)->kbQueries);
+        $this->assertTrue($result->forSubquestion(1)->needsResearch());
+        $this->assertFalse($result->forSubquestion(1)->referencesPreviousTurn);
+        $this->assertSame(['ORDER-B stato'], $result->forSubquestion(1)->kbQueries);
+    }
+
+    public function test_missing_target_is_clarified_without_creating_search_queries(): void
+    {
+        $focus = ['topic' => 'order', 'identifiers' => [], 'aspect' => 'target', 'fields' => []];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Chiarire quale ordine', 'action' => 'clarify', 'kb_queries' => [], 'mentions' => [],
+            'references_previous_turn' => true, 'context_mode' => 'conversation', 'requires_research' => false,
+            'transition' => 'continue', 'focus' => $focus, 'subquestions' => [$focus + [
+                'question' => 'Quale ordine vuoi controllare?', 'kb_queries' => [], 'context_mode' => 'conversation', 'requires_research' => false]],
+            'resolved_references' => [], 'needs_clarification' => true, 'clarification' => 'Quale ordine vuoi controllare?',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Controllalo', reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertTrue($result->needsClarification);
+        $this->assertFalse($result->needsResearch());
+        $this->assertSame([], $result->kbQueries);
     }
 
     private function response(array $payload): AiResponse
