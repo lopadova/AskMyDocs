@@ -74,7 +74,7 @@ final class DecisionIntegrationTest extends TestCase
         $this->assertStringContainsString('"boolean":true', Artisan::output());
     }
 
-    public function test_agent_keeps_a_verified_source_when_semantic_provider_is_unavailable(): void
+    public function test_agent_blocks_claims_when_original_question_relevance_cannot_be_validated(): void
     {
         config()->set('agent.grounding.semantic.enabled', true);
         config()->set('agent.grounding.semantic.threshold', 0.8);
@@ -103,11 +103,14 @@ final class DecisionIntegrationTest extends TestCase
             app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
             ->synthesize('Dove è stata consegnata SPD-51230?', $context, new AgentLoopOutcome('answer', $evidence, []));
 
-        $this->assertSame('complete', $answer->completeness);
-        $this->assertStringContainsString('Messina', $answer->answer);
-        $this->assertSame([252], array_column($answer->citations, 'document_id'));
+        $this->assertSame('insufficient', $answer->completeness);
+        $this->assertStringNotContainsString('Messina', $answer->answer);
+        $this->assertSame([], $answer->citations);
         $this->assertTrue($answer->grounding['semantic_validation'][0]['attempted']);
         $this->assertSame('error', $answer->grounding['semantic_validation'][0]['status']);
+        $stages = $answer->grounding['semantic_validation'];
+        $this->assertSame('original_question_relevance', $stages[array_key_last($stages)]['stage']);
+        $this->assertSame('original_question_unverified', $answer->grounding['reason']);
     }
 
     public function test_choice_and_evidence_commands_emit_machine_readable_json(): void
