@@ -28,11 +28,16 @@ final readonly class OriginalQuestionRelevanceEvaluator
                 'source_title' => $claim['source_title'] ?? '', 'complete_source' => $claim['complete_source'] ?? false,
                 'source_ref' => $sourceRef];
         }
+        $referenceContext = array_intersect_key($navigation,
+            array_flip(['dialogue', 'known_identifiers', 'verified_relations', 'references', 'objective']));
+        // Old retrieval plans duplicate the recorded user goal. They neither
+        // resolve references nor support facts in the CURRENT question.
+        $referenceContext['dialogue'] = array_map(static fn ($act) =>
+            array_diff_key($act, ['questions' => true, 'answered_questions' => true]), $referenceContext['dialogue'] ?? []);
         $state = [
             'original_question' => $question,
             'interpreted_tasks_for_reference_resolution_only' => $understanding['subquestions'] ?? [],
-            'conversation_for_reference_resolution_only' => array_intersect_key($navigation,
-                array_flip(['dialogue', 'known_identifiers', 'verified_relations', 'references', 'objective'])),
+            'conversation_for_reference_resolution_only' => $referenceContext,
             'candidates' => $candidates,
             'sources' => $sources,
         ];
@@ -43,6 +48,9 @@ final readonly class OriginalQuestionRelevanceEvaluator
             if (! is_finite($threshold) || $threshold <= .5 || $threshold > 1 || count($claims) > 10) {
                 throw new \UnexpectedValueException('Invalid relevance decision bounds.');
             }
+            $payload = DecisionState::fromArray($state);
+            $trace['state_bytes'] = $payload->bytes;
+            $trace['state_max_bytes'] = DecisionState::maxBytes();
             $decision = Decisions::using()->withState($state);
             foreach ($claims as $index => $claim) {
                 $decision = $decision->yesNo('relevance_'.$index,
@@ -52,7 +60,7 @@ final readonly class OriginalQuestionRelevanceEvaluator
                     ]);
             }
             $trace['attempted'] = true;
-            $signature = hash('sha256', json_encode(DecisionState::fromArray($state)->data, JSON_THROW_ON_ERROR));
+            $signature = hash('sha256', json_encode($payload->data, JSON_THROW_ON_ERROR));
             $result = app(DecisionOnce::class)->run($runId, $signature, fn () => $decision->decide(),
                 $repairAttempt ? 'original_question_relevance_decision_repair' : 'original_question_relevance_decision');
             $answers = $result->answers;

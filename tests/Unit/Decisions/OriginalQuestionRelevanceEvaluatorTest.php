@@ -135,6 +135,32 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_old_retrieval_plans_do_not_exhaust_the_budget_or_remove_authorized_source_context(): void
+    {
+        $this->decisions(.99);
+        $source = str_repeat('RECORD-A: the merchant has promised shipment. ', 350);
+        $references = [['document_id' => 9, 'identifiers' => ['RECORD-A']]];
+        $result = app(OriginalQuestionRelevanceEvaluator::class)->apply('What did the merchant promise for RECORD-A?',
+            ['valid' => true, 'claims' => [['text' => 'Shipment is promised.', 'quote' => $source]], 'semantic_validation' => []],
+            navigation: ['references' => $references, 'dialogue' => [
+                ['role' => 'user', 'text' => 'Tell me about RECORD-A', 'interpreted_goal' => 'Find RECORD-A',
+                    'questions' => [['kb_queries' => [str_repeat('Old query ', 2500)]]]],
+                ['role' => 'assistant', 'action' => 'research', 'answered_questions' => [['kb_queries' => [str_repeat('Old query ', 2500)]]]],
+            ]]);
+        $this->assertTrue($result['valid']);
+        $this->assertLessThan(32768, $result['semantic_validation'][0]['state_bytes']);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request) use ($source, $references) {
+            $state = $request['state'];
+            $this->assertSame([$source], array_values($state['sources']));
+            $this->assertSame($references, $state['conversation_for_reference_resolution_only']['references']);
+            $this->assertSame('Find RECORD-A', $state['conversation_for_reference_resolution_only']['dialogue'][0]['interpreted_goal']);
+            $this->assertArrayNotHasKey('questions', $state['conversation_for_reference_resolution_only']['dialogue'][0]);
+            $this->assertArrayNotHasKey('answered_questions', $state['conversation_for_reference_resolution_only']['dialogue'][1]);
+            return true;
+        });
+    }
+
     public function test_a_partial_case_event_keeps_its_verified_subject_context_without_requiring_the_whole_story(): void
     {
         $this->decisions(.98);
