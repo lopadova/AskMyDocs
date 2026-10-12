@@ -81,7 +81,11 @@ foreach ($cases['cases'] as $case) {
         if ($source === null) {
             throw new RuntimeException('Expected source is unreadable.');
         }
-        $sources[] = ['document_id' => $document->id, 'title' => $document->title, 'text' => $source['excerpt']];
+        // The external reviewer needs the whole indexed original, not the
+        // first retrieval window of a long thread. It is never given to the agent.
+        $reference = $document->source_type === App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE
+            ? $source['excerpt'] : $document->chunks()->orderBy('chunk_order')->pluck('chunk_text')->implode("\n\n");
+        $sources[] = ['document_id' => $document->id, 'title' => $document->title, 'text' => $reference];
     }
     $conversationId = $case['conversation_id'] ?? null;
     if (isset($options['reopen'])) {
@@ -108,6 +112,7 @@ foreach ($cases['cases'] as $case) {
     $report = ['case' => $id, 'round' => $round, 'code_revision' => $codeRevision, 'question' => $case['question'], 'expected' => $case['expected'],
         'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
         'interpretation_model' => config('ai.question_preprocessor.model'),
+        'evaluation_source_mode' => 'complete_indexed_original_or_verified_lineage',
         'document_ids' => $case['document_ids'], 'conversation_id' => $conversation->id, 'run_id' => $run->run_id,
         'agent_run_id' => $run->id, 'message_id' => $message?->id, 'status' => $run->status, 'error_code' => $run->error_code,
         'elapsed_seconds' => round(microtime(true) - $started, 2), 'answer' => $message?->content,
