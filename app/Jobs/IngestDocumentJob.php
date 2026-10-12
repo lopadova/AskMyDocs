@@ -269,7 +269,10 @@ class IngestDocumentJob implements ShouldQueue
 
                     return;
                 }
-                throw new \RuntimeException($message);
+                // Keep the failing step's exception in the queue failure. The
+                // wrapper identifies the document; the cause explains why its
+                // provider, cache or storage operation failed.
+                throw new \RuntimeException($message, 0, $stepError);
             }
 
             $persistResult = $run->stepResults['persist-chunks'] ?? null;

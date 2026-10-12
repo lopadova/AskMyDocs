@@ -82,6 +82,30 @@ class IngestDocumentJobTest extends TestCase
         $this->app->call([$job, 'handle']);
     }
 
+    public function test_embedding_failure_preserves_the_original_exception_for_queue_diagnostics(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/embedding-failure.md', "# Mail\n\nA document to embed.");
+        config()->set('kb.sources.path_prefix', '');
+        $cause = new RuntimeException('Embedding provider refused the request.');
+        $embeddings = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $embeddings->shouldReceive('generate')->once()->andThrow($cause);
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $embeddings);
+        $job = new IngestDocumentJob('demo', 'docs/embedding-failure.md', 'kb');
+
+        try {
+            $this->app->call([$job, 'handle']);
+            $this->fail('The embedding failure must reach the queue worker.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('at step [embed-chunks]', $exception->getMessage());
+            $this->assertStringContainsString('kb:docs/embedding-failure.md', $exception->getMessage());
+            $this->assertSame($cause, $exception->getPrevious());
+            $this->assertStringContainsString($cause->getMessage(), (string) $exception);
+        }
+
+        $this->assertSame(0, KnowledgeDocument::query()->where('source_path', 'docs/embedding-failure.md')->count());
+    }
+
     /**
      * v8.36 — a deterministic OCR refusal (over the byte/page cap) is failed
      * immediately instead of being retried three times (R14).
