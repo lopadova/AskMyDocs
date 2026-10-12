@@ -10,6 +10,7 @@ use App\Models\ImapBackfill;
 use App\Models\ImapBackfillWindow;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -216,7 +217,57 @@ final class ImapBackfillManager
         );
     }
 
-    public function hasCompletedBackfill(int $installationId): bool
+    public function cancel(int $installationId, int $backfillId): ImapBackfill
+    {
+        $tenantId = $this->tenantContext->current();
+
+        return DB::transaction(function () use ($tenantId, $installationId, $backfillId): ImapBackfill {
+            $installation = ConnectorInstallation::query()->forTenant($tenantId)
+                ->where('connector_name', 'imap')->lockForUpdate()->find($installationId);
+            if ($installation === null) {
+                throw new NotFoundHttpException('IMAP installation not found.');
+            }
+            $backfill = ImapBackfill::query()->forTenant($tenantId)
+                ->where('connector_installation_id', $installationId)->lockForUpdate()->find($backfillId);
+            if ($backfill === null) {
+                throw new NotFoundHttpException('IMAP import not found.');
+            }
+            if ($backfill->status === ImapBackfill::STATUS_CANCELLED) {
+                return $backfill;
+            }
+            $latestId = ImapBackfill::query()->forTenant($tenantId)
+                ->where('connector_installation_id', $installationId)->latest('id')->value('id');
+            if ((int) $latestId !== $backfillId || $backfill->status === ImapBackfill::STATUS_COMPLETED) {
+                throw new ConflictHttpException('The import has already finished or changed. Refresh its status.');
+            }
+
+            $backfill->forceFill([
+                'status' => ImapBackfill::STATUS_CANCELLED,
+                'completed_at' => now(),
+                'heartbeat_at' => now(),
+            ])->saveOrFail();
+            ImapBackfillWindow::query()->forTenant($tenantId)->where('imap_backfill_id', $backfillId)
+                ->where('status', '!=', ImapBackfillWindow::STATUS_COMPLETED)->update([
+                    'status' => ImapBackfillWindow::STATUS_CANCELLED,
+                    'finished_at' => now(), 'next_attempt_at' => null, 'updated_at' => now(),
+                ]);
+
+            // The operator deliberately leaves older history behind. Future
+            // incremental syncs still catch mail arriving since the import began.
+            if ($installation->last_sync_at === null || $installation->last_sync_at->lt($backfill->cutoff_at)) {
+                $installation->forceFill(['last_sync_at' => $backfill->cutoff_at])->saveOrFail();
+            }
+            Log::info('[imap-backfill] import cancelled by operator', [
+                'tenant_id' => $tenantId, 'installation_id' => $installationId,
+                'backfill_id' => $backfillId, 'processed_messages' => $backfill->processed_messages,
+                'dispatched_documents' => $backfill->dispatched_documents,
+            ]);
+
+            return $backfill;
+        });
+    }
+
+    public function hasFinishedBackfill(int $installationId): bool
     {
         if (! Schema::hasTable('imap_backfills')) {
             return false;
@@ -225,7 +276,7 @@ final class ImapBackfillManager
         return ImapBackfill::query()
             ->forTenant($this->tenantContext->current())
             ->where('connector_installation_id', $installationId)
-            ->where('status', ImapBackfill::STATUS_COMPLETED)
+            ->whereIn('status', [ImapBackfill::STATUS_COMPLETED, ImapBackfill::STATUS_CANCELLED])
             ->exists();
     }
 

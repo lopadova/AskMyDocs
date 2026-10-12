@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { useConnectors } from '../connectors/connectors-hooks';
-import { useImapBackfill, useQueueDepths, useStartImapBackfill, useSyncRuns } from './ingestion-hooks';
+import { useCancelImapBackfill, useImapBackfill, useQueueDepths, useStartImapBackfill, useSyncRuns } from './ingestion-hooks';
+import { Button } from '../../../components/Button';
+import { Square } from 'lucide-react';
+import { toAdminError } from '../shared/errors';
 import type { SyncRunStatus } from './ingestion.api';
 
 /*
@@ -63,16 +66,17 @@ export function IngestionView() {
     const isImap = selectedAccount?.connectorKey === 'imap';
     const backfillQuery = useImapBackfill(effectiveId, isImap);
     const startBackfill = useStartImapBackfill();
+    const cancelBackfill = useCancelImapBackfill();
     const backfill = backfillQuery.data?.backfill ?? null;
     const isBackfillResume = backfill?.status === 'failed' && backfill.retry_mode !== 'restart';
     const isBackfillRestart = backfill?.status === 'failed' && backfill.retry_mode === 'restart';
     const backfillActionVerb = isBackfillResume ? 'resume' : isBackfillRestart ? 'restart' : 'start';
     const backfillPendingLabel = isBackfillResume ? 'Resuming…' : isBackfillRestart ? 'Restarting…' : 'Starting…';
     const backfillEnabled = backfillQuery.data?.enabled ?? true;
-    const backfillBusy = backfillQuery.isLoading || startBackfill.isPending;
+    const backfillBusy = backfillQuery.isLoading || startBackfill.isPending || cancelBackfill.isPending;
     const backfillPanelState = backfillBusy
         ? 'loading'
-        : backfillQuery.isError || startBackfill.isError
+        : backfillQuery.isError || startBackfill.isError || cancelBackfill.isError
           ? 'error'
           : !backfillEnabled
             ? 'disabled'
@@ -199,15 +203,15 @@ export function IngestionView() {
                                     </div>
                                 </div>
                                 {backfillEnabled
-                                    && (backfill === null || backfill.status === 'failed')
+                                    && (backfill === null || ['failed', 'cancelled'].includes(backfill.status))
                                     && !backfillQuery.isLoading && (
-                                    <button
-                                        type="button"
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
                                         data-testid="imap-backfill-start"
-                                        className="focus-ring"
-                                        disabled={startBackfill.isPending}
+                                        busy={startBackfill.isPending}
+                                        disabled={cancelBackfill.isPending}
                                         onClick={() => startBackfill.mutate(effectiveId)}
-                                        style={retryStyle}
                                     >
                                         {startBackfill.isPending
                                             ? backfillPendingLabel
@@ -216,13 +220,34 @@ export function IngestionView() {
                                               : isBackfillRestart
                                                 ? 'Restart full import'
                                               : 'Import all history'}
-                                    </button>
+                                    </Button>
+                                )}
+                                {backfill && ['discovering', 'running', 'paused', 'failed'].includes(backfill.status) && (
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        leadingIcon={<Square size={14} aria-hidden="true" />}
+                                        busy={cancelBackfill.isPending}
+                                        disabled={startBackfill.isPending}
+                                        data-testid="imap-backfill-cancel"
+                                        onClick={() => cancelBackfill.mutate({ installationId: effectiveId, backfillId: backfill.id })}
+                                    >
+                                        Annulla importazione
+                                    </Button>
                                 )}
                             </div>
 
                             {backfillQuery.isLoading && <div role="status" style={{ marginTop: 10 }}>Reading backfill status…</div>}
                             {backfillQuery.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not read backfill status.</div>}
                             {startBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not {backfillActionVerb} the full import.</div>}
+                            {cancelBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Impossibile annullare l’importazione: {toAdminError(cancelBackfill.error).message}</div>}
+                            {backfill && ['discovering', 'running', 'paused', 'failed', 'cancelled'].includes(backfill.status) && (
+                                <div role="status" style={{ marginTop: 10, fontSize: 12, color: 'var(--fg-2)' }}>
+                                    {backfill.status === 'cancelled'
+                                        ? 'Importazione annullata. Le email già salvate restano disponibili e il loro ingest prosegue.'
+                                        : 'Puoi annullare conservando le email già salvate. Una lettura già iniziata può terminare.'}
+                                </div>
+                            )}
                             {!backfillEnabled && !backfillQuery.isLoading && !backfillQuery.isError && (
                                 <div data-testid="imap-backfill-disabled" role="status" style={{ marginTop: 10, color: 'var(--fg-2)' }}>
                                     Full mailbox imports are disabled by deployment configuration.
@@ -231,7 +256,7 @@ export function IngestionView() {
                             {backfill && (
                                 <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                                        <span style={{ color: 'var(--fg-2)' }}>{backfill.status}</span>
+                                        <span style={{ color: 'var(--fg-2)' }}>{backfill.status === 'cancelled' ? 'Annullata' : backfill.status}</span>
                                         <span data-testid="imap-backfill-progress" style={{ color: 'var(--fg-0)', fontFamily: 'var(--font-mono)' }}>
                                             {backfill.processed_messages.toLocaleString()} / {backfill.total_messages.toLocaleString()} ({backfill.progress_percent}%)
                                         </span>

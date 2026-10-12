@@ -1099,6 +1099,9 @@ Route::middleware([
         Route::post('/{installationId}/imap-backfill', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'startImapBackfill'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.imap-backfill.start');
+        Route::post('/{installationId}/imap-backfill/{backfillId}/cancel', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'cancelImapBackfill'])
+            ->whereNumber(['installationId', 'backfillId'])
+            ->name('api.admin.connectors.imap-backfill.cancel');
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');

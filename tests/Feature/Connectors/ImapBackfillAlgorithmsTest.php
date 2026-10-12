@@ -8,6 +8,7 @@ use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract;
 use App\Connectors\Imap\Backfill\ImapBackfillDiscovery;
 use App\Connectors\Imap\Backfill\ImapBackfillImporter;
+use App\Connectors\Imap\Backfill\ImapBackfillManager;
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
 use App\Connectors\Imap\Backfill\ImapBackfillMessageSizer;
 use App\Connectors\Imap\MailboxBusyException;
@@ -34,6 +35,61 @@ use Tests\TestCase;
 final class ImapBackfillAlgorithmsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_cancellation_during_persistence_finishes_the_current_email_and_keeps_its_checkpoint(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_RUNNING, ['batch_size' => 3]);
+        $window = $this->window($installation, $backfill, [
+            'status' => ImapBackfillWindow::STATUS_QUEUED, 'snapshot_uid_validity' => 77, 'snapshot_max_uid' => 103,
+        ]);
+        $client = new AlgorithmFakeImapClient;
+        $client->state = new MailboxState(77, 103);
+        $client->betweenUidValues = [101, 102, 103];
+        $client->bulkMessages = [
+            101 => $this->message(101, Carbon::parse('2026-01-10')),
+            102 => $this->message(102, Carbon::parse('2026-01-11')),
+            103 => $this->message(103, Carbon::parse('2026-01-12')),
+        ];
+        $ingestion = new RecordingConnectorIngestion;
+        $ingestion->onDispatch = fn () => app(ImapBackfillManager::class)->cancel($installation->id, $backfill->id);
+        $importer = new ImapBackfillImporter($this->provider($client), $ingestion);
+        $job = new ImportImapBackfillWindowJob($window->id, $this->tenantId());
+        $job->handle($importer);
+        $job->failed(new RuntimeException('Late worker failure'));
+        $job->handle($importer); // A duplicate queued job is inert after cancellation.
+
+        $this->assertSame(ImapBackfill::STATUS_CANCELLED, $backfill->fresh()->status);
+        $this->assertSame(ImapBackfillWindow::STATUS_CANCELLED, $window->fresh()->status);
+        $this->assertSame(101, $window->fresh()->last_uid);
+        $this->assertSame(1, $window->fresh()->processed_messages);
+        $this->assertSame(1, $backfill->fresh()->processed_messages);
+        $this->assertCount(1, $ingestion->dispatched);
+        Storage::disk('local')->assertExists($ingestion->dispatched[0]['relativePath']);
+        $this->assertTrue($client->closed);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_cancellation_during_discovery_cannot_recreate_windows_or_restart_the_campaign(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $backfill = $this->backfill($installation, ImapBackfill::STATUS_DISCOVERING);
+        $client = new AlgorithmFakeImapClient;
+        $client->snapshot = new ImapBackfillMailboxSnapshot(77, 101, 1);
+        $client->betweenUidValues = [101];
+        $client->internalDates[101] = Carbon::parse('2026-01-10');
+        $client->onSnapshot = fn () => app(ImapBackfillManager::class)->cancel($installation->id, $backfill->id);
+        $job = new \App\Jobs\Imap\DiscoverImapBackfillJob($backfill->id, $this->tenantId());
+        $job->handle(new ImapBackfillDiscovery($this->provider($client)));
+        $job->failed(new RuntimeException('Late discovery timeout'));
+        $this->assertSame(ImapBackfill::STATUS_CANCELLED, $backfill->fresh()->status);
+        $this->assertDatabaseCount('imap_backfill_windows', 0);
+        $this->assertTrue($client->closed);
+        Queue::assertNothingPushed();
+    }
 
     public function test_discovery_segments_date_boundaries_and_persists_uid_snapshot(): void
     {
@@ -498,6 +554,7 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient, ImapBackfillM
     public ?\Throwable $selectMailboxException = null;
     public ?\Throwable $fetchException = null;
     public ?\Throwable $closeException = null;
+    public ?\Closure $onSnapshot = null;
 
     public function __construct()
     {
@@ -514,7 +571,11 @@ final class AlgorithmFakeImapClient implements ImapBackfillClient, ImapBackfillM
 
         return $this->state;
     }
-    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot { return $this->snapshot; }
+    public function snapshotMailbox(string $mailbox): ImapBackfillMailboxSnapshot
+    {
+        ($this->onSnapshot ?? static fn () => null)();
+        return $this->snapshot;
+    }
 
     public function uidsBetween(
         string $mailbox,
@@ -563,6 +624,7 @@ final class RecordingConnectorIngestion implements ConnectorIngestionContract
 {
     /** @var list<array<string,mixed>> */
     public array $dispatched = [];
+    public ?\Closure $onDispatch = null;
 
     public function dispatchIngestion(
         string $projectKey,
@@ -574,6 +636,7 @@ final class RecordingConnectorIngestion implements ConnectorIngestionContract
         string $tenantId,
     ): void {
         $this->dispatched[] = compact('projectKey', 'relativePath', 'disk', 'title', 'metadata', 'mimeType', 'tenantId');
+        ($this->onDispatch ?? static fn () => null)();
     }
 
     public function resolveKbSourcePath(string $relativePath): array

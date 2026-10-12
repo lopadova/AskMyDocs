@@ -29,6 +29,9 @@ final class ImapBackfillImporter
         ImapBackfill $backfill,
         ImapBackfillWindow $window,
     ): ImapBackfillBatchResult {
+        if ($backfill->isCancelled()) {
+            return new ImapBackfillBatchResult($window->expected_messages, 0, 0, $window->last_uid, true);
+        }
         $config = $this->resolvedConfig((array) ($backfill->settings_json ?? []));
         // Campaigns created before the Flex-worker guard may have persisted a
         // much larger batch (historically 100). Clamp at execution time too, so
@@ -67,6 +70,7 @@ final class ImapBackfillImporter
             $processed = 0;
             $dispatched = 0;
             $lastUid = (int) $window->last_uid;
+            $cancelled = false;
 
             $fetchSize = max(1, (int) config('connectors.imap.backfill.fetch_size', 5));
             $sizes = $batch !== [] && $client instanceof ImapBackfillMessageSizer
@@ -77,6 +81,10 @@ final class ImapBackfillImporter
                 (int) config('connectors.imap.backfill.fetch_max_bytes', 8 * 1024 * 1024),
             );
             foreach ($chunks as $uidChunk) {
+                if ($backfill->isCancelled()) {
+                    $cancelled = true;
+                    break;
+                }
                 $messages = $trace->measure('fetch_messages', fn () => $client->fetchMessages($window->mailbox, $uidChunk), [
                     'uids' => $uidChunk,
                     'rfc822_bytes' => $sizes === null ? null : array_sum(array_intersect_key($sizes, array_fill_keys($uidChunk, true))),
@@ -96,6 +104,10 @@ final class ImapBackfillImporter
                 // The checkpoint advances only across a contiguous, successfully
                 // persisted UID prefix. A missing UID therefore retries safely.
                 foreach ($uidChunk as $uid) {
+                    if ($backfill->isCancelled()) {
+                        $cancelled = true;
+                        break 2;
+                    }
                     $message = $byUid[$uid] ?? null;
                     if ($message === null) {
                         throw new RuntimeException("IMAP bulk fetch did not return UID {$uid}");
@@ -123,7 +135,7 @@ final class ImapBackfillImporter
                 processedMessages: $processed,
                 dispatchedDocuments: $dispatched,
                 lastUid: $lastUid,
-                hasMore: count($uids) > count($batch),
+                hasMore: $cancelled || count($uids) > count($batch),
             );
             $trace->completed($result);
 

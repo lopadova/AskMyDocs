@@ -17,6 +17,7 @@ final class ImapBackfill extends Model
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
     public const STATUS_PAUSED = 'paused';
+    public const STATUS_CANCELLED = 'cancelled';
 
     public const ACTIVE_STATUSES = [self::STATUS_DISCOVERING, self::STATUS_RUNNING];
 
@@ -45,5 +46,11 @@ final class ImapBackfill extends Model
     public function windows(): HasMany
     {
         return $this->hasMany(ImapBackfillWindow::class, 'imap_backfill_id');
+    }
+
+    public function isCancelled(): bool
+    {
+        return self::query()->forTenant((string) $this->tenant_id)
+            ->whereKey($this->id)->where('status', self::STATUS_CANCELLED)->exists();
     }
 }

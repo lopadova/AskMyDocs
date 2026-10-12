@@ -16,6 +16,7 @@ final class ImapBackfillWindow extends Model
     public const STATUS_RUNNING = 'running';
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
+    public const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [
         'tenant_id', 'imap_backfill_id', 'connector_installation_id', 'mailbox',

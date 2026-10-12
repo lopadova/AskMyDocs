@@ -432,7 +432,7 @@ final class ConnectorAdminController extends Controller
             $installation->connector_name === 'imap'
             && $imapBackfills->isEnabled()
             && (int) ($config['date_window_days'] ?? 365) === 0
-            && ! $imapBackfills->hasCompletedBackfill($installation->id)
+            && ! $imapBackfills->hasFinishedBackfill($installation->id)
         ) {
             $backfill = $imapBackfills->start($installation->id);
 

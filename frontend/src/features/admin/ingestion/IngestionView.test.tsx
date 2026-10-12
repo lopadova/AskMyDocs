@@ -25,12 +25,14 @@ const backfillMock: QueryMock<ImapBackfillStateDto> = {
     isError: false,
 };
 const startBackfillMock = { mutate: vi.fn(), isPending: false, isError: false };
+const cancelBackfillMock = { mutate: vi.fn(), isPending: false, isError: false, error: null as unknown };
 
 vi.mock('./ingestion-hooks', () => ({
     useQueueDepths: () => ({ ...queueMock, refetch: vi.fn() }),
     useSyncRuns: () => ({ ...runsMock, refetch: vi.fn() }),
     useImapBackfill: () => ({ ...backfillMock, refetch: vi.fn() }),
     useStartImapBackfill: () => startBackfillMock,
+    useCancelImapBackfill: () => cancelBackfillMock,
 }));
 
 vi.mock('../connectors/connectors-hooks', () => ({
@@ -64,6 +66,10 @@ beforeEach(() => {
     startBackfillMock.mutate.mockReset();
     startBackfillMock.isPending = false;
     startBackfillMock.isError = false;
+    cancelBackfillMock.mutate.mockReset();
+    cancelBackfillMock.isPending = false;
+    cancelBackfillMock.isError = false;
+    cancelBackfillMock.error = null;
 });
 
 function entry(installations: { id: number; label: string }[]): ConnectorEntry {
@@ -121,6 +127,46 @@ function backfill(
 }
 
 describe('IngestionView', () => {
+    it.each(['discovering', 'running', 'paused', 'failed'])('cancels the displayed %s import by its specific campaign id', (status) => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'Autry' }])];
+        backfillMock.data = { enabled: true, backfill: backfill(status) };
+        wrap(<IngestionView />);
+        fireEvent.click(screen.getByRole('button', { name: 'Annulla importazione' }));
+        expect(cancelBackfillMock.mutate).toHaveBeenCalledWith({ installationId: 7, backfillId: 1 });
+        expect(startBackfillMock.mutate).not.toHaveBeenCalled();
+    });
+
+    it('disables repeated cancellation while the request is pending and surfaces failures', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'Autry' }])];
+        backfillMock.data = { enabled: true, backfill: backfill('running') };
+        cancelBackfillMock.isPending = true;
+        const { rerender } = wrap(<IngestionView />);
+        expect(screen.getByTestId('imap-backfill-cancel')).toBeDisabled();
+        expect(screen.getByTestId('imap-backfill-cancel')).toHaveAttribute('aria-busy', 'true');
+        fireEvent.click(screen.getByTestId('imap-backfill-cancel'));
+        expect(cancelBackfillMock.mutate).not.toHaveBeenCalled();
+        cancelBackfillMock.isPending = false;
+        cancelBackfillMock.isError = true;
+        cancelBackfillMock.error = new Error('Connection lost');
+        rerender(<QueryClientProvider client={new QueryClient()}><IngestionView /></QueryClientProvider>);
+        expect(screen.getByRole('alert')).toHaveTextContent('Impossibile annullare l’importazione: Network error.');
+        expect(screen.getByTestId('imap-backfill-progress')).toHaveTextContent((3500).toLocaleString());
+    });
+
+    it('keeps progress visible after cancellation and offers only an explicit new full import', () => {
+        queueMock.data = [];
+        connectorsMock.data = [entry([{ id: 7, label: 'Autry' }])];
+        backfillMock.data = { enabled: true, backfill: backfill('cancelled') };
+        wrap(<IngestionView />);
+        expect(screen.getByText('Annullata')).toBeInTheDocument();
+        expect(screen.getByText(/Le email già salvate restano disponibili/)).toBeInTheDocument();
+        expect(screen.queryByTestId('imap-backfill-cancel')).not.toBeInTheDocument();
+        expect(screen.getByTestId('imap-backfill-start')).toHaveTextContent('Import all history');
+        expect(screen.getByTestId('imap-backfill-progress')).toHaveTextContent((3500).toLocaleString());
+        expect(startBackfillMock.mutate).not.toHaveBeenCalled();
+    });
     it('shows the queue loading state', () => {
         queueMock.isLoading = true;
         wrap(<IngestionView />);

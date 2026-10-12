@@ -16,6 +16,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -26,6 +27,88 @@ use Tests\TestCase;
 final class ImapBackfillTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_cancel_preserves_progress_sources_and_incremental_sync_without_requeueing_history(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        Storage::disk('local')->put('saved-email.md', 'Previously imported email');
+        config()->set('connectors.scheduled_sync_enabled', true);
+        $installation = $this->installation();
+        $cutoff = now()->subHour();
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(), 'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING, 'cutoff_at' => $cutoff,
+            'total_messages' => 100, 'processed_messages' => 23, 'dispatched_documents' => 25,
+            'total_windows' => 2, 'completed_windows' => 1,
+        ]);
+        $windows = [];
+        foreach ([ImapBackfillWindow::STATUS_COMPLETED, ImapBackfillWindow::STATUS_QUEUED] as $index => $status) {
+            $windows[] = ImapBackfillWindow::create([
+                'tenant_id' => $this->tenantId(), 'imap_backfill_id' => $backfill->id,
+                'connector_installation_id' => $installation->id, 'mailbox' => 'INBOX',
+                'window_start' => '2025-0'.($index + 1).'-01', 'window_end' => '2025-0'.($index + 2).'-01',
+                'status' => $status, 'last_uid' => 23, 'processed_messages' => $index === 0 ? 20 : 3,
+            ]);
+        }
+        $manager = app(ImapBackfillManager::class);
+        $cancelled = $manager->cancel($installation->id, $backfill->id);
+        $finishedAt = $cancelled->completed_at->toAtomString();
+        $this->travel(1)->minutes();
+        $this->assertSame($finishedAt, $manager->cancel($installation->id, $backfill->id)->completed_at->toAtomString());
+        $this->assertSame(ImapBackfill::STATUS_CANCELLED, $cancelled->status);
+        $this->assertSame(23, $cancelled->processed_messages);
+        $this->assertSame(25, $cancelled->dispatched_documents);
+        $this->assertSame(ImapBackfillWindow::STATUS_COMPLETED, $windows[0]->fresh()->status);
+        $this->assertSame(ImapBackfillWindow::STATUS_CANCELLED, $windows[1]->fresh()->status);
+        $this->assertSame(23, $windows[1]->fresh()->last_uid);
+        $this->assertSame($cutoff->toAtomString(), $installation->fresh()->last_sync_at->toAtomString());
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->fresh()->status);
+        Storage::disk('local')->assertExists('saved-email.md');
+        $this->assertTrue($manager->hasFinishedBackfill($installation->id));
+        config()->set('connectors.imap.serialize_connections', true);
+        $this->assertSame([], (new ImportImapBackfillWindowJob($windows[1]->id, $this->tenantId()))->middleware());
+        $this->assertSame([], (new DiscoverImapBackfillJob($backfill->id, $this->tenantId()))->middleware());
+        $this->assertSame(0, (new ImapBackfillScheduler)->pumpActive());
+        (new PumpImapBackfillJob($backfill->id, $this->tenantId()))->handle();
+        Queue::assertNothingPushed();
+        $this->assertSame(1, (new SerializedSyncScheduler)->dispatchDueSyncs());
+        Queue::assertPushed(\App\Connectors\SerializedConnectorSyncJob::class);
+    }
+
+    public function test_cancel_rejects_an_old_campaign_without_stopping_the_new_import(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $old = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(), 'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_FAILED, 'cutoff_at' => now(),
+        ]);
+        $new = ImapBackfill::create([
+            'tenant_id' => $this->tenantId(), 'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING, 'cutoff_at' => now(),
+        ]);
+        $this->expectException(ConflictHttpException::class);
+        try {
+            app(ImapBackfillManager::class)->cancel($installation->id, $old->id);
+        } finally {
+            $this->assertSame(ImapBackfill::STATUS_RUNNING, $new->fresh()->status);
+            Queue::assertNothingPushed();
+        }
+    }
+
+    public function test_only_an_explicit_full_import_starts_history_again_after_cancellation(): void
+    {
+        Queue::fake();
+        $installation = $this->installation();
+        $manager = app(ImapBackfillManager::class);
+        $first = $manager->start($installation->id);
+        $manager->cancel($installation->id, $first->id);
+        $second = $manager->start($installation->id);
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame(ImapBackfill::STATUS_CANCELLED, $first->fresh()->status);
+        $this->assertSame(ImapBackfill::STATUS_DISCOVERING, $second->status);
+    }
 
     public function test_disabled_scheduled_sync_does_not_resume_an_active_backfill(): void
     {

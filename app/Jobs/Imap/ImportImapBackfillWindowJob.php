@@ -78,16 +78,35 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
             ->where('id', $window->connector_installation_id)
             ->firstOrFail();
 
-        $window->forceFill([
-            'status' => ImapBackfillWindow::STATUS_RUNNING,
-            'attempts' => $window->attempts + 1,
-            'started_at' => $window->started_at ?? now(),
-            'heartbeat_at' => now(),
-        ])->save();
+        $claimed = DB::transaction(function () use ($backfill, $window): bool {
+            $backfill = ImapBackfill::query()->forTenant($this->tenantId)->lockForUpdate()->findOrFail($backfill->id);
+            if ($backfill->status !== ImapBackfill::STATUS_RUNNING) {
+                return false;
+            }
+            $window = ImapBackfillWindow::query()->forTenant($this->tenantId)->lockForUpdate()->findOrFail($window->id);
+            if (! in_array($window->status, [ImapBackfillWindow::STATUS_QUEUED, ImapBackfillWindow::STATUS_RUNNING], true)) {
+                return false;
+            }
+            $window->forceFill([
+                'status' => ImapBackfillWindow::STATUS_RUNNING,
+                'attempts' => $window->attempts + 1,
+                'started_at' => $window->started_at ?? now(),
+                'heartbeat_at' => now(),
+            ])->save();
+
+            return true;
+        });
+        if (! $claimed) {
+            return;
+        }
+        $window->refresh();
 
         try {
             $result = $importer->importBatch($installation, $backfill, $window);
         } catch (MailboxBusyException $e) {
+            if ($backfill->isCancelled()) {
+                return;
+            }
             $error = ['message' => $e->getMessage(), 'type' => $e::class, 'at' => now()->toIso8601String()];
             $window->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
             $backfill->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
@@ -104,34 +123,36 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
 
             return;
         } catch (Throwable $e) {
+            if ($backfill->isCancelled()) {
+                return;
+            }
             $error = ['message' => $e->getMessage(), 'type' => $e::class, 'at' => now()->toIso8601String()];
             $window->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
             $backfill->forceFill(['heartbeat_at' => now(), 'error_json' => $error])->save();
             throw $e;
         }
 
-        DB::transaction(function () use ($result): void {
-            $window = ImapBackfillWindow::query()
-                ->forTenant($this->tenantId)
-                ->where('id', $this->windowId)
-                ->lockForUpdate()
-                ->firstOrFail();
+        $continue = DB::transaction(function () use ($result, $backfill): bool {
             $backfill = ImapBackfill::query()
                 ->forTenant($this->tenantId)
-                ->where('id', $window->imap_backfill_id)
+                ->where('id', $backfill->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            $window = ImapBackfillWindow::query()->forTenant($this->tenantId)
+                ->where('id', $this->windowId)->lockForUpdate()->firstOrFail();
 
-            $completed = ! $result->hasMore;
+            $cancelled = $backfill->status === ImapBackfill::STATUS_CANCELLED;
+            $completed = ! $cancelled && ! $result->hasMore;
             $window->forceFill([
-                'status' => $completed ? ImapBackfillWindow::STATUS_COMPLETED : ImapBackfillWindow::STATUS_PENDING,
+                'status' => $cancelled ? ImapBackfillWindow::STATUS_CANCELLED
+                    : ($completed ? ImapBackfillWindow::STATUS_COMPLETED : ImapBackfillWindow::STATUS_PENDING),
                 'last_uid' => $result->lastUid,
                 'expected_messages' => max($window->expected_messages, $result->expectedMessages),
                 'processed_messages' => $window->processed_messages + $result->processedMessages,
                 'dispatched_documents' => $window->dispatched_documents + $result->dispatchedDocuments,
-                'finished_at' => $completed ? now() : null,
+                'finished_at' => $completed || $cancelled ? now() : null,
                 'heartbeat_at' => now(),
-                'next_attempt_at' => $completed ? null : now(),
+                'next_attempt_at' => $completed || $cancelled ? null : now(),
                 'error_json' => null,
             ])->save();
 
@@ -142,6 +163,8 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
                 'heartbeat_at' => now(),
                 'error_json' => null,
             ])->save();
+
+            return $backfill->status === ImapBackfill::STATUS_RUNNING;
         });
 
         Log::info('[imap-download] window checkpoint saved', [
@@ -150,17 +173,23 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
             'tenant_id' => $this->tenantId,
             'last_uid' => $result->lastUid,
             'processed_messages' => $result->processedMessages,
-            'window_completed' => ! $result->hasMore,
+            'window_completed' => $continue && ! $result->hasMore,
+            'import_continues' => $continue,
         ]);
 
-        PumpImapBackfillJob::dispatch($backfill->id, $this->tenantId)
-            ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        if ($continue) {
+            PumpImapBackfillJob::dispatch($backfill->id, $this->tenantId)
+                ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        }
     }
 
     /** @return array<int,object> */
     public function middleware(): array
     {
         $window = ImapBackfillWindow::query()->forTenant($this->tenantId)->find($this->windowId);
+        if ($window?->status === ImapBackfillWindow::STATUS_CANCELLED) {
+            return [];
+        }
         $installation = $window === null ? null : ConnectorInstallation::query()
             ->forTenant($this->tenantId)
             ->find($window->connector_installation_id);
@@ -188,9 +217,18 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
             $window = ImapBackfillWindow::query()
                 ->forTenant($this->tenantId)
                 ->where('id', $this->windowId)
-                ->lockForUpdate()
                 ->first();
-            if ($window === null || $window->status === ImapBackfillWindow::STATUS_COMPLETED) {
+            if ($window === null) {
+                return null;
+            }
+            $backfill = ImapBackfill::query()->forTenant($this->tenantId)
+                ->where('id', $window->imap_backfill_id)->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
+                ->lockForUpdate()->first();
+            if ($backfill === null) {
+                return null;
+            }
+            $window = ImapBackfillWindow::query()->forTenant($this->tenantId)->lockForUpdate()->find($this->windowId);
+            if ($window === null || in_array($window->status, [ImapBackfillWindow::STATUS_COMPLETED, ImapBackfillWindow::STATUS_CANCELLED], true)) {
                 return null;
             }
 
@@ -206,16 +244,6 @@ final class ImportImapBackfillWindowJob implements ShouldQueue
                 'next_attempt_at' => null,
                 'error_json' => $error,
             ])->save();
-
-            $backfill = ImapBackfill::query()
-                ->forTenant($this->tenantId)
-                ->where('id', $window->imap_backfill_id)
-                ->whereIn('status', ImapBackfill::ACTIVE_STATUSES)
-                ->lockForUpdate()
-                ->first();
-            if ($backfill === null) {
-                return null;
-            }
 
             // A terminal job failure belongs to this durable window. Keep the
             // campaign active so the pump can skip it and claim the remaining

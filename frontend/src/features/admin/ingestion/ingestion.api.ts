@@ -32,7 +32,7 @@ export interface SyncRunDto {
     error: Record<string, unknown> | null;
 }
 
-export type ImapBackfillStatus = 'discovering' | 'running' | 'completed' | 'failed' | 'paused' | (string & {});
+export type ImapBackfillStatus = 'discovering' | 'running' | 'completed' | 'failed' | 'paused' | 'cancelled' | (string & {});
 
 export interface ImapBackfillDto {
     id: number;
@@ -89,6 +89,13 @@ export const adminIngestionApi = {
     async startImapBackfill(installationId: number): Promise<ImapBackfillStateDto> {
         const { data } = await api.post<{ data: ImapBackfillStateDto }>(
             `/api/admin/connectors/${installationId}/imap-backfill`,
+        );
+        return data.data;
+    },
+
+    async cancelImapBackfill(installationId: number, backfillId: number): Promise<ImapBackfillStateDto> {
+        const { data } = await api.post<{ data: ImapBackfillStateDto }>(
+            `/api/admin/connectors/${installationId}/imap-backfill/${backfillId}/cancel`,
         );
         return data.data;
     },

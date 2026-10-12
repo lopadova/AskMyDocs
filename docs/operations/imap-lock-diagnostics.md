@@ -176,3 +176,30 @@ UIDs under `(mailbox, UIDVALIDITY, UID)`, hash-check bodies and attachments afte
 writing, confirm each message transactionally, and rerun the same sample to check
 that no confirmed message is fetched again. Verify server flags before and after
 the test. Keep diagnostic artifacts under ignored storage, outside Git.
+
+## Cancel a historical mailbox import
+
+In **Ingestion & Sync**, select the account and use **Annulla importazione** in
+the **Full mailbox import** panel. The action stops that specific campaign,
+including discovering, running, paused or failed imports. Already saved emails,
+attachments and their queued ingestion remain intact. Cancellation is idempotent
+and tenant scoped; stale controls cannot cancel a newer campaign.
+
+Workers check cancellation before downloading another chunk and before starting
+another email. An IMAP read or email persistence already in progress can finish;
+its confirmed checkpoint is retained without scheduling another batch. Queued
+discovery, import, pump and late failure callbacks cannot revive the campaign.
+No mail flags or remote messages are changed, and no queues are purged.
+
+The account remains active. Its incremental date watermark is at least the
+original campaign cutoff, so future syncs collect mail arriving since the import
+began while leaving the older, deliberately skipped history behind. **Sync now**
+does not restart cancelled history. **Import all history** explicitly creates a
+new campaign; existing source identities still deduplicate already imported mail.
+
+The authenticated endpoint is
+`POST /api/admin/connectors/{installationId}/imap-backfill/{backfillId}/cancel`,
+under the existing `manageConnectors` permission. No schema migration is required.
+Deploy the backend and frontend together and restart the queue workers before
+using the new control on a live campaign, so long-running workers use the
+cancellation guards.
