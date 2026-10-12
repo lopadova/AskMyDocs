@@ -28,9 +28,13 @@ final class AgentAnswerPresenterTest extends TestCase
 
     private function decisions(float $faithful = .99, float $complete = .99): void
     {
-        Http::fake(fn () => Http::response(['id' => 'presentation-check', 'model' => 'jev-test', 'answers' => [
-            'faithful' => ['type' => 'noul', 'noul' => $faithful], 'complete' => ['type' => 'noul', 'noul' => $complete],
-        ]]));
+        Http::fake(function ($request) use ($faithful, $complete) {
+            $answers = [];
+            foreach (array_keys($request['questions']) as $key) {
+                $answers[$key] = ['type' => 'noul', 'noul' => str_starts_with($key, 'faithful_') ? $faithful : $complete];
+            }
+            return Http::response(['id' => 'presentation-check', 'model' => 'jev-test', 'answers' => $answers]);
+        });
     }
 
     private function context(): AgentExecutionContext
@@ -129,6 +133,35 @@ final class AgentAnswerPresenterTest extends TestCase
         $this->assertNull($result['paragraphs']);
         $this->assertSame('unavailable', $result['trace']['status']);
         Http::assertNothingSent();
+    }
+
+    public function test_every_block_is_checked_and_a_failed_second_batch_rejects_the_whole_rewrite(): void
+    {
+        $claims = $paragraphs = [];
+        for ($i = 0; $i < 6; $i++) {
+            $claims[] = ['text' => 'Verified fact '.$i, 'subquestion_id' => 0];
+            $paragraphs[] = ['text' => 'Display block '.$i, 'claim_ids' => [$i]];
+        }
+        Http::fake(function ($request) {
+            $blocks = $request['state']['blocks'];
+            $this->assertLessThanOrEqual(10, count($request['questions']));
+            $answers = [];
+            foreach (array_keys($request['questions']) as $key) {
+                $answers[$key] = ['type' => 'noul', 'noul' => count($blocks) === 1 ? .6 : .99];
+            }
+            foreach ($blocks as $block) {
+                $index = substr($block['candidate_text'], -1);
+                $this->assertSame(['Verified fact '.$index], $block['verified_facts']);
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response($paragraphs));
+        $result = (new AgentAnswerPresenter($ai))->present('Explain', $this->context(), $claims);
+        $this->assertSame('rejected', $result['trace']['status']);
+        $this->assertNull($result['paragraphs']);
+        $this->assertCount(2, $result['trace']['verification']['batches']);
+        Http::assertSentCount(2);
     }
 
     public function test_related_aspects_share_a_paragraph_and_only_attested_names_resolve_abbreviations(): void

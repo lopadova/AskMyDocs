@@ -29,7 +29,7 @@ final class AgentAnswerPresentationMemoTest extends TestCase
         $context = new AgentExecutionContext($run->run_id, 'default', 'demo', 'chat', 'user', '1', 'it', 'UTC');
         Http::preventStrayRequests();
         Http::fake(fn () => Http::response(['id' => 'decision', 'model' => 'jev-test', 'answers' => [
-            'faithful' => ['type' => 'noul', 'noul' => .99], 'complete' => ['type' => 'noul', 'noul' => .99],
+            'faithful_0' => ['type' => 'noul', 'noul' => .99], 'complete_0' => ['type' => 'noul', 'noul' => .99],
         ]]));
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'luna-test', toolCalls: [[
