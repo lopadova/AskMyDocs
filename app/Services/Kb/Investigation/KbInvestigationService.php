@@ -159,8 +159,7 @@ class KbInvestigationService
             $exact = collect();
             if ($round === 0 && ! $anchoredToPreviousCitations && $understanding->available) {
                 try {
-                    $literalIds = array_column(array_filter($understanding->mentions,
-                        fn ($mention) => is_array($mention) && ($mention['type'] ?? '') === 'identifier'), 'text');
+                    $literalIds = $understanding->mentionTexts();
                     $exact = app(\App\Services\Kb\KbSearchService::class)->exactIdentifierCandidates(
                         array_merge($understanding->targetIdentifiers(), $literalIds), $projectKey, $filters);
                     $attempt['exact_candidates'] = $exact->count();

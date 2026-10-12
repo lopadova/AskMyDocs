@@ -909,17 +909,29 @@ class KbSearchService
                 ->when($effectiveFilters->projectKeys !== [], fn ($q) => $q->whereIn('project_key', $effectiveFilters->projectKeys))
                 ->when($projectKey !== null, fn ($q) => $q->where('project_key', $projectKey)))
             ->when($projectKey !== null, fn ($q) => $q->where('knowledge_chunks.project_key', $projectKey))
-            ->where(function ($q) use ($identifiers): void {
+            ->where(function ($q) use ($identifiers, $tenant): void {
                 foreach ($identifiers as $id) {
                     $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
                     $q->orWhereRaw("LOWER(chunk_text) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+                    $q->orWhereHas('document', fn ($document) => $document->forTenant($tenant)
+                        ->whereRaw("LOWER(title) LIKE ? ESCAPE '!'", ['%'.$literal.'%']));
                 }
             });
         $this->applyFilters($query, $effectiveFilters);
+        $ranks = $bindings = [];
+        foreach ($identifiers as $id) {
+            $literal = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id)).'%';
+            $ranks[] = "CASE WHEN LOWER(chunk_text) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM knowledge_documents AS literal_doc WHERE literal_doc.id = knowledge_chunks.knowledge_document_id AND literal_doc.tenant_id = ? AND LOWER(literal_doc.title) LIKE ? ESCAPE '!') THEN 1 ELSE 0 END";
+            $bindings = [...$bindings, $literal, $tenant, $literal];
+        }
         // Bound DB work; an incomplete candidate list must never imply global absence.
-        $chunks = $this->filterByFolderGlobs($query->orderBy('knowledge_chunks.id')->limit(64)->get(), $effectiveFilters->folderGlobs);
+        // A common actor cannot exhaust that bound before a more specific
+        // person/title/place match. This rank is navigation, never support.
+        $chunks = $this->filterByFolderGlobs($query->orderByRaw('('.implode(' + ', $ranks).') DESC', $bindings)
+            ->orderBy('knowledge_chunks.id')->limit(64)->get(), $effectiveFilters->folderGlobs);
         return $chunks->filter(fn ($chunk) => array_filter($identifiers,
-            fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)) !== [])
+            fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
+                || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)) !== [])
             ->map(fn ($chunk) => [...$this->mapChunkToArray($chunk), 'chunk_hash' => $chunk->chunk_hash,
                 'retrieval_method' => 'exact_identifier'])->values();
     }

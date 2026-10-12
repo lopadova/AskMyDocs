@@ -74,6 +74,21 @@ final class ExactIdentifierCandidatesTest extends TestCase
         $this->assertTrue(app(KbSearchService::class)->exactIdentifierCandidates([], 'orders')->isEmpty());
     }
 
+    public function test_a_literal_source_title_finds_its_original_body_without_embeddings_or_scope_leaks(): void
+    {
+        $title = 'Defective component';
+        $match = $this->document('The fastener does not stay locked. Support forwarded it to the responsible department.', ['title' => $title]);
+        $this->document('A different case.', ['title' => $title, 'tenant_id' => 'other-tenant']);
+        $this->document('Archived case.', ['title' => $title, 'status' => 'archived']);
+        $this->document('Foreign project.', ['title' => $title, 'project_key' => 'other']);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates([$title], 'orders');
+
+        $this->assertSame([$match->id], $candidates->pluck('document.id')->all());
+        $source = app(KbSourceReader::class)->readCandidate($candidates->first(), 'orders');
+        $this->assertStringContainsString('fastener does not stay locked', $source['excerpt']);
+    }
+
     private function document(string $text, array $attributes = []): KnowledgeDocument
     {
         $document = KnowledgeDocument::create($attributes + [
@@ -85,5 +100,17 @@ final class ExactIdentifierCandidatesTest extends TestCase
             'knowledge_document_id' => $document->id, 'chunk_order' => 0, 'chunk_text' => $text,
             'chunk_hash' => hash('sha256', $text)]);
         return $document;
+    }
+
+    public function test_a_common_name_cannot_exhaust_the_bound_before_a_specific_subject_match(): void
+    {
+        for ($i = 0; $i < 65; $i++) {
+            $this->document('Merchant reply in an unrelated case.');
+        }
+        $specific = $this->document('Merchant replied to Ada Rossi about her refund.');
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['Merchant', 'Ada Rossi'], 'orders');
+        $this->assertSame($specific->id, $candidates->first()['document']['id']);
+        $this->assertCount(64, $candidates);
+        $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
     }
 }
