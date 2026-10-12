@@ -28,6 +28,15 @@ app(Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->set($cases['t
 $user = App\Models\User::findOrFail($cases['actor_id']);
 $only = isset($options['only']) ? explode(',', $options['only']) : null;
 $masker = app(App\Services\Widget\WidgetPiiMasker::class);
+$providerReplies = [];
+$app['events']->listen(Illuminate\Http\Client\Events\ResponseReceived::class, function ($event) use (&$providerReplies): void {
+    if (parse_url($event->request->url(), PHP_URL_HOST) === 'openrouter.ai') {
+        $data = $event->response->json();
+        if (is_array($data) && isset($data['choices'])) {
+            $providerReplies[] = ['model' => $data['model'] ?? null, 'choices' => $data['choices']];
+        }
+    }
+});
 
 foreach ($cases['cases'] as $case) {
     $id = $case['id'];
@@ -70,6 +79,7 @@ foreach ($cases['cases'] as $case) {
     $context = new App\Agent\AgentExecutionContext((string) Illuminate\Support\Str::uuid(), $cases['tenant_id'],
         $cases['project_key'], 'chat', 'user', (string) $user->id, $cases['locale'] ?? 'it', $cases['timezone'] ?? 'Europe/Rome');
     $context->activate();
+    $providerReplies = [];
     $started = microtime(true);
     echo json_encode(['case' => $id, 'round' => $round, 'started' => $context->runId, 'conversation_id' => $conversation->id]).PHP_EOL;
     $turn = app(App\Agent\AgentChatTurnStarter::class)->start($context, $conversation, $user, $case['question'],
@@ -83,7 +93,7 @@ foreach ($cases['cases'] as $case) {
         'elapsed_seconds' => round(microtime(true) - $started, 2), 'answer' => $message?->content,
         'response' => data_get($run->result_json, 'response'), 'result' => $run->result_json,
         'tool_executions' => $run->toolExecutions()->get()->toArray(),
-        'events' => $run->events()->get()->toArray(), 'evaluation' => null];
+        'events' => $run->events()->get()->toArray(), 'provider_replies' => $providerReplies, 'evaluation' => null];
     if ($message !== null) {
         try {
             $decision = App\Decisions\Decisions::using()->withState(['question' => $case['question'],
