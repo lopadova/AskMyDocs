@@ -197,14 +197,15 @@ final class EvidenceProjector
     {
         $alternatives = [];
         foreach ($evidence['documents'] ?? [] as $document) {
+            // Cross-document context must share all requested anchors. One
+            // common organization name cannot pull every customer case in.
+            if (($document['document_id'] ?? null) !== $documentId && ($ids === []
+                || array_filter($ids, fn ($id) => ! self::contains($document['title'] ?? '', $id)
+                    && ! array_filter($document['evidence'] ?? [], fn ($chunk) => self::contains(($chunk['source_title'] ?? '')."\n".($chunk['content'] ?? ''), $id)
+                        || in_array(hash('sha256', $id), $chunk['verified_identifier_hashes'] ?? [], true))))) {
+                continue;
+            }
             foreach ($document['evidence'] ?? [] as $chunk) {
-                // Semantic matching of a prose subject is allowed for its paired
-                // document, not a license to add every unrelated search result.
-                if (($document['document_id'] ?? null) !== $documentId
-                    && ! array_filter($ids, fn ($id) => self::contains(($chunk['source_title'] ?? $document['title'] ?? '')."\n".($chunk['content'] ?? ''), $id)
-                        || in_array(hash('sha256', $id), $chunk['verified_identifier_hashes'] ?? [], true))) {
-                    continue;
-                }
                 $bound = $this->bind($evidence, ['document_id' => $document['document_id'], 'evidence_hash' => $chunk['evidence_hash']], $ids, $tenant, $project);
                 if (isset($bound['quote']) && $bound['quote'] !== $quote) {
                     $alternatives[hash('sha256', $bound['quote'])] = ['source' => $bound['quote'], 'document_id' => $document['document_id']];

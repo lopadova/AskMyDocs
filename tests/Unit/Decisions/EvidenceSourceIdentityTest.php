@@ -101,4 +101,14 @@ class EvidenceSourceIdentityTest extends TestCase
             ['Merchant', 'ALPINE MAP', 'Device X'], 'default', 'demo');
         $this->assertSame('Unfortunately it is not compatible.', $bound['quote']);
     }
+
+    public function test_a_common_actor_does_not_expand_alternatives_to_unrelated_customer_cases(): void
+    {
+        $evidence = ['documents' => [
+            ['document_id' => 1, 'evidence' => [['content' => 'Merchant replied to Ada Rossi.', 'evidence_hash' => 'ada']]],
+            ['document_id' => 2, 'evidence' => [['content' => 'Merchant replied to Bruno Verdi.', 'evidence_hash' => 'bruno']]],
+        ]];
+        $this->assertSame([], (new EvidenceProjector)->alternatives($evidence,
+            ['Merchant', 'Ada Rossi'], 'Merchant replied to Ada Rossi.', 'default', 'demo', 1));
+    }
 }
