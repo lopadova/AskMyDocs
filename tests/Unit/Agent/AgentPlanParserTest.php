@@ -6,6 +6,7 @@ namespace Tests\Unit\Agent;
 
 use App\Agent\Planning\AgentPlanParser;
 use App\Agent\Tools\AgentToolDefinition;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class AgentPlanParserTest extends TestCase
@@ -106,6 +107,56 @@ final class AgentPlanParserTest extends TestCase
             'actions' => [[
                 'id' => 'bad', 'tool' => 'delete_everything', 'arguments' => [],
                 'depends_on' => [], 'purpose' => 'Bad',
+            ]],
+        ], $this->tools());
+    }
+
+    public static function prefixedTools(): array
+    {
+        return [
+            'knowledge' => ['search_knowledge_base'],
+            'api' => ['find_customer'],
+            'mcp' => ['search_tickets_12345678'],
+        ];
+    }
+
+    #[DataProvider('prefixedTools')]
+    public function test_it_resolves_the_functions_prefix_to_a_registered_tool(string $name): void
+    {
+        $arguments = ['query' => 'Heiner Olbrich'];
+        $plan = (new AgentPlanParser)->parse([
+            'decision' => 'tools',
+            'actions' => [[
+                'id' => 'lookup', 'tool' => 'functions.'.$name, 'arguments' => $arguments,
+                'depends_on' => [], 'purpose' => 'Verifico la richiesta del cliente',
+            ]],
+        ], [$name => $this->tool($name, 1)]);
+
+        $this->assertSame($name, $plan->actions[0]->tool);
+        $this->assertSame($arguments, $plan->actions[0]->arguments);
+        $this->assertSame($name, $plan->jsonSerialize()['actions'][0]['tool']);
+        $this->assertSame(1, $plan->estimate->physicalMaximum);
+    }
+
+    public static function unknownQualifiedTools(): array
+    {
+        return [
+            'unregistered' => ['functions.delete_everything'],
+            'other namespace' => ['other.find_customer'],
+            'repeated prefix' => ['functions.functions.find_customer'],
+        ];
+    }
+
+    #[DataProvider('unknownQualifiedTools')]
+    public function test_it_rejects_qualified_names_without_an_exact_catalog_match(string $name): void
+    {
+        $this->expectException(\UnexpectedValueException::class);
+        $this->expectExceptionMessage("Planner selected unknown tool [{$name}].");
+        (new AgentPlanParser)->parse([
+            'decision' => 'tools',
+            'actions' => [[
+                'id' => 'lookup', 'tool' => $name, 'arguments' => [],
+                'depends_on' => [], 'purpose' => 'Verifico il cliente',
             ]],
         ], $this->tools());
     }
