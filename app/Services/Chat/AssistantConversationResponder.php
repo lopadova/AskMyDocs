@@ -34,8 +34,9 @@ final readonly class AssistantConversationResponder
         $documents = array_filter($tools, static fn ($tool) => in_array($tool->kind, ['knowledge', 'catalog'], true)) !== [];
         $live = array_filter($snapshot->capabilities, static fn ($capability) => in_array($capability->source, ['api', 'mcp', 'client'], true));
         if (! in_array($topic, ['assistant', 'documents', 'live_tools'], true)) {
-            // Match only the declared canonical entity, not words in a user question or remote description.
-            $live = array_filter($live, static fn ($capability) => rtrim($capability->entity, 's') === rtrim($topic, 's'));
+            // Match host capability entities/tags, never words in a user question or remote description.
+            $live = array_filter($live, static fn ($capability) => in_array(rtrim($topic, 's'),
+                array_map(static fn ($entity) => rtrim($entity, 's'), [$capability->entity, ...$capability->intentTags]), true));
         }
         $parts = [];
         if (in_array($topic, ['assistant', 'documents'], true)) {

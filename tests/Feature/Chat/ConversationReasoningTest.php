@@ -131,6 +131,50 @@ class ConversationReasoningTest extends TestCase
         app(ConversationReasoning::class)->prepare($two, $turn, 'private');
     }
 
+    public function test_source_read_dialogue_remembers_authorized_target_without_copying_business_prose(): void
+    {
+        $conversation = $this->conversation();
+        $document = \App\Models\KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'source_type' => 'text', 'title' => 'Richiesta accesso GestiClaim di Valentina Rinaldi',
+            'source_path' => 'mail/context-source', 'mime_type' => 'text/plain', 'status' => 'active',
+            'document_hash' => 'doc-hash', 'version_hash' => 'version-hash']);
+        $chunk = \App\Models\KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0, 'chunk_hash' => 'chunk-hash',
+            'chunk_text' => 'PRIVATE-BUSINESS-FACT: portal credentials are available.']);
+        $memory = app(ConversationReasoning::class);
+        $refs = $memory->references($conversation, ['documents' => [['document_id' => $document->id,
+            'evidence' => [['chunk_id' => $chunk->id, 'evidence_hash' => 'chunk-hash']]]]]);
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $refs]])->save();
+        $conversation->messages()->create(['role' => 'assistant', 'content' => $chunk->chunk_text, 'metadata' => [
+            'completeness' => 'complete', 'grounding' => ['action' => 'read_source'],
+            'citations' => [['document_id' => $document->id, 'title' => $document->title]],
+        ]]);
+        $context = $memory->context($conversation);
+        $this->assertSame('read_source', $context['dialogue'][0]['action']);
+        $this->assertSame($document->title, $context['dialogue'][0]['sources_shown'][0]['title']);
+        $this->assertStringNotContainsString('PRIVATE-BUSINESS-FACT', json_encode($context));
+        $document->delete();
+        $revoked = $memory->context($conversation);
+        $this->assertSame([], $revoked['dialogue'][0]['sources_shown']);
+        $this->assertStringNotContainsString($document->title, json_encode($revoked));
+    }
+
+    public function test_a_greeting_preserves_the_current_business_focus(): void
+    {
+        $greeting = ['language' => 'it', 'intent' => 'Salutare', 'action' => 'greeting', 'kb_queries' => [], 'mentions' => [],
+            'references_previous_turn' => false, 'transition' => 'new',
+            'focus' => ['topic' => 'assistant', 'identifiers' => [], 'aspect' => 'greeting', 'fields' => []],
+            'subquestions' => [], 'resolved_references' => [], 'needs_clarification' => false, 'clarification' => ''];
+        $this->ai($this->interpretation('TRACK-55'), $greeting);
+        $conversation = $this->conversation();
+        $memory = app(ConversationReasoning::class);
+        $initial = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-55']);
+        $memory->prepare($conversation, $initial, 'TRACK-55');
+        $next = $conversation->messages()->create(['role' => 'user', 'content' => 'Ciao']);
+        $this->assertTrue($memory->prepare($conversation, $next, 'Ciao')->isAssistantConversation());
+        $this->assertSame(['TRACK-55'], $conversation->fresh()->reasoning_state['focus']['identifiers']);
+    }
+
     public function test_state_is_not_mass_assignable_and_revoked_references_are_not_exposed(): void
     {
         $conversation = $this->conversation();

@@ -763,7 +763,7 @@ final class AgentLoopTest extends TestCase
 
     public function test_capability_reply_uses_selected_project_tools_without_claiming_connectivity(): void
     {
-        $route = $this->route('get_orders', 'http://erp.example.test/orders');
+        $route = $this->route('erp_get_orders', 'http://erp.example.test/orders');
         $other = $this->route('get_customers', 'http://erp.example.test/customers');
         $other->forceFill(['project_key' => 'other-project'])->save();
         Http::preventStrayRequests();
@@ -773,13 +773,13 @@ final class AgentLoopTest extends TestCase
             action: \App\Services\Chat\QuestionAction::Capabilities);
         $responder = app(\App\Services\Chat\AssistantConversationResponder::class);
         $answer = $responder->answer($understanding, $this->context($run), selection: ['api' => ['api:'.$route->api_connector_id], 'mcp' => []]);
-        $this->assertStringContainsString('get_orders', $answer->answer);
+        $this->assertStringContainsString('erp_get_orders', $answer->answer);
         $this->assertStringNotContainsString('get_customers', $answer->answer);
         $this->assertFalse($answer->grounding['connectivity_verified']);
         $this->assertSame([], $answer->citations);
         $excluded = $responder->answer($understanding, $this->context($run), selection: ['api' => [], 'mcp' => []]);
-        $this->assertStringNotContainsString('get_orders', $excluded->answer);
-        $this->assertNotContains('get_orders', $excluded->grounding['available_tools']);
+        $this->assertStringNotContainsString('erp_get_orders', $excluded->answer);
+        $this->assertNotContains('erp_get_orders', $excluded->grounding['available_tools']);
         Http::assertNothingSent();
     }
 

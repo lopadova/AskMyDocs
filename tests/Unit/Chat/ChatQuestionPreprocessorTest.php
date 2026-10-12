@@ -195,6 +195,37 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertSame(['ORDER-A'], $result->targetIdentifiers());
     }
 
+    public function test_named_followup_resolves_a_registered_person_instead_of_copying_generic_services(): void
+    {
+        $focus = ['topic' => 'person request', 'identifiers' => ['Valentina Rinaldi'], 'aspect' => 'next_steps', 'fields' => []];
+        $task = $focus + ['question' => "Come gestire la richiesta di accesso GestiClaim di Valentina Rinaldi?",
+            'kb_queries' => ['Valentina Rinaldi richiesta accesso GestiClaim']];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->withArgs(function ($provider, $prompt, $messages) {
+            $this->assertStringContainsString('explicit subject overrides the old generic task', $prompt);
+            $context = json_decode($messages[0]['content'], true)['reasoning_context'];
+            $this->assertSame(['Valentina Rinaldi'], $context['known_identifiers']);
+            $this->assertSame('read_source', $context['dialogue'][0]['action']);
+            return true;
+        })->andReturn($this->response([
+            'language' => 'it', 'intent' => $task['question'], 'action' => 'refine', 'kb_queries' => $task['kb_queries'],
+            'mentions' => [['text' => 'Rinaldi', 'type' => 'name']], 'references_previous_turn' => true,
+            'transition' => 'continue', 'focus' => $focus, 'subquestions' => [$task],
+            'resolved_references' => ['Valentina Rinaldi'], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Cosa possiamo fare con Rinaldi', reasoningContext: [
+            'known_identifiers' => ['Valentina Rinaldi'], 'focus' => ['topic' => 'generic logistics services'],
+            'dialogue' => [['role' => 'assistant', 'action' => 'read_source',
+                'sources_shown' => [['document_id' => 226, 'title' => 'Domanda su accesso portale GestiClaim per reclami']]]],
+        ]);
+        $this->assertTrue($result->available);
+        $this->assertSame(['Rinaldi'], $result->mentionTexts());
+        $this->assertSame(['Valentina Rinaldi'], $result->targetIdentifiers());
+        $this->assertSame(['Valentina Rinaldi'], $result->resolvedReferences);
+        $this->assertSame('refine', $result->toArray()['action']);
+        $this->assertFalse($result->asksToReadSource());
+    }
+
     private function response(array $payload): AiResponse
     {
         $payload += ['action' => 'research'];

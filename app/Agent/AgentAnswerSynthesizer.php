@@ -538,7 +538,7 @@ PROMPT;
             limitations: [],
             artifact: null,
             requiresSelection: false,
-            grounding: ['status' => 'grounded', 'model' => 'deterministic_source_read', 'claims' => $grounding['claims'],
+            grounding: ['status' => 'grounded', 'model' => 'deterministic_source_read', 'action' => 'read_source', 'claims' => $grounding['claims'],
                 'semantic_validation' => [['stage' => 'direct_source_read', 'attempted' => false, 'used' => false, 'status' => 'not_used', 'reason' => 'deterministic_source_read']]],
         );
     }

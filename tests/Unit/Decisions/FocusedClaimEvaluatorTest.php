@@ -187,9 +187,26 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->fake();
         [$evidence, $claims, $u] = $this->fixture();
         $first = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $u['transition'] = 'continue';
+        $u['action'] = 'refine';
         $next = app(FocusedClaimEvaluator::class)->evaluate('Altri dettagli?', $evidence, [$claims[0]], $u, 'demo', 'acme', [$first['claims'][0]['fact_id']]);
         $this->assertFalse($next['valid']);
         $this->assertSame('no_new_detail', $next['reason']);
+    }
+
+    public function test_a_new_question_or_recheck_can_reuse_a_fact_after_fresh_source_validation(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $first = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        foreach ([['new', 'research'], ['continue', 'recheck']] as [$transition, $action]) {
+            $u['transition'] = $transition;
+            $u['action'] = $action;
+            $next = app(FocusedClaimEvaluator::class)->evaluate('Verify TRACK-55 status', $evidence, [$claims[0]], $u,
+                'demo', 'acme', [$first['claims'][0]['fact_id']]);
+            $this->assertTrue($next['valid']);
+            $this->assertCount(1, $next['claims']);
+        }
     }
 
     public function test_chat_28_keeps_primary_hub_and_routes_shipment_by_exact_identifier(): void

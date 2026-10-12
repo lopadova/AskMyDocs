@@ -143,7 +143,7 @@ final readonly class ConversationReasoning
         $subquestions = array_values(array_filter($state['subquestions'], fn ($sub) => array_diff($sub['identifiers'] ?? [], $known) === []));
         return $this->redactor->redact($this->masker->maskArray([
             'focus' => $focus, 'subquestions' => $subquestions, 'objective' => $state['objective'], 'language' => $state['language'],
-            'dialogue' => $this->dialogue($owner, $beforeTurn),
+            'dialogue' => $this->dialogue($owner, $beforeTurn, $references),
             'known_identifiers' => array_values(array_unique($known)), 'verified_relations' => $relations,
             'references' => $references, 'communicated_fact_ids' => array_keys($state['communicated']),
             'already_communicated' => array_values(array_filter($state['communicated'], fn ($fact) =>
@@ -360,7 +360,7 @@ final readonly class ConversationReasoning
     }
 
     /** Ordered dialogue acts guide interpretation; previous assistant facts are not reintroduced as evidence. */
-    private function dialogue(Model $owner, ?int $beforeTurn): array
+    private function dialogue(Model $owner, ?int $beforeTurn, array $authorizedReferences): array
     {
         $query = $owner instanceof Conversation ? $owner->messages() : $owner->steps();
         $records = $query->when($beforeTurn !== null, fn ($q) => $q->where('id', '<', $beforeTurn))
@@ -376,7 +376,15 @@ final readonly class ConversationReasoning
                     'questions' => data_get($metadata, 'reasoning.understanding.subquestions', [])];
             } elseif (($owner instanceof Conversation && $record->role === 'assistant')
                 || (! ($owner instanceof Conversation) && $record->kind === WidgetSessionStep::KIND_BOT_MESSAGE)) {
+                $action = data_get($metadata, 'grounding.action')
+                    ?? (data_get($metadata, 'grounding.model') === 'deterministic_source_read' ? 'read_source' : null);
+                $allowedDocuments = array_column(array_filter($authorizedReferences, fn ($ref) => ($ref['kind'] ?? '') === 'document'), 'document_id');
+                $shown = $action !== 'read_source' ? [] : array_values(array_map(static fn ($citation) => [
+                    'document_id' => $citation['document_id'], 'title' => mb_substr((string) ($citation['title'] ?? ''), 0, 300),
+                ], array_filter((array) ($metadata['citations'] ?? []), static fn ($citation) => is_array($citation)
+                    && in_array($citation['document_id'] ?? null, $allowedDocuments, true))));
                 $dialogue[] = ['role' => 'assistant', 'answer_status' => $metadata['completeness'] ?? null,
+                    'action' => $action, 'sources_shown' => $shown,
                     'answered_questions' => data_get($metadata, 'reasoning.subquestions', []),
                     // Offers are server-written dialogue acts, not business facts.
                     // This replaces parsing the previous answer for "would you like...".
