@@ -65,7 +65,6 @@ export function TenantProvisionDialog({
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onClose();
             if (event.key !== 'Tab' || dialogRef.current === null) return;
 
             const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
@@ -191,9 +190,6 @@ export function TenantProvisionDialog({
     return (
         <div
             data-testid="tenant-control-provision-backdrop"
-            onClick={(event) => {
-                if (event.target === event.currentTarget) onClose();
-            }}
             style={backdropStyle}
         >
             <form

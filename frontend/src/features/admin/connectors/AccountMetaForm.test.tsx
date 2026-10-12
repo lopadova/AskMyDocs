@@ -100,10 +100,14 @@ describe('AccountMetaForm', () => {
         expect(form).toHaveAttribute('aria-busy', 'true');
     });
 
-    it('closes on Escape', () => {
+    it('preserves an unsaved label on outside click and Escape', () => {
         const onClose = vi.fn();
         render(<AccountMetaForm {...BASE} onSubmit={vi.fn()} onClose={onClose} />);
+        const input = screen.getByTestId('connector-imap-account-form-label');
+        fireEvent.change(input, { target: { value: 'Unsaved account' } });
+        fireEvent.click(screen.getByTestId('connector-imap-account-form-backdrop'));
         fireEvent.keyDown(document, { key: 'Escape' });
-        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(input).toHaveValue('Unsaved account');
     });
 });

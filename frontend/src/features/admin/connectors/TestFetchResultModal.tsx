@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { ConnectorInstallationDto, TestFetchResponse } from './connectors.api';
 
 /**
@@ -9,8 +9,8 @@ import type { ConnectorInstallationDto, TestFetchResponse } from './connectors.a
  * does not open the modal.
  *
  * R11/R29: stable testids `connector-test-fetch-*`.
- * R15: role=dialog + aria-modal + labelled title; Esc + backdrop + a labelled
- *      close button all dismiss.
+ * R15: role=dialog + aria-modal + labelled title; only explicit close controls
+ *      dismiss the modal.
  */
 
 export interface TestFetchResultModalProps {
@@ -20,23 +20,12 @@ export interface TestFetchResultModalProps {
 }
 
 export function TestFetchResultModal({ account, result, onClose }: TestFetchResultModalProps): ReactNode {
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const titleId = 'connector-test-fetch-title';
     const message = result.message;
 
     return (
         <div
             data-testid="connector-test-fetch-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

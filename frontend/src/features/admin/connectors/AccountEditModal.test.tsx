@@ -103,6 +103,34 @@ beforeEach(() => {
 });
 
 describe('AccountEditModal', () => {
+    it('preserves edited details on outside click and Escape, then closes with Cancel', async () => {
+        const user = userEvent.setup();
+        const { onClose } = renderModal();
+        const input = screen.getByTestId('connector-imap-account-form-label');
+        await user.clear(input);
+        await user.type(input, 'Unsaved account');
+        await user.click(screen.getByTestId('connector-account-7-edit-backdrop'));
+        await user.keyboard('{Escape}');
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(input).toHaveValue('Unsaved account');
+        await user.click(screen.getByTestId('connector-account-7-edit-cancel'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['connection', 'settings'] as const)('keeps the %s tab open on Escape and outside click', async (initialTab) => {
+        const user = userEvent.setup();
+        exportReady();
+        const { onClose } = renderModal({ initialTab });
+        await user.click(screen.getByTestId('connector-account-7-edit-backdrop'));
+        await user.keyboard('{Escape}');
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByTestId('connector-account-7-edit-modal')).toHaveAttribute('data-active-tab', initialTab);
+        await user.click(screen.getByTestId('connector-account-7-edit-close'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('renders all three tabs for a credential connector and Details by default', () => {
         renderModal();
         expect(screen.getByTestId('connector-account-7-edit-tab-details')).toBeInTheDocument();

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../Icons';
+import { Button } from '../Button';
 
 type PaletteItem = {
     icon: IconName;
@@ -28,15 +29,12 @@ export function CommandPalette() {
     const inputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
-        const trigger = () => setOpen((o) => !o);
+        const trigger = () => setOpen(true);
         const key = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 trigger();
                 return;
-            }
-            if (e.key === 'Escape') {
-                setOpen(false);
             }
         };
         window.addEventListener('amd:palette', trigger as EventListener);
@@ -72,7 +70,6 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"
-            onClick={() => setOpen(false)}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -123,7 +120,15 @@ export function CommandPalette() {
                             fontFamily: 'var(--font-sans)',
                         }}
                     />
-                    <span className="kbd">ESC</span>
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        aria-label="Close command palette"
+                        onClick={() => setOpen(false)}
+                    >
+                        <Icon.Close size={15} />
+                    </Button>
                 </div>
                 <div style={{ maxHeight: 420, overflow: 'auto', padding: 6 }}>
                     {Object.entries(grouped).map(([g, its]) => (

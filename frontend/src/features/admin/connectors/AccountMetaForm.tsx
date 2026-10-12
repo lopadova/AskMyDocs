@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { ModalSourceHeader } from './ModalSourceHeader';
 
@@ -15,7 +15,7 @@ import { ModalSourceHeader } from './ModalSourceHeader';
  *
  * R11/R29: stable testids `connector-{key}-account-form-{field}`.
  * R15: every control has a bound `<label htmlFor>`; dialog is role=dialog +
- *      aria-modal; Esc closes.
+ *      aria-modal; explicit close controls only.
  */
 
 export interface AccountMetaFormValues {
@@ -77,14 +77,6 @@ export function AccountMetaForm({
 }: AccountMetaFormProps): ReactNode {
     const [label, setLabel] = useState(initialLabel);
     const [projectKey, setProjectKey] = useState(initialProjectKey ?? '');
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -239,9 +231,6 @@ export function AccountMetaForm({
     return (
         <div
             data-testid={`connector-${connectorKey}-account-form-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

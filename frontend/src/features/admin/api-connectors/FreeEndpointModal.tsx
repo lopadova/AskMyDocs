@@ -20,7 +20,7 @@ import {
  * Presentational (R11/R16): it owns the FORM state but delegates the call via
  * `onSend` and receives `result`/`error`/`isSending`, so it is unit-testable
  * without a query/router context. R14 — the ResponseViewer surfaces request vs
- * upstream failure distinctly. R15 — bound labels, role=dialog, Esc closes, the
+ * upstream failure distinctly. R15 — bound labels, role=dialog, explicit close controls only, the
  * URL input autofocuses.
  */
 
@@ -75,14 +75,6 @@ export function FreeEndpointModal({
         urlRef.current?.focus();
     }, []);
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const allowsBody = methodAllowsBody(method);
 
     function handleSend() {
@@ -134,9 +126,6 @@ export function FreeEndpointModal({
     return (
         <div
             data-testid="api-probe-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <div

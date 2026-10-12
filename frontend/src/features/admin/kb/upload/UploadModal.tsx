@@ -85,15 +85,6 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     // v8.36 / ADR 0029 §8 — the OCR cost line, read only in the review phase.
     const ocrEstimate = useOcrEstimate(batchId, phase === 'review', estimateRevision);
 
-    // Esc closes (mirror ProjectFormDialog).
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     // Transition to `done` once the polled batch is terminal, exactly once.
     useEffect(() => {
         if ((phase === 'progress' || phase === 'committing') && isTerminalBatch(progress.data?.batch)) {
@@ -215,9 +206,6 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     return (
         <div
             data-testid="kb-upload-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

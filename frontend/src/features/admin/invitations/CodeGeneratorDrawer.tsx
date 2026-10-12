@@ -12,7 +12,7 @@ import { Drawer, Field, drawerInput, drawerPrimaryBtn } from './Drawer';
  * operator can hand them out before closing. 422 validation errors surface
  * inline next to the offending field (toAdminError flattens Laravel errors).
  *
- * Chrome (role="dialog" + aria-modal, Escape closes, scrim click closes) and
+ * Chrome (role="dialog" + aria-modal, explicit close controls only) and
  * the labelled <Field> wrapper come from the shared Drawer so dialog/close/
  * error semantics stay in lock-step with the other invitations forms (no
  * a11y/testid drift). R11/R29: testids under admin-invitations-codes-generate-*.

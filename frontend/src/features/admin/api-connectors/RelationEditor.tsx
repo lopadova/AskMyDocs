@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import type {
     ApiRoute,
     ApiRouteRelation,
@@ -29,7 +29,7 @@ import {
  * unit-testable without a query context.
  *
  * R11/R29 testids `api-route-relation-form-*`. R15: bound labels, role=dialog,
- * Esc closes, field errors inline. R14: submit error surfaces loudly.
+ * explicit close controls only, field errors inline. R14: submit error surfaces loudly.
  */
 
 export interface RelationEditorProps {
@@ -80,14 +80,6 @@ export function RelationEditor({
     const [name, setName] = useState(relation?.name ?? '');
     const [rows, setRows] = useState<MapRow[]>(() => toRows(relation?.field_map));
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const listRoutes = routes.filter((r) => r.endpoint_type === 'list');
     const detailRoutes = routes.filter((r) => r.endpoint_type === 'detail');
     const itemFields = listRouteFull ? listItemFieldNames(listRouteFull) : [];
@@ -126,9 +118,6 @@ export function RelationEditor({
     return (
         <div
             data-testid="api-route-relation-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <form

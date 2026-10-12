@@ -39,7 +39,7 @@ import { Button } from '../../../components/Button';
  * parsed message inline (R14 — never a silent failure).
  *
  * R15: role=dialog + aria-modal; a real tablist (role=tab/tabpanel, aria-selected);
- *      Esc + backdrop close. R29: `connector-account-{id}-edit-*` testids.
+ *      explicit close controls only. R29: `connector-account-{id}-edit-*` testids.
  */
 
 export type EditTab = 'details' | 'connection' | 'settings' | 'triage';
@@ -90,14 +90,6 @@ export function AccountEditModal({
         setFieldErrors({});
     }, [tab]);
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     // Prefill the Connection tab from the account's secret-free export — only fetch
     // while that tab is actually open (lazy).
     const exportQuery = useInstallationExport(account.id, isCredential && tab === 'connection');
@@ -139,9 +131,6 @@ export function AccountEditModal({
     return (
         <div
             data-testid={`${idBase}-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

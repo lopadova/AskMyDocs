@@ -242,9 +242,6 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
             {modal?.kind === 'remove' && (
                 <div
                     data-testid="api-connection-remove-backdrop"
-                    onClick={(e) => {
-                        if (e.target === e.currentTarget) setModal(null);
-                    }}
                     style={modalBackdropStyle()}
                 >
                     <div role="dialog" aria-modal="true" data-testid="api-connection-remove-modal" style={modalPanelStyle(380)}>

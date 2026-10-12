@@ -93,11 +93,6 @@ export function RegisterServerDialog({ open, onClose, onCreated }: RegisterServe
             data-testid="admin-mcp-register-dialog"
             data-state={register.isPending ? 'submitting' : 'idle'}
             style={modalOverlay}
-            onClick={(event) => {
-                if (event.target === event.currentTarget) {
-                    handleClose();
-                }
-            }}
         >
             <form onSubmit={handleSubmit} style={dialogStyle}>
                 <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

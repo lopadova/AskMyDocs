@@ -17,7 +17,7 @@ import {
  *
  * R11: every interactive element carries a `data-testid`.
  * R15: every input has a bound `<label htmlFor>`. Form is `role="dialog"`
- * + `aria-modal="true"`. Esc closes via the keydown listener.
+ * + `aria-modal="true"`. Only explicit controls close the dialog.
  */
 
 export interface SynonymFormDialogProps {
@@ -49,14 +49,6 @@ export function SynonymFormDialog({
         setSynonymsText((synonym?.synonyms ?? []).join('\n'));
         setEnabled(synonym?.enabled ?? true);
     }, [synonym, defaultProjectKey]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     // Normalize the term exactly as the backend does (lowercase + trim +
     // collapse whitespace) so the distinct-check and persisted value agree
@@ -90,9 +82,6 @@ export function SynonymFormDialog({
     return (
         <div
             data-testid="admin-synonym-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

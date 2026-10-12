@@ -4,18 +4,19 @@ import userEvent from '@testing-library/user-event';
 import { CommandPalette } from './CommandPalette';
 
 describe('CommandPalette', () => {
-    it('opens on Ctrl+K and closes on Escape', async () => {
+    it('opens on Ctrl+K and preserves the query until explicitly closed', async () => {
         const user = userEvent.setup();
         render(<CommandPalette />);
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         await user.keyboard('{Control>}k{/Control}');
-        expect(await screen.findByRole('dialog', { name: /command palette/i })).toBeInTheDocument();
+        const dialog = await screen.findByRole('dialog', { name: /command palette/i });
+        await user.type(screen.getByLabelText('Search'), 'insights');
+        await user.click(dialog);
         await user.keyboard('{Escape}');
-        // Closing is a state update that resolves on a later tick
-        // (Copilot PR #33 flakiness fix). `waitForElementToBeRemoved`
-        // is the wrong primitive here because the dialog is sometimes
-        // already gone by the time we check; `waitFor` against
-        // queryByRole === null is the right async-poll primitive.
+        await user.keyboard('{Control>}k{/Control}');
+        expect(dialog).toBeInTheDocument();
+        expect(screen.getByLabelText('Search')).toHaveValue('insights');
+        await user.click(screen.getByRole('button', { name: 'Close command palette' }));
         await waitFor(() => {
             expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         });

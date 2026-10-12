@@ -32,7 +32,7 @@ import type {
  *      testid; per-field 422 errors render under the field with
  *      `connector-{key}-form-{name}-error`.
  * R15: every input has a bound `<label htmlFor>`; secrets use `type=password` and
- *      are never pre-filled; the dialog is `role="dialog"` + `aria-modal`; Esc closes.
+ *      are never pre-filled; the dialog is `role="dialog"` + `aria-modal`; explicit close controls only.
  */
 
 export interface CredentialConnectorFormProps {
@@ -169,14 +169,6 @@ export function CredentialConnectorForm({
         setLabel(initialLabel);
         setProjectKey(initialProjectKey ?? '');
     }, [entry.key, initialLabel, initialProjectKey]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const isVisible = (field: CredentialFieldSchema): boolean =>
         field.showIf === null || values[field.showIf.field] === field.showIf.equals;
@@ -548,9 +540,6 @@ export function CredentialConnectorForm({
     return (
         <div
             data-testid={`connector-${entry.key}-form-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

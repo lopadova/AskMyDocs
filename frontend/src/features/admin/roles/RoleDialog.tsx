@@ -115,18 +115,13 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                 justifyContent: 'center',
             }}
         >
-            <button
-                type="button"
-                aria-label="Close dialog"
+            <div
+                aria-hidden="true"
                 data-testid="role-dialog-backdrop"
-                onClick={onClose}
                 style={{
                     position: 'absolute',
                     inset: 0,
                     background: 'rgba(0,0,0,0.45)',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
                 }}
             />
             <div

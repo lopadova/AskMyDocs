@@ -11,7 +11,7 @@ import type { AdminTeam, CreateTeamPayload, UpdateTeamPayload } from './admin-te
  *
  * R11: every interactive element carries a `data-testid`. R15: every input
  * has a bound `<label htmlFor>`; the form is `role="dialog"` +
- * `aria-modal="true"`; Esc closes via the keydown listener. Per-field errors
+ * `aria-modal="true"`; Only explicit controls close the dialog. Per-field errors
  * render next to their input as `admin-team-form-<field>-error`.
  */
 
@@ -54,14 +54,6 @@ export function TeamFormDialog({
         setSlugTouched(team !== null);
     }, [team]);
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const handleNameChange = (value: string) => {
         setName(value);
         if (!isEdit && !slugTouched) {
@@ -81,11 +73,6 @@ export function TeamFormDialog({
     return (
         <div
             data-testid="admin-team-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                    onClose();
-                }
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

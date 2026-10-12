@@ -17,7 +17,7 @@ import type { AdminTag, CreateTagPayload, UpdateTagPayload } from './admin-tags.
  *
  * R11: every interactive element carries a `data-testid`.
  * R15: every input has a bound `<label htmlFor>`. Form is `role="dialog"`
- * + `aria-modal="true"`. Esc closes via the keydown listener below.
+ * + `aria-modal="true"`. Only explicit controls close the dialog.
  */
 
 export interface TagFormDialogProps {
@@ -57,16 +57,6 @@ export function TagFormDialog({
         setColor(tag?.color ?? '');
     }, [tag, defaultProjectKey]);
 
-    // Esc closes the dialog. Click-outside is handled by the parent
-    // (it owns the backdrop), so the dialog itself doesn't need it.
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         if (isEdit) {
@@ -93,13 +83,6 @@ export function TagFormDialog({
     return (
         <div
             data-testid="admin-tag-form-backdrop"
-            onClick={(e) => {
-                // Only close when clicking the backdrop itself, not the
-                // dialog content bubbling up.
-                if (e.target === e.currentTarget) {
-                    onClose();
-                }
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

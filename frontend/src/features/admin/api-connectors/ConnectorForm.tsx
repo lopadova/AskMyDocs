@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import type { ApiConnector, ConnectorPayload } from './api-connectors.api';
 import { SourceAvatar } from '../connectors/SourceAvatar';
@@ -17,7 +17,7 @@ import {
  *
  * R11/R29: testids `api-connector-form-{field}`.
  * R15: every control has a bound `<label htmlFor>`; dialog is role=dialog +
- *      aria-modal; Esc closes; field errors render next to the input.
+ *      aria-modal; explicit close controls only; field errors render next to the input.
  */
 
 export interface ConnectorFormProps {
@@ -71,14 +71,6 @@ export function ConnectorForm({
     );
     const [isActive, setIsActive] = useState(connector?.is_active ?? true);
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const headers = parseHeaders(headersText);
@@ -97,9 +89,6 @@ export function ConnectorForm({
     return (
         <div
             data-testid="api-connector-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <form

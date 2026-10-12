@@ -269,10 +269,6 @@ export class SourceViewer {
 
         this.dialog.addEventListener('cancel', (event) => {
             event.preventDefault();
-            this.close();
-        });
-        this.dialog.addEventListener('click', (event) => {
-            if (event.target === this.dialog) this.close();
         });
     }
 

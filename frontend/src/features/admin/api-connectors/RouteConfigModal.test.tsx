@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ApiConnector, ApiRoute, ProduceConfigResponse, RouteConfig, TestConfigResponse } from './api-connectors.api';
 
 type MutationStub = { mutate: ReturnType<typeof vi.fn>; isPending: boolean; isError: boolean; error: unknown; data: unknown };
@@ -54,6 +55,21 @@ describe('RouteConfigModal', () => {
         testRouteState = stub(testRouteMutate);
         testState = stub(testMutate);
         produceState = stub(produceMutate);
+    });
+
+    it('preserves the route draft on outside click and Escape, then closes with the X', async () => {
+        const user = userEvent.setup();
+        const onClose = vi.fn();
+        render(<RouteConfigModal connector={connector} route={null} onClose={onClose} />);
+        const input = screen.getByTestId('api-route-form-name');
+        await user.type(input, 'Ordini da configurare');
+        await user.click(screen.getByTestId('api-route-form-backdrop'));
+        await user.keyboard('{Escape}');
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(input).toHaveValue('Ordini da configurare');
+        await user.click(screen.getByTestId('api-route-form-cancel'));
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it('create mode: Testa is available without saving, and Save sends the recombined config', () => {

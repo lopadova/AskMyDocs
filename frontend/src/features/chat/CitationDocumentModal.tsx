@@ -53,7 +53,7 @@ function fileName(path: string | null | undefined): string | null {
  * the chat answers (so wikilinks/callouts resolve).
  *
  * Works for EVERY reader, not only admins (who previously got navigated away to
- * the admin KB page). a11y comes from the Radix Dialog: focus trap, Escape,
+ * the admin KB page). a11y comes from the Radix Dialog: focus trap, explicit close controls,
  * `aria-modal`, restore-focus. R11/R29: stable testids; R14: the error path
  * surfaces a visible, retryable alert rather than a silent blank.
  */

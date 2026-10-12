@@ -131,15 +131,6 @@ export function McpConnectionsPanel({
         setFormOpen(true);
     }, [createRequest]);
 
-    useEffect(() => {
-        if (!formOpen) return;
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape' && !create.isPending) closeForm();
-        };
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [create.isPending, formOpen]);
-
     const connections = useMemo(() => query.data ?? [], [query.data]);
     const state = query.isLoading ? 'loading' : query.isError ? 'error' : 'ready';
     const title = scope === 'shared' ? 'MCP connections' : 'Connected Apps';
@@ -225,9 +216,6 @@ export function McpConnectionsPanel({
             {formOpen && (
                 <div
                     data-testid="mcp-connection-form-backdrop"
-                    onClick={(event) => {
-                        if (event.target === event.currentTarget && !create.isPending) closeForm();
-                    }}
                     style={modalBackdropStyle()}
                 >
                     <form

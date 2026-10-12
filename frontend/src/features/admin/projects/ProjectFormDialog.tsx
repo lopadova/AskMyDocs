@@ -13,7 +13,7 @@ import type { AdminProject, CreateProjectPayload, UpdateProjectPayload } from '.
  *
  * R11: every interactive element carries a `data-testid`. R15: every input
  * has a bound `<label htmlFor>`; the form is `role="dialog"` +
- * `aria-modal="true"`; Esc closes via the keydown listener.
+ * `aria-modal="true"`; Only explicit controls close the dialog.
  */
 
 export interface ProjectFormDialogProps {
@@ -55,14 +55,6 @@ export function ProjectFormDialog({
         setKeyTouched(project !== null);
     }, [project]);
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const handleNameChange = (value: string) => {
         setName(value);
         if (!isEdit && !keyTouched) {
@@ -91,11 +83,6 @@ export function ProjectFormDialog({
     return (
         <div
             data-testid="admin-project-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                    onClose();
-                }
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

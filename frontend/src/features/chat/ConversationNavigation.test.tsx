@@ -19,7 +19,7 @@ describe('ConversationNavigation', () => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
-    it('supports keyboard opening, Escape and focus restoration', async () => {
+    it('supports keyboard opening and restores focus after explicit dismissal', async () => {
         const user = userEvent.setup();
         render(<ConversationNavigation projectKey={null} onSelect={vi.fn()} onNewAnonymous={vi.fn()}>{(toggle) => <header>{toggle}</header>}</ConversationNavigation>);
         const toggle = screen.getByRole('button', { name: 'Show conversations' });
@@ -27,6 +27,8 @@ describe('ConversationNavigation', () => {
         await user.keyboard('{Enter}');
         expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
         await user.keyboard('{Escape}');
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Close conversations' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(toggle).toHaveFocus();
     });

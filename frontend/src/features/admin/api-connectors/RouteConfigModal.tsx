@@ -179,7 +179,7 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
         <Dialog.Root open onOpenChange={open => { if (!open && !busy) onClose(); }}>
             <Dialog.Portal>
                 <Dialog.Overlay className="route-editor-overlay" data-testid="api-route-form-backdrop" />
-                <Dialog.Content className="route-editor" data-testid="api-route-form" onEscapeKeyDown={e => { if (busy) e.preventDefault(); }} onInteractOutside={e => { if (busy) e.preventDefault(); }}>
+                <Dialog.Content className="route-editor" data-testid="api-route-form" onEscapeKeyDown={e => e.preventDefault()} onInteractOutside={e => e.preventDefault()}>
                     <header className="route-editor-header">
                         <div className="route-editor-heading">
                             <Dialog.Title className="route-editor-title">{isEdit ? 'Modifica rotta' : 'Nuova rotta'}</Dialog.Title>

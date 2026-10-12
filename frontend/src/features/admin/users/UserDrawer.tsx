@@ -129,18 +129,13 @@ export function UserDrawer({
                 pointerEvents: 'auto',
             }}
         >
-            <button
-                type="button"
-                aria-label="Close drawer"
+            <div
+                aria-hidden="true"
                 data-testid="user-drawer-backdrop"
-                onClick={onClose}
                 style={{
                     position: 'absolute',
                     inset: 0,
                     background: 'rgba(0,0,0,0.45)',
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
                 }}
             />
             <aside

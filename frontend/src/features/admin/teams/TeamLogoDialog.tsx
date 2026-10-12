@@ -58,9 +58,6 @@ export function TeamLogoDialog({ team, onClose, onChanged }: TeamLogoDialogProps
         <div
             data-testid="admin-team-logo-backdrop"
             style={backdropStyle}
-            onMouseDown={(event) => {
-                if (event.target === event.currentTarget && !busy) onClose();
-            }}
         >
             <form
                 role="dialog"

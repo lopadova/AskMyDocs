@@ -16,22 +16,9 @@ export function McpConnectionErrorDialog({ error, onClose }: McpConnectionErrorD
         closeRef.current?.focus();
     }, []);
 
-    useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                onClose();
-            }
-        };
-        document.addEventListener('keydown', onKeyDown, true);
-        return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [onClose]);
-
     return (
         <div
             data-testid="mcp-connection-error-backdrop"
-            onClick={(event) => event.target === event.currentTarget && onClose()}
             style={{ ...modalBackdropStyle(), zIndex: 120 }}
         >
             <div

@@ -157,7 +157,10 @@ describe('McpConnectionsPanel OAuth onboarding', () => {
         expect(screen.queryByTestId('mcp-connection-error-dialog')).toBeNull();
 
         await user.click(screen.getByRole('button', { name: 'View connection error details' }));
+        await user.click(screen.getByTestId('mcp-connection-error-backdrop'));
         await user.keyboard('{Escape}');
+        expect(screen.getByTestId('mcp-connection-error-dialog')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Close error details' }));
         expect(screen.queryByTestId('mcp-connection-error-dialog')).toBeNull();
         expect(screen.getByRole('dialog', { name: 'New MCP connection' })).toBeInTheDocument();
     });

@@ -227,7 +227,7 @@ describe('AgentActivityBar', () => {
         expect(within(screen.getByRole('dialog')).getByTestId('agent-activity-timeline')).toBeInTheDocument();
     });
 
-    it('opens from the keyboard and returns focus to the information button on Escape', async () => {
+    it('opens from the keyboard and returns focus after explicit dismissal', async () => {
         const user = userEvent.setup();
         render(
             <AgentActivityBar events={[progressEvent]} active={false} awaitingConfirmation={false} onCancel={vi.fn()} onContinue={vi.fn()}>
@@ -239,6 +239,8 @@ describe('AgentActivityBar', () => {
         await user.keyboard('{Enter}');
         expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
         await user.keyboard('{Escape}');
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Chiudi informazioni' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(info).toHaveFocus();
     });

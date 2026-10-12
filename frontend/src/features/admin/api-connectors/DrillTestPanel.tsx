@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { ApiRouteRelation, DrillResult } from './api-connectors.api';
 import { prettyJson } from './pretty-json';
 import {
@@ -16,7 +16,7 @@ import {
  * the DETAIL route. Renders the mapped arguments + the raw detail response.
  *
  * Presentational — the parent owns the mutation and passes `result`/`error`.
- * R11/R29 testids `api-route-drill-*`. R15: bound labels, role=dialog, Esc closes.
+ * R11/R29 testids `api-route-drill-*`. R15: bound labels, role=dialog, explicit close controls only.
  * R14: a failed drill (missing field → 422, or a failed detail call) surfaces.
  */
 
@@ -40,14 +40,6 @@ export function DrillTestPanel({
     const [itemIndex, setItemIndex] = useState('0');
     const [itemJson, setItemJson] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     function runByIndex() {
         setJsonError(null);
@@ -85,9 +77,6 @@ export function DrillTestPanel({
     return (
         <div
             data-testid="api-route-drill-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <div

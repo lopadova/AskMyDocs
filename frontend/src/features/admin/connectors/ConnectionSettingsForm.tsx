@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ConnectorInstallationDto } from './connectors.api';
 import { useInstallationFolders } from './connectors-hooks';
 import {
@@ -25,7 +25,7 @@ import {
  *
  * R11/R29 testids `connector-{key}-settings-form*` + per-field
  * `connector-{key}-settings-{slug(name)}*`; R15 every control has a bound label,
- * the dialog is role=dialog + aria-modal, Esc closes; R14 the folder fetch
+ * the dialog is role=dialog + aria-modal, explicit close controls only; R14 the folder fetch
  * loading/error/empty/ready states are observable via `data-state`.
  */
 
@@ -68,14 +68,6 @@ export function ConnectionSettingsForm({
         for (const f of schema) seed[f.name] = seedValue(f, account.settings ?? {});
         return seed;
     });
-
-    useEffect(() => {
-        const onKey = (e: globalThis.KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const groups = useMemo(() => groupFields(schema), [schema]);
 
@@ -199,9 +191,6 @@ export function ConnectionSettingsForm({
     return (
         <div
             data-testid={`connector-${connectorKey}-settings-form-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={backdropStyle()}
         >
             {dialog}

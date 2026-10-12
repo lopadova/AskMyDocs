@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ApiAuthProfile, AuthProfilePayload, AuthType } from './api-connectors.api';
 import {
     buttonStyle,
@@ -18,7 +18,7 @@ import {
  * payload when every field is empty).
  *
  * R11/R29: testids `api-auth-profile-form-{field}`.
- * R15: bound labels, role=dialog, Esc closes, field errors next to inputs.
+ * R15: bound labels, role=dialog, explicit close controls only, field errors next to inputs.
  */
 
 export interface AuthProfileFormProps {
@@ -92,14 +92,6 @@ export function AuthProfileForm({
         return initial;
     });
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
     const credFields = useMemo(() => CREDENTIAL_FIELDS[type], [type]);
     const cfgFields = useMemo(() => CONFIG_FIELDS[type], [type]);
 
@@ -128,9 +120,6 @@ export function AuthProfileForm({
     return (
         <div
             data-testid="api-auth-profile-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <form

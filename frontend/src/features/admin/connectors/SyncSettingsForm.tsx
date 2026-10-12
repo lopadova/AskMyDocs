@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ConnectorInstallationDto, CredentialFieldSchema } from './connectors.api';
 import { useInstallationFolders } from './connectors-hooks';
 import {
@@ -86,14 +86,6 @@ export function SyncSettingsForm({
         return seed;
     });
     const [folderQuery, setFolderQuery] = useState('');
-
-    useEffect(() => {
-        const onKey = (e: globalThis.KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const windowField = schema.find((f) => f.name === WINDOW);
     const scopeFields = schema.filter((f) => f.group === 'Scope' && f.type === 'checkbox');
