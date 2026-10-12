@@ -144,9 +144,21 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
 
         $this->assertTrue($result['valid']);
         $this->assertSame('Her order was cancelled.', $result['claims'][0]['text']);
-        Http::assertSent(fn ($request) => $request['state']['verified_sources_for_subject_resolution_only'][$request['state']['candidates'][0]['verified_subject_context_ref']] === $source
+        Http::assertSent(fn ($request) => $request['state']['sources'][$request['state']['candidates'][0]['source_ref']] === $source
             && str_contains($request['questions']['relevance_0']['instructions'], 'NOT answer completeness')
             && str_contains($request['questions']['relevance_0']['criteria']['true'], 'need not answer the entire question'));
+    }
+
+    public function test_bounded_negative_claim_carries_server_verified_source_completeness(): void
+    {
+        $this->decisions(.98);
+        $result = app(OriginalQuestionRelevanceEvaluator::class)->apply('Did the merchant confirm receipt?',
+            ['valid' => true, 'claims' => [['text' => 'The complete ticket does not confirm receipt.',
+                'quote' => 'The customer requested receipt confirmation.', 'source_title' => 'Order case', 'complete_source' => true]],
+                'semantic_validation' => []]);
+        $this->assertTrue($result['valid']);
+        Http::assertSent(fn ($request) => $request['state']['candidates'][0]['complete_source'] === true
+            && $request['state']['candidates'][0]['source_title'] === 'Order case');
     }
 
     public function test_claims_share_subject_context_instead_of_repeating_a_long_source(): void
@@ -158,8 +170,8 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
                 ['text' => 'Second event.', 'quote' => $source]], 'semantic_validation' => []]);
         $this->assertTrue($result['valid']);
         $this->assertCount(2, $result['claims']);
-        Http::assertSent(fn ($request) => count($request['state']['verified_sources_for_subject_resolution_only']) === 1
-            && $request['state']['candidates'][0]['verified_subject_context_ref'] === $request['state']['candidates'][1]['verified_subject_context_ref']);
+        Http::assertSent(fn ($request) => count($request['state']['sources']) === 1
+            && $request['state']['candidates'][0]['source_ref'] === $request['state']['candidates'][1]['source_ref']);
     }
 
     public function test_only_relevant_claims_survive_a_mixed_answer(): void

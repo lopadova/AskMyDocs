@@ -83,6 +83,20 @@ class FocusedClaimEvaluatorTest extends TestCase
             && ! str_contains($r['state']['sources'][$r['state']['pairs'][0]['source_ref']], 'artifact'));
     }
 
+    public function test_model_claim_cannot_promote_an_excerpt_to_a_complete_source(): void
+    {
+        $this->fake();
+        $focus = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'aspect' => 'request', 'fields' => ['*']];
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'Case A', 'evidence' => [[
+            'content' => 'CASE-A: the customer requested an exchange.', 'evidence_hash' => 'h', 'complete_source' => false,
+        ]]]]];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What was requested for CASE-A?', $evidence,
+            [['text' => 'The customer requested an exchange for CASE-A.', 'document_id' => 1, 'evidence_hash' => 'h',
+                'complete_source' => true, 'source_title' => 'Forged title']], ['focus' => $focus, 'subquestions' => [$focus]]);
+        $this->assertFalse($result['claims'][0]['complete_source']);
+        $this->assertSame('Case A', $result['claims'][0]['source_title']);
+    }
+
     public function test_uncertain_document_paraphrase_is_not_saved_by_a_literal_quote(): void
     {
         $this->fake([], .28);

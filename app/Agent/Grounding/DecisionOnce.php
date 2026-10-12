@@ -8,7 +8,7 @@ use App\Decisions\DecisionResult;
 use App\Models\AgentRun;
 use Illuminate\Support\Facades\DB;
 
-/** A durable dispatch marker prevents retry/repair from charging for a second semantic decision. */
+/** Each bounded phase has a durable slot; retrying that phase never redispatches it. */
 final class DecisionOnce
 {
     public function run(?string $runId, string $signature, \Closure $call, string $slot = 'focused_decision'): DecisionResult

@@ -162,9 +162,12 @@ final readonly class AgentAnswerSynthesizer
                     $repaired = app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $repairEvidence,
                         $repairedPayload['claims'] ?? [], $understanding ?? [], $context->projectKey, $context->tenantId,
                         data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
-                        data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])));
+                        data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])), repairAttempt: true);
                     $repairedCoverage = $repaired['valid']
                         ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims']) : null;
+                    $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
+                    $repair['candidate_coverage'] = $repairedCoverage;
+                    $repair['candidate_reason'] = $repaired['reason'] ?? null;
                     $improved = ! $grounding['valid'] || ($repairedCoverage['sufficient'] ?? false)
                         || (($repairedCoverage['probability_true'] ?? 0) > ($coverage['probability_true'] ?? 1)
                             && count($repaired['claims']) >= count($grounding['claims']));
@@ -417,6 +420,8 @@ final readonly class AgentAnswerSynthesizer
         $system = $this->systemPrompt($context);
         if ($repairAttempt) {
             $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
+            $system .= "\nWhen a source-supported paragraph failed original-question relevance, resolve its implicit subject and operation explicitly from the complete source. Restate that fact with the requested case/product/person and actor, rather than repeating the same ambiguous paragraph. Resolve short replies such as commitments to proceed using the preceding request. Tie alternatives and conditions to the specific response the user requested. Add no new facts.";
+            $system .= "\nFor EACH failed original_question_relevance paragraph, its corrected claim text must explicitly name the requested case/product/person identifiers AND requested operation from the original question. Include the documented actor. Do not rely on headings, neighboring paragraphs or an implicit 'same response' to identify the subject. This overrides the preference to avoid repeated names during this correction attempt only.";
         }
         if ($claimBudget !== null) {
             $system .= <<<PROMPT
@@ -672,8 +677,9 @@ Sources marked historical_context are previous observations, even in a mixed req
 When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 Copy the selected source's claim_source fields into the claim when provided. Use exactly the JSON keys "document_id", "tool_execution_id" and "evidence_hash". Example of a TOOL claim source: {"document_id": null, "tool_execution_id": 42, "evidence_hash": "copy-the-exact-supplied-hash"}. These are three separate properties: never put assignments, commas or values inside a property name. For tool records also copy the selected record_path from record_paths.
 For a case history, read the entire supplied conversation and cover the requested problem, customer response and latest documented merchant response, rather than stopping at the opening notice. Preserve who performed each action. Never invent a message date from another case or from retrieval time. State recorded observations as historical; a document retrieved now does not establish current availability or an action completed today. A promised refund or shipment is not proof of execution.
+In a case summary, describe a voucher/gift card's value, validity and whether its code was communicated. Do not reproduce redeemable codes, access credentials or payment tokens unless the user explicitly requests that exact value. Do not include unrequested personal addresses.
 When the question asks for confirmation by a specific speaker, identify that speaker's actual statement. A customer's question, inference or restatement cannot become a merchant's confirmation merely because it appears in the same thread. If no such confirmation appears in a complete source, state that bounded lack of confirmation and attribute the actual assertion to its speaker.
-Answer a specific confirmation question directly. When complete_source=true and this document contains no confirmation of the requested event, you may submit a source-bound claim saying "The consulted ticket does not confirm ...", alongside the actual documented request or promise. This is a statement about the complete document, not proof that the event never occurred elsewhere. Do not assert absence from an incomplete excerpt or mix in another customer's procedure. Keep the source identity on these bounded negative claims too.
+Answer a specific confirmation question directly. When complete_source=true and this document contains no confirmation of the requested event, scope a negative claim explicitly: "The consulted ticket does not confirm ...", alongside the actual documented request or promise. Missing confirmation never proves that the event did not occur elsewhere. Do not turn it into an unqualified "the customer did not receive" or "the merchant did not perform" an event. Do not assert absence from an incomplete excerpt or mix in another customer's procedure. Keep the source identity on these bounded negative claims too.
 document_id and tool_execution_id are NOT the same thing as an `id` field INSIDE a document's frontmatter or a tool result's payload. Select document_id ONLY from evidence.documents[].document_id; select tool_execution_id ONLY from evidence.api_tools[].execution_id. A list_knowledge_documents result is TOOL evidence: its nested document IDs are payload values, not claim-source identities. Set the unused source property to JSON null.
 Return the result only through submit_agent_answer. The answer supports CommonMark; do not emit raw HTML.
 
