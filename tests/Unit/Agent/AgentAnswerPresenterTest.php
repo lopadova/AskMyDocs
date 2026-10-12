@@ -187,6 +187,8 @@ final class AgentAnswerPresenterTest extends TestCase
             $contexts = $request['state']['case_reference_contexts'];
             $this->assertSame(['CASE-A', 'Gianni Rossi'], $contexts[0]['subject_labels_attested_in_bound_sources']);
             $this->assertNotContains('Mauro Verdi', $contexts[0]['reference_labels_attested_in_bound_sources']);
+            $this->assertSame(['Gianni Rossi'], $contexts[0]['reference_labels_visible_in_display_blocks']);
+            $this->assertSame(['Mauro Verdi'], $contexts[1]['reference_labels_visible_in_display_blocks']);
             $this->assertSame(['CASE-A: rimborso promesso.'], $contexts[0]['verified_facts_for_reference_resolution_only']);
             $this->assertArrayNotHasKey('candidate_passages_for_reference_resolution_only', $contexts[0]);
             return true;
