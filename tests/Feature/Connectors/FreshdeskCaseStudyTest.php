@@ -162,7 +162,7 @@ final class FreshdeskCaseStudyTest extends TestCase
             && $request['state']['original_sources'][0]['text'] === $original);
     }
 
-    private function fixture(): array
+    private function fixture(?array $fields = null): array
     {
         $installation = ConnectorInstallation::create(['tenant_id' => 'case-tenant', 'connector_name' => 'freshdesk', 'label' => 'support',
             'project_key' => 'support', 'status' => 'active', 'config_json' => ['connection' => ['domain' => 'example.freshdesk.com']]]);
@@ -171,7 +171,7 @@ final class FreshdeskCaseStudyTest extends TestCase
             'checkpoint' => [], 'counts' => [], 'scan_started_at' => now()]);
         $state = SourceState::create(['tenant_id' => 'case-tenant', 'installation_id' => $installation->id, 'kind' => 'ticket', 'remote_id' => '42',
             'fingerprint' => str_repeat('a', 64), 'last_seen_run_id' => $run->id, 'relative_path' => 'support/connectors/freshdesk/ticket/42.md']);
-        $result = new CaseStudyResult($this->fields());
+        $result = new CaseStudyResult($fields ?? $this->fields());
         $case = CaseStudy::create(['tenant_id' => 'case-tenant', 'installation_id' => $installation->id, 'ticket_id' => '42',
             'source_fingerprint' => $state->fingerprint, 'private_notes_included' => true, 'status' => 'ready', 'snapshot' => $input->toArray(),
             'checkpoint' => [], 'result' => ['fields' => $result->fields, 'usage' => []]]);
@@ -228,6 +228,18 @@ final class FreshdeskCaseStudyTest extends TestCase
             $this->assertStringContainsString('stale', $exception->getMessage());
             $this->assertSame(0, KnowledgeDocument::count());
         }
+    }
+
+    public function test_a_case_sheet_without_original_quotes_is_not_answering_evidence(): void
+    {
+        $fields = array_fill_keys(CaseStudyResult::FIELDS, ['status' => 'not_documented', 'text' => '', 'evidence' => []]);
+        [$source] = $this->fixture($fields);
+        $this->embeddings();
+        $document = app(DocumentIngestor::class)->ingest('support', $source, 'Empty case sheet');
+        $anchor = $document->chunks()->firstOrFail();
+
+        $this->assertNull(app(FreshdeskCaseStudyLineage::class)->originalEvidence($document));
+        $this->assertNull(app(KbSourceReader::class)->readCandidate(['document' => ['id' => $document->id], 'chunk_id' => $anchor->id], 'support'));
     }
 
     public function test_reconfiguration_revokes_case_and_cross_tenant_metadata_cannot_authorize_ingestion(): void

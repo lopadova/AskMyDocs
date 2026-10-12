@@ -55,8 +55,12 @@ final class FreshdeskCaseStudyLineage
             $case = $this->assertValid((array) $document->metadata, (string) $document->project_key);
             $input = CaseStudyInput::fromArray($case->snapshot);
             $markdown = (new CaseStudyResult($case->result['fields']))->markdown($input);
+            $quotes = trim(explode("## Evidenze originali\n\n", $markdown, 2)[1] ?? '');
+            if ($quotes === '') {
+                return null;
+            }
 
-            return 'Ticket Freshdesk #'.$input->ticketId.' — '.$input->title."\n".$input->sourceUrl."\n\n".explode("## Evidenze originali\n\n", $markdown, 2)[1];
+            return 'Ticket Freshdesk #'.$input->ticketId.' — '.$input->title."\n".$input->sourceUrl."\n\n".$quotes;
         } catch (\Throwable) {
             return null;
         }
