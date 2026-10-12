@@ -81,6 +81,7 @@ First decide the relationship to the ordered dialogue, independently of what nee
 Then set requires_research: false when this task only greets, explains assistant capabilities, explains/summarizes known source content, reads an already identified source, or asks clarification; true when new facts, sources or refreshed live records are needed. A contextual request can still need research ("check its CURRENT status"); context_mode alone must never authorize reusing old live data as current. For mixed messages set these fields independently on EVERY subquestion; parent requires_research is true if ANY task needs research. Searches must target only the new/missing information. For a context-only task return kb_queries=[]; the host re-reads authorized sources without a global search.
 Parent context_mode must equal the common subquestion mode, or mixed when subquestion modes differ; references_previous_turn is false only when the parent mode is new. Never label the parent conversation while every subquestion is new. A request to describe what happened does not implicitly request current news: preserve the requested time and scope without inventing additional obligations.
 If validation_error is supplied, your previous interpretation violated the server contract. Correct that contract error using the SAME original message and authorized context. Do not invent identifiers, relations or another user request to make validation pass.
+invalid_shortcut_operation means the current message does not ask for the chosen greeting/capabilities/source-text/attribution operation. Reinterpret the original requested facts. Prior assistant offers do not override an explicit question or turn its repetition into acceptance.
 opaque_reference values are exact literal references protected by the host. Copy them verbatim when they identify the requested entity; do not translate, expand or replace them with a generic redaction marker.
 Resolve references and the real goal BEFORE choosing searches. If the target, required identifier or requested operation cannot be resolved from the current message and registered dialogue, use action=clarify, requires_research=false and a short clarification. Do not invent a broad business objective to replace a vague conversational turn. Knowing what the user asks but not yet knowing the answer is different: that is research, not clarification.
 When the current message names a person/product/order and asks about their ticket, reply, latest response or recorded outcome, discover that source through KB research first. A document ID or pasted reply is not a prerequisite for source discovery. Definite phrases such as "the reply" or "the latest response" do not imply unresolved conversation references when the subject and requested fact are explicitly named. Clarify only an ambiguous user target or operation, not an answer/source you have yet to retrieve.
@@ -270,6 +271,16 @@ FOCUS;
             }
             if (($data['requires_research'] ?? null) === false) {
                 $queries = [];
+            }
+            if (config('reasoning.selective_validation') && in_array($action,
+                [QuestionAction::Provenance, QuestionAction::ReadSource, QuestionAction::Greeting, QuestionAction::Capabilities], true)) {
+                $failureStage = 'provider_unavailable';
+                $matches = app(\App\Services\Chat\Reasoning\QuestionOperationVerifier::class)->matches(
+                    $question, $action, $focus['focus'] ?? [], $reasoningContext ?? []);
+                $failureStage = 'invalid_shortcut_operation';
+                if (! $matches) {
+                    throw new \UnexpectedValueException('Shortcut does not match the original requested operation.');
+                }
             }
             if ($queries === [] && ($data['requires_research'] ?? true) && ! in_array($action, [QuestionAction::Greeting, QuestionAction::Capabilities], true)) {
                 // Searching for an already validated exact target needs no second model call.
