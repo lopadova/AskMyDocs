@@ -7,6 +7,8 @@ return [
     'attachment_budget_bytes' => 8192,
     'extraction_max_bytes' => 5 * 1024 * 1024,
     'campaign_batch_size' => 50,
+    // Generative configuration helper; classification continues to use Jev.
+    'assistant_model' => env('EMAIL_TRIAGE_ASSISTANT_MODEL', env('CHAT_PREPROCESSOR_MODEL', 'openai/gpt-4o-mini')),
     // An ops estimate, never a claimed provider price. Actual usage is recorded.
     'estimated_decision_usd_per_email' => env('EMAIL_TRIAGE_ESTIMATED_DECISION_USD'),
     'estimated_reindex_usd_per_email' => env('EMAIL_TRIAGE_ESTIMATED_REINDEX_USD'),

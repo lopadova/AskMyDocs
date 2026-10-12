@@ -16,6 +16,7 @@ use App\Services\EmailTriage\TriageCampaigns;
 use App\Services\EmailTriage\TriageEngine;
 use App\Services\EmailTriage\TriageProfiles;
 use App\Services\EmailTriage\TriageAudit;
+use App\Services\EmailTriage\TriageConfigurationAssistant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -75,6 +76,32 @@ final class EmailTriageController extends Controller
         $profile = $this->profiles->save($this->installation($installationId), $request->all());
 
         return response()->json(['data' => $profile]);
+    }
+
+    public function suggest(Request $request, int $installationId, TriageConfigurationAssistant $assistant): JsonResponse
+    {
+        $installation = $this->installation($installationId);
+        if (is_string($request->input('prompt'))) {
+            $request->merge(['prompt' => trim($request->input('prompt'))]);
+        }
+        // A draft may contain unfinished fields: the assistant can repair it.
+        // Bound/whitelist its shape here; validate the generated rules strictly.
+        $data = $request->validate(['prompt' => 'required|string|min:3|max:3000', 'profile' => 'sometimes|array:enabled,rules',
+            'profile.enabled' => 'sometimes|boolean', 'profile.rules' => 'present_with:profile|array|max:50',
+            'profile.rules.*' => 'array:key,label,type,enabled,instructions,threshold,options',
+            'profile.rules.*.key' => 'nullable|string|max:64', 'profile.rules.*.label' => 'nullable|string|max:100',
+            'profile.rules.*.type' => 'sometimes|in:noul,choice,score', 'profile.rules.*.enabled' => 'sometimes|boolean',
+            'profile.rules.*.instructions' => 'nullable|string|max:800', 'profile.rules.*.threshold' => 'nullable|numeric|between:0,1',
+            'profile.rules.*.options' => 'sometimes|array|max:20', 'profile.rules.*.options.*' => 'array:key,label,criterion,text,tag',
+            'profile.rules.*.options.*.key' => 'nullable|string|max:64', 'profile.rules.*.options.*.label' => 'nullable|string|max:100',
+            'profile.rules.*.options.*.criterion' => 'nullable|string|max:500', 'profile.rules.*.options.*.text' => 'nullable|string|max:500',
+            'profile.rules.*.options.*.tag' => 'nullable|string|max:100']);
+        $profile = $data['profile'] ?? ['rules' => $this->profiles->current($installation)?->rules ?? []];
+        $suggestion = $assistant->suggest(trim($data['prompt']), $profile);
+        app(TriageAudit::class)->record($installation, 'configuration_suggested', ['rule_count' => count($suggestion['rules']),
+            'model' => $suggestion['model'], 'latency_ms' => $suggestion['latency_ms'], 'usage' => $suggestion['usage']]);
+
+        return response()->json(['data' => $suggestion]);
     }
 
     public function preview(Request $request, int $installationId): JsonResponse

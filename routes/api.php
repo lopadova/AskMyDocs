@@ -1032,6 +1032,8 @@ Route::middleware([
         $triage = \App\Http\Controllers\Api\Admin\EmailTriageController::class;
         Route::get('/{installationId}/email-triage', [$triage, 'show'])->whereNumber('installationId');
         Route::put('/{installationId}/email-triage', [$triage, 'save'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/suggest', [$triage, 'suggest'])->whereNumber('installationId')
+            ->middleware('throttle:email-triage-assistant')->name('api.admin.connectors.email-triage.suggest');
         Route::post('/{installationId}/email-triage/preview', [$triage, 'preview'])->whereNumber('installationId');
         Route::post('/{installationId}/email-triage/campaign-preview', [$triage, 'campaignPreview'])->whereNumber('installationId');
         Route::post('/{installationId}/email-triage/campaigns', [$triage, 'startCampaign'])->whereNumber('installationId');

@@ -1254,6 +1254,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(6)->by($request->ip());
         });
 
+        // Configuration drafts have their own budget: numeric throttles share
+        // the authenticated user's bucket with unrelated admin endpoints.
+        RateLimiter::for('email-triage-assistant', function (Request $request) {
+            return Limit::perMinute(6)->by(app(TenantContext::class)->current().'|'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
+        });
+
         // SEC-THROTTLE-001 (F-06): the authenticated /kb/chat endpoint drives an
         // AI provider turn (real spend) but carried no rate limit — one tenant
         // user could exhaust provider quota / DB capacity for everyone. Key the
