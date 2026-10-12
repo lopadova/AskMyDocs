@@ -71,6 +71,9 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $this->assertStringContainsString('Add a blank line before and after every list, heading, table and code block', $prompt);
             $this->assertStringContainsString('State missing or unverified details only in the relevant section', $prompt);
             $this->assertStringContainsString('Keep claims atomic and source-bound', $prompt);
+            $this->assertStringContainsString('latest documented merchant response', $prompt);
+            $this->assertStringContainsString('not proof of execution', $prompt);
+            $this->assertStringContainsString('Do not assert absence from an incomplete excerpt', $prompt);
             $this->assertStringContainsString('Respect the render_table handoff instructions', $prompt);
         }
         $this->assertStringNotContainsString('## Independent research task', $prompts[0]);
