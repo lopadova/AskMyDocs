@@ -80,7 +80,7 @@ class KbSourceReader
             ->orderBy('chunk_order')
             ->get(['id', 'chunk_order', 'chunk_text']);
         $totalChars = $chunks->sum(fn (KnowledgeChunk $chunk): int => mb_strlen((string) $chunk->chunk_text));
-        $fullLimit = (int) config('kb.investigation.full_source_max_chars', 18000);
+        $fullLimit = (int) config('kb.investigation.full_source_max_chars', 24000);
         $isShort = $totalChars <= $fullLimit;
 
         if ($isShort) {
