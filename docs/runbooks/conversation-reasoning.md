@@ -346,6 +346,24 @@ Il fallimento dell'osservazione UI non impedisce di consegnare la risposta al pr
 La chiusura di Live interrompe il polling e ignora i callback tardivi; non annulla
 automaticamente la ricerca canonica già avviata.
 
+Su OpenAI Live, una ricerca lunga riceve brevi aggiornamenti vocali tramite
+[`session.commentary.append`](https://developers.openai.com/api/docs/guides/live-delegation#send-the-right-kind-of-update)
+sullo stesso canale WebRTC. Il primo intervento arriva dopo 8 secondi, i successivi
+sono distanziati di almeno 15 secondi e rinviati finché non ci sono 6 secondi senza
+nuove trascrizioni. Il catalogo italiano contiene 66 frasi, scelte per fase con
+un intercalare buffo al massimo ogni terzo intervento; le varianti ruotano per
+evitare ripetizioni immediate. Le altre lingue ricevono brevi aggiornamenti che
+Live rende nella lingua dell'utente. Le fonti trovate vengono contate soltanto
+dall'evento `retrieval.completed`; le domande approfondite provengono dai task
+pubblici. Non vengono letti contenuti dei documenti, payload degli strumenti o
+ragionamenti privati. Gli intercalari non diventano domande, non avviano altri tool
+e non vengono aggiunti alla risposta canonica o alla memoria della chat.
+Il ritorno del tool, un evento terminale del run principale, un errore, il passaggio
+al testo o la chiusura di Live fermano il timer. La consegna degli intercalari è
+indipendente da quella della risposta finale; una sua interruzione non blocca il
+turno. Il provider Fake ne registra l'invio nei test; ElevenLabs conserva il suo
+comportamento esistente, senza questi aggiornamenti parlati.
+
 Una conversazione può avere un solo turno agente principale non terminale. Il browser
 respinge subito la seconda chiamata; il server applica la stessa regola sotto lock
 della conversazione, anche da un'altra scheda o sessione vocale. Il risultato voce

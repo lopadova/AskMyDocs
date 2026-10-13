@@ -2,8 +2,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { FakeRealtimeDriver, type ToolResult } from '@agents-full-duplex/realtime-agent-client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTeamStore } from '../../lib/team-store';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { chatApi, type AgentTurnStarted, type RealtimeAgentConnection } from './chat.api';
 import { useRealtimeAgent } from './use-realtime-agent';
+import { VOICE_PROGRESS_FIRST_DELAY_MS, VOICE_PROGRESS_INTERVAL_MS } from './realtime-research-narrator';
 
 const state = {
     schema: 'realtime-agent-state@1' as const,
@@ -39,12 +41,55 @@ function captureDriver() {
 }
 
 afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     useTeamStore.getState().clear();
 });
 
 describe('useRealtimeAgent', () => {
+    it.each(['answer', 'hangup', 'cancel', 'ui-cancel'] as const)('narrates existing run events while pending and stops on %s without reconnecting or creating another request', async (end) => {
+        vi.useFakeTimers();
+        vi.spyOn(chatApi, 'startRealtimeAgent').mockResolvedValue(descriptor);
+        const driver = captureDriver();
+        let finishTool!: (response: Response) => void;
+        const tool = vi.fn(() => new Promise<Response>((resolve) => { finishTool = resolve; }));
+        vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+            if (String(url).includes('/run?')) return json({ run: liveRun });
+            if (String(url).endsWith('/tools')) return tool();
+            return json({ state });
+        }));
+        const progressEvent: AgentRunEvent = { run_id: liveRun.run_id, sequence: 1, type: 'retrieval.completed',
+            phase: 'retrieval', locale: 'it', message_key: 'retrieval.completed', message_params: { count: 2 },
+            message: 'Ricerca documentale completata: 2 fonti pertinenti.', progress: null, can_cancel: true,
+            created_at: null, data: { sources: 2 } };
+        const { result, rerender } = renderHook(({ events, busy }) => useRealtimeAgent({
+            conversationId: 7, filters: {}, availability: { available: true, reason: null },
+            onRequireConversation: vi.fn(), onAdoptRun: vi.fn().mockResolvedValue(undefined), agentEvents: events, locale: 'it', requestInFlight: busy,
+        }), { initialProps: { events: [] as AgentRunEvent[], busy: false } });
+        await act(async () => result.current.start());
+        await act(async () => driver().emit({ type: 'agent.tool.call', call: call('first') }));
+        rerender({ events: [progressEvent], busy: true });
+        await act(async () => vi.advanceTimersByTimeAsync(VOICE_PROGRESS_FIRST_DELAY_MS));
+        const notices = () => driver().context.filter((context) => context.kind === 'research_progress');
+        expect(notices()).toEqual([{ kind: 'research_progress',
+            content: 'Questa ricerca ha trovato 2 fonti documentali pertinenti. Sto proseguendo con i controlli.' }]);
+        expect(driver().toolResults).toHaveLength(0);
+        expect(tool).toHaveBeenCalledOnce();
+        expect(chatApi.startRealtimeAgent).toHaveBeenCalledOnce();
+
+        if (end === 'hangup') await act(async () => result.current.stop());
+        if (end === 'cancel') rerender({ events: [progressEvent, { ...progressEvent, sequence: 2, type: 'run.cancelled', data: {} }], busy: true });
+        if (end === 'ui-cancel') rerender({ events: [progressEvent], busy: false });
+        if (end === 'answer') await act(async () => finishTool(json({ result: toolResult('first') })));
+        await act(async () => vi.advanceTimersByTimeAsync(VOICE_PROGRESS_INTERVAL_MS * 2));
+        expect(notices()).toHaveLength(1);
+        expect(tool).toHaveBeenCalledOnce();
+        if (end === 'answer') expect(driver().toolResults[0]).toEqual(toolResult('first'));
+        await act(async () => result.current.stop());
+    });
+
     it('shows the pending voice run immediately, refuses overlap, and still delivers the original spoken answer', async () => {
         useTeamStore.setState({ currentTeam: 'acme' });
         vi.spyOn(chatApi, 'startRealtimeAgent').mockResolvedValue(descriptor);

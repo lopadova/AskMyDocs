@@ -54,6 +54,7 @@ it('renders the voice request and multiple task states before the spoken result 
         const chat = useAgentChat({ conversationId: 7, filters: {}, initialMessages });
         voice = useRealtimeAgent({ conversationId: 7, filters: {}, availability: { available: true, reason: null },
             onRequireConversation: async () => 7, onAdoptRun: chat.adoptExternalRun,
+            agentEvents: chat.events,
             requestInFlight: chat.status === 'streaming' || chat.status === 'submitted' });
         return <MessageThread conversationId={7} messages={chat.messages} sdkStatus={chat.status}
             activeAgentRunId={chat.activeRun?.run_id} agentEvents={chat.events} onCancelAgent={chat.stop} />;

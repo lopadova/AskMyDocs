@@ -233,6 +233,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // deliberately does not live in this hook.
     const roles = useAuthStore((s) => s.roles);
     const realtimeAvailability = useAuthStore((s) => s.features.realtime_agent_live);
+    const userLocale = useAuthStore((s) => s.user?.locale ?? 'en');
     const canViewKb = roles.includes('admin') || roles.includes('super-admin');
     const [sourceCitation, setSourceCitation] = useState<MessageCitation | null>(null);
 
@@ -649,6 +650,8 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         availability: realtimeAvailability,
         onRequireConversation: requireConversation,
         onAdoptRun: chat.adoptExternalRun,
+        agentEvents: chat.events,
+        locale: userLocale,
         requestInFlight: chat.status === 'submitted' || chat.status === 'streaming' || chat.confirmation !== null,
     });
 

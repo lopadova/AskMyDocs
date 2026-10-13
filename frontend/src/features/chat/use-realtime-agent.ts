@@ -22,6 +22,7 @@ import {
     type UsageRecord,
 } from '@agents-full-duplex/realtime-agent-client';
 import { useTeamStore } from '../../lib/team-store';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 import {
     chatApi,
     countSelectedFilters,
@@ -30,6 +31,7 @@ import {
     type LiveSourceSelection,
 } from './chat.api';
 import { createAskMyDocsOpenAILiveDriver } from './openai-live-driver';
+import { RealtimeResearchNarrator } from './realtime-research-narrator';
 
 export type RealtimeAgentStatus =
     | 'idle'
@@ -53,6 +55,8 @@ interface UseRealtimeAgentOptions {
     onRequireConversation: () => Promise<number | null>;
     onAdoptRun: (run: AgentTurnStarted) => Promise<void>;
     requestInFlight?: boolean;
+    agentEvents?: AgentRunEvent[];
+    locale?: string;
 }
 
 export interface UseRealtimeAgentResult {
@@ -79,9 +83,15 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     const clientRef = useRef<RealtimeAgentClient | null>(null);
     const controlRef = useRef<ObservingControlTransport | null>(null);
     const pendingRef = useRef(false);
+    const narratorRef = useRef<RealtimeResearchNarrator | null>(null);
+    const eventsRef = useRef(options.agentEvents ?? []);
+    eventsRef.current = options.agentEvents ?? [];
+    const localeRef = useRef(options.locale ?? 'en');
+    localeRef.current = options.locale ?? 'en';
     const adoptedRunsRef = useRef(new Set<string>());
     const requestInFlightRef = useRef(options.requestInFlight ?? false);
     requestInFlightRef.current = options.requestInFlight ?? false;
+    const previousRequestInFlightRef = useRef(options.requestInFlight ?? false);
     const sessionConversationRef = useRef<number | null>(null);
     const onAdoptRunRef = useRef(onAdoptRun);
     onAdoptRunRef.current = onAdoptRun;
@@ -91,6 +101,8 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
         clientRef.current = null;
         controlRef.current?.dispose();
         controlRef.current = null;
+        narratorRef.current?.stop();
+        narratorRef.current = null;
         pendingRef.current = false;
         adoptedRunsRef.current.clear();
         sessionConversationRef.current = null;
@@ -108,6 +120,8 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     }, [release]);
 
     const adoptRun = useCallback((run: AgentTurnStarted): void => {
+        narratorRef.current?.bindRun(run);
+        narratorRef.current?.observe(eventsRef.current);
         if (adoptedRunsRef.current.has(run.run_id)) return;
         adoptedRunsRef.current.add(run.run_id);
         // Observe immediately, but do not make the spoken answer wait for UI/SSE recovery.
@@ -156,6 +170,8 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
                     onRun: adoptRun,
                     onPending: (pending) => {
                         pendingRef.current = pending;
+                        if (pending) narratorRef.current?.begin(localeRef.current);
+                        else narratorRef.current?.stop();
                         setStatus((current) => pending ? 'processing' : current === 'processing' ? 'listening' : current);
                     },
                     isBusy: () => requestInFlightRef.current,
@@ -201,6 +217,13 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             }
             if (provider === null) throw new Error(`Unsupported realtime provider: ${descriptor.provider}`);
 
+            if ('sendProgress' in provider) {
+                narratorRef.current = new RealtimeResearchNarrator((content) => provider.sendProgress(content));
+            } else if (descriptor.provider === 'fake') {
+                // The Fake driver captures notices for lifecycle tests without audio or network calls.
+                narratorRef.current = new RealtimeResearchNarrator((content) => provider.sendContext({ kind: 'research_progress', content }));
+            }
+
             const client = new RealtimeAgentClient(surfaces, provider, control, {
                 confirmation: () => false,
             });
@@ -209,6 +232,13 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             setActive(true);
             client.on((event) => {
                 if (clientRef.current !== client) return; // Ignore callbacks from an ended/previous session.
+                if (event.type === 'agent.transcript.delta' || event.type === 'agent.transcript.final') {
+                    narratorRef.current?.pauseForSpeech();
+                }
+                if (event.type === 'agent.disconnected' || event.type === 'agent.error'
+                    || (event.type === 'agent.mode.changed' && event.mode === 'text')) {
+                    narratorRef.current?.stop();
+                }
                 handleClientEvent(event, (next) => setStatus(pendingRef.current && next === 'listening' ? 'processing' : next), setError, setActive);
             });
             await client.connect(descriptor as unknown as ConnectionDescriptor);
@@ -235,6 +265,17 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     useEffect(() => () => {
         void release(true);
     }, [release]);
+
+    useEffect(() => {
+        narratorRef.current?.observe(options.agentEvents ?? []);
+    }, [options.agentEvents]);
+
+    useEffect(() => {
+        // UI cancellation aborts the SSE subscription before a terminal event
+        // can arrive. Stop notices at that transition too, even if HTTP drains later.
+        if (previousRequestInFlightRef.current && !options.requestInFlight) narratorRef.current?.stop();
+        previousRequestInFlightRef.current = options.requestInFlight ?? false;
+    }, [options.requestInFlight]);
 
     return {
         status,

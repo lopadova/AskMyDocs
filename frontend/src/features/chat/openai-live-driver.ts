@@ -7,6 +7,10 @@ type OpenAILiveDriverOptions = {
     peerFactory?: () => RTCPeerConnection;
 };
 
+export type AskMyDocsOpenAILiveDriver = OpenAILiveDriver & {
+    sendProgress: (content: string) => Promise<void>;
+};
+
 /**
  * Prepare browser audio before the package starts its data-channel timeout.
  * This keeps a slow browser permission prompt from consuming the WebRTC
@@ -15,7 +19,7 @@ type OpenAILiveDriverOptions = {
 export async function createAskMyDocsOpenAILiveDriver(
     request: typeof fetch,
     options: OpenAILiveDriverOptions = {},
-): Promise<OpenAILiveDriver> {
+): Promise<AskMyDocsOpenAILiveDriver> {
     const mediaDevices = options.mediaDevices ?? globalThis.navigator?.mediaDevices;
     if (!mediaDevices?.getUserMedia) {
         throw new DOMException('Microphone capture is not supported by this browser.', 'NotFoundError');
@@ -26,11 +30,42 @@ export async function createAskMyDocsOpenAILiveDriver(
         getUserMedia: async () => stream,
     } as MediaDevices;
 
-    return new OpenAILiveDriver(
+    const progress = createLiveProgressChannel(options.peerFactory ?? createCandidateCompletePeerConnection);
+    const driver = new OpenAILiveDriver(
         request,
-        options.peerFactory ?? createCandidateCompletePeerConnection,
+        progress.peerFactory,
         streamBackedMediaDevices,
     );
+
+    return Object.assign(driver, { sendProgress: progress.sendProgress });
+}
+
+/** Spoken context goes straight to Live; it must not become a user message or another tool request. */
+export function createLiveProgressChannel(createPeer: () => RTCPeerConnection) {
+    let channel: RTCDataChannel | null = null;
+    return {
+        peerFactory: (): RTCPeerConnection => {
+            const peer = createPeer();
+            const createChannel = peer.createDataChannel.bind(peer);
+            peer.createDataChannel = (label, options) => {
+                const created = createChannel(label, options);
+                if (label === 'oai-events') channel = created;
+                return created;
+            };
+            return peer;
+        },
+        sendProgress: async (content: string): Promise<void> => {
+            if (channel?.readyState !== 'open') throw new Error('The Live progress channel is closed.');
+            // GPT-Live accepts up to 500 tokens per append. These short notices
+            // are capped well below that and carry no source content or reasoning.
+            channel.send(JSON.stringify({
+                type: 'session.commentary.append',
+                event_id: `progress_${globalThis.crypto.randomUUID()}`,
+                delegation_id: null,
+                content: content.slice(0, 600),
+            }));
+        },
+    };
 }
 
 /**
