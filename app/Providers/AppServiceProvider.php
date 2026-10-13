@@ -83,6 +83,16 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
 
+        // Keep the installed provider and its text continuation contract. Its
+        // default browser allowlist predates our spoken progress capability.
+        $this->app->when(\AgentsFullDuplex\RealtimeAgent\Providers\OpenAI\OpenAIRealtimeProvider::class)
+            ->needs(\Illuminate\Http\Client\Factory::class)
+            ->give(function ($app) {
+                $http = clone $app->make(\Illuminate\Http\Client\Factory::class);
+
+                return $http->globalRequestMiddleware($app->make(\App\Realtime\OpenAILiveSessionRequest::class));
+            });
+
         // PR11 / Phase G4 — PDF rendering strategy. The interface is
         // resolved through {@see PdfRendererFactory} so the controller
         // can type-hint `PdfRenderer` and let the container pick the

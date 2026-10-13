@@ -123,6 +123,41 @@ final class RealtimeAgentIntegrationTest extends TestCase
         $this->assertSame($sessionId, data_get($conversation->messages()->sole()->metadata, 'realtime_agent_session_id'));
     }
 
+    public function test_openai_handshake_permits_spoken_progress_without_enabling_instruction_or_session_updates(): void
+    {
+        [$user, $conversation] = $this->chatFixture();
+        config(['realtime-agent.enabled' => true, 'realtime-agent.default' => 'openai',
+            'realtime-agent.providers.openai.api_key' => 'test-only-key',
+            'realtime-agent.providers.openai.model' => 'gpt-live-1',
+            'realtime-agent.providers.openai.backend_model' => 'gpt-5.6-terra']);
+        $captured = null;
+        \Illuminate\Support\Facades\Http::fake(function ($request) use (&$captured) {
+            $captured = $request;
+
+            return \Illuminate\Support\Facades\Http::response(['session' => ['id' => 'live-test'],
+                'transport' => ['sdp' => "v=0\r\n"]]);
+        });
+        $globalMiddleware = app(\Illuminate\Http\Client\Factory::class)->getGlobalMiddleware();
+        $sessionId = $this->actingAs($user)->postJson("/test-conversations/{$conversation->id}/realtime-agent")
+            ->assertCreated()->json('session_id');
+        $this->call('POST', "/realtime-agent/sessions/{$sessionId}/connect", [], [], [],
+            ['CONTENT_TYPE' => 'application/sdp', 'HTTP_ACCEPT' => 'application/json'], "v=0\r\n")
+            ->assertOk()->assertJsonPath('connection.api_variant', 'live');
+
+        $this->assertNotNull($captured);
+        // Laravel's assertion data retains the original post() arguments;
+        // inspect the actual serialized request after the provider middleware.
+        $channel = json_decode($captured->body(), true, flags: JSON_THROW_ON_ERROR)['session']['client']['data_channel'];
+        $this->assertContains('session.commentary.append', $channel['allowed_client_events']);
+        $this->assertContains('response.item.create', $channel['allowed_client_events']);
+        $this->assertContains('response.create', $channel['allowed_client_events']);
+        $this->assertNotContains('session.instructions.append', $channel['allowed_client_events']);
+        $this->assertNotContains('session.update', $channel['allowed_client_events']);
+        $this->assertContains(['type' => 'session.commentary.appended'], $channel['allowed_server_events']);
+        $this->assertSame((string) strlen($captured->body()), $captured->header('Content-Length')[0]);
+        $this->assertSame($globalMiddleware, app(\Illuminate\Http\Client\Factory::class)->getGlobalMiddleware());
+    }
+
     public function test_receipt_is_visible_while_the_voice_tool_is_still_running_and_is_scoped_to_call_and_owner(): void
     {
         [$user, $conversation] = $this->chatFixture();
