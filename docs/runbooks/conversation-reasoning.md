@@ -343,6 +343,20 @@ lettura e controlla tenant, proprietario, conversazione, sessione attiva e call 
 Appena disponibile, il client apre lo stream eventi esistente: domanda, lista dei
 task e avanzamento sono visibili senza attendere la risposta vocale finale.
 Il fallimento dell'osservazione UI non impedisce di consegnare la risposta al provider.
+La stessa ricevuta espone `result` soltanto quando la chiamata vocale ha salvato
+il proprio risultato completo. Se il POST del tool perde la connessione o riceve
+HTTP 502/503/504 dal proxy, Live recupera quel risultato con GET autenticati ogni
+750 ms, senza ripetere il POST o avviare altre ricerche. Questo copre il timeout
+FastCGI di Herd a 60 secondi: PHP può completare e salvare la risposta dopo che
+il proxy ha chiuso la richiesta. Il recupero resta entro il budget del job più
+30 secondi; chiusura di Live, sessione scaduta, accesso negato o chiamata fallita
+lo interrompono. Un risultato con un call ID diverso viene ignorato. Le risposte
+HTML del proxy conservano il codice HTTP, senza mostrare errori di parsing JSON.
+La prova Herd con audio sintetico ha confermato il recupero di una chiamata
+completata dopo 65 secondi, con HTTP 504 reale dal proxy: un solo POST al tool,
+risposta canonica visibile e un solo risultato inviato sul canale Live. Questa
+verifica copre la consegna del risultato; la riproduzione vocale finale resta
+da verificare con audio reale.
 La chiusura di Live interrompe il polling e ignora i callback tardivi; non annulla
 automaticamente la ricerca canonica già avviata.
 

@@ -104,18 +104,26 @@ final class RealtimeAgentIntegrationTest extends TestCase
         $sessionId = (string) $started->json('session_id');
         $revision = (int) $started->json('state.session.revision');
 
-        $this->actingAs($user)
+        $completed = $this->actingAs($user)
             ->postJson("/realtime-agent/sessions/{$sessionId}/tools", [
                 'id' => 'call-1',
                 'name' => 'askmydocs.chat_turn',
                 'arguments' => ['question' => 'Qual è la policy ferie?'],
                 'base_revision' => $revision,
                 'idempotency_key' => 'call-1',
+                'provider_call_id' => 'call-1',
             ])
             ->assertOk()
             ->assertJsonPath('result.status', 'completed')
             ->assertJsonPath('result.output.response.answer', 'Risposta canonica.')
             ->assertJsonPath('result.output.run.status', AgentRun::STATUS_COMPLETED);
+
+        // A proxy may lose the long POST response; its exact durable result is
+        // available read-only, without creating a second research request.
+        $receipt = "/test-conversations/{$conversation->id}/realtime-agent/{$sessionId}/run?call_id=call-1";
+        $recovered = $this->getJson($receipt)->assertOk()->assertJsonPath('tool_status', 'completed');
+        $this->assertSame($completed->json('result'), $recovered->json('result'));
+        $this->getJson(str_replace('call-1', 'different-call', $receipt))->assertOk()->assertJsonPath('result', null);
 
         $run = AgentRun::query()->sole();
         $this->assertSame($conversation->id, $run->conversation_id);
@@ -175,16 +183,20 @@ final class RealtimeAgentIntegrationTest extends TestCase
                 $this->test->getJson($this->url)->assertOk()
                     ->assertJsonPath('run.run_id', $run->run_id)
                     ->assertJsonPath('run.status', 'running')
+                    ->assertJsonPath('tool_status', 'started')
+                    ->assertJsonPath('result', null)
                     ->assertJsonPath('run.user_message.content', 'Hub e ordine');
                 $run->forceFill(['status' => AgentRun::STATUS_COMPLETED,
                     'result_json' => ['response' => ['answer' => 'Risposta canonica.']]])->save();
             }
         });
         $session = app(AgentSessionManager::class)->resume($sessionId);
-        $result = app(\App\Realtime\HandleRealtimeChatTurn::class)->handle($session,
-            new \AgentsFullDuplex\RealtimeAgent\Data\ToolCall('call-live', 'askmydocs.chat_turn', ['question' => 'Hub e ordine'], 1, 'call-live'));
+        $result = $session->execute(new \AgentsFullDuplex\RealtimeAgent\Data\ToolCall(
+            'call-live', 'askmydocs.chat_turn', ['question' => 'Hub e ordine'], 1, 'call-live', 'call-live',
+        ))->output;
         $this->assertSame('Risposta canonica.', $result['response']['answer']);
-        $this->getJson(str_replace('call-live', 'another-call', $url))->assertOk()->assertJsonPath('run', null);
+        $this->getJson($url)->assertOk()->assertJsonPath('result.output.response.answer', 'Risposta canonica.');
+        $this->getJson(str_replace('call-live', 'another-call', $url))->assertOk()->assertJsonPath('run', null)->assertJsonPath('result', null);
         $this->getJson(str_replace($sessionId, 'unknown-session', $url))->assertNotFound();
         app(TenantContext::class)->set('another-tenant');
         $this->getJson($url)->assertNotFound();

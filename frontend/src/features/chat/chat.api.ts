@@ -344,6 +344,7 @@ export interface RealtimeAgentConnection {
     };
     conversation_id: number;
     busy_message?: string;
+    tool_timeout_seconds?: number;
     expires_at: string;
 }
 

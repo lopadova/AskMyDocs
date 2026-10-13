@@ -8,6 +8,7 @@ use AgentsFullDuplex\RealtimeAgent\Engine\AgentSessionManager;
 use AgentsFullDuplex\RealtimeAgent\Enums\InteractionLevel;
 use AgentsFullDuplex\RealtimeAgent\Facades\RealtimeAgent;
 use AgentsFullDuplex\RealtimeAgent\Models\AgentSessionRecord;
+use AgentsFullDuplex\RealtimeAgent\Models\AgentToolCallRecord;
 use App\Agent\AgentConversationBusy;
 use App\Http\Requests\AgentChatScopeRules;
 use App\Models\AgentRun;
@@ -95,6 +96,7 @@ final class RealtimeAgentSessionController extends Controller
             ...$started->connection()->jsonSerialize(),
             'conversation_id' => $conversation->id,
             'busy_message' => (new AgentConversationBusy((string) $user->locale))->getMessage(),
+            'tool_timeout_seconds' => max(30, (int) config('agent.job_timeout_seconds', 120)),
             'expires_at' => $expiresAt->toISOString(),
         ], 201);
     }
@@ -130,7 +132,20 @@ final class RealtimeAgentSessionController extends Controller
             ->where('input_json->realtime_call_id', $input['call_id'])
             ->whereNull('input_json->research_parent_id')->latest('id')->first();
 
-        return response()->json(['run' => $run === null ? null : $presenter->present($run)])
+        // The long tool POST can time out at the proxy while PHP still finishes
+        // and persists its result. Recover only this authorized session/call.
+        $call = AgentToolCallRecord::query()->where('session_id', $session)
+            ->where('tool', 'askmydocs.chat_turn')
+            ->where('idempotency_key', hash('sha256', $session.':'.$input['call_id']))
+            ->first();
+        $result = $call?->status === 'completed' && data_get($call->result, 'call_id') === $input['call_id']
+            ? $call->result : null;
+
+        return response()->json([
+            'run' => $run === null ? null : $presenter->present($run),
+            'tool_status' => $call?->status,
+            'result' => $result,
+        ])
             ->header('Cache-Control', 'no-store');
     }
 

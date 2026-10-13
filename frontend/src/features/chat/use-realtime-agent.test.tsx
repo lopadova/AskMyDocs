@@ -49,6 +49,90 @@ afterEach(() => {
 });
 
 describe('useRealtimeAgent', () => {
+    it.each(['gateway-timeout', 'network-loss'])('recovers the saved answer after %s without repeating the tool or reconnecting', async (failure) => {
+        vi.useFakeTimers();
+        vi.spyOn(chatApi, 'startRealtimeAgent').mockResolvedValue(descriptor);
+        const driver = captureDriver();
+        let saved = false;
+        const canonical = { ...toolResult('first'), output: { ...toolResult('first').output,
+            run: { ...liveRun, status: 'partial' } } };
+        const tool = vi.fn(async () => {
+            if (failure === 'network-loss') throw new TypeError('Failed to fetch');
+            return new Response('<html><h1>504 Gateway Time-out</h1></html>', { status: 504, headers: { 'Content-Type': 'text/html' } });
+        });
+        const request = vi.fn(async (url: RequestInfo | URL) => {
+            if (String(url).includes('/run?')) return json({ run: liveRun, result: saved ? canonical : null, tool_status: saved ? 'completed' : 'started' });
+            if (String(url).endsWith('/tools')) return tool();
+            return json({ state });
+        });
+        vi.stubGlobal('fetch', request);
+        const onAdoptRun = vi.fn().mockResolvedValue(undefined);
+        const { result } = renderHook(() => useRealtimeAgent({
+            conversationId: 7, filters: {}, availability: { available: true, reason: null },
+            onRequireConversation: vi.fn(), onAdoptRun,
+        }));
+        await act(async () => result.current.start());
+        await act(async () => driver().emit({ type: 'agent.tool.call', call: call('first') }));
+        await act(async () => vi.advanceTimersByTimeAsync(10_000));
+        expect(result.current.error).toBeNull();
+        expect(result.current.status).toBe('processing');
+        expect(driver().toolResults).toHaveLength(0);
+        saved = true;
+        await act(async () => vi.advanceTimersByTimeAsync(1_000));
+        expect(driver().toolResults).toEqual([canonical]);
+        expect(result.current.status).toBe('listening');
+        expect(tool).toHaveBeenCalledOnce();
+        expect(chatApi.startRealtimeAgent).toHaveBeenCalledOnce();
+        expect(onAdoptRun).toHaveBeenCalledOnce();
+        tool.mockResolvedValueOnce(json({ result: toolResult('second') }));
+        await act(async () => driver().emit({ type: 'agent.tool.call', call: call('second') }));
+        expect(driver().toolResults).toEqual([canonical, toolResult('second')]);
+        expect(tool).toHaveBeenCalledTimes(2);
+        await act(async () => result.current.stop());
+    });
+
+    it.each(['hangup', 'deadline', 'access-denied', 'failed'] as const)('stops gateway recovery on %s and never resubmits research', async (end) => {
+        vi.useFakeTimers();
+        vi.spyOn(chatApi, 'startRealtimeAgent').mockResolvedValue({ ...descriptor, tool_timeout_seconds: 30 });
+        const driver = captureDriver();
+        let recovering = false;
+        let receiptReads = 0;
+        const tool = vi.fn(async () => {
+            recovering = true;
+            return new Response('<html>Gateway timeout</html>', { status: 504 });
+        });
+        vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+            if (String(url).includes('/run?')) {
+                receiptReads++;
+                if (recovering && end === 'access-denied') return new Response('<html>Forbidden</html>', { status: 403 });
+                return json({ run: liveRun, result: { ...toolResult('another-call') }, tool_status: recovering && end === 'failed' ? 'failed' : 'started' });
+            }
+            if (String(url).endsWith('/tools')) return tool();
+            return json({ state });
+        }));
+        const { result } = renderHook(() => useRealtimeAgent({
+            conversationId: 7, filters: {}, availability: { available: true, reason: null },
+            onRequireConversation: vi.fn(), onAdoptRun: vi.fn().mockResolvedValue(undefined),
+        }));
+        await act(async () => result.current.start());
+        await act(async () => driver().emit({ type: 'agent.tool.call', call: call('first') }));
+        if (end === 'hangup') await act(async () => result.current.stop());
+        if (end === 'deadline') await act(async () => vi.advanceTimersByTimeAsync(60_000));
+        if (end === 'hangup') {
+            expect(result.current.status).toBe('idle');
+            expect(result.current.error).toBeNull();
+        } else {
+            expect(result.current.status).toBe('error');
+            expect(result.current.error?.message).not.toContain('Unexpected token');
+            await act(async () => result.current.stop());
+        }
+        const finalReads = receiptReads;
+        await act(async () => vi.advanceTimersByTimeAsync(120_000));
+        expect(receiptReads).toBe(finalReads);
+        expect(driver().toolResults).toHaveLength(0);
+        expect(tool).toHaveBeenCalledOnce();
+    });
+
     it.each(['answer', 'hangup', 'cancel', 'ui-cancel'] as const)('narrates existing run events while pending and stops on %s without reconnecting or creating another request', async (end) => {
         vi.useFakeTimers();
         vi.spyOn(chatApi, 'startRealtimeAgent').mockResolvedValue(descriptor);

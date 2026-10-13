@@ -4,6 +4,7 @@ import {
     FakeRealtimeDriver,
     LaravelControlTransport,
     RealtimeAgentClient,
+    RealtimeControlError,
     SurfaceRegistry,
     type AgentState,
     type ConnectionDescriptor,
@@ -189,6 +190,7 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
                     },
                     isBusy: () => requestInFlightRef.current,
                     busyMessage: descriptor.busy_message ?? 'Un attimo, una cosa alla volta. Sto ancora completando la richiesta precedente.',
+                    recoveryTimeoutMs: Math.max(30, descriptor.tool_timeout_seconds ?? 120) * 1_000 + 30_000,
                 },
             );
             controlRef.current = control;
@@ -329,12 +331,14 @@ interface LiveTurnObservation {
     onPending: (pending: boolean) => void;
     isBusy: () => boolean;
     busyMessage: string;
+    recoveryTimeoutMs: number;
 }
 
 class ObservingControlTransport implements ControlTransport {
     private pending = false;
     private disposed = false;
     private observation: AbortController | null = null;
+    private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
 
     constructor(
         private readonly inner: ControlTransport,
@@ -354,15 +358,29 @@ class ObservingControlTransport implements ControlTransport {
             this.pending = true;
             this.live?.onPending(true);
             this.observation = new AbortController();
+            const observation = this.observation;
+            this.recoveryTimer = setTimeout(() => observation.abort(new Error(
+                'The voice result could not be recovered in time. Check the answer in the chat.',
+            )), this.live?.recoveryTimeoutMs ?? 150_000);
             void this.observeRun(input.id, this.observation.signal);
         }
         try {
-            const result = await this.inner.executeTool(input);
+            let result: ToolResult;
+            try {
+                result = await this.inner.executeTool(input);
+            } catch (reason) {
+                if (!chatTurn || !this.live || !this.observation || !isRecoverableControlError(reason)) throw reason;
+                // Never repeat the POST: it may still be running behind the
+                // gateway. Read the exact saved tool result for this call.
+                result = await this.recoverToolResult(input.id, this.observation.signal);
+            }
             if (this.disposed) throw new DOMException('The voice session ended.', 'AbortError');
             await this.onToolResult(result);
             return result;
         } finally {
             if (chatTurn) {
+                clearTimeout(this.recoveryTimer);
+                this.recoveryTimer = undefined;
                 this.observation?.abort();
                 this.observation = null;
                 this.pending = false;
@@ -373,8 +391,37 @@ class ObservingControlTransport implements ControlTransport {
 
     dispose(): void {
         this.disposed = true;
+        clearTimeout(this.recoveryTimer);
+        this.recoveryTimer = undefined;
         this.observation?.abort();
         this.observation = null;
+    }
+
+    private async recoverToolResult(callId: string, signal: AbortSignal): Promise<ToolResult> {
+        while (!signal.aborted && !this.disposed && this.live) {
+            let response: Response | null = null;
+            try {
+                response = await this.live.request(`${this.live.receiptUrl}?call_id=${encodeURIComponent(callId)}`, {
+                    headers: { Accept: 'application/json' }, cache: 'no-store', signal,
+                });
+            } catch (reason) {
+                if (!isRecoverableControlError(reason)) throw reason;
+            }
+            if (signal.aborted || this.disposed) break;
+            if (response && !response.ok && ![502, 503, 504].includes(response.status)) {
+                throw new RealtimeControlError('The voice result is no longer accessible. Check the chat.', response.status, 'receipt_unavailable');
+            }
+            if (response?.ok) {
+                const body = await response.json() as { run?: unknown; result?: unknown; tool_status?: string };
+                const run = parseAgentRun(body.run);
+                if (run) this.live.onRun(run);
+                if (body.tool_status === 'failed') throw new Error('The research request failed. Check the chat for details.');
+                const result = parseSavedToolResult(body.result, callId);
+                if (result) return result;
+            }
+            await waitForReceipt(signal);
+        }
+        throw signal.reason instanceof Error ? signal.reason : new DOMException('The voice session ended.', 'AbortError');
     }
 
     private async observeRun(callId: string, signal: AbortSignal): Promise<void> {
@@ -397,11 +444,7 @@ class ObservingControlTransport implements ControlTransport {
                 // Visual observation is best effort; the canonical tool still owns its answer.
             }
             if (signal.aborted) return;
-            await new Promise<void>((resolve) => {
-                const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
-                const timer = setTimeout(finish, 750);
-                signal.addEventListener('abort', finish, { once: true });
-            });
+            await waitForReceipt(signal);
         }
     }
 
@@ -429,7 +472,45 @@ async function tenantAwareFetch(input: RequestInfo | URL, init?: RequestInit): P
     const team = useTeamStore.getState().currentTeam;
     if (team !== null) headers.set('X-Tenant-Id', team);
 
-    return fetch(input, { ...init, credentials: 'same-origin', headers });
+    let response: Response;
+    try {
+        response = await fetch(input, { ...init, credentials: 'same-origin', headers });
+    } catch (reason) {
+        if (reason instanceof TypeError) throw new RealtimeControlError('The realtime request lost its network connection.', 0, 'network_error');
+        throw reason;
+    }
+    const contentType = response.headers.get('Content-Type') ?? '';
+    if (!contentType.includes('application/json') && !contentType.includes('+json')) {
+        if (response.ok) throw new RealtimeControlError('The server returned an unexpected response. Reopen Live assistant.', response.status, 'invalid_response');
+        // Keep the HTTP status instead of letting the package parse an HTML
+        // proxy error as JSON and lose the information needed for recovery.
+        return new Response(JSON.stringify({ error: { code: 'http_error', message: `Realtime request failed (${response.status}).` } }), {
+            status: response.status, headers: { 'Content-Type': 'application/json' },
+        });
+    }
+    return response;
+}
+
+function isRecoverableControlError(reason: unknown): boolean {
+    return reason instanceof RealtimeControlError
+        && ([502, 503, 504].includes(reason.status) || reason.status === 0 && reason.code === 'network_error');
+}
+
+function parseSavedToolResult(value: unknown, callId: string): ToolResult | null {
+    if (value === null || typeof value !== 'object') return null;
+    const result = value as Partial<ToolResult>;
+    return result.call_id === callId && result.status === 'completed'
+        && typeof result.state_revision === 'number' && Number.isSafeInteger(result.state_revision) && result.state_revision > 0
+        ? result as ToolResult : null;
+}
+
+async function waitForReceipt(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
+    await new Promise<void>((resolve) => {
+        const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
+        const timer = setTimeout(finish, 750);
+        signal.addEventListener('abort', finish, { once: true });
+    });
 }
 
 function handleClientEvent(
