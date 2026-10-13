@@ -126,7 +126,11 @@ https://askmydocsdev.test/app/developer/local-integrations
 The app resolves the active team automatically. The console is served only when
 `APP_ENV=local`; it can start, stop, or restart both Node fixtures, polls their
 status every two seconds, and shows a 60-second activity chart plus recent
-request metadata. For MCP calls it also shows the parsed JSON-RPC request and
+request metadata. The **Server mock** panel groups the API and MCP states with
+**Avvia server**, **Arresta server**, and **Riavvia**, which control both services.
+It distinguishes initial checks and unavailable status from stopped servers,
+shows progress during commands, and prevents overlapping actions.
+For MCP calls it also shows the parsed JSON-RPC request and
 response, retained only in memory for the current process (up to 120 events,
 with each response capped at 32 KB). It never records headers or credentials;
 sensitive JSON fields are redacted. Health and monitor polls are intentionally

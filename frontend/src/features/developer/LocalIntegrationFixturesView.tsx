@@ -3,6 +3,7 @@ import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { AreaChart } from '../../components/charts';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
+import { parseLaravelError } from '../../lib/laravel-errors';
 import { ToastHost, useToast } from '../admin/shared/Toast';
 import {
     localIntegrationsApi,
@@ -12,8 +13,15 @@ import {
     type LocalIntegrationStatus,
     type LocalServiceName,
 } from './local-integrations.api';
+import './local-integrations.css';
 
 const POLL_INTERVAL_MS = 2_000;
+const STATUS_QUERY_KEY = ['developer', 'local-integrations'];
+const CONTROL_PROGRESS: Record<LocalIntegrationAction, string> = {
+    start: 'Avvio dei server in corso…',
+    stop: 'Arresto dei server in corso…',
+    restart: 'Riavvio dei server in corso…',
+};
 const ACTIVITY_BUCKETS = 12;
 const ACTIVITY_BUCKET_MS = 5_000;
 
@@ -27,27 +35,30 @@ const panelStyle: CSSProperties = {
 export function LocalIntegrationFixturesView(): ReactNode {
     const queryClient = useQueryClient();
     const toast = useToast();
-    const statusQuery = useQuery({
-        queryKey: ['developer', 'local-integrations'],
-        queryFn: localIntegrationsApi.status,
-        staleTime: POLL_INTERVAL_MS,
-        refetchInterval: POLL_INTERVAL_MS,
-        refetchOnWindowFocus: true,
-    });
     const control = useMutation({
         mutationFn: localIntegrationsApi.control,
+        onMutate: () => queryClient.cancelQueries({ queryKey: STATUS_QUERY_KEY }),
         onSuccess: ({ message, status }) => {
-            queryClient.setQueryData(['developer', 'local-integrations'], status);
+            queryClient.setQueryData(STATUS_QUERY_KEY, status);
             toast.success(message, 'toast-local-integrations-control');
         },
-        onError: () => {
-            toast.error('Impossibile aggiornare i servizi locali. Controlla lo stato e riprova.', 'toast-local-integrations-error');
+        onError: (error) => {
+            toast.error(parseLaravelError(error, 'Impossibile aggiornare i servizi locali. Controlla lo stato e riprova.').message, 'toast-local-integrations-error');
+            void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
         },
+    });
+    const statusQuery = useQuery({
+        queryKey: STATUS_QUERY_KEY,
+        queryFn: ({ signal }) => localIntegrationsApi.status(signal),
+        staleTime: POLL_INTERVAL_MS,
+        refetchInterval: control.isPending ? false : POLL_INTERVAL_MS,
+        refetchOnWindowFocus: !control.isPending,
     });
 
     const status = statusQuery.data;
     const bothRunning = status?.api.state === 'running' && status.mcp.state === 'running';
     const bothStopped = status?.api.state === 'stopped' && status.mcp.state === 'stopped';
+    const controlsDisabled = !status || statusQuery.isError || control.isPending;
     const activity = useMemo(() => buildActivity(status), [status]);
     const calls = useMemo(() => collectCalls(status), [status]);
     const mostRecentMcpExchange = calls.find((call) => call.service === 'mcp' && call.exchange);
@@ -68,7 +79,7 @@ export function LocalIntegrationFixturesView(): ReactNode {
                 color: 'var(--fg-0)',
             }}
         >
-            <header style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 20, marginBottom: 18 }}>
+            <header style={{ marginBottom: 18 }}>
                 <div style={{ maxWidth: 690 }}>
                     <p style={eyebrowStyle}>Sviluppo locale · servizio tecnico</p>
                     <h1 style={{ fontSize: 'clamp(24px, 3vw, 32px)', letterSpacing: '-0.035em', margin: '0 0 7px' }}>
@@ -78,46 +89,82 @@ export function LocalIntegrationFixturesView(): ReactNode {
                         Stato dei due mock Node, chiamate recenti e traffico degli ultimi sessanta secondi. Per ogni chiamata MCP puoi aprire richiesta JSON-RPC e risposta. Il pannello si aggiorna ogni 2 secondi e non è disponibile fuori da <code>APP_ENV=local</code>.
                     </p>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', alignContent: 'flex-start', gap: 8 }}>
-                    <Button
-                        variant="primary"
-                        leadingIcon={<Icon.Play size={14} />}
-                        busy={control.isPending && control.variables === 'start'}
-                        disabled={bothRunning || control.isPending}
-                        onClick={() => controlServices('start')}
-                    >
-                        Avvia servizi
-                    </Button>
-                    <Button
-                        variant="secondary"
-                        leadingIcon={<Icon.Refresh size={14} />}
-                        busy={control.isPending && control.variables === 'restart'}
-                        disabled={control.isPending}
-                        onClick={() => controlServices('restart')}
-                    >
-                        Riavvia
-                    </Button>
-                    <Button
-                        variant="danger"
-                        leadingIcon={<Icon.StopCircle size={14} />}
-                        busy={control.isPending && control.variables === 'stop'}
-                        disabled={bothStopped || control.isPending}
-                        onClick={() => controlServices('stop')}
-                    >
-                        Arresta
-                    </Button>
-                    <Button
-                        variant="quiet"
-                        iconOnly
-                        aria-label="Aggiorna lo stato dei servizi locali"
-                        title="Aggiorna ora"
-                        busy={statusQuery.isFetching && !control.isPending}
-                        onClick={() => void statusQuery.refetch()}
-                    >
-                        <Icon.Refresh size={15} />
-                    </Button>
-                </div>
             </header>
+
+            <section className="local-integration-server-panel" aria-labelledby="local-integration-servers-title" style={{ ...panelStyle, padding: 18, marginBottom: 14 }}>
+                <div className="local-integration-server-heading">
+                    <div>
+                        <h2 id="local-integration-servers-title" style={{ fontSize: 18, margin: '0 0 6px' }}>Server mock</h2>
+                        <p style={{ color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.55, margin: 0 }}>
+                            Avvia o arresta insieme il mock API e il server MCP dei tre casi studio.
+                        </p>
+                    </div>
+                    <div className="local-integration-server-actions" role="group" aria-label="Controlli dei server mock">
+                        <Button
+                            variant="primary"
+                            leadingIcon={<Icon.Play size={14} />}
+                            busy={control.isPending && control.variables === 'start'}
+                            disabled={bothRunning || controlsDisabled}
+                            onClick={() => controlServices('start')}
+                        >
+                            Avvia server
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            leadingIcon={<Icon.Refresh size={14} />}
+                            busy={control.isPending && control.variables === 'restart'}
+                            disabled={controlsDisabled}
+                            onClick={() => controlServices('restart')}
+                        >
+                            Riavvia
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            leadingIcon={<Icon.StopCircle size={14} />}
+                            busy={control.isPending && control.variables === 'stop'}
+                            disabled={bothStopped || controlsDisabled}
+                            onClick={() => controlServices('stop')}
+                        >
+                            Arresta server
+                        </Button>
+                        <Button
+                            variant="quiet"
+                            iconOnly
+                            aria-label="Aggiorna lo stato dei servizi locali"
+                            title="Aggiorna ora"
+                            aria-busy={statusQuery.isFetching && !control.isPending}
+                            disabled={control.isPending}
+                            onClick={() => void statusQuery.refetch()}
+                        >
+                            <Icon.Refresh size={15} aria-hidden="true" />
+                        </Button>
+                    </div>
+                </div>
+                <p style={{ color: 'var(--fg-3)', fontSize: 12, margin: '12px 0 16px', minHeight: 18 }}>
+                    <span role="status" aria-live="polite">
+                        {control.isPending && control.variables ? CONTROL_PROGRESS[control.variables]
+                            : statusQuery.isError ? 'Stato dei server non disponibile.'
+                                : status ? 'Aggiornamento automatico ogni 2 secondi.' : 'Verifica dello stato dei server…'}
+                    </span>
+                    {status && !statusQuery.isError && !control.isPending ? (
+                        <> Ultimo controllo: <time dateTime={status.refreshed_at}>{formatTimestamp(status.refreshed_at)}</time></>
+                    ) : null}
+                </p>
+                <div className="local-integration-services" role="group" aria-label="Stato dei servizi">
+                    <ServiceCard name="api" title="Mock API" status={status?.api} unavailable={statusQuery.isError} />
+                    <ServiceCard name="mcp" title="Server MCP" status={status?.mcp} unavailable={statusQuery.isError} />
+                </div>
+            </section>
+
+            {control.isError ? (
+                <section role="alert" style={{ ...alertStyle, borderColor: 'var(--err)' }}>
+                    <Icon.Alert size={17} aria-hidden="true" />
+                    <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                        <strong>Comando non riuscito.</strong><br />
+                        {parseLaravelError(control.error, 'Impossibile aggiornare i servizi locali. Controlla lo stato e riprova.').message}
+                    </div>
+                </section>
+            ) : null}
 
             {statusQuery.isError ? (
                 <section role="alert" style={{ ...alertStyle, borderColor: 'rgba(239, 68, 68, 0.45)' }}>
@@ -132,11 +179,6 @@ export function LocalIntegrationFixturesView(): ReactNode {
                     <div><strong>Connettori locali non ancora abilitati.</strong><br />I processi possono avviarsi, ma per configurare i tenant esegui <code>php artisan dev:reset-local-integration-fixtures</code>.</div>
                 </section>
             ) : null}
-
-            <section aria-label="Stato dei servizi" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 14 }}>
-                <ServiceCard name="api" title="API statica" status={status?.api} />
-                <ServiceCard name="mcp" title="MCP Streamable HTTP" status={status?.mcp} />
-            </section>
 
             <section style={{ ...panelStyle, padding: '18px 18px 12px', marginBottom: 14 }} aria-labelledby="local-integration-activity-title">
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -192,19 +234,19 @@ export function LocalIntegrationFixturesView(): ReactNode {
     );
 }
 
-function ServiceCard({ name, title, status }: { name: LocalServiceName; title: string; status?: LocalIntegrationServiceStatus }): ReactNode {
+function ServiceCard({ name, title, status, unavailable }: { name: LocalServiceName; title: string; status?: LocalIntegrationServiceStatus; unavailable: boolean }): ReactNode {
     const active = status?.state === 'running';
     const IconComponent = name === 'api' ? Icon.Api : Icon.Mcp;
     const datasetRevision = typeof status?.health?.datasetRevision === 'string' ? status.health.datasetRevision : null;
 
     return (
-        <article data-testid={`local-integration-${name}-status`} style={{ ...panelStyle, padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
+        <article data-testid={`local-integration-${name}-status`} style={{ ...panelStyle, padding: 18, minWidth: 0, overflowWrap: 'anywhere' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <span style={{ display: 'inline-grid', placeItems: 'center', width: 32, height: 32, borderRadius: 9, background: 'var(--bg-2)', color: name === 'api' ? '#8b5cf6' : '#22d3ee' }}><IconComponent size={17} /></span>
                     <div><h2 style={{ fontSize: 15, margin: 0 }}>{title}</h2><span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>{name === 'api' ? '127.0.0.1:4310' : '127.0.0.1:4311'}</span></div>
                 </div>
-                <StatusPill state={status?.state ?? 'stopped'} />
+                <StatusPill state={unavailable ? 'unavailable' : status?.state ?? 'checking'} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 20 }}>
                 <Metric label="Chiamate" value={status?.metrics?.totals.requests ?? 0} />
@@ -218,10 +260,9 @@ function ServiceCard({ name, title, status }: { name: LocalServiceName; title: s
     );
 }
 
-function StatusPill({ state }: { state: 'running' | 'stopped' | 'degraded' }): ReactNode {
-    const label = state === 'running' ? 'Attivo' : state === 'degraded' ? 'Degradato' : 'Fermo';
-    const color = state === 'running' ? '#34d399' : state === 'degraded' ? '#fbbf24' : '#94a3b8';
-    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color, fontSize: 11.5, fontWeight: 650 }}><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 99, background: color, boxShadow: state === 'running' ? `0 0 0 4px color-mix(in srgb, ${color} 16%, transparent)` : undefined }} />{label}</span>;
+function StatusPill({ state }: { state: 'running' | 'stopped' | 'degraded' | 'checking' | 'unavailable' }): ReactNode {
+    const label = state === 'running' ? 'Attivo' : state === 'degraded' ? 'Degradato' : state === 'checking' ? 'In verifica' : state === 'unavailable' ? 'Non disponibile' : 'Fermo';
+    return <span className="local-integration-service-state" data-state={state} role="status" aria-live="polite"><span aria-hidden="true" />{label}</span>;
 }
 
 function Metric({ label, value }: { label: string; value: string | number }): ReactNode {

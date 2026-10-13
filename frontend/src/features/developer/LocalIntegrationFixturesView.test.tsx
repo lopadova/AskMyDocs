@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalIntegrationFixturesView } from './LocalIntegrationFixturesView';
 import { localIntegrationsApi, type LocalIntegrationStatus } from './local-integrations.api';
@@ -50,6 +50,9 @@ const runningStatus: LocalIntegrationStatus = {
     },
 };
 
+const stoppedService = { state: 'stopped' as const, health: null, error: null, metrics: null };
+const stoppedStatus: LocalIntegrationStatus = { ...runningStatus, api: stoppedService, mcp: stoppedService };
+
 function renderView() {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return render(<QueryClientProvider client={client}><LocalIntegrationFixturesView /></QueryClientProvider>);
@@ -57,6 +60,7 @@ function renderView() {
 
 describe('LocalIntegrationFixturesView', () => {
     beforeEach(() => {
+        vi.resetAllMocks();
         vi.mocked(localIntegrationsApi.status).mockResolvedValue(runningStatus);
         vi.mocked(localIntegrationsApi.control).mockResolvedValue({ message: 'Done.', status: runningStatus });
     });
@@ -65,22 +69,108 @@ describe('LocalIntegrationFixturesView', () => {
         renderView();
 
         await waitFor(() => expect(screen.getByTestId('local-integration-call-count')).toHaveTextContent('2 mostrate'));
-        expect(screen.getByText('API statica')).toBeInTheDocument();
-        expect(screen.getByText('MCP Streamable HTTP')).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Server mock' })).toBeInTheDocument();
+        expect(screen.getByText('Mock API')).toBeInTheDocument();
+        expect(screen.getByText('Server MCP')).toBeInTheDocument();
         expect(screen.getByText('Chiamate negli ultimi 60 secondi')).toBeInTheDocument();
         const callsTable = screen.getByRole('table');
         expect(callsTable).toHaveTextContent('v1/companies/rotta-logistics/context');
         expect(callsTable).toHaveTextContent('mcp/passolibero-calzature');
         expect(screen.getByTestId('local-integration-mcp-request-2')).toHaveTextContent('get_operational_record');
         expect(screen.getByTestId('local-integration-mcp-response-2')).toHaveTextContent('Riassortimento modello Brezza');
-        expect(screen.getByRole('button', { name: 'Avvia servizi' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Avvia server' })).toBeDisabled();
     });
 
     it('restarts both local services through the guarded control endpoint', async () => {
         renderView();
 
-        fireEvent.click(await screen.findByRole('button', { name: 'Riavvia' }));
+        const restart = screen.getByRole('button', { name: 'Riavvia' });
+        await waitFor(() => expect(restart).toBeEnabled());
+        fireEvent.click(restart);
 
         await waitFor(() => expect(localIntegrationsApi.control).toHaveBeenCalledWith('restart', expect.anything()));
+    });
+
+    it('starts and stops both mocks and updates their states and available actions', async () => {
+        vi.mocked(localIntegrationsApi.status).mockResolvedValue(stoppedStatus);
+        vi.mocked(localIntegrationsApi.control)
+            .mockResolvedValueOnce({ message: 'Avviati.', status: runningStatus })
+            .mockResolvedValueOnce({ message: 'Arrestati.', status: stoppedStatus });
+        renderView();
+
+        const start = screen.getByRole('button', { name: 'Avvia server' });
+        const stop = screen.getByRole('button', { name: 'Arresta server' });
+        await waitFor(() => expect(start).toBeEnabled());
+        expect(stop).toBeDisabled();
+        fireEvent.click(start);
+
+        await waitFor(() => expect(within(screen.getByTestId('local-integration-api-status')).getByText('Attivo')).toBeInTheDocument());
+        expect(within(screen.getByTestId('local-integration-mcp-status')).getByText('Attivo')).toBeInTheDocument();
+        expect(start).toBeDisabled();
+        expect(stop).toBeEnabled();
+        expect(localIntegrationsApi.control).toHaveBeenCalledWith('start', expect.anything());
+        fireEvent.click(stop);
+
+        await waitFor(() => expect(within(screen.getByTestId('local-integration-api-status')).getByText('Fermo')).toBeInTheDocument());
+        expect(within(screen.getByTestId('local-integration-mcp-status')).getByText('Fermo')).toBeInTheDocument();
+        expect(start).toBeEnabled();
+        expect(stop).toBeDisabled();
+        expect(localIntegrationsApi.control).toHaveBeenCalledWith('stop', expect.anything());
+    });
+
+    it('keeps the initial state unknown and prevents actions until the first status arrives', () => {
+        vi.mocked(localIntegrationsApi.status).mockReturnValue(new Promise(() => {}));
+        renderView();
+
+        expect(screen.getAllByText('In verifica')).toHaveLength(2);
+        expect(screen.queryByText('Fermo')).not.toBeInTheDocument();
+        for (const name of ['Avvia server', 'Arresta server', 'Riavvia']) {
+            expect(screen.getByRole('button', { name })).toBeDisabled();
+        }
+    });
+
+    it('announces a pending action and blocks overlapping commands', async () => {
+        vi.mocked(localIntegrationsApi.status).mockResolvedValue(stoppedStatus);
+        vi.mocked(localIntegrationsApi.control).mockReturnValue(new Promise(() => {}));
+        renderView();
+        const start = screen.getByRole('button', { name: 'Avvia server' });
+        await waitFor(() => expect(start).toBeEnabled());
+        fireEvent.click(start);
+
+        expect(await screen.findByText('Avvio dei server in corso…')).toBeInTheDocument();
+        expect(start).toHaveAttribute('aria-busy', 'true');
+        for (const name of ['Avvia server', 'Arresta server', 'Riavvia', 'Aggiorna lo stato dei servizi locali']) {
+            expect(screen.getByRole('button', { name })).toBeDisabled();
+        }
+    });
+
+    it('shows unavailable states after a failed status request and allows a manual retry', async () => {
+        vi.mocked(localIntegrationsApi.status).mockRejectedValueOnce(new Error('Unavailable'));
+        renderView();
+
+        expect(await screen.findAllByText('Non disponibile')).toHaveLength(2);
+        expect(screen.getByRole('button', { name: 'Avvia server' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Arresta server' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Aggiorna lo stato dei servizi locali' }));
+
+        await waitFor(() => expect(within(screen.getByTestId('local-integration-api-status')).getByText('Attivo')).toBeInTheDocument());
+        expect(screen.getByRole('button', { name: 'Arresta server' })).toBeEnabled();
+    });
+
+    it('keeps a failed command visible with its cause and lets the operator retry', async () => {
+        vi.mocked(localIntegrationsApi.status).mockResolvedValue(stoppedStatus);
+        vi.mocked(localIntegrationsApi.control).mockRejectedValueOnce(new Error('La porta è già occupata.'));
+        renderView();
+        const start = screen.getByRole('button', { name: 'Avvia server' });
+        await waitFor(() => expect(start).toBeEnabled());
+        fireEvent.click(start);
+
+        expect(await screen.findByText('Comando non riuscito.')).toBeInTheDocument();
+        expect(screen.getAllByText('La porta è già occupata.').length).toBeGreaterThan(0);
+        await waitFor(() => expect(start).toBeEnabled());
+        fireEvent.click(start);
+
+        await waitFor(() => expect(within(screen.getByTestId('local-integration-api-status')).getByText('Attivo')).toBeInTheDocument());
+        expect(screen.queryByText('Comando non riuscito.')).not.toBeInTheDocument();
     });
 });

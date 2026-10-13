@@ -48,8 +48,8 @@ export interface LocalIntegrationStatus {
 }
 
 export const localIntegrationsApi = {
-    async status(): Promise<LocalIntegrationStatus> {
-        const { data } = await api.get<LocalIntegrationStatus>('/api/developer/local-integrations');
+    async status(signal?: AbortSignal): Promise<LocalIntegrationStatus> {
+        const { data } = await api.get<LocalIntegrationStatus>('/api/developer/local-integrations', { signal });
         return data;
     },
 
