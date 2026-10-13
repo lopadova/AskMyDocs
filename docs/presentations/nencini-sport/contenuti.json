@@ -1,0 +1,112 @@
+{
+  "title": "AskMyDocs per Nencini Sport",
+  "language": "it-IT",
+  "date": "2026-10-13",
+  "plannedDurationSeconds": 550,
+  "context": "Freshdesk già collegato. La demo non attiva tutti i controlli. La produzione prevista userà Regolo e i moduli di governance applicabili, configurati e verificati.",
+  "slides": [
+    {
+      "title": "AskMyDocs per Nencini Sport",
+      "durationSeconds": 35,
+      "range": "0:00–0:35",
+      "speech": "Ogni giorno il vostro servizio clienti risolve problemi, chiarisce dubbi e trova soluzioni. Una parte di questo sapere vive nei ticket Freshdesk e nell’esperienza delle persone. AskMyDocs rende questa conoscenza interrogabile: si fa una domanda in linguaggio naturale e si ottiene una risposta costruita sulle fonti aziendali, con riferimenti da controllare. Oggi vediamo come funziona sul collegamento Freshdesk e quale assetto prevediamo per l’utilizzo in produzione.",
+      "action": "Mostrare la copertina e introdurre il collegamento Freshdesk già realizzato.",
+      "sources": ["docs-site/introduction.mdx", "docs/connectors/FRESHDESK.md", "Contesto confermato da Marco nella conversazione del 13 ottobre 2026."]
+    },
+    {
+      "title": "Il sapere del servizio clienti",
+      "durationSeconds": 40,
+      "range": "0:35–1:15",
+      "speech": "Pensiamo a un cambio taglia, a una spedizione contestata o a una richiesta di assistenza su un prodotto. Spesso un collega ha già affrontato un caso simile. Il lavoro consiste nel ritrovare il ticket giusto, capire come si è concluso e distinguere quel precedente dalla procedura che vale oggi. AskMyDocs aiuta a recuperare questa esperienza. Il beneficio da verificare insieme è semplice: meno tempo speso nella ricerca e più tempo per seguire il cliente.",
+      "action": "Collegare gli esempi all’attività del team. Non attribuire a Nencini Sport volumi o risultati non misurati.",
+      "sources": ["docs/connectors/FRESHDESK.md", "docs-site/core-concepts.mdx"]
+    },
+    {
+      "title": "Come funziona",
+      "durationSeconds": 50,
+      "range": "1:15–2:05",
+      "speech": "Freshdesk è già collegato. Il connettore porta nella base di conoscenza i contenuti selezionati, come ticket e articoli, e li aggiorna con la sincronizzazione. Quando l’operatore fa una domanda, AskMyDocs cerca le informazioni pertinenti e prepara il contesto per il modello AI. Il modello formula una risposta e i riferimenti permettono di tornare alle fonti. L’operatore verifica e decide come usarla. Possiamo affiancare allo storico le procedure approvate: un caso passato resta un precedente, mentre una regola attuale deve avere una fonte valida.",
+      "action": "Spiegare la sequenza in modo concreto. Le procedure ulteriori si mostrano solo se già caricate.",
+      "sources": ["docs/connectors/FRESHDESK.md", "docs-site/introduction.mdx", "docs-site/chat-and-retrieval.mdx", "docs-site/core-concepts.mdx"]
+    },
+    {
+      "title": "La demo: un cambio taglia",
+      "durationSeconds": 120,
+      "range": "2:05–4:05",
+      "speech": "Facciamo una domanda vicina al lavoro quotidiano: cerchiamo casi risolti di cambio taglia e chiediamo i passaggi seguiti, con il riferimento ai ticket. Qui osserviamo tre cose: quali casi trova, se il riepilogo corrisponde ai contenuti e se possiamo aprire la fonte. Poi chiediamo una bozza di risposta al cliente, usando soltanto ciò che è documentato e lasciando espliciti i punti da verificare. La bozza resta a disposizione dell’operatore. In questa demo ci fermiamo alla consultazione e alla preparazione della risposta. Se manca una prova dell’esito, quel limite deve rimanere visibile.",
+      "action": "Passare alla chat. Incollare il prompt principale. Aprire una fonte e leggere un passaggio che sostiene il riepilogo. Usare il seguito solo se rimane tempo. Tornare alle slide entro 4:05. Se il tema cambio taglia non compare nel dataset, usare un tema già verificato nello storico.",
+      "prompt": "Cerca nei ticket Freshdesk risolti casi di cambio taglia. Per ciascun caso riassumi la richiesta, i passaggi seguiti e l’esito documentato. Cita i ticket di origine e segnala gli elementi che non risultano dalle fonti. Non trasformare un precedente storico in una procedura attuale.",
+      "followup": "Sulla base di questi casi, prepara una breve bozza di risposta al cliente. Non inserire dati personali, non promettere rimborsi o tempistiche non documentati e indica che cosa l’operatore deve verificare nella procedura attuale.",
+      "sources": ["docs/connectors/FRESHDESK.md", "docs-site/chat-and-retrieval.mdx"]
+    },
+    {
+      "title": "Altri usi, stessa conoscenza",
+      "durationSeconds": 45,
+      "range": "4:05–4:50",
+      "speech": "Lo stesso metodo si applica ad altri lavori. Per le spedizioni, possiamo ritrovare reclami simili e vedere come sono stati gestiti. Per l’assistenza prodotto, possiamo riassumere gli elementi già raccolti e quelli che mancano. Un nuovo collega può studiare casi reali, senza ricominciare ogni ricerca da zero. Il team può anche confrontare più ticket di un tema e preparare una FAQ da sottoporre a revisione. Sono esempi da provare sulle fonti disponibili. Eventuali informazioni su ordini, magazzino o corrieri richiedono collegamenti specifici.",
+      "action": "Mostrare quattro esempi e sceglierne uno da approfondire soltanto se il pubblico lo richiede.",
+      "sources": ["docs/connectors/FRESHDESK.md", "docs-site/introduction.mdx"]
+    },
+    {
+      "title": "Risposte con fonti verificabili",
+      "durationSeconds": 40,
+      "range": "4:50–5:30",
+      "speech": "La qualità si controlla nella fonte. Una risposta convincente deve permettere di verificare da dove arrivano le informazioni. Per questo guardiamo il ticket, controlliamo l’esito e verifichiamo che una procedura sia ancora attuale. L’AI può commettere errori e una citazione, da sola, non dimostra che tutto il testo sia corretto. AskMyDocs offre strumenti per questa verifica e per organizzare la conoscenza approvata. Il risultato utile è una risposta che un operatore può controllare e correggere prima di usarla.",
+      "action": "Richiamare il riferimento aperto durante la demo. Non affermare che il sistema elimina tutti gli errori o che rifiuta sempre risposte senza evidenza.",
+      "sources": ["docs-site/chat-and-retrieval.mdx", "docs-site/core-concepts.mdx", "docs-site/pii-and-compliance.mdx"]
+    },
+    {
+      "title": "Regolo: scelta del modello, AI in Italia",
+      "durationSeconds": 60,
+      "range": "5:30–6:30",
+      "speech": "Per la produzione la scelta prevista è Regolo.ai, che dichiara di eseguire i modelli nei data center italiani di Seeweb. Possiamo scegliere tra modelli del catalogo, per esempio Qwen, Mistral o GPT OSS, e valutare la soluzione più adatta alle risposte che ci servono. Regolo consente anche di ospitare modelli compatibili su infrastruttura dedicata. Conta dove il modello viene eseguito, anche se lo ha sviluppato un’organizzazione estera. Il catalogo comprende inoltre modelli per la ricerca nei documenti. La configurazione finale va collaudata sull’intero percorso, comprese le elaborazioni accessorie.",
+      "action": "Presentare i nomi come esempi verificati al 13 ottobre 2026. Non promettere qualunque modello commerciale proprietario. La scelta dipende da compatibilità, licenza, prestazioni e disponibilità.",
+      "sources": ["https://regolo.ai/eu-data-residency-and-gdpr-for-ai-vendors-from-checkbox-to-product-feature/", "https://regolo.ai/models/", "https://docs.regolo.ai/models/custom-models/", "https://docs.regolo.ai/models/catalog/", "https://api.regolo.ai/models", "config/ai.php", "Catalogo pubblico /models acquisito il 13 ottobre 2026: qwen3.5-122b, mistral-small-4-119b, gpt-oss-120b, Qwen3-Embedding-8B, Qwen3-Reranker-4B."]
+    },
+    {
+      "title": "Protezione dei dati",
+      "durationSeconds": 55,
+      "range": "6:30–7:25",
+      "speech": "Il progetto di produzione prevede una base di conoscenza sotto il vostro controllo, accessi per ruolo e minimizzazione dei dati personali. Regolo dichiara di non conservare il contenuto delle richieste e delle risposte e di non usarlo per addestrare i modelli. Questo riguarda il provider AI. AskMyDocs può conservare documenti e conversazioni secondo le regole definite per l’installazione. Quando diciamo che l’AI resta in Italia intendiamo il percorso configurato verso Regolo. Per parlare dell’intero sistema, vanno confermate anche le sedi di hosting, backup e servizi accessori, oltre alla residenza del vostro account Freshdesk.",
+      "action": "Distinguere l’elaborazione del provider dalla conservazione nell’applicazione. Non dire che i dati non escono mai dal server AskMyDocs. La residenza Freshdesk non cambia scegliendo Regolo.",
+      "sources": ["https://regolo.ai/zero-data-retention/", "https://regolo.ai/eu-data-residency-and-gdpr-for-ai-vendors-from-checkbox-to-product-feature/", "docs-site/pii-and-compliance.mdx", "docs-site/architecture/security-and-threat-model.mdx"]
+    },
+    {
+      "title": "AI Act: l’assetto di produzione",
+      "durationSeconds": 60,
+      "range": "7:25–8:25",
+      "speech": "È utile distinguere il test di oggi dall’utilizzo operativo. Nel test non abbiamo attivato tutte le regole. In produzione useremo Regolo e configureremo i moduli applicabili: protezione dei dati personali, autorizzazioni, tracciabilità, revisione umana e strumenti per gestire rischi, incidenti e richieste degli interessati. La piattaforma comprende moduli di supporto a questi processi. Gli obblighi dipendono dall’uso concreto e dal ruolo dell’azienda. Scegliere Regolo e attivare i moduli sostiene il percorso di conformità, che comprende anche procedure, responsabilità e verifiche. La demo dimostra il funzionamento, mentre l’assetto di produzione va completato e validato.",
+      "action": "Mantenere chiara la distinzione demo/produzione. Non descrivere il test come una certificazione AI Act o attribuire a ogni uso gli obblighi dei sistemi ad alto rischio.",
+      "sources": ["Contesto confermato da Marco nella conversazione del 13 ottobre 2026.", "docs-site/pii-and-compliance.mdx", "config/ai-act-compliance.php", "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai", "https://digital-strategy.ec.europa.eu/en/policies/guidelines-ai-transparency-obligations"]
+    },
+    {
+      "title": "Il prossimo passo per Nencini Sport",
+      "durationSeconds": 45,
+      "range": "8:25–9:10",
+      "speech": "Il collegamento Freshdesk ci permette di partire dalla vostra esperienza reale. Il passo successivo è scegliere con gli operatori alcuni casi rappresentativi, verificare la qualità delle risposte e misurare il tempo necessario a trovare una soluzione. Su questa base configuriamo il modello Regolo e i controlli di produzione. AskMyDocs può rendere il sapere del team più facile da trovare e da condividere, mantenendo le persone responsabili delle risposte ai clienti. È questo il valore che vogliamo verificare insieme.",
+      "action": "Chiudere senza promettere percentuali di risparmio. Rimangono 50 secondi prima del limite di dieci minuti.",
+      "sources": ["docs/connectors/FRESHDESK.md", "Contesto e proposta operativa, senza risultati quantitativi attribuiti a Nencini Sport."]
+    }
+  ],
+  "extraPrompts": [
+    {"use": "Spedizioni", "prompt": "Cerca nei ticket Freshdesk risolti reclami per ritardi di consegna. Riassumi le verifiche fatte, le azioni documentate e l’esito. Cita i ticket e non dedurre lo stato attuale di un ordine."},
+    {"use": "Resi e rimborsi", "prompt": "Trova casi documentati di reso e rimborso. Distingui la richiesta del cliente, le condizioni verificate e la soluzione registrata. Non trasformare le eccezioni in regole generali."},
+    {"use": "Assistenza prodotto", "prompt": "Riassumi questo ticket di assistenza prodotto e indica quali informazioni sono già presenti e quali mancano per una valutazione dell’operatore. Usa soltanto le fonti citate."},
+    {"use": "Affiancamento di nuovi colleghi", "prompt": "Seleziona cinque ticket risolti su un tema presente nello storico. Prepara una breve guida per un nuovo collega con problema, passaggi seguiti ed esito documentato. Ometti dati personali e cita le fonti."},
+    {"use": "FAQ da rivedere", "prompt": "Confronta i ticket selezionati e prepara una bozza di FAQ sui problemi comuni. Separa i fatti documentati dalle ipotesi e indica quali risposte richiedono una procedura approvata."},
+    {"use": "Procedura attuale, se presente nella KB", "prompt": "Qual è la procedura approvata più recente per un cambio taglia? Cita il documento e la data, se disponibile. Se trovi solo ticket storici, spiega che non bastano a stabilire la regola attuale."}
+  ],
+  "preparation": [
+    "Scegliere un tema realmente presente nei ticket importati e indicizzati. Il cambio taglia è un esempio, non un risultato osservato.",
+    "Preparare una conversazione con risposta e fonte già controllate per gestire un’attesa di rete. Un eventuale risultato preparato va dichiarato come tale.",
+    "Usare un ambiente e un account adatti alla presentazione. Tenere fuori dalla proiezione dati personali, note riservate e credenziali.",
+    "Mostrare soltanto funzioni e dati disponibili. Ordini, disponibilità di magazzino e stato corrieri non si deducono dal solo storico Freshdesk.",
+    "Aprire il PDF per la proiezione o il PowerPoint per utilizzare le note relatore. Fare una sola demo live di massimo due minuti.",
+    "Prima della produzione confermare hosting e backup, regione contrattuale, flussi Freshdesk, provider per chat, embeddings, reranking, OCR, estrazioni, pre-elaborazioni e fallback. I moduli di governance richiedono configurazione e verifica."
+  ],
+  "imageDisclosure": "Le due immagini sono illustrazioni concettuali generate con lo strumento integrato Imagegen. Non raffigurano sedi o infrastrutture reali di Nencini Sport o Regolo.",
+  "imagePrompts": [
+    "Use case: ads-marketing. Asset type: widescreen 16:9 background for an Italian enterprise software presentation to Nencini Sport. Create a premium conceptual studio photograph of a single unbranded cyan and violet running shoe, a muted tennis racket and an abstract translucent glass sheet evoking shared knowledge, all artfully arranged in the RIGHT HALF of the frame on a very dark ink navy studio surface. Sport retail aesthetic, tactile mesh, subtle cyan edge light, controlled soft shadows, refined editorial art direction, elegant rather than sci-fi. Left 52 percent of frame must be clean, almost solid dark navy #101A2D negative space for editable title overlay. 16:9 horizontal composition, crisp detail, calm and confident. No lettering, no brand marks, no UI, no people, no watermark. This is a conceptual illustration, not a photograph of Nencini's real premises.",
+    "Use case: stylized-concept. Asset type: widescreen slide visual about private AI processing in Italy. Create a sophisticated architectural CGI illustration, three elegant translucent glass server towers on a dark ink navy base with restrained cyan and violet light, backed by a few slim frosted document sheets, visually expressing data handled with care. Tiny neutral Italian green-white-red light accent at the base, no flags or map. All visual objects in the RIGHT 55 percent of a 16:9 horizontal frame, left 45 percent clean dark navy #101A2D negative space for editable slide text. Premium product photography lighting, credible contemporary infrastructure concept, precise reflections, understated and minimal. No shield icon, no padlock, no text, no logos, no infographic, no holograms, no stock-photo cliches. Not a real facility photograph."
+  ]
+}
