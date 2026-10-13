@@ -75,11 +75,31 @@ final readonly class AgentChatTurnStarter
         }, 3);
 
         if ($inline) {
-            $this->handler->handle($turn->run);
+            $this->executeInline($turn->run);
         } else {
             $this->runs->enqueue($turn->run);
         }
 
         return new AgentChatTurn($turn->message->refresh(), $turn->run->refresh());
+    }
+
+    private function executeInline(AgentRun $run): void
+    {
+        // Live tools execute this same pipeline inside PHP-FPM, whose default
+        // 30-second request limit is shorter than the queued agent budget.
+        $previousLimit = (int) ini_get('max_execution_time');
+        $agentLimit = max(30, (int) config('agent.job_timeout_seconds', 120));
+        $extendLimit = $previousLimit > 0 && $previousLimit < $agentLimit;
+        if ($extendLimit) {
+            set_time_limit($agentLimit);
+        }
+
+        try {
+            $this->handler->handle($run);
+        } finally {
+            if ($extendLimit) {
+                set_time_limit($previousLimit);
+            }
+        }
     }
 }

@@ -329,6 +329,12 @@ aggira il validatore e non equivale a confermare tutte le informazioni trovate.
 
 ### Richieste vocali: avanzamento e serializzazione
 
+Il turno vocale esegue la ricerca nella richiesta HTTP. Il suo limite PHP viene
+esteso al budget `AGENT_JOB_TIMEOUT` quando quello iniziale è inferiore, poi
+ripristinato anche in caso di errore. Un limite già superiore o illimitato resta
+invariato. Questo evita che PHP-FPM interrompa dopo 30 secondi una ricerca che
+il worker testuale può eseguire per il budget agente configurato.
+
 La voce continua a usare lo stesso turno canonico della chat. Durante la chiamata
 `askmydocs.chat_turn`, il client cerca il run appena creato tramite la ricevuta
 `GET /conversations/{conversation}/realtime-agent/{session}/run?call_id=...`

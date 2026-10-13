@@ -161,6 +161,59 @@ final class RealtimeAgentIntegrationTest extends TestCase
         $this->getJson($url)->assertNotFound();
     }
 
+    public static function inlineExecutionLimits(): array
+    {
+        return [
+            'HTTP success' => [30, 900, false],
+            'HTTP failure' => [30, 900, true],
+            'unlimited success' => [0, 0, false],
+            'unlimited failure' => [0, 0, true],
+            'longer existing limit' => [1200, 1200, false],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('inlineExecutionLimits')]
+    public function test_voice_pipeline_uses_the_agent_time_budget_and_restores_the_request_limit(int $requestLimit, int $expectedLimit, bool $fails): void
+    {
+        [$user, $conversation] = $this->chatFixture();
+        config(['realtime-agent.enabled' => true, 'realtime-agent.default' => 'fake', 'agent.job_timeout_seconds' => 900]);
+        $sessionId = $this->actingAs($user)->postJson("/test-conversations/{$conversation->id}/realtime-agent")
+            ->assertCreated()->json('session_id');
+        $observed = new \ArrayObject();
+        $this->app->bind(AgentRunHandler::class, fn () => new class($observed, $fails) implements AgentRunHandler
+        {
+            public function __construct(private \ArrayObject $observed, private bool $fails) {}
+
+            public function handle(AgentRun $run): void
+            {
+                $this->observed['limit'] = (int) ini_get('max_execution_time');
+                if ($this->fails) {
+                    throw new \RuntimeException('Synthetic inline execution failure.');
+                }
+                $run->forceFill(['status' => AgentRun::STATUS_COMPLETED,
+                    'result_json' => ['response' => ['answer' => 'Risposta canonica.']]])->save();
+            }
+        });
+        $session = app(AgentSessionManager::class)->resume($sessionId);
+        $originalLimit = (int) ini_get('max_execution_time');
+        try {
+            set_time_limit($requestLimit);
+            try {
+                $result = app(\App\Realtime\HandleRealtimeChatTurn::class)->handle($session,
+                    new \AgentsFullDuplex\RealtimeAgent\Data\ToolCall('budget-call', 'askmydocs.chat_turn', ['question' => 'Qual è la policy?'], 1, 'budget-call'));
+                $this->assertFalse($fails, 'The failed handler must propagate its exception.');
+                $this->assertSame('Risposta canonica.', $result['response']['answer']);
+            } catch (\RuntimeException $exception) {
+                $this->assertTrue($fails);
+                $this->assertSame('Synthetic inline execution failure.', $exception->getMessage());
+            }
+            $this->assertSame($expectedLimit, $observed['limit']);
+            $this->assertSame($requestLimit, (int) ini_get('max_execution_time'));
+        } finally {
+            set_time_limit($originalLimit);
+        }
+    }
+
     public function test_busy_conversation_rejects_voice_and_text_without_creating_or_cancelling_turns(): void
     {
         [$user, $conversation] = $this->chatFixture();
