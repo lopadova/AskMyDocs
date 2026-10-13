@@ -351,8 +351,8 @@ Su OpenAI Live, una ricerca lunga riceve brevi aggiornamenti vocali tramite
 sullo stesso canale WebRTC. Il primo intervento arriva dopo 8 secondi, e soltanto
 dopo che la ricevuta autenticata ha confermato un run avviato. I successivi
 sono distanziati di almeno 15 secondi e rinviati finché non ci sono 6 secondi senza
-nuove trascrizioni. Il catalogo italiano contiene 66 frasi, scelte per fase con
-un intercalare buffo al massimo ogni terzo intervento; le varianti ruotano per
+nuove trascrizioni. Il catalogo italiano contiene 52 frasi sobrie, scelte per fase
+senza battute o intercalari buffi; le varianti ruotano per
 evitare ripetizioni immediate. Le altre lingue ricevono brevi aggiornamenti che
 Live rende nella lingua dell'utente. Le fonti trovate vengono contate soltanto
 dall'evento `retrieval.completed`; le domande approfondite provengono dai task

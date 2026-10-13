@@ -18,7 +18,6 @@ export class RealtimeResearchNarrator {
     private phase: RealtimeResearchPhase = 'waiting';
     private quietUntil = 0;
     private nextAt = 0;
-    private spoken = 0;
     private update: { key: string; content: string; priority: number } | null = null;
     private readonly announced = new Set<string>();
     private readonly tasks = new Map<number, string>();
@@ -34,7 +33,6 @@ export class RealtimeResearchNarrator {
         this.sequence = 0;
         this.phase = 'waiting';
         this.quietUntil = 0;
-        this.spoken = 0;
         this.announced.clear();
         this.tasks.clear();
         this.phraseIndices.clear();
@@ -150,7 +148,6 @@ export class RealtimeResearchNarrator {
         const content = update?.content ?? this.nextPhrase();
         this.update = null;
         if (update) this.announced.add(update.key);
-        this.spoken++;
         // Delivery is best effort and independent from the canonical result.
         void this.speak(content).catch(() => undefined);
         this.nextAt = Date.now() + VOICE_PROGRESS_INTERVAL_MS;
@@ -158,7 +155,7 @@ export class RealtimeResearchNarrator {
     }
 
     private nextPhrase(): string {
-        const category = this.spoken % 3 === 2 ? 'playful' : this.phase;
+        const category = this.phase;
         const phrases = (this.locale.toLowerCase().startsWith('it') ? italianWaitingPhrases : englishWaitingPhrases)[category];
         const index = this.phraseIndices.get(category) ?? Math.floor(this.random() * phrases.length);
         this.phraseIndices.set(category, (index + 1) % phrases.length);

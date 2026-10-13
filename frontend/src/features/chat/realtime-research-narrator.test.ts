@@ -32,7 +32,7 @@ describe('RealtimeResearchNarrator', () => {
         narrator.stop();
     });
 
-    it('leaves short searches quiet and spaces varied, phase-appropriate notices with occasional humor', async () => {
+    it('leaves short searches quiet and rotates sober, phase-appropriate notices', async () => {
         const { narrator, speak } = fixture();
         narrator.observe([event(1, 'retrieval.started')]);
         await vi.advanceTimersByTimeAsync(VOICE_PROGRESS_FIRST_DELAY_MS - 1);
@@ -44,7 +44,7 @@ describe('RealtimeResearchNarrator', () => {
         await vi.advanceTimersByTimeAsync(1);
         expect(speak).toHaveBeenLastCalledWith('Mmm… sto passando in rassegna le fonti.');
         await vi.advanceTimersByTimeAsync(VOICE_PROGRESS_INTERVAL_MS);
-        expect(speak).toHaveBeenLastCalledWith('Sono qui, eh… non sono andato a prendere un caffè.');
+        expect(speak).toHaveBeenLastCalledWith('Un attimo, sto cercando i passaggi pertinenti.');
     });
 
     it('reports real source counts without reading source contents or claiming a final answer', async () => {

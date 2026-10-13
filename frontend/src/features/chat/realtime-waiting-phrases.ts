@@ -4,16 +4,16 @@ export type RealtimeResearchPhase = 'waiting' | 'documents' | 'receiving' | 'pla
 export const italianWaitingPhrases = {
     waiting: [
         'Vediamo un po’…',
-        'Un attimo, sono qui.',
+        'Un attimo, sto seguendo la richiesta.',
         'Eccomi, la ricerca è ancora in corso.',
         'Ti tengo aggiornato mentre aspetto.',
-        'Ci vuole ancora un attimo… resto qui con te.',
+        'La richiesta è ancora in corso.',
         'Mmm… la ricerca sta richiedendo un po’ di tempo.',
-        'Sono ancora qui, eh…',
+        'Sto seguendo l’avanzamento della ricerca.',
         'Un momento di pazienza, continuo a seguire la ricerca.',
         'Appena arriva un aggiornamento, te lo dico.',
-        'L’attesa si sta allungando un po’. Ti tengo compagnia.',
-        'Eccomi qua… resto in ascolto.',
+        'L’attesa si sta allungando un po’. Ti aggiorno appena arrivano nuovi dati.',
+        'Resto in attesa di un aggiornamento della ricerca.',
         'La richiesta è ancora in lavorazione. Ti aggiorno appena cambia qualcosa.',
     ],
     documents: [
@@ -33,7 +33,7 @@ export const italianWaitingPhrases = {
         'Sto aspettando la risposta della fonte dati.',
         'La lettura dei dati è ancora in corso.',
         'Un attimo, questa fonte sta impiegando un po’ a rispondere.',
-        'Sono qui… aspetto che arrivino i dati.',
+        'Sto aspettando che arrivino i dati.',
         'Sto interrogando la fonte richiesta.',
         'Mmm… la richiesta dei dati è ancora aperta.',
         'Appena la fonte risponde, continuo con il controllo.',
@@ -64,22 +64,6 @@ export const italianWaitingPhrases = {
         'Un momento, sto componendo una risposta chiara.',
         'Sto verificando quali punti hanno un riscontro nelle fonti.',
     ],
-    playful: [
-        'Sono qui, eh… non sono andato a prendere un caffè.',
-        'Eccomi… niente fuga, sono ancora qui.',
-        'Ci vuole ancora un attimo… faccio compagnia all’attesa.',
-        'Mmm… oggi l’attesa si prende il suo tempo.',
-        'Sono qui… modalità pazienza attivata.',
-        'Piccola pausa tecnica… io resto in postazione.',
-        'Eccomi, sempre sul pezzo… anche se il pezzo si fa aspettare.',
-        'Un attimo… il silenzio non era un numero di magia.',
-        'Sono ancora qui… niente pausa merenda.',
-        'La ricerca continua… io intanto tengo il microfono caldo.',
-        'Mmm… qui serve un pizzico di pazienza in più.',
-        'Eccomi… presente all’appello, anche durante l’attesa.',
-        'Ci vuole ancora un attimo… resto di guardia.',
-        'Sono qui, eh… il caffè può aspettare.',
-    ],
 } as const;
 
 export const englishWaitingPhrases = {
@@ -88,5 +72,4 @@ export const englishWaitingPhrases = {
     receiving: ['I’m waiting for the data source to respond.', 'The data request is still in progress.'],
     planning: ['I’m organizing the next checks.', 'I’m working out which sources to check next.'],
     preparing: ['I’m putting the response together.', 'I’m checking the response against the sources.'],
-    playful: ['Still here… I haven’t gone for a coffee.', 'A little patience… I’m keeping you company while we wait.'],
 } as const;
