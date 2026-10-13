@@ -8,14 +8,14 @@ import { FileBlob, Presentation, PresentationFile } from '@oai/artifact-tool';
 
 const root = path.resolve(process.argv[2] ?? process.cwd());
 const source = path.join(root, 'docs/presentations/nencini-sport');
-const build = path.join(root, 'storage/app/presentation-build/nencini-sport-keynote');
-const output = path.join(root, 'storage/app/presentations/nencini-sport-keynote');
+const build = path.join(root, 'storage/app/presentation-build/nencini-sport-keynote-v2');
+const output = path.join(root, 'storage/app/presentations/nencini-sport-keynote-v2');
 const skill = '/Users/marco/.codex/plugins/cache/openai-primary-runtime/presentations/26.1011.11113/skills/presentations';
 const python = '/Users/marco/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3';
-const content = JSON.parse(await fs.readFile(path.join(source, 'contenuti.json'), 'utf8'));
+const content = JSON.parse(await fs.readFile(path.join(source, 'contenuti-keynote-v2.json'), 'utf8'));
 const { finalizePresentation } = await import(pathToFileURL(path.join(skill, 'container_tools/artifact_tool_utils.mjs')).href);
 const edition = process.argv[3] ?? '';
-const stem = `AskMyDocs-Nencini-Sport-Keynote${edition}`;
+const stem = `AskMyDocs-Nencini-Sport-v2${edition}`;
 const deckPath = path.join(output, `${stem}.pptx`);
 await fs.mkdir(path.join(build, 'preview'), { recursive: true });
 await fs.mkdir(output, { recursive: true });
@@ -39,7 +39,7 @@ async function slide(i, dark, filename) {
   s.background.fill=dark?colors.black:colors.white;
   if(filename) await image(s,filename);
   const data=content.slides[i];
-  s.speakerNotes.text=`${data.range}\n\n${data.speech}\n\nREGIA\n${data.action}${data.prompt?`\n\nPROMPT\n${data.prompt}\n\nSEGUITO\n${data.followup}`:''}\n\nFONTI\n${data.sources.join('\n')}\n\nIMMAGINI\nIllustrazioni concettuali generate con Imagegen. Non raffigurano strutture reali di Nencini Sport o Regolo.`;
+  s.speakerNotes.text=`${data.range}\n\nPUNTI DA DIRE\n${data.cues.map(c=>`- ${c}`).join('\n')}\n\nTESTO SUGGERITO\n${data.speech}\n\nREGIA\n${data.action}${data.prompt?`\n\nPROMPT\n${data.prompt}\n\nSEGUITO\n${data.followup}`:''}\n\nFONTI\n${data.sources.join('\n')}\n\nIMMAGINI\nIllustrazioni concettuali generate con Imagegen. Non raffigurano strutture reali di Nencini Sport o Regolo.`;
   copy(s,String(i+1).padStart(2,'0'),1190,675,38,24,17,dark?colors.muted:colors.gray,false,'slide-number');
   return s;
 }
@@ -49,77 +49,88 @@ async function slide(i, dark, filename) {
   copy(s,'AskMyDocs',64,115,660,130,96,'#FFFFFF',true,'heading');
   copy(s,'per Nencini Sport',66,273,590,76,47,colors.cyan,false,'client');
   copy(s,'La conoscenza del team,\na portata di domanda',68,433,535,123,35,'#FFFFFF',false,'intro');
-  copy(s,'Demo Freshdesk',68,611,500,40,25,colors.muted,false,'demo');
+  copy(s,'Demo Freshdesk. Poi documenti e Gescat.',68,611,555,65,25,colors.muted,false,'demo');
 }
 {
-  const s=await slide(1,false,'cambio-taglia.png');
-  copy(s,'Il sapere\ndel servizio\nclienti',64,94,600,316,75,colors.black,true,'heading');
-  copy(s,'Cambi taglia, resi, spedizioni.\nEsperienze già nei ticket Freshdesk.',66,478,570,127,29,colors.gray,false,'examples');
-}
-{
-  const s=await slide(2,false,'conoscenza.png');
-  copy(s,'Come funziona',64,74,1100,96,64,colors.black,true,'heading');
-  const rows=[['01','Freshdesk','Ticket e articoli selezionati'],['02','Ricerca','Informazioni pertinenti alla domanda'],['03','Risposta AI','Riepilogo con riferimenti alle fonti'],['04','Operatore','Verifica la fonte e decide']];
-  rows.forEach(([num,heading,body],i)=>{
-    const y=233+i*98;
-    copy(s,num,64,y,80,63,44,'#6B55C5',true,`number-${i}`);
-    copy(s,heading,164,y+1,414,45,32,colors.black,true,`step-${i}`);
-    copy(s,body,164,y+46,434,41,23,colors.gray,false,`description-${i}`);
+  const s=await slide(1,false);
+  copy(s,'Dove trova le risposte',64,74,1152,96,61,colors.black,true,'heading');
+  const columns=[
+    [64,'Freshdesk','Nella demo','Ticket\nConversazioni\nCasi storici'],
+    [465,'Documentazione\ninterna','Da collegare','Regole approvate\nProcedure\nDocumenti di gestione'],
+    [877,'Gescat','Da collegare','Clienti e ordini\nSpedizioni\nDati dell’e-commerce'],
+  ];
+  columns.forEach(([x,heading,status,body],i)=>{
+    copy(s,heading,x,229,345,125,41,colors.black,true,`source-${i}`);
+    copy(s,status,x,387,345,49,26,i===0?'#18758A':'#6B55C5',true,`status-${i}`);
+    copy(s,body,x,457,345,161,27,colors.gray,false,`details-${i}`);
   });
+  copy(s,'Regole operative attive. Nuove fonti da collegare e mappare.',64,642,1130,45,23,colors.gray,false,'rules');
 }
 {
-  const s=await slide(3,true);
-  copy(s,'La demo: un cambio taglia',64,68,1152,88,49,'#FFFFFF',true,'heading');
-  copy(s,'«Cerca casi risolti\ndi cambio taglia.»',64,230,1140,228,79,'#FFFFFF',true,'prompt');
-  copy(s,'Passaggi seguiti, esito documentato e ticket di origine',64,514,1145,63,31,colors.cyan,false,'evidence');
-  copy(s,'Poi: una bozza da verificare prima di rispondere al cliente',64,610,1150,52,27,colors.muted,false,'followup');
+  const s=await slide(2,true);
+  copy(s,'Freshdesk e Gescat insieme',64,70,1152,90,55,'#FFFFFF',true,'heading');
+  copy(s,'«Il cliente segnala\nuna consegna mancante.\nChe cosa è successo\ne come interveniamo?»',64,237,742,259,44,'#FFFFFF',true,'question');
+  [['Freshdesk','Segnalazione e storico'],['Gescat','Cliente, ordine e spedizione'],['Documenti interni','Procedura applicabile']].forEach(([heading,body],i)=>{
+    const y=227+i*123;
+    copy(s,heading,861,y,352,53,31,colors.cyan,true,`join-source-${i}`);
+    copy(s,body,861,y+51,352,64,25,colors.muted,false,`join-body-${i}`);
+  });
+  copy(s,'Scenario previsto dopo il collegamento di Gescat e dei documenti',64,622,1148,52,25,colors.muted,false,'future-scope');
+}
+{
+  const s=await slide(3,false,'cambio-taglia.png');
+  copy(s,'Triage intelligente\ndelle email',64,67,710,174,54,colors.black,true,'heading');
+  copy(s,'«Il corriere mi dice\nche non trova il pacco.\nAspetto da una settimana!»',64,280,650,181,36,colors.black,true,'illustrative-email');
+  copy(s,'Esempio illustrativo',64,477,600,40,21,colors.gray,false,'example-label');
+  copy(s,'Categorie configurabili:\nreclamo, spedizione segnalata come smarrita',64,539,675,98,27,'#6B55C5',true,'classification');
+  copy(s,'Il significato del messaggio diventa ricercabile',64,648,1148,41,24,colors.gray,false,'meaning');
 }
 {
   const s=await slide(4,false);
-  copy(s,'Esempi d’uso',64,70,1145,94,64,colors.black,true,'heading');
-  [['Spedizioni','Reclami simili e soluzioni documentate',64,238],['Assistenza prodotto','Sintesi del caso e informazioni mancanti',667,238],['Nuovi colleghi','Casi reali per imparare dal team',64,458],['FAQ del team','Bozze da rivedere e approvare',667,458]].forEach(([heading,body,x,y],i)=>{
-    copy(s,heading,x,y,550,66,43,colors.black,true,`use-${i}`);
-    copy(s,body,x,y+96,538,92,28,colors.gray,false,`use-description-${i}`);
+  copy(s,'Le altre fonti aziendali',64,70,1145,94,61,colors.black,true,'heading');
+  [['Drive e documenti','Regole, procedure e file aziendali',64,224],['Email','Triage e classificazione configurabili',667,224],['API e server MCP','Dati e servizi collegati',64,426],['Archivi FTP','Importazione tramite integrazione dedicata',667,426]].forEach(([heading,body,x,y],i)=>{
+    copy(s,heading,x,y,550,68,43,colors.black,true,`source-type-${i}`);
+    copy(s,body,x,y+90,538,94,27,colors.gray,false,`source-description-${i}`);
   });
+  copy(s,'Contenuti, categorie, mapping e accessi secondo le vostre necessità',64,640,1145,45,24,colors.gray,false,'mapping');
 }
 {
-  const s=await slide(5,true);
-  copy(s,'Risposte verificabili',64,64,1152,80,49,'#FFFFFF',true,'heading');
-  copy(s,'La risposta\nsi controlla\nnella fonte',64,209,720,303,76,'#FFFFFF',true,'source-claim');
-  copy(s,'Ticket di origine\nEsito documentato\nProcedura attuale',831,250,405,237,32,colors.cyan,false,'checks');
-  copy(s,'L’AI può sbagliare. L’operatore verifica prima di usare la risposta.',64,608,1150,55,27,colors.muted,false,'human-verification');
+  const s=await slide(5,false,'conoscenza.png');
+  copy(s,'Il catalogo\ndei casi risolti',64,64,742,178,56,colors.black,true,'heading');
+  copy(s,'Implementato, in test',64,264,680,52,31,'#6B55C5',true,'test-status');
+  copy(s,'Problema e causa documentata\nIntervento eseguito\nEsito e ticket di origine',64,361,656,182,32,colors.black,false,'case-fields');
+  copy(s,'Un esempio riuscito, riutilizzabile dal team',64,593,730,53,28,colors.gray,false,'reuse');
+  copy(s,'Freshdesk: connettore creato per questa demo',64,654,1050,36,21,colors.gray,false,'new-connector');
 }
 {
-  const s=await slide(6,true,'ai-in-italia.png');
+  const s=await slide(6,true);
+  copy(s,'La demo con Freshdesk',64,68,1152,88,56,'#FFFFFF',true,'heading');
+  copy(s,'«Cerca casi risolti\ndi cambio taglia.»',64,229,1140,228,78,'#FFFFFF',true,'prompt');
+  copy(s,'Problema, intervento, esito e fonti',64,513,1145,58,33,colors.cyan,false,'evidence');
+  copy(s,'La scheda del caso è una funzione ancora in test',64,612,1150,55,27,colors.muted,false,'test-boundary');
+}
+{
+  const s=await slide(7,true,'ai-in-italia.png');
   copy(s,'Regolo.ai',64,72,600,110,80,'#FFFFFF',true,'heading');
-  copy(s,'AI in Italia',66,222,535,98,64,colors.cyan,true,'residency');
-  copy(s,'Il modello si sceglie',68,360,510,52,32,'#FFFFFF',true,'choice');
-  copy(s,'Qwen 3.5 122B\nMistral Small 4 119B\nGPT OSS 120B',68,433,515,159,30,'#FFFFFF',false,'examples');
-  copy(s,'Anche modelli compatibili su risorse dedicate',68,624,570,55,22,colors.muted,false,'custom');
-}
-{
-  const s=await slide(7,false);
-  copy(s,'Protezione dei dati',64,66,1145,92,64,colors.black,true,'heading');
-  copy(s,'Regolo dichiara',64,234,550,67,40,'#6B55C5',true,'provider');
-  copy(s,'AI elaborata in Italia\nPrompt e risposte senza conservazione\nContenuti esclusi dall’addestramento',64,335,550,215,29,colors.black,false,'provider-controls');
-  copy(s,'Produzione AskMyDocs',667,234,552,67,40,colors.black,true,'application');
-  copy(s,'KB sotto il controllo aziendale\nAccessi per ruolo e dati minimizzati\nConservazione e audit configurati',667,335,550,215,29,colors.black,false,'application-controls');
-  copy(s,'Il perimetro completo comprende hosting, backup e servizi accessori.\nLa residenza Freshdesk richiede una conferma separata.',64,607,1136,65,23,colors.gray,false,'boundary');
+  copy(s,'AI in Italia',66,219,535,98,61,colors.cyan,true,'residency');
+  copy(s,'Qwen, Mistral, GPT OSS\nModelli scelti secondo il caso d’uso',68,367,555,130,28,'#FFFFFF',false,'choice');
+  copy(s,'Regolo dichiara:\ncontenuti senza conservazione\ne senza uso per addestramento',68,524,553,110,26,colors.muted,false,'privacy');
+  copy(s,'Assetto di produzione previsto',68,650,570,33,21,colors.muted,false,'scope');
 }
 {
   const s=await slide(8,true);
-  copy(s,'AI Act',64,67,1145,96,72,'#FFFFFF',true,'heading');
-  copy(s,'Demo',64,244,535,85,58,colors.violet,true,'demo');
-  copy(s,'Freshdesk collegato\nVerifica del funzionamento\nRegole non tutte attivate',64,364,548,211,32,'#FFFFFF',false,'demo-state');
-  copy(s,'Produzione',667,244,550,85,58,colors.cyan,true,'production');
-  copy(s,'Regolo e moduli applicabili\nControlli sui dati e revisione umana\nGovernance, audit e verifiche',667,364,550,211,31,'#FFFFFF',false,'production-state');
-  copy(s,'La conformità dipende dall’uso concreto, dai controlli e dalle procedure aziendali.',64,616,1145,55,25,colors.muted,false,'scope');
+  copy(s,'Protezione dei dati e AI Act',64,68,1145,96,55,'#FFFFFF',true,'heading');
+  copy(s,'Demo',64,235,535,85,54,colors.violet,true,'demo');
+  copy(s,'Freshdesk collegato\nRegole operative attive\nSchede dei casi in test',64,352,548,198,31,'#FFFFFF',false,'demo-state');
+  copy(s,'Produzione',667,235,550,85,54,colors.cyan,true,'production');
+  copy(s,'Regolo e moduli applicabili\nAccessi, dati personali e audit\nRevisione umana e procedure',667,352,550,198,30,'#FFFFFF',false,'production-state');
+  copy(s,'Conformità da verificare sull’uso concreto e sull’intero percorso.\nIl perimetro include hosting, backup e residenza delle fonti.',64,602,1145,76,24,colors.muted,false,'scope');
 }
 {
   const s=await slide(9,true,'sport-conoscenza.png');
-  copy(s,'Il prossimo passo',64,82,650,86,49,'#FFFFFF',true,'heading');
-  copy(s,'La conoscenza\ndel team,\nquando serve',64,224,670,298,67,colors.cyan,true,'closing');
-  copy(s,'Un pilota con gli operatori.\nQualità delle risposte verificata.',68,578,590,87,29,'#FFFFFF',false,'next-step');
+  copy(s,'Il percorso per\nNencini Sport',64,69,660,160,52,'#FFFFFF',true,'heading');
+  copy(s,'Freshdesk e casi risolti\nDocumenti interni e Gescat\nEmail e categorie del team',64,296,655,207,36,colors.cyan,true,'roadmap');
+  copy(s,'Un pilota con gli operatori,\nsu risposte e fonti verificabili',68,593,620,90,28,'#FFFFFF',false,'next-step');
 }
 
 const draft=path.join(build,`candidate${edition}.pptx`);
@@ -146,5 +157,7 @@ for image in images:
 c.save()
 assert len(PdfReader(destination).pages)==10
 `,path.join(build,'preview'),path.join(output,`${stem}.pdf`)]);
-await fs.copyFile(path.join(root,'storage/app/presentations/nencini-sport/Testo-relatore-e-prompt.txt'),path.join(output,'Testo-relatore-e-prompt.txt'));
-console.log(JSON.stringify({pptx:deckPath,pdf:path.join(output,`${stem}.pdf`),slides:10,durationSeconds:550}));
+const script=[content.title.toUpperCase(),'Durata prevista: 8 minuti e 30 secondi, inclusa la demo. Margine fino a dieci minuti.',...content.slides.flatMap((s,i)=>[`\n${i+1}. ${s.title.toUpperCase()} (${s.range})`,`PUNTI DA DIRE\n${s.cues.map(c=>`- ${c}`).join('\n')}`,s.speech,`REGIA\n${s.action}`,...(s.prompt?[`PROMPT\n${s.prompt}`,`SEGUITO\n${s.followup}`]:[])]),'\nALTRI ESEMPI DI DOMANDE',...content.extraPrompts.map(p=>`${p.use}\n${p.prompt}`),'\nPREPARAZIONE',...content.preparation].join('\n\n');
+await fs.writeFile(path.join(output,'Testo-relatore-e-prompt.txt'),script);
+await fs.writeFile(path.join(output,'Guida-iPhone-Keynote-Remote.txt'),['KEYNOTE CON IPHONE COME TELECOMANDO','Note e transizioni al clic',...content.remoteGuide.map((s,i)=>`${i+1}. ${s}`),'FONTI APPLE',...content.remoteSources].join('\n\n'));
+console.log(JSON.stringify({pptx:deckPath,pdf:path.join(output,`${stem}.pdf`),slides:10,durationSeconds:content.slides.reduce((n,s)=>n+s.durationSeconds,0)}));
