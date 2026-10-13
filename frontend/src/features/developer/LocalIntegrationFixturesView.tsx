@@ -4,7 +4,6 @@ import { AreaChart } from '../../components/charts';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import { parseLaravelError } from '../../lib/laravel-errors';
-import { ToastHost, useToast } from '../admin/shared/Toast';
 import {
     localIntegrationsApi,
     type LocalIntegrationAction,
@@ -34,16 +33,13 @@ const panelStyle: CSSProperties = {
 
 export function LocalIntegrationFixturesView(): ReactNode {
     const queryClient = useQueryClient();
-    const toast = useToast();
     const control = useMutation({
         mutationFn: localIntegrationsApi.control,
         onMutate: () => queryClient.cancelQueries({ queryKey: STATUS_QUERY_KEY }),
-        onSuccess: ({ message, status }) => {
+        onSuccess: ({ status }) => {
             queryClient.setQueryData(STATUS_QUERY_KEY, status);
-            toast.success(message, 'toast-local-integrations-control');
         },
-        onError: (error) => {
-            toast.error(parseLaravelError(error, 'Impossibile aggiornare i servizi locali. Controlla lo stato e riprova.').message, 'toast-local-integrations-error');
+        onError: () => {
             void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
         },
     });
@@ -144,7 +140,8 @@ export function LocalIntegrationFixturesView(): ReactNode {
                     <span role="status" aria-live="polite">
                         {control.isPending && control.variables ? CONTROL_PROGRESS[control.variables]
                             : statusQuery.isError ? 'Stato dei server non disponibile.'
-                                : status ? 'Aggiornamento automatico ogni 2 secondi.' : 'Verifica dello stato dei server…'}
+                                : control.isSuccess ? control.data.message
+                                    : status ? 'Aggiornamento automatico ogni 2 secondi.' : 'Verifica dello stato dei server…'}
                     </span>
                     {status && !statusQuery.isError && !control.isPending ? (
                         <> Ultimo controllo: <time dateTime={status.refreshed_at}>{formatTimestamp(status.refreshed_at)}</time></>
@@ -229,7 +226,6 @@ export function LocalIntegrationFixturesView(): ReactNode {
                     </div>
                 )}
             </section>
-            <ToastHost />
         </main>
     );
 }
@@ -244,7 +240,7 @@ function ServiceCard({ name, title, status, unavailable }: { name: LocalServiceN
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <span style={{ display: 'inline-grid', placeItems: 'center', width: 32, height: 32, borderRadius: 9, background: 'var(--bg-2)', color: name === 'api' ? '#8b5cf6' : '#22d3ee' }}><IconComponent size={17} /></span>
-                    <div><h2 style={{ fontSize: 15, margin: 0 }}>{title}</h2><span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>{name === 'api' ? '127.0.0.1:4310' : '127.0.0.1:4311'}</span></div>
+                    <div><h2 style={{ fontSize: 15, margin: 0 }}>{title}</h2><span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>{status?.address ?? 'Indirizzo in verifica…'}</span></div>
                 </div>
                 <StatusPill state={unavailable ? 'unavailable' : status?.state ?? 'checking'} />
             </div>

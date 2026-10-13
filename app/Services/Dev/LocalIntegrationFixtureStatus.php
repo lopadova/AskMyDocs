@@ -11,8 +11,8 @@ use Throwable;
 
 /**
  * Read-only status and telemetry bridge for the loopback-only Node fixtures.
- * The browser never receives their ports directly: Laravel performs the local
- * probes and returns an intentionally small, credential-free projection.
+ * Laravel performs the local probes and returns display addresses plus an
+ * intentionally small, credential-free telemetry projection.
  */
 final class LocalIntegrationFixtureStatus
 {
@@ -28,8 +28,8 @@ final class LocalIntegrationFixtureStatus
             'local_only' => true,
             'fixture_gate_enabled' => LocalIntegrationFixtureEnvironment::enabled(),
             'refreshed_at' => now()->toIso8601String(),
-            'api' => $this->probe($apiBaseUrl, 'askmydocs-local-api-fixture'),
-            'mcp' => $this->probe($mcpOrigin, 'askmydocs-local-mcp-fixture'),
+            'api' => ['address' => $this->displayAddress($apiBaseUrl), ...$this->probe($apiBaseUrl, 'askmydocs-local-api-fixture')],
+            'mcp' => ['address' => $this->displayAddress($mcpOrigin), ...$this->probe($mcpOrigin, 'askmydocs-local-mcp-fixture')],
         ];
     }
 
@@ -107,6 +107,13 @@ final class LocalIntegrationFixtureStatus
         $port = isset($parts['port']) ? ':'.$parts['port'] : '';
 
         return $parts['scheme'].'://'.$host.$port;
+    }
+
+    private function displayAddress(string $url): string
+    {
+        $origin = $this->originFor($url);
+
+        return substr($origin, strpos($origin, '://') + 3);
     }
 
     private function assertLoopbackUrl(string $url): void

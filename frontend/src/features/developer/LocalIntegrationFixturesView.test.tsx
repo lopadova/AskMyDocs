@@ -16,6 +16,7 @@ const runningStatus: LocalIntegrationStatus = {
     fixture_gate_enabled: true,
     refreshed_at: '2026-09-28T10:00:00+00:00',
     api: {
+        address: '127.0.0.1:14310',
         state: 'running',
         health: { datasetRevision: 'fixture-v1' },
         error: null,
@@ -26,6 +27,7 @@ const runningStatus: LocalIntegrationStatus = {
         },
     },
     mcp: {
+        address: '127.0.0.1:14311',
         state: 'running',
         health: { datasetRevision: 'fixture-v1' },
         error: null,
@@ -51,7 +53,11 @@ const runningStatus: LocalIntegrationStatus = {
 };
 
 const stoppedService = { state: 'stopped' as const, health: null, error: null, metrics: null };
-const stoppedStatus: LocalIntegrationStatus = { ...runningStatus, api: stoppedService, mcp: stoppedService };
+const stoppedStatus: LocalIntegrationStatus = {
+    ...runningStatus,
+    api: { ...stoppedService, address: runningStatus.api.address },
+    mcp: { ...stoppedService, address: runningStatus.mcp.address },
+};
 
 function renderView() {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -72,6 +78,8 @@ describe('LocalIntegrationFixturesView', () => {
         expect(screen.getByRole('region', { name: 'Server mock' })).toBeInTheDocument();
         expect(screen.getByText('Mock API')).toBeInTheDocument();
         expect(screen.getByText('Server MCP')).toBeInTheDocument();
+        expect(screen.getByText('127.0.0.1:14310')).toBeInTheDocument();
+        expect(screen.getByText('127.0.0.1:14311')).toBeInTheDocument();
         expect(screen.getByText('Chiamate negli ultimi 60 secondi')).toBeInTheDocument();
         const callsTable = screen.getByRole('table');
         expect(callsTable).toHaveTextContent('v1/companies/rotta-logistics/context');
@@ -116,6 +124,8 @@ describe('LocalIntegrationFixturesView', () => {
         expect(start).toBeEnabled();
         expect(stop).toBeDisabled();
         expect(localIntegrationsApi.control).toHaveBeenCalledWith('stop', expect.anything());
+        expect(screen.getByText('Arrestati.')).toBeInTheDocument();
+        expect(screen.queryByTestId('toast-host')).not.toBeInTheDocument();
     });
 
     it('keeps the initial state unknown and prevents actions until the first status arrives', () => {
@@ -166,11 +176,32 @@ describe('LocalIntegrationFixturesView', () => {
         fireEvent.click(start);
 
         expect(await screen.findByText('Comando non riuscito.')).toBeInTheDocument();
-        expect(screen.getAllByText('La porta è già occupata.').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('La porta è già occupata.')).toHaveLength(1);
         await waitFor(() => expect(start).toBeEnabled());
         fireEvent.click(start);
 
         await waitFor(() => expect(within(screen.getByTestId('local-integration-api-status')).getByText('Attivo')).toBeInTheDocument());
         expect(screen.queryByText('Comando non riuscito.')).not.toBeInTheDocument();
+    });
+
+    it('shows one precise inline error after repeated failed commands without overlay toasts', async () => {
+        const message = 'Impossibile avviare api: la porta è già occupata.';
+        vi.mocked(localIntegrationsApi.status).mockResolvedValue(stoppedStatus);
+        vi.mocked(localIntegrationsApi.control).mockRejectedValue({
+            isAxiosError: true,
+            response: { status: 422, data: { message, code: 'local_integration_control_failed' } },
+        });
+        renderView();
+        const start = screen.getByRole('button', { name: 'Avvia server' });
+
+        for (let attempt = 1; attempt <= 4; attempt += 1) {
+            await waitFor(() => expect(start).toBeEnabled());
+            fireEvent.click(start);
+            await waitFor(() => expect(localIntegrationsApi.control).toHaveBeenCalledTimes(attempt));
+            await waitFor(() => expect(start).toBeEnabled());
+            expect(screen.getAllByRole('alert')).toHaveLength(1);
+            expect(screen.getAllByText(message)).toHaveLength(1);
+        }
+        expect(screen.queryByTestId('toast-host')).not.toBeInTheDocument();
     });
 });

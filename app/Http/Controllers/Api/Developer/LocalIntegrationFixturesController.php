@@ -9,6 +9,7 @@ use App\Services\Dev\LocalIntegrationFixtureLifecycle;
 use App\Services\Dev\LocalIntegrationFixtureStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /** Local-only control plane for deterministic API + MCP fixture processes. */
@@ -31,18 +32,28 @@ final class LocalIntegrationFixturesController extends Controller
     {
         $this->assertLocal();
 
-        match ($action) {
-            'start' => $this->lifecycle->start(),
-            'stop' => $this->lifecycle->stop(),
-            'restart' => $this->lifecycle->restart(),
-            default => throw new NotFoundHttpException(),
-        };
+        if (! in_array($action, ['start', 'stop', 'restart'], true)) {
+            throw new NotFoundHttpException();
+        }
+
+        try {
+            match ($action) {
+                'start' => $this->lifecycle->start(),
+                'stop' => $this->lifecycle->stop(),
+                'restart' => $this->lifecycle->restart(),
+            };
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => 'local_integration_control_failed',
+            ], 422);
+        }
 
         return response()->json([
             'message' => match ($action) {
-                'start' => 'Local API and MCP fixtures started.',
-                'stop' => 'Local API and MCP fixtures stopped.',
-                default => 'Local API and MCP fixtures restarted.',
+                'start' => 'Server mock API e MCP avviati.',
+                'stop' => 'Server mock API e MCP arrestati.',
+                default => 'Server mock API e MCP riavviati.',
             },
             'status' => $this->status->snapshot(),
         ]);

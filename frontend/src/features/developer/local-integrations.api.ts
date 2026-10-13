@@ -33,6 +33,7 @@ export interface LocalIntegrationMetrics {
 }
 
 export interface LocalIntegrationServiceStatus {
+    address: string;
     state: LocalServiceState;
     health: Record<string, unknown> | null;
     metrics: LocalIntegrationMetrics | null;

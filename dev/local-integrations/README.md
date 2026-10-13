@@ -138,6 +138,10 @@ request metadata. The **Server mock** panel groups the API and MCP states with
 **Avvia server**, **Arresta server**, and **Riavvia**, which control both services.
 It distinguishes initial checks and unavailable status from stopped servers,
 shows progress during commands, and prevents overlapping actions.
+Command feedback is shown once inside the page, without overlay toasts. Launcher
+failures return an explicit JSON error even with debug mode off, so retrying
+keeps one readable cause instead of stacking generic messages. The service
+cards show the addresses actually configured for the local environment.
 For MCP calls it also shows the parsed JSON-RPC request and
 response, retained only in memory for the current process (up to 120 events,
 with each response capped at 32 KB). It never records headers or credentials;
