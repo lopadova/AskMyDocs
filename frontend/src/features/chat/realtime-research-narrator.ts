@@ -138,6 +138,13 @@ export class RealtimeResearchNarrator {
     private tick(): void {
         this.timer = null;
         if (!this.pending) return;
+        // An open HTTP request is not proof that the research was accepted.
+        // Keep quiet until its authenticated receipt confirms the actual run.
+        if (this.runId === null) {
+            this.nextAt = Date.now() + 1_000;
+            this.schedule();
+            return;
+        }
         if (Date.now() < this.quietUntil) { this.schedule(); return; }
         const update = this.update;
         const content = update?.content ?? this.nextPhrase();

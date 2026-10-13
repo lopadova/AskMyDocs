@@ -20,6 +20,18 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe('RealtimeResearchNarrator', () => {
+    it('does not announce a search before the server confirms that it actually started', async () => {
+        const speak = vi.fn().mockResolvedValue(undefined);
+        const narrator = new RealtimeResearchNarrator(speak);
+        narrator.begin('it');
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(speak).not.toHaveBeenCalled();
+        narrator.bindRun(run);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(speak).toHaveBeenCalledOnce();
+        narrator.stop();
+    });
+
     it('leaves short searches quiet and spaces varied, phase-appropriate notices with occasional humor', async () => {
         const { narrator, speak } = fixture();
         narrator.observe([event(1, 'retrieval.started')]);
@@ -110,6 +122,7 @@ describe('RealtimeResearchNarrator', () => {
         const speak = vi.fn().mockRejectedValue(new Error('Channel closed'));
         const narrator = new RealtimeResearchNarrator(speak);
         narrator.begin('it');
+        narrator.bindRun(run);
         await vi.advanceTimersByTimeAsync(VOICE_PROGRESS_FIRST_DELAY_MS);
         narrator.stop();
         await vi.advanceTimersByTimeAsync(60_000);

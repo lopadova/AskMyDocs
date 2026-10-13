@@ -348,7 +348,8 @@ automaticamente la ricerca canonica già avviata.
 
 Su OpenAI Live, una ricerca lunga riceve brevi aggiornamenti vocali tramite
 [`session.commentary.append`](https://developers.openai.com/api/docs/guides/live-delegation#send-the-right-kind-of-update)
-sullo stesso canale WebRTC. Il primo intervento arriva dopo 8 secondi, i successivi
+sullo stesso canale WebRTC. Il primo intervento arriva dopo 8 secondi, e soltanto
+dopo che la ricevuta autenticata ha confermato un run avviato. I successivi
 sono distanziati di almeno 15 secondi e rinviati finché non ci sono 6 secondi senza
 nuove trascrizioni. Il catalogo italiano contiene 66 frasi, scelte per fase con
 un intercalare buffo al massimo ogni terzo intervento; le varianti ruotano per
