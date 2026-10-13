@@ -9,8 +9,44 @@ API_PORT="${LOCAL_INTEGRATIONS_API_PORT:-4310}"
 MCP_PORT="${LOCAL_INTEGRATIONS_MCP_PORT:-4311}"
 API_PID_FILE="$RUNTIME_DIR/api.pid"
 MCP_PID_FILE="$RUNTIME_DIR/mcp.pid"
+NODE_BINARY="${LOCAL_INTEGRATIONS_NODE_BINARY:-}"
 
 mkdir -p "$RUNTIME_DIR"
+
+resolve_node_binary() {
+  if [[ -n "$NODE_BINARY" ]]; then
+    if [[ -x "$NODE_BINARY" && ! -d "$NODE_BINARY" ]]; then
+      return 0
+    fi
+    echo "LOCAL_INTEGRATIONS_NODE_BINARY must point to an executable Node binary." >&2
+    return 1
+  fi
+
+  if NODE_BINARY="$(command -v node)"; then
+    return 0
+  fi
+
+  # Herd's PHP process does not inherit the interactive shell's PATH.
+  local candidate
+  for candidate in ~/.local/bin/node /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
+    if [[ -x "$candidate" && ! -d "$candidate" ]]; then
+      NODE_BINARY="$candidate"
+      return 0
+    fi
+  done
+
+  echo "Node non disponibile. Configura LOCAL_INTEGRATIONS_NODE_BINARY con il percorso del binario Node." >&2
+  return 1
+}
+
+expected_health() {
+  local name="$1"
+  local url="$2"
+  local response
+  response="$(curl --fail --silent --connect-timeout 1 --max-time 2 "$url")" || return 1
+  local pattern='"service"[[:space:]]*:[[:space:]]*"askmydocs-local-'"$name"'-fixture"'
+  [[ "$response" =~ $pattern ]]
+}
 
 require_loopback_host() {
   case "$HOST" in
@@ -62,7 +98,7 @@ wait_for_health() {
   local url="$2"
 
   for _ in {1..30}; do
-    if curl --fail --silent "$url" >/dev/null 2>&1; then
+    if expected_health "$name" "$url"; then
       return 0
     fi
     sleep 0.2
@@ -80,7 +116,7 @@ start_one() {
 
   local pid
   if pid="$(running_pid "$pid_file" "$server_file")"; then
-    if curl --fail --silent "$health_url" >/dev/null 2>&1; then
+    if expected_health "$name" "$health_url"; then
       echo "$name is already running and healthy (pid $pid)."
       return 0
     fi
@@ -89,8 +125,14 @@ start_one() {
     return 1
   fi
 
+  if curl --silent --connect-timeout 1 --max-time 2 "$health_url" >/dev/null 2>&1; then
+    echo "Impossibile avviare $name: la porta di $health_url è già occupata da un processo non gestito dal launcher." >&2
+    return 1
+  fi
+
+  resolve_node_binary
   local pid
-  pid="$(node "$SCRIPT_DIR/spawn-server.mjs" "$SCRIPT_DIR/$server_file" "$RUNTIME_DIR/$name.log")"
+  pid="$("$NODE_BINARY" "$SCRIPT_DIR/spawn-server.mjs" "$SCRIPT_DIR/$server_file" "$RUNTIME_DIR/$name.log")"
   printf '%s\n' "$pid" >"$pid_file"
 
   if ! wait_for_health "$name" "$health_url"; then
@@ -137,7 +179,7 @@ status_one() {
 
   local pid
   if pid="$(running_pid "$pid_file" "$server_file")"; then
-    if curl --fail --silent "$health_url" >/dev/null; then
+    if expected_health "$name" "$health_url"; then
       echo "$name is running and healthy (pid $pid)."
     else
       echo "$name is running but not healthy (pid $pid)." >&2

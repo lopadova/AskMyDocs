@@ -107,6 +107,14 @@ it starts, so it remains available after the Artisan command finishes.
 bind only to `127.0.0.1` by default; `LOCAL_INTEGRATIONS_HOST` may only be
 `127.0.0.1`, `::1`, or `localhost`.
 
+The launcher also works from Herd's PHP process, whose `PATH` may omit Node.
+It searches the current `PATH`, the user's `~/.local/bin`, and common system
+installation paths. For another installation, set
+`LOCAL_INTEGRATIONS_NODE_BINARY` to the absolute executable path.
+Health checks verify the fixture's service identity. An occupied port owned
+by another process is reported as an error; the launcher leaves that process
+running. The console keeps the failed command's message visible for retry.
+
 Optional overrides:
 
 ```bash
@@ -188,8 +196,12 @@ form. All current SDK clients use the standard session flow unchanged.
 
 ```bash
 node --test dev/local-integrations/test/smoke.test.mjs
+node --test dev/local-integrations/test/lifecycle.test.mjs
 ```
 
 The test starts both services on ephemeral loopback ports, checks the health
 endpoints and exercises a real Streamable HTTP MCP client. No persistent
 processes, database rows, or external calls are created.
+The lifecycle test uses a separate temporary launcher directory and ephemeral
+ports to exercise start/restart/stop without Node in `PATH`, plus an occupied
+port check. It cleans up only its own processes and files.
