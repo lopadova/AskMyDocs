@@ -364,6 +364,23 @@ indipendente da quella della risposta finale; una sua interruzione non blocca il
 turno. Il provider Fake ne registra l'invio nei test; ElevenLabs conserva il suo
 comportamento esistente, senza questi aggiornamenti parlati.
 
+Il bootstrap OpenAI deve consentire `session.commentary.append` tra gli eventi
+client e `session.commentary.appended` tra gli eventi server del data channel.
+La lista predefinita del pacchetto non li include: il provider rifiuterebbe il
+primo intercalare con `event_not_allowed`, fermando gli aggiornamenti vocali.
+`OpenAILiveSessionRequest` aggiunge soltanto questa coppia alla richiesta WebRTC
+di AskMyDocs, tramite un client HTTP dedicato al provider; non modifica `vendor/`
+o gli altri client HTTP dell'applicazione. `session.update` e le istruzioni
+arbitrarie dal browser restano escluse.
+
+Un evento terminale completato/parziale libera subito il turno UI, anche se la
+ricarica dello storico è lenta. Uno snapshot arrivato dopo l'avvio della domanda
+successiva viene ignorato. Live riceve anche lo stato confermato del run: una
+risposta parziale conclude la richiesta corrente, e una nuova domanda sostanziale
+richiede una nuova delega. Può annunciare una ricerca in corso soltanto dopo la
+conferma di un run avviato. Regressioni: handshake OpenAI, storico in ritardo e due
+richieste consecutive nella stessa connessione dopo una risposta parziale.
+
 Una conversazione può avere un solo turno agente principale non terminale. Il browser
 respinge subito la seconda chiamata; il server applica la stessa regola sotto lock
 della conversazione, anche da un'altra scheda o sessione vocale. Il risultato voce

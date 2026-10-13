@@ -13,6 +13,7 @@ import {
     type JsonObject,
     type ProviderUsageInput,
     type RealtimeAgentClientEvent,
+    type RealtimeProviderDriver,
     type SessionAudit,
     type SurfaceSnapshot,
     type ToolCallInput,
@@ -81,6 +82,7 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     const [error, setError] = useState<Error | null>(null);
     const [active, setActive] = useState(false);
     const clientRef = useRef<RealtimeAgentClient | null>(null);
+    const providerRef = useRef<RealtimeProviderDriver | null>(null);
     const controlRef = useRef<ObservingControlTransport | null>(null);
     const pendingRef = useRef(false);
     const narratorRef = useRef<RealtimeResearchNarrator | null>(null);
@@ -99,6 +101,7 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
     const release = useCallback(async (finish: boolean): Promise<void> => {
         const client = clientRef.current;
         clientRef.current = null;
+        providerRef.current = null;
         controlRef.current?.dispose();
         controlRef.current = null;
         narratorRef.current?.stop();
@@ -124,6 +127,9 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
         narratorRef.current?.observe(eventsRef.current);
         if (adoptedRunsRef.current.has(run.run_id)) return;
         adoptedRunsRef.current.add(run.run_id);
+        void providerRef.current?.sendContext({ askmydocs_request: {
+            run_id: run.run_id, status: run.status,
+        } }).catch(() => undefined);
         // Observe immediately, but do not make the spoken answer wait for UI/SSE recovery.
         void onAdoptRunRef.current(run).catch(() => {
             // Allow the final receipt to recover a failed early UI subscription.
@@ -138,6 +144,11 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
             // The provider response must not be lost if the visual stream refresh
             // fails; adoptExternalRun already surfaces that error in the chat.
             adoptRun(run);
+            // Close the voice model's pending-request context as well as the
+            // browser gate. A partial answer also ends this request.
+            void providerRef.current?.sendContext({ askmydocs_request: {
+                run_id: run.run_id, status: run.status,
+            } }).catch(() => undefined);
         }
 
         if (isHandoff(output?.handoff)) {
@@ -170,8 +181,10 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
                     onRun: adoptRun,
                     onPending: (pending) => {
                         pendingRef.current = pending;
-                        if (pending) narratorRef.current?.begin(localeRef.current);
-                        else narratorRef.current?.stop();
+                        if (pending) {
+                            setError(null);
+                            narratorRef.current?.begin(localeRef.current);
+                        } else narratorRef.current?.stop();
                         setStatus((current) => pending ? 'processing' : current === 'processing' ? 'listening' : current);
                     },
                     isBusy: () => requestInFlightRef.current,
@@ -216,6 +229,7 @@ export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeA
                 throw reason;
             }
             if (provider === null) throw new Error(`Unsupported realtime provider: ${descriptor.provider}`);
+            providerRef.current = provider;
 
             if ('sendProgress' in provider) {
                 narratorRef.current = new RealtimeResearchNarrator((content) => provider.sendProgress(content));

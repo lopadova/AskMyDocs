@@ -50,6 +50,35 @@ function eventResponse(event: AgentRunEvent): Response {
 }
 
 describe('useAgentChat', () => {
+    it('releases a completed voice turn before history refresh and ignores a late snapshot after the next request starts', async () => {
+        const first = { run_id: 'run-1', status: 'running', locale: 'it', events_url: '/agent-runs/run-1/events',
+            cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage };
+        const secondUser = { ...userMessage, id: 12, content: 'Quali sono le spedizioni?' };
+        const second = { ...first, run_id: 'run-2', events_url: '/agent-runs/run-2/events', user_message: secondUser };
+        let refreshFirst!: (messages: Message[]) => void;
+        vi.spyOn(chatApi, 'cancelAgentRun').mockResolvedValue(undefined);
+        vi.spyOn(chatApi, 'listMessages').mockImplementation(() => new Promise((resolve) => { refreshFirst = resolve; }));
+        vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => String(url).includes('run-1')
+            ? eventResponse(completedEvent())
+            : new Response(new ReadableStream<Uint8Array>())));
+        const { result } = renderHook(() => useAgentChat({ conversationId: 7, filters: {}, initialMessages: emptyMessages }));
+        let observeFirst!: Promise<void>;
+        await act(async () => { observeFirst = result.current.adoptExternalRun(first); });
+        await waitFor(() => expect(chatApi.listMessages).toHaveBeenCalledOnce());
+        expect(result.current.status).toBe('ready');
+        let observeSecond!: Promise<void>;
+        await act(async () => { observeSecond = result.current.adoptExternalRun(second).catch((error) => {
+            if (error.name !== 'AbortError') throw error;
+        }); });
+        await waitFor(() => expect(result.current.activeRun?.run_id).toBe('run-2'));
+        await act(async () => { refreshFirst([userMessage, assistantMessage]); await observeFirst; });
+        expect(result.current.status).toBe('streaming');
+        expect(result.current.activeRun?.run_id).toBe('run-2');
+        expect(result.current.messages).toContainEqual(secondUser);
+        expect(result.current.messages).not.toContainEqual(assistantMessage);
+        await act(async () => { result.current.stop(); await observeSecond; });
+    });
+
     it('starts a durable turn, consumes localized events and reloads canonical messages', async () => {
         vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue({
             run_id: 'run-1',

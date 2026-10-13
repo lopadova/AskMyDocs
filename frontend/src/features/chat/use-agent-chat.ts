@@ -139,13 +139,17 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
         if (result.reason === 'failed') {
             throw new Error(result.event.message ?? 'The agent could not complete the search.');
         }
-        if (result.reason !== 'cancelled' && conversationId !== null) {
-            setMessages(await chatApi.listMessages(conversationId));
-        }
+        // The durable terminal event ends the request. History hydration may
+        // take longer and must not keep the next voice/text request busy.
         setStatus('ready');
         setActiveRun(null);
         runRef.current = null;
         turnInFlightRef.current = false;
+        if (result.reason !== 'cancelled' && conversationId !== null) {
+            const refreshed = await chatApi.listMessages(conversationId);
+            if (generation !== generationRef.current) return;
+            setMessages(refreshed);
+        }
         callbacksRef.current.onFinish?.();
     }, [conversationId]);
 
