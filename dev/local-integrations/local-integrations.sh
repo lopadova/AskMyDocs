@@ -4,6 +4,28 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_DIR="$SCRIPT_DIR/.runtime"
+
+# Read only launcher settings as data; never source or evaluate the app's .env.
+# Explicit process environment values take precedence over the local file.
+if [[ -f "$SCRIPT_DIR/../../.env" ]]; then
+  while IFS= read -r fixture_env_line || [[ -n "$fixture_env_line" ]]; do
+    fixture_env_line="${fixture_env_line%$'\r'}"
+    case "$fixture_env_line" in
+      LOCAL_INTEGRATIONS_HOST=*|LOCAL_INTEGRATIONS_API_PORT=*|LOCAL_INTEGRATIONS_MCP_PORT=*|LOCAL_INTEGRATIONS_NODE_BINARY=*)
+        fixture_env_key="${fixture_env_line%%=*}"
+        if declare -p "$fixture_env_key" >/dev/null 2>&1; then
+          continue
+        fi
+        fixture_env_value="${fixture_env_line#*=}"
+        if [[ "$fixture_env_value" == \"*\" || "$fixture_env_value" == \'*\' ]]; then
+          fixture_env_value="${fixture_env_value:1:${#fixture_env_value}-2}"
+        fi
+        export "$fixture_env_key=$fixture_env_value"
+        ;;
+    esac
+  done <"$SCRIPT_DIR/../../.env"
+fi
+
 HOST="${LOCAL_INTEGRATIONS_HOST:-127.0.0.1}"
 API_PORT="${LOCAL_INTEGRATIONS_API_PORT:-4310}"
 MCP_PORT="${LOCAL_INTEGRATIONS_MCP_PORT:-4311}"

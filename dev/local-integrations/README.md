@@ -111,6 +111,13 @@ The launcher also works from Herd's PHP process, whose `PATH` may omit Node.
 It searches the current `PATH`, the user's `~/.local/bin`, and common system
 installation paths. For another installation, set
 `LOCAL_INTEGRATIONS_NODE_BINARY` to the absolute executable path.
+The standalone launcher reads its host, ports and Node binary from the local
+`.env` too, with explicit shell environment values taking precedence. It reads
+only these launcher settings as data. Keep the two port settings aligned with
+`LOCAL_INTEGRATIONS_API_BASE_URL` and `LOCAL_INTEGRATIONS_MCP_BASE_URL`; after a
+port change, run `php artisan dev:refresh-local-integration-connectors` to
+realign the three fixture tenants. For example, use ports `14310` and `14311`
+when the defaults are occupied by another local service.
 Health checks verify the fixture's service identity. An occupied port owned
 by another process is reported as an error; the launcher leaves that process
 running. The console keeps the failed command's message visible for retry.
@@ -208,4 +215,5 @@ endpoints and exercises a real Streamable HTTP MCP client. No persistent
 processes, database rows, or external calls are created.
 The lifecycle test uses a separate temporary launcher directory and ephemeral
 ports to exercise start/restart/stop without Node in `PATH`, plus an occupied
-port check. It cleans up only its own processes and files.
+port check and the standalone `.env` configuration. It cleans up only its own
+processes and files.

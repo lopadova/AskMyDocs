@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createServer as createPortProbe } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -20,8 +20,9 @@ async function freePort() {
   return port;
 }
 
-async function launcher(t, apiPort, mcpPort) {
-  const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'askmydocs-launcher-')));
+async function launcher(t, apiPort, mcpPort, useEnvironmentFile = false) {
+  const workspace = await realpath(await mkdtemp(path.join(tmpdir(), 'askmydocs-launcher-')));
+  const directory = path.join(workspace, 'dev', 'local-integrations');
   const bin = path.join(directory, 'bin');
   await execute('/bin/mkdir', ['-p', bin]);
   // Simulate Herd: the launcher has its system utilities, but no Node in PATH.
@@ -42,12 +43,24 @@ async function launcher(t, apiPort, mcpPort) {
     LOCAL_INTEGRATIONS_MCP_PORT: String(mcpPort),
     LOCAL_INTEGRATIONS_NODE_BINARY: '',
   };
-  const run = (action) => execute('/bin/bash', [path.join(directory, 'local-integrations.sh'), action], { env, timeout: 30_000 });
+  if (useEnvironmentFile) {
+    delete env.LOCAL_INTEGRATIONS_API_PORT;
+    delete env.LOCAL_INTEGRATIONS_MCP_PORT;
+    delete env.LOCAL_INTEGRATIONS_NODE_BINARY;
+    await writeFile(path.join(workspace, '.env'), [
+      `LOCAL_INTEGRATIONS_API_PORT=${apiPort}`,
+      `LOCAL_INTEGRATIONS_MCP_PORT='${mcpPort}'`,
+      `LOCAL_INTEGRATIONS_NODE_BINARY="${process.execPath}"`,
+      'UNRELATED_SETTING=$(touch should-not-exist)',
+      '',
+    ].join('\n'));
+  }
+  const run = (action) => execute('/bin/bash', [path.join(directory, 'local-integrations.sh'), action], { env, cwd: directory, timeout: 30_000 });
   t.after(async () => {
     try {
       await run('stop');
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(workspace, { recursive: true, force: true });
     }
   });
   return { run, directory };
@@ -84,4 +97,15 @@ test('launcher rejects an occupied port and leaves the unrelated service running
   await assert.rejects(readFile(path.join(directory, '.runtime', 'mcp.pid')), { code: 'ENOENT' });
   await run('stop');
   assert.equal((await (await fetch(`http://127.0.0.1:${apiPort}/health`)).json()).service, 'another-local-service');
+});
+
+test('standalone launcher uses the local env ports and Node binary without evaluating unrelated settings', async (t) => {
+  const apiPort = await freePort();
+  const mcpPort = await freePort();
+  const { run, directory } = await launcher(t, apiPort, mcpPort, true);
+
+  assert.match((await run('start')).stdout, /mcp started/);
+  assert.equal((await (await fetch(`http://127.0.0.1:${apiPort}/health`)).json()).service, 'askmydocs-local-api-fixture');
+  assert.equal((await (await fetch(`http://127.0.0.1:${mcpPort}/health`)).json()).service, 'askmydocs-local-mcp-fixture');
+  await assert.rejects(readFile(path.join(directory, 'should-not-exist')), { code: 'ENOENT' });
 });
