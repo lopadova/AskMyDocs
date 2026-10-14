@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb;
 
 use App\Services\Kb\Canonical\WikilinkExtractor;
+use App\Services\Kb\Chunking\Support\TextBudgetSplitter;
 use App\Services\Kb\Contracts\ChunkerInterface;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\ConvertedDocument;
@@ -342,9 +343,8 @@ class MarkdownChunker implements ChunkerInterface
 
     /**
      * If `$text` fits the hard-cap, return it as a single element. Otherwise
-     * accumulate paragraphs into pieces, each under the cap. A single
-     * paragraph larger than the cap is returned as-is (the embedding
-     * provider can truncate, but we never silently drop content).
+     * accumulate paragraphs into pieces, each under the approximate cap.
+     * Oversized single paragraphs are split at UTF-8-safe word boundaries.
      *
      * @return list<string>
      */
@@ -372,7 +372,9 @@ class MarkdownChunker implements ChunkerInterface
             if ($trimmed === '') {
                 continue;
             }
-            $buffer = $this->appendOrFlush($buffer, $trimmed, $hardCapTokens, $out);
+            foreach ((new TextBudgetSplitter)->split($trimmed, $hardCapTokens * self::CHARS_PER_TOKEN) as $part) {
+                $buffer = $this->appendOrFlush($buffer, trim($part), $hardCapTokens, $out);
+            }
         }
         if ($buffer !== '') {
             $out[] = $buffer;
