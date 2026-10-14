@@ -921,11 +921,23 @@ class KbSearchService
                 }
             });
         $this->applyFilters($query, $effectiveFilters);
-        $ranks = $bindings = [];
-        foreach ($identifiers as $id) {
+        $matches = $matchBindings = $frequencySql = $frequencyBindings = [];
+        foreach ($identifiers as $index => $id) {
             $literal = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id)).'%';
-            $ranks[] = "CASE WHEN LOWER(chunk_text) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM knowledge_documents AS literal_doc WHERE literal_doc.id = knowledge_chunks.knowledge_document_id AND literal_doc.tenant_id = ? AND LOWER(literal_doc.title) LIKE ? ESCAPE '!') THEN 1 ELSE 0 END";
-            $bindings = [...$bindings, $literal, $tenant, $literal];
+            $matches[$index] = "LOWER(chunk_text) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM knowledge_documents AS literal_doc WHERE literal_doc.id = knowledge_chunks.knowledge_document_id AND literal_doc.tenant_id = ? AND LOWER(literal_doc.title) LIKE ? ESCAPE '!')";
+            $matchBindings[$index] = [$literal, $tenant, $literal];
+            $frequencySql[] = "COUNT(DISTINCT CASE WHEN {$matches[$index]} THEN knowledge_document_id END) AS literal_{$index}";
+            $frequencyBindings = [...$frequencyBindings, ...$matchBindings[$index]];
+        }
+        // Rank rare literal subjects above a common company/sender even when
+        // the specific source does not repeat that company. Count at document
+        // grain so a long document's repeated chunks do not inflate rarity.
+        $frequencies = (clone $query)->toBase()->selectRaw(implode(', ', $frequencySql), $frequencyBindings)->first();
+        $ranks = $bindings = [];
+        foreach ($matches as $index => $match) {
+            $weight = max(1, intdiv(1_000_000, max(1, (int) ($frequencies->{'literal_'.$index} ?? 0))));
+            $ranks[] = "CASE WHEN {$match} THEN ? ELSE 0 END";
+            $bindings = [...$bindings, ...$matchBindings[$index], $weight];
         }
         // Bound DB work; an incomplete candidate list must never imply global absence.
         // A common actor cannot exhaust that bound before a more specific

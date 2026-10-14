@@ -113,4 +113,17 @@ final class ExactIdentifierCandidatesTest extends TestCase
         $this->assertCount(64, $candidates);
         $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
     }
+
+    public function test_a_rare_subject_ranks_first_even_without_the_common_merchant_name(): void
+    {
+        for ($i = 0; $i < 65; $i++) {
+            $this->document('Very Long Merchant Company Name replied in an unrelated case.');
+        }
+        $specific = $this->document('A newsletter about transport.', ['title' => 'Harbor Weekly #2']);
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(
+            ['Very Long Merchant Company Name', 'Harbor Weekly'], 'orders');
+        $this->assertSame($specific->id, $candidates->first()['document']['id']);
+        $this->assertCount(64, $candidates);
+        $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
+    }
 }

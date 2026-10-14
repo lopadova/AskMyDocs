@@ -36,6 +36,61 @@ final class KbInvestigationServiceTest extends TestCase
         ]);
     }
 
+    public function test_reassesses_a_copied_example_id_using_only_authorized_document_ids(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $this->expectInterpretation($ai, ['objective' => 'Return window ORDER-A', 'queries' => ['ORDER-A return window']]);
+        $ai->shouldReceive('chat')->twice()->andReturn(
+            $this->response(['selected_document_ids' => [1], 'supported_facts' => ['Return through January 31'], 'complete' => true]),
+            $this->response(['selected_document_ids' => [11], 'supported_facts' => ['Return through January 31'], 'complete' => true]),
+        );
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([11]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'ORDER-A: return through January 31.', true));
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Return window ORDER-A?', 'orders');
+        $this->assertTrue($result->isReady());
+        $this->assertSame([11], $result->attempts[0]['selected_document_ids']);
+    }
+
+    public function test_an_empty_report_cannot_establish_absence_of_a_record_in_another_report(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chat')->twice()->andReturn(
+            $this->response(['selected_document_ids' => [12], 'supported_facts' => ['No return for U12345'], 'complete' => true]),
+            $this->response(['selected_document_ids' => [11], 'supported_facts' => ['U12345: wrong size'], 'complete' => true]),
+        );
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([11, 12]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->withArgs(fn ($candidate) => $candidate['document']['id'] === 11)
+            ->once()->andReturn($this->source(11, 'U12345: wrong size.', true));
+        $reader->shouldReceive('readCandidate')->withArgs(fn ($candidate) => $candidate['document']['id'] === 12)
+            ->once()->andReturn($this->source(12, 'No returns in this separate report.', true));
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Motivo del reso U12345',
+            ['U12345 motivo reso'], [['text' => 'U12345', 'type' => 'identifier']], false);
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Motivo del reso U12345?', 'orders', preparedUnderstanding: $understanding);
+        $this->assertTrue($result->isReady());
+        $this->assertSame([11], $result->attempts[0]['selected_document_ids']);
+    }
+
+    public function test_repeated_unknown_ids_cannot_authorize_facts_or_select_a_foreign_source(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $this->expectInterpretation($ai, ['objective' => 'Return window ORDER-A', 'queries' => ['ORDER-A return window']]);
+        $ai->shouldReceive('chat')->twice()->andReturn($this->response([
+            'selected_document_ids' => [999], 'supported_facts' => ['Return through January 31'], 'complete' => true,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([11]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'ORDER-A: return through January 31.', true));
+        $result = $this->service($ai, $retrieval, $reader)->investigate('Return window ORDER-A?', 'orders');
+        $this->assertFalse($result->isReady());
+        $this->assertSame('assessment_failed', $result->stopReason);
+        $this->assertSame([], $result->factMap['supported_facts']);
+    }
+
     public function test_missing_profile_blocks_research_after_interpretation_without_generic_search(): void
     {
         $ai = Mockery::mock(AiManager::class);
