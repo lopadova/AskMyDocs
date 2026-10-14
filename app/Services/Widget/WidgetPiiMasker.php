@@ -27,6 +27,26 @@ final class WidgetPiiMasker
      */
     public function maskString(string $input): string
     {
+        // Retail identifiers need both a barcode field and a valid GTIN-13
+        // checksum. Unlabelled numbers and payment fields remain protected.
+        $barcodes = [];
+        $input = preg_replace_callback('/^.*\b(?:barcode|EAN|GTIN)\b.*$/imu', function (array $line) use (&$barcodes): string {
+            if (preg_match('/\b(?:card|carta|credit|credito|payment|pagamento|IBAN)\b/iu', $line[0])) {
+                return $line[0];
+            }
+            return preg_replace_callback('/\b\d{13}\b/', function (array $match) use (&$barcodes): string {
+                $sum = 0;
+                for ($i = 0; $i < 12; $i++) {
+                    $sum += (int) $match[0][$i] * ($i % 2 === 0 ? 1 : 3);
+                }
+                if ((10 - $sum % 10) % 10 !== (int) $match[0][12]) {
+                    return $match[0];
+                }
+                $token = '__AMD_GTIN_'.hash('sha256', $match[0]).'__';
+                $barcodes[$token] = $match[0];
+                return $token;
+            }, $line[0]) ?? $line[0];
+        }, $input) ?? $input;
         // 1. Email — qualunque <local>@<domain>
         $result = preg_replace(
             '/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/',
@@ -96,7 +116,7 @@ final class WidgetPiiMasker
             $result,
         ) ?? $result;
 
-        return $result;
+        return strtr($result, $barcodes);
     }
 
     /**

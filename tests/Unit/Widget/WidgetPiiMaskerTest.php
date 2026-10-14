@@ -116,6 +116,16 @@ final class WidgetPiiMaskerTest extends TestCase
         );
     }
 
+    public function test_valid_product_barcodes_survive_without_exempting_payment_fields(): void
+    {
+        $line = 'Articolo Barcode Quantità: sneakers 8057807017689 1; sneakers 8057807017696 1';
+        $this->assertSame($line, $this->masker->maskString($line));
+        $this->assertSame('[CARD]', $this->masker->maskString('8057807017696'));
+        $this->assertSame('Barcode errato [CARD]', $this->masker->maskString('Barcode errato 8057807017697'));
+        $this->assertSame('Carta [CARD] Barcode [CARD]',
+            $this->masker->maskString('Carta 4111 1111 1111 1111 Barcode 8057807017696'));
+    }
+
     // ─── maskString: token/secret ───────────────────────────────────
 
     public function test_masks_sk_live_token(): void
