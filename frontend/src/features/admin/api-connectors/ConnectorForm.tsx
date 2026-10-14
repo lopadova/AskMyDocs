@@ -1,9 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import type { ApiConnector, ConnectorPayload } from './api-connectors.api';
 import { SourceAvatar } from '../connectors/SourceAvatar';
+import { Button } from '../../../components/Button';
+import './connector-form.css';
 import {
-    buttonStyle,
     errorTextStyle,
     fieldCaptionStyle,
     fieldLabelStyle,
@@ -11,6 +12,20 @@ import {
     modalBackdropStyle,
     modalPanelStyle,
 } from './styles';
+
+const CLOUDFLARE_HEADER = 'X-AskMyDocs-Cloudflare-Token';
+
+function isCloudflareHeader(name: string): boolean {
+    return name.toLowerCase() === CLOUDFLARE_HEADER.toLowerCase();
+}
+
+function connectorInputStyle(): CSSProperties {
+    return {
+        ...inputStyle(),
+        fontSize: 'var(--api-connector-field-size, 12px)',
+        minHeight: 'var(--api-connector-control-height, 0px)',
+    };
+}
 
 /**
  * Create / edit an API connector (the parent of routes + auth profiles).
@@ -66,14 +81,26 @@ export function ConnectorForm({
     const [description, setDescription] = useState(connector?.description ?? '');
     const [projectKey, setProjectKey] = useState(connector?.project_key ?? '');
     const [baseUrl, setBaseUrl] = useState(connector?.base_url ?? '');
+    const sharedHeaders = Object.entries(connector?.headers ?? {});
     const [headersText, setHeadersText] = useState(
-        connector?.headers ? stringifyHeaders(connector.headers) : '',
+        stringifyHeaders(Object.fromEntries(sharedHeaders.filter(([key]) => !isCloudflareHeader(key)))),
+    );
+    const [cloudflareToken, setCloudflareToken] = useState(
+        sharedHeaders.find(([key]) => isCloudflareHeader(key))?.[1] ?? '',
     );
     const [isActive, setIsActive] = useState(connector?.is_active ?? true);
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         const headers = parseHeaders(headersText);
+        if (cloudflareToken.trim() !== '') {
+            // Avoid duplicate values when the textarea uses different casing.
+            for (const key of Object.keys(headers)) {
+                if (isCloudflareHeader(key)) delete headers[key];
+            }
+            headers[CLOUDFLARE_HEADER] = cloudflareToken.trim();
+        }
         onSubmit({
             name: name.trim(),
             description: description.trim() === '' ? null : description.trim(),
@@ -85,6 +112,7 @@ export function ConnectorForm({
     };
 
     const titleId = 'api-connector-form-title';
+    const cloudflareHeaderError = fieldErrors?.[`headers.${CLOUDFLARE_HEADER}`];
 
     return (
         <div
@@ -97,9 +125,10 @@ export function ConnectorForm({
                 aria-labelledby={titleId}
                 aria-busy={isSubmitting}
                 data-testid="api-connector-form"
+                className="api-connector-form"
                 data-state={isSubmitting ? 'loading' : 'idle'}
                 onSubmit={handleSubmit}
-                style={modalPanelStyle(480)}
+                style={{ ...modalPanelStyle(480), minWidth: 0, boxSizing: 'border-box' }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <SourceAvatar connectorKey="api" displayName="API" size={38} radius={10} />
@@ -121,7 +150,7 @@ export function ConnectorForm({
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Weather API"
-                        style={inputStyle()}
+                        style={connectorInputStyle()}
                     />
                     {fieldErrors?.name && (
                         <span data-testid="api-connector-form-name-error" role="alert" style={errorTextStyle()}>
@@ -139,7 +168,7 @@ export function ConnectorForm({
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="What this connector exposes"
-                        style={{ ...inputStyle(), resize: 'vertical' }}
+                        style={{ ...connectorInputStyle(), resize: 'vertical' }}
                     />
                     {fieldErrors?.description && (
                         <span
@@ -161,7 +190,7 @@ export function ConnectorForm({
                         value={baseUrl}
                         onChange={(e) => setBaseUrl(e.target.value)}
                         placeholder="https://api.example.com"
-                        style={inputStyle()}
+                        style={connectorInputStyle()}
                     />
                     {fieldErrors?.base_url && (
                         <span
@@ -181,7 +210,7 @@ export function ConnectorForm({
                         data-testid="api-connector-form-project_key"
                         value={projectKey}
                         onChange={(e) => setProjectKey(e.target.value)}
-                        style={inputStyle()}
+                        style={connectorInputStyle()}
                     >
                         <option value="">Global (tenant default)</option>
                         {projects.map((p) => (
@@ -201,6 +230,33 @@ export function ConnectorForm({
                     )}
                 </label>
 
+                <label htmlFor="api-connector-form-cloudflare-token" style={fieldLabelStyle()}>
+                    <span id="api-connector-form-cloudflare-label" style={fieldCaptionStyle()}>Cloudflare rule token (optional)</span>
+                    <input
+                        id="api-connector-form-cloudflare-token"
+                        data-testid="api-connector-form-cloudflare-token"
+                        name="cloudflare_rule_token"
+                        type="password"
+                        autoComplete="new-password"
+                        spellCheck={false}
+                        value={cloudflareToken}
+                        onChange={(e) => setCloudflareToken(e.target.value)}
+                        aria-labelledby="api-connector-form-cloudflare-label"
+                        aria-describedby={`api-connector-form-cloudflare-hint${cloudflareHeaderError ? ' api-connector-form-cloudflare-error' : ''}`}
+                        aria-invalid={!!cloudflareHeaderError}
+                        placeholder="Value used in your Cloudflare rule"
+                        style={connectorInputStyle()}
+                    />
+                    <span id="api-connector-form-cloudflare-hint" style={{ ...fieldCaptionStyle(), lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                        Sends <code>{CLOUDFLARE_HEADER}</code> on every endpoint test and tool call.
+                        Match this header and value in a Cloudflare Skip rule for your API.
+                        Leave blank to remove it. For a different header name, use Default headers below.
+                    </span>
+                    {cloudflareHeaderError && (
+                        <span id="api-connector-form-cloudflare-error" role="alert" style={errorTextStyle()}>{cloudflareHeaderError}</span>
+                    )}
+                </label>
+
                 <label htmlFor="api-connector-form-headers" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>
                         Default headers (one per line, <code>Key: Value</code>)
@@ -212,7 +268,7 @@ export function ConnectorForm({
                         value={headersText}
                         onChange={(e) => setHeadersText(e.target.value)}
                         placeholder={'Accept: application/json'}
-                        style={{ ...inputStyle(), resize: 'vertical', fontFamily: 'var(--font-mono, monospace)' }}
+                        style={{ ...connectorInputStyle(), resize: 'vertical', fontFamily: 'var(--font-mono, monospace)' }}
                     />
                     {fieldErrors?.headers && (
                         <span
@@ -245,24 +301,23 @@ export function ConnectorForm({
                     </p>
                 )}
 
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 4 }}>
+                    <Button
                         type="button"
                         data-testid="api-connector-form-cancel"
                         onClick={onClose}
                         disabled={isSubmitting}
-                        style={buttonStyle('secondary', !!isSubmitting)}
                     >
                         Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="submit"
                         data-testid="api-connector-form-submit"
-                        disabled={isSubmitting}
-                        style={buttonStyle('primary', !!isSubmitting)}
+                        variant="primary"
+                        busy={isSubmitting}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create connector'}
-                    </button>
+                        {isEdit ? 'Save changes' : 'Create connector'}
+                    </Button>
                 </div>
             </form>
         </div>
