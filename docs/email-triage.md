@@ -78,6 +78,11 @@ the document's `_derived.search_tags` and every chunk's `search_tags` field. A n
 revision-specific Flow run key; retries reuse the saved decision. Historical
 reindexing copies manual/source ACL rows and existing document tags before archiving
 the previous version. The card explicitly identifies its automated provenance.
+Connector provenance must survive parsing and persistence: an imported IMAP
+parent remains `connector=imap`, so historical campaign filters can find it.
+Chat evidence for a triaged parent rereads the hash-verified original without
+the generated card. Search tags navigate to a source; they do not become the
+sender's statements or independently prove a sentiment classification.
 
 ## Queues and deployment
 

@@ -83,7 +83,34 @@ class KbSourceReader
         $fullLimit = (int) config('kb.investigation.full_source_max_chars', 24000);
         $isShort = $totalChars <= $fullLimit;
 
-        if ($isShort) {
+        if (data_get($document->metadata, 'connector') === 'imap'
+            && data_get($document->metadata, 'attachment_filename') === null
+            && data_get($document->metadata, 'email_triage.evaluation_id')) {
+            try {
+                $original = app(\App\Services\EmailTriage\TriageCampaigns::class)->body($document);
+                if (hash('sha256', $original) !== data_get($document->metadata, 'email_triage.original_hash')) {
+                    return null;
+                }
+            } catch (\Throwable) {
+                return null;
+            }
+            // Search tags locate the email; a generated classification is not
+            // the sender's evidence and must never become a literal quotation.
+            $isShort = mb_strlen($original) <= $fullLimit;
+            $usedChunks = $chunks;
+            if ($isShort) {
+                $excerpt = $original;
+            } else {
+                $anchorText = (string) $chunks->firstWhere('id', $chunkId)?->chunk_text;
+                $position = $anchorText === '' ? false : mb_strpos($original, trim($anchorText));
+                if ($position === false) {
+                    return null;
+                }
+                $window = max(1, (int) config('kb.investigation.long_source_max_chars', 9000));
+                $excerpt = mb_substr($original, max(0, $position - intdiv($window, 3)), $window);
+                $usedChunks = $chunks->where('id', $chunkId);
+            }
+        } elseif ($isShort) {
             $excerpt = $chunks->pluck('chunk_text')->implode("\n\n");
             $usedChunks = $chunks;
         } else {

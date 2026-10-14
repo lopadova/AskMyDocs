@@ -35,6 +35,22 @@ final class KbSourceReaderTest extends TestCase
         $this->assertStringContainsString('cinque giorni lavorativi', $source['excerpt']);
     }
 
+    public function test_automatic_triage_card_is_not_returned_as_the_senders_evidence(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = "# Return request\n\nCould you please send me a return label?";
+        $document = $this->document('Triaged email', ['connector' => 'imap', 'disk' => 'kb',
+            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $chunk = $this->chunk($document, 0, $original."\n\n## Scheda di triage automatica\nSentiment: arrabbiato");
+        $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk));
+        $this->assertTrue($source['complete_source']);
+        $this->assertSame($original, $source['excerpt']);
+        $this->assertStringNotContainsString('arrabbiato', $source['excerpt']);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, 'Changed original');
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk)));
+    }
+
     public function test_anonymous_re_read_rejects_a_source_restricted_document(): void
     {
         $document = $this->document('Email privata');

@@ -323,6 +323,21 @@ class IngestDocumentJobTest extends TestCase
         $this->assertSame('kb', $doc->metadata['disk'] ?? null);
     }
 
+    public function test_connector_provenance_survives_the_entire_queued_ingest_flow(): void
+    {
+        Storage::fake('kb');
+        config(['kb.sources.path_prefix' => '']);
+        Storage::disk('kb')->put('mail/return.md', "# Return request\n\nPlease send a return label.");
+        $job = new IngestDocumentJob('demo', 'mail/return.md', 'kb', 'Return request', [
+            'connector' => 'imap', 'installation_id' => 10, 'imap_doc_key' => 'INBOX:14:42',
+        ]);
+        $this->app->call([$job, 'handle']);
+        $document = KnowledgeDocument::firstOrFail();
+        $this->assertSame('imap', $document->metadata['connector']);
+        $this->assertSame(10, $document->metadata['installation_id']);
+        $this->assertSame('INBOX:14:42', $document->metadata['imap_doc_key']);
+    }
+
     public function test_generated_email_fixture_skips_post_ingest_ai_jobs(): void
     {
         Storage::fake('kb');

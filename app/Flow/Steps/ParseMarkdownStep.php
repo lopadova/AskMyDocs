@@ -91,6 +91,8 @@ final class ParseMarkdownStep implements FlowStepHandler
         $combinedMetadata = array_merge($metadata, [
             'disk' => $disk,
             'prefix' => $prefix,
+            'connector' => is_string($metadata['connector'] ?? null) && trim($metadata['connector']) !== ''
+                ? trim($metadata['connector']) : 'local',
         ]);
         if ($context->dryRun) {
             // v8.36 — converters with a persistence seam (OCR figures, paid
@@ -104,7 +106,7 @@ final class ParseMarkdownStep implements FlowStepHandler
             bytes: (string) $bytes,
             externalUrl: null,
             externalId: null,
-            connectorType: 'local',
+            connectorType: $combinedMetadata['connector'],
             metadata: $combinedMetadata,
         );
 
