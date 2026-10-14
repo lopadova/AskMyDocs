@@ -83,8 +83,11 @@ foreach ($cases['cases'] as $case) {
         }
         // The external reviewer needs the whole indexed original, not the
         // first retrieval window of a long thread. It is never given to the agent.
-        $reference = $document->source_type === App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE
-            ? $source['excerpt'] : $document->chunks()->orderBy('chunk_order')->pluck('chunk_text')->implode("\n\n");
+        $reference = data_get($document->metadata, 'connector') === 'imap'
+            && data_get($document->metadata, 'attachment_filename') === null
+            ? app(App\Services\EmailTriage\TriageCampaigns::class)->body($document)
+            : ($document->source_type === App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE
+                ? $source['excerpt'] : $document->chunks()->orderBy('chunk_order')->pluck('chunk_text')->implode("\n\n"));
         $sources[] = ['document_id' => $document->id, 'title' => $document->title, 'text' => $reference];
     }
     $conversationId = $case['conversation_id'] ?? null;
@@ -105,14 +108,16 @@ foreach ($cases['cases'] as $case) {
     $started = microtime(true);
     echo json_encode(['case' => $id, 'round' => $round, 'started' => $context->runId, 'conversation_id' => $conversation->id]).PHP_EOL;
     $turn = app(App\Agent\AgentChatTurnStarter::class)->start($context, $conversation, $user, $case['question'],
-        ['question' => $case['question'], 'depth' => $case['depth'] ?? 3, 'live_sources' => ['api' => [], 'mcp' => []]],
+        ['question' => $case['question'], 'depth' => $case['depth'] ?? 3,
+            'filters' => $case['filters'] ?? [],
+            'live_sources' => $case['live_sources'] ?? ['api' => [], 'mcp' => []]],
         ['qa_case' => $id, 'qa_round' => $round], inline: true);
     $run = $turn->run->fresh();
     $message = App\Models\Message::query()->where('agent_run_id', $run->id)->first();
     $report = ['case' => $id, 'round' => $round, 'code_revision' => $codeRevision, 'question' => $case['question'], 'expected' => $case['expected'],
         'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
         'interpretation_model' => config('ai.question_preprocessor.model'),
-        'evaluation_source_mode' => 'complete_indexed_original_or_verified_lineage',
+        'evaluation_source_mode' => 'immutable_imap_original_or_complete_indexed_source_or_verified_lineage',
         'document_ids' => $case['document_ids'], 'conversation_id' => $conversation->id, 'run_id' => $run->run_id,
         'agent_run_id' => $run->id, 'message_id' => $message?->id, 'status' => $run->status, 'error_code' => $run->error_code,
         'elapsed_seconds' => round(microtime(true) - $started, 2), 'answer' => $message?->content,
