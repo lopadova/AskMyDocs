@@ -134,7 +134,7 @@ final class AgentClaimBatchEvaluatorTest extends TestCase
         $this->assertTrue($result['partial']);
         $this->assertSame('error', $result['semantic_validation'][0]['status']);
         $this->assertCount(2, $result['claims']);
-        Http::assertSentCount(1);
+        Http::assertSentCount(3); // Initial call and two bounded transient retries.
     }
 
     public function test_agent_renders_original_citations_after_support_and_original_question_validation(): void

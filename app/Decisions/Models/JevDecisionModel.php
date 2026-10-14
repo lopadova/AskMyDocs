@@ -7,6 +7,8 @@ namespace App\Decisions\Models;
 use App\Decisions\DecisionException;
 use App\Decisions\DecisionModel;
 use App\Decisions\DecisionResult;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -24,6 +26,11 @@ final class JevDecisionModel implements DecisionModel
             $response = Http::withToken($key)
                 ->acceptJson()
                 ->timeout((int) config('decisions.models.jev.timeout', 15))
+                ->retry(3, fn (int $attempt): int => 750 * $attempt,
+                    fn (Throwable $error): bool => $error instanceof ConnectionException
+                        || ($error instanceof RequestException
+                            && ($error->response->status() === 429 || $error->response->serverError())),
+                    throw: false)
                 ->post('https://openrouter.ai/api/alpha/decisions', [
                     'model' => config('decisions.models.jev.model'),
                     'state' => $state,

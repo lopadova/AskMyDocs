@@ -86,6 +86,39 @@ final class DecisionsTest extends TestCase
         Decisions::using()->withState(['text' => 'example'])->relevance()->decide();
     }
 
+    public function test_transient_rate_limit_is_retried_before_validating_the_answer(): void
+    {
+        Http::fakeSequence()->push(['error' => 'rate limited'], 429)
+            ->push($this->yesNoResponse(0.94));
+        $result = Decisions::using()->withState(['text' => 'example'])->relevance()->decide();
+        $this->assertTrue($result->toBool('relevant', 0.8));
+        Http::assertSentCount(2);
+    }
+
+    public function test_permanent_provider_failure_is_not_retried(): void
+    {
+        Http::fakeSequence()->push(['error' => 'unauthorized'], 401);
+        try {
+            Decisions::using()->withState(['text' => 'example'])->relevance()->decide();
+            $this->fail('An authorization failure must remain an error.');
+        } catch (DecisionException $e) {
+            $this->assertSame('Decision provider returned HTTP 401.', $e->getMessage());
+        }
+        Http::assertSentCount(1);
+    }
+
+    public function test_persistent_rate_limit_has_a_bounded_retry_budget(): void
+    {
+        Http::fake(['*' => Http::response(['error' => 'rate limited'], 429)]);
+        try {
+            Decisions::using()->withState(['text' => 'example'])->relevance()->decide();
+            $this->fail('Exhausted retries must remain an error.');
+        } catch (DecisionException $e) {
+            $this->assertSame('Decision provider returned HTTP 429.', $e->getMessage());
+        }
+        Http::assertSentCount(3);
+    }
+
     public function test_sensitive_state_fields_are_redacted_before_the_provider_call(): void
     {
         Http::fake(['*' => Http::response($this->yesNoResponse(0.9))]);
