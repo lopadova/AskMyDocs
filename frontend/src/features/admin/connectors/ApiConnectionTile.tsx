@@ -1,4 +1,6 @@
 import type { ApiConnector } from '../api-connectors/api-connectors.api';
+import { ConnectorExportButton } from '../api-connectors/ConnectorExportButton';
+import { Button } from '../../../components/Button';
 import { SourceAvatar } from './SourceAvatar';
 
 /**
@@ -72,62 +74,33 @@ export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compa
                 </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: compact ? 0 : 4, marginLeft: compact ? 'auto' : 0 }}>
-                <button
+            <div className="api-config-transfer-actions" style={{ marginTop: compact ? 0 : 4, marginLeft: compact ? 'auto' : 0 }}>
+                <Button
                     type="button"
                     data-testid={`${base}-manage`}
-                    className="focus-ring"
                     onClick={onManage}
-                    style={{
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        padding: '6px 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'var(--bg-2)',
-                        color: 'var(--fg-0)',
-                        cursor: 'pointer',
-                    }}
                 >
                     Manage
-                </button>
+                </Button>
+                <ConnectorExportButton connector={connector} testId={`${base}-export`} />
                 {!compact && <div style={{ flex: 1 }} />}
-                <button
+                <Button
                     type="button"
                     data-testid={`${base}-edit`}
-                    className="focus-ring"
                     aria-label={`Edit ${connector.name}`}
                     onClick={() => onEdit(connector)}
-                    style={{
-                        fontSize: 12.5,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'transparent',
-                        color: 'var(--fg-2)',
-                        cursor: 'pointer',
-                    }}
                 >
                     Edit
-                </button>
-                <button
+                </Button>
+                <Button
                     type="button"
                     data-testid={`${base}-remove`}
-                    className="focus-ring"
                     aria-label={`Remove ${connector.name}`}
                     onClick={() => onRemove(connector)}
-                    style={{
-                        fontSize: 12.5,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'transparent',
-                        color: '#fca5a5',
-                        cursor: 'pointer',
-                    }}
+                    variant="danger"
                 >
                     Remove
-                </button>
+                </Button>
             </div>
         </div>
     );

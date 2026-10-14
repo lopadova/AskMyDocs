@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { Upload } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { ConnectorExportButton } from './ConnectorExportButton';
+import { ConnectorImportModal } from './ConnectorImportModal';
 import { AdminShell } from '../shell/AdminShell';
 import { SourceAvatar } from '../connectors/SourceAvatar';
 import { ToastHost, useToast } from '../shared/Toast';
@@ -61,6 +65,7 @@ import { AgentRuntimeOverview } from './AgentRuntimeOverview';
  */
 
 type Modal =
+    | { kind: 'connector-import' }
     | { kind: 'connector-create' }
     | { kind: 'connector-edit'; connector: ApiConnector }
     | { kind: 'auth-create'; connector: ApiConnector }
@@ -423,7 +428,7 @@ export function ApiConnectorsView() {
                 data-state={state}
                 style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div className="api-config-transfer-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                         <h1
                             style={{
@@ -441,23 +446,24 @@ export function ApiConnectorsView() {
                             then activate the ones the chat may call.
                         </p>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button
+                    <div className="api-config-transfer-actions">
+                        <Button data-testid="api-connector-import" leadingIcon={<Upload size={16} />}
+                            onClick={() => openModalReset({ kind: 'connector-import' })}>Import configuration</Button>
+                        <Button
                             type="button"
                             data-testid="api-connector-probe"
                             onClick={openProbe}
-                            style={buttonStyle('secondary', false)}
                         >
                             Probe endpoint
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="button"
                             data-testid="api-connector-create"
                             onClick={() => openModalReset({ kind: 'connector-create' })}
-                            style={buttonStyle('primary', false)}
+                            variant="primary"
                         >
                             + New API connector
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
@@ -547,6 +553,11 @@ export function ApiConnectorsView() {
                     </div>
                 )}
             </div>
+
+            {modal?.kind === 'connector-import' && <ConnectorImportModal onClose={closeModal} onImported={() => {
+                closeModal();
+                toast.success('API connector imported with all endpoints.', 'toast-api-connector-imported');
+            }} />}
 
             {(modal?.kind === 'connector-create' || modal?.kind === 'connector-edit') && (
                 <ConnectorForm
@@ -710,7 +721,7 @@ function ConnectorCard({
                 gap: 10,
             }}
         >
-            <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+            <header className="api-config-transfer-heading" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                 <SourceAvatar connectorKey="api" displayName="API" />
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 15, color: 'var(--fg-0)' }}>
@@ -729,23 +740,23 @@ function ConnectorCard({
                         {connector.project_key ? `project ${connector.project_key}` : 'tenant default'}
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                    <button
+                <div className="api-config-transfer-actions">
+                    <ConnectorExportButton connector={connector} testId={`api-connector-${connector.id}-export`} />
+                    <Button
                         type="button"
                         data-testid={`api-connector-${connector.id}-edit`}
                         onClick={onEditConnector}
-                        style={buttonStyle('secondary', false)}
                     >
                         Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="button"
                         data-testid={`api-connector-${connector.id}-delete`}
                         onClick={onDeleteConnector}
-                        style={buttonStyle('danger', false)}
+                        variant="danger"
                     >
                         Remove
-                    </button>
+                    </Button>
                 </div>
             </header>
 

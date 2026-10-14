@@ -389,7 +389,41 @@ export interface DrillResult {
 
 const BASE = '/api/admin/api-connectors';
 
+export type ApiConnectorConfig = Record<string, unknown>;
+
+export interface ConnectorImportPreview {
+    config: ApiConnectorConfig;
+    name: string;
+    endpoint_count: number;
+    relation_count: number;
+    required_credentials: {
+        profile_ref: string;
+        profile_label?: string;
+        type: AuthType;
+        key: string;
+        label: string;
+        secret: boolean;
+    }[];
+}
+
+export type ConnectorImportCredentials = Record<string, Record<string, string>>;
+
 export const apiConnectorsApi = {
+    async exportConfig(id: number): Promise<ApiConnectorConfig> {
+        const { data } = await api.get<{ data: ApiConnectorConfig }>(`${BASE}/${id}/export`);
+        return data.data;
+    },
+
+    async previewImport(config: unknown): Promise<ConnectorImportPreview> {
+        const { data } = await api.post<{ data: ConnectorImportPreview }>(`${BASE}/import/validate`, { config });
+        return data.data;
+    },
+
+    async importConfig(config: ApiConnectorConfig, credentials: ConnectorImportCredentials): Promise<ApiConnector> {
+        const { data } = await api.post<{ data: ApiConnector }>(`${BASE}/import`, { config, credentials });
+        return data.data;
+    },
+
     async agentOverview(): Promise<AgentRunOverview> {
         const { data } = await api.get<{ data: AgentRunOverview }>('/api/admin/agent-runs/overview');
         return data.data;

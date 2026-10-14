@@ -4,6 +4,8 @@ import {
     apiConnectorsApi,
     type ApiAuthProfile,
     type ApiConnector,
+    type ApiConnectorConfig,
+    type ConnectorImportCredentials,
     type ApiRoute,
     type ApiRouteRelation,
     type AuthProfilePayload,
@@ -77,6 +79,14 @@ export function useCreateConnector() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY });
         },
+    });
+}
+
+export function useImportApiConnector() {
+    const qc = useQueryClient();
+    return useMutation<ApiConnector, unknown, { config: ApiConnectorConfig; credentials: ConnectorImportCredentials }>({
+        mutationFn: ({ config, credentials }) => apiConnectorsApi.importConfig(config, credentials),
+        onSuccess: () => { qc.invalidateQueries({ queryKey: API_CONNECTORS_KEY }); },
     });
 }
 

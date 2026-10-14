@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { Upload } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { ConnectorImportModal } from '../api-connectors/ConnectorImportModal';
 import { ConnectorForm } from '../api-connectors/ConnectorForm';
 import {
     useApiConnectors,
@@ -29,6 +32,7 @@ import { ApiConnectionTile } from './ApiConnectionTile';
  */
 
 type ApiModal =
+    | { kind: 'import' }
     | { kind: 'create' }
     | { kind: 'edit'; connector: ApiConnector }
     | { kind: 'remove'; connector: ApiConnector }
@@ -138,27 +142,18 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                 >
                     {connectors.length}
                 </span>
+                <Button data-testid="api-connector-gallery-import" leadingIcon={<Upload size={16} />}
+                    onClick={() => openModal({ kind: 'import' })}>Import configuration</Button>
                 {!embedded && (
                     <>
                         <div style={{ flex: 1, minWidth: 12 }} />
-                        <button
+                        <Button
                             type="button"
                             data-testid="api-connector-gallery-create"
-                            className="focus-ring"
                             onClick={() => openModal({ kind: 'create' })}
-                            style={{
-                                fontSize: 12.5,
-                                fontWeight: 600,
-                                padding: '7px 12px',
-                                borderRadius: 8,
-                                border: '1px solid var(--hairline)',
-                                background: 'var(--bg-2)',
-                                color: 'var(--fg-0)',
-                                cursor: 'pointer',
-                            }}
                         >
                             + New API connection
-                        </button>
+                        </Button>
                     </>
                 )}
             </div>
@@ -209,7 +204,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                     data-testid="api-connections-grid"
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: embedded ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))',
+                        gridTemplateColumns: embedded ? '1fr' : 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',
                         gap: 12,
                     }}
                 >
@@ -225,6 +220,11 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                     ))}
                 </div>
             )}
+
+            {modal?.kind === 'import' && <ConnectorImportModal onClose={() => setModal(null)} onImported={() => {
+                setModal(null);
+                toast.success('API connector imported with all endpoints.', 'toast-api-connector-imported');
+            }} />}
 
             {(modal?.kind === 'create' || modal?.kind === 'edit') && (
                 <ConnectorForm

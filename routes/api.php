@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\ApiConnectorConfigController;
 use App\Http\Controllers\Api\Admin\ConversationDebugTranscriptController;
 use App\Http\Controllers\Api\Admin\AgentRunOverviewController;
 use App\Http\Controllers\Api\Admin\ComplianceReportController;
@@ -1020,6 +1021,18 @@ Route::middleware([
 | the active tenant 404.
 |
 */
+if (config('connector-api.routes.enabled', true)) {
+    Route::middleware(array_values(array_diff(config('connector-api.routes.middleware'), ['api'])))
+        ->prefix(preg_replace('#^api/#', '', config('connector-api.routes.prefix')))
+        ->name('api-connectors.config.')
+        ->group(function (): void {
+            Route::get('{connector}/export', [ApiConnectorConfigController::class, 'export'])
+                ->whereNumber('connector')->name('export');
+            Route::post('import/validate', [ApiConnectorConfigController::class, 'preview'])->name('preview');
+            Route::post('import', [ApiConnectorConfigController::class, 'import'])->name('import');
+        });
+}
+
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
