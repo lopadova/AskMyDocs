@@ -62,7 +62,7 @@ it('only permits a campaign after an explicit preview and invalidates it when fi
     await userEvent.click(await screen.findByRole('button', { name: 'Calcola anteprima' }));
     await screen.findByRole('button', { name: 'Avvia triage e aggiorna ingest' });
     expect(screen.getByText(/ancora da verificare: 900/)).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Cartella'), 'INBOX');
+    await userEvent.type(screen.getByLabelText('Cartella / ID label'), 'INBOX');
     expect(screen.queryByRole('button', { name: 'Avvia triage e aggiorna ingest' })).not.toBeInTheDocument();
     expect(emailTriageApi.start).not.toHaveBeenCalled();
 });

@@ -103,6 +103,21 @@ beforeEach(() => {
 });
 
 describe('AccountEditModal', () => {
+    it.each(['gmail', 'microsoft-mail'])('edits native OAuth settings and exposes the shared triage tab for %s', async (key) => {
+        const onSubmitSettings = vi.fn().mockResolvedValue(undefined);
+        const oauthEntry = { ...credentialEntry(), key, display_name: key, auth_kind: 'oauth' as const, credential_form_schema: null };
+        const oauthAccount = { ...account(), supports_email_triage: true, settings: { folders: { include: ['CaseSensitive-ID'] } },
+            connection_settings_schema: [field({ name: 'folders.include', label: 'Folder IDs', type: 'multiselect', target: 'config', discovery: 'folders' })] };
+        render(<AccountEditModal entry={oauthEntry} account={oauthAccount} projects={[]} onSubmitDetails={vi.fn()} onSubmitConnection={vi.fn()}
+            onTestConnection={vi.fn()} onSubmitSettings={onSubmitSettings} onClose={vi.fn()} />);
+        expect(screen.queryByTestId('connector-account-7-edit-tab-connection')).toBeNull();
+        expect(screen.getByTestId('connector-account-7-edit-tab-triage')).toBeVisible();
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-tab-settings'));
+        expect(screen.getByTestId(`connector-${key}-settings-folders-include-list`)).toBeVisible();
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-save'));
+        await waitFor(() => expect(onSubmitSettings).toHaveBeenCalledWith({ folders: { include: ['CaseSensitive-ID'] } }));
+    });
+
     it('preserves edited details on outside click and Escape, then closes with Cancel', async () => {
         const user = userEvent.setup();
         const { onClose } = renderModal();

@@ -72,6 +72,18 @@ function renderMenu(
 }
 
 describe('ConnectionActionsMenu', () => {
+    it.each(['gmail', 'microsoft-mail'])('opens folder discovery for %s without offering an IMAP sample fetch', async (key) => {
+        const vm = vmFor('active', 'oauth');
+        vm.connectorKey = key;
+        vm.installation.connection_settings_schema = [{ name: 'folders.include', label: 'Folder IDs', type: 'multiselect', target: 'config',
+            required: false, secret: false, default: [], options: {}, showIf: null, help: null, group: null, discovery: 'folders' }];
+        const { onFolders } = renderMenu(vm);
+        expect(screen.queryByTestId('connector-connection-7-test-fetch')).toBeNull();
+        expect(screen.queryByTestId('connector-connection-7-export')).toBeNull();
+        await userEvent.click(screen.getByTestId('connector-connection-7-folders'));
+        expect(onFolders).toHaveBeenCalledWith(vm);
+    });
+
     it('lists the credential active-account actions (and no enable/cancel)', () => {
         renderMenu(vmFor('active'));
         expect(screen.getByTestId('connector-connection-7-test-fetch')).toBeVisible();

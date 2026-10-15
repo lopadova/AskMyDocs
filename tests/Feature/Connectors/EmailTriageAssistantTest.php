@@ -30,12 +30,13 @@ final class EmailTriageAssistantTest extends TestCase
         $admin->assignRole('super-admin');
         $this->actingAs($admin);
         Queue::fake();
+        Http::preventStrayRequests();
         config(['ai.providers.openrouter.key' => 'test-only-key', 'email-triage.assistant_model' => 'openai/gpt-4o-mini']);
     }
 
-    private function installation(string $tenant = 'test-tenant'): ConnectorInstallation
+    private function installation(string $tenant = 'test-tenant', string $provider = 'imap'): ConnectorInstallation
     {
-        return ConnectorInstallation::create(['tenant_id' => $tenant, 'connector_name' => 'imap',
+        return ConnectorInstallation::create(['tenant_id' => $tenant, 'connector_name' => $provider,
             'label' => 'Autry', 'project_key' => 'mail', 'status' => 'active',
             'config_json' => ['host' => 'private-server.example.test', 'username' => 'private-account@example.test']]);
     }
@@ -48,14 +49,30 @@ final class EmailTriageAssistantTest extends TestCase
 
     private function fakeResponse(array|string $content, string $finish = 'stop'): void
     {
-        Http::fake(['openrouter.ai/*' => Http::response(['model' => 'openai/gpt-4o-mini',
+        Http::fake([
+            'openrouter.ai/api/v1/models/*/endpoints' => Http::response(['data' => ['endpoints' => [
+                ['supported_parameters' => ['response_format', 'temperature', 'max_tokens']],
+            ]]]),
+            'openrouter.ai/api/v1/chat/completions' => Http::response(['model' => 'openai/gpt-4o-mini',
             'choices' => [['message' => ['content' => is_array($content) ? json_encode($content) : $content], 'finish_reason' => $finish]],
             'usage' => ['prompt_tokens' => 1000, 'completion_tokens' => 600]])]);
     }
 
-    public function test_suggestion_is_structured_sanitized_and_never_saves_or_activates_an_account(): void
+    private function assertCompletionCount(int $expected): void
     {
-        $installation = $this->installation();
+        $this->assertCount($expected, Http::recorded(fn ($request) => $request->method() === 'POST'
+            && str_ends_with($request->url(), '/chat/completions')), 'Count billable assistant calls independently of the read-only model capability lookup.');
+    }
+
+    public static function emailProviders(): array
+    {
+        return [['imap'], ['gmail'], ['microsoft-mail']];
+    }
+
+    #[DataProvider('emailProviders')]
+    public function test_suggestion_is_structured_sanitized_and_never_saves_or_activates_an_account(string $provider): void
+    {
+        $installation = $this->installation('test-tenant', $provider);
         $profile = EmailTriageProfile::create(['tenant_id' => 'test-tenant', 'connector_installation_id' => $installation->id,
             'revision' => 1, 'enabled' => false, 'rules' => [], 'model' => config('decisions.models.jev.model')]);
         $installation->forceFill(['config_json' => $installation->config_json + ['email_triage_profile_id' => $profile->id]])->save();
@@ -71,8 +88,11 @@ final class EmailTriageAssistantTest extends TestCase
         Queue::assertNothingPushed();
         $audit = KbCanonicalAudit::where('event_type', 'email_triage_configuration_suggested')->firstOrFail();
         $this->assertStringNotContainsString('client@example.test', json_encode($audit->metadata_json));
-        Http::assertSentCount(1);
+        $this->assertCompletionCount(1);
         Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || ! str_ends_with($request->url(), '/chat/completions')) {
+                return false;
+            }
             $content = $request['messages'][1]['content'];
             return str_ends_with($request->url(), '/chat/completions')
                 && $request['response_format']['json_schema']['strict'] === true
@@ -92,7 +112,8 @@ final class EmailTriageAssistantTest extends TestCase
         $this->postJson('/api/admin/connectors/'.$installation->id.'/email-triage/suggest', [
             'prompt' => 'Completa la regola sulle lamentele.', 'profile' => ['enabled' => false, 'rules' => [$draft]],
         ])->assertOk();
-        Http::assertSent(fn ($request) => json_decode($request['messages'][1]['content'], true)['current_rules'][0]['key'] === 'not a valid key');
+        Http::assertSent(fn ($request) => $request->method() === 'POST' && str_ends_with($request->url(), '/chat/completions')
+            && json_decode($request['messages'][1]['content'], true)['current_rules'][0]['key'] === 'not a valid key');
     }
 
     public function test_numeric_score_positions_are_canonicalized_without_changing_labels_or_existing_identifiers(): void
@@ -186,7 +207,7 @@ final class EmailTriageAssistantTest extends TestCase
         $installation = $this->installation();
         $this->fakeResponse($this->proposal());
         $this->postJson('/api/admin/connectors/'.$installation->id.'/email-triage/suggest', ['prompt' => 'Riconosci lamentele.'])->assertOk();
-        Http::assertSentCount(1);
+        $this->assertCompletionCount(1);
     }
 
     public function test_assistant_limits_paid_requests_per_user_without_blocking_another_admin(): void
@@ -198,10 +219,10 @@ final class EmailTriageAssistantTest extends TestCase
             $this->postJson($url, ['prompt' => 'Riconosci lamentele.'])->assertOk();
         }
         $this->postJson($url, ['prompt' => 'Riconosci lamentele.'])->assertTooManyRequests();
-        Http::assertSentCount(6);
+        $this->assertCompletionCount(6);
         $other = User::create(['name' => 'Other admin', 'email' => 'other-assistant-admin@example.test', 'password' => 'test']);
         $other->assignRole('super-admin');
         $this->actingAs($other)->postJson($url, ['prompt' => 'Riconosci lamentele.'])->assertOk();
-        Http::assertSentCount(7);
+        $this->assertCompletionCount(7);
     }
 }

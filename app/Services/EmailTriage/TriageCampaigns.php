@@ -24,19 +24,26 @@ final class TriageCampaigns
 
     public function documents(ConnectorInstallation $installation, array $filters, int $profileId): Builder
     {
+        abort_unless(EmailConnectorRegistry::supports($installation), 404, 'This installation does not support email triage.');
+        $api = EmailConnectorRegistry::isApi((string) $installation->connector_name);
         $query = KnowledgeDocument::query()->forTenant((string) $installation->tenant_id)
-            ->where('status', 'active')->where('metadata->connector', 'imap')
-            ->where('metadata->installation_id', $installation->id)->whereNull('metadata->attachment_filename');
-        foreach (['project' => 'project_key', 'mailbox' => 'metadata->imap_mailbox'] as $filter => $column) {
-            if (! empty($filters[$filter])) {
-                $query->where($column, $filters[$filter]);
-            }
+            ->where('status', 'active')->where('metadata->connector', $installation->connector_name)
+            ->where('metadata->installation_id', $installation->id)->whereNull('metadata->attachment_filename')
+            ->whereNull('metadata->email_attachment_id');
+        if (! empty($filters['project'])) {
+            $query->where('project_key', $filters['project']);
         }
+        if (! empty($filters['mailbox'])) {
+            // The legacy API filter name means selectable folder/label, not account identity.
+            $api ? $query->whereJsonContains('metadata->email_folder_ids', $filters['mailbox'])
+                : $query->where('metadata->imap_mailbox', $filters['mailbox']);
+        }
+        $dateColumn = $api ? 'metadata->email_date' : 'metadata->imap->date';
         if (! empty($filters['from'])) {
-            $query->where('metadata->imap->date', '>=', $filters['from'].'T00:00:00');
+            $query->where($dateColumn, '>=', $filters['from'].'T00:00:00');
         }
         if (! empty($filters['to'])) {
-            $query->where('metadata->imap->date', '<', \Carbon\Carbon::parse($filters['to'])->addDay()->format('Y-m-d').'T00:00:00');
+            $query->where($dateColumn, '<', \Carbon\Carbon::parse($filters['to'])->addDay()->format('Y-m-d').'T00:00:00');
         }
         return match ($filters['state'] ?? 'never') {
             'never' => $query->whereNull('metadata->email_triage->evaluation_id'),
@@ -55,11 +62,12 @@ final class TriageCampaigns
     public function body(KnowledgeDocument $document): string
     {
         $metadata = (array) $document->metadata;
-        if (isset($metadata['imap_doc_key'])) {
+        if (EmailConnectorRegistry::messageKey($metadata) !== null) {
             $message = EmailTriageMessage::query()->forTenant($document->tenant_id)
                 ->where('connector_installation_id', $metadata['installation_id'] ?? 0)
                 ->where('identity_hash', $this->triage->identity($metadata))->first();
-            if ($message?->original_path) {
+            if ($message?->original_path && (! EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))
+                || ($message->metadata['email_revision_hash'] ?? null) === ($metadata['email_revision_hash'] ?? null))) {
                 return $this->triage->original($message);
             }
         }
@@ -67,14 +75,18 @@ final class TriageCampaigns
         $path = $this->triage->fullPath((string) ($metadata['prefix'] ?? config('kb.sources.path_prefix', '')), $document->source_path);
         if (Storage::disk($disk)->exists($path)) {
             $bytes = Storage::disk($disk)->get($path);
-            if (is_string($bytes) && $bytes !== '') {
+            if (is_string($bytes) && $bytes !== '' && (! EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))
+                || hash_equals((string) ($metadata['email_body_hash'] ?? ''), hash('sha256', $bytes)))) {
                 return $bytes;
             }
+            // A changed live file cannot attest the email, but a complete
+            // conversion artifact may still preserve the acquired original.
         }
         if ($document->markdown_path && $document->content_hash
             && app(ConversionArtifactStore::class)->verifies($disk, $document->markdown_path, $document->content_hash)) {
             $bytes = app(ConversionArtifactStore::class)->read($disk, $document->markdown_path);
-            if (! isset($metadata['email_triage'])) {
+            if (! isset($metadata['email_triage']) && (! EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))
+                || hash_equals((string) ($metadata['email_body_hash'] ?? ''), hash('sha256', $bytes)))) {
                 return $bytes;
             }
         }
@@ -190,8 +202,11 @@ final class TriageCampaigns
 
     public function stage(ConnectorInstallation $installation, EmailTriageProfile $profile, KnowledgeDocument $document): EmailTriageMessage
     {
+        $metadata = (array) $document->metadata;
+        abort_unless($document->tenant_id === $installation->tenant_id
+            && ($metadata['installation_id'] ?? null) === $installation->id
+            && ($metadata['connector'] ?? null) === $installation->connector_name, 404);
         $body = $this->body($document);
-        $metadata = $document->metadata;
         // The new revision owns its tags; never carry old automatic tags into a re-evaluation.
         $old = data_get($metadata, 'email_triage.evaluation_id');
         if ($old) {
@@ -213,7 +228,10 @@ final class TriageCampaigns
             throw new \RuntimeException('The historical email snapshot is corrupt.');
         }
         $existing = EmailTriageMessage::query()->forTenant($document->tenant_id)->where('connector_installation_id', $installation->id)->where('identity_hash', $identity)->first();
-        $manifest = $existing && ! collect($existing->manifest)->contains(fn ($file) => ($file['status'] ?? '') === 'pending')
+        $manifest = $existing && $existing->original_hash === $hash
+            && (! EmailConnectorRegistry::isApi((string) $installation->connector_name)
+                || ($existing->metadata['email_revision_hash'] ?? null) === ($metadata['email_revision_hash'] ?? null))
+            && ! collect($existing->manifest)->contains(fn ($file) => ($file['status'] ?? '') === 'pending')
             ? $existing->manifest : $this->historicalAttachments($document, $disk, $prefix);
 
         return DB::transaction(function () use ($document, $installation, $identity, $profile, $disk, $prefix, $snapshot, $hash, $metadata, $manifest) {
@@ -240,11 +258,21 @@ final class TriageCampaigns
     {
         $metadata = $document->metadata;
         $files = [];
+        $api = EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''));
+        $parentColumn = $api ? 'metadata->email_message_key' : 'metadata->imap_doc_key';
         $attachments = KnowledgeDocument::query()->forTenant($document->tenant_id)->where('status', 'active')
+            ->where('metadata->connector', $metadata['connector'])
             ->where('metadata->installation_id', $metadata['installation_id'])
-            ->where('metadata->imap_doc_key', $metadata['imap_doc_key'])->whereNotNull('metadata->attachment_filename')->get();
-        foreach ($attachments as $attachment) {
+            ->where($parentColumn, EmailConnectorRegistry::messageKey($metadata))->whereNotNull('metadata->attachment_filename');
+        if ($api && isset($metadata['email_revision_hash'])) {
+            $attachments->where('metadata->email_revision_hash', $metadata['email_revision_hash']);
+        }
+        foreach ($attachments->orderBy('id')->cursor() as $attachment) {
             $file = ['name' => $attachment->metadata['attachment_filename'], 'mime' => $attachment->mime_type, 'status' => 'missing'];
+            if ($api) {
+                $file['id'] = (string) ($attachment->metadata['email_attachment_id'] ?? 'document:'.$attachment->id);
+                $file['slot'] = (int) ($attachment->metadata['email_attachment_slot'] ?? count($files));
+            }
             $attachmentDisk = (string) ($attachment->metadata['disk'] ?? $disk);
             $path = $this->triage->fullPath((string) ($attachment->metadata['prefix'] ?? $prefix), $attachment->source_path);
             if ($attachmentDisk === $disk && Storage::disk($disk)->exists($path)) {
@@ -266,7 +294,10 @@ final class TriageCampaigns
             }
             $files[] = $file;
         }
-        $unaccounted = max(0, (int) data_get($metadata, 'imap.attachment_count', 0) - count($files));
+        if ($api) {
+            usort($files, static fn (array $a, array $b): int => ($a['slot'] <=> $b['slot']) ?: strcmp($a['id'], $b['id']));
+        }
+        $unaccounted = max(0, EmailConnectorRegistry::attachmentCount($metadata) - count($files));
         if ($unaccounted) {
             $files[] = ['name' => $unaccounted.' additional attachment(s)', 'status' => 'unavailable', 'reason' => 'not_imported_or_not_preserved'];
         }

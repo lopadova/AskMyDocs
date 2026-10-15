@@ -92,7 +92,7 @@ final class ConnectorEmailProbeService
             // The probe rebuilds an IMAP client; it has no meaning for other
             // connectors (R14 — a clear 404, not a misleading empty result).
             throw new NotFoundHttpException(
-                "Test fetch is not supported for connector '{$installation->connector_name}'.",
+                "Test fetch is not supported for connector '{$installation->connector_name}'. Use connection health and folder discovery; API message sampling is unavailable.",
             );
         }
 

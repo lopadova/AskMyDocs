@@ -302,6 +302,21 @@ final class ConnectorEmailProbeTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_api_email_connectors_never_enter_the_imap_download_probe(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        $factory = \Mockery::mock(ImapClientFactoryInterface::class);
+        $factory->shouldNotReceive('make');
+        $this->app->instance(ImapClientFactoryInterface::class, $factory);
+        Queue::fake();
+        foreach (['gmail', 'microsoft-mail'] as $provider) {
+            $installation = ConnectorInstallation::create(['tenant_id' => 'test-tenant', 'connector_name' => $provider,
+                'label' => 'synthetic', 'status' => ConnectorInstallation::STATUS_ACTIVE]);
+            $this->actingAs($admin)->postJson('/api/admin/connectors/'.$installation->id.'/test-fetch')->assertNotFound();
+        }
+        Queue::assertNothingPushed();
+    }
+
     public function test_non_imap_connector_is_404(): void
     {
         $admin = $this->makeSuperAdmin();

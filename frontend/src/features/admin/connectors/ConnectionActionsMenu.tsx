@@ -208,8 +208,8 @@ export function ConnectionActionsMenu({
             });
         }
 
-        // Read-only diagnostic — credential connectors (IMAP) only.
-        if (isCredential) {
+        // Sample download currently has an IMAP capability only; API email uses health/discovery.
+        if (vm.connectorKey === 'imap') {
             items.push({
                 key: 'test-fetch',
                 testid: `${base}-test-fetch`,
@@ -227,7 +227,7 @@ export function ConnectionActionsMenu({
             onSelect: withClose(() => onEdit(vm)),
         });
 
-        if (isCredential) {
+        if (isCredential || vm.installation.connection_settings_schema?.some((field) => field.discovery === 'folders')) {
             items.push({
                 key: 'folders',
                 testid: `${base}-folders`,
@@ -235,6 +235,8 @@ export function ConnectionActionsMenu({
                 disabled: writeLocked,
                 onSelect: withClose(() => onFolders(vm)),
             });
+        }
+        if (isCredential) {
             items.push({
                 key: 'export',
                 testid: `${base}-export`,

@@ -41,7 +41,13 @@ final class PilotEmailTriageCommand extends Command
         config(['filesystems.disks.email-triage-pilot' => ['driver' => 'local', 'root' => $root, 'throw' => true]]);
         $report = ['started_at' => now()->toIso8601String(), 'read_only' => true, 'ingest_dispatched' => 0, 'rounds' => [], 'phase' => 'configuration'];
         try {
-            $installation = ConnectorInstallation::query()->where('tenant_id', $context->current())->where('connector_name', 'imap')->findOrFail((int) $this->argument('installation'));
+            $installation = ConnectorInstallation::query()->where('tenant_id', $context->current())->findOrFail((int) $this->argument('installation'));
+            if ($installation->connector_name !== 'imap') {
+                $report['status'] = 'unsupported';
+                $report['error_code'] = 'unsupported_api_download_pilot';
+                $this->error('The download pilot supports IMAP only. For Gmail/Microsoft Mail use connection health, folder discovery or a triage preview of an imported email.');
+                return self::FAILURE;
+            }
             $profile = $profiles->current($installation);
             if (! $profile || collect($profile->rules)->filter(fn ($r) => $r['enabled'])->isEmpty()) {
                 $profile = new EmailTriageProfile(['rules' => TriageExamples::rules(), 'revision' => 0, 'model' => config('decisions.models.jev.model')]);
@@ -148,7 +154,9 @@ final class PilotEmailTriageCommand extends Command
             (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($root);
             $report['finished_at'] = now()->toIso8601String();
             $path = 'email-triage/pilot-'.now()->format('Ymd-His').'.json';
-            Storage::disk('local')->put($path, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+            if (! Storage::disk('local')->put($path, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))) {
+                throw new \RuntimeException('Cannot write the email triage pilot report.');
+            }
             $this->line('Report: '.Storage::disk('local')->path($path));
         }
     }
