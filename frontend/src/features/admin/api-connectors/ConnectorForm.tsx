@@ -4,6 +4,7 @@ import type { ApiConnector, ConnectorPayload } from './api-connectors.api';
 import { SourceAvatar } from '../connectors/SourceAvatar';
 import { Button } from '../../../components/Button';
 import './connector-form.css';
+import { DEFAULT_API_USER_AGENT, USER_AGENT_PRESETS, readUserAgent, withoutUserAgent } from './user-agents';
 import {
     errorTextStyle,
     fieldCaptionStyle,
@@ -82,18 +83,32 @@ export function ConnectorForm({
     const [projectKey, setProjectKey] = useState(connector?.project_key ?? '');
     const [baseUrl, setBaseUrl] = useState(connector?.base_url ?? '');
     const sharedHeaders = Object.entries(connector?.headers ?? {});
-    const [headersText, setHeadersText] = useState(
-        stringifyHeaders(Object.fromEntries(sharedHeaders.filter(([key]) => !isCloudflareHeader(key)))),
-    );
     const [cloudflareToken, setCloudflareToken] = useState(
         sharedHeaders.find(([key]) => isCloudflareHeader(key))?.[1] ?? '',
     );
+    const [userAgent, setUserAgent] = useState(
+        connector ? readUserAgent(connector.headers ?? {}) : DEFAULT_API_USER_AGENT,
+    );
+    const [userAgentPreset, setUserAgentPreset] = useState<string>(() => {
+        const value = connector ? readUserAgent(connector.headers ?? {}) : DEFAULT_API_USER_AGENT;
+        return USER_AGENT_PRESETS.find((preset) => preset.value === value)?.id ?? (value ? 'custom' : 'default');
+    });
+    const [headersText, setHeadersText] = useState(
+        stringifyHeaders(withoutUserAgent(Object.fromEntries(sharedHeaders.filter(([key]) => !isCloudflareHeader(key))))),
+    );
+    const [headersError, setHeadersError] = useState<string | null>(null);
     const [isActive, setIsActive] = useState(connector?.is_active ?? true);
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
         const headers = parseHeaders(headersText);
+        if (Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent')) {
+            setHeadersError('Choose the User-Agent above instead of adding it here.');
+            return;
+        }
+        setHeadersError(null);
+        if (userAgent.trim()) headers['User-Agent'] = userAgent.trim();
         if (cloudflareToken.trim() !== '') {
             // Avoid duplicate values when the textarea uses different casing.
             for (const key of Object.keys(headers)) {
@@ -203,6 +218,52 @@ export function ConnectorForm({
                     )}
                 </label>
 
+                <div style={fieldLabelStyle()}>
+                    <label htmlFor="api-connector-form-user_agent" style={fieldCaptionStyle()}>User-Agent</label>
+                    <select
+                        id="api-connector-form-user_agent"
+                        data-testid="api-connector-form-user_agent"
+                        value={userAgentPreset}
+                        disabled={isSubmitting}
+                        onChange={(e) => {
+                            const preset = e.target.value;
+                            setUserAgentPreset(preset);
+                            if (preset !== 'custom') {
+                                setUserAgent(USER_AGENT_PRESETS.find((item) => item.id === preset)?.value ?? '');
+                            }
+                        }}
+                        aria-describedby="api-connector-form-user_agent-hint"
+                        style={connectorInputStyle()}
+                    >
+                        {USER_AGENT_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>{preset.label}</option>
+                        ))}
+                        <option value="custom">Custom</option>
+                        <option value="default">HTTP client default (Guzzle)</option>
+                    </select>
+                    <span id="api-connector-form-user_agent-hint" style={fieldCaptionStyle()}>
+                        Identity sent to the API. Chrome is selected for new connectors.
+                    </span>
+                </div>
+
+                {userAgentPreset === 'custom' && (
+                    <label htmlFor="api-connector-form-user_agent-custom" style={fieldLabelStyle()}>
+                        <span style={fieldCaptionStyle()}>Custom User-Agent</span>
+                        <input
+                            id="api-connector-form-user_agent-custom"
+                            data-testid="api-connector-form-user_agent-custom"
+                            type="text"
+                            required
+                            pattern={'.*\\S.*'}
+                            value={userAgent}
+                            onChange={(e) => setUserAgent(e.target.value)}
+                            disabled={isSubmitting}
+                            placeholder="MyApplication/1.0"
+                            style={connectorInputStyle()}
+                        />
+                    </label>
+                )}
+
                 <label htmlFor="api-connector-form-project_key" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>KB project binding</span>
                     <select
@@ -259,24 +320,24 @@ export function ConnectorForm({
 
                 <label htmlFor="api-connector-form-headers" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>
-                        Default headers (one per line, <code>Key: Value</code>)
+                        Other default headers (one per line, <code>Key: Value</code>)
                     </span>
                     <textarea
                         id="api-connector-form-headers"
                         data-testid="api-connector-form-headers"
                         rows={2}
                         value={headersText}
-                        onChange={(e) => setHeadersText(e.target.value)}
+                        onChange={(e) => { setHeadersText(e.target.value); setHeadersError(null); }}
                         placeholder={'Accept: application/json'}
                         style={{ ...connectorInputStyle(), resize: 'vertical', fontFamily: 'var(--font-mono, monospace)' }}
                     />
-                    {fieldErrors?.headers && (
+                    {(headersError || fieldErrors?.headers) && (
                         <span
                             data-testid="api-connector-form-headers-error"
                             role="alert"
                             style={errorTextStyle()}
                         >
-                            {fieldErrors.headers}
+                            {headersError || fieldErrors?.headers}
                         </span>
                     )}
                 </label>
@@ -307,14 +368,17 @@ export function ConnectorForm({
                         data-testid="api-connector-form-cancel"
                         onClick={onClose}
                         disabled={isSubmitting}
+                        variant="secondary"
+                        size="sm"
                     >
                         Cancel
                     </Button>
                     <Button
                         type="submit"
                         data-testid="api-connector-form-submit"
-                        variant="primary"
                         busy={isSubmitting}
+                        variant="primary"
+                        size="sm"
                     >
                         {isEdit ? 'Save changes' : 'Create connector'}
                     </Button>

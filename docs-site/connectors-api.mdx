@@ -178,6 +178,18 @@ The load-bearing choices:
    API, caps the output, logs a sanitised row (no key, no `version` secret), and
    returns the JSON — the model answers *"Order 10293 has shipped."*
 
+## Choose the HTTP User-Agent
+
+The connector's create/edit form includes a **User-Agent** menu with Chrome,
+Firefox, Safari, AskMyDocs and a custom value. New connectors start with Chrome.
+Existing connectors retain their saved header, or **HTTP client default (Guzzle)**
+when no User-Agent was configured. Choose a profile and save to change it.
+
+The selection is stored as the connector's shared `User-Agent` header and applies
+to connection tests and runtime tool calls. Manage other shared headers in the
+separate headers field. Endpoint header parameters and authentication headers can
+override shared headers. Export/import preserves the selected User-Agent.
+
 ## Export and import a complete connector
 
 Use **Export configuration** on an API connector card, either in the unified
