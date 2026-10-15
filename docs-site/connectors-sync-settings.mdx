@@ -25,6 +25,12 @@ window, `body_format`, sender/recipient/subject filters, `only_unseen`,
 and a new connector gets the same UI/HTTP/MCP/CLI editing for free the moment it
 implements one interface.
 
+OAuth email accounts now receive the same **Sync settings** tab and folder
+discovery action when their package advertises the schema. Gmail and Microsoft
+Mail use the generic editor so their native label/folder IDs and include/exclude
+semantics remain explicit; the IMAP tri-state editor retains its legacy behavior.
+See [API email and the shared triage adapter](/connectors-email-api).
+
 ## Theory — two capability interfaces, one host core
 
 The design rests on a strict separation: **the connector owns the knowledge of
@@ -53,7 +59,7 @@ flowchart TD
     S --> V["HTTP: UpdateConnectorInstallationRequest<br/>derives a rule per field dynamically"]
     S --> M["MCP: ConnectorSettingsTool<br/>(read-only, tenant-scoped)"]
     S --> CLI["CLI: connectors:configure<br/>--show / --set name=value"]
-    S --> FORM["FE: schema-driven editor<br/>(SyncSettingsForm tri-state for folder-shaped<br/>schemas · ConnectionSettingsForm generic fallback)"]
+    S --> FORM["FE: schema-driven editor<br/>(SyncSettingsForm tri-state for folder-shaped<br/>IMAP schemas · ConnectionSettingsForm generic fallback)"]
     FL --> FORM
     FL --> M
     V -- "mergeIntoConfig() writes ONLY<br/>schema-declared paths" --> DB[("config_json")]

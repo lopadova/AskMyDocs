@@ -1,10 +1,14 @@
 # Email triage before ingestion
 
-Email triage is a host module for IMAP installations. It is opt-in and initially
-disabled for every account. Both incremental sync and backfill register the same
-accepted-attachment manifest before calling the host ingestion bridge. A durable
-body receipt gates only the email ingest; attachment ingest continues independently.
-No decision call runs while the download holds its IMAP session.
+Email triage is one host module for IMAP, Gmail API (`gmail`) and Microsoft
+Graph Mail (`microsoft-mail`) installations. It is opt-in and initially disabled
+for every account. The same profiles, assistant, decision engine and retrospective
+campaigns apply to all three providers. A durable body receipt gates only the
+email ingest; attachment ingest continues independently. Download workers do not
+make decision calls. API packages prepare the complete Markdown and attachment
+manifest through a synchronous `askmydocs.email.prepared.v1` event before any
+source persistence or dispatch; a failing listener prevents cursor advancement.
+See [the API connector contract](connectors/EMAIL-API.md).
 
 ## Configuration and decisions
 
@@ -148,7 +152,7 @@ The panel lists failed/unavailable items and allows individual retries.
 
 Recovery reads a captured original, a still available source, or a complete
 conversion artifact verified against its content hash. It never reconstructs a
-body from retrieval chunks and never redownloads IMAP automatically. An unavailable
+body from retrieval chunks and never redownloads a mailbox automatically. An unavailable
 body is reported per item. Rule changes mark older profiles obsolete but never
 launch a paid archive-wide rerun automatically.
 
@@ -167,12 +171,29 @@ The authenticated `manageConnectors` API lives below
 - `POST /messages/{id}/retry` or `/campaigns/{id}/items/{itemId}/retry`.
 
 Execution, coverage, profile validity and indexed revision are separate states.
-Original identities include tenant, installation, mailbox, UIDVALIDITY and UID.
+IMAP identities retain tenant, installation, mailbox, UIDVALIDITY and UID. API
+identities use tenant, installation, connector key, stable mailbox ID and native
+message ID; a label change or folder move does not change the parent key.
+The legacy campaign filter `mailbox` means a folder selector: an IMAP folder
+path, Gmail label ID or Graph folder ID from live discovery. API campaigns use
+`email_date` and match membership in `email_folder_ids`, with parent and attachment
+queries scoped to installation, tenant, message key and content revision.
+API body and attachment hashes are checked against their preregistered revision;
+matching filenames alone cannot satisfy an attachment receipt.
 Evaluation identities include the original/manifest hash, profile/model and
 renderer version. Logs contain IDs, stages, attempts, latency, usage and error
 codes; neither raw state nor email/attachment content is logged.
 
-## Read-only real mailbox pilot
+## Connection diagnostics and read-only real mailbox pilot
+
+Gmail and Microsoft Mail expose package health and folder/label discovery without
+email ingestion, cursor changes or paid AI. **Sync settings** is available for
+OAuth accounts when the package advertises a settings schema. API selection stores
+provider IDs; names are presentation only. The sample-download `test-fetch` route
+and `email-triage:pilot` command support IMAP only and reject API accounts before
+constructing any IMAP client. API sample download is not yet a shared capability;
+use the explicitly requested triage preview on an already imported email when
+analysis is desired. That preview may call the paid Decisions endpoint.
 
 After authorizing transmission of the selected private content to OpenRouter:
 

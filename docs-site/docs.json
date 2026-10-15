@@ -36,6 +36,7 @@
           "connectors-credential",
           "connectors-multi-account",
           "connectors-sync-settings",
+          "connectors-email-api",
           "ingest-provenance",
           "source-permissions",
           "tool-firewall",
