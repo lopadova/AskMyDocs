@@ -125,8 +125,14 @@ php tests/Support/prepare-email-api-composer.php \
 COMPOSER=composer.email-local.json composer update \
   padosoft/askmydocs-connector-gmail padosoft/askmydocs-connector-microsoft-mail \
   --with-dependencies --no-scripts --prefer-dist --no-interaction
+php artisan package:discover --ansi
 vendor/bin/phpunit tests/Feature/Connectors/EmailApiPackageIntegrationTest.php
 ```
+
+Run package discovery explicitly after `--no-scripts` so an existing Laravel
+manifest cache includes both providers, their configuration and migrations.
+After changing OAuth environment variables with cached configuration, run
+`php artisan config:clear` in this local worktree before testing the connection.
 
 The alternate manifest/lock are ignored and never replace the production
 `composer.json`/`composer.lock`. Composer mirrors the packages into the isolated

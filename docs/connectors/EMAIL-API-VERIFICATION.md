@@ -17,6 +17,7 @@ existing behavior. No installed vendor source was patched.
 | API/IMAP triage, campaigns, assistant, probe, engine, tenant scope | 118 tests / 732 assertions |
 | Legacy bridge regression | 47 tests / 107 assertions |
 | Native local Gmail/Microsoft acquisition + host bridge on/off; registry | 7 tests / 100 assertions |
+| Laravel package discovery + application boot | Both providers loaded; package configuration available |
 | Shared connector UI component suite | 37 tests |
 | Synthetic browser UI: provider × theme × viewport | 16/16 combinations |
 | `npm run typecheck` | Passed |
