@@ -5,6 +5,8 @@ through the real durable chat pipeline in the local application. It creates a
 separate conversation per case and records run IDs, answers, tool executions,
 events, the code revision and a probabilistic Jev review. These are real calls
 to the configured AI providers, not mocked unit tests.
+Uncommitted source changes are identified by a SHA-256 fingerprint of the
+working diff alongside HEAD; the diff itself is not included in the results.
 
 Keep the case file, original messages and result directory outside Git, for
 example under `storage/app/private/`. Never commit provider credentials or
@@ -45,6 +47,21 @@ facts distinct from retrieval failures. Provider unavailability, unavailable
 originals and unexecuted cases must not be counted as passing. The runner stops
 on provider authentication or credit errors rather than recording further
 apparently successful empty answers.
+The Decisions transport retries connection errors, HTTP 429 and 5xx at most
+three attempts with bounded backoff. Permanent 4xx errors and malformed or
+uncertain judgments remain failures. Keep concurrency low for a full replay.
+Evaluate the facts actually requested rather than penalizing omitted optional
+details in a longer reference answer. Record human review separately from Jev's
+judgment, retain every failing round, and disclose any correction to the case
+wording rather than presenting changed questions as identical replays.
+
+The synthesizer can copy a short host-issued `source_ref` instead of retyping a
+64-character hash. Only an exact, unique reference in the current scoped envelope
+resolves, and only when both source IDs are null and the hash is empty. Explicit
+IDs and hashes are never replaced. The existing full-hash, literal-source,
+record, task and permission checks still run; unknown references fail closed.
+Decision criteria must also fit the independent 12 KiB questions budget for all
+ten permitted claims, not only the separate 32 KiB source-state budget.
 
 See [email triage](../email-triage.md) for the existing retrospective campaign
 that reads complete originals, pins a profile revision and reindexes the same

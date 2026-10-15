@@ -38,6 +38,10 @@ $user = App\Models\User::findOrFail($cases['actor_id']);
 $revision = new Symfony\Component\Process\Process(['git', 'rev-parse', 'HEAD'], dirname(__DIR__, 2));
 $revision->setTimeout(5)->run();
 $codeRevision = $revision->isSuccessful() ? trim($revision->getOutput()) : null;
+$workingDiff = new Symfony\Component\Process\Process(['git', 'diff', 'HEAD', '--'], dirname(__DIR__, 2));
+$workingDiff->setTimeout(5)->run();
+$workingTreeHash = $workingDiff->isSuccessful() && $workingDiff->getOutput() !== ''
+    ? hash('sha256', $workingDiff->getOutput()) : null;
 $only = isset($options['only']) ? explode(',', $options['only']) : null;
 $masker = app(App\Services\Widget\WidgetPiiMasker::class);
 $providerReplies = [];
@@ -114,7 +118,8 @@ foreach ($cases['cases'] as $case) {
         ['qa_case' => $id, 'qa_round' => $round], inline: true);
     $run = $turn->run->fresh();
     $message = App\Models\Message::query()->where('agent_run_id', $run->id)->first();
-    $report = ['case' => $id, 'round' => $round, 'code_revision' => $codeRevision, 'question' => $case['question'], 'expected' => $case['expected'],
+    $report = ['case' => $id, 'round' => $round, 'code_revision' => $codeRevision, 'working_tree_sha256' => $workingTreeHash,
+        'question' => $case['question'], 'expected' => $case['expected'],
         'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
         'interpretation_model' => config('ai.question_preprocessor.model'),
         'evaluation_source_mode' => 'immutable_imap_original_or_complete_indexed_source_or_verified_lineage',
