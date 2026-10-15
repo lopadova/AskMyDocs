@@ -33,6 +33,9 @@ final readonly class ChatQuestionPreprocessor
         ?AgentCapabilitySnapshot $capabilities, ?string $correction): QuestionUnderstanding
     {
         $fallback = new QuestionUnderstanding(null, trim($question), [mb_substr(trim($question), 0, 500)], [], false, false);
+        // These are field labels, not intrinsic code prefixes. Restore only a
+        // missing separator; identifiers such as U123 or ORDER-123 stay intact.
+        $question = preg_replace('/\b(AWB|WB|tracking|spedizione|shipment|ordine|order|ticket|richiesta|request)(?=\d{3,}\b)/iu', '$1 ', $question) ?? $question;
         $references = [];
         $masker = app(\App\Services\Widget\WidgetPiiMasker::class);
         $providerQuestion = preg_replace_callback('/(?<![\pL\pN_-])\d+(?![\pL\pN_-])/u', function ($match) use (&$references, $masker, $question) {
@@ -143,7 +146,7 @@ FOCUS;
             $modelContext['previous_subquestions'] = $modelContext['subquestions'] ?? [];
             unset($modelContext['focus'], $modelContext['subquestions']);
         }
-        $system .= ' available_capabilities is the host-authorized inventory for THIS chat and its selected sources. Understand the request using its declared entities, operations and required inputs BEFORE planning research. It describes available functions, never retrieved business facts or guaranteed connectivity. If the requested target or operation is undefined and cannot be resolved from dialogue, ask clarification before any search. A supplied name can be resolved using an available candidate lookup: do not demand an ID that the lookup itself can retrieve. Do not invent tools, permissions, records or broad objectives. Preserve unsupported requests as explicit tasks; do not silently drop them or substitute a different operation.';
+        $system .= ' A named email/document title is a literal discovery target: include the exact title in mentions and task identifiers, even if its words are ordinary nouns. Keep a source title separate from its date/time qualifier: include the literal title and clock time as separate identifiers when both identify a message, and preserve the requested date/time in intent and searches. Never append a date phrase to the title identifier. Field labels such as AWB, ticket and shipment are not part of a following numeric code; preserve intrinsic record prefixes such as U123 and ORDER-123. available_capabilities is the host-authorized inventory for THIS chat and its selected sources. Understand the request using its declared entities, operations and required inputs BEFORE planning research. It describes available functions, never retrieved business facts or guaranteed connectivity. If the requested target or operation is undefined and cannot be resolved from dialogue, ask clarification before any search. A supplied name can be resolved using an available candidate lookup: do not demand an ID that the lookup itself can retrieve. Do not invent tools, permissions, records or broad objectives. Preserve unsupported requests as explicit tasks; do not silently drop them or substitute a different operation.';
         try {
             $response = $this->ai->chatWithProvider(
                 (string) config('ai.question_preprocessor.provider', 'openrouter'),

@@ -130,6 +130,27 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertSame([$identifier], $result->mentionTexts());
     }
 
+    public function test_a_numeric_code_attached_to_a_field_label_is_validated_without_changing_record_prefixes(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturnUsing(function ($provider, $prompt, $messages) {
+            $input = json_decode($messages[0]['content'], true);
+            $this->assertSame('Stato spedizione 6664456131 per U123 e ORDER-123?', $input['question']);
+            $focus = ['topic' => 'shipment', 'identifiers' => ['6664456131', 'U123', 'ORDER-123'], 'aspect' => 'status', 'fields' => ['status']];
+            return $this->response(['language' => 'it', 'intent' => 'Stato spedizione', 'action' => 'research',
+                'kb_queries' => ['6664456131 U123 ORDER-123'],
+                'mentions' => array_map(fn ($id) => ['text' => $id, 'type' => 'identifier'], $focus['identifiers']),
+                'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+                'transition' => 'new', 'focus' => $focus, 'subquestions' => [$focus + [
+                    'question' => 'Stato spedizione 6664456131 per U123 e ORDER-123?', 'kb_queries' => ['6664456131 U123 ORDER-123'],
+                    'context_mode' => 'new', 'requires_research' => true]],
+                'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '']);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Stato spedizione6664456131 per U123 e ORDER-123?', reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertSame(['6664456131', 'U123', 'ORDER-123'], $result->targetIdentifiers());
+    }
+
     public function test_a_lowercase_name_remains_a_verbatim_mention_and_language_names_are_normalized(): void
     {
         $ai = Mockery::mock(AiManager::class);
