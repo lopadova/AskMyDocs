@@ -19,6 +19,25 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_draft_source_reference_choices_are_limited_to_the_current_prompt(): void
+    {
+        config(['reasoning.selective_validation' => true]);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $hash = hash('sha256', 'Only this current source.');
+        $evidence->addDocument(['document_id' => 252, 'title' => 'Order',
+            'evidence' => [['content' => 'Only this current source.', 'evidence_hash' => $hash]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $messages, $options) use ($hash) {
+            $payload = json_decode($messages[0]['content'], true);
+            $reference = $payload['evidence']['documents'][0]['evidence'][0]['source_ref'];
+            $this->assertSame('d252_'.substr($hash, 0, 12), $reference);
+            $this->assertSame([$reference], data_get($options, 'tools.0.function.parameters.properties.claims.items.properties.source_ref.enum'));
+            return new AiResponse('', 'fake', 'fake-agent');
+        });
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        (new \ReflectionMethod($synthesizer, 'draft'))->invoke($synthesizer, 'What happened?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null);
+    }
+
     public function test_document_claims_are_not_discarded_by_an_unrenderable_table_flag(): void
     {
         config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false, 'agent.presentation.enabled' => false]);

@@ -435,6 +435,8 @@ final readonly class AgentAnswerSynthesizer
         $system = $this->systemPrompt($context);
         if ($repairAttempt) {
             $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
+            $system .= "\nWhen a compound claim was inconclusive, split its clear observations from identity reconciliation, hypotheses and ambiguous explanations. Use separate atomic claims for the requested facts; do not repeat the same compound paragraph. Preserve the documented speaker without assuming that a forwarder and an embedded author are the same person. Keep only the uncertain part unresolved.";
+            $system .= "\nIf an observation is explicit but its attribution or causal link is uncertain, quote what the consulted thread reports without asserting that uncertain identity or cause. This cannot substitute for an explicitly requested personal confirmation by a particular speaker.";
             $system .= "\nWhen a source-supported paragraph failed original-question relevance, resolve its implicit subject and operation explicitly from the complete source. Restate that fact with the requested case/product/person and actor, rather than repeating the same ambiguous paragraph. Resolve short replies such as commitments to proceed using the preceding request. Tie alternatives and conditions to the specific response the user requested. Add no new facts.";
             $system .= "\nFor EACH failed original_question_relevance paragraph, its corrected claim text must explicitly name the requested case/product/person identifiers AND requested operation from the original question. Include the documented actor. Do not rely on headings, neighboring paragraphs or an implicit 'same response' to identify the subject. This overrides the preference to avoid repeated names during this correction attempt only.";
         }
@@ -457,15 +459,33 @@ PROMPT;
         if ($repairAttempt && is_string($repairModel) && $repairModel !== '') {
             $model = $repairModel;
         }
+        $promptEvidence = config('reasoning.selective_validation')
+            ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forPrompt($evidence) : $evidence;
+        $sourceRefs = [];
+        foreach ($promptEvidence['documents'] ?? [] as $document) {
+            foreach ($document['evidence'] ?? [] as $chunk) {
+                if (is_string($chunk['source_ref'] ?? null)) {
+                    $sourceRefs[] = $chunk['source_ref'];
+                }
+            }
+        }
+        foreach ($promptEvidence['api_tools'] ?? [] as $tool) {
+            if (is_string($tool['source_ref'] ?? null)) {
+                $sourceRefs[] = $tool['source_ref'];
+            }
+        }
+        $submission = $this->submissionTool();
+        if ($sourceRefs !== []) {
+            $submission['function']['parameters']['properties']['claims']['items']['properties']['source_ref']['enum'] = array_values(array_unique($sourceRefs));
+        }
         return $this->ai->chatWithHistory(
             $system,
             [['role' => 'user', 'content' => json_encode([
                 'question' => $question, 'question_understanding' => $understanding, 'turn_context' => $turnContext,
                 'retrieval_decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason,
-                'evidence' => config('reasoning.selective_validation')
-                    ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forPrompt($evidence) : $evidence,
+                'evidence' => $promptEvidence,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]],
-            ['temperature' => 0, ...is_string($model) && $model !== '' ? ['model' => $model] : [], 'tools' => [$this->submissionTool()],
+            ['temperature' => 0, ...is_string($model) && $model !== '' ? ['model' => $model] : [], 'tools' => [$submission],
                 'tool_choice' => ['type' => 'function', 'function' => ['name' => 'submit_agent_answer']]],
         );
     }
