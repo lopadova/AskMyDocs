@@ -19,6 +19,28 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_document_claims_are_not_discarded_by_an_unrenderable_table_flag(): void
+    {
+        config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false, 'agent.presentation.enabled' => false]);
+        $content = 'RETURN-123: two products returned.';
+        $hash = hash('sha256', $content);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument(['document_id' => 252, 'title' => 'RETURN-123', 'source_path' => 'mail/return.md', 'origin' => 'primary',
+            'evidence' => [['content' => $content, 'evidence_hash' => $hash]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'fake-agent', toolCalls: [[
+            'name' => 'submit_agent_answer', 'arguments' => ['completeness' => 'complete', 'claims' => [[
+                'text' => $content, 'quote' => $content, 'document_id' => 252,
+                'tool_execution_id' => null, 'evidence_hash' => $hash,
+            ]], 'render_table' => true, 'requires_selection' => false, 'limitations' => []],
+        ]]));
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('How many products in RETURN-123?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+        $this->assertNull($answer->artifact);
+        $this->assertSame($content, $answer->answer);
+        $this->assertSame([252], array_column($answer->citations, 'document_id'));
+    }
+
     public function test_empty_search_is_not_misreported_as_provider_outage_or_proof_of_absence(): void
     {
         foreach (['no_new_evidence', 'no_relevant_evidence', 'duplicate_call_avoided', 'timeout', 'retrieval_error', 'assessment_failed'] as $warning) {

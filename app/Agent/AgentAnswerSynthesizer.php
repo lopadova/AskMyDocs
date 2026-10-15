@@ -106,8 +106,19 @@ final readonly class AgentAnswerSynthesizer
         }
         // Table/selection handoffs contain no synthesized factual prose; their
         // records are rendered from the structured tool artifact itself.
-        $presentationOnly = ! $independent && ($outcome->stopReason === 'ambiguous_selection_required'
-            || (bool) ($payload['render_table'] ?? false));
+        $requiresSelection = $outcome->stopReason === 'ambiguous_selection_required'
+            || (bool) ($payload['requires_selection'] ?? false);
+        $renderTable = (bool) ($payload['render_table'] ?? false);
+        $artifact = ! $requiresSelection && ! $renderTable ? null : $this->artifacts->fromToolEvidence(
+            config('reasoning.selective_validation')
+                ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forTable($evidence['api_tools'], $understanding ?? [], $context->tenantId, $context->projectKey)
+                : $evidence['api_tools'],
+            $requiresSelection, $renderTable,
+            is_array($payload['tool_execution_ids'] ?? null) ? $payload['tool_execution_ids'] : [],
+        );
+        // A model's table flag cannot discard factual document claims when
+        // there is no authorized structured artifact to render them instead.
+        $presentationOnly = ! $independent && $artifact !== null;
         $selective = ! $presentationOnly && config('reasoning.selective_validation', true);
         $batchEnabled = $selective || (! $presentationOnly && config('agent.grounding.enabled', true)
             && config('agent.grounding.batch.enabled', true));
@@ -386,19 +397,6 @@ final readonly class AgentAnswerSynthesizer
             $completeness = 'partial';
         }
 
-        $requiresSelection = $outcome->stopReason === 'ambiguous_selection_required'
-            || (bool) ($payload['requires_selection'] ?? false);
-        $renderTable = (bool) ($payload['render_table'] ?? false);
-        $artifact = ! $requiresSelection && ! $renderTable
-            ? null
-            : $this->artifacts->fromToolEvidence(
-                config('reasoning.selective_validation')
-                    ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forTable($evidence['api_tools'], $understanding ?? [], $context->tenantId, $context->projectKey)
-                    : $evidence['api_tools'],
-                $requiresSelection,
-                $renderTable,
-                is_array($payload['tool_execution_ids'] ?? null) ? $payload['tool_execution_ids'] : [],
-            );
         $requiresSelection = $requiresSelection && $artifact !== null;
         $presentedAnswer = $artifact === null
             ? ($presentationOnly && $answer === '' ? (str_starts_with($context->locale, 'it') ? 'Non ho record verificabili per la tabella richiesta.' : 'I have no verified records for the requested table.') : $answer)
