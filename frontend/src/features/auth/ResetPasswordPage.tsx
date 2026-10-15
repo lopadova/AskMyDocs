@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,6 +26,7 @@ export type ResetPasswordPageProps = {
 };
 
 export function ResetPasswordPage({ token, email, onDone }: ResetPasswordPageProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [fieldErrors, setFieldErrors] = useState<FieldErrors | undefined>();
     const [formError, setFormError] = useState<string | undefined>();
     const [submitting, setSubmitting] = useState(false);
@@ -72,16 +74,15 @@ export function ResetPasswordPage({ token, email, onDone }: ResetPasswordPagePro
     if (done) {
         return (
             <AuthLayout
-                title="Password updated"
-                subtitle="You can now sign in with your new password."
+                title={translateInterface("Password updated")}
+                subtitle={translateInterface("You can now sign in with your new password.")}
                 footer={
                     <button
                         type="button"
                         onClick={onDone}
                         style={{ background: 'transparent', border: 0, color: 'var(--fg-1)', cursor: 'pointer', fontWeight: 500 }}
                     >
-                        Go to sign in
-                    </button>
+                        {translateInterface("Go to sign in")}</button>
                 }
             >
                 <div
@@ -95,14 +96,13 @@ export function ResetPasswordPage({ token, email, onDone }: ResetPasswordPagePro
                         fontSize: 13,
                     }}
                 >
-                    Your password has been changed successfully.
-                </div>
+                    {translateInterface("Your password has been changed successfully.")}</div>
             </AuthLayout>
         );
     }
 
     return (
-        <AuthLayout title="Set a new password" subtitle={email ? `Resetting for ${email}` : 'Missing email — request a new link.'}>
+        <AuthLayout title={translateInterface("Set a new password")} subtitle={email ? `Resetting for ${email}` : 'Missing email — request a new link.'}>
             <form onSubmit={onSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {formError && (
                     <div
@@ -116,7 +116,7 @@ export function ResetPasswordPage({ token, email, onDone }: ResetPasswordPagePro
                             fontSize: 13,
                         }}
                     >
-                        {formError}
+                        {translateInterface(formError)}
                     </div>
                 )}
                 <div>
@@ -124,8 +124,7 @@ export function ResetPasswordPage({ token, email, onDone }: ResetPasswordPagePro
                         htmlFor="password"
                         style={{ fontSize: 12, color: 'var(--fg-2)', display: 'block', marginBottom: 6 }}
                     >
-                        New password
-                    </label>
+                        {translateInterface("New password")}</label>
                     <input
                         id="password"
                         type="password"
@@ -143,8 +142,7 @@ export function ResetPasswordPage({ token, email, onDone }: ResetPasswordPagePro
                         htmlFor="password_confirmation"
                         style={{ fontSize: 12, color: 'var(--fg-2)', display: 'block', marginBottom: 6 }}
                     >
-                        Confirm new password
-                    </label>
+                        {translateInterface("Confirm new password")}</label>
                     <input
                         id="password_confirmation"
                         type="password"

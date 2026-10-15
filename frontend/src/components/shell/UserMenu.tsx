@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Icon } from '../Icons';
@@ -28,6 +29,7 @@ type Status = 'idle' | 'loading' | 'error';
  * server session is gone.
  */
 export function UserMenu() {
+    const { t: translateInterface } = useUiTranslation();
     const user = useAuthStore((s) => s.user);
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
@@ -115,7 +117,7 @@ export function UserMenu() {
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
-                aria-label={`Account menu for ${user.name}`}
+                aria-label={translateInterface('Account menu for {name}', { name: user.name })}
             >
                 <Avatar user={{ name: user.name }} size={26} />
                 <span className="shell-user-name">
@@ -219,7 +221,7 @@ export function UserMenu() {
                     >
                         <Icon.Logout size={15} style={{ color: 'var(--fg-2)' }} />
                         <span style={{ flex: 1 }}>
-                            {status === 'loading' ? 'Signing out…' : status === 'error' ? 'Retry sign out' : 'Sign out'}
+                            {status === 'loading' ? 'Signing out…' : status === 'error' ? 'Retry sign out' : translateInterface("Sign out")}
                         </span>
                     </button>
                 </div>

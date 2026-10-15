@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,6 +36,7 @@ export type RegisterPageProps = {
 };
 
 export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps = {}) {
+    const { t: translateInterface } = useUiTranslation();
     const setMe = useAuthStore((s) => s.setMe);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors | undefined>();
     const [formError, setFormError] = useState<string | undefined>();
@@ -85,11 +87,11 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
 
     return (
         <AuthLayout
-            title="Create your account"
-            subtitle="Sign up with your invite code to join the workspace."
+            title={translateInterface("Create your account")}
+            subtitle={translateInterface("Sign up with your invite code to join the workspace.")}
             footer={
                 <span>
-                    Already have an account?{' '}
+                    {translateInterface("Already have an account?")}{' '}
                     <button
                         type="button"
                         onClick={onNavigateLogin}
@@ -103,8 +105,7 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                             fontWeight: 500,
                         }}
                     >
-                        Sign in
-                    </button>
+                        {translateInterface("Sign in")}</button>
                 </span>
             }
         >
@@ -114,7 +115,7 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                 data-testid="register-form"
                 data-state={submitting ? 'loading' : formError || fieldErrors ? 'error' : 'ready'}
                 aria-busy={submitting}
-                aria-label="Create account"
+                aria-label={translateInterface("Create account")}
                 style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
             >
                 {formError && (
@@ -130,20 +131,19 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                             fontSize: 13,
                         }}
                     >
-                        {formError}
+                        {translateInterface(formError)}
                     </div>
                 )}
                 <div>
                     <label htmlFor="name" style={labelStyle}>
-                        Name
-                    </label>
+                        {translateInterface("Name")}</label>
                     <input
                         id="name"
                         type="text"
                         autoComplete="name"
                         className="input"
                         data-testid="register-name"
-                        aria-label="Name"
+                        aria-label={translateInterface("Name")}
                         {...register('name')}
                     />
                     {errors.name ? (
@@ -192,15 +192,14 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                 </div>
                 <div>
                     <label htmlFor="password_confirmation" style={labelStyle}>
-                        Confirm password
-                    </label>
+                        {translateInterface("Confirm password")}</label>
                     <input
                         id="password_confirmation"
                         type="password"
                         autoComplete="new-password"
                         className="input"
                         data-testid="register-password-confirmation"
-                        aria-label="Confirm password"
+                        aria-label={translateInterface("Confirm password")}
                         {...register('password_confirmation')}
                     />
                     {errors.password_confirmation ? (
@@ -214,15 +213,14 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                 </div>
                 <div>
                     <label htmlFor="invite_code" style={labelStyle}>
-                        Invite code
-                    </label>
+                        {translateInterface("Invite code")}</label>
                     <input
                         id="invite_code"
                         type="text"
                         autoComplete="one-time-code"
                         className="input"
                         data-testid="register-invite-code"
-                        aria-label="Invite code"
+                        aria-label={translateInterface("Invite code")}
                         {...register('invite_code')}
                     />
                     {errors.invite_code ? (
@@ -239,7 +237,7 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
                     aria-busy={submitting}
                     style={{ justifyContent: 'center', marginTop: 4 }}
                 >
-                    {submitting ? 'Creating account…' : 'Create account'}
+                    {submitting ? 'Creating account…' : translateInterface("Create account")}
                 </button>
             </form>
         </AuthLayout>

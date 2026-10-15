@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toAdminError } from '../../admin/shared/errors';
@@ -10,6 +11,7 @@ import {
 } from './super-admins.api';
 
 export function SuperAdminsView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [searchDraft, setSearchDraft] = useState('');
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState<SuperAdminStatus | ''>('');
@@ -46,10 +48,9 @@ export function SuperAdminsView(): ReactNode {
             style={{ boxSizing: 'border-box', padding: 24, width: '100%' }}
         >
             <header style={{ marginBottom: 18 }}>
-                <h1 style={{ color: 'var(--fg-0)', fontSize: 19, margin: 0 }}>Super Admins</h1>
+                <h1 style={{ color: 'var(--fg-0)', fontSize: 19, margin: 0 }}>{translateInterface("Super Admins")}</h1>
                 <p style={{ color: 'var(--fg-3)', fontSize: 11.5, margin: '5px 0 0' }}>
-                    Read-only global roster and operational tenant associations.
-                </p>
+                    {translateInterface("Read-only global roster and operational tenant associations.")}</p>
             </header>
 
             <form
@@ -62,20 +63,20 @@ export function SuperAdminsView(): ReactNode {
                 style={{ display: 'flex', gap: 8, marginBottom: 14 }}
             >
                 <label>
-                    <span style={srOnly}>Search Super Admins</span>
+                    <span style={srOnly}>{translateInterface("Search Super Admins")}</span>
                     <input
-                        aria-label="Search Super Admins"
+                        aria-label={translateInterface("Search Super Admins")}
                         data-testid="system-super-admins-search"
                         onChange={(event) => setSearchDraft(event.target.value)}
-                        placeholder="Search name or email"
+                        placeholder={translateInterface("Search name or email")}
                         style={{ ...inputStyle, minWidth: 250 }}
                         value={searchDraft}
                     />
                 </label>
                 <label>
-                    <span style={srOnly}>Identity status</span>
+                    <span style={srOnly}>{translateInterface("Identity status")}</span>
                     <select
-                        aria-label="Identity status"
+                        aria-label={translateInterface("Identity status")}
                         data-testid="system-super-admins-status"
                         onChange={(event) => {
                             setStatus(event.target.value as SuperAdminStatus | '');
@@ -84,10 +85,10 @@ export function SuperAdminsView(): ReactNode {
                         style={inputStyle}
                         value={status}
                     >
-                        <option value="">All statuses</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="deleted">Deleted</option>
+                        <option value="">{translateInterface("All statuses")}</option>
+                        <option value="active">{translateInterface("Active")}</option>
+                        <option value="inactive">{translateInterface("Inactive")}</option>
+                        <option value="deleted">{translateInterface("Deleted")}</option>
                     </select>
                 </label>
                 <button
@@ -95,15 +96,13 @@ export function SuperAdminsView(): ReactNode {
                     style={buttonStyle}
                     type="submit"
                 >
-                    Search
-                </button>
+                    {translateInterface("Search")}</button>
                 {roster.data && (
                     <span
                         data-testid="system-super-admins-total"
                         style={{ alignSelf: 'center', color: 'var(--fg-3)', fontSize: 11.5 }}
                     >
-                        {roster.data.meta.total} Super Admins
-                    </span>
+                        {roster.data.meta.total} {" " + translateInterface("Super Admins")}</span>
                 )}
             </form>
 
@@ -160,21 +159,22 @@ function RosterPanel({
     onSelect: (id: number) => void;
     onPage: (page: number) => void;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     if (loading) return <PanelState state="loading" text="Loading Super Admins…" />;
     if (error !== null) return <PanelState state="error" text={error} />;
     if (rows.length === 0) return <PanelState state="empty" text="No Super Admins match the filters." />;
 
     return (
-        <section aria-label="Global Super Admin roster" data-state="ready" style={panelStyle}>
+        <section aria-label={translateInterface("Global Super Admin roster")} data-state="ready" style={panelStyle}>
             <div style={{ overflowX: 'auto' }}>
                 <table data-testid="system-super-admins-table" style={tableStyle}>
                     <thead>
                         <tr>
-                            <th style={cellStyle}>Identity</th>
-                            <th style={cellStyle}>Status</th>
-                            <th style={cellStyle}>System Admin</th>
-                            <th style={cellStyle}>Tenants</th>
-                            <th style={cellStyle}><span style={srOnly}>Open</span></th>
+                            <th style={cellStyle}>{translateInterface("Identity")}</th>
+                            <th style={cellStyle}>{translateInterface("Status")}</th>
+                            <th style={cellStyle}>{translateInterface("System Admin")}</th>
+                            <th style={cellStyle}>{translateInterface("Tenants")}</th>
+                            <th style={cellStyle}><span style={srOnly}>{translateInterface("Open")}</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -192,7 +192,7 @@ function RosterPanel({
                                     <strong style={{ color: 'var(--fg-0)', display: 'block' }}>{user.name}</strong>
                                     <span style={{ color: 'var(--fg-3)', fontSize: 10.5 }}>{user.email}</span>
                                 </td>
-                                <td style={cellStyle}>{user.deleted_at ? 'Deleted' : user.is_active ? 'Active' : 'Inactive'}</td>
+                                <td style={cellStyle}>{user.deleted_at ? translateInterface("Deleted") : user.is_active ? translateInterface("Active") : translateInterface("Inactive")}</td>
                                 <td style={cellStyle}>{user.is_system_admin ? 'Yes' : 'No'}</td>
                                 <td style={cellStyle}>{user.tenant_count}</td>
                                 <td style={cellStyle}>
@@ -203,8 +203,7 @@ function RosterPanel({
                                         style={buttonStyle}
                                         type="button"
                                     >
-                                        Open
-                                    </button>
+                                        {translateInterface("Open")}</button>
                                 </td>
                             </tr>
                         ))}
@@ -233,20 +232,20 @@ function TenantPanel({
     error: string | null;
     onPage: (page: number) => void;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     if (!selected) return <PanelState state="empty" text="Select a Super Admin." />;
     if (loading) return <PanelState state="loading" text="Loading tenant associations…" />;
     if (error !== null) return <PanelState state="error" text={error} />;
 
     return (
-        <section aria-label="Super Admin tenant associations" data-state="ready" style={panelStyle}>
+        <section aria-label={translateInterface("Super Admin tenant associations")} data-state="ready" style={panelStyle}>
             <div style={{ borderBottom: '1px solid var(--panel-border)', padding: 14 }}>
                 <strong data-testid="system-super-admins-selected-name">{user?.name}</strong>
                 <div style={{ color: 'var(--fg-3)', fontSize: 11 }}>{user?.email}</div>
             </div>
             {rows.length === 0 ? (
                 <p data-testid="system-super-admins-tenants-empty" style={{ color: 'var(--fg-3)', padding: 14 }}>
-                    No tenant assigned.
-                </p>
+                    {translateInterface("No tenant assigned.")}</p>
             ) : (
                 <ul data-testid="system-super-admins-tenants" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                     {rows.map((tenant) => (
@@ -257,8 +256,7 @@ function TenantPanel({
                         >
                             <strong style={{ color: 'var(--fg-0)' }}>{tenant.name}</strong>
                             <div style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
-                                {tenant.slug} · {tenant.status} · {tenant.project_count} projects
-                            </div>
+                                {tenant.slug} · {tenant.status} · {tenant.project_count} {" " + translateInterface("projects")}</div>
                         </li>
                     ))}
                 </ul>
@@ -282,31 +280,30 @@ function PanelState({ state, text }: { state: 'loading' | 'empty' | 'error'; tex
 }
 
 function Pagination({ meta, onPage, testId }: { meta: PageMeta; onPage: (page: number) => void; testId: string }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
-        <nav aria-label="Pagination" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: 12 }}>
+        <nav aria-label={translateInterface("Pagination")} style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: 12 }}>
             <button
-                aria-label="Previous page"
+                aria-label={translateInterface("Previous page")}
                 data-testid={`${testId}-previous`}
                 disabled={meta.current_page <= 1}
                 onClick={() => onPage(meta.current_page - 1)}
                 style={buttonStyle}
                 type="button"
             >
-                Previous
-            </button>
+                {translateInterface("Previous")}</button>
             <span style={{ alignSelf: 'center', color: 'var(--fg-3)', fontSize: 11 }}>
                 {meta.current_page} / {meta.last_page}
             </span>
             <button
-                aria-label="Next page"
+                aria-label={translateInterface("Next page")}
                 data-testid={`${testId}-next`}
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
                 style={buttonStyle}
                 type="button"
             >
-                Next
-            </button>
+                {translateInterface("Next")}</button>
         </nav>
     );
 }

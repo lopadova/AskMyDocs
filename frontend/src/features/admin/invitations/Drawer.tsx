@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { Icon } from '../../../components/Icons';
 
@@ -16,6 +17,7 @@ export interface DrawerProps {
 }
 
 export function Drawer({ title, testid, onClose, children }: DrawerProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={testid}
@@ -40,7 +42,7 @@ export function Drawer({ title, testid, onClose, children }: DrawerProps) {
                 <header style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <h2 style={{ margin: 0, fontSize: 16, color: 'var(--fg-0)' }}>{title}</h2>
                     <span style={{ flex: 1 }} />
-                    <button type="button" data-testid={`${testid}-close`} aria-label="Close" onClick={onClose} style={drawerIconBtn}>
+                    <button type="button" data-testid={`${testid}-close`} aria-label={translateInterface("Close")} onClick={onClose} style={drawerIconBtn}>
                         <Icon.Close size={15} />
                     </button>
                 </header>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { applySuggestion, listAnalyses, type DocAnalysis } from './analyses.api';
@@ -16,6 +17,7 @@ import { applySuggestion, listAnalyses, type DocAnalysis } from './analyses.api'
  */
 type ApplyNote = { kind: 'ok' | 'refused' | 'error'; msg: string };
 export function KbInsightsView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [statusFilter, setStatusFilter] = useState<'' | 'completed' | 'failed'>('');
 
     const query = useQuery({
@@ -29,14 +31,12 @@ export function KbInsightsView(): ReactNode {
     return (
         <div data-testid="admin-kb-insights-view" style={{ padding: 24 }}>
             <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Doc Insights</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Doc Insights")}</h1>
                 <span data-testid="admin-kb-insights-count" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    {query.data?.meta.total ?? 0} total
-                </span>
+                    {query.data?.meta.total ?? 0} {" " + translateInterface("total")}</span>
                 <span style={{ flex: 1 }} />
                 <label htmlFor="kb-insights-status" style={{ color: 'var(--fg-2)', fontSize: 11 }}>
-                    Status
-                </label>
+                    {translateInterface("Status")}</label>
                 <select
                     id="kb-insights-status"
                     data-testid="admin-kb-insights-status-filter"
@@ -51,22 +51,17 @@ export function KbInsightsView(): ReactNode {
                         fontSize: 12,
                     }}
                 >
-                    <option value="">All</option>
-                    <option value="completed">Completed</option>
-                    <option value="failed">Failed</option>
+                    <option value="">{translateInterface("All")}</option>
+                    <option value="completed">{translateInterface("Completed")}</option>
+                    <option value="failed">{translateInterface("Failed")}</option>
                 </select>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 640 }}>
-                When a document is ingested, modified, or deleted, an AI pass suggests how to strengthen it,
-                surfaces cross-references, and flags which other docs the change may have made obsolete (for a
-                deletion, which remaining docs now have a dangling reference). Advice only — nothing here edits
-                a document.
-            </p>
+                {translateInterface("When a document is ingested, modified, or deleted, an AI pass suggests how to strengthen it, surfaces cross-references, and flags which other docs the change may have made obsolete (for a deletion, which remaining docs now have a dangling reference). Advice only — nothing here edits a document.")}</p>
 
             {query.isLoading && (
                 <p data-testid="admin-kb-insights-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
             {!query.isLoading && query.isError && (
                 <p
@@ -75,7 +70,7 @@ export function KbInsightsView(): ReactNode {
                     role="alert"
                     style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}
                 >
-                    Failed to load analyses. {query.error instanceof Error ? query.error.message : 'Please retry.'}
+                    {translateInterface("Failed to load analyses.") + " "}{query.error instanceof Error ? query.error.message : 'Please retry.'}
                 </p>
             )}
             {!query.isLoading && !query.isError && rows.length === 0 && (
@@ -84,8 +79,7 @@ export function KbInsightsView(): ReactNode {
                     data-state="empty"
                     style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}
                 >
-                    No document analyses yet. They appear automatically after canonical documents are ingested, modified, or deleted.
-                </p>
+                    {translateInterface("No document analyses yet. They appear automatically after canonical documents are ingested, modified, or deleted.")}</p>
             )}
 
             {rows.length > 0 && (
@@ -100,6 +94,7 @@ export function KbInsightsView(): ReactNode {
 }
 
 function AnalysisCard({ row }: { row: DocAnalysis }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const failed = row.status === 'failed';
     const qc = useQueryClient();
     const [notes, setNotes] = useState<Record<string, ApplyNote>>({});
@@ -153,7 +148,7 @@ function AnalysisCard({ row }: { row: DocAnalysis }): ReactNode {
 
             {failed && (
                 <p data-testid={`admin-kb-insight-${row.id}-error`} role="alert" style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--err)' }}>
-                    Analysis failed: {row.error ?? 'unknown error'}
+                    {translateInterface("Analysis failed:") + " "}{row.error ?? 'unknown error'}
                 </p>
             )}
 

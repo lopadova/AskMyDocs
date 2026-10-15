@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import {
@@ -22,6 +23,7 @@ import type { McpServerEntry } from './mcp-tools.api';
  * AdminShell rail when `manageMcpTools` is granted.
  */
 export function McpToolsView() {
+    const { t: translateInterface } = useUiTranslation();
     const [tab, setTab] = useState<'servers' | 'audit'>('servers');
     const [showRegister, setShowRegister] = useState(false);
     const [highlightId, setHighlightId] = useState<number | null>(null);
@@ -47,19 +49,16 @@ export function McpToolsView() {
                         data-testid="admin-mcp-tools-title"
                         style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em' }}
                     >
-                        MCP tools
-                    </h1>
+                        {translateInterface("MCP tools")}</h1>
                     <nav
                         role="tablist"
-                        aria-label="MCP tools sections"
+                        aria-label={translateInterface("MCP tools sections")}
                         style={{ display: 'flex', gap: 8 }}
                     >
                         <TabButton id="servers" current={tab} onSelect={setTab}>
-                            Servers
-                        </TabButton>
+                            {translateInterface("Servers")}</TabButton>
                         <TabButton id="audit" current={tab} onSelect={setTab}>
-                            Audit log
-                        </TabButton>
+                            {translateInterface("Audit log")}</TabButton>
                     </nav>
                     <div style={{ flex: 1 }} />
                     {tab === 'servers' ? (
@@ -69,8 +68,7 @@ export function McpToolsView() {
                             onClick={() => setShowRegister(true)}
                             style={primaryCta}
                         >
-                            + Register server
-                        </button>
+                            {translateInterface("+ Register server")}</button>
                     ) : null}
                 </header>
 
@@ -98,6 +96,7 @@ interface ServersTabProps {
 }
 
 function ServersTab({ highlightId }: ServersTabProps) {
+    const { t: translateInterface } = useUiTranslation();
     const servers = useMcpServers();
     const handshake = useHandshakeMcpServer();
     const updateTools = useUpdateMcpServerTools();
@@ -120,7 +119,7 @@ function ServersTab({ highlightId }: ServersTabProps) {
             style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
         >
             {dataState === 'loading' ? (
-                <Placeholder>Loading servers…</Placeholder>
+                <Placeholder>{translateInterface("Loading servers…")}</Placeholder>
             ) : null}
 
             {dataState === 'error' ? (
@@ -131,10 +130,9 @@ function ServersTab({ highlightId }: ServersTabProps) {
 
             {dataState === 'empty' ? (
                 <Placeholder data-testid="admin-mcp-servers-empty">
-                    <p style={{ margin: 0 }}>No MCP servers registered yet.</p>
+                    <p style={{ margin: 0 }}>{translateInterface("No MCP servers registered yet.")}</p>
                     <p style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-2)' }}>
-                        Use "Register server" to add a stdio/SSE/HTTP MCP endpoint for this tenant.
-                    </p>
+                        {translateInterface("Use \"Register server\" to add a stdio/SSE/HTTP MCP endpoint for this tenant.")}</p>
                 </Placeholder>
             ) : null}
 
@@ -194,6 +192,7 @@ function ServerCard({
     disableBusy,
     deleteBusy,
 }: ServerCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <article
             data-testid={`admin-mcp-server-${server.id}`}
@@ -238,7 +237,7 @@ function ServerCard({
                         disabled={disableBusy || server.status === 'disabled'}
                         style={secondaryCta}
                     >
-                        {server.status === 'disabled' ? 'Disabled' : 'Disable'}
+                        {server.status === 'disabled' ? 'Disabled' : translateInterface("Disable")}
                     </button>
                     <button
                         type="button"
@@ -247,8 +246,7 @@ function ServerCard({
                         disabled={deleteBusy}
                         style={dangerCta}
                     >
-                        Delete
-                    </button>
+                        {translateInterface("Delete")}</button>
                 </div>
             </header>
 

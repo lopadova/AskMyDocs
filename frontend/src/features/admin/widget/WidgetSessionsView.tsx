@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
@@ -68,6 +69,7 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
  * R11 testids, R15 a11y, R14 states.
  */
 export function WidgetSessionsView() {
+    const { t: translateInterface } = useUiTranslation();
     // #36 — niente più stato morto `_filterKeyId` (mai impostabile dalla UI).
     // Il filtro per key resta supportato dal BE e potrà essere ricablato a una
     // dropdown dedicata; finché non c'è il controllo, non portiamo stato inerte.
@@ -98,10 +100,9 @@ export function WidgetSessionsView() {
     return (
         <section data-testid="admin-widget-sessions-view" style={{ display: 'grid', gap: 14 }}>
             <header>
-                <h1 style={{ margin: 0, fontSize: 22 }}>Widget Sessions</h1>
+                <h1 style={{ margin: 0, fontSize: 22 }}>{translateInterface("Widget Sessions")}</h1>
                 <p style={{ marginTop: 6, color: 'var(--fg-2)' }}>
-                    Inspect active and past KITT widget sessions within your tenant.
-                </p>
+                    {translateInterface("Inspect active and past KITT widget sessions within your tenant.")}</p>
             </header>
 
             {/* Filters */}
@@ -110,39 +111,36 @@ export function WidgetSessionsView() {
                     data-testid="admin-widget-sessions-filter-status"
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
-                    aria-label="Filter by status"
+                    aria-label={translateInterface("Filter by status")}
                 >
-                    <option value="">All statuses</option>
-                    <option value="active">Active</option>
+                    <option value="">{translateInterface("All statuses")}</option>
+                    <option value="active">{translateInterface("Active")}</option>
                     {/* #33 — il dominio reale ha 7 stati: waiting_tool/waiting_user
                         mancavano, rendendo non-filtrabili proprio le sessioni
                         "appese" che l'operatore deve cercare. */}
-                    <option value="waiting_user">Waiting user</option>
-                    <option value="waiting_tool">Waiting tool</option>
-                    <option value="completed">Completed</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="aborted">Aborted</option>
-                    <option value="error">Error</option>
+                    <option value="waiting_user">{translateInterface("Waiting user")}</option>
+                    <option value="waiting_tool">{translateInterface("Waiting tool")}</option>
+                    <option value="completed">{translateInterface("Completed")}</option>
+                    <option value="blocked">{translateInterface("Blocked")}</option>
+                    <option value="aborted">{translateInterface("Aborted")}</option>
+                    <option value="error">{translateInterface("Error")}</option>
                 </select>
             </div>
 
             {/* States (R14) */}
             {sessions.isLoading && (
                 <div data-testid="admin-widget-sessions-loading" style={{ color: 'var(--fg-2)' }}>
-                    Loading sessions…
-                </div>
+                    {translateInterface("Loading sessions…")}</div>
             )}
             {sessions.isError && (
                 <div data-testid="admin-widget-sessions-error" style={{ color: 'var(--color-danger)' }} role="alert">
-                    Failed to load sessions.
-                </div>
+                    {translateInterface("Failed to load sessions.")}</div>
             )}
 
             {/* Session list */}
             {sessions.data && sessions.data.data.length === 0 && (
                 <div data-testid="admin-widget-sessions-empty" style={{ color: 'var(--fg-2)' }}>
-                    No sessions found.
-                </div>
+                    {translateInterface("No sessions found.")}</div>
             )}
 
             {sessions.data && sessions.data.data.length > 0 && (
@@ -151,12 +149,12 @@ export function WidgetSessionsView() {
                         <thead>
                             <tr style={{ borderBottom: '1px solid var(--hairline)', textAlign: 'left' }}>
                                 <th>Key</th>
-                                <th>Status</th>
-                                <th>Skill</th>
-                                <th>Mission</th>
-                                <th>Origin</th>
-                                <th>Steps</th>
-                                <th>Created</th>
+                                <th>{translateInterface("Status")}</th>
+                                <th>{translateInterface("Skill")}</th>
+                                <th>{translateInterface("Mission")}</th>
+                                <th>{translateInterface("Origin")}</th>
+                                <th>{translateInterface("Steps")}</th>
+                                <th>{translateInterface("Created")}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -202,8 +200,7 @@ export function WidgetSessionsView() {
                     </table>
                     {sessions.data.meta.total > sessions.data.meta.per_page && (
                         <div data-testid="admin-widget-sessions-pagination" style={{ color: 'var(--fg-2)', fontSize: 12 }}>
-                            Page {sessions.data.meta.current_page} of {sessions.data.meta.last_page} ({sessions.data.meta.total} total)
-                        </div>
+                            {translateInterface("Page") + " "}{sessions.data.meta.current_page} {" " + translateInterface("of") + " "}{sessions.data.meta.last_page} ({sessions.data.meta.total} {" " + translateInterface("total)")}</div>
                     )}
                 </>
             )}
@@ -211,35 +208,35 @@ export function WidgetSessionsView() {
             {/* Session detail panel */}
             {selectedId !== null && (
                 <div data-testid="admin-widget-session-detail" style={{ border: '1px solid var(--hairline)', borderRadius: 6, padding: 14 }}>
-                    {detail.isLoading && <span style={{ color: 'var(--fg-2)' }}>Loading detail…</span>}
-                    {detail.isError && <span style={{ color: 'var(--color-danger)' }} role="alert">Failed to load detail.</span>}
+                    {detail.isLoading && <span style={{ color: 'var(--fg-2)' }}>{translateInterface("Loading detail…")}</span>}
+                    {detail.isError && <span style={{ color: 'var(--color-danger)' }} role="alert">{translateInterface("Failed to load detail.")}</span>}
                     {detail.data && (
                         <>
                             <h2 style={{ margin: 0, fontSize: 16 }}>
-                                Session {detail.data.public_session_id.slice(0, 8)}…
+                                {translateInterface("Session") + " "}{detail.data.public_session_id.slice(0, 8)}…
                             </h2>
                             <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', fontSize: 13, marginTop: 10 }}>
-                                <dt>Status</dt>
+                                <dt>{translateInterface("Status")}</dt>
                                 <dd>{detail.data.status}</dd>
                                 <dt>Key</dt>
                                 <dd>{detail.data.widget_key?.label ?? '—'}</dd>
-                                <dt>Mission</dt>
+                                <dt>{translateInterface("Mission")}</dt>
                                 <dd>{detail.data.mission ?? '—'}</dd>
-                                <dt>Page URL</dt>
+                                <dt>{translateInterface("Page URL")}</dt>
                                 <dd style={{ wordBreak: 'break-all' }}>{detail.data.page_url ?? '—'}</dd>
-                                <dt>Summary</dt>
+                                <dt>{translateInterface("Summary")}</dt>
                                 <dd>{detail.data.summary ?? '—'}</dd>
                                 {detail.data.blocked_reason && (
                                     <>
-                                        <dt>Blocked Reason</dt>
+                                        <dt>{translateInterface("Blocked Reason")}</dt>
                                         <dd style={{ color: 'var(--color-danger)' }}>{detail.data.blocked_reason}</dd>
                                     </>
                                 )}
                             </dl>
 
-                            <h3 style={{ marginTop: 14, fontSize: 14 }}>Steps ({detail.data.steps.length})</h3>
+                            <h3 style={{ marginTop: 14, fontSize: 14 }}>{translateInterface("Steps (")}{detail.data.steps.length})</h3>
                             {detail.data.steps.length === 0 ? (
-                                <p style={{ color: 'var(--fg-2)' }}>No steps recorded.</p>
+                                <p style={{ color: 'var(--fg-2)' }}>{translateInterface("No steps recorded.")}</p>
                             ) : (
                                 <ol style={{ fontSize: 12, paddingLeft: 20 }}>
                                     {detail.data.steps.map((step) => (

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../../lib/ui-locale";
 /*
  * PiiRedactorAdminApp — cross-mount port of the
  * `padosoft/laravel-pii-redactor-admin` v1.0.2 SPA.
@@ -83,6 +84,7 @@ export default function PiiRedactorAdminApp({
     // (embedded=false) keeps the full sidebar chrome.
     embedded?: boolean;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const [page, setPage] = useState<Page>('overview');
     const [status, setStatus] = useState<StatusPayload | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -129,7 +131,7 @@ export default function PiiRedactorAdminApp({
                     <div className="pra-brand">
                         <div className="pra-mark"><KeyRound size={18} /></div>
                         <div>
-                            <strong>PII Redactor</strong>
+                            <strong>{translateInterface("PII Redactor")}</strong>
                             <span>Admin console</span>
                         </div>
                     </div>
@@ -512,6 +514,7 @@ function DataBrowser({
     rootKey: string;
     empty: string;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const [filters, setFilters] = useState({ search: '', detector: '', event_type: '', status_code: '' });
     const [applied, setApplied] = useState(filters);
     const [data, setData] = useState<unknown>(null);
@@ -612,8 +615,7 @@ function DataBrowser({
                             />
                         </label>
                         <label>
-                            Status
-                            <input
+                            {translateInterface("Status")}<input
                                 value={filters.status_code}
                                 onChange={(event) =>
                                     setFilters({ ...filters, status_code: event.target.value })
@@ -633,8 +635,7 @@ function DataBrowser({
                     <Filter size={16} /> Apply
                 </button>
                 <button type="button" onClick={reset} data-testid={`admin-pii-redactor-${kind}-reset`}>
-                    <RotateCcw size={16} /> Reset
-                </button>
+                    <RotateCcw size={16} /> {" " + translateInterface("Reset")}</button>
             </div>
             {loading && <EmptyState icon={LoaderCircle} label="Loading records..." />}
             {error && <InlineNotice tone="danger">{error}</InlineNotice>}

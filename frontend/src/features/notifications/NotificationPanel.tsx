@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -54,6 +55,7 @@ const KNOWN_EVENT_TYPES = [
 ];
 
 export function NotificationPanel(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [state, setState] = useState<NotificationState>('unread');
     const [eventType, setEventType] = useState<string>('');
@@ -179,7 +181,7 @@ export function NotificationPanel(): ReactNode {
             aria-busy={listQuery.isFetching}
             className="space-y-4 p-6"
         >
-            <h1 className="text-2xl font-semibold">Notifications</h1>
+            <h1 className="text-2xl font-semibold">{translateInterface("Notifications")}</h1>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2">
                 {(['unread', 'read', 'dismissed', 'all'] as NotificationState[]).map((s) => (
@@ -252,15 +254,13 @@ export function NotificationPanel(): ReactNode {
                         }}
                         className="ml-2 underline"
                     >
-                        Dismiss
-                    </button>
+                        {translateInterface("Dismiss")}</button>
                 </div>
             )}
 
             {dataState === 'loading' && (
                 <p data-testid="notif-panel-loading" className="py-8 text-center text-gray-500">
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
 
             {dataState === 'error' && (
@@ -272,8 +272,7 @@ export function NotificationPanel(): ReactNode {
                         onClick={() => void listQuery.refetch()}
                         className="mt-2 text-sm text-red-700 underline"
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -317,8 +316,7 @@ export function NotificationPanel(): ReactNode {
                                             disabled={dismissMut.isPending}
                                             className="text-xs text-gray-600 hover:underline"
                                         >
-                                            Dismiss
-                                        </button>
+                                            {translateInterface("Dismiss")}</button>
                                     )}
                                 </div>
                             </div>
@@ -330,8 +328,7 @@ export function NotificationPanel(): ReactNode {
             {meta && (
                 <div className="flex items-center justify-between border-t border-gray-100 pt-2 text-sm text-gray-600">
                     <span data-testid="notif-panel-page-status">
-                        Page {currentPage} of {lastPage} ({total} total)
-                    </span>
+                        {translateInterface("Page") + " "}{currentPage} {" " + translateInterface("of") + " "}{lastPage} ({total} {" " + translateInterface("total)")}</span>
                     <div className="flex gap-2">
                         <button
                             type="button"
@@ -349,8 +346,7 @@ export function NotificationPanel(): ReactNode {
                             disabled={currentPage >= lastPage || listQuery.isFetching}
                             className="rounded border border-gray-300 px-3 py-1 text-sm disabled:text-gray-400"
                         >
-                            Next
-                        </button>
+                            {translateInterface("Next")}</button>
                     </div>
                 </div>
             )}

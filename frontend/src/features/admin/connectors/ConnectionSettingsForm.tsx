@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ConnectorInstallationDto } from './connectors.api';
 import { useInstallationFolders } from './connectors-hooks';
@@ -59,6 +60,7 @@ export function ConnectionSettingsForm({
     footerless = false,
     formId,
 }: ConnectionSettingsFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const schema = account.connection_settings_schema ?? [];
     const needsFolders = schema.some((f) => f.discovery === 'folders');
     const foldersQuery = useInstallationFolders(account.id, needsFolders);
@@ -169,8 +171,7 @@ export function ConnectionSettingsForm({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid={`connector-${connectorKey}-settings-form-submit`}

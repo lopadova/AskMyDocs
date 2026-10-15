@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { ConnectionActionsMenu } from './ConnectionActionsMenu';
 import { canSync, type ConnectionVM } from './connection-vm';
 import { SourceAvatar } from './SourceAvatar';
@@ -33,6 +34,7 @@ const TD: React.CSSProperties = {
 };
 
 export function ConnectionsTable({ rows, menuId, actions, inflight }: ConnectionsListProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid="connector-connections-table"
@@ -54,13 +56,13 @@ export function ConnectionsTable({ rows, menuId, actions, inflight }: Connection
                 >
                     <thead>
                         <tr style={{ background: 'var(--bg-2)', textAlign: 'left' }}>
-                            <th style={TH}>Source</th>
+                            <th style={TH}>{translateInterface("Source")}</th>
                             <th style={TH}>Account</th>
-                            <th style={TH}>Project</th>
-                            <th style={TH}>Status</th>
+                            <th style={TH}>{translateInterface("Project")}</th>
+                            <th style={TH}>{translateInterface("Status")}</th>
                             <th style={TH}>Last sync</th>
-                            <th style={TH}>Issue</th>
-                            <th style={{ ...TH, textAlign: 'right' }}>Actions</th>
+                            <th style={TH}>{translateInterface("Issue")}</th>
+                            <th style={{ ...TH, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                         </tr>
                     </thead>
                     <tbody>

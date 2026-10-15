@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
@@ -75,6 +76,7 @@ export function UserForm({
     serverErrors,
     onCancel,
 }: UserFormProps) {
+    const { t: translateInterface } = useUiTranslation();
     const schema = mode === 'create' ? createSchema : editSchema;
 
     const {
@@ -131,7 +133,7 @@ export function UserForm({
             onSubmit={handleSubmit(onSubmit)}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
         >
-            <Field label="Name" error={errors.name?.message} testid="user-form-name-error">
+            <Field label={translateInterface("Name")} error={errors.name?.message} testid="user-form-name-error">
                 <input
                     data-testid="user-form-name"
                     {...register('name')}
@@ -181,7 +183,7 @@ export function UserForm({
                             className="focus-ring"
                             style={inputStyle}
                         >
-                            {projectKeys.length === 0 && <option value="">No projects available</option>}
+                            {projectKeys.length === 0 && <option value="">{translateInterface("No projects available")}</option>}
                             {projectKeys.map((projectKey) => (
                                 <option key={projectKey} value={projectKey}>{projectKey}</option>
                             ))}
@@ -208,7 +210,7 @@ export function UserForm({
             )}
 
             <div>
-                <div style={labelStyle}>Roles</div>
+                <div style={labelStyle}>{translateInterface("Roles")}</div>
                 <div
                     data-testid="user-form-roles"
                     style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
@@ -265,8 +267,7 @@ export function UserForm({
                     data-testid="user-form-is-active"
                     {...register('is_active')}
                 />
-                Active
-            </label>
+                {translateInterface("Active")}</label>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
                 {onCancel ? (
@@ -277,8 +278,7 @@ export function UserForm({
                         onClick={onCancel}
                         style={secondaryButtonStyle}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                 ) : null}
                 <button
                     type="submit"
@@ -290,7 +290,7 @@ export function UserForm({
                         opacity: submitting ? 0.6 : 1,
                     }}
                 >
-                    {submitting ? 'Saving…' : mode === 'create' ? 'Create user' : 'Save changes'}
+                    {submitting ? 'Saving…' : mode === 'create' ? 'Create user' : translateInterface("Save changes")}
                 </button>
             </div>
         </form>

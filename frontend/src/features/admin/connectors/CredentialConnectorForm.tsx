@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { ModalSourceHeader } from './ModalSourceHeader';
@@ -126,6 +127,7 @@ export function CredentialConnectorForm({
     footerless = false,
     formId,
 }: CredentialConnectorFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const schema = useMemo(() => entry.credential_form_schema ?? [], [entry.credential_form_schema]);
     const isEdit = mode === 'edit';
     // In edit mode the label/project live in the Details tab — this panel edits
@@ -511,8 +513,7 @@ export function CredentialConnectorForm({
                             disabled={isSubmitting}
                             style={buttonStyle('secondary', !!isSubmitting)}
                         >
-                            Cancel
-                        </button>
+                            {translateInterface("Cancel")}</button>
                         <button
                             type="submit"
                             data-testid={`connector-${entry.key}-form-submit`}

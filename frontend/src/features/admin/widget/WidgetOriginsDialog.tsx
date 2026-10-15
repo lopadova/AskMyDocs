@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ban, Globe } from 'lucide-react';
@@ -79,6 +80,7 @@ export function WidgetOriginsDialog({
     projectKey,
     initialOrigins,
 }: WidgetOriginsDialogProps) {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [text, setText] = useState(() => initialOrigins.join('\n'));
 
@@ -103,8 +105,7 @@ export function WidgetOriginsDialog({
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Globe aria-hidden className="size-5" />
-                        Allowed origins
-                        <Badge variant="muted">{label}</Badge>
+                        {translateInterface("Allowed origins")}<Badge variant="muted">{label}</Badge>
                     </DialogTitle>
                     <DialogDescription>
                         Websites allowed to load the <strong>{projectKey}</strong> widget. The
@@ -114,7 +115,7 @@ export function WidgetOriginsDialog({
                 </DialogHeader>
 
                 <div className="grid gap-1.5">
-                    <Label htmlFor="wk-edit-origins">Origins</Label>
+                    <Label htmlFor="wk-edit-origins">{translateInterface("Origins")}</Label>
                     <Textarea
                         id="wk-edit-origins"
                         data-testid="admin-widget-origins-input"
@@ -157,8 +158,7 @@ export function WidgetOriginsDialog({
 
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                        Cancel
-                    </Button>
+                        {translateInterface("Cancel")}</Button>
                     <Button
                         type="button"
                         data-testid="admin-widget-origins-save"

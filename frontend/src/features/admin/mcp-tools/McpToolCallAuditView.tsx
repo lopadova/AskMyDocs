@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, useMemo } from 'react';
 import { useMcpAudit, useMcpServers } from './mcp-tools-hooks';
 import type { McpAuditEntry, McpAuditFilters, McpAuditStatus } from './mcp-tools.api';
@@ -11,6 +12,7 @@ import type { McpAuditEntry, McpAuditFilters, McpAuditStatus } from './mcp-tools
  * ok / error / timeout / denied.
  */
 export function McpToolCallAuditView() {
+    const { t: translateInterface } = useUiTranslation();
     const servers = useMcpServers();
     const [filters, setFilters] = useState<McpAuditFilters>({ per_page: 25, page: 1 });
     const audit = useMcpAudit(filters);
@@ -38,10 +40,9 @@ export function McpToolCallAuditView() {
             }}
         >
             <header style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Tool call audit</h2>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{translateInterface("Tool call audit")}</h2>
                 <span style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-                    {audit.data?.meta?.total ?? 0} entries
-                </span>
+                    {audit.data?.meta?.total ?? 0} {" " + translateInterface("entries")}</span>
             </header>
 
             <FilterBar
@@ -74,6 +75,7 @@ interface FilterBarProps {
 }
 
 function FilterBar({ filters, onChange, servers }: FilterBarProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             style={{
@@ -98,7 +100,7 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
                     data-testid="admin-mcp-audit-filter-server"
                     style={inputStyle}
                 >
-                    <option value="">All servers</option>
+                    <option value="">{translateInterface("All servers")}</option>
                     {servers.map((server) => (
                         <option key={server.id} value={server.id}>
                             {server.name}
@@ -107,18 +109,18 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
                 </select>
             </label>
             <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>Tool name</span>
+                <span style={fieldLabelStyle}>{translateInterface("Tool name")}</span>
                 <input
                     type="text"
                     value={filters.tool_name ?? ''}
                     onChange={(event) => onChange({ tool_name: event.target.value || undefined })}
                     data-testid="admin-mcp-audit-filter-tool"
-                    placeholder="e.g. list_repositories"
+                    placeholder={translateInterface("e.g. list_repositories")}
                     style={inputStyle}
                 />
             </label>
             <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>Status</span>
+                <span style={fieldLabelStyle}>{translateInterface("Status")}</span>
                 <select
                     value={filters.status ?? ''}
                     onChange={(event) =>
@@ -129,21 +131,21 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
                     data-testid="admin-mcp-audit-filter-status"
                     style={inputStyle}
                 >
-                    <option value="">Any</option>
+                    <option value="">{translateInterface("Any")}</option>
                     <option value="ok">OK</option>
-                    <option value="error">Error</option>
+                    <option value="error">{translateInterface("Error")}</option>
                     <option value="timeout">Timeout</option>
-                    <option value="denied">Denied</option>
+                    <option value="denied">{translateInterface("Denied")}</option>
                     {/* v7.0/W6.3 — `transport_error` ships with the
                         package's circuit-breaker path. The BE accepts
                         any 32-char string for the `status` filter,
                         so this list is exhaustive only for the values
                         operators commonly need to triage. */}
-                    <option value="transport_error">Transport error</option>
+                    <option value="transport_error">{translateInterface("Transport error")}</option>
                 </select>
             </label>
             <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>From</span>
+                <span style={fieldLabelStyle}>{translateInterface("From")}</span>
                 <input
                     type="date"
                     value={filters.from ?? ''}
@@ -153,7 +155,7 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
                 />
             </label>
             <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>To</span>
+                <span style={fieldLabelStyle}>{translateInterface("To")}</span>
                 <input
                     type="date"
                     value={filters.to ?? ''}
@@ -171,6 +173,7 @@ interface AuditTableProps {
 }
 
 function AuditTable({ rows }: AuditTableProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div style={{ overflowX: 'auto', border: '1px solid var(--border-1)', borderRadius: 12 }}>
             <table
@@ -179,13 +182,13 @@ function AuditTable({ rows }: AuditTableProps) {
             >
                 <thead>
                     <tr style={{ background: 'var(--bg-2)' }}>
-                        <Th>When</Th>
-                        <Th>Tool</Th>
+                        <Th>{translateInterface("When")}</Th>
+                        <Th>{translateInterface("Tool")}</Th>
                         <Th>Server</Th>
-                        <Th>User</Th>
-                        <Th>Status</Th>
-                        <Th>Duration</Th>
-                        <Th>Input (redacted)</Th>
+                        <Th>{translateInterface("User")}</Th>
+                        <Th>{translateInterface("Status")}</Th>
+                        <Th>{translateInterface("Duration")}</Th>
+                        <Th>{translateInterface("Input (redacted)")}</Th>
                     </tr>
                 </thead>
                 <tbody>
@@ -275,6 +278,7 @@ function StatusPill({ status }: { status: McpAuditStatus }) {
 }
 
 function EmptyState() {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid="admin-mcp-audit-empty"
@@ -287,8 +291,7 @@ function EmptyState() {
                 background: 'var(--bg-2)',
             }}
         >
-            No tool calls match the current filters.
-        </div>
+            {translateInterface("No tool calls match the current filters.")}</div>
     );
 }
 
@@ -317,6 +320,7 @@ interface PaginationProps {
 }
 
 function Pagination({ currentPage, totalPages, onChange }: PaginationProps) {
+    const { t: translateInterface } = useUiTranslation();
     if (totalPages <= 1) {
         return null;
     }
@@ -332,10 +336,9 @@ function Pagination({ currentPage, totalPages, onChange }: PaginationProps) {
                 data-testid="admin-mcp-audit-prev"
                 style={pageBtn(currentPage <= 1)}
             >
-                ← Previous
-            </button>
+                {translateInterface("← Previous")}</button>
             <span style={{ fontSize: 12.5, color: 'var(--fg-2)', alignSelf: 'center' }}>
-                Page {currentPage} / {totalPages}
+                {translateInterface("Page") + " "}{currentPage} / {totalPages}
             </span>
             <button
                 type="button"
@@ -344,8 +347,7 @@ function Pagination({ currentPage, totalPages, onChange }: PaginationProps) {
                 data-testid="admin-mcp-audit-next"
                 style={pageBtn(currentPage >= totalPages)}
             >
-                Next →
-            </button>
+                {translateInterface("Next →")}</button>
         </div>
     );
 }

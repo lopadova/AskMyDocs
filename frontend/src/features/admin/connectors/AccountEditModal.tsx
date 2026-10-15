@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toAdminError } from '../shared/errors';
 import type { AdminProject } from '../projects/admin-projects.api';
@@ -75,6 +76,7 @@ export function AccountEditModal({
     onClose,
     now,
 }: AccountEditModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isCredential = entry.auth_kind === 'credential';
     // The Connection tab is credential-only; guard an out-of-range initialTab.
     const [tab, setTab] = useState<EditTab>(
@@ -191,7 +193,7 @@ export function AccountEditModal({
                         <button
                             type="button"
                             data-testid={`${idBase}-close`}
-                            aria-label="Close"
+                            aria-label={translateInterface("Close")}
                             className="amd-cn-menu-btn focus-ring"
                             onClick={onClose}
                             style={{
@@ -353,8 +355,8 @@ export function AccountEditModal({
                         (next to the fields it belongs to) — one error surface, not
                         a duplicate footer copy. */}
                     <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-3)' }}>{tab === 'triage' ? 'Salva le regole dal pannello. Il recupero storico si avvia separatamente.' : account.connection_settings_schema?.some((field) => field.name === 'ingestion.enabled') ? 'Feature switches apply when saved. Content changes apply on next sync.' : 'Changes apply on next sync.'}</span>
-                    <Button data-testid={`${idBase}-cancel`} onClick={onClose} disabled={submitting}>{tab === 'triage' ? 'Close' : 'Cancel'}</Button>
-                    {tab !== 'triage' && <Button type="submit" variant="primary" form={formId} data-testid={`${idBase}-save`} busy={submitting} disabled={submitting || connectionNotReady}>Save changes</Button>}
+                    <Button data-testid={`${idBase}-cancel`} onClick={onClose} disabled={submitting}>{tab === 'triage' ? translateInterface("Close") : translateInterface("Cancel")}</Button>
+                    {tab !== 'triage' && <Button type="submit" variant="primary" form={formId} data-testid={`${idBase}-save`} busy={submitting} disabled={submitting || connectionNotReady}>{translateInterface("Save changes")}</Button>}
                 </div>
             </div>
         </div>
@@ -431,6 +433,7 @@ interface ConnectionTabBodyProps {
  * with empty defaults that would silently overwrite the stored connection params).
  */
 function ConnectionTabBody({ entry, loading, error, onRetry, children }: ConnectionTabBodyProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     if (loading) {
         return (
             <div
@@ -466,8 +469,7 @@ function ConnectionTabBody({ entry, loading, error, onRetry, children }: Connect
                         cursor: 'pointer',
                     }}
                 >
-                    Retry
-                </button>
+                    {translateInterface("Retry")}</button>
             </div>
         );
     }

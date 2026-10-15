@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { useCommandCatalogue, type CatalogueEntry } from './maintenance.api';
@@ -41,6 +42,7 @@ const CATEGORIES: Array<{ id: 'kb-content' | 'pruning' | 'queue' | 'other'; labe
 ];
 
 export function MaintenanceView() {
+    const { t: translateInterface } = useUiTranslation();
     const [tab, setTab] = useState<TabId>('commands');
     const [activeCommand, setActiveCommand] = useState<{ name: string; spec: CatalogueEntry } | null>(null);
     const catalogue = useCommandCatalogue();
@@ -67,11 +69,9 @@ export function MaintenanceView() {
                             color: 'var(--fg-0)',
                         }}
                     >
-                        Maintenance
-                    </h1>
+                        {translateInterface("Maintenance")}</h1>
                     <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        Whitelisted artisan commands — run, audit, schedule.
-                    </p>
+                        {translateInterface("Whitelisted artisan commands — run, audit, schedule.")}</p>
                 </div>
 
                 <div
@@ -83,11 +83,9 @@ export function MaintenanceView() {
                     }}
                 >
                     <TabBtn id="commands" active={tab === 'commands'} onClick={() => setTab('commands')}>
-                        Commands
-                    </TabBtn>
+                        {translateInterface("Commands")}</TabBtn>
                     <TabBtn id="history" active={tab === 'history'} onClick={() => setTab('history')}>
-                        History
-                    </TabBtn>
+                        {translateInterface("History")}</TabBtn>
                 </div>
 
                 {tab === 'commands' ? (
@@ -97,11 +95,10 @@ export function MaintenanceView() {
                         style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 14, flex: 1, minHeight: 0 }}
                     >
                         <div style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
-                            {catState === 'loading' ? <div>Loading catalogue…</div> : null}
+                            {catState === 'loading' ? <div>{translateInterface("Loading catalogue…")}</div> : null}
                             {catState === 'error' ? (
                                 <div data-testid="maintenance-catalogue-error" style={{ color: 'var(--danger-fg, #b91c1c)' }}>
-                                    Failed to load command catalogue.
-                                </div>
+                                    {translateInterface("Failed to load command catalogue.")}</div>
                             ) : null}
                             {catState === 'ready'
                                 ? CATEGORIES.map((cat) => {

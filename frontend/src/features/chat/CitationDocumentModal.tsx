@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
 import { ChevronDown, FileText, Quote, ExternalLink, XIcon } from 'lucide-react';
@@ -58,6 +59,7 @@ function fileName(path: string | null | undefined): string | null {
  * surfaces a visible, retryable alert rather than a silent blank.
  */
 export function CitationDocumentModal({ citation, onClose, onOpenInKb }: CitationDocumentModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const documentId = citation.document_id;
 
     const { data, isLoading, isError, isFetching, refetch } = useQuery({
@@ -137,14 +139,12 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                             <p style={{ marginBottom: 8 }}>Could not load this document.</p>
                             <Button size="sm" data-testid="chat-citation-modal-retry"
                                 onClick={() => void refetch()} busy={isFetching}>
-                                Retry
-                            </Button>
+                                {translateInterface("Retry")}</Button>
                         </div>
                     )}
                     {empty && (
                         <div data-testid="chat-citation-modal-empty" style={{ color: 'var(--fg-3)' }}>
-                            This document has no indexed content yet.
-                        </div>
+                            {translateInterface("This document has no indexed content yet.")}</div>
                     )}
                     {ready && !empty && (
                         <>
@@ -180,7 +180,7 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                     <details className="citation-document-details">
                         <summary>Source details <ChevronDown size={14} aria-hidden /></summary>
                         <div className="citation-document-metadata">
-                            <span>Document #{documentId}{project ? ` · ${project}` : ''}</span>
+                            <span>{translateInterface("Document #")}{documentId}{project ? ` · ${project}` : ''}</span>
                             {citation.source_path && (
                                 <p data-testid="chat-citation-modal-path">{citation.source_path}</p>
                             )}

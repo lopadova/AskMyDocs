@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { adminTeamsApi, type AdminTeam } from './admin-teams.api';
@@ -10,6 +11,7 @@ interface TeamLogoDialogProps {
 }
 
 export function TeamLogoDialog({ team, onClose, onChanged }: TeamLogoDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [file, setFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -87,8 +89,7 @@ export function TeamLogoDialog({ team, onClose, onChanged }: TeamLogoDialogProps
                         onClick={onClose}
                         style={quietButton}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </header>
 
                 <div data-testid="admin-team-logo-preview" style={previewStyle}>

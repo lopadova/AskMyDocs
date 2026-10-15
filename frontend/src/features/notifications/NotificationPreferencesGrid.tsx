@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -65,6 +66,7 @@ function buildCurrentMatrix(data: NotificationPreferencesResponse): Record<strin
 }
 
 export function NotificationPreferencesGrid(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
 
     const query = useQuery({
@@ -230,7 +232,7 @@ export function NotificationPreferencesGrid(): ReactNode {
             aria-busy={query.isFetching}
             className="space-y-4 p-6"
         >
-            <h1 className="text-2xl font-semibold">Notification preferences</h1>
+            <h1 className="text-2xl font-semibold">{translateInterface("Notification preferences")}</h1>
             <p className="text-sm text-gray-600">
                 Choose which channels receive each notification. Channels with
                 no webhook URL configured by your operator render as disabled.
@@ -266,7 +268,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                             data-testid="chat-counterfactual-toggle"
                             aria-label="Show counterfactual panel in chat"
                         />
-                        <span>{counterfactualEnabled ? 'On' : 'Off'}</span>
+                        <span>{counterfactualEnabled ? translateInterface("On") : translateInterface("Off")}</span>
                     </label>
                 </div>
                 {counterfactualQuery.isError && (
@@ -282,8 +284,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                             onClick={() => void counterfactualQuery.refetch()}
                             className="ml-2 underline"
                         >
-                            Retry
-                        </button>
+                            {translateInterface("Retry")}</button>
                     </div>
                 )}
                 {counterfactualMut.isError && (
@@ -298,16 +299,14 @@ export function NotificationPreferencesGrid(): ReactNode {
                             onClick={() => counterfactualMut.reset()}
                             className="ml-2 underline"
                         >
-                            Dismiss
-                        </button>
+                            {translateInterface("Dismiss")}</button>
                     </div>
                 )}
             </div>
 
             {dataState === 'loading' && (
                 <p data-testid="notif-pref-loading" className="py-8 text-center text-gray-500">
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
 
             {dataState === 'error' && (
@@ -319,8 +318,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                         onClick={() => void query.refetch()}
                         className="mt-2 text-sm text-red-700 underline"
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -336,8 +334,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                         onClick={() => saveMut.reset()}
                         className="ml-2 underline"
                     >
-                        Dismiss
-                    </button>
+                        {translateInterface("Dismiss")}</button>
                 </div>
             )}
 
@@ -385,8 +382,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                                 disabled={saveMut.isPending}
                                                                 className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                                                             >
-                                                                On
-                                                            </button>
+                                                                {translateInterface("On")}</button>
                                                             <button
                                                                 type="button"
                                                                 data-testid={`notif-pref-column-${chan}-disable-all`}
@@ -395,8 +391,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                                 disabled={saveMut.isPending}
                                                                 className="text-xs text-gray-600 hover:underline disabled:text-gray-400"
                                                             >
-                                                                Off
-                                                            </button>
+                                                                {translateInterface("Off")}</button>
                                                         </div>
                                                     )}
                                                 </div>
@@ -479,8 +474,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                         <div className="text-sm text-gray-500">
                             {dirty && (
                                 <span data-testid="notif-pref-dirty-indicator">
-                                    Unsaved changes
-                                </span>
+                                    {translateInterface("Unsaved changes")}</span>
                             )}
                         </div>
                         <div className="flex gap-2">
@@ -500,7 +494,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                 disabled={!dirty || saveMut.isPending}
                                 className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700 disabled:bg-gray-300"
                             >
-                                {saveMut.isPending ? 'Saving…' : 'Save'}
+                                {saveMut.isPending ? 'Saving…' : translateInterface("Save")}
                             </button>
                         </div>
                     </div>

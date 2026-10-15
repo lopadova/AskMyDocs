@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 /*
  * FlowsView — native host landing for the `padosoft/laravel-flow-admin`
  * cockpit.
@@ -39,6 +40,7 @@ const COCKPIT_SECTIONS: Array<{ id: string; label: string; path: string }> = [
 ];
 
 export function FlowsView() {
+    const { t: translateInterface } = useUiTranslation();
     const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
     const [live, setLive] = useState<FlowLive | null>(null);
 
@@ -121,7 +123,7 @@ export function FlowsView() {
                     gap: 12,
                 }}
             >
-                <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>Flows</h1>
+                <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>{translateInterface("Flows")}</h1>
                 <span
                     style={{
                         padding: '2px 8px',
@@ -156,14 +158,12 @@ export function FlowsView() {
                         background: 'var(--grad-accent)',
                     }}
                 >
-                    Open Flow cockpit
-                    <Icon.Share size={13} />
+                    {translateInterface("Open Flow cockpit")}<Icon.Share size={13} />
                 </a>
             </header>
 
             <p style={{ margin: 0, padding: '12px 22px 0', color: 'var(--fg-2)', fontSize: 13, maxWidth: 760 }}>
-                The full Flow cockpit (runs, approvals, webhook outbox, definitions) opens in a new tab. Live
-                throughput below is read from <code style={{ fontFamily: 'var(--font-mono)' }}>/admin/flows/api/live</code>.
+                {translateInterface("The full Flow cockpit (runs, approvals, webhook outbox, definitions) opens in a new tab. Live throughput below is read from") + " "}<code style={{ fontFamily: 'var(--font-mono)' }}>/admin/flows/api/live</code>.
             </p>
 
             {state === 'error' && (
@@ -172,24 +172,21 @@ export function FlowsView() {
                     role="alert"
                     style={{ margin: '16px 22px', color: 'var(--danger-fg)', fontSize: 13, maxWidth: 620 }}
                 >
-                    The Flow cockpit is unavailable. Confirm <code>FLOW_ADMIN_ENABLED=true</code> in the host
-                    environment and run <code>php artisan config:clear</code>. You can still try{' '}
-                    <strong>Open Flow cockpit</strong> above.
-                </div>
+                    {translateInterface("The Flow cockpit is unavailable. Confirm") + " "}<code>FLOW_ADMIN_ENABLED=true</code> {" " + translateInterface("in the host environment and run") + " "}<code>php artisan config:clear</code>{translateInterface(". You can still try")}{' '}
+                    <strong>{translateInterface("Open Flow cockpit")}</strong> {" " + translateInterface("above.")}</div>
             )}
 
             {state === 'loading' && (
                 <div data-testid="admin-flows-loading" style={{ padding: 22, color: 'var(--fg-2)', fontSize: 13 }}>
                     <span className="shimmer" style={{ padding: '6px 18px', borderRadius: 8 }}>
-                        Loading Flow throughput…
-                    </span>
+                        {translateInterface("Loading Flow throughput…")}</span>
                 </div>
             )}
 
             {state === 'ready' && (
                 <div
                     role="list"
-                    aria-label="Flow throughput"
+                    aria-label={translateInterface("Flow throughput")}
                     style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
@@ -223,7 +220,7 @@ export function FlowsView() {
             )}
 
             <div style={{ padding: '14px 22px 24px' }}>
-                <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 8 }}>Cockpit sections</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 8 }}>{translateInterface("Cockpit sections")}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {COCKPIT_SECTIONS.map((s) => (
                         <a

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { type ReactNode } from 'react';
 import './chat-reader.css';
 import { useNavigate } from '@tanstack/react-router';
@@ -36,6 +37,7 @@ import { useChatSession } from './use-chat-session';
  * points at `/chat`, the Sessions workspace at `/sessions`).
  */
 export function ChatView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const navigate = useNavigate();
     // Read the hash straight from the store rather than from the hook's
     // result: the nav callbacks are built BEFORE `useChatSession` returns,
@@ -153,11 +155,11 @@ export function ChatView(): ReactNode {
                                                       ? `Conversation #${activeId}`
                                                       : activeConversationResolved
                                                         ? 'Not found'
-                                                        : 'Loading…'
+                                                        : translateInterface("Loading…")
                                             }
                                         />
                                     ) : (
-                                        <div className="chat-header-new-title">New chat</div>
+                                        <div className="chat-header-new-title">{translateInterface("New chat")}</div>
                                     )}
                                 </div>
                                 <div className="chat-header-meta">
@@ -165,7 +167,7 @@ export function ChatView(): ReactNode {
                                         <span className="chat-header-context-icon" aria-hidden="true">
                                             <Icon.Folder size={11} />
                                         </span>
-                                        <span className="chat-header-context-label">Project</span>
+                                        <span className="chat-header-context-label">{translateInterface("Project")}</span>
                                         <ProjectSelector
                                             value={projectScopeValue}
                                             projects={teamProjectKeys}
@@ -178,7 +180,7 @@ export function ChatView(): ReactNode {
                                         <span className="chat-header-context-icon" aria-hidden="true">
                                             <Icon.Brain size={11} />
                                         </span>
-                                        <span className="chat-header-context-label">Model</span>
+                                        <span className="chat-header-context-label">{translateInterface("Model")}</span>
                                         <span className="chat-model-chip">{headerMeta}</span>
                                     </div>
                                 </div>
@@ -192,8 +194,8 @@ export function ChatView(): ReactNode {
                                 iconOnly
                                 className="chat-header-more"
                                 data-testid="chat-header-more"
-                                aria-label="Conversation actions"
-                                title="Conversation actions"
+                                aria-label={translateInterface("Conversation actions")}
+                                title={translateInterface("Conversation actions")}
                             >
                                 <Icon.MoreH size={14} />
                             </Button>

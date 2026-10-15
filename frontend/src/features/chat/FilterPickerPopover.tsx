@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { FilterState } from './chat.api';
 
@@ -367,6 +368,7 @@ interface FolderTabProps {
 }
 
 function FolderTab({ globs, onChange }: FolderTabProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [draft, setDraft] = useState('');
 
     const add = () => {
@@ -427,8 +429,7 @@ function FolderTab({ globs, onChange }: FolderTabProps): ReactNode {
                     alignSelf: 'flex-start',
                 }}
             >
-                Add
-            </button>
+                {translateInterface("Add")}</button>
             {globs.length > 0 && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {globs.map((g) => (
@@ -472,10 +473,11 @@ interface DateTabProps {
 }
 
 function DateTab({ from, to, onChange }: DateTabProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label htmlFor="filter-date-from" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>From</span>
+                <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("From")}</span>
                 <input
                     id="filter-date-from"
                     data-testid="filter-date-from"
@@ -493,7 +495,7 @@ function DateTab({ from, to, onChange }: DateTabProps): ReactNode {
                 />
             </label>
             <label htmlFor="filter-date-to" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>To</span>
+                <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("To")}</span>
                 <input
                     id="filter-date-to"
                     data-testid="filter-date-to"

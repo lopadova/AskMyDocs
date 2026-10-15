@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -34,6 +35,7 @@ export interface RouteConfigModalProps {
 }
 
 export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteConfigModalProps) {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const base = connector.base_url;
     // Retain a newly created route when its final test fails, so retrying Save updates it.
@@ -239,7 +241,7 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
                                 <details className="route-editor-disclosure">
                                     <summary>Opzioni avanzate</summary>
                                     <div className="route-editor-section" style={{ padding: 14 }}>
-                                        <Field label="Slug" note="Opzionale"><input className="route-editor-control is-mono" data-testid="api-route-form-slug" value={config.identity.slug ?? ''} onChange={e => patchIdentity({ slug: e.target.value || null })} /></Field>
+                                        <Field label={translateInterface("Slug")} note="Opzionale"><input className="route-editor-control is-mono" data-testid="api-route-form-slug" value={config.identity.slug ?? ''} onChange={e => patchIdentity({ slug: e.target.value || null })} /></Field>
                                         <div className="route-editor-options">
                                             <Field label="Timeout (ms)"><input className="route-editor-control" inputMode="numeric" data-testid="api-route-form-timeout_ms" value={config.options.timeout_ms ?? ''} onChange={e => patchOptions({ timeout_ms: intOrNull(e.target.value) })} placeholder="Predefinito" /></Field>
                                             <Field label="Cache (secondi)"><input className="route-editor-control" inputMode="numeric" data-testid="api-route-form-cache_ttl_s" value={config.options.cache_ttl_s ?? ''} onChange={e => patchOptions({ cache_ttl_s: intOrNull(e.target.value) })} placeholder="0" /></Field>

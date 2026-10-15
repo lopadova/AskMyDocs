@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -34,6 +35,7 @@ interface AnonymousTurn {
 }
 
 export function AnonymousChatView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const navigate = useNavigate();
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const [turns, setTurns] = useState<AnonymousTurn[]>([]);
@@ -123,20 +125,18 @@ export function AnonymousChatView(): ReactNode {
                             ? navigate({ to: '/app/$teamHash/chat', params: { teamHash } })
                             : navigate({ to: '/app' })
                     }
-                    aria-label="Back to saved chats"
+                    aria-label={translateInterface("Back to saved chats")}
                 >
                     <Icon.Chevron size={13} style={{ transform: 'rotate(180deg)' }} />
-                    Back
-                </button>
-                <h1 style={{ fontSize: 14, margin: 0, color: 'var(--fg-0)' }}>Anonymous chat</h1>
+                    {translateInterface("Back")}</button>
+                <h1 style={{ fontSize: 14, margin: 0, color: 'var(--fg-0)' }}>{translateInterface("Anonymous chat")}</h1>
             </header>
 
             <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
                 <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {phase === 'loading' && (
                         <p data-testid="anonymous-chat-loading" style={{ color: 'var(--fg-3)', fontSize: 13 }}>
-                            Checking availability…
-                        </p>
+                            {translateInterface("Checking availability…")}</p>
                     )}
 
                     {phase === 'error' && (
@@ -153,9 +153,7 @@ export function AnonymousChatView(): ReactNode {
                                 lineHeight: 1.6,
                             }}
                         >
-                            Could not check anonymous-chat availability. Please try again or reload
-                            the page.
-                        </div>
+                            {translateInterface("Could not check anonymous-chat availability. Please try again or reload the page.")}</div>
                     )}
 
                     {phase === 'disabled' && (
@@ -172,8 +170,7 @@ export function AnonymousChatView(): ReactNode {
                                 lineHeight: 1.6,
                             }}
                         >
-                            Anonymous chat is currently disabled. An administrator can enable it by
-                            setting <code>KB_ANONYMOUS_CHAT_ENABLED=true</code>.
+                            {translateInterface("Anonymous chat is currently disabled. An administrator can enable it by setting") + " "}<code>KB_ANONYMOUS_CHAT_ENABLED=true</code>.
                         </div>
                     )}
 
@@ -193,8 +190,7 @@ export function AnonymousChatView(): ReactNode {
                                         data-testid="anonymous-chat-empty"
                                         style={{ color: 'var(--fg-3)', fontSize: 13, lineHeight: 1.6 }}
                                     >
-                                        Ask anything about the knowledge base. Nothing you type here is saved.
-                                    </p>
+                                        {translateInterface("Ask anything about the knowledge base. Nothing you type here is saved.")}</p>
                                 )}
                                 {turns.map((turn, i) => (
                                     <AnonymousTurnBlock key={i} index={i} turn={turn} />
@@ -212,8 +208,7 @@ export function AnonymousChatView(): ReactNode {
                 <div style={{ borderTop: '1px solid var(--hairline)', padding: 14 }}>
                     <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                         <label htmlFor="anonymous-chat-input" className="sr-only" style={srOnly}>
-                            Anonymous question
-                        </label>
+                            {translateInterface("Anonymous question")}</label>
                         <textarea
                             id="anonymous-chat-input"
                             data-testid="anonymous-chat-input"
@@ -221,7 +216,7 @@ export function AnonymousChatView(): ReactNode {
                             value={draft}
                             onChange={(e) => setDraft(e.target.value)}
                             onKeyDown={onKeyDown}
-                            placeholder="Ask anonymously… (Enter to send)"
+                            placeholder={translateInterface("Ask anonymously… (Enter to send)")}
                             rows={2}
                             style={{ flex: 1, resize: 'vertical', minHeight: 44, fontSize: 13 }}
                         />
@@ -234,8 +229,7 @@ export function AnonymousChatView(): ReactNode {
                             aria-busy={sendMutation.isPending}
                         >
                             <Icon.Send size={13} />
-                            Send
-                        </button>
+                            {translateInterface("Send")}</button>
                     </div>
                 </div>
             )}
@@ -244,6 +238,7 @@ export function AnonymousChatView(): ReactNode {
 }
 
 function AnonymousTurnBlock({ index, turn }: { index: number; turn: AnonymousTurn }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const refusal = turn.answer?.refusal_reason ?? null;
     const citations: MessageCitation[] = turn.answer?.citations ?? [];
 
@@ -268,8 +263,7 @@ function AnonymousTurnBlock({ index, turn }: { index: number; turn: AnonymousTur
 
             {turn.answer === null && turn.error === null && (
                 <p data-testid={`anonymous-chat-turn-${index}-loading`} style={{ color: 'var(--fg-3)', fontSize: 13 }}>
-                    Thinking…
-                </p>
+                    {translateInterface("Thinking…")}</p>
             )}
 
             {turn.error !== null && (

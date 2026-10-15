@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
@@ -26,6 +27,7 @@ import { useKbProjects } from '../kb/kb-tree.api';
  */
 
 export function UsersView() {
+    const { t: translateInterface } = useUiTranslation();
     const [q, setQ] = useState('');
     const [role, setRole] = useState<string>('');
     const [active, setActive] = useState<'all' | 'active' | 'inactive'>('all');
@@ -136,11 +138,9 @@ export function UsersView() {
                                 color: 'var(--fg-0)',
                             }}
                         >
-                            Users
-                        </h1>
+                            {translateInterface("Users")}</h1>
                         <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                            Manage accounts, roles and project memberships.
-                        </p>
+                            {translateInterface("Manage accounts, roles and project memberships.")}</p>
                     </div>
                     <button
                         type="button"
@@ -160,8 +160,7 @@ export function UsersView() {
                             cursor: 'pointer',
                         }}
                     >
-                        <Icon.Plus size={14} /> New user
-                    </button>
+                        <Icon.Plus size={14} /> {" " + translateInterface("New user")}</button>
                 </div>
 
                 <div
@@ -186,7 +185,7 @@ export function UsersView() {
                             data-testid="users-filter-q"
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
-                            placeholder="Search name or email…"
+                            placeholder={translateInterface("Search name or email…")}
                             style={{
                                 width: '100%',
                                 padding: '7px 10px 7px 30px',
@@ -204,7 +203,7 @@ export function UsersView() {
                         onChange={(e) => setRole(e.target.value)}
                         style={selectStyle}
                     >
-                        <option value="">All roles</option>
+                        <option value="">{translateInterface("All roles")}</option>
                         {uniqueRoleNames.map((r) => (
                             <option key={r} value={r}>
                                 {r}
@@ -217,9 +216,9 @@ export function UsersView() {
                         onChange={(e) => setActive(e.target.value as typeof active)}
                         style={selectStyle}
                     >
-                        <option value="all">Active + inactive</option>
-                        <option value="active">Active only</option>
-                        <option value="inactive">Inactive only</option>
+                        <option value="all">{translateInterface("Active + inactive")}</option>
+                        <option value="active">{translateInterface("Active only")}</option>
+                        <option value="inactive">{translateInterface("Inactive only")}</option>
                     </select>
                     <label
                         style={{
@@ -236,8 +235,7 @@ export function UsersView() {
                             checked={withTrashed}
                             onChange={(e) => setWithTrashed(e.target.checked)}
                         />
-                        Include deleted
-                    </label>
+                        {translateInterface("Include deleted")}</label>
                 </div>
 
                 <UsersTable

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { CredentialFieldSchema } from './connectors.api';
 
@@ -247,6 +248,7 @@ export function FolderOrOptionMultiselect({
     fetchState,
     onRetryFolders,
 }: MultiselectProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const live = field.discovery === 'folders';
     const options = useMemo(() => {
         if (!live) return Object.keys(field.options);
@@ -284,8 +286,7 @@ export function FolderOrOptionMultiselect({
             <div data-testid={`${base}-fetch-error`} role="alert" style={{ ...boxStyle(), color: '#fca5a5' }}>
                 Could not reach the source to list folders.{' '}
                 <button type="button" data-testid={`${base}-retry`} onClick={onRetryFolders} style={ghostButton()}>
-                    Retry
-                </button>
+                    {translateInterface("Retry")}</button>
             </div>
         );
     }
@@ -336,6 +337,7 @@ interface TagInputProps {
 }
 
 export function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [draft, setDraft] = useState('');
 
     const add = () => {
@@ -400,8 +402,7 @@ export function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputPro
                     style={{ ...inputStyle(), flex: 1 }}
                 />
                 <button type="button" data-testid={`${base}-add`} onClick={add} style={buttonStyle('secondary', false)}>
-                    Add
-                </button>
+                    {translateInterface("Add")}</button>
             </div>
         </div>
     );

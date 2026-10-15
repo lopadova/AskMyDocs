@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
@@ -8,22 +9,23 @@ import { ConversationList, type ConversationListProps } from './ConversationList
 export function ConversationNavigation({ children, ...props }: ConversationListProps & {
     children: (historyToggle: ReactNode) => ReactNode;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <div className="chat-history-desktop"><ConversationList {...props} /></div>
             {children(
                 <DialogTrigger asChild>
-                    <Button variant="quiet" size="sm" iconOnly className="chat-history-toggle" aria-label="Show conversations" title="Show conversations">
+                    <Button variant="quiet" size="sm" iconOnly className="chat-history-toggle" aria-label={translateInterface('Show conversations')} title={translateInterface('Show conversations')}>
                         <Icon.Menu size={16} />
                     </Button>
                 </DialogTrigger>,
             )}
             <DialogContent className="chat-history-dialog" showCloseButton={false}>
-                <DialogTitle className="sr-only">Conversations</DialogTitle>
-                <DialogDescription className="sr-only">Search your history or start a new conversation.</DialogDescription>
+                <DialogTitle className="sr-only">{translateInterface("Conversations")}</DialogTitle>
+                <DialogDescription className="sr-only">{translateInterface('Search your history or start a new conversation.')}</DialogDescription>
                 <DialogClose asChild>
-                    <Button variant="quiet" size="sm" iconOnly className="chat-history-close" aria-label="Close conversations" title="Close conversations">
+                    <Button variant="quiet" size="sm" iconOnly className="chat-history-close" aria-label={translateInterface('Close conversations')} title={translateInterface('Close conversations')}>
                         <Icon.Close size={15} />
                     </Button>
                 </DialogClose>

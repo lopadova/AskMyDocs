@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { useConnectors } from '../connectors/connectors-hooks';
@@ -39,6 +40,7 @@ function statusColor(status: SyncRunStatus): { bg: string; border: string; fg: s
 }
 
 export function IngestionView() {
+    const { t: translateInterface } = useUiTranslation();
     const connectorsQuery = useConnectors();
     const queueQuery = useQueueDepths();
 
@@ -100,23 +102,20 @@ export function IngestionView() {
             >
                 <div>
                     <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', letterSpacing: '-0.02em', color: 'var(--fg-0)' }}>
-                        Ingestion &amp; Sync
-                    </h1>
+                        {translateInterface("Ingestion &amp; Sync")}</h1>
                     <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        Queue backlog and per-account connector sync history.
-                    </p>
+                        {translateInterface("Queue backlog and per-account connector sync history.")}</p>
                 </div>
 
                 {/* ── Queue depths ─────────────────────────────────────────── */}
-                <section aria-label="Queue depths">
+                <section aria-label={translateInterface("Queue depths")}>
                     {state === 'loading' && (
                         <div data-testid="admin-ingestion-queue-loading" role="status" aria-busy="true" style={panelStyle}>
-                            Loading queues…
-                        </div>
+                            {translateInterface("Loading queues…")}</div>
                     )}
                     {state === 'error' && (
                         <div data-testid="admin-ingestion-queue-error" role="alert" style={errorStyle}>
-                            Could not load queue depths.{' '}
+                            {translateInterface("Could not load queue depths.")}{' '}
                             <button
                                 type="button"
                                 data-testid="admin-ingestion-queue-retry"
@@ -124,14 +123,12 @@ export function IngestionView() {
                                 onClick={() => queueQuery.refetch()}
                                 style={retryStyle}
                             >
-                                Retry
-                            </button>
+                                {translateInterface("Retry")}</button>
                         </div>
                     )}
                     {state === 'ready' && (queueQuery.data ?? []).length === 0 && (
                         <div data-testid="admin-ingestion-queues-empty" role="status" style={panelStyle}>
-                            No queues reported — the queue driver may not expose depths.
-                        </div>
+                            {translateInterface("No queues reported — the queue driver may not expose depths.")}</div>
                     )}
                     {state === 'ready' && (queueQuery.data ?? []).length > 0 && (
                         <div
@@ -161,7 +158,7 @@ export function IngestionView() {
                 </section>
 
                 {/* ── Per-account sync history ─────────────────────────────── */}
-                <section aria-label="Sync history" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <section aria-label={translateInterface("Sync history")} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <label htmlFor="ingestion-account-select" style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
                             Account
@@ -174,10 +171,10 @@ export function IngestionView() {
                             disabled={accounts.length === 0}
                             style={selectStyle}
                         >
-                            {connectorsQuery.isLoading && <option value="">Loading accounts…</option>}
-                            {connectorsQuery.isError && <option value="">Couldn’t load accounts</option>}
+                            {connectorsQuery.isLoading && <option value="">{translateInterface("Loading accounts…")}</option>}
+                            {connectorsQuery.isError && <option value="">{translateInterface("Couldn’t load accounts")}</option>}
                             {connectorsLoaded && accounts.length === 0 && (
-                                <option value="">No connected accounts</option>
+                                <option value="">{translateInterface("No connected accounts")}</option>
                             )}
                             {accounts.map((a) => (
                                 <option key={a.installationId} value={a.installationId}>
@@ -197,10 +194,9 @@ export function IngestionView() {
                         >
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <div>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Full mailbox import</div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>{translateInterface("Full mailbox import")}</div>
                                     <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                                        Durable date windows with UID checkpoints; indexing runs independently.
-                                    </div>
+                                        {translateInterface("Durable date windows with UID checkpoints; indexing runs independently.")}</div>
                                 </div>
                                 {backfillEnabled
                                     && (backfill === null || ['failed', 'cancelled'].includes(backfill.status))
@@ -237,9 +233,9 @@ export function IngestionView() {
                                 )}
                             </div>
 
-                            {backfillQuery.isLoading && <div role="status" style={{ marginTop: 10 }}>Reading backfill status…</div>}
-                            {backfillQuery.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not read backfill status.</div>}
-                            {startBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Could not {backfillActionVerb} the full import.</div>}
+                            {backfillQuery.isLoading && <div role="status" style={{ marginTop: 10 }}>{translateInterface("Reading backfill status…")}</div>}
+                            {backfillQuery.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>{translateInterface("Could not read backfill status.")}</div>}
+                            {startBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>{translateInterface("Could not") + " "}{backfillActionVerb} {" " + translateInterface("the full import.")}</div>}
                             {cancelBackfill.isError && <div role="alert" style={{ marginTop: 10, color: '#fca5a5' }}>Impossibile annullare l’importazione: {toAdminError(cancelBackfill.error).message}</div>}
                             {backfill && ['discovering', 'running', 'paused', 'failed', 'cancelled'].includes(backfill.status) && (
                                 <div role="status" style={{ marginTop: 10, fontSize: 12, color: 'var(--fg-2)' }}>
@@ -250,8 +246,7 @@ export function IngestionView() {
                             )}
                             {!backfillEnabled && !backfillQuery.isLoading && !backfillQuery.isError && (
                                 <div data-testid="imap-backfill-disabled" role="status" style={{ marginTop: 10, color: 'var(--fg-2)' }}>
-                                    Full mailbox imports are disabled by deployment configuration.
-                                </div>
+                                    {translateInterface("Full mailbox imports are disabled by deployment configuration.")}</div>
                             )}
                             {backfill && (
                                 <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
@@ -265,7 +260,7 @@ export function IngestionView() {
                                         <div style={{ height: '100%', width: `${Math.min(100, backfill.progress_percent)}%`, background: '#34d399' }} />
                                     </div>
                                     <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                                        {backfill.completed_windows.toLocaleString()} / {backfill.total_windows.toLocaleString()} windows · {backfill.dispatched_documents.toLocaleString()} documents queued · batch {backfill.batch_size}
+                                        {backfill.completed_windows.toLocaleString()} / {backfill.total_windows.toLocaleString()} {" " + translateInterface("windows ·") + " "}{backfill.dispatched_documents.toLocaleString()} {" " + translateInterface("documents queued · batch") + " "}{backfill.batch_size}
                                     </div>
                                     {backfill.current_window && (
                                         <div data-testid="imap-backfill-current-window" style={{ fontSize: 11.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>
@@ -274,7 +269,7 @@ export function IngestionView() {
                                     )}
                                     {backfill.last_error && (
                                         <div role="alert" style={{ fontSize: 11.5, color: '#fca5a5' }}>
-                                            Last error: {String(backfill.last_error.message ?? 'unknown')}
+                                            {translateInterface("Last error:") + " "}{String(backfill.last_error.message ?? 'unknown')}
                                         </div>
                                     )}
                                 </div>
@@ -284,11 +279,10 @@ export function IngestionView() {
 
                     {connectorsQuery.isLoading ? (
                         <div data-testid="admin-ingestion-accounts-loading" role="status" aria-busy="true" style={panelStyle}>
-                            Loading connectors…
-                        </div>
+                            {translateInterface("Loading connectors…")}</div>
                     ) : connectorsQuery.isError ? (
                         <div data-testid="admin-ingestion-accounts-error" role="alert" style={errorStyle}>
-                            Could not load connectors.{' '}
+                            {translateInterface("Could not load connectors.")}{' '}
                             <button
                                 type="button"
                                 data-testid="admin-ingestion-accounts-retry"
@@ -296,20 +290,17 @@ export function IngestionView() {
                                 onClick={() => connectorsQuery.refetch()}
                                 style={retryStyle}
                             >
-                                Retry
-                            </button>
+                                {translateInterface("Retry")}</button>
                         </div>
                     ) : accounts.length === 0 ? (
                         <div data-testid="admin-ingestion-no-accounts" role="status" style={panelStyle}>
-                            No connectors are installed yet — connect one to see its sync history.
-                        </div>
+                            {translateInterface("No connectors are installed yet — connect one to see its sync history.")}</div>
                     ) : runsQuery.isLoading ? (
                         <div data-testid="admin-ingestion-runs-loading" role="status" aria-busy="true" style={panelStyle}>
-                            Loading sync runs…
-                        </div>
+                            {translateInterface("Loading sync runs…")}</div>
                     ) : runsQuery.isError ? (
                         <div data-testid="admin-ingestion-runs-error" role="alert" style={errorStyle}>
-                            Could not load sync runs.{' '}
+                            {translateInterface("Could not load sync runs.")}{' '}
                             <button
                                 type="button"
                                 data-testid="admin-ingestion-runs-retry"
@@ -317,22 +308,20 @@ export function IngestionView() {
                                 onClick={() => runsQuery.refetch()}
                                 style={retryStyle}
                             >
-                                Retry
-                            </button>
+                                {translateInterface("Retry")}</button>
                         </div>
                     ) : (runsQuery.data ?? []).length === 0 ? (
                         <div data-testid="admin-ingestion-runs-empty" role="status" style={panelStyle}>
-                            No sync runs recorded for this account yet.
-                        </div>
+                            {translateInterface("No sync runs recorded for this account yet.")}</div>
                     ) : (
                         <table data-testid="admin-ingestion-runs" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                             <thead>
                                 <tr style={{ textAlign: 'left', color: 'var(--fg-3)' }}>
-                                    <th style={thStyle}>Status</th>
-                                    <th style={thStyle}>Discovered</th>
-                                    <th style={thStyle}>Failed</th>
-                                    <th style={thStyle}>Duration</th>
-                                    <th style={thStyle}>Started</th>
+                                    <th style={thStyle}>{translateInterface("Status")}</th>
+                                    <th style={thStyle}>{translateInterface("Discovered")}</th>
+                                    <th style={thStyle}>{translateInterface("Failed")}</th>
+                                    <th style={thStyle}>{translateInterface("Duration")}</th>
+                                    <th style={thStyle}>{translateInterface("Started")}</th>
                                 </tr>
                             </thead>
                             <tbody>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { ModalSourceHeader } from './ModalSourceHeader';
@@ -75,6 +76,7 @@ export function AccountMetaForm({
     source,
     subtitle,
 }: AccountMetaFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [label, setLabel] = useState(initialLabel);
     const [projectKey, setProjectKey] = useState(initialProjectKey ?? '');
 
@@ -209,8 +211,7 @@ export function AccountMetaForm({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid={`connector-${connectorKey}-account-form-submit`}

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useCampaigns, useReferrals } from './use-invitations';
 import type { ReferralStatus } from './invitations.api';
@@ -16,6 +17,7 @@ const STATUS_OPTIONS: Array<{ value: ReferralStatus; label: string }> = [
 ];
 
 export function ReferralsTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [campaignId, setCampaignId] = useState('');
     const [status, setStatus] = useState('');
 
@@ -51,7 +53,7 @@ export function ReferralsTab() {
                 <SelectFilter
                     id="invitations-referrals-status"
                     testid="admin-invitations-referrals-filter-status"
-                    label="Status"
+                    label={translateInterface("Status")}
                     value={status}
                     onChange={setStatus}
                     options={STATUS_OPTIONS}

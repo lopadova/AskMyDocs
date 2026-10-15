@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Upload } from 'lucide-react';
@@ -48,6 +49,7 @@ const headingStyle: React.CSSProperties = {
 };
 
 export function ApiConnectionsSection({ createRequest = 0, embedded = false }: { createRequest?: number; embedded?: boolean }) {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const navigate = useNavigate();
     const { teamHash } = useParams({ strict: false }) as { teamHash?: string };
@@ -143,7 +145,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                     {connectors.length}
                 </span>
                 <Button data-testid="api-connector-gallery-import" leadingIcon={<Upload size={16} />}
-                    onClick={() => openModal({ kind: 'import' })}>Import configuration</Button>
+                    onClick={() => openModal({ kind: 'import' })}>{translateInterface("Import configuration")}</Button>
                 {!embedded && (
                     <>
                         <div style={{ flex: 1, minWidth: 12 }} />
@@ -188,8 +190,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                             cursor: 'pointer',
                         }}
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -247,7 +248,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                     <div role="dialog" aria-modal="true" data-testid="api-connection-remove-modal" style={modalPanelStyle(380)}>
                         <h2 style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>Remove API connection</h2>
                         <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: '4px 0 0', lineHeight: 1.5 }}>
-                            Remove <strong>{modal.connector.name}</strong> and all its routes, auth profiles and
+                            {translateInterface("Remove") + " "}<strong>{modal.connector.name}</strong> and all its routes, auth profiles and
                             relations? This cannot be undone.
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
@@ -267,8 +268,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                                     cursor: 'pointer',
                                 }}
                             >
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                             <button
                                 type="button"
                                 data-testid="api-connection-remove-confirm"
@@ -286,7 +286,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                                     cursor: 'pointer',
                                 }}
                             >
-                                {deleteConnector.isPending ? 'Removing…' : 'Remove'}
+                                {deleteConnector.isPending ? 'Removing…' : translateInterface("Remove")}
                             </button>
                         </div>
                     </div>

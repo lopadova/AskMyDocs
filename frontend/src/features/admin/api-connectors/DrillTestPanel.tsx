@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import type { ApiRouteRelation, DrillResult } from './api-connectors.api';
 import { prettyJson } from './pretty-json';
@@ -37,6 +38,7 @@ export function DrillTestPanel({
     isDrilling,
     error,
 }: DrillTestPanelProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [itemIndex, setItemIndex] = useState('0');
     const [itemJson, setItemJson] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
@@ -189,7 +191,7 @@ export function DrillTestPanel({
                                         color: detail.ok ? '#34d399' : '#fca5a5',
                                     }}
                                 >
-                                    {detail.ok ? 'OK' : 'Failed'}
+                                    {detail.ok ? 'OK' : translateInterface("Failed")}
                                     {detail.status != null && ` — HTTP ${detail.status}`}
                                 </span>
                                 {detail.error && (
@@ -212,8 +214,7 @@ export function DrillTestPanel({
                         onClick={onClose}
                         style={buttonStyle('secondary', false)}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

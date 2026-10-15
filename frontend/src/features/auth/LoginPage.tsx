@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,6 +28,7 @@ export type LoginPageProps = {
 };
 
 export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: LoginPageProps = {}) {
+    const { t: translateInterface } = useUiTranslation();
     const setMe = useAuthStore((s) => s.setMe);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors | undefined>();
     const [formError, setFormError] = useState<string | undefined>();
@@ -62,12 +64,12 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
 
     return (
         <AuthLayout
-            title="Sign in to your workspace"
-            subtitle="Use your ACME email and password."
+            title={translateInterface("Sign in to your workspace")}
+            subtitle={translateInterface("Use your ACME email and password.")}
             footer={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <span>
-                        Trouble signing in?{' '}
+                        {translateInterface("Trouble signing in?")}{' '}
                         <button
                             type="button"
                             onClick={onNavigateForgot}
@@ -80,11 +82,10 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
                                 fontWeight: 500,
                             }}
                         >
-                            Reset your password
-                        </button>
+                            {translateInterface("Reset your password")}</button>
                     </span>
                     <span>
-                        Have an invite code?{' '}
+                        {translateInterface("Have an invite code?")}{' '}
                         <button
                             type="button"
                             onClick={onNavigateRegister}
@@ -98,8 +99,7 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
                                 fontWeight: 500,
                             }}
                         >
-                            Create an account
-                        </button>
+                            {translateInterface("Create an account")}</button>
                     </span>
                 </div>
             }
@@ -108,7 +108,7 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
                 onSubmit={onSubmit}
                 noValidate
                 data-testid="login-form"
-                aria-label="Sign in"
+                aria-label={translateInterface("Sign in")}
                 style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
             >
                 {formError && (
@@ -124,7 +124,7 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
                             fontSize: 13,
                         }}
                     >
-                        {formError}
+                        {translateInterface(formError)}
                     </div>
                 )}
                 <div>
@@ -165,8 +165,7 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
                     <FieldError errors={fieldErrors} name="password" />
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--fg-2)' }}>
-                    <input type="checkbox" {...register('remember')} /> Keep me signed in
-                </label>
+                    <input type="checkbox" {...register('remember')} /> {" " + translateInterface("Keep me signed in")}</label>
                 <button
                     type="submit"
                     className="btn primary"
@@ -175,7 +174,7 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
                     aria-busy={submitting}
                     style={{ justifyContent: 'center', marginTop: 4 }}
                 >
-                    {submitting ? 'Signing in…' : 'Sign in'}
+                    {submitting ? 'Signing in…' : translateInterface("Sign in")}
                 </button>
             </form>
         </AuthLayout>

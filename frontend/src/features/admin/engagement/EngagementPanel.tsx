@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Suspense, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { KpiCard, type KpiState } from '../dashboard/KpiCard';
@@ -16,6 +17,7 @@ import {
  * the lazy recharts area body. R11 testids, explicit states.
  */
 export function EngagementPanel(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const summary = useQuery({ queryKey: ENGAGEMENT_SUMMARY_QUERY_KEY, queryFn: () => engagementApi.summary(), refetchOnWindowFocus: false, staleTime: 30_000 });
     const board = useQuery({ queryKey: ENGAGEMENT_LEADERBOARD_QUERY_KEY, queryFn: () => engagementApi.leaderboard(30, 10), refetchOnWindowFocus: false, staleTime: 30_000 });
     const series = useQuery({ queryKey: ENGAGEMENT_SERIES_QUERY_KEY, queryFn: () => engagementApi.series(8), refetchOnWindowFocus: false, staleTime: 30_000 });
@@ -41,7 +43,7 @@ export function EngagementPanel(): ReactNode {
             aria-busy={summary.isFetching || board.isFetching || series.isFetching}
             style={{ padding: 24 }}
         >
-            <h2 style={{ marginTop: 0 }}>Engagement</h2>
+            <h2 style={{ marginTop: 0 }}>{translateInterface("Engagement")}</h2>
 
             {(summary.isError || series.isError) && (
                 <div data-testid="admin-engagement-error" role="alert">
@@ -54,8 +56,7 @@ export function EngagementPanel(): ReactNode {
                             void series.refetch();
                         }}
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -87,7 +88,7 @@ export function EngagementPanel(): ReactNode {
                 </ChartCard>
 
                 <div data-testid="admin-engagement-leaderboard" data-state={board.isError ? 'error' : board.isLoading ? 'loading' : 'ready'} style={{ border: '1px solid var(--hairline)', borderRadius: 14, padding: 16 }}>
-                    <strong>🏆 Top contributors</strong>
+                    <strong>{translateInterface("🏆 Top contributors")}</strong>
                     {board.isError && <p role="alert" data-testid="admin-engagement-leaderboard-error">Could not load the leaderboard.</p>}
                     {board.data && board.data.leaderboard.length === 0 && <p data-testid="admin-engagement-leaderboard-empty">No contributions in the window.</p>}
                     {board.data && board.data.leaderboard.length > 0 && (

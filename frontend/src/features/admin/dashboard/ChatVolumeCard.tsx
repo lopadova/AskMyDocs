@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Suspense } from 'react';
 import type { AdminChatVolumeRow } from '../admin.api';
 import { ChartCard, ChartFallback, EmptyChart, type ChartState } from './ChartCard';
@@ -15,13 +16,14 @@ export interface ChatVolumeCardProps {
  * <EmptyChart /> SVG placeholder.
  */
 export function ChatVolumeCard({ data, state, days }: ChatVolumeCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const hasData = data.length > 0 && data.some((row) => row.count > 0);
     const resolvedState: ChartState = state === 'ready' && !hasData ? 'empty' : state;
 
     return (
         <ChartCard
             slug="chat-volume"
-            title="Chat volume"
+            title={translateInterface("Chat volume")}
             subtitle={`${days}-day window`}
             state={resolvedState}
         >

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import { digestApi, DIGEST_PREFERENCES_QUERY_KEY } from './digest.api';
  * surface in the DOM), R16/R17 (edits seeded once, dirty drives Save).
  */
 export function DigestPreferences(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
 
     const query = useQuery({
@@ -69,16 +71,15 @@ export function DigestPreferences(): ReactNode {
             aria-busy={query.isFetching}
             style={{ padding: 24, maxWidth: 560 }}
         >
-            <h2 style={{ marginTop: 0 }}>Digest preferences</h2>
+            <h2 style={{ marginTop: 0 }}>{translateInterface("Digest preferences")}</h2>
 
-            {dataState === 'loading' && <p data-testid="digest-pref-loading">Loading…</p>}
+            {dataState === 'loading' && <p data-testid="digest-pref-loading">{translateInterface("Loading…")}</p>}
 
             {dataState === 'error' && (
                 <div data-testid="digest-pref-error" role="alert">
-                    Could not load your preferences.{' '}
+                    {translateInterface("Could not load your preferences.")}{' '}
                     <button type="button" data-testid="digest-pref-retry" onClick={() => void query.refetch()}>
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -97,7 +98,7 @@ export function DigestPreferences(): ReactNode {
                     }}
                 >
                     <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
-                        <legend style={{ fontWeight: 600, marginBottom: 8 }}>How often?</legend>
+                        <legend style={{ fontWeight: 600, marginBottom: 8 }}>{translateInterface("How often?")}</legend>
                         {query.data.available_frequencies.map((freq) => (
                             <label key={freq} style={{ display: 'block', padding: '4px 0' }}>
                                 <input
@@ -109,13 +110,13 @@ export function DigestPreferences(): ReactNode {
                                     data-testid={`digest-pref-frequency-${freq}`}
                                     onChange={() => setFrequency(freq)}
                                 />{' '}
-                                {freq === 'off' ? 'Off' : freq.charAt(0).toUpperCase() + freq.slice(1)}
+                                {translateInterface(freq === 'off' ? 'Off' : freq.charAt(0).toUpperCase() + freq.slice(1))}
                             </label>
                         ))}
                     </fieldset>
 
                     <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
-                        <legend style={{ fontWeight: 600, marginBottom: 8 }}>Sections to include</legend>
+                        <legend style={{ fontWeight: 600, marginBottom: 8 }}>{translateInterface("Sections to include")}</legend>
                         {query.data.available_sections.map((key) => (
                             <label key={key} style={{ display: 'block', padding: '4px 0' }}>
                                 <input
@@ -125,22 +126,20 @@ export function DigestPreferences(): ReactNode {
                                     data-testid={`digest-pref-section-${key}`}
                                     onChange={() => toggleSection(key)}
                                 />{' '}
-                                {key.replace('_', ' ')}
+                                {translateInterface(key.replaceAll('_', ' '))}
                             </label>
                         ))}
                     </fieldset>
 
-                    {dirty && <span data-testid="digest-pref-dirty">Unsaved changes</span>}
+                    {dirty && <span data-testid="digest-pref-dirty">{translateInterface("Unsaved changes")}</span>}
 
                     {saveMut.isError && (
                         <div data-testid="digest-pref-save-error" role="alert" style={{ color: 'var(--err)' }}>
-                            Could not save your preferences. Please try again.
-                        </div>
+                            {translateInterface("Could not save your preferences. Please try again.")}</div>
                     )}
                     {saveMut.isSuccess && !dirty && (
                         <div data-testid="digest-pref-save-success" role="status">
-                            Saved.
-                        </div>
+                            {translateInterface("Saved.")}</div>
                     )}
 
                     <div style={{ marginTop: 12 }}>
@@ -149,7 +148,7 @@ export function DigestPreferences(): ReactNode {
                             data-testid="digest-pref-save"
                             disabled={!dirty || saveMut.isPending}
                         >
-                            {saveMut.isPending ? 'Saving…' : 'Save preferences'}
+                            {saveMut.isPending ? 'Saving…' : translateInterface("Save preferences")}
                         </button>
                     </div>
                 </form>

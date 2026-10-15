@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
@@ -12,10 +13,11 @@ export interface LiveSourcesControlProps {
 
 /** Compact per-turn controls for the agent's direct API and MCP access. */
 export function LiveSourcesControl({ sources, selection, disabled = false, onChange }: LiveSourcesControlProps): ReactNode {
+    const { t } = useUiTranslation();
     if (!sources) return null;
 
     return (
-        <div className="chat-live-sources" aria-label="Live data sources">
+        <div className="chat-live-sources" aria-label={t('Live data sources')}>
             <LiveSourceGroup
                 kind="mcp"
                 options={sources.mcp}
@@ -47,6 +49,7 @@ function LiveSourceGroup({
     disabled: boolean;
     onChange: (enabledKeys: string[]) => void;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const rootRef = useRef<HTMLDivElement>(null);
@@ -100,7 +103,7 @@ function LiveSourceGroup({
                 data-kind={kind}
                 data-state={enabledCount === 0 ? 'off' : allEnabled ? 'all' : 'partial'}
                 data-testid={`chat-live-source-${kind}-trigger`}
-                aria-label={`${label} sources: ${enabledCount} of ${options.length} enabled`}
+                aria-label={translateInterface('{kind} sources: {count} of {total} enabled', { kind: label, count: enabledCount, total: options.length })}
                 aria-expanded={open}
                 aria-haspopup="dialog"
                 disabled={disabled}
@@ -118,21 +121,21 @@ function LiveSourceGroup({
                     className="chat-live-source-popover"
                     data-testid={`chat-live-source-${kind}-popover`}
                     role="dialog"
-                    aria-label={`${label} source settings`}
+                    aria-label={translateInterface('{kind} source settings', { kind: label })}
                 >
                     <header className="chat-live-source-popover-header">
                         <span className="chat-live-source-popover-icon" data-kind={kind} aria-hidden="true">
                             <IconComponent size={15} />
                         </span>
                         <span>
-                            <strong>{label} connections</strong>
-                            <small>Choose what the agent may call</small>
+                            <strong>{translateInterface('{kind} connections', { kind: label })}</strong>
+                            <small>{translateInterface('Choose what the agent may call')}</small>
                         </span>
                         <Button
                             variant="quiet"
                             size="sm"
                             iconOnly
-                            aria-label={`Close ${label} source settings`}
+                            aria-label={translateInterface('Close {kind} source settings', { kind: label })}
                             data-testid={`chat-live-source-${kind}-close`}
                             onClick={() => setOpen(false)}
                         >
@@ -148,8 +151,8 @@ function LiveSourceGroup({
                                 type="search"
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
-                                placeholder={`Find a ${label} connection`}
-                                aria-label={`Search ${label} connections`}
+                                placeholder={translateInterface('Find a {kind} connection', { kind: label })}
+                                aria-label={translateInterface('Search {kind} connections', { kind: label })}
                             />
                         </label>
                     )}
@@ -163,8 +166,8 @@ function LiveSourceGroup({
                         onClick={() => onChange(allEnabled ? [] : options.map((option) => option.key))}
                     >
                         <span>
-                            <strong>{allEnabled ? 'Disable all' : 'Enable all'}</strong>
-                            <small>{enabledCount} of {options.length} available</small>
+                            <strong>{translateInterface(allEnabled ? 'Disable all' : 'Enable all')}</strong>
+                            <small>{translateInterface('{count} of {total} available', { count: enabledCount, total: options.length })}</small>
                         </span>
                         <Switch checked={allEnabled} />
                     </button>
@@ -194,10 +197,10 @@ function LiveSourceGroup({
                             );
                         })}
                         {visible.length === 0 && (
-                            <div className="chat-live-source-empty">No matching connections.</div>
+                            <div className="chat-live-source-empty">{translateInterface('No matching connections.')}</div>
                         )}
                     </div>
-                    <footer>Applies to the next message</footer>
+                    <footer>{translateInterface('Applies to the next message')}</footer>
                 </div>
             )}
         </div>

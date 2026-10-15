@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import type { ApiConnector, ConnectorPayload } from './api-connectors.api';
@@ -77,6 +78,7 @@ export function ConnectorForm({
     fieldErrors,
     isSubmitting,
 }: ConnectorFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = !!connector;
     const [name, setName] = useState(connector?.name ?? '');
     const [description, setDescription] = useState(connector?.description ?? '');
@@ -154,7 +156,7 @@ export function ConnectorForm({
 
                 <label htmlFor="api-connector-form-name" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>
-                        Name<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
+                        {translateInterface("Name")}<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
                     </span>
                     <input
                         id="api-connector-form-name"
@@ -175,7 +177,7 @@ export function ConnectorForm({
                 </label>
 
                 <label htmlFor="api-connector-form-description" style={fieldLabelStyle()}>
-                    <span style={fieldCaptionStyle()}>Description</span>
+                    <span style={fieldCaptionStyle()}>{translateInterface("Description")}</span>
                     <textarea
                         id="api-connector-form-description"
                         data-testid="api-connector-form-description"
@@ -353,7 +355,7 @@ export function ConnectorForm({
                         checked={isActive}
                         onChange={(e) => setIsActive(e.target.checked)}
                     />
-                    <span style={fieldCaptionStyle()}>Active</span>
+                    <span style={fieldCaptionStyle()}>{translateInterface("Active")}</span>
                 </label>
 
                 {submitError && (
@@ -371,8 +373,7 @@ export function ConnectorForm({
                         variant="secondary"
                         size="sm"
                     >
-                        Cancel
-                    </Button>
+                        {translateInterface("Cancel")}</Button>
                     <Button
                         type="submit"
                         data-testid="api-connector-form-submit"
@@ -380,7 +381,7 @@ export function ConnectorForm({
                         variant="primary"
                         size="sm"
                     >
-                        {isEdit ? 'Save changes' : 'Create connector'}
+                        {isEdit ? translateInterface("Save changes") : 'Create connector'}
                     </Button>
                 </div>
             </form>

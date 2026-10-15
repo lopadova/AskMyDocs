@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Download, Printer, FileOutput, Trash2, RotateCcw } from 'lucide-react';
 import { Button } from '../../../components/Button';
 import { DocumentSidebar } from './DocumentSidebar';
@@ -51,6 +52,7 @@ export interface DocumentDetailProps {
 }
 
 export function DocumentDetail(props: DocumentDetailProps) {
+    const { t: translateInterface } = useUiTranslation();
     const { documentId, activeTab, onTabChange, onDeleted, onDocumentReplaced } = props;
 
     const query = useKbDocument(documentId);
@@ -75,7 +77,7 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 aria-busy="true"
                 style={{ padding: 16, color: 'var(--fg-3)' }}
             >
-                <div data-testid="kb-detail-loading">Loading document…</div>
+                <div data-testid="kb-detail-loading">{translateInterface("Loading document…")}</div>
             </div>
         );
     }
@@ -196,16 +198,13 @@ export function DocumentDetail(props: DocumentDetailProps) {
             <DocumentSidebar doc={doc}>
                 {doc.deleted_at !== null ? (
                     <Button size="sm" data-testid="kb-action-restore" onClick={handleRestore} busy={restoreMut.isPending} leadingIcon={<RotateCcw size={15} />}>
-                        Restore
-                    </Button>
+                        {translateInterface("Restore")}</Button>
                 ) : (
                     <Button size="sm" variant="quiet" className="kb-document-delete" data-testid="kb-action-delete" onClick={() => setConfirm({ mode: 'soft' })} leadingIcon={<Trash2 size={15} />}>
-                        Delete
-                    </Button>
+                        {translateInterface("Delete")}</Button>
                 )}
                 <Button size="sm" variant="quiet" className="kb-document-delete" data-testid="kb-action-force-delete" onClick={() => setConfirm({ mode: 'force' })} leadingIcon={<Trash2 size={15} />}>
-                    Force delete
-                </Button>
+                    {translateInterface("Force delete")}</Button>
             </DocumentSidebar>
 
             {confirm !== null ? (
@@ -229,6 +228,7 @@ function DocHeader({
     onExportPdf: () => void;
     isExporting: boolean;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const trashed = doc.deleted_at !== null;
     return (
         <div
@@ -286,18 +286,18 @@ function DocHeader({
                 <HeaderLink
                     testId="kb-action-download"
                     href={adminKbDocumentApi.downloadUrl(doc.id)}
-                    label="Download"
+                    label={translateInterface("Download")}
                     icon={<Download size={15} aria-hidden />}
                 />
                 <HeaderLink
                     testId="kb-action-print"
                     href={adminKbDocumentApi.printUrl(doc.id)}
-                    label="Print"
+                    label={translateInterface("Print")}
                     icon={<Printer size={15} aria-hidden />}
                 />
                 <HeaderButton
                     testId="kb-action-export-pdf"
-                    label={isExporting ? 'Exporting…' : 'Export PDF'}
+                    label={isExporting ? 'Exporting…' : translateInterface("Export PDF")}
                     onClick={onExportPdf}
                     disabled={isExporting}
                 />
@@ -453,6 +453,7 @@ function ConfirmDialog({
     onCancel: () => void;
     onConfirm: () => void;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const title = mode === 'force' ? 'Force delete document?' : 'Delete document?';
     const body =
         mode === 'force'
@@ -505,8 +506,7 @@ function ConfirmDialog({
                             cursor: 'pointer',
                         }}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="button"
                         data-testid="kb-detail-confirm-submit"
@@ -523,7 +523,7 @@ function ConfirmDialog({
                             opacity: isSubmitting ? 0.6 : 1,
                         }}
                     >
-                        {isSubmitting ? 'Working…' : mode === 'force' ? 'Force delete' : 'Delete'}
+                        {isSubmitting ? 'Working…' : mode === 'force' ? translateInterface("Force delete") : translateInterface("Delete")}
                     </button>
                 </div>
             </div>

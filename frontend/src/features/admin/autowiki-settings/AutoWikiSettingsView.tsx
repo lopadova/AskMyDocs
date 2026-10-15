@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -21,6 +22,7 @@ import {
  * R15 every control has an accessible name.
  */
 export function AutoWikiSettingsView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -56,14 +58,10 @@ export function AutoWikiSettingsView(): ReactNode {
             style={{ padding: 24 }}
         >
             <header style={{ marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Auto-Wiki Settings</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Auto-Wiki Settings")}</h1>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 680 }}>
-                Turn the Auto-Wiki compiler on or off per project — independently for the canonical and
-                non-canonical splits. <strong>Inherit</strong> falls back to the tenant-wide row, then the
-                server default. Turning <strong>Auto-build</strong> off nets the dependent knobs off too. The
-                resolved value is shown beside each control.
-            </p>
+                {translateInterface("Turn the Auto-Wiki compiler on or off per project — independently for the canonical and non-canonical splits.") + " "}<strong>{translateInterface("Inherit")}</strong> {" " + translateInterface("falls back to the tenant-wide row, then the server default. Turning") + " "}<strong>{translateInterface("Auto-build")}</strong> {" " + translateInterface("off nets the dependent knobs off too. The resolved value is shown beside each control.")}</p>
 
             {saveError && (
                 <p data-testid="admin-autowiki-settings-save-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
@@ -72,21 +70,20 @@ export function AutoWikiSettingsView(): ReactNode {
             )}
 
             {query.isLoading && (
-                <p data-testid="admin-autowiki-settings-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Loading…</p>
+                <p data-testid="admin-autowiki-settings-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</p>
             )}
             {!query.isLoading && query.isError && (
                 <p data-testid="admin-autowiki-settings-error" data-state="error" role="alert" style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}>
-                    Failed to load Auto-Wiki settings. {query.error instanceof Error ? query.error.message : ''}
+                    {translateInterface("Failed to load Auto-Wiki settings.") + " "}{query.error instanceof Error ? query.error.message : ''}
                 </p>
             )}
 
             {data && (
                 <div data-testid="admin-autowiki-settings-list" data-state="ready" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <SettingRow entry={data.wildcard} label="All projects (tenant default)" busy={mutation.isPending} onSet={setFlag} />
+                    <SettingRow entry={data.wildcard} label={translateInterface("All projects (tenant default)")} busy={mutation.isPending} onSet={setFlag} />
                     {data.projects.length === 0 && (
                         <p data-testid="admin-autowiki-settings-empty" data-state="empty" style={{ color: 'var(--fg-3)', padding: 16, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}>
-                            No projects yet — only the tenant-wide default applies.
-                        </p>
+                            {translateInterface("No projects yet — only the tenant-wide default applies.")}</p>
                     )}
                     {data.projects.map((entry) => (
                         <SettingRow key={entry.project_key} entry={entry} label={entry.project_key} busy={mutation.isPending} onSet={setFlag} />
@@ -130,6 +127,7 @@ function FlagControl({
     busy: boolean;
     onSet: (entry: AutoWikiSettingEntry, flag: AutoWikiFlagKey, value: boolean | null) => void;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const override = entry.override ? entry.override[flag] : null;
     const current = override === null || override === undefined ? 'inherit' : override ? 'on' : 'off';
     const id = `admin-autowiki-setting-${entry.project_key}-${flag}`;
@@ -149,9 +147,9 @@ function FlagControl({
                 }}
                 style={{ fontSize: 11.5, padding: '2px 4px' }}
             >
-                <option value="inherit">Inherit</option>
-                <option value="on">On</option>
-                <option value="off">Off</option>
+                <option value="inherit">{translateInterface("Inherit")}</option>
+                <option value="on">{translateInterface("On")}</option>
+                <option value="off">{translateInterface("Off")}</option>
             </select>
             <span data-testid={`${id}-effective`} style={{ color: entry.effective[flag] ? 'var(--ok, #3fb950)' : 'var(--fg-3)' }}>
                 → {entry.effective[flag] ? 'on' : 'off'}

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef } from 'react';
 import type { ConnectionVM } from './connection-vm';
 
@@ -18,6 +19,7 @@ export interface SyncErrorModalProps {
 }
 
 export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
+    const { t: translateInterface } = useUiTranslation();
     const closeRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
@@ -112,7 +114,7 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
                         type="button"
                         data-testid="connector-sync-error-close"
                         className="amd-cn-menu-btn focus-ring"
-                        aria-label="Close"
+                        aria-label={translateInterface("Close")}
                         onClick={onClose}
                         style={{
                             flex: 'none',
@@ -232,8 +234,7 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
                             cursor: 'pointer',
                         }}
                     >
-                        Dismiss
-                    </button>
+                        {translateInterface("Dismiss")}</button>
                     <button
                         type="button"
                         data-testid="connector-sync-error-retry"

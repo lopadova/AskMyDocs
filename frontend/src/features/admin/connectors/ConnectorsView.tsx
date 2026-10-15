@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ApiConnectionsSection } from './ApiConnectionsSection';
@@ -123,6 +124,7 @@ type ConnectionsViewMode = 'table' | 'cards';
 type ConnectionKindFilter = 'all' | 'sources' | 'api' | 'mcp';
 
 export function ConnectorsView() {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const connectorsQuery = useConnectors();
     const projectsQuery = useProjectOptions();
@@ -605,8 +607,7 @@ const errorVm: ConnectionVM | null =
                             color: 'var(--fg-0)',
                         }}
                     >
-                        Connectors
-                    </h1>
+                        {translateInterface("Connectors")}</h1>
                     <p
                         style={{
                             fontSize: 13,
@@ -616,9 +617,7 @@ const errorVm: ConnectionVM | null =
                             maxWidth: 640,
                         }}
                     >
-                        Connect multiple accounts per source and bind each to a project (or the tenant
-                        default), then sync their content into your knowledge base.
-                    </p>
+                        {translateInterface("Connect multiple accounts per source and bind each to a project (or the tenant default), then sync their content into your knowledge base.")}</p>
                 </div>
 
                 {state === 'loading' && (
@@ -634,8 +633,7 @@ const errorVm: ConnectionVM | null =
                             borderRadius: 10,
                         }}
                     >
-                        Loading connectors…
-                    </div>
+                        {translateInterface("Loading connectors…")}</div>
                 )}
 
                 {state === 'error' && (
@@ -651,7 +649,7 @@ const errorVm: ConnectionVM | null =
                             fontSize: 13,
                         }}
                     >
-                        Could not load connectors.{' '}
+                        {translateInterface("Could not load connectors.")}{' '}
                         <button
                             type="button"
                             data-testid="admin-connectors-retry"
@@ -668,8 +666,7 @@ const errorVm: ConnectionVM | null =
                                 cursor: 'pointer',
                             }}
                         >
-                            Retry
-                        </button>
+                            {translateInterface("Retry")}</button>
                     </div>
                 )}
 
@@ -678,10 +675,9 @@ const errorVm: ConnectionVM | null =
                         {/* Every connection type starts from the same gallery. */}
                         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             <div>
-                                <h2 style={sectionHeadingStyle}>Add a connection</h2>
+                                <h2 style={sectionHeadingStyle}>{translateInterface("Add a connection")}</h2>
                                 <p style={{ margin: '5px 0 0', color: 'var(--fg-3)', fontSize: 12 }}>
-                                    Choose a content source, an HTTP API or a live MCP server.
-                                </p>
+                                    {translateInterface("Choose a content source, an HTTP API or a live MCP server.")}</p>
                             </div>
                             <div
                                 data-testid="admin-connectors-grid"
@@ -703,14 +699,14 @@ const errorVm: ConnectionVM | null =
                                 ))}
                                 <ConnectionTypeTile
                                     kind="api"
-                                    title="API connection"
-                                    description="Turn HTTP endpoints into live tools"
+                                    title={translateInterface("API connection")}
+                                    description={translateInterface("Turn HTTP endpoints into live tools")}
                                     onAdd={() => setApiCreateRequest((request) => request + 1)}
                                 />
                                 <ConnectionTypeTile
                                     kind="mcp"
-                                    title="MCP connection"
-                                    description="Connect tools and resources from an MCP server"
+                                    title={translateInterface("MCP connection")}
+                                    description={translateInterface("Connect tools and resources from an MCP server")}
                                     onAdd={() => setMcpCreateRequest((request) => request + 1)}
                                 />
                             </div>
@@ -719,10 +715,10 @@ const errorVm: ConnectionVM | null =
                         {/* One hub for source accounts, HTTP APIs and MCP servers. */}
                         <section style={connectionsHubStyle}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                <h2 style={sectionHeadingStyle}>Connections</h2>
+                                <h2 style={sectionHeadingStyle}>{translateInterface("Connections")}</h2>
                                 <div
                                     role="group"
-                                    aria-label="Connection type"
+                                    aria-label={translateInterface("Connection type")}
                                     style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 9, background: 'var(--bg-2)' }}
                                 >
                                     {(['all', 'sources', 'api', 'mcp'] as const).map((kind) => (
@@ -740,8 +736,8 @@ const errorVm: ConnectionVM | null =
                                         <input
                                             data-testid="connector-connections-search"
                                             type="search"
-                                            aria-label="Search connections"
-                                            placeholder="Search source accounts…"
+                                            aria-label={translateInterface("Search connections")}
+                                            placeholder={translateInterface("Search source accounts…")}
                                             value={query}
                                             onChange={(e) => setQuery(e.target.value)}
                                             className="focus-ring"
@@ -757,19 +753,19 @@ const errorVm: ConnectionVM | null =
                                         />
                                         <div
                                             role="group"
-                                            aria-label="Connections view mode"
+                                            aria-label={translateInterface("Connections view mode")}
                                             style={{ display: 'flex', gap: 4, background: 'var(--bg-2)', borderRadius: 9, padding: 3 }}
                                         >
                                             <ViewTab
                                                 testid="connector-connections-view-table"
-                                                label="Table"
+                                                label={translateInterface("Table")}
                                                 active={view === 'table'}
                                                 onClick={() => setView('table')}
                                                 icon={<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" /><path d="M1.5 6.5h13M6 6.5v7" stroke="currentColor" /></svg>}
                                             />
                                             <ViewTab
                                                 testid="connector-connections-view-cards"
-                                                label="Cards"
+                                                label={translateInterface("Cards")}
                                                 active={view === 'cards'}
                                                 onClick={() => setView('cards')}
                                                 icon={<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" /><rect x="8.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" /><rect x="1.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" /><rect x="8.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" /></svg>}
@@ -792,8 +788,7 @@ const errorVm: ConnectionVM | null =
                                                 cursor: canSyncAll ? 'pointer' : 'not-allowed',
                                             }}
                                         >
-                                            Sync all
-                                        </button>
+                                            {translateInterface("Sync all")}</button>
                                     </>
                                 )}
                             </div>
@@ -801,7 +796,7 @@ const errorVm: ConnectionVM | null =
                             {(connectionKind === 'all' || connectionKind === 'sources') && (
                                 <div style={connectionGroupStyle}>
                                     <div style={connectionGroupHeadingStyle}>
-                                        <span>Source accounts</span>
+                                        <span>{translateInterface("Source accounts")}</span>
                                         <span data-testid="connector-connections-count" style={connectionCountStyle}>{visible.length}</span>
                                     </div>
                                     {visible.length === 0 ? (

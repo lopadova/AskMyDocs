@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { useState, type ReactNode } from 'react';
@@ -14,6 +15,7 @@ import { getRelated, type RelatedNode } from './related.api';
  * real <button> with aria-expanded.
  */
 export function RelatedPanel({ projectKey, slugs }: { projectKey: string | null; slugs: string[] }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
 
     // Dedupe (a doc can be cited under multiple origins) and cap to the
@@ -49,7 +51,7 @@ export function RelatedPanel({ projectKey, slugs }: { projectKey: string | null;
             {open && (
                 <div data-testid="chat-related-body" style={{ marginTop: 6 }}>
                     {query.isLoading && (
-                        <p data-testid="chat-related-loading" data-state="loading" style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>Loading…</p>
+                        <p data-testid="chat-related-loading" data-state="loading" style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</p>
                     )}
                     {query.isError && (
                         <p data-testid="chat-related-error" data-state="error" role="alert" style={{ fontSize: 11.5, color: 'var(--err)' }}>

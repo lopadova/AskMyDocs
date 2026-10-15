@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { toAdminError } from '../shared/errors';
@@ -20,6 +21,7 @@ const STATE_OPTIONS: Array<{ value: CodeState; label: string }> = [
 ];
 
 export function CodesTab() {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const [campaignId, setCampaignId] = useState('');
     const [codeState, setCodeState] = useState('');
@@ -101,16 +103,14 @@ export function CodesTab() {
                                 onClick={() => handleRevoke(c.id)}
                                 style={dangerBtn}
                             >
-                                Confirm
-                            </button>
+                                {translateInterface("Confirm")}</button>
                             <button
                                 type="button"
                                 data-testid={`admin-invitations-codes-row-${c.id}-revoke-cancel`}
                                 onClick={() => setConfirming((prev) => ({ ...prev, [c.id]: false }))}
                                 style={neutralBtn}
                             >
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                         </span>
                     );
                 }
@@ -122,8 +122,7 @@ export function CodesTab() {
                         onClick={() => setConfirming((prev) => ({ ...prev, [c.id]: true }))}
                         style={neutralBtn}
                     >
-                        Revoke
-                    </button>
+                        {translateInterface("Revoke")}</button>
                 );
             },
         },

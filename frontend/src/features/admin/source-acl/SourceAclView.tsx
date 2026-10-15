@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,6 +32,7 @@ const QUERY_KEY = ['admin-source-acl'];
  * errors · R15 accessible controls.
  */
 export function SourceAclView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [status, setStatus] = useState<TriageStatus>('pending');
     const [actionError, setActionError] = useState<string | null>(null);
@@ -72,13 +74,9 @@ export function SourceAclView(): ReactNode {
             style={{ padding: 24 }}
         >
             <header style={{ marginBottom: 16 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Source Permissions</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Source Permissions")}</h1>
                 <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--fg-3)', maxWidth: 640 }}>
-                    When a connected source reports who may read a file, those permissions are mirrored
-                    onto the document and project membership stops being enough on its own. People the
-                    source named but this application could not recognise are listed below, so nobody
-                    loses access silently.
-                </p>
+                    {translateInterface("When a connected source reports who may read a file, those permissions are mirrored onto the document and project membership stops being enough on its own. People the source named but this application could not recognise are listed below, so nobody loses access silently.")}</p>
             </header>
 
             {summary && (
@@ -88,33 +86,32 @@ export function SourceAclView(): ReactNode {
                 >
                     <Stat
                         testId="admin-source-acl-restricted"
-                        label="Documents governed by their source"
+                        label={translateInterface("Documents governed by their source")}
                         value={summary.documents_restricted}
                     />
                     <Stat
                         testId="admin-source-acl-pending"
-                        label="Awaiting a decision"
+                        label={translateInterface("Awaiting a decision")}
                         value={summary.pending}
                     />
                     <Stat
                         testId="admin-source-acl-ignored"
-                        label="Dismissed"
+                        label={translateInterface("Dismissed")}
                         value={summary.ignored}
                     />
                 </dl>
             )}
 
             <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12 }}>
-                Showing
-                <select
+                {translateInterface("Showing")}<select
                     data-testid="admin-source-acl-status-filter"
-                    aria-label="Filter by decision status"
+                    aria-label={translateInterface("Filter by decision status")}
                     value={status}
                     onChange={(e) => setStatus(e.target.value as TriageStatus)}
                     style={{ fontSize: 11.5, padding: '2px 4px' }}
                 >
-                    <option value="pending">Awaiting a decision</option>
-                    <option value="ignored">Dismissed</option>
+                    <option value="pending">{translateInterface("Awaiting a decision")}</option>
+                    <option value="ignored">{translateInterface("Dismissed")}</option>
                 </select>
             </label>
 
@@ -126,14 +123,12 @@ export function SourceAclView(): ReactNode {
 
             {query.isLoading && (
                 <p data-testid="admin-source-acl-loading" style={{ fontSize: 12, color: 'var(--fg-3)' }}>
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
 
             {query.isError && (
                 <p data-testid="admin-source-acl-error" role="alert" style={{ color: 'var(--danger)', fontSize: 12 }}>
-                    Could not load source permissions.
-                </p>
+                    {translateInterface("Could not load source permissions.")}</p>
             )}
 
             {!query.isLoading && !query.isError && rows.length === 0 && (
@@ -148,12 +143,12 @@ export function SourceAclView(): ReactNode {
                 <table data-testid="admin-source-acl-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                         <tr style={{ textAlign: 'left', color: 'var(--fg-3)' }}>
-                            <th scope="col" style={{ padding: '6px 8px' }}>Named by the source</th>
-                            <th scope="col" style={{ padding: '6px 8px' }}>Kind</th>
-                            <th scope="col" style={{ padding: '6px 8px' }}>Document</th>
-                            <th scope="col" style={{ padding: '6px 8px' }}>Project</th>
-                            <th scope="col" style={{ padding: '6px 8px' }}>Last seen</th>
-                            <th scope="col" style={{ padding: '6px 8px' }}>Decision</th>
+                            <th scope="col" style={{ padding: '6px 8px' }}>{translateInterface("Named by the source")}</th>
+                            <th scope="col" style={{ padding: '6px 8px' }}>{translateInterface("Kind")}</th>
+                            <th scope="col" style={{ padding: '6px 8px' }}>{translateInterface("Document")}</th>
+                            <th scope="col" style={{ padding: '6px 8px' }}>{translateInterface("Project")}</th>
+                            <th scope="col" style={{ padding: '6px 8px' }}>{translateInterface("Last seen")}</th>
+                            <th scope="col" style={{ padding: '6px 8px' }}>{translateInterface("Decision")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -185,7 +180,7 @@ export function SourceAclView(): ReactNode {
                                         }
                                         style={{ fontSize: 11.5, padding: '2px 8px' }}
                                     >
-                                        {row.status === 'pending' ? 'Dismiss' : 'Reopen'}
+                                        {row.status === 'pending' ? translateInterface("Dismiss") : 'Reopen'}
                                     </button>
                                 </td>
                             </tr>

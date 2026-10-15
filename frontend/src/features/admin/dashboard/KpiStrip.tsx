@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { KpiCard, type KpiState } from './KpiCard';
 import type { AdminKpiOverview } from '../admin.api';
 
@@ -33,6 +34,7 @@ function formatMs(ms: number): string {
  * `total_chats` with the current window from the hook).
  */
 export function KpiStrip({ overview, state }: KpiStripProps) {
+    const { t: translateInterface } = useUiTranslation();
     const o = overview;
     return (
         <div
@@ -48,7 +50,7 @@ export function KpiStrip({ overview, state }: KpiStripProps) {
             <KpiCard
                 slug="docs"
                 icon="Book"
-                label="Docs"
+                label={translateInterface("Docs")}
                 value={o ? formatNumber(o.total_docs) : '—'}
                 hint={o && o.canonical_coverage_pct > 0 ? `${o.canonical_coverage_pct}% canonical` : null}
                 state={state}
@@ -64,28 +66,28 @@ export function KpiStrip({ overview, state }: KpiStripProps) {
             <KpiCard
                 slug="chats"
                 icon="Chat"
-                label="Chats (window)"
+                label={translateInterface("Chats (window)")}
                 value={o ? formatNumber(o.total_chats) : '—'}
                 state={state}
             />
             <KpiCard
                 slug="latency"
                 icon="Clock"
-                label="Avg latency"
+                label={translateInterface("Avg latency")}
                 value={o ? formatMs(o.avg_latency_ms) : '—'}
                 state={state}
             />
             <KpiCard
                 slug="cache"
                 icon="Sparkles"
-                label="Cache hit"
+                label={translateInterface("Cache hit")}
                 value={o ? `${o.cache_hit_rate.toFixed(1)}%` : '—'}
                 state={state}
             />
             <KpiCard
                 slug="coverage"
                 icon="Shield"
-                label="Canonical"
+                label={translateInterface("Canonical")}
                 value={o ? `${o.canonical_coverage_pct.toFixed(1)}%` : '—'}
                 hint={o ? `${formatNumber(o.pending_jobs)} pending · ${formatNumber(o.failed_jobs)} failed` : null}
                 state={state}

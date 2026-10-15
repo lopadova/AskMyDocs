@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminKbApi } from '../admin.api';
@@ -15,6 +16,7 @@ import { discardWikiPage, listWikiPages, promoteWikiPage, type WikiPage, type Wi
  * controls · R18 project options derived from the DB.
  */
 export function WikiExplorerView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [project, setProject] = useState<string>('');
     const [tier, setTier] = useState<WikiTier>('all');
@@ -78,44 +80,38 @@ export function WikiExplorerView(): ReactNode {
             style={{ padding: 24 }}
         >
             <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Wiki Explorer</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Wiki Explorer")}</h1>
                 <span style={{ flex: 1 }} />
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    Project
-                    <select
+                    {translateInterface("Project")}<select
                         data-testid="admin-wiki-explorer-project"
-                        aria-label="Select project to explore"
+                        aria-label={translateInterface("Select project to explore")}
                         value={project}
                         onChange={(e) => { setProject(e.target.value); setActionError(null); setNote(null); }}
                         style={{ fontSize: 11.5, padding: '2px 4px' }}
                     >
-                        <option value="">Select a project…</option>
+                        <option value="">{translateInterface("Select a project…")}</option>
                         {(projectsQuery.data?.projects ?? []).map((p) => (
                             <option key={p} value={p}>{p}</option>
                         ))}
                     </select>
                 </label>
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    Tier
-                    <select
+                    {translateInterface("Tier")}<select
                         data-testid="admin-wiki-explorer-tier"
-                        aria-label="Filter by provenance tier"
+                        aria-label={translateInterface("Filter by provenance tier")}
                         value={tier}
                         onChange={(e) => setTier(e.target.value as WikiTier)}
                         style={{ fontSize: 11.5, padding: '2px 4px' }}
                     >
-                        <option value="all">All</option>
-                        <option value="auto">Auto</option>
-                        <option value="human">Human</option>
+                        <option value="all">{translateInterface("All")}</option>
+                        <option value="auto">{translateInterface("Auto")}</option>
+                        <option value="human">{translateInterface("Human")}</option>
                     </select>
                 </label>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 680 }}>
-                Every typed wiki page in the project, with its backlink + outgoing-edge counts. Pages
-                compiled by the Auto-Wiki carry an <strong>auto</strong> badge and rank below human-vouched
-                content. <strong>Promote</strong> an auto page once reviewed; <strong>discard</strong> removes
-                it. Human pages are read-only here — the firewall never lets the explorer touch them.
-            </p>
+                {translateInterface("Every typed wiki page in the project, with its backlink + outgoing-edge counts. Pages compiled by the Auto-Wiki carry an") + " "}<strong>{translateInterface("auto")}</strong> {" " + translateInterface("badge and rank below human-vouched content.") + " "}<strong>{translateInterface("Promote")}</strong> {" " + translateInterface("an auto page once reviewed;") + " "}<strong>{translateInterface("discard")}</strong> {" " + translateInterface("removes it. Human pages are read-only here — the firewall never lets the explorer touch them.")}</p>
 
             {actionError && (
                 <p data-testid="admin-wiki-explorer-action-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
@@ -130,33 +126,31 @@ export function WikiExplorerView(): ReactNode {
 
             {project === '' && (
                 <p data-testid="admin-wiki-explorer-idle" data-state="idle" style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}>
-                    Select a project to explore its wiki pages.
-                </p>
+                    {translateInterface("Select a project to explore its wiki pages.")}</p>
             )}
             {project !== '' && pagesQuery.isLoading && (
-                <p data-testid="admin-wiki-explorer-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Loading pages…</p>
+                <p data-testid="admin-wiki-explorer-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading pages…")}</p>
             )}
             {project !== '' && !pagesQuery.isLoading && pagesQuery.isError && (
                 <p data-testid="admin-wiki-explorer-error" data-state="error" role="alert" style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}>
-                    Failed to load wiki pages. {pagesQuery.error instanceof Error ? pagesQuery.error.message : ''}
+                    {translateInterface("Failed to load wiki pages.") + " "}{pagesQuery.error instanceof Error ? pagesQuery.error.message : ''}
                 </p>
             )}
             {project !== '' && !pagesQuery.isLoading && !pagesQuery.isError && pages.length === 0 && (
                 <p data-testid="admin-wiki-explorer-empty" data-state="empty" style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}>
-                    No wiki pages for this project and tier.
-                </p>
+                    {translateInterface("No wiki pages for this project and tier.")}</p>
             )}
 
             {pages.length > 0 && (
                 <table data-testid="admin-wiki-explorer-table" data-state="ready" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                         <tr style={{ textAlign: 'left', color: 'var(--fg-3)' }}>
-                            <th style={{ padding: '4px 8px' }}>Page</th>
-                            <th style={{ padding: '4px 8px' }}>Type</th>
-                            <th style={{ padding: '4px 8px' }}>Tier</th>
-                            <th style={{ padding: '4px 8px' }}>Backlinks</th>
-                            <th style={{ padding: '4px 8px' }}>Outgoing</th>
-                            <th style={{ padding: '4px 8px' }}>Actions</th>
+                            <th style={{ padding: '4px 8px' }}>{translateInterface("Page")}</th>
+                            <th style={{ padding: '4px 8px' }}>{translateInterface("Type")}</th>
+                            <th style={{ padding: '4px 8px' }}>{translateInterface("Tier")}</th>
+                            <th style={{ padding: '4px 8px' }}>{translateInterface("Backlinks")}</th>
+                            <th style={{ padding: '4px 8px' }}>{translateInterface("Outgoing")}</th>
+                            <th style={{ padding: '4px 8px' }}>{translateInterface("Actions")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -177,6 +171,7 @@ export function WikiExplorerView(): ReactNode {
 }
 
 function PageRow({ page, pending, onPromote, onDiscard }: { page: WikiPage; pending: boolean; onPromote: () => void; onDiscard: () => void }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isAuto = page.generation_source === 'auto';
     return (
         <tr data-testid={`admin-wiki-explorer-row-${page.id}`} data-tier={page.generation_source} style={{ borderTop: '1px solid var(--panel-border)', color: 'var(--fg-2)' }}>
@@ -203,7 +198,7 @@ function PageRow({ page, pending, onPromote, onDiscard }: { page: WikiPage; pend
                             aria-label={`Promote ${page.slug} to the human tier`}
                             style={{ fontSize: 10.5, padding: '1px 8px', borderRadius: 5, cursor: pending ? 'wait' : 'pointer', border: '1px solid var(--accent, #6366f1)', color: 'var(--accent, #6366f1)', background: 'transparent' }}
                         >
-                            {pending ? '…' : 'Promote'}
+                            {pending ? '…' : translateInterface("Promote")}
                         </button>
                         <button
                             type="button"
@@ -217,7 +212,7 @@ function PageRow({ page, pending, onPromote, onDiscard }: { page: WikiPage; pend
                         </button>
                     </span>
                 ) : (
-                    <span data-testid={`admin-wiki-explorer-row-${page.id}-readonly`} style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>read-only</span>
+                    <span data-testid={`admin-wiki-explorer-row-${page.id}-readonly`} style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{translateInterface("read-only")}</span>
                 )}
             </td>
         </tr>

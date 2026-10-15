@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchWikiIndex, fetchWikiOperations, rebuildWikiIndex } from './wiki-indices.api';
@@ -12,6 +13,7 @@ import { fetchWikiIndex, fetchWikiOperations, rebuildWikiIndex } from './wiki-in
  * selector): the hub endpoint returns every project for the active tenant.
  */
 export function WikiIndicesView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [actionError, setActionError] = useState<string | null>(null);
     const [rebuildNote, setRebuildNote] = useState<string | null>(null);
@@ -60,24 +62,21 @@ export function WikiIndicesView(): ReactNode {
             style={{ padding: 24 }}
         >
             <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Wiki Indices</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Wiki Indices")}</h1>
                 <span style={{ flex: 1 }} />
                 <button
                     type="button"
                     data-testid="admin-wiki-indices-rebuild"
                     onClick={() => rebuildMutation.mutate()}
                     disabled={rebuildMutation.isPending}
-                    aria-label="Rebuild every project index and the tenant hub"
+                    aria-label={translateInterface("Rebuild every project index and the tenant hub")}
                     style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: rebuildMutation.isPending ? 'wait' : 'pointer', border: '1px solid var(--accent, #6366f1)', color: 'var(--accent, #6366f1)', background: 'transparent' }}
                 >
                     {rebuildMutation.isPending ? 'Rebuilding…' : 'Rebuild indices'}
                 </button>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 680 }}>
-                The Auto-Wiki map for this tenant: a roll-up of every project's typed pages and
-                central concepts, plus an append-only log of every auto-wiki operation. Rebuilding
-                recomputes each project index and the cross-project hub from the current corpus.
-            </p>
+                {translateInterface("The Auto-Wiki map for this tenant: a roll-up of every project's typed pages and central concepts, plus an append-only log of every auto-wiki operation. Rebuilding recomputes each project index and the cross-project hub from the current corpus.")}</p>
 
             {actionError && (
                 <p data-testid="admin-wiki-indices-action-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
@@ -91,36 +90,35 @@ export function WikiIndicesView(): ReactNode {
             )}
 
             {indexQuery.isLoading && (
-                <p data-testid="admin-wiki-indices-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Loading indices…</p>
+                <p data-testid="admin-wiki-indices-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading indices…")}</p>
             )}
             {!indexQuery.isLoading && indexQuery.isError && (
                 <p data-testid="admin-wiki-indices-error" data-state="error" role="alert" style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}>
-                    Failed to load the wiki indices. {indexQuery.error instanceof Error ? indexQuery.error.message : ''}
+                    {translateInterface("Failed to load the wiki indices.") + " "}{indexQuery.error instanceof Error ? indexQuery.error.message : ''}
                 </p>
             )}
             {isEmpty && (
                 <p data-testid="admin-wiki-indices-empty" data-state="empty" style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}>
-                    No indices yet — rebuild to compile the wiki map for this tenant.
-                </p>
+                    {translateInterface("No indices yet — rebuild to compile the wiki map for this tenant.")}</p>
             )}
 
             {!isEmpty && !indexQuery.isLoading && !indexQuery.isError && (
                 <div data-testid="admin-wiki-indices-hub" data-state="ready">
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                        <Stat testid="admin-wiki-indices-stat-projects" label="Projects" value={hub?.project_count ?? projects.length} />
-                        <Stat testid="admin-wiki-indices-stat-pages" label="Total pages" value={hub?.total_pages ?? projects.reduce((s, p) => s + p.payload.page_total, 0)} />
-                        <Stat testid="admin-wiki-indices-stat-concepts" label="Total concepts" value={hub?.total_concepts ?? projects.reduce((s, p) => s + p.payload.concept_count, 0)} />
+                        <Stat testid="admin-wiki-indices-stat-projects" label={translateInterface("Projects")} value={hub?.project_count ?? projects.length} />
+                        <Stat testid="admin-wiki-indices-stat-pages" label={translateInterface("Total pages")} value={hub?.total_pages ?? projects.reduce((s, p) => s + p.payload.page_total, 0)} />
+                        <Stat testid="admin-wiki-indices-stat-concepts" label={translateInterface("Total concepts")} value={hub?.total_concepts ?? projects.reduce((s, p) => s + p.payload.concept_count, 0)} />
                     </div>
 
                     {projects.length > 0 && (
                         <table data-testid="admin-wiki-indices-projects" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 20 }}>
                             <thead>
                                 <tr style={{ textAlign: 'left', color: 'var(--fg-3)' }}>
-                                    <th style={{ padding: '4px 8px' }}>Project</th>
-                                    <th style={{ padding: '4px 8px' }}>Pages</th>
-                                    <th style={{ padding: '4px 8px' }}>Concepts</th>
-                                    <th style={{ padding: '4px 8px' }}>Auto</th>
-                                    <th style={{ padding: '4px 8px' }}>Human</th>
+                                    <th style={{ padding: '4px 8px' }}>{translateInterface("Project")}</th>
+                                    <th style={{ padding: '4px 8px' }}>{translateInterface("Pages")}</th>
+                                    <th style={{ padding: '4px 8px' }}>{translateInterface("Concepts")}</th>
+                                    <th style={{ padding: '4px 8px' }}>{translateInterface("Auto")}</th>
+                                    <th style={{ padding: '4px 8px' }}>{translateInterface("Human")}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -157,19 +155,18 @@ function Stat({ testid, label, value }: { testid: string; label: string; value: 
 }
 
 function OperationLog({ loading, error, operations }: { loading: boolean; error: boolean; operations: Array<{ id: number; project_key: string; event_type: string; slug: string | null; created_at: string | null }> }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <section data-testid="admin-wiki-indices-operations" style={{ marginTop: 8 }}>
-            <h2 style={{ fontSize: 13, color: 'var(--fg-0)', margin: '0 0 6px' }}>Recent operations</h2>
-            {loading && <p data-testid="admin-wiki-indices-operations-loading" style={{ color: 'var(--fg-3)', fontSize: 12 }}>Loading log…</p>}
+            <h2 style={{ fontSize: 13, color: 'var(--fg-0)', margin: '0 0 6px' }}>{translateInterface("Recent operations")}</h2>
+            {loading && <p data-testid="admin-wiki-indices-operations-loading" style={{ color: 'var(--fg-3)', fontSize: 12 }}>{translateInterface("Loading log…")}</p>}
             {!loading && error && (
                 <p data-testid="admin-wiki-indices-operations-error" role="alert" style={{ color: 'var(--err)', fontSize: 12 }}>
-                    Failed to load the operation log.
-                </p>
+                    {translateInterface("Failed to load the operation log.")}</p>
             )}
             {!loading && !error && operations.length === 0 && (
                 <p data-testid="admin-wiki-indices-operations-empty" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    No auto-wiki operations recorded yet.
-                </p>
+                    {translateInterface("No auto-wiki operations recorded yet.")}</p>
             )}
             {!loading && !error && operations.length > 0 && (
                 <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--fg-2)', fontSize: 12 }}>

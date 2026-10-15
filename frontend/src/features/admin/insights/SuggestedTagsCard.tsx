@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { SuggestedTagsRow } from './insights.api';
 
 export interface SuggestedTagsCardProps {
@@ -5,6 +6,7 @@ export interface SuggestedTagsCardProps {
 }
 
 export function SuggestedTagsCard({ items }: SuggestedTagsCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const state = items.length === 0 ? 'empty' : 'ready';
     return (
         <div
@@ -20,14 +22,13 @@ export function SuggestedTagsCard({ items }: SuggestedTagsCardProps) {
                 gap: 10,
             }}
         >
-            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>Suggested tags</h2>
+            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>{translateInterface("Suggested tags")}</h2>
             {state === 'empty' ? (
                 <div
                     data-testid="insight-card-suggested-tags-empty"
                     style={{ fontSize: 12, color: 'var(--fg-3)' }}
                 >
-                    No tag proposals in the latest snapshot.
-                </div>
+                    {translateInterface("No tag proposals in the latest snapshot.")}</div>
             ) : (
                 <ul
                     style={{

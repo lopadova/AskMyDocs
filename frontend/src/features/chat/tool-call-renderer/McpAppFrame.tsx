@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState } from 'react';
 import type {
     AppBridge,
@@ -59,6 +60,7 @@ interface McpAppFrameProps {
 }
 
 export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameProps) {
+    const { t: translateInterface } = useUiTranslation();
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const bridgeRef = useRef<AppBridge | null>(null);
     const onSendMessageRef = useRef(onSendMessage);
@@ -382,7 +384,7 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                     data-ready={ready || undefined}
                     data-error={error ? true : undefined}
                 >
-                    {loading ? 'Loading' : error ? 'Error' : ready ? 'Ready' : resource?.available ? 'Starting' : 'Unavailable'}
+                    {loading ? 'Loading' : error ? translateInterface("Error") : ready ? 'Ready' : resource?.available ? 'Starting' : 'Unavailable'}
                 </span>
                 {resource?.advanced_enabled && displayMode === 'inline' ? (
                     <Button
@@ -471,7 +473,7 @@ export function McpAppFrame({ app, conversationId, onSendMessage }: McpAppFrameP
                         : null}
                     {pendingInteraction.kind === 'confirmation_required' ? (
                         <div className="mcp-app-interaction-actions">
-                            <Button variant="primary" size="sm" busy={submitting} data-testid={`mcp-app-${app.id}-confirm`} onClick={() => void respondToInteraction({ confirmed: true })}>Confirm</Button>
+                            <Button variant="primary" size="sm" busy={submitting} data-testid={`mcp-app-${app.id}-confirm`} onClick={() => void respondToInteraction({ confirmed: true })}>{translateInterface("Confirm")}</Button>
                             <Button variant="secondary" size="sm" disabled={submitting} data-testid={`mcp-app-${app.id}-decline`} onClick={() => void respondToInteraction({ confirmed: false })}>Decline</Button>
                         </div>
                     ) : (

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { CoverageGap } from './insights.api';
 
 export interface CoverageGapsCardProps {
@@ -5,6 +6,7 @@ export interface CoverageGapsCardProps {
 }
 
 export function CoverageGapsCard({ items }: CoverageGapsCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const state = items.length === 0 ? 'empty' : 'ready';
     return (
         <div
@@ -20,14 +22,13 @@ export function CoverageGapsCard({ items }: CoverageGapsCardProps) {
                 gap: 10,
             }}
         >
-            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>Coverage gaps</h2>
+            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>{translateInterface("Coverage gaps")}</h2>
             {state === 'empty' ? (
                 <div
                     data-testid="insight-card-coverage-gaps-empty"
                     style={{ fontSize: 12, color: 'var(--fg-3)' }}
                 >
-                    No coverage gaps detected.
-                </div>
+                    {translateInterface("No coverage gaps detected.")}</div>
             ) : (
                 <ul
                     style={{
@@ -60,8 +61,7 @@ export function CoverageGapsCard({ items }: CoverageGapsCardProps) {
                                     fontFamily: 'var(--font-mono)',
                                 }}
                             >
-                                {gap.zero_citation_count} zero-citation · {gap.low_confidence_count} low-confidence
-                            </div>
+                                {gap.zero_citation_count} {" " + translateInterface("zero-citation ·") + " "}{gap.low_confidence_count} {" " + translateInterface("low-confidence")}</div>
                             {gap.sample_questions.length > 0 ? (
                                 <ul
                                     style={{

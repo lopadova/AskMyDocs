@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useQuery } from '@tanstack/react-query';
 
 import { AdminShell } from '../shell/AdminShell';
@@ -30,6 +31,7 @@ import { AI_ACT_DOMAINS, getAiActOverview, type AiActDomainResult } from './ai-a
  * X-Tenant-Id like everything else.
  */
 export function AiActComplianceView() {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: ['ai-act-overview'],
         queryFn: getAiActOverview,
@@ -74,8 +76,7 @@ export function AiActComplianceView() {
                         data-testid="admin-ai-act-compliance-title"
                         style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}
                     >
-                        AI Act compliance
-                    </h1>
+                        {translateInterface("AI Act compliance")}</h1>
                     <span
                         data-testid="admin-ai-act-compliance-source"
                         style={{
@@ -109,15 +110,13 @@ export function AiActComplianceView() {
                             opacity: query.isFetching ? 0.6 : 1,
                         }}
                     >
-                        {query.isFetching ? 'Refreshing…' : 'Refresh'}
+                        {query.isFetching ? 'Refreshing…' : translateInterface("Refresh")}
                     </button>
                 </header>
 
                 <p style={{ margin: 0, padding: '12px 22px 0', color: 'var(--fg-2)', fontSize: 13, maxWidth: 760 }}>
-                    Live counts across the EU AI Act compliance registers. Records are created and
-                    transitioned through the <code style={{ fontFamily: 'var(--font-mono)' }}>/api/admin/ai-act-compliance/*</code>{' '}
-                    endpoints (DSAR intake, incident reporting, consent grants, bias capture, human-review queue).
-                </p>
+                    {translateInterface("Live counts across the EU AI Act compliance registers. Records are created and transitioned through the") + " "}<code style={{ fontFamily: 'var(--font-mono)' }}>/api/admin/ai-act-compliance/*</code>{' '}
+                    {translateInterface("endpoints (DSAR intake, incident reporting, consent grants, bias capture, human-review queue).")}</p>
 
                 {query.isError && (
                     <div
@@ -125,16 +124,15 @@ export function AiActComplianceView() {
                         role="alert"
                         style={{ margin: '16px 22px', color: 'var(--danger-fg)', fontSize: 13 }}
                     >
-                        Failed to load AI Act compliance data. Confirm the{' '}
+                        {translateInterface("Failed to load AI Act compliance data. Confirm the")}{' '}
                         <code style={{ fontFamily: 'var(--font-mono)' }}>padosoft/laravel-ai-act-compliance</code>{' '}
-                        package is installed and that your role is granted the{' '}
-                        <code>viewAiActCompliance</code> gate.
-                    </div>
+                        {translateInterface("package is installed and that your role is granted the")}{' '}
+                        <code>viewAiActCompliance</code> {" " + translateInterface("gate.")}</div>
                 )}
 
                 <div
                     role="list"
-                    aria-label="Compliance registers"
+                    aria-label={translateInterface("Compliance registers")}
                     style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
@@ -201,8 +199,7 @@ export function AiActComplianceView() {
                                 )}
                                 {state === 'ready' && result?.count === 0 && (
                                     <span style={{ marginTop: 'auto', fontSize: 11.5, color: 'var(--fg-3)' }}>
-                                        None recorded yet.
-                                    </span>
+                                        {translateInterface("None recorded yet.")}</span>
                                 )}
                             </article>
                         );

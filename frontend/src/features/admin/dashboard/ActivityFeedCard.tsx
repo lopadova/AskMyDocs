@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { AdminActivityRow } from '../admin.api';
 import type { ChartState } from './ChartCard';
 
@@ -25,6 +26,7 @@ function formatRelative(iso: string): string {
 }
 
 export function ActivityFeedCard({ rows, state }: ActivityFeedCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const hasData = rows.length > 0;
     const resolvedState: ChartState = state === 'ready' && !hasData ? 'empty' : state;
 
@@ -50,18 +52,16 @@ export function ActivityFeedCard({ rows, state }: ActivityFeedCardProps) {
                     color: 'var(--fg-0)',
                 }}
             >
-                Activity feed
-            </h3>
+                {translateInterface("Activity feed")}</h3>
             {resolvedState === 'empty' ? (
                 <div
                     data-testid="activity-feed-empty"
                     style={{ color: 'var(--fg-3)', fontSize: 12, fontFamily: 'var(--font-mono)' }}
                 >
-                    No recent activity.
-                </div>
+                    {translateInterface("No recent activity.")}</div>
             ) : resolvedState === 'loading' ? (
                 <div style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    <span className="shimmer">loading…</span>
+                    <span className="shimmer">{translateInterface("loading…")}</span>
                 </div>
             ) : (
                 <ul

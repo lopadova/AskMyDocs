@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,6 +31,7 @@ import { toAdminError } from '../shared/errors';
  * mount it bare (mirrors SynonymsList / KbInsightsView).
  */
 export function ProjectsList(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [filter, setFilter] = useState('');
     const [editing, setEditing] = useState<AdminProject | null>(null);
@@ -97,18 +99,17 @@ export function ProjectsList(): ReactNode {
     return (
         <div data-testid="admin-projects-view" style={{ padding: 24 }}>
                 <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                    <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Projects</h1>
+                    <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Projects")}</h1>
                     <span data-testid="admin-projects-count" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                        {projects.length} total
-                    </span>
+                        {projects.length} {" " + translateInterface("total")}</span>
                     <span style={{ flex: 1 }} />
                     <input
                         data-testid="admin-projects-filter"
                         type="text"
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
-                        placeholder="Filter by name / key / description"
-                        aria-label="Filter projects"
+                        placeholder={translateInterface("Filter by name / key / description")}
+                        aria-label={translateInterface("Filter projects")}
                         style={{
                             padding: '5px 10px',
                             borderRadius: 6,
@@ -136,14 +137,12 @@ export function ProjectsList(): ReactNode {
                             cursor: 'pointer',
                         }}
                     >
-                        + New project
-                    </button>
+                        {translateInterface("+ New project")}</button>
                 </header>
 
                 {projectsQuery.isLoading && (
                     <p data-testid="admin-projects-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
-                        Loading…
-                    </p>
+                        {translateInterface("Loading…")}</p>
                 )}
                 {projectsQuery.isError && (
                     <p data-testid="admin-projects-error" data-state="error" role="alert" style={{ color: 'var(--err)' }}>
@@ -162,13 +161,11 @@ export function ProjectsList(): ReactNode {
                             borderRadius: 8,
                         }}
                     >
-                        No projects yet. Click <code>+ New project</code> to create one.
-                    </p>
+                        {translateInterface("No projects yet. Click") + " "}<code>{translateInterface("+ New project")}</code> {" " + translateInterface("to create one.")}</p>
                 )}
                 {!projectsQuery.isLoading && projects.length > 0 && filtered.length === 0 && (
                     <p data-testid="admin-projects-no-match" style={{ color: 'var(--fg-3)' }}>
-                        No projects match the filter.
-                    </p>
+                        {translateInterface("No projects match the filter.")}</p>
                 )}
                 {filtered.length > 0 && (
                     <table
@@ -186,12 +183,12 @@ export function ProjectsList(): ReactNode {
                                     letterSpacing: '.04em',
                                 }}
                             >
-                                <th style={cellStyle}>Name</th>
+                                <th style={cellStyle}>{translateInterface("Name")}</th>
                                 <th style={cellStyle}>Key</th>
-                                <th style={cellStyle}>Docs</th>
-                                <th style={cellStyle}>Members</th>
-                                <th style={cellStyle}>Description</th>
-                                <th style={{ ...cellStyle, textAlign: 'right' }}>Actions</th>
+                                <th style={cellStyle}>{translateInterface("Docs")}</th>
+                                <th style={cellStyle}>{translateInterface("Members")}</th>
+                                <th style={cellStyle}>{translateInterface("Description")}</th>
+                                <th style={{ ...cellStyle, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -242,8 +239,7 @@ export function ProjectsList(): ReactNode {
                                                         }}
                                                         style={iconButtonStyle()}
                                                     >
-                                                        Edit
-                                                    </button>
+                                                        {translateInterface("Edit")}</button>
                                                     <button
                                                         type="button"
                                                         data-testid={`admin-project-row-${project.id}-delete`}
@@ -253,8 +249,7 @@ export function ProjectsList(): ReactNode {
                                                         }
                                                         style={iconButtonStyle()}
                                                     >
-                                                        Delete
-                                                    </button>
+                                                        {translateInterface("Delete")}</button>
                                                 </>
                                             )}
                                             {isConfirming && (
@@ -268,8 +263,7 @@ export function ProjectsList(): ReactNode {
                                                         }}
                                                         style={confirmButtonStyle('danger')}
                                                     >
-                                                        Confirm
-                                                    </button>
+                                                        {translateInterface("Confirm")}</button>
                                                     <button
                                                         type="button"
                                                         data-testid={`admin-project-row-${project.id}-delete-cancel`}
@@ -278,8 +272,7 @@ export function ProjectsList(): ReactNode {
                                                         }
                                                         style={confirmButtonStyle('neutral')}
                                                     >
-                                                        Cancel
-                                                    </button>
+                                                        {translateInterface("Cancel")}</button>
                                                 </>
                                             )}
                                             {rowError[project.id] && (

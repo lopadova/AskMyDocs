@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
@@ -11,6 +12,7 @@ const hierarchy = [
 ];
 
 export function ButtonSystemDemo(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [view, setView] = useState<'overview' | 'details' | 'activity'>('overview');
 
     return (
@@ -108,10 +110,10 @@ export function ButtonSystemDemo(): ReactNode {
                     </DemoCard>
                     <DemoCard label="Icons">
                         <div className="button-demo-row">
-                            <Button leadingIcon={<Icon.Plus size={14} />}>New chat</Button>
+                            <Button leadingIcon={<Icon.Plus size={14} />}>{translateInterface("New chat")}</Button>
                             <Button trailingIcon={<Icon.Chevron size={13} />}>Continue</Button>
                             <Button iconOnly aria-label="More actions"><Icon.MoreH size={14} /></Button>
-                            <Button iconOnly variant="quiet" aria-label="Search"><Icon.Search size={14} /></Button>
+                            <Button iconOnly variant="quiet" aria-label={translateInterface("Search")}><Icon.Search size={14} /></Button>
                         </div>
                     </DemoCard>
                     <DemoCard label="Technical labels">
@@ -227,7 +229,7 @@ export function ButtonSystemDemo(): ReactNode {
                         <AlertIcon>
                             <Icon.Alert size={16} />
                         </AlertIcon>
-                        <AlertTitle>Request not completed</AlertTitle>
+                        <AlertTitle>{translateInterface("Request not completed")}</AlertTitle>
                         <AlertDescription>Open the details to understand what happened and try again.</AlertDescription>
                     </Alert>
                 </div>

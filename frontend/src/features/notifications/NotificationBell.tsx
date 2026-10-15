@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi, type NotificationRow } from './notifications.api';
@@ -39,6 +40,7 @@ import { Icon } from '../../components/Icons';
  * or refetching (Copilot iter-2 #7).
  */
 export function NotificationBell(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [open, setOpen] = useState(false);
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
@@ -106,7 +108,7 @@ export function NotificationBell(): ReactNode {
                 data-testid="notif-bell"
                 data-state={state}
                 aria-busy={isBusy}
-                aria-label={`Notifications (${unread} unread)`}
+                aria-label={translateInterface('Notifications ({count} unread)', { count: unread })}
                 aria-expanded={open}
                 aria-haspopup="dialog"
                 onClick={() => setOpen((o) => !o)}
@@ -131,8 +133,7 @@ export function NotificationBell(): ReactNode {
                     onClick={() => void countQuery.refetch()}
                     className="notification-bell-retry"
                 >
-                    Retry
-                </Button>
+                    {translateInterface("Retry")}</Button>
             )}
 
             {open && (
@@ -140,14 +141,14 @@ export function NotificationBell(): ReactNode {
                     data-testid="notif-bell-dropdown"
                     data-state={dropdownState}
                     role="dialog"
-                    aria-label="Notifications"
+                    aria-label={translateInterface("Notifications")}
                     aria-busy={listQuery.isFetching}
                     className="notification-popover"
                 >
                     <div className="notification-popover-header">
                         <div>
                             <span className="notification-popover-eyebrow">Workspace</span>
-                            <strong>Notifications</strong>
+                            <strong>{translateInterface("Notifications")}</strong>
                         </div>
                         <Button
                             variant="quiet"
@@ -185,16 +186,14 @@ export function NotificationBell(): ReactNode {
                                     markAllReadMut.reset();
                                 }}
                             >
-                                Dismiss
-                            </Button>
+                                {translateInterface("Dismiss")}</Button>
                         </div>
                     )}
 
                     <ul className="notification-popover-list">
                         {listQuery.isLoading && (
                             <li data-testid="notif-bell-loading" className="notification-popover-state">
-                                Loading…
-                            </li>
+                                {translateInterface("Loading…")}</li>
                         )}
                         {listQuery.isError && (
                             <li
@@ -209,8 +208,7 @@ export function NotificationBell(): ReactNode {
                                     data-testid="notif-bell-list-retry"
                                     onClick={() => void listQuery.refetch()}
                                 >
-                                    Retry
-                                </Button>
+                                    {translateInterface("Retry")}</Button>
                             </li>
                         )}
                         {!listQuery.isLoading && !listQuery.isError && (listQuery.data?.data ?? []).length === 0 && (

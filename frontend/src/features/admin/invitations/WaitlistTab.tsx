@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useWaitlist } from './use-invitations';
 import type { WaitlistEntry, WaitlistStatus } from './invitations.api';
@@ -15,6 +16,7 @@ const STATUS_OPTIONS: Array<{ value: WaitlistStatus; label: string }> = [
 ];
 
 export function WaitlistTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [status, setStatus] = useState('');
 
     const query = useWaitlist({ status: (status || null) as WaitlistStatus | null });
@@ -37,7 +39,7 @@ export function WaitlistTab() {
                 <SelectFilter
                     id="invitations-waitlist-status"
                     testid="admin-invitations-waitlist-filter-status"
-                    label="Status"
+                    label={translateInterface("Status")}
                     value={status}
                     onChange={setStatus}
                     options={STATUS_OPTIONS}

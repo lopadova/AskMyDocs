@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { toAdminError } from '../shared/errors';
 import { useToast } from '../shared/Toast';
@@ -43,6 +44,7 @@ const numOrNull = (raw: string): number | null => {
 };
 
 export function CampaignDrawer({ campaign, tenants, onClose }: CampaignDrawerProps) {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const isEdit = campaign !== null;
     const create = useCreateCampaign();
@@ -146,7 +148,7 @@ export function CampaignDrawer({ campaign, tenants, onClose }: CampaignDrawerPro
                     />
                 </Field>
 
-                <Field id="campaign-name" label="Name" error={fieldErrors.name}>
+                <Field id="campaign-name" label={translateInterface("Name")} error={fieldErrors.name}>
                     <input
                         id="campaign-name"
                         data-testid="admin-invitations-campaign-name"
@@ -183,7 +185,7 @@ export function CampaignDrawer({ campaign, tenants, onClose }: CampaignDrawerPro
                         </select>
                     </Field>
 
-                    <Field id="campaign-status" label="Status" error={fieldErrors.status}>
+                    <Field id="campaign-status" label={translateInterface("Status")} error={fieldErrors.status}>
                         <select
                             id="campaign-status"
                             data-testid="admin-invitations-campaign-status"
@@ -265,7 +267,7 @@ export function CampaignDrawer({ campaign, tenants, onClose }: CampaignDrawerPro
                     disabled={pending}
                     style={{ ...drawerPrimaryBtn, opacity: pending ? 0.6 : 1 }}
                 >
-                    {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create campaign'}
+                    {pending ? 'Saving…' : isEdit ? translateInterface("Save changes") : 'Create campaign'}
                 </button>
             </form>
         </Drawer>

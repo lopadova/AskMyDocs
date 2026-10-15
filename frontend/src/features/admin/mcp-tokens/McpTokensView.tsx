@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
@@ -22,6 +23,7 @@ interface CreateTokenResponse {
 }
 
 export function McpTokensView() {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [label, setLabel] = useState('');
     const [plainToken, setPlainToken] = useState<string | null>(null);
@@ -60,10 +62,9 @@ export function McpTokensView() {
     return (
         <section data-testid="admin-mcp-tokens-view" style={{ display: 'grid', gap: 14 }}>
             <header>
-                <h1 style={{ margin: 0, fontSize: 22 }}>MCP Tenant Tokens</h1>
+                <h1 style={{ margin: 0, fontSize: 22 }}>{translateInterface("MCP Tenant Tokens")}</h1>
                 <p style={{ marginTop: 6, color: 'var(--fg-2)' }}>
-                    Mint one-time display tokens for external MCP consumers and revoke when needed.
-                </p>
+                    {translateInterface("Mint one-time display tokens for external MCP consumers and revoke when needed.")}</p>
             </header>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -71,7 +72,7 @@ export function McpTokensView() {
                     data-testid="admin-mcp-tokens-label"
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
-                    placeholder="Token label (e.g. CI Agent)"
+                    placeholder={translateInterface("Token label (e.g. CI Agent)")}
                     style={{ minWidth: 320 }}
                 />
                 <button
@@ -80,13 +81,12 @@ export function McpTokensView() {
                     disabled={label.trim() === '' || createToken.isPending}
                     onClick={() => void createToken.mutateAsync()}
                 >
-                    Mint token
-                </button>
+                    {translateInterface("Mint token")}</button>
             </div>
 
             {plainToken && (
                 <div data-testid="admin-mcp-tokens-plain" style={{ padding: 10, border: '1px solid var(--hairline)' }}>
-                    <strong>Copy now:</strong> <code>{plainToken}</code>
+                    <strong>{translateInterface("Copy now:")}</strong> <code>{plainToken}</code>
                 </div>
             )}
 
@@ -101,12 +101,12 @@ export function McpTokensView() {
                             <div><strong>{row.label}</strong></div>
                             <div style={{ color: 'var(--fg-2)' }}>••••{row.token_last4}</div>
                             <div style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                                scopes: {(row.scopes ?? []).join(', ') || '(none)'}
+                                {translateInterface("scopes:") + " "}{(row.scopes ?? []).join(', ') || '(none)'}
                             </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             {row.revoked_at ? (
-                                <span data-testid={`admin-mcp-tokens-revoked-${row.id}`}>Revoked</span>
+                                <span data-testid={`admin-mcp-tokens-revoked-${row.id}`}>{translateInterface("Revoked")}</span>
                             ) : (
                                 <button
                                     type="button"
@@ -114,8 +114,7 @@ export function McpTokensView() {
                                     disabled={revoke.isPending}
                                     onClick={() => void revoke.mutateAsync(row.id)}
                                 >
-                                    Revoke
-                                </button>
+                                    {translateInterface("Revoke")}</button>
                             )}
                         </div>
                     </div>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ban, Bot, CheckCircle2, FileJson, Palette, RotateCcw, Upload } from 'lucide-react';
@@ -136,6 +137,7 @@ export function WidgetAppearanceDialog({
     initialTheme,
     initialIntro,
 }: WidgetAppearanceDialogProps) {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [theme, setTheme] = useState<WidgetTheme>(() => sanitizeTheme(initialTheme));
     const [intro, setIntro] = useState<WidgetIntro>(() => sanitizeIntro(initialIntro ?? DEFAULT_INTRO));
@@ -408,7 +410,7 @@ export function WidgetAppearanceDialog({
                 <div className="grid gap-1.5">
                     <SelectField
                         id="mode"
-                        label="Widget type"
+                        label={translateInterface("Widget type")}
                         value={theme.mode}
                         options={MODE_OPTIONS}
                         onChange={(v) => set({ mode: v as WidgetMode })}
@@ -633,12 +635,12 @@ export function WidgetAppearanceDialog({
                                     onChange={(value) => setWelcome({ icon: value as WidgetIntroIcon })}
                                 />
                                 <TextField id="intro-eyebrow" label="Eyebrow" value={intro.eyebrow} placeholder="Documentation assistant" onChange={(value) => setWelcome({ eyebrow: value })} />
-                                <TextField id="intro-title" label="Title" value={intro.title} placeholder="How can I help?" onChange={(value) => setWelcome({ title: value })} />
+                                <TextField id="intro-title" label={translateInterface("Title")} value={intro.title} placeholder="How can I help?" onChange={(value) => setWelcome({ title: value })} />
                                 <TextField id="intro-subtitle" label="Subtitle" value={intro.subtitle} placeholder="Answers from official sources" onChange={(value) => setWelcome({ subtitle: value })} />
                                 <TextField id="intro-image-url" label="Image URL (https, optional)" value={intro.imageUrl} placeholder="https://cdn.example.com/assistant.webp" onChange={(value) => setWelcome({ imageUrl: value })} />
                                 <TextField id="intro-image-alt" label="Image alternative text" value={intro.imageAlt} placeholder="Product assistant" onChange={(value) => setWelcome({ imageAlt: value })} />
                             </div>
-                            <FieldRow id="intro-body" label="Description">
+                            <FieldRow id="intro-body" label={translateInterface("Description")}>
                                 <Textarea
                                     id="intro-body"
                                     data-testid="admin-widget-appearance-field-intro-body"
@@ -724,8 +726,7 @@ export function WidgetAppearanceDialog({
                     </Button>
                     <div className="flex gap-2">
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                            Cancel
-                        </Button>
+                            {translateInterface("Cancel")}</Button>
                         <Button
                             type="button"
                             data-testid="admin-widget-appearance-save"

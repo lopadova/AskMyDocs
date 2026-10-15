@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { ColumnResizeHandle, useFileColumnWidth } from './ColumnResizeHandle';
 import { BookOpen } from 'lucide-react';
 import { Button } from '../../../components/Button';
@@ -64,6 +65,7 @@ function syncUrl(docId: number | null, tab: KbDetailTab) {
 }
 
 export function KbView() {
+    const { t: translateInterface } = useUiTranslation();
     const initial = useMemo(parseInitialUrl, []);
     const column = useFileColumnWidth();
     const [search, setSearch] = useState('');
@@ -167,8 +169,7 @@ export function KbView() {
                                 color: 'var(--fg-0)',
                             }}
                         >
-                            Knowledge Base
-                        </h1>
+                            {translateInterface("Knowledge Base")}</h1>
                         <p
                             style={{
                                 fontSize: 12.5,
@@ -176,8 +177,7 @@ export function KbView() {
                                 margin: 0,
                             }}
                         >
-                            Browse the canonical + raw document tree. Select a doc to preview it.
-                        </p>
+                            {translateInterface("Browse the canonical + raw document tree. Select a doc to preview it.")}</p>
                         </div>
                     </div>
                     <div
@@ -196,11 +196,10 @@ export function KbView() {
                                 letterSpacing: '0.04em',
                             }}
                         >
-                            Project
-                        </label>
+                            {translateInterface("Project")}</label>
                         <select
                             data-testid="kb-project-select"
-                            aria-label="Project"
+                            aria-label={translateInterface("Project")}
                             value={project}
                             onChange={(e) => { setProject(e.target.value); setCursors([0]); }}
                             style={{
@@ -212,7 +211,7 @@ export function KbView() {
                                 color: 'var(--fg-1)',
                             }}
                         >
-                            <option value="">All projects</option>
+                            <option value="">{translateInterface("All projects")}</option>
                             {projectOptions.map((key) => (
                                 <option key={key} value={key}>
                                     {key}
@@ -223,14 +222,13 @@ export function KbView() {
                             variant="primary" size="sm"
                             leadingIcon={<Icon.Upload size={14} />}
                             data-testid="kb-upload-open"
-                            aria-label="Upload documents"
+                            aria-label={translateInterface("Upload documents")}
                             onClick={() => {
                                 setUploadSeed({ projectKey: project || null, subPath: '', files: [] });
                                 setUploadOpen(true);
                             }}
                         >
-                            Upload
-                        </Button>
+                            {translateInterface("Upload")}</Button>
                     </div>
                 </div>
 
@@ -314,6 +312,7 @@ export function KbView() {
 }
 
 function EmptyDetail() {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             style={{
@@ -330,16 +329,15 @@ function EmptyDetail() {
         >
             <Icon.File size={28} />
             <div style={{ fontSize: 13, color: 'var(--fg-2)' }}>
-                Select a document to view its details
-            </div>
+                {translateInterface("Select a document to view its details")}</div>
             <div style={{ fontSize: 11, color: 'var(--fg-3)', maxWidth: 360 }}>
-                Explore the document tree or search by file name to start reading.
-            </div>
+                {translateInterface("Explore the document tree or search by file name to start reading.")}</div>
         </div>
     );
 }
 
 function DocSummary({ node }: { node: KbTreeNode }) {
+    const { t: translateInterface } = useUiTranslation();
     if (node.type !== 'doc') {
         return null;
     }
@@ -355,10 +353,10 @@ function DocSummary({ node }: { node: KbTreeNode }) {
             <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--fg-0)' }}>{node.name}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 11 }}>
                 <Chip label={`project: ${meta.project_key}`} />
-                <Chip label={meta.is_canonical ? 'canonical' : 'raw'} accent={meta.is_canonical} />
+                <Chip label={meta.is_canonical ? translateInterface("canonical") : 'raw'} accent={meta.is_canonical} />
                 {meta.canonical_type ? <Chip label={`type: ${meta.canonical_type}`} /> : null}
                 {meta.canonical_status ? <Chip label={`status: ${meta.canonical_status}`} /> : null}
-                {meta.deleted_at ? <Chip label="deleted" danger /> : null}
+                {meta.deleted_at ? <Chip label={translateInterface("deleted")} danger /> : null}
             </div>
         </div>
     );

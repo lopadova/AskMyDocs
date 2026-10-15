@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toAdminError } from '../../admin/shared/errors';
@@ -46,6 +47,7 @@ export function TenantProvisionDialog({
     onClose,
     onProvisioned,
 }: TenantProvisionDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const dialogRef = useRef<HTMLFormElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const [tenantName, setTenantName] = useState('');
@@ -216,8 +218,7 @@ export function TenantProvisionDialog({
                     </div>
                     <span style={{ flex: 1 }} />
                     <button type="button" data-testid="tenant-control-provision-close" onClick={onClose} style={quietButton}>
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
 
                 {result ? (
@@ -257,7 +258,7 @@ export function TenantProvisionDialog({
                             onClick={() => void copyCredentials()}
                             style={primaryButton}
                         >
-                            {copied ? 'Copied' : 'Copy account package'}
+                            {copied ? translateInterface("Copied") : 'Copy account package'}
                         </button>
                     </div>
                 ) : (
@@ -359,7 +360,7 @@ export function TenantProvisionDialog({
                                                 onClick={() => setShowPassword((value) => !value)}
                                                 style={quietButton}
                                             >
-                                                {showPassword ? 'Hide' : 'Show'}
+                                                {showPassword ? translateInterface("Hide") : 'Show'}
                                             </button>
                                             <button
                                                 type="button"
@@ -379,8 +380,7 @@ export function TenantProvisionDialog({
                                                 }}
                                                 style={quietButton}
                                             >
-                                                Regenerate
-                                            </button>
+                                                {translateInterface("Regenerate")}</button>
                                         </div>
                                         {passwordGenerationError && <FieldError field="password-generation" text={passwordGenerationError} />}
                                         {error?.fieldErrors.password && <FieldError field="password" text={error.fieldErrors.password} />}
@@ -425,8 +425,7 @@ export function TenantProvisionDialog({
                                 onClick={onClose}
                                 style={quietButton}
                             >
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                             <button
                                 type="submit"
                                 data-testid="tenant-control-provision-submit"

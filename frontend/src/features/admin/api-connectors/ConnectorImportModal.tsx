@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Button } from '../../../components/Button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../components/ui/dialog';
@@ -8,6 +9,7 @@ import { fieldCaptionStyle, fieldLabelStyle, inputStyle } from './styles';
 import './config-transfer.css';
 
 export function ConnectorImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+    const { t: translateInterface } = useUiTranslation();
     const importConnector = useImportApiConnector();
     const [preview, setPreview] = useState<ConnectorImportPreview | null>(null);
     const [credentials, setCredentials] = useState<ConnectorImportCredentials>({});
@@ -97,7 +99,7 @@ export function ConnectorImportModal({ onClose, onImported }: { onClose: () => v
                     </>}
                     {error && <p role="alert" data-testid="api-connector-import-error">{error}</p>}
                     <div className="api-config-transfer-actions">
-                        <Button onClick={onClose} disabled={busy}>Cancel</Button>
+                        <Button onClick={onClose} disabled={busy}>{translateInterface("Cancel")}</Button>
                         <Button type="submit" variant="primary" data-testid="api-connector-import-submit"
                             busy={importConnector.isPending} disabled={!preview || loading}>Import connector</Button>
                     </div>

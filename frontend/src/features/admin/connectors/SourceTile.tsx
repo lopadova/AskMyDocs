@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useRef } from 'react';
 import type { ConnectorEntry } from './connectors.api';
 import { SourceAvatar } from './SourceAvatar';
@@ -23,6 +24,7 @@ export interface SourceTileProps {
 }
 
 export function SourceTile({ entry, connectionCount, onAdd, onImport, addPending }: SourceTileProps) {
+    const { t: translateInterface } = useUiTranslation();
     const importInputRef = useRef<HTMLInputElement>(null);
     const isCredential = entry.auth_kind === 'credential';
 
@@ -113,7 +115,7 @@ export function SourceTile({ entry, connectionCount, onAdd, onImport, addPending
                         data-testid={`connector-${entry.key}-import-account`}
                         className="amd-cn-icon-btn focus-ring"
                         aria-label={`Import ${entry.display_name} configuration`}
-                        title="Import configuration"
+                        title={translateInterface("Import configuration")}
                         disabled={addPending}
                         onClick={() => importInputRef.current?.click()}
                         style={iconButtonStyle}

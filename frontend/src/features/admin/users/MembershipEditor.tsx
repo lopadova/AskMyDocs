@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import type { AdminMembership } from '../admin.api';
@@ -22,6 +23,7 @@ export interface MembershipEditorProps {
  * empty-chip placeholder with a clear toggle.
  */
 export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps) {
+    const { t: translateInterface } = useUiTranslation();
     const memberships = useUserMemberships(userId);
     const upsert = useUpsertMembership(userId);
     const update = useUpdateMembership(userId);
@@ -155,8 +157,7 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
                         disabled={availableKeys.length === 0 || upsert.isPending}
                         style={smallPrimary}
                     >
-                        Add
-                    </button>
+                        {translateInterface("Add")}</button>
                     <button
                         type="button"
                         className="focus-ring"
@@ -164,8 +165,7 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
                         onClick={() => setAdding(false)}
                         style={smallSecondary}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                 </div>
             ) : (
                 <button
@@ -203,6 +203,7 @@ function MembershipCard({
     onScopeChange,
     onDelete,
 }: MembershipCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const scope = membership.scope_allowlist;
     const folderGlobs = scope?.folder_globs ?? [];
     const tags = scope?.tags ?? [];
@@ -284,8 +285,7 @@ function MembershipCard({
                     title="Remove membership"
                     style={{ ...smallSecondary, color: '#fca5a5' }}
                 >
-                    <Icon.Trash size={13} /> Remove
-                </button>
+                    <Icon.Trash size={13} /> {" " + translateInterface("Remove")}</button>
             </div>
 
             <div>
@@ -334,7 +334,7 @@ function MembershipCard({
             </div>
 
             <div>
-                <div style={miniLabel}>Tags</div>
+                <div style={miniLabel}>{translateInterface("Tags")}</div>
                 <div
                     data-testid={`membership-${membership.project_key}-tags`}
                     style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}

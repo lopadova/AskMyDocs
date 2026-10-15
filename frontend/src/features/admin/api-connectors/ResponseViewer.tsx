@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { CSSProperties } from 'react';
 import type { ProbeResult } from './api-connectors.api';
 import { fieldCaptionStyle, fieldLabelStyle } from './styles';
@@ -20,6 +21,7 @@ export interface ResponseViewerProps {
 }
 
 export function ResponseViewer({ result, error }: ResponseViewerProps) {
+    const { t: translateInterface } = useUiTranslation();
     if (error) {
         return (
             <p data-testid="api-probe-response-error" role="alert" style={alertStyle()}>
@@ -50,7 +52,7 @@ export function ResponseViewer({ result, error }: ResponseViewerProps) {
         >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span data-testid="api-probe-response-status" role="status" style={pillStyle(result.ok)}>
-                    {result.ok ? 'OK' : 'Failed'}
+                    {result.ok ? 'OK' : translateInterface("Failed")}
                     {result.status != null && ` — HTTP ${result.status}`}
                     {result.status_label && ` ${result.status_label}`}
                 </span>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { toAdminError } from '../shared/errors';
@@ -38,6 +39,7 @@ function buildCsv(codes: InviteCode[]): string {
 }
 
 export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerProps) {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const generate = useGenerateCodes();
 
@@ -233,8 +235,7 @@ export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerP
                         ))}
                     </ul>
                     <button type="button" data-testid="admin-invitations-codes-generate-done" onClick={onClose} style={drawerPrimaryBtn}>
-                        Done
-                    </button>
+                        {translateInterface("Done")}</button>
                 </div>
             )}
         </Drawer>

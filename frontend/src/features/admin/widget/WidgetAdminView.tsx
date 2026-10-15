@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useAuthStore } from '../../../lib/auth-store';
 import { WidgetKeysView } from './WidgetKeysView';
@@ -16,6 +17,7 @@ type Tab = 'keys' | 'sessions' | 'guide';
  * viewWidgetSessions). Un admin vede SOLO la tab Sessions.
  */
 export function WidgetAdminView() {
+    const { t: translateInterface } = useUiTranslation();
     const roles = useAuthStore((s) => s.roles);
     const isSuperAdmin = roles.includes('super-admin');
     const [selectedTab, setTab] = useState<Tab>('keys');
@@ -31,7 +33,7 @@ export function WidgetAdminView() {
             <nav
                 data-testid="admin-widget-tabs"
                 role="tablist"
-                aria-label="Widget admin sections"
+                aria-label={translateInterface("Widget admin sections")}
                 style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--hairline)' }}
             >
                 {isSuperAdmin && (
@@ -51,8 +53,7 @@ export function WidgetAdminView() {
                             fontWeight: tab === 'keys' ? 600 : 400,
                         }}
                     >
-                        Widget Keys
-                    </button>
+                        {translateInterface("Widget Keys")}</button>
                 )}
                 <button
                     data-testid="admin-widget-tab-sessions"
@@ -70,8 +71,7 @@ export function WidgetAdminView() {
                         fontWeight: tab === 'sessions' ? 600 : 400,
                     }}
                 >
-                    Sessions
-                </button>
+                    {translateInterface("Sessions")}</button>
                 {isSuperAdmin && (
                     <button
                         data-testid="admin-widget-tab-guide"
@@ -89,8 +89,7 @@ export function WidgetAdminView() {
                             fontWeight: tab === 'guide' ? 600 : 400,
                         }}
                     >
-                        Integration
-                    </button>
+                        {translateInterface("Integration")}</button>
                 )}
             </nav>
 

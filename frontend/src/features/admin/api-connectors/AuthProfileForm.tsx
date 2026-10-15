@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ApiAuthProfile, AuthProfilePayload, AuthType } from './api-connectors.api';
 import {
@@ -80,6 +81,7 @@ export function AuthProfileForm({
     fieldErrors,
     isSubmitting,
 }: AuthProfileFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = !!profile;
     const [type, setType] = useState<AuthType>(profile?.type ?? 'none');
     const [credentials, setCredentials] = useState<Record<string, string>>({});
@@ -217,7 +219,7 @@ export function AuthProfileForm({
                             gap: 8,
                         }}
                     >
-                        <legend style={{ ...fieldCaptionStyle(), padding: '0 4px' }}>Configuration</legend>
+                        <legend style={{ ...fieldCaptionStyle(), padding: '0 4px' }}>{translateInterface("Configuration")}</legend>
                         {cfgFields.map((f) => {
                             const fieldId = `api-auth-profile-form-config-${f.key}`;
                             return (
@@ -252,15 +254,14 @@ export function AuthProfileForm({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="api-auth-profile-form-submit"
                         disabled={isSubmitting}
                         style={buttonStyle('primary', !!isSubmitting)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create profile'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save changes") : 'Create profile'}
                     </button>
                 </div>
             </form>

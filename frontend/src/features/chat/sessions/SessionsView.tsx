@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import '../chat-reader.css';
 import { type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
@@ -30,6 +31,7 @@ import { SessionNavigation } from './SessionNavigation';
  * `<Outlet />`, so a nested child route would never mount.
  */
 export function SessionsView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const navigate = useNavigate();
     // Read the hash from the store rather than the hook's result: the nav
     // callbacks are built BEFORE useChatSession returns.
@@ -153,11 +155,11 @@ export function SessionsView(): ReactNode {
                                                       ? `Session #${activeId}`
                                                       : activeConversationResolved
                                                         ? 'Not found'
-                                                        : 'Loading…'
+                                                        : translateInterface("Loading…")
                                             }
                                         />
                                     ) : (
-                                        <div className="chat-header-new-title">New session</div>
+                                        <div className="chat-header-new-title">{translateInterface("New session")}</div>
                                     )}
                                 </div>
                                 <div className="chat-header-meta">
@@ -169,7 +171,7 @@ export function SessionsView(): ReactNode {
                                         <span className="chat-header-context-icon" aria-hidden="true">
                                             <Icon.Folder size={11} />
                                         </span>
-                                        <span className="chat-header-context-label">Project</span>
+                                        <span className="chat-header-context-label">{translateInterface("Project")}</span>
                                         <span
                                             className="chat-model-chip"
                                             data-testid="chat-sessions-project-label"
@@ -181,7 +183,7 @@ export function SessionsView(): ReactNode {
                                         <span className="chat-header-context-icon" aria-hidden="true">
                                             <Icon.Brain size={11} />
                                         </span>
-                                        <span className="chat-header-context-label">Model</span>
+                                        <span className="chat-header-context-label">{translateInterface("Model")}</span>
                                         <span className="chat-model-chip">{headerMeta}</span>
                                     </div>
                                 </div>

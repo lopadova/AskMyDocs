@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import {
     Dialog,
@@ -41,6 +42,7 @@ export function NameDialog({
     onClose,
     testId,
 }: NameDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [value, setValue] = useState(initialValue);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -70,8 +72,7 @@ export function NameDialog({
                 <DialogDescription>{description}</DialogDescription>
 
                 <label className="chat-sessions-name-label" htmlFor={`${testId}-input`}>
-                    Name
-                </label>
+                    {translateInterface("Name")}</label>
                 <input
                     id={`${testId}-input`}
                     data-testid={`${testId}-input`}
@@ -111,8 +112,7 @@ export function NameDialog({
                         data-testid={`${testId}-cancel`}
                         onClick={onClose}
                     >
-                        Cancel
-                    </Button>
+                        {translateInterface("Cancel")}</Button>
                 </div>
             </DialogContent>
         </Dialog>

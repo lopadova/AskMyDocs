@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import { Icon } from '../../components/Icons';
@@ -41,6 +42,7 @@ export function AgentActivityBar({
     embedded = false,
     children,
 }: AgentActivityBarProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [expanded, setExpanded] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [collapsedRunId, setCollapsedRunId] = useState<string | null>(null);
@@ -240,7 +242,7 @@ export function AgentActivityBar({
                                                     <dd>{debug.method}</dd>
                                                 </div>
                                                 <div>
-                                                    <dt>Tool</dt>
+                                                    <dt>{translateInterface("Tool")}</dt>
                                                     <dd>{debug.tool_local_name}</dd>
                                                 </div>
                                             </dl>

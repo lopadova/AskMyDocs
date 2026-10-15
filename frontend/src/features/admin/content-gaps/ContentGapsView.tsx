@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getContentGaps, resolveContentGap, reasonLabel, type ContentGap } from './content-gaps.api';
@@ -11,6 +12,7 @@ import { getContentGaps, resolveContentGap, reasonLabel, type ContentGap } from 
  * · R15 accessible controls.
  */
 export function ContentGapsView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [reason, setReason] = useState<string>('');
     const [includeResolved, setIncludeResolved] = useState(false);
@@ -44,23 +46,21 @@ export function ContentGapsView(): ReactNode {
             style={{ padding: 24 }}
         >
             <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Content Gaps</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Content Gaps")}</h1>
                 {query.data && (
                     <span data-testid="admin-content-gaps-count" style={{ fontSize: 12, color: 'var(--fg-3)' }}>
-                        {query.data.meta.total} total
-                    </span>
+                        {query.data.meta.total} {" " + translateInterface("total")}</span>
                 )}
                 <span style={{ flex: 1 }} />
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    Reason
-                    <select
+                    {translateInterface("Reason")}<select
                         data-testid="admin-content-gaps-reason-filter"
-                        aria-label="Filter by reason"
+                        aria-label={translateInterface("Filter by reason")}
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                         style={{ fontSize: 11.5, padding: '2px 4px' }}
                     >
-                        <option value="">All</option>
+                        <option value="">{translateInterface("All")}</option>
                         {/* R18 — options derived from available_reasons in the API response,
                             not a hard-coded literal subset, so new reason codes surface
                             automatically without a FE deploy. */}
@@ -76,14 +76,10 @@ export function ContentGapsView(): ReactNode {
                         checked={includeResolved}
                         onChange={(e) => setIncludeResolved(e.target.checked)}
                     />
-                    Show resolved
-                </label>
+                    {translateInterface("Show resolved")}</label>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 680 }}>
-                Every time the assistant refuses a question (no grounded context, or the model declines),
-                it's recorded here. The most-asked unanswered questions rank first — write an article to
-                close the gap, then resolve it.
-            </p>
+                {translateInterface("Every time the assistant refuses a question (no grounded context, or the model declines), it's recorded here. The most-asked unanswered questions rank first — write an article to close the gap, then resolve it.")}</p>
 
             {actionError && (
                 <p data-testid="admin-content-gaps-action-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
@@ -92,17 +88,16 @@ export function ContentGapsView(): ReactNode {
             )}
 
             {query.isLoading && (
-                <p data-testid="admin-content-gaps-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Loading…</p>
+                <p data-testid="admin-content-gaps-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</p>
             )}
             {!query.isLoading && query.isError && (
                 <p data-testid="admin-content-gaps-error" data-state="error" role="alert" style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}>
-                    Failed to load content gaps. {query.error instanceof Error ? query.error.message : ''}
+                    {translateInterface("Failed to load content gaps.") + " "}{query.error instanceof Error ? query.error.message : ''}
                 </p>
             )}
             {!query.isLoading && !query.isError && rows.length === 0 && (
                 <p data-testid="admin-content-gaps-empty" data-state="empty" style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}>
-                    No content gaps — every question so far had a grounded answer.
-                </p>
+                    {translateInterface("No content gaps — every question so far had a grounded answer.")}</p>
             )}
 
             {rows.length > 0 && (
@@ -117,6 +112,7 @@ export function ContentGapsView(): ReactNode {
 }
 
 function GapRow({ row, busy, onResolve }: { row: ContentGap; busy: boolean; onResolve: () => void }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const resolved = row.resolved_at !== null;
     return (
         <div
@@ -129,7 +125,7 @@ function GapRow({ row, busy, onResolve }: { row: ContentGap; busy: boolean; onRe
                 opacity: resolved ? 0.6 : 1,
             }}
         >
-            <span data-testid={`admin-content-gap-${row.id}-count`} title="times asked" style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 13, color: 'var(--accent, #6366f1)', minWidth: 32, textAlign: 'right' }}>
+            <span data-testid={`admin-content-gap-${row.id}-count`} title={translateInterface("times asked")} style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 13, color: 'var(--accent, #6366f1)', minWidth: 32, textAlign: 'right' }}>
                 {row.occurrences}×
             </span>
             <span style={{ fontSize: 13, color: 'var(--fg-0)', flex: 1 }}>{row.query_text}</span>
@@ -144,10 +140,9 @@ function GapRow({ row, busy, onResolve }: { row: ContentGap; busy: boolean; onRe
                     aria-label={`Resolve gap: ${row.query_text}`}
                     style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid var(--accent, #6366f1)', color: 'var(--accent, #6366f1)', background: 'transparent' }}
                 >
-                    Resolve
-                </button>
+                    {translateInterface("Resolve")}</button>
             )}
-            {resolved && <span data-testid={`admin-content-gap-${row.id}-resolved-badge`} style={{ fontSize: 11, color: 'var(--ok, #3fb950)' }}>resolved</span>}
+            {resolved && <span data-testid={`admin-content-gap-${row.id}-resolved-badge`} style={{ fontSize: 11, color: 'var(--ok, #3fb950)' }}>{translateInterface("resolved")}</span>}
         </div>
     );
 }

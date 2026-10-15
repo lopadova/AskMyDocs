@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
@@ -37,6 +38,7 @@ export function RealtimeVoiceControl({
     onStart,
     onStop,
 }: RealtimeVoiceControlProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const unavailable = availability?.available !== true;
     const title = unavailable
         ? unavailableMessage(availability?.reason)
@@ -49,7 +51,7 @@ export function RealtimeVoiceControl({
                 size="sm"
                 className="chat-realtime-button"
                 data-testid="chat-realtime-toggle"
-                aria-label={active ? 'End Live assistant session' : 'Start Live assistant'}
+                aria-label={active ? 'End Live assistant session' : translateInterface("Start Live assistant")}
                 aria-pressed={active}
                 title={title}
                 disabled={unavailable || (disabled && !active)}

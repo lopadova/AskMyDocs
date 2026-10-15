@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState } from 'react';
 import { useApplicationLog } from './logs.api';
 
@@ -38,6 +39,7 @@ function syncLiveFlagToUrl(live: boolean): void {
 }
 
 export function ApplicationLogTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [file, setFile] = useState('laravel.log');
     const [customFile, setCustomFile] = useState('');
     const [level, setLevel] = useState('');
@@ -150,8 +152,7 @@ export function ApplicationLogTab() {
                         cursor: 'pointer',
                     }}
                 >
-                    Refresh
-                </button>
+                    {translateInterface("Refresh")}</button>
                 <label
                     data-testid="application-log-live-toggle"
                     style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
@@ -201,7 +202,7 @@ export function ApplicationLogTab() {
             {state === 'ready' ? (
                 <>
                     <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
-                        Showing {q.data?.lines.length ?? 0} lines (scanned{' '}
+                        {translateInterface("Showing") + " "}{q.data?.lines.length ?? 0} lines (scanned{' '}
                         {q.data?.total_scanned ?? 0}
                         {q.data?.truncated ? ', truncated' : ''})
                     </div>

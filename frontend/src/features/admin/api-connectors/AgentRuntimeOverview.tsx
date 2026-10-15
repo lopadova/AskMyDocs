@@ -1,8 +1,10 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { apiConnectorsApi } from './api-connectors.api';
 
 export function AgentRuntimeOverview(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: ['admin', 'agent-runs', 'overview'],
         queryFn: apiConnectorsApi.agentOverview,
@@ -17,7 +19,7 @@ export function AgentRuntimeOverview(): ReactNode {
         return (
             <section data-testid="agent-runtime-overview" data-state="error" role="alert" style={shellStyle}>
                 Could not load agent operations.
-                <button type="button" data-testid="agent-runtime-retry" onClick={() => query.refetch()} style={retryStyle}>Retry</button>
+                <button type="button" data-testid="agent-runtime-retry" onClick={() => query.refetch()} style={retryStyle}>{translateInterface("Retry")}</button>
             </section>
         );
     }

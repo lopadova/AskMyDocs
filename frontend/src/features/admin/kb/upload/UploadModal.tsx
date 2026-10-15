@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../../lib/ui-locale";
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuthStore } from '../../../../lib/auth-store';
 import { UploadDropzone } from './UploadDropzone';
@@ -63,6 +64,7 @@ function errMessage(err: unknown): string {
 }
 
 export function UploadModal({ seed, defaultProject, projectOptions, onClose, onCommitted }: UploadModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const accept = useAuthStore((s) => acceptAttribute(s.kbUploadAcceptedExtensions));
     const [phase, setPhase] = useState<Phase>('selecting');
     const [projectKey, setProjectKey] = useState(seed?.projectKey ?? defaultProject ?? '');
@@ -239,12 +241,11 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
             >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <h2 id="kb-upload-title" data-testid="kb-upload-title" style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                        Upload documents
-                    </h2>
+                        {translateInterface("Upload documents")}</h2>
                     <button
                         type="button"
                         data-testid="kb-upload-close"
-                        aria-label="Close"
+                        aria-label={translateInterface("Close")}
                         onClick={onClose}
                         style={ghostBtn}
                     >
@@ -267,7 +268,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                     onChange={(e) => setProjectKey(e.target.value)}
                                     style={fieldStyle}
                                 >
-                                    <option value="">Select a project…</option>
+                                    <option value="">{translateInterface("Select a project…")}</option>
                                     {projectOptions.map((key) => (
                                         <option key={key} value={key}>
                                             {key}
@@ -412,8 +413,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                     {phase === 'review' && (
                         <>
                             <button type="button" data-testid="kb-upload-cancel" aria-label="Cancel batch" onClick={handleCancel} style={secondaryBtn}>
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                             <button type="button" data-testid="kb-upload-commit" disabled={stagedCount === 0 || commitMut.isPending} onClick={handleCommit} style={primaryBtn(stagedCount === 0)}>
                                 Commit &amp; ingest
                             </button>
@@ -426,8 +426,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                     )}
                     {phase === 'done' && (
                         <button type="button" data-testid="kb-upload-done-close" onClick={onClose} style={primaryBtn(false)}>
-                            Done
-                        </button>
+                            {translateInterface("Done")}</button>
                     )}
                 </div>
             </div>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import {
     usePreviewCommand,
@@ -220,6 +221,7 @@ interface PreviewStepProps {
 }
 
 function PreviewStep({ schema, args, setArgs, onRun, loading, error }: PreviewStepProps) {
+    const { t: translateInterface } = useUiTranslation();
     const keys = Object.keys(schema);
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="wizard-step-preview">
@@ -302,7 +304,7 @@ function PreviewStep({ schema, args, setArgs, onRun, loading, error }: PreviewSt
                     disabled={loading}
                     style={primaryBtnStyle}
                 >
-                    {loading ? 'Checking…' : 'Preview'}
+                    {loading ? 'Checking…' : translateInterface("Preview")}
                 </button>
             </div>
         </div>
@@ -319,11 +321,12 @@ interface ConfirmStepProps {
 }
 
 function ConfirmStep({ command, confirmInput, setConfirmInput, onBack, onContinue, loading }: ConfirmStepProps) {
+    const { t: translateInterface } = useUiTranslation();
     const matches = confirmInput === command;
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="wizard-step-confirm">
             <p style={{ fontSize: 13, color: 'var(--fg-1)', margin: 0 }}>
-                This is a <strong>destructive</strong> command. Type the command name
+                This is a <strong>{translateInterface("destructive")}</strong> command. Type the command name
                 exactly to confirm:
             </p>
             <input
@@ -335,8 +338,7 @@ function ConfirmStep({ command, confirmInput, setConfirmInput, onBack, onContinu
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                 <button type="button" onClick={onBack} style={secondaryBtnStyle}>
-                    Back
-                </button>
+                    {translateInterface("Back")}</button>
                 <button
                     type="button"
                     data-testid="wizard-confirm-continue"
@@ -385,6 +387,7 @@ function RunStep({ auditId, error }: { auditId: number | null; error: string | n
 }
 
 function ResultStep({ row, onClose }: { row: HistoryRow | null; onClose: () => void }) {
+    const { t: translateInterface } = useUiTranslation();
     const status = row?.status ?? 'unknown';
     const stateAttr = row?.status === 'completed' ? 'ready' : 'error';
     return (
@@ -434,8 +437,7 @@ function ResultStep({ row, onClose }: { row: HistoryRow | null; onClose: () => v
             ) : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={onClose} style={primaryBtnStyle}>
-                    Close
-                </button>
+                    {translateInterface("Close")}</button>
             </div>
         </div>
     );

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../../../lib/ui-locale";
 /*
  * Cross-mount port of `vendor/padosoft/eval-harness-ui/resources/js/
  * pages/ReportsPage.tsx`. Imports rewritten to relative paths;
@@ -16,6 +17,7 @@ import type { ReportRow, ReportListPayload } from '../types/api';
 import { useI18n } from '../hooks/useI18n';
 
 const ReportsPage = () => {
+    const { t: translateInterface } = useUiTranslation();
   const { createClient } = useAppContext();
   const client = createClient();
   const { t, metricLabel } = useI18n();
@@ -117,8 +119,7 @@ const ReportsPage = () => {
           />
         </label>
         <label className="flex flex-col text-sm">
-          From
-          <input
+          {translateInterface("From")}<input
             type="date"
             className="mt-1 ehu-rounded border border-slate-200 px-3 py-2"
             value={dateFrom}
@@ -127,8 +128,7 @@ const ReportsPage = () => {
           />
         </label>
         <label className="flex flex-col text-sm">
-          To
-          <input
+          {translateInterface("To")}<input
             type="date"
             className="mt-1 ehu-rounded border border-slate-200 px-3 py-2"
             value={dateTo}

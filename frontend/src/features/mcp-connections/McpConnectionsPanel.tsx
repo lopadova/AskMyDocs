@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../lib/auth-store';
@@ -49,6 +50,7 @@ export function McpConnectionsPanel({
     createRequest = 0,
     embedded = false,
 }: McpConnectionsPanelProps) {
+    const { t: translateInterface } = useUiTranslation();
     const queryClient = useQueryClient();
     const queryKey = ['mcp-connections', scope] as const;
     const authProjects = useAuthStore((state) => state.projects);
@@ -195,7 +197,7 @@ export function McpConnectionsPanel({
             {query.isError && (
                 <div role="alert" style={emptyStyle}>
                     MCP connections are unavailable. The feature may still be disabled for this environment.{' '}
-                    <Button variant="quiet" size="sm" onClick={() => void query.refetch()} data-testid="mcp-connections-retry">Retry</Button>
+                    <Button variant="quiet" size="sm" onClick={() => void query.refetch()} data-testid="mcp-connections-retry">{translateInterface("Retry")}</Button>
                 </div>
             )}
             {!query.isLoading && !query.isError && connections.length === 0 && (
@@ -254,10 +256,10 @@ export function McpConnectionsPanel({
                             {error && <McpErrorAlert error={error} onShowDetails={() => setErrorDetails(error)} />}
 
                             <div style={twoColumnStyle}>
-                                <Field label="Name">
+                                <Field label={translateInterface("Name")}>
                                     <input required autoFocus data-testid="mcp-connection-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} style={inputStyle} />
                                 </Field>
-                                <Field label="Label">
+                                <Field label={translateInterface("Label")}>
                                     <input data-testid="mcp-connection-label" value={form.label ?? ''} onChange={(event) => setForm({ ...form, label: event.target.value })} style={inputStyle} />
                                 </Field>
                             </div>
@@ -331,7 +333,7 @@ export function McpConnectionsPanel({
                                             kind="auto"
                                             value="auto"
                                             checked={form.transport === 'auto'}
-                                            label="Auto"
+                                            label={translateInterface("Auto")}
                                             description="Choose the best protocol"
                                             badge="Recommended"
                                             onChange={() => setForm({ ...form, transport: 'auto' })}
@@ -358,7 +360,7 @@ export function McpConnectionsPanel({
                         </div>
 
                         <div style={modalFooterStyle}>
-                            <Button variant="secondary" disabled={create.isPending} onClick={closeForm} data-testid="mcp-connection-cancel">Cancel</Button>
+                            <Button variant="secondary" disabled={create.isPending} onClick={closeForm} data-testid="mcp-connection-cancel">{translateInterface("Cancel")}</Button>
                             <Button type="submit" variant="primary" busy={create.isPending} data-testid="mcp-connection-submit">
                                 {form.auth_method === 'oauth' ? 'Continue with OAuth' : 'Connect and discover'}
                             </Button>

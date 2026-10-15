@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { Button } from '../../../components/Button';
 import { Icon } from '../../../components/Icons';
@@ -27,6 +28,7 @@ export function SessionNavigation({
 }: SessionSidebarProps & {
     children: (historyToggle: ReactNode) => ReactNode;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
 
     return (
@@ -42,26 +44,25 @@ export function SessionNavigation({
                         iconOnly
                         className="chat-history-toggle"
                         data-testid="chat-sessions-drawer-toggle"
-                        aria-label="Show sessions"
-                        title="Show sessions"
+                        aria-label={translateInterface("Show sessions")}
+                        title={translateInterface("Show sessions")}
                     >
                         <Icon.Menu size={16} />
                     </Button>
                 </DialogTrigger>,
             )}
             <DialogContent className="chat-history-dialog" showCloseButton={false}>
-                <DialogTitle className="sr-only">Sessions</DialogTitle>
+                <DialogTitle className="sr-only">{translateInterface("Sessions")}</DialogTitle>
                 <DialogDescription className="sr-only">
-                    Browse the knowledge base, search your sessions or start a new one.
-                </DialogDescription>
+                    {translateInterface("Browse the knowledge base, search your sessions or start a new one.")}</DialogDescription>
                 <DialogClose asChild>
                     <Button
                         variant="quiet"
                         size="sm"
                         iconOnly
                         className="chat-history-close"
-                        aria-label="Close sessions"
-                        title="Close sessions"
+                        aria-label={translateInterface("Close sessions")}
+                        title={translateInterface("Close sessions")}
                     >
                         <Icon.Close size={15} />
                     </Button>

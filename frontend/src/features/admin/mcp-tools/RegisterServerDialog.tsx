@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { FormEvent, useState } from 'react';
 import { useRegisterMcpServer } from './mcp-tools-hooks';
 import type { McpTransport } from './mcp-tools.api';
@@ -15,6 +16,7 @@ interface RegisterServerDialogProps {
  * errors via the response payload.
  */
 export function RegisterServerDialog({ open, onClose, onCreated }: RegisterServerDialogProps) {
+    const { t: translateInterface } = useUiTranslation();
     const register = useRegisterMcpServer();
     const [name, setName] = useState('');
     const [transport, setTransport] = useState<McpTransport>('stdio');
@@ -113,7 +115,7 @@ export function RegisterServerDialog({ open, onClose, onCreated }: RegisterServe
                     </button>
                 </header>
 
-                <Field label="Name" required>
+                <Field label={translateInterface("Name")} required>
                     <input
                         type="text"
                         required
@@ -214,8 +216,7 @@ export function RegisterServerDialog({ open, onClose, onCreated }: RegisterServe
                         data-testid="admin-mcp-register-cancel"
                         style={secondaryBtnStyle}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         disabled={register.isPending}

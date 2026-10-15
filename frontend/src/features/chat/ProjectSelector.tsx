@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import type { ReactNode } from 'react';
 
 /**
@@ -57,6 +58,7 @@ export function ProjectSelector({
     disabled = false,
     onChange,
 }: ProjectSelectorProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     // Always represent a concrete effective value, even if it is not in the
     // reachable list (e.g. a conversation bound to a project the user no
     // longer has membership in) — otherwise the native <select> would
@@ -77,7 +79,7 @@ export function ProjectSelector({
         <select
             className="chat-project-selector"
             data-testid="chat-project-selector"
-            aria-label="Project scope"
+            aria-label={translateInterface("Project scope")}
             value={value ?? '__unset__'}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
@@ -87,7 +89,7 @@ export function ProjectSelector({
                     default
                 </option>
             )}
-            {allowAll && <option value="">All projects</option>}
+            {allowAll && <option value="">{translateInterface("All projects")}</option>}
             {options.map((key) => (
                 <option key={key} value={key}>
                     {key}

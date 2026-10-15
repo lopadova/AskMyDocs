@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/Icons';
@@ -18,6 +19,7 @@ export interface ConversationListProps {
  * so Playwright can assert the no-chats path.
  */
 export function ConversationList({ projectKey, onSelect, onNewAnonymous }: ConversationListProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [filter, setFilter] = useState('');
     const activeId = useChatStore((s) => s.activeConversationId);
@@ -54,7 +56,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
         <aside
             data-testid="chat-sidebar"
             data-state={state}
-            aria-label="Conversations"
+            aria-label={translateInterface("Conversations")}
             className="chat-conversation-sidebar"
         >
             <div className="chat-conversation-sidebar-head">
@@ -63,7 +65,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         <Icon.Chat size={14} />
                     </span>
                     <span className="chat-conversation-sidebar-heading-copy">
-                        <strong>Conversations</strong>
+                        <strong>{translateInterface("Conversations")}</strong>
                         <small aria-live="polite">
                             {isLoading
                                 ? 'Loading history…'
@@ -84,7 +86,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         busy={createMutation.isPending}
                         leadingIcon={<Icon.Plus size={14} />}
                     >
-                        {createMutation.isPending ? 'Creating…' : 'New chat'}
+                        {createMutation.isPending ? 'Creating…' : translateInterface("New chat")}
                     </Button>
                     <Button
                         variant="quiet"
@@ -92,11 +94,10 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         className="chat-conversation-anonymous"
                         data-testid="chat-new-anonymous-chat"
                         onClick={onNewAnonymous}
-                        title="Start a chat that is not saved"
+                        title={translateInterface("Start a chat that is not saved")}
                         leadingIcon={<Icon.Eye size={13} />}
                     >
-                        Anonymous
-                    </Button>
+                        {translateInterface("Anonymous")}</Button>
                 </div>
 
                 <label className="chat-conversation-search">
@@ -104,10 +105,10 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                     <input
                         type="search"
                         data-testid="chat-sidebar-search"
-                        aria-label="Search conversations"
+                        aria-label={translateInterface("Search conversations")}
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
-                        placeholder="Search conversations"
+                        placeholder={translateInterface("Search conversations")}
                     />
                     {filter !== '' && (
                         <Button
@@ -115,8 +116,8 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                             size="sm"
                             iconOnly
                             className="chat-conversation-search-clear"
-                            aria-label="Clear conversation search"
-                            title="Clear conversation search"
+                            aria-label={translateInterface("Clear conversation search")}
+                            title={translateInterface("Clear conversation search")}
                             onClick={() => setFilter('')}
                         >
                             <Icon.Close size={11} />
@@ -133,25 +134,25 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         className="chat-conversation-empty"
                     >
                         <span aria-hidden="true"><Icon.Chat size={18} /></span>
-                        <strong>Your conversations will appear here</strong>
-                        <small>Start a new chat to begin.</small>
+                        <strong>{translateInterface("Your conversations will appear here")}</strong>
+                        <small>{translateInterface("Start a new chat to begin.")}</small>
                     </div>
                 )}
                 {state === 'error' && (
                     <div data-testid="chat-sidebar-error" role="alert" className="chat-conversation-error">
                         <Icon.Alert size={14} />
-                        <span>Failed to load conversations.</span>
+                        <span>{translateInterface("Failed to load conversations.")}</span>
                     </div>
                 )}
-                {today.length > 0 && <SectionHeader label="Today" count={today.length} />}
+                {today.length > 0 && <SectionHeader label={translateInterface("Today")} count={today.length} />}
                 {today.map((c) => (
                     <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
                 ))}
-                {recent.length > 0 && <SectionHeader label="Previous 7 days" count={recent.length} />}
+                {recent.length > 0 && <SectionHeader label={translateInterface("Previous 7 days")} count={recent.length} />}
                 {recent.map((c) => (
                     <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
                 ))}
-                {earlier.length > 0 && <SectionHeader label="Earlier" count={earlier.length} />}
+                {earlier.length > 0 && <SectionHeader label={translateInterface("Earlier")} count={earlier.length} />}
                 {earlier.map((c) => (
                     <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
                 ))}
@@ -161,8 +162,8 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         className="chat-conversation-empty is-search"
                     >
                         <span aria-hidden="true"><Icon.Search size={18} /></span>
-                        <strong>No matching conversations</strong>
-                        <small>Try another title or clear the search.</small>
+                        <strong>{translateInterface("No matching conversations")}</strong>
+                        <small>{translateInterface("Try another title or clear the search.")}</small>
                     </div>
                 )}
             </div>
@@ -174,7 +175,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                     className="chat-conversation-create-error"
                 >
                     <Icon.Alert size={13} />
-                    <span>Could not create a conversation.</span>
+                    <span>{translateInterface("Could not create a conversation.")}</span>
                 </div>
             )}
         </aside>

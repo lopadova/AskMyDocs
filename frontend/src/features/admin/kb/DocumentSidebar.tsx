@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { ChevronDown, FileText, Info } from 'lucide-react';
 import type { KbDocument } from '../admin.api';
@@ -27,6 +28,7 @@ function Properties({ rows }: { rows: Array<[string, unknown]> }) {
 }
 
 export function DocumentSidebar({ doc, children }: { doc: KbDocument; children: ReactNode }) {
+    const { t: translateInterface } = useUiTranslation();
     const raw = useKbRaw(doc.frontmatter ? null : doc.id);
     const meta = doc.frontmatter ?? Object.fromEntries(extractFrontmatterPills(raw.data?.content ?? '').pills.map(({ key, value }) => [key, value]));
     const tags = [...new Set([...(Array.isArray(meta.tags) ? meta.tags.filter((tag): tag is string => typeof tag === 'string') : []), ...doc.metadata_tags, ...doc.tags.map(tag => tag.label || tag.slug)])];
@@ -36,24 +38,24 @@ export function DocumentSidebar({ doc, children }: { doc: KbDocument; children: 
     const extra: Array<[string, unknown]> = Object.entries(meta).filter(([key]) => !known.has(key) && !key.startsWith('_'));
     const related = [...new Set(Array.isArray(meta.related) ? meta.related.filter((item): item is string => typeof item === 'string') : [])];
     return (
-        <aside className="kb-document-sidebar" aria-label="Document details">
+        <aside className="kb-document-sidebar" aria-label={translateInterface("Document details")}>
             <header className="kb-sidebar-heading">
-                <h3><Info size={16} aria-hidden />Document details</h3>
+                <h3><Info size={16} aria-hidden />{translateInterface("Document details")}</h3>
                 <div className="kb-sidebar-badges">
                     {type !== '—' && <span>{type.replaceAll('-', ' ')}</span>}
                     {status !== '—' && <span data-status={status}>{status}</span>}
                 </div>
             </header>
-            {meta.summary != null && <section className="kb-sidebar-summary"><h4>Summary</h4><p>{display(meta.summary)}</p></section>}
+            {meta.summary != null && <section className="kb-sidebar-summary"><h4>{translateInterface("Summary")}</h4><p>{display(meta.summary)}</p></section>}
             <section className="kb-sidebar-section">
-                <h4>Organization</h4>
+                <h4>{translateInterface("Organization")}</h4>
                 <Properties rows={[
                     ['Project', doc.project_key], ['Owners', meta.owners],
                 ]} />
-                {tags.length > 0 && <div className="kb-sidebar-tags"><h4>Tags</h4><div className="kb-property-tags">{tags.map(tag => <span key={tag}>{tag}</span>)}</div></div>}
+                {tags.length > 0 && <div className="kb-sidebar-tags"><h4>{translateInterface("Tags")}</h4><div className="kb-property-tags">{tags.map(tag => <span key={tag}>{tag}</span>)}</div></div>}
             </section>
             <section className="kb-sidebar-section">
-                <h4>Activity</h4>
+                <h4>{translateInterface("Activity")}</h4>
                 <Properties rows={[
                     ['Created', formatDocumentDate(meta.created_at ?? doc.created_at)],
                     ['Updated', formatDocumentDate(meta.updated_at ?? doc.updated_at)],
@@ -61,7 +63,7 @@ export function DocumentSidebar({ doc, children }: { doc: KbDocument; children: 
             </section>
             {related.length > 0 && (
                 <section className="kb-document-related">
-                    <h4>Related documents <span className="kb-sidebar-count">{related.length}</span></h4>
+                    <h4>{translateInterface("Related documents") + " "}<span className="kb-sidebar-count">{related.length}</span></h4>
                     {related.map(link => {
                         const [slug, label] = link.replace(/^\[\[|\]\]$/g, '').split('|');
                         return <div key={link}><FileText size={16} aria-hidden /><WikiLink slug={slug} label={label} project={doc.project_key} /></div>;
@@ -69,14 +71,14 @@ export function DocumentSidebar({ doc, children }: { doc: KbDocument; children: 
                 </section>
             )}
             <details className="kb-sidebar-technical" key={doc.id}>
-                <summary>Technical details <ChevronDown size={14} aria-hidden /></summary>
+                <summary>{translateInterface("Technical details") + " "}<ChevronDown size={14} aria-hidden /></summary>
                 <Properties rows={[
                     ['Document ID', doc.doc_id ?? meta.id ?? doc.id], ['Slug', doc.slug ?? meta.slug],
                     ['Retrieval priority', doc.retrieval_priority ?? meta.retrieval_priority], ...extra,
                 ]} />
             </details>
             <section className="kb-sidebar-management">
-                <h4>Manage document</h4>
+                <h4>{translateInterface("Manage document")}</h4>
                 <div className="kb-document-danger-actions">{children}</div>
             </section>
         </aside>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { type ReactNode } from 'react';
 import { Outlet, useNavigate } from '@tanstack/react-router';
 import { Button } from '../Button';
@@ -26,6 +27,7 @@ import { useTeamStore } from '../../lib/team-store';
  * switch behaves identically on either side of the boundary.
  */
 export function StandaloneShell({ children }: { children?: ReactNode }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const navigate = useNavigate();
     const teams = useTeamStore((s) => s.teams);
     const currentTeam = useTeamStore((s) => s.currentTeam);
@@ -79,14 +81,14 @@ export function StandaloneShell({ children }: { children?: ReactNode }): ReactNo
                 )}
 
                 <div className="standalone-topbar-actions">
-                    <Tooltip label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+                    <Tooltip label={theme === 'dark' ? translateInterface("Light mode") : translateInterface("Dark mode")}>
                         <Button
                             variant="quiet"
                             size="sm"
                             iconOnly
                             className="app-topbar-icon-button"
                             data-testid="standalone-theme"
-                            aria-label="Toggle theme"
+                            aria-label={translateInterface("Toggle theme")}
                             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                         >
                             {theme === 'dark' ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}

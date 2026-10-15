@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { AdminHealth, HealthStatus } from '../admin.api';
 
 export interface HealthStripProps {
@@ -46,6 +47,7 @@ function chipColor(status: HealthStatus): { bg: string; border: string; fg: stri
  * carries its own `data-state` for finer-grained Playwright assertions.
  */
 export function HealthStrip({ health, state }: HealthStripProps) {
+    const { t: translateInterface } = useUiTranslation();
     if (state === 'loading' || state === 'error' || !health) {
         return (
             <div
@@ -63,7 +65,7 @@ export function HealthStrip({ health, state }: HealthStripProps) {
                     fontFamily: 'var(--font-mono)',
                 }}
             >
-                {state === 'error' ? 'health probe failed' : <span className="shimmer">checking health…</span>}
+                {state === 'error' ? 'health probe failed' : <span className="shimmer">{translateInterface("checking health…")}</span>}
             </div>
         );
     }
@@ -94,8 +96,7 @@ export function HealthStrip({ health, state }: HealthStripProps) {
                     letterSpacing: '0.05em',
                 }}
             >
-                Health
-            </span>
+                {translateInterface("Health")}</span>
             {CONCERNS.map((c) => {
                 const status = health[c.key];
                 const c1 = chipColor(status);
@@ -138,7 +139,7 @@ export function HealthStrip({ health, state }: HealthStripProps) {
                     fontFamily: 'var(--font-mono)',
                 }}
             >
-                checked {new Date(health.checked_at).toLocaleTimeString()}
+                {translateInterface("checked") + " "}{new Date(health.checked_at).toLocaleTimeString()}
             </span>
         </div>
     );

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../../components/Icons';
 import { Button } from '../../../components/Button';
@@ -45,6 +46,7 @@ export function SessionRowMenu({
     onRename,
     onDelete,
 }: SessionRowMenuProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const [confirmingDelete, setConfirmingDelete] = useState(false);
     const wrapRef = useRef<HTMLDivElement>(null);
@@ -127,8 +129,7 @@ export function SessionRowMenu({
                         onClick={() => act(onRename)}
                     >
                         <Icon.Edit size={13} />
-                        Rename
-                    </button>
+                        {translateInterface("Rename")}</button>
 
                     <div className="chat-sessions-menu-group" role="group" aria-label="Importance">
                         <span className="chat-sessions-menu-group-label">Importance</span>
@@ -184,7 +185,7 @@ export function SessionRowMenu({
                         onClick={() => act(() => onArchivedChange(!isArchived))}
                     >
                         <Icon.Archive size={13} />
-                        {isArchived ? 'Restore' : 'Archive'}
+                        {isArchived ? translateInterface("Restore") : 'Archive'}
                     </button>
 
                     {/*
@@ -202,8 +203,7 @@ export function SessionRowMenu({
                                 data-testid={`chat-sessions-row-${id}-delete-confirm`}
                                 onClick={() => act(onDelete)}
                             >
-                                Delete
-                            </button>
+                                {translateInterface("Delete")}</button>
                             <button
                                 type="button"
                                 role="menuitem"
@@ -211,8 +211,7 @@ export function SessionRowMenu({
                                 data-testid={`chat-sessions-row-${id}-delete-cancel`}
                                 onClick={() => setConfirmingDelete(false)}
                             >
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                         </div>
                     ) : (
                         <button
@@ -223,8 +222,7 @@ export function SessionRowMenu({
                             onClick={() => setConfirmingDelete(true)}
                         >
                             <Icon.Trash size={13} />
-                            Delete
-                        </button>
+                            {translateInterface("Delete")}</button>
                     )}
                 </div>
             )}

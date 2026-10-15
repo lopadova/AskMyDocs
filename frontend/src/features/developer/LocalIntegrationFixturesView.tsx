@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { AreaChart } from '../../components/charts';
@@ -32,6 +33,7 @@ const panelStyle: CSSProperties = {
 };
 
 export function LocalIntegrationFixturesView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const queryClient = useQueryClient();
     const control = useMutation({
         mutationFn: localIntegrationsApi.control,
@@ -210,7 +212,7 @@ export function LocalIntegrationFixturesView(): ReactNode {
                         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700, fontSize: 12.5 }}>
                             <thead>
                                 <tr style={{ color: 'var(--fg-3)', textAlign: 'left', fontSize: 11, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                                    <th style={cellStyle}>Quando</th><th style={cellStyle}>Servizio</th><th style={cellStyle}>Richiesta</th><th style={cellStyle}>Tenant</th><th style={cellStyle}>Esito</th><th style={cellStyle}>Durata</th>
+                                    <th style={cellStyle}>Quando</th><th style={cellStyle}>Servizio</th><th style={cellStyle}>Richiesta</th><th style={cellStyle}>{translateInterface("Tenant")}</th><th style={cellStyle}>Esito</th><th style={cellStyle}>Durata</th>
                                 </tr>
                             </thead>
                             <tbody>

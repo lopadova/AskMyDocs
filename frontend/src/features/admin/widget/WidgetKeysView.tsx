@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Code2, Globe, Info, KeyRound, Palette, Plus, RotateCw, Trash2 } from 'lucide-react';
@@ -167,6 +168,7 @@ const SELECT_CLASS =
  * R11 testids, R14 surfaced failures, R15 a11y.
  */
 export function WidgetKeysView() {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [showCreate, setShowCreate] = useState(false);
     const [newLabel, setNewLabel] = useState('');
@@ -377,39 +379,28 @@ export function WidgetKeysView() {
             <header>
                 <h1 className="m-0 flex items-center gap-2 text-[22px] font-semibold">
                     <KeyRound aria-hidden className="size-5 text-[var(--accent-a)]" />
-                    Widget Keys
-                </h1>
+                    {translateInterface("Widget Keys")}</h1>
                 <p className="text-muted-foreground mt-1.5 text-sm">
-                    Manage embeddable KITT widget credentials. Create a key, copy the snippet,
-                    and paste it into any website to launch the AI chat widget grounded in your
-                    knowledge base.
-                </p>
+                    {translateInterface("Manage embeddable KITT widget credentials. Create a key, copy the snippet, and paste it into any website to launch the AI chat widget grounded in your knowledge base.")}</p>
             </header>
 
             {/* How it works (R14: explain, don't assume) */}
             <Alert variant="info">
                 <Info aria-hidden />
-                <AlertTitle>How a widget key works</AlertTitle>
+                <AlertTitle>{translateInterface("How a widget key works")}</AlertTitle>
                 <AlertDescription>
                     <ol className="list-decimal space-y-0.5 pl-4">
                         <li>
-                            Create a key and bind it to one knowledge-base project — the widget
-                            answers only from that project.
-                        </li>
+                            {translateInterface("Create a key and bind it to one knowledge-base project — the widget answers only from that project.")}</li>
                         <li>
-                            List the websites allowed to load it under <em>Allowed origins</em>{' '}
-                            (the browser origin is enforced server-side).
-                        </li>
+                            {translateInterface("List the websites allowed to load it under") + " "}<em>{translateInterface("Allowed origins")}</em>{' '}
+                            {translateInterface("(the browser origin is enforced server-side).")}</li>
                         <li>
-                            Copy the generated <code className="font-mono">&lt;script&gt;</code>{' '}
-                            snippet and paste it before{' '}
-                            <code className="font-mono">&lt;/body&gt;</code> on the host site.
-                        </li>
+                            {translateInterface("Copy the generated") + " "}<code className="font-mono">&lt;script&gt;</code>{' '}
+                            {translateInterface("snippet and paste it before")}{' '}
+                            <code className="font-mono">&lt;/body&gt;</code> {" " + translateInterface("on the host site.")}</li>
                     </ol>
-                    The public key (<code className="font-mono">pk_…</code>) is safe in the
-                    browser; the secret (<code className="font-mono">sk_…</code>) is shown once at
-                    creation and is only needed for server-side proxy mode.
-                </AlertDescription>
+                    {translateInterface("The public key (")}<code className="font-mono">pk_…</code>{translateInterface(") is safe in the browser; the secret (")}<code className="font-mono">sk_…</code>{translateInterface(") is shown once at creation and is only needed for server-side proxy mode.")}</AlertDescription>
             </Alert>
 
             {/* Create */}
@@ -421,22 +412,19 @@ export function WidgetKeysView() {
                         onClick={() => setShowCreate(true)}
                     >
                         <Plus aria-hidden />
-                        Create Key
-                    </Button>
+                        {translateInterface("Create Key")}</Button>
                 </div>
             ) : (
                 <Card data-testid="admin-widget-keys-create-form">
                     <CardHeader>
-                        <CardTitle>New widget key</CardTitle>
+                        <CardTitle>{translateInterface("New widget key")}</CardTitle>
                         <CardDescription>
-                            Fields marked <span className="text-destructive">*</span> are
-                            required. Everything else has a sensible default.
-                        </CardDescription>
+                            {translateInterface("Fields marked") + " "}<span className="text-destructive">*</span> {" " + translateInterface("are required. Everything else has a sensible default.")}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4">
                         <div className="grid gap-1.5">
                             <Label htmlFor="wk-mode">
-                                Widget type <span className="text-destructive">*</span>
+                                {translateInterface("Widget type") + " "}<span className="text-destructive">*</span>
                             </Label>
                             <select
                                 id="wk-mode"
@@ -453,7 +441,7 @@ export function WidgetKeysView() {
                             </select>
                             <p className="text-muted-foreground text-xs">
                                 {MODE_OPTIONS.find((o) => o.value === newMode)?.hint}
-                                {' '}You can change this later under <em>Appearance</em>.
+                                {' '}{translateInterface("You can change this later under") + " "}<em>{translateInterface("Appearance")}</em>.
                             </p>
                         </div>
 
@@ -465,35 +453,29 @@ export function WidgetKeysView() {
                                     checked={newUserAuth}
                                     onChange={(e) => setNewUserAuth(e.target.checked)}
                                 />
-                                Enable authenticated host users and cross-device history
-                            </label>
+                                {translateInterface("Enable authenticated host users and cross-device history")}</label>
                             <p className="text-muted-foreground text-xs">
-                                Creates a server-only identity credential. Your backend exchanges
-                                an opaque subject for a short-lived <code>wu_…</code> token; never
-                                put the subject, email, or this credential in browser code.
-                            </p>
+                                {translateInterface("Creates a server-only identity credential. Your backend exchanges an opaque subject for a short-lived") + " "}<code>wu_…</code> {" " + translateInterface("token; never put the subject, email, or this credential in browser code.")}</p>
                         </div>
 
                         <div className="grid gap-1.5">
                             <Label htmlFor="wk-label">
-                                Key label <span className="text-destructive">*</span>
+                                {translateInterface("Key label") + " "}<span className="text-destructive">*</span>
                             </Label>
                             <Input
                                 id="wk-label"
                                 data-testid="admin-widget-keys-label"
                                 value={newLabel}
                                 onChange={(e) => setNewLabel(e.target.value)}
-                                placeholder="e.g. Production website"
+                                placeholder={translateInterface("e.g. Production website")}
                             />
                             <p className="text-muted-foreground text-xs">
-                                A name to recognise this key in the list. Internal only — never
-                                shown to visitors.
-                            </p>
+                                {translateInterface("A name to recognise this key in the list. Internal only — never shown to visitors.")}</p>
                         </div>
 
                         <div className="grid gap-1.5">
                             <Label htmlFor="wk-project">
-                                Project <span className="text-destructive">*</span>
+                                {translateInterface("Project") + " "}<span className="text-destructive">*</span>
                             </Label>
                             <select
                                 id="wk-project"
@@ -513,8 +495,8 @@ export function WidgetKeysView() {
                                         : projectsQuery.isError
                                           ? 'Projects unavailable'
                                           : projectOptions.length === 0
-                                            ? 'No projects available'
-                                            : 'Select a project…'}
+                                            ? translateInterface("No projects available")
+                                            : translateInterface("Select a project…")}
                                 </option>
                                 {projectOptions.map((projectKey) => (
                                     <option key={projectKey} value={projectKey}>
@@ -523,17 +505,14 @@ export function WidgetKeysView() {
                                 ))}
                             </select>
                             <p className="text-muted-foreground text-xs">
-                                Which knowledge-base project the widget retrieves from. Answers
-                                and citations are grounded strictly in this project.
-                            </p>
+                                {translateInterface("Which knowledge-base project the widget retrieves from. Answers and citations are grounded strictly in this project.")}</p>
                             {projectsQuery.isLoading && (
                                 <p
                                     role="status"
                                     data-testid="admin-widget-keys-project-loading"
                                     className="text-muted-foreground text-xs"
                                 >
-                                    Loading the projects available in this team…
-                                </p>
+                                    {translateInterface("Loading the projects available in this team…")}</p>
                             )}
                             {projectsQuery.isError && (
                                 <Alert
@@ -541,7 +520,7 @@ export function WidgetKeysView() {
                                     data-testid="admin-widget-keys-project-error"
                                 >
                                     <Ban aria-hidden />
-                                    <AlertTitle>Could not load projects</AlertTitle>
+                                    <AlertTitle>{translateInterface("Could not load projects")}</AlertTitle>
                                     <AlertDescription>
                                         <p>{extractApiError(projectsQuery.error)}</p>
                                         <Button
@@ -554,7 +533,7 @@ export function WidgetKeysView() {
                                             onClick={() => void projectsQuery.refetch()}
                                         >
                                             <RotateCw aria-hidden />
-                                            {projectsQuery.isFetching ? 'Retrying…' : 'Retry'}
+                                            {projectsQuery.isFetching ? 'Retrying…' : translateInterface("Retry")}
                                         </Button>
                                     </AlertDescription>
                                 </Alert>
@@ -567,22 +546,21 @@ export function WidgetKeysView() {
                                     data-testid="admin-widget-keys-project-empty"
                                 >
                                     <Info aria-hidden />
-                                    <AlertTitle>No projects available</AlertTitle>
+                                    <AlertTitle>{translateInterface("No projects available")}</AlertTitle>
                                     <AlertDescription>
-                                        Create or import a project before creating a widget key.{' '}
+                                        {translateInterface("Create or import a project before creating a widget key.")}{' '}
                                         <a
                                             href="./projects"
                                             className="font-medium underline underline-offset-4"
                                         >
-                                            Manage projects
-                                        </a>
+                                            {translateInterface("Manage projects")}</a>
                                     </AlertDescription>
                                 </Alert>
                             )}
                         </div>
 
                         <div className="grid gap-1.5">
-                            <Label htmlFor="wk-origins">Allowed origins</Label>
+                            <Label htmlFor="wk-origins">{translateInterface("Allowed origins")}</Label>
                             <Textarea
                                 id="wk-origins"
                                 data-testid="admin-widget-keys-origins"
@@ -592,17 +570,13 @@ export function WidgetKeysView() {
                                 rows={2}
                             />
                             <p className="text-muted-foreground text-xs">
-                                Comma- or newline-separated list of sites allowed to load the
-                                widget. The server matches the browser origin exactly and rejects
-                                any other. Leave empty to block all browser embeds — only
-                                server-side proxy mode (the secret) will work. You can change this
-                                later under <em>Origins</em>.
+                                {translateInterface("Comma- or newline-separated list of sites allowed to load the widget. The server matches the browser origin exactly and rejects any other. Leave empty to block all browser embeds — only server-side proxy mode (the secret) will work. You can change this later under") + " "}<em>{translateInterface("Origins")}</em>.
                             </p>
                         </div>
 
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="grid gap-1.5">
-                                <Label htmlFor="wk-rate">Rate limit (req/min)</Label>
+                                <Label htmlFor="wk-rate">{translateInterface("Rate limit (req/min)")}</Label>
                                 <Input
                                     id="wk-rate"
                                     type="number"
@@ -614,11 +588,10 @@ export function WidgetKeysView() {
                                     placeholder="60"
                                 />
                                 <p className="text-muted-foreground text-xs">
-                                    Max widget API calls per minute per visitor. Default 60.
-                                </p>
+                                    {translateInterface("Max widget API calls per minute per visitor. Default 60.")}</p>
                             </div>
                             <div className="grid gap-1.5">
-                                <Label htmlFor="wk-skill">Assistant skill</Label>
+                                <Label htmlFor="wk-skill">{translateInterface("Assistant skill")}</Label>
                                 <Input
                                     id="wk-skill"
                                     data-testid="admin-widget-keys-skill"
@@ -627,9 +600,7 @@ export function WidgetKeysView() {
                                     placeholder="askmydocs-assistant@1"
                                 />
                                 <p className="text-muted-foreground text-xs">
-                                    The skill/persona the widget runs. Leave blank for the
-                                    default.
-                                </p>
+                                    {translateInterface("The skill/persona the widget runs. Leave blank for the default.")}</p>
                             </div>
                         </div>
 
@@ -646,15 +617,9 @@ export function WidgetKeysView() {
                                     onChange={(e) => setNewHostTools(e.target.checked)}
                                     className="size-4 accent-[var(--accent-a)]"
                                 />
-                                Enable host tools (the host app provides tools to the widget)
-                            </label>
+                                {translateInterface("Enable host tools (the host app provides tools to the widget)")}</label>
                             <p className="text-muted-foreground text-xs">
-                                Operational switch for this customer. When on, the embedding
-                                page can declare tools the assistant may call (HTP). Host tools
-                                reach the model only when this is on <em>and</em> the assigned
-                                skill is allowed to use them. Default off — you can change it
-                                later from the list.
-                            </p>
+                                {translateInterface("Operational switch for this customer. When on, the embedding page can declare tools the assistant may call (HTP). Host tools reach the model only when this is on") + " "}<em>{translateInterface("and")}</em> {" " + translateInterface("the assigned skill is allowed to use them. Default off — you can change it later from the list.")}</p>
                         </div>
 
                         {createKey.isError && (
@@ -663,7 +628,7 @@ export function WidgetKeysView() {
                                 data-testid="admin-widget-keys-create-error"
                             >
                                 <Ban aria-hidden />
-                                <AlertTitle>Could not create the key</AlertTitle>
+                                <AlertTitle>{translateInterface("Could not create the key")}</AlertTitle>
                                 <AlertDescription>
                                     {extractApiError(createKey.error)}
                                 </AlertDescription>
@@ -688,8 +653,7 @@ export function WidgetKeysView() {
                                     createKey.reset();
                                 }}
                             >
-                                Cancel
-                            </Button>
+                                {translateInterface("Cancel")}</Button>
                         </div>
                     </CardContent>
                 </Card>
@@ -699,7 +663,7 @@ export function WidgetKeysView() {
             {createdCreds && (
                 <CredentialsCard
                     testId="admin-widget-keys-created-creds"
-                    title="Key created — copy the secret now, it won't be shown again"
+                    title={translateInterface("Key created — copy the secret now, it won't be shown again")}
                     creds={createdCreds}
                     onEmbed={() =>
                         setEmbedTarget({
@@ -721,15 +685,11 @@ export function WidgetKeysView() {
                 <Alert variant="info" data-testid="admin-widget-identity-secret">
                     <KeyRound aria-hidden />
                     <AlertTitle>
-                        Identity credential for {identityCredential.label} — copy it now
-                    </AlertTitle>
+                        {translateInterface("Identity credential for") + " "}{identityCredential.label} {" " + translateInterface("— copy it now")}</AlertTitle>
                     <AlertDescription>
                         <p>
-                            Send this only from the host backend as bearer auth to{' '}
-                            <code>/api/widget/user-token</code>, with
-                            <code>{' { subject, origin }'}</code> and
-                            <code>X-Widget-Key</code>. The returned <code>wu_…</code> token is the
-                            only identity value passed to the browser. Key:{' '}
+                            {translateInterface("Send this only from the host backend as bearer auth to")}{' '}
+                            <code>/api/widget/user-token</code>{translateInterface(", with")}<code>{' { subject, origin }'}</code> {" " + translateInterface("and")}<code>X-Widget-Key</code>{translateInterface(". The returned") + " "}<code>wu_…</code> {" " + translateInterface("token is the only identity value passed to the browser. Key:")}{' '}
                             <code>{identityCredential.publicKey}</code>.
                         </p>
                         <div className="mt-2 flex items-center gap-2">
@@ -758,8 +718,7 @@ export function WidgetKeysView() {
                                 }
                             >
                                 <Code2 aria-hidden />
-                                Open authenticated setup
-                            </Button>
+                                {translateInterface("Open authenticated setup")}</Button>
                             <Button
                                 type="button"
                                 size="sm"
@@ -767,8 +726,7 @@ export function WidgetKeysView() {
                                 data-testid="admin-widget-identity-secret-dismiss"
                                 onClick={() => setIdentityCredential(null)}
                             >
-                                Dismiss
-                            </Button>
+                                {translateInterface("Dismiss")}</Button>
                         </div>
                     </AlertDescription>
                 </Alert>
@@ -778,7 +736,7 @@ export function WidgetKeysView() {
             {rotatedCreds && (
                 <CredentialsCard
                     testId="admin-widget-keys-rotated-creds"
-                    title="Credentials rotated — copy the new secret now"
+                    title={translateInterface("Credentials rotated — copy the new secret now")}
                     creds={rotatedCreds}
                     onEmbed={() =>
                         setEmbedTarget({
@@ -802,13 +760,12 @@ export function WidgetKeysView() {
                     data-testid="admin-widget-keys-loading"
                     className="text-muted-foreground text-sm"
                 >
-                    Loading widget keys…
-                </div>
+                    {translateInterface("Loading widget keys…")}</div>
             )}
             {keys.isError && (
                 <Alert variant="destructive" data-testid="admin-widget-keys-error">
                     <Ban aria-hidden />
-                    <AlertTitle>Failed to load widget keys.</AlertTitle>
+                    <AlertTitle>{translateInterface("Failed to load widget keys.")}</AlertTitle>
                     <AlertDescription>{extractApiError(keys.error)}</AlertDescription>
                 </Alert>
             )}
@@ -820,7 +777,7 @@ export function WidgetKeysView() {
                     data-testid="admin-widget-keys-host-tools-error"
                 >
                     <Ban aria-hidden />
-                    <AlertTitle>Could not update host tools.</AlertTitle>
+                    <AlertTitle>{translateInterface("Could not update host tools.")}</AlertTitle>
                     <AlertDescription>
                         {extractApiError(toggleHostTools.error)}
                     </AlertDescription>
@@ -833,7 +790,7 @@ export function WidgetKeysView() {
                     data-testid="admin-widget-keys-user-auth-error"
                 >
                     <Ban aria-hidden />
-                    <AlertTitle>Could not update authenticated-user access.</AlertTitle>
+                    <AlertTitle>{translateInterface("Could not update authenticated-user access.")}</AlertTitle>
                     <AlertDescription>
                         {extractApiError(toggleUserAuth.error ?? rotateIdentitySecret.error)}
                     </AlertDescription>
@@ -845,7 +802,7 @@ export function WidgetKeysView() {
             {(rotateKey.isError || revokeKey.isError || destroyKey.isError) && (
                 <Alert variant="destructive" data-testid="admin-widget-keys-action-error">
                     <Ban aria-hidden />
-                    <AlertTitle>The action could not be completed.</AlertTitle>
+                    <AlertTitle>{translateInterface("The action could not be completed.")}</AlertTitle>
                     <AlertDescription>
                         {extractApiError(rotateKey.error ?? revokeKey.error ?? destroyKey.error)}
                     </AlertDescription>
@@ -858,8 +815,7 @@ export function WidgetKeysView() {
                     data-testid="admin-widget-keys-empty"
                     className="text-muted-foreground rounded-lg border border-dashed border-border p-6 text-center text-sm"
                 >
-                    No widget keys yet. Create one to get started.
-                </div>
+                    {translateInterface("No widget keys yet. Create one to get started.")}</div>
             )}
 
             {/* Key list */}
@@ -871,18 +827,18 @@ export function WidgetKeysView() {
                     >
                         <thead>
                             <tr className="text-muted-foreground border-b border-border text-left [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">
-                                <th>Label</th>
-                                <th>Public Key</th>
-                                <th>Project</th>
-                                <th>Mode</th>
-                                <th>Origins</th>
-                                <th>Rate</th>
-                                <th>Host tools</th>
-                                <th>User auth</th>
-                                <th>Status</th>
-                                <th>Sessions</th>
-                                <th>Last Used</th>
-                                <th className="text-right">Actions</th>
+                                <th>{translateInterface("Label")}</th>
+                                <th>{translateInterface("Public Key")}</th>
+                                <th>{translateInterface("Project")}</th>
+                                <th>{translateInterface("Mode")}</th>
+                                <th>{translateInterface("Origins")}</th>
+                                <th>{translateInterface("Rate")}</th>
+                                <th>{translateInterface("Host tools")}</th>
+                                <th>{translateInterface("User auth")}</th>
+                                <th>{translateInterface("Status")}</th>
+                                <th>{translateInterface("Sessions")}</th>
+                                <th>{translateInterface("Last Used")}</th>
+                                <th className="text-right">{translateInterface("Actions")}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -913,8 +869,7 @@ export function WidgetKeysView() {
                                                 className="text-muted-foreground"
                                                 data-testid={`admin-widget-keys-origins-empty-${key.id}`}
                                             >
-                                                none configured
-                                            </span>
+                                                {translateInterface("none configured")}</span>
                                         ) : (
                                             key.allowed_origins.join(', ')
                                         )}
@@ -940,7 +895,7 @@ export function WidgetKeysView() {
                                                 className="size-4 accent-[var(--accent-a)]"
                                             />
                                             <span className="text-muted-foreground text-xs">
-                                                {key.host_tools_enabled ? 'On' : 'Off'}
+                                                {key.host_tools_enabled ? translateInterface("On") : translateInterface("Off")}
                                             </span>
                                         </label>
                                     </td>
@@ -961,7 +916,7 @@ export function WidgetKeysView() {
                                                 }
                                             />
                                             <span className="text-muted-foreground text-xs">
-                                                {key.user_auth_enabled ? 'On' : 'Off'}
+                                                {key.user_auth_enabled ? translateInterface("On") : translateInterface("Off")}
                                             </span>
                                         </label>
                                     </td>
@@ -970,7 +925,7 @@ export function WidgetKeysView() {
                                             data-testid={`admin-widget-keys-status-${key.id}`}
                                             variant={key.is_active ? 'success' : 'destructive'}
                                         >
-                                            {key.is_active ? 'Active' : 'Revoked'}
+                                            {key.is_active ? translateInterface("Active") : translateInterface("Revoked")}
                                         </Badge>
                                     </td>
                                     <td>{key.sessions_count}</td>
@@ -1002,11 +957,10 @@ export function WidgetKeysView() {
                                                         }
                                                     }}
                                                     aria-label={`Rotate identity credential for ${key.label}`}
-                                                    title="Rotate the server-only ik_ identity credential"
+                                                    title={translateInterface("Rotate the server-only ik_ identity credential")}
                                                 >
                                                     <KeyRound aria-hidden />
-                                                    Identity secret
-                                                </Button>
+                                                    {translateInterface("Identity secret")}</Button>
                                             )}
                                             <Button
                                                 type="button"
@@ -1025,12 +979,11 @@ export function WidgetKeysView() {
                                                         intro: key.intro,
                                                     })
                                                 }
-                                                title="Get the embed snippet"
+                                                title={translateInterface("Get the embed snippet")}
                                                 aria-label={`Embed code for ${key.label}`}
                                             >
                                                 <Code2 aria-hidden />
-                                                Embed
-                                            </Button>
+                                                {translateInterface("Embed")}</Button>
                                             <Button
                                                 type="button"
                                                 size="sm"
@@ -1045,12 +998,11 @@ export function WidgetKeysView() {
                                                         intro: sanitizeIntro(key.intro ?? DEFAULT_INTRO),
                                                     })
                                                 }
-                                                title="Customize the launcher and chat appearance"
+                                                title={translateInterface("Customize the launcher and chat appearance")}
                                                 aria-label={`Customize appearance for ${key.label}`}
                                             >
                                                 <Palette aria-hidden />
-                                                Appearance
-                                            </Button>
+                                                {translateInterface("Appearance")}</Button>
                                             <Button
                                                 type="button"
                                                 size="sm"
@@ -1064,12 +1016,11 @@ export function WidgetKeysView() {
                                                         origins: key.allowed_origins,
                                                     })
                                                 }
-                                                title="Edit the websites allowed to load this widget"
+                                                title={translateInterface("Edit the websites allowed to load this widget")}
                                                 aria-label={`Edit allowed origins for ${key.label}`}
                                             >
                                                 <Globe aria-hidden />
-                                                Origins
-                                            </Button>
+                                                {translateInterface("Origins")}</Button>
                                             {key.is_active && (
                                                 <>
                                                     <Button
@@ -1087,12 +1038,11 @@ export function WidgetKeysView() {
                                                                 rotateKey.mutate(key.id);
                                                             }
                                                         }}
-                                                        title="Rotate credentials (generates new pk_ + sk_)"
+                                                        title={translateInterface("Rotate credentials (generates new pk_ + sk_)")}
                                                         aria-label={`Rotate key ${key.label}`}
                                                     >
                                                         <RotateCw aria-hidden />
-                                                        Rotate
-                                                    </Button>
+                                                        {translateInterface("Rotate")}</Button>
                                                     <Button
                                                         type="button"
                                                         size="sm"
@@ -1108,12 +1058,11 @@ export function WidgetKeysView() {
                                                                 revokeKey.mutate(key.id);
                                                             }
                                                         }}
-                                                        title="Revoke (set inactive)"
+                                                        title={translateInterface("Revoke (set inactive)")}
                                                         aria-label={`Revoke key ${key.label}`}
                                                     >
                                                         <Ban aria-hidden />
-                                                        Revoke
-                                                    </Button>
+                                                        {translateInterface("Revoke")}</Button>
                                                 </>
                                             )}
                                             <Button
@@ -1132,12 +1081,11 @@ export function WidgetKeysView() {
                                                         destroyKey.mutate(key.id);
                                                     }
                                                 }}
-                                                title="Hard delete (cascading)"
+                                                title={translateInterface("Hard delete (cascading)")}
                                                 aria-label={`Delete key ${key.label}`}
                                             >
                                                 <Trash2 aria-hidden />
-                                                Delete
-                                            </Button>
+                                                {translateInterface("Delete")}</Button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1217,14 +1165,15 @@ function CredentialsCard({
     onEmbed: () => void;
     onDismiss: () => void;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <Card data-testid={testId} className="border-[var(--accent-a)]/40">
             <CardHeader>
                 <CardTitle className="text-sm">{title}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3">
-                <CredRow label="Public key" value={creds.public_key} testId="created-pk" />
-                <CredRow label="Secret" value={creds.plain_secret} testId="created-sk" />
+                <CredRow label={translateInterface("Public key")} value={creds.public_key} testId="created-pk" />
+                <CredRow label={translateInterface("Secret")} value={creds.plain_secret} testId="created-sk" />
                 <div className="flex flex-wrap gap-2">
                     <Button
                         type="button"
@@ -1232,11 +1181,9 @@ function CredentialsCard({
                         onClick={onEmbed}
                     >
                         <Code2 aria-hidden />
-                        Get embed code
-                    </Button>
+                        {translateInterface("Get embed code")}</Button>
                     <Button type="button" variant="ghost" onClick={onDismiss}>
-                        Dismiss
-                    </Button>
+                        {translateInterface("Dismiss")}</Button>
                 </div>
             </CardContent>
         </Card>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { flattenLaravelError, parseLaravelError } from '../../../lib/laravel-errors';
@@ -29,6 +30,7 @@ function sourceBadge(source: string): { bg: string; border: string; fg: string; 
 }
 
 function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKey: string }) {
+    const { t: translateInterface } = useUiTranslation();
     const mutation = useSetAppSetting(projectKey);
     const [draft, setDraft] = useState<string>(setting.value === null ? '' : String(setting.value));
 
@@ -77,13 +79,11 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                 <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{setting.key}</div>
                 {readOnly && setting.deploy_only && (
                     <span data-testid={`app-setting-${setting.key}-deploy-only`} style={pillStyle('rgba(148,163,184,0.12)', 'rgba(148,163,184,0.30)', '#94a3b8')}>
-                        deploy-managed
-                    </span>
+                        {translateInterface("deploy-managed")}</span>
                 )}
                 {readOnly && !setting.deploy_only && (
                     <span data-testid={`app-setting-${setting.key}-tenant-only`} style={pillStyle('rgba(148,163,184,0.12)', 'rgba(148,163,184,0.30)', '#94a3b8')}>
-                        tenant-wide only
-                    </span>
+                        {translateInterface("tenant-wide only")}</span>
                 )}
             </td>
 
@@ -109,7 +109,7 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                         {/* Explicit empty option so a null value renders
                             deterministically (no React controlled-value warning)
                             and can be cleared by selecting "unset". */}
-                        <option value="">— (unset)</option>
+                        <option value="">{translateInterface("— (unset)")}</option>
                         {(setting.enum ?? []).map((opt) => (
                             <option key={opt} value={opt}>
                                 {opt}
@@ -126,9 +126,9 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                         onChange={(e) => setDraft(e.target.value)}
                         style={inputStyle}
                     >
-                        <option value="">— (unset)</option>
-                        <option value="true">true</option>
-                        <option value="false">false</option>
+                        <option value="">{translateInterface("— (unset)")}</option>
+                        <option value="true">{translateInterface("true")}</option>
+                        <option value="false">{translateInterface("false")}</option>
                     </select>
                 ) : (
                     <input
@@ -153,7 +153,7 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                             onClick={submit}
                             style={saveStyle(!dirty || mutation.isPending)}
                         >
-                            {mutation.isPending ? 'Saving…' : 'Save'}
+                            {mutation.isPending ? 'Saving…' : translateInterface("Save")}
                         </button>
                         {overrideAtScope && (
                             <button
@@ -164,8 +164,7 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                                 onClick={clearOverride}
                                 style={clearStyle}
                             >
-                                Reset
-                            </button>
+                                {translateInterface("Reset")}</button>
                         )}
                     </>
                 )}
@@ -180,6 +179,7 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
 }
 
 export function AppSettingsView() {
+    const { t: translateInterface } = useUiTranslation();
     const [scopeInput, setScopeInput] = useState<string>('');
     const projectKey = scopeInput.trim() === '' ? WILDCARD : scopeInput.trim();
     const query = useAppSettings(projectKey);
@@ -204,57 +204,49 @@ export function AppSettingsView() {
             >
                 <div>
                     <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', letterSpacing: '-0.02em', color: 'var(--fg-0)' }}>
-                        Configuration
-                    </h1>
+                        {translateInterface("Configuration")}</h1>
                     <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        Governable runtime settings (AI provider, connector sync cadence). Changes take
-                        effect without a deploy. Deploy-managed knobs are read-only.
-                    </p>
+                        {translateInterface("Governable runtime settings (AI provider, connector sync cadence). Changes take effect without a deploy. Deploy-managed knobs are read-only.")}</p>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <label htmlFor="app-settings-scope" style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-                        Project scope
-                    </label>
+                        {translateInterface("Project scope")}</label>
                     <input
                         id="app-settings-scope"
                         data-testid="app-settings-scope"
                         value={scopeInput}
-                        placeholder="* (tenant-wide)"
+                        placeholder={translateInterface("* (tenant-wide)")}
                         onChange={(e) => setScopeInput(e.target.value)}
                         style={{ ...inputStyle, width: 220 }}
                     />
                     <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                        Leave blank for the tenant-wide default; enter a project key to scope per-project keys.
-                    </span>
+                        {translateInterface("Leave blank for the tenant-wide default; enter a project key to scope per-project keys.")}</span>
                 </div>
 
                 {state === 'loading' && (
                     <div data-testid="admin-app-settings-loading" role="status" aria-busy="true" style={panelStyle}>
-                        Loading settings…
-                    </div>
+                        {translateInterface("Loading settings…")}</div>
                 )}
                 {state === 'error' && (
                     <div data-testid="admin-app-settings-error" role="alert" style={errorStyle}>
-                        Could not load settings.{' '}
+                        {translateInterface("Could not load settings.")}{' '}
                         <button type="button" data-testid="admin-app-settings-retry" className="focus-ring" onClick={() => query.refetch()} style={retryStyle}>
-                            Retry
-                        </button>
+                            {translateInterface("Retry")}</button>
                     </div>
                 )}
                 {state === 'empty' && (
                     <div data-testid="admin-app-settings-empty" role="status" style={panelStyle}>
-                        No governable settings are registered.
-                    </div>
+                        {translateInterface("No governable settings are registered.")}</div>
                 )}
                 {state === 'ready' && (query.data ?? []).length > 0 && (
                     <table data-testid="admin-app-settings-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                         <thead>
                             <tr style={{ textAlign: 'left', color: 'var(--fg-3)' }}>
-                                <th style={thStyle}>Setting</th>
-                                <th style={thStyle}>Source</th>
-                                <th style={thStyle}>Value</th>
-                                <th style={thStyle}>Actions</th>
+                                <th style={thStyle}>{translateInterface("Setting")}</th>
+                                <th style={thStyle}>{translateInterface("Source")}</th>
+                                <th style={thStyle}>{translateInterface("Value")}</th>
+                                <th style={thStyle}>{translateInterface("Actions")}</th>
                             </tr>
                         </thead>
                         <tbody>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 export interface UserMessageEditorProps {
@@ -22,6 +23,7 @@ export interface UserMessageEditorProps {
  * shortcut semantics).
  */
 export function UserMessageEditor({ messageId, initialValue, onSubmit, onCancel }: UserMessageEditorProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [value, setValue] = useState(initialValue);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -140,8 +142,7 @@ export function UserMessageEditor({ messageId, initialValue, onSubmit, onCancel 
                         disabled={saving}
                         aria-label="Cancel edit"
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="button"
                         className="btn sm primary"

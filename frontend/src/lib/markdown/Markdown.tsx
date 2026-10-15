@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../ui-locale";
 import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -92,6 +93,7 @@ export interface MarkdownProps {
  * specific block on a long page.
  */
 function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [copied, setCopied] = useState(false);
     const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
@@ -138,7 +140,7 @@ function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
                     title="Copy code"
                     leadingIcon={copied ? <Icon.Check size={13} /> : <Icon.Copy size={13} />}
                 >
-                    <span role="status">{copied ? 'Copied' : 'Copy'}</span>
+                    <span role="status">{copied ? translateInterface("Copied") : translateInterface("Copy")}</span>
                 </Button>
             </div>
             <pre tabIndex={0} aria-label={language ? `${language} code` : 'Code block'}>{children}</pre>

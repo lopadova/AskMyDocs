@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { toAdminError } from '../../admin/shared/errors';
@@ -11,6 +12,7 @@ import {
 } from './tenant-control.api';
 
 export function TenantControlView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const queryClient = useQueryClient();
     const [searchDraft, setSearchDraft] = useState('');
     const [search, setSearch] = useState('');
@@ -47,10 +49,9 @@ export function TenantControlView(): ReactNode {
         <div data-testid="tenant-control-view" style={{ padding: 24, width: '100%', boxSizing: 'border-box' }}>
             <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
                 <div>
-                    <h1 style={{ margin: 0, fontSize: 19, color: 'var(--fg-0)' }}>Tenant control</h1>
+                    <h1 style={{ margin: 0, fontSize: 19, color: 'var(--fg-0)' }}>{translateInterface("Tenant control")}</h1>
                     <p style={{ margin: '5px 0 0', color: 'var(--fg-3)', fontSize: 11.5 }}>
-                        System administration across every tenant. Platform permission required.
-                    </p>
+                        {translateInterface("System administration across every tenant. Platform permission required.")}</p>
                 </div>
                 <span style={{ flex: 1 }} />
                 <button
@@ -59,8 +60,7 @@ export function TenantControlView(): ReactNode {
                     onClick={() => setProvisionOpen(true)}
                     style={primaryButton}
                 >
-                    + Provision tenant
-                </button>
+                    {translateInterface("+ Provision tenant")}</button>
             </header>
 
             <form
@@ -73,18 +73,18 @@ export function TenantControlView(): ReactNode {
                 style={{ display: 'flex', gap: 8, marginBottom: 14 }}
             >
                 <label htmlFor="tenant-control-search" style={visuallyLabelled}>
-                    <span style={srOnly}>Search tenants</span>
+                    <span style={srOnly}>{translateInterface("Search tenants")}</span>
                     <input
                         id="tenant-control-search"
                         data-testid="tenant-control-search"
                         value={searchDraft}
                         onChange={(event) => setSearchDraft(event.target.value)}
-                        placeholder="Search name or slug"
+                        placeholder={translateInterface("Search name or slug")}
                         style={{ ...inputStyle, minWidth: 250 }}
                     />
                 </label>
                 <label htmlFor="tenant-control-status" style={visuallyLabelled}>
-                    <span style={srOnly}>Tenant status</span>
+                    <span style={srOnly}>{translateInterface("Tenant status")}</span>
                     <select
                         id="tenant-control-status"
                         data-testid="tenant-control-status"
@@ -95,17 +95,16 @@ export function TenantControlView(): ReactNode {
                         }}
                         style={inputStyle}
                     >
-                        <option value="">All statuses</option>
-                        <option value="active">Active</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="archived">Archived</option>
+                        <option value="">{translateInterface("All statuses")}</option>
+                        <option value="active">{translateInterface("Active")}</option>
+                        <option value="suspended">{translateInterface("Suspended")}</option>
+                        <option value="archived">{translateInterface("Archived")}</option>
                     </select>
                 </label>
-                <button type="submit" data-testid="tenant-control-search-submit" style={secondaryButton}>Search</button>
+                <button type="submit" data-testid="tenant-control-search-submit" style={secondaryButton}>{translateInterface("Search")}</button>
                 {tenantsQuery.data && (
                     <span data-testid="tenant-control-total" style={{ alignSelf: 'center', color: 'var(--fg-3)', fontSize: 11.5 }}>
-                        {tenantsQuery.data.meta.total} tenants
-                    </span>
+                        {tenantsQuery.data.meta.total} {" " + translateInterface("tenants")}</span>
                 )}
             </form>
 
@@ -155,6 +154,7 @@ function TenantTable({
     page: number;
     onPage: (page: number) => void;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     if (query.isLoading) return <PanelState testId="tenant-control-list-loading" text="Loading tenants…" />;
     if (query.isError) return <PanelState testId="tenant-control-list-error" text={toAdminError(query.error).message} error />;
     const response = query.data;
@@ -163,16 +163,16 @@ function TenantTable({
     }
 
     return (
-        <section style={panelStyle} aria-label="Tenant registry">
+        <section style={panelStyle} aria-label={translateInterface("Tenant registry")}>
             <div style={{ overflowX: 'auto' }}>
                 <table data-testid="tenant-control-table" style={tableStyle}>
                     <thead>
                         <tr style={headRowStyle}>
-                            <th style={cellStyle}>Tenant</th>
-                            <th style={cellStyle}>Status</th>
-                            <th style={cellStyle}>Projects</th>
-                            <th style={cellStyle}>Users</th>
-                            <th style={cellStyle}><span style={srOnly}>Open</span></th>
+                            <th style={cellStyle}>{translateInterface("Tenant")}</th>
+                            <th style={cellStyle}>{translateInterface("Status")}</th>
+                            <th style={cellStyle}>{translateInterface("Projects")}</th>
+                            <th style={cellStyle}>{translateInterface("Users")}</th>
+                            <th style={cellStyle}><span style={srOnly}>{translateInterface("Open")}</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -203,8 +203,7 @@ function TenantTable({
                                             onClick={() => onSelect(tenant.slug)}
                                             style={secondaryButton}
                                         >
-                                            Open
-                                        </button>
+                                            {translateInterface("Open")}</button>
                                     </td>
                                 </tr>
                             );
@@ -262,6 +261,7 @@ function TenantDetailContent({
     onUserPage: (page: number) => void;
     onUpdated: () => void;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [name, setName] = useState(detail.tenant.name);
     const [status, setStatus] = useState<TenantStatus>(detail.tenant.status);
     const [preview, setPreview] = useState<Awaited<ReturnType<typeof tenantControlApi.lifecyclePreview>> | null>(null);
@@ -319,7 +319,7 @@ function TenantDetailContent({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px auto', gap: 7, marginTop: 14 }}>
                 <label htmlFor="tenant-control-detail-name" style={labelStyle}>
-                    <span>Name</span>
+                    <span>{translateInterface("Name")}</span>
                     <input
                         id="tenant-control-detail-name"
                         data-testid="tenant-control-detail-name"
@@ -330,7 +330,7 @@ function TenantDetailContent({
                     />
                 </label>
                 <label htmlFor="tenant-control-detail-status" style={labelStyle}>
-                    <span>Status</span>
+                    <span>{translateInterface("Status")}</span>
                     <select
                         id="tenant-control-detail-status"
                         data-testid="tenant-control-detail-status"
@@ -338,9 +338,9 @@ function TenantDetailContent({
                         onChange={(event) => setStatus(event.target.value as TenantStatus)}
                         style={inputStyle}
                     >
-                        <option value="active">Active</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="archived">Archived</option>
+                        <option value="active">{translateInterface("Active")}</option>
+                        <option value="suspended">{translateInterface("Suspended")}</option>
+                        <option value="archived">{translateInterface("Archived")}</option>
                     </select>
                 </label>
                 <button
@@ -350,12 +350,11 @@ function TenantDetailContent({
                     onClick={save}
                     style={{ ...secondaryButton, alignSelf: 'end' }}
                 >
-                    {busy ? 'Saving…' : 'Save'}
+                    {busy ? 'Saving…' : translateInterface("Save")}
                 </button>
             </div>
             <p style={{ margin: '7px 0 0', color: 'var(--fg-3)', fontSize: 10.5, lineHeight: 1.4 }}>
-                Suspended and archived tenants disappear from team switching and their tenant-scoped requests are blocked.
-            </p>
+                {translateInterface("Suspended and archived tenants disappear from team switching and their tenant-scoped requests are blocked.")}</p>
             {updateError && <p role="alert" style={{ color: 'var(--err)', fontSize: 11 }}>{updateError.message}</p>}
 
             {preview && (
@@ -367,12 +366,10 @@ function TenantDetailContent({
                     style={{ ...userCardStyle, marginTop: 10, borderColor: 'rgba(245,158,11,.5)' }}
                 >
                     <strong id="tenant-lifecycle-confirm-title" style={{ color: 'var(--fg-0)' }}>
-                        Confirm {preview.transition.from} → {preview.transition.to}
+                        {translateInterface("Confirm") + " "}{preview.transition.from} → {preview.transition.to}
                     </strong>
                     <p id="tenant-lifecycle-confirm-description" style={{ color: 'var(--fg-2)', fontSize: 11 }}>
-                        This changes access for {preview.tenant.member_count} users across {preview.tenant.project_count} projects.
-                        The confirmation is single-use and expires shortly.
-                    </p>
+                        {translateInterface("This changes access for") + " "}{preview.tenant.member_count} {" " + translateInterface("users across") + " "}{preview.tenant.project_count} {" " + translateInterface("projects. The confirmation is single-use and expires shortly.")}</p>
                     <div style={{ display: 'flex', gap: 8 }}>
                         <button
                             type="button"
@@ -380,28 +377,26 @@ function TenantDetailContent({
                             onClick={() => setPreview(null)}
                             style={secondaryButton}
                         >
-                            Cancel
-                        </button>
+                            {translateInterface("Cancel")}</button>
                         <button
                             type="button"
                             data-testid="tenant-control-lifecycle-confirm-submit"
                             onClick={() => mutation.mutate(preview.confirm_token)}
                             style={primaryButton}
                         >
-                            Confirm lifecycle change
-                        </button>
+                            {translateInterface("Confirm lifecycle change")}</button>
                     </div>
                 </div>
             )}
 
             <div style={{ display: 'flex', gap: 8, margin: '16px 0 8px', color: 'var(--fg-2)', fontSize: 11 }}>
-                <span>{detail.tenant.project_count} projects</span>
+                <span>{detail.tenant.project_count} {" " + translateInterface("projects")}</span>
                 <span>·</span>
-                <span>{detail.users.meta.total} users</span>
+                <span>{detail.users.meta.total} {" " + translateInterface("users")}</span>
             </div>
 
             {detail.users.data.length === 0 ? (
-                <p data-testid="tenant-control-users-empty" style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>No associated users.</p>
+                <p data-testid="tenant-control-users-empty" style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>{translateInterface("No associated users.")}</p>
             ) : (
                 <div data-testid="tenant-control-users" style={{ display: 'grid', gap: 7 }}>
                     {detail.users.data.map((user) => <UserAccessCard key={user.id} user={user} />)}
@@ -420,6 +415,7 @@ function TenantDetailContent({
 }
 
 function UserAccessCard({ user }: { user: TenantUserAccess }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const state = user.deleted_at ? 'deleted' : user.is_active ? 'active' : 'inactive';
     return (
         <article data-testid={`tenant-control-user-${user.id}`} style={userCardStyle}>
@@ -433,14 +429,14 @@ function UserAccessCard({ user }: { user: TenantUserAccess }): ReactNode {
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                 {user.roles.map((role) => <span key={role} style={miniPill}>{role}</span>)}
-                {user.roles.length === 0 && <span style={{ color: 'var(--fg-3)', fontSize: 10.5 }}>No global role</span>}
+                {user.roles.length === 0 && <span style={{ color: 'var(--fg-3)', fontSize: 10.5 }}>{translateInterface("No global role")}</span>}
             </div>
             <div style={{ marginTop: 8, color: 'var(--fg-2)', fontSize: 10.5, lineHeight: 1.5 }}>
                 {user.all_projects ? (
-                    <strong style={{ color: 'var(--fg-1)' }}>Access: all tenant projects</strong>
+                    <strong style={{ color: 'var(--fg-1)' }}>{translateInterface("Access: all tenant projects")}</strong>
                 ) : user.memberships.length > 0 ? (
                     <>
-                        Access:{' '}
+                        {translateInterface("Access:")}{' '}
                         {user.memberships.map((membership) => (
                             <span key={membership.id} style={{ marginRight: 6 }}>
                                 {membership.project_key} ({membership.role})
@@ -448,7 +444,7 @@ function UserAccessCard({ user }: { user: TenantUserAccess }): ReactNode {
                         ))}
                     </>
                 ) : (
-                    <span>No project access</span>
+                    <span>{translateInterface("No project access")}</span>
                 )}
             </div>
             <details style={{ marginTop: 7 }}>
@@ -456,8 +452,7 @@ function UserAccessCard({ user }: { user: TenantUserAccess }): ReactNode {
                     data-testid={`tenant-control-user-${user.id}-permissions`}
                     style={{ cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10.5 }}
                 >
-                    {user.permissions.length} effective permissions
-                </summary>
+                    {user.permissions.length} {" " + translateInterface("effective permissions")}</summary>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                     {user.permissions.map((permission) => (
                         <code key={permission} style={{ ...miniPill, fontSize: 9.5 }}>{permission}</code>
@@ -486,6 +481,7 @@ function Pagination({
     testId: string;
     fallbackCurrent: number;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     if (last <= 1) return null;
     return (
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, padding: '10px 4px 2px' }}>
@@ -496,8 +492,7 @@ function Pagination({
                 onClick={() => onPage(Math.max(1, (current || fallbackCurrent) - 1))}
                 style={secondaryButton}
             >
-                Previous
-            </button>
+                {translateInterface("Previous")}</button>
             <span style={{ color: 'var(--fg-3)', fontSize: 10.5 }}>{current} / {last}</span>
             <button
                 type="button"
@@ -506,8 +501,7 @@ function Pagination({
                 onClick={() => onPage(Math.min(last, (current || fallbackCurrent) + 1))}
                 style={secondaryButton}
             >
-                Next
-            </button>
+                {translateInterface("Next")}</button>
         </div>
     );
 }

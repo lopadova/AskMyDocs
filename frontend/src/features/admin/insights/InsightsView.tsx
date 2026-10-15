@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { AdminShell } from '../shell/AdminShell';
 import { useInsightsLatest } from './insights.api';
 import { PromotionSuggestionsCard } from './PromotionSuggestionsCard';
@@ -20,6 +21,7 @@ import { QualityReportCard } from './QualityReportCard';
  */
 
 export function InsightsView() {
+    const { t: translateInterface } = useUiTranslation();
     const latest = useInsightsLatest();
 
     const snapshot = latest.data?.data ?? null;
@@ -53,18 +55,15 @@ export function InsightsView() {
                             color: 'var(--fg-0)',
                         }}
                     >
-                        AI Insights
-                    </h1>
+                        {translateInterface("AI Insights")}</h1>
                     <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        Daily-computed signals across the knowledge base.
-                        {snapshot?.computed_at ? ` Last run ${snapshot.computed_at}.` : null}
+                        {translateInterface("Daily-computed signals across the knowledge base.")}{snapshot?.computed_at ? ` Last run ${snapshot.computed_at}.` : null}
                     </p>
                 </header>
 
                 {state === 'loading' ? (
                     <div data-testid="insights-loading" style={{ color: 'var(--fg-3)' }}>
-                        Loading insights…
-                    </div>
+                        {translateInterface("Loading insights…")}</div>
                 ) : null}
 
                 {state === 'empty' ? (
@@ -78,11 +77,7 @@ export function InsightsView() {
                             fontSize: 13,
                         }}
                     >
-                        No insights snapshot has been computed yet.
-                        Run <code>php artisan insights:compute</code> (or POST
-                        {' '}<code>/api/admin/insights/compute</code>) to
-                        populate the widgets below.
-                    </div>
+                        {translateInterface("No insights snapshot has been computed yet. Run") + " "}<code>php artisan insights:compute</code> {" " + translateInterface("(or POST")}{' '}<code>/api/admin/insights/compute</code>{translateInterface(") to populate the widgets below.")}</div>
                 ) : null}
 
                 {state === 'error' ? (
@@ -97,8 +92,7 @@ export function InsightsView() {
                             fontSize: 13,
                         }}
                     >
-                        Failed to load insights. Try reloading the page.
-                    </div>
+                        {translateInterface("Failed to load insights. Try reloading the page.")}</div>
                 ) : null}
 
                 {state === 'ready' && snapshot ? (
@@ -147,6 +141,7 @@ interface HighlightStripProps {
 }
 
 function HighlightStrip({ promotions, orphans, tags }: HighlightStripProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid="insights-highlights"
@@ -156,9 +151,9 @@ function HighlightStrip({ promotions, orphans, tags }: HighlightStripProps) {
                 gap: 12,
             }}
         >
-            <Kpi testId="insights-highlight-promotions" label="Promotable docs" count={promotions} />
-            <Kpi testId="insights-highlight-orphans" label="Orphan canonical" count={orphans} />
-            <Kpi testId="insights-highlight-tags" label="Need tags" count={tags} />
+            <Kpi testId="insights-highlight-promotions" label={translateInterface("Promotable docs")} count={promotions} />
+            <Kpi testId="insights-highlight-orphans" label={translateInterface("Orphan canonical")} count={orphans} />
+            <Kpi testId="insights-highlight-tags" label={translateInterface("Need tags")} count={tags} />
         </div>
     );
 }

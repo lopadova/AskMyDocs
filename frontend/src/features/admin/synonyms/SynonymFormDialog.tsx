@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
     normalizeToken,
@@ -37,6 +38,7 @@ export function SynonymFormDialog({
     submitError,
     isSubmitting,
 }: SynonymFormDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = synonym !== null;
     const [projectKey, setProjectKey] = useState(synonym?.project_key ?? defaultProjectKey ?? '');
     const [term, setTerm] = useState(synonym?.term ?? '');
@@ -117,7 +119,7 @@ export function SynonymFormDialog({
                 </h2>
 
                 <label htmlFor="admin-synonym-project" style={fieldStyle}>
-                    <span style={labelStyle}>Project key</span>
+                    <span style={labelStyle}>{translateInterface("Project key")}</span>
                     <input
                         id="admin-synonym-project"
                         data-testid="admin-synonym-form-project"
@@ -199,15 +201,14 @@ export function SynonymFormDialog({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="admin-synonym-form-submit"
                         disabled={isSubmitting || !canSubmit}
                         style={buttonStyle('primary', !!isSubmitting || !canSubmit)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save") : translateInterface("Create")}
                     </button>
                 </div>
             </form>

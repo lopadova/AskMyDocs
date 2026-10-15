@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ConnectorInstallationDto, CredentialFieldSchema } from './connectors.api';
 import { useInstallationFolders } from './connectors-hooks';
@@ -76,6 +77,7 @@ export function SyncSettingsForm({
     footerless = false,
     formId,
 }: SyncSettingsFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const schema = account.connection_settings_schema ?? [];
     const needsFolders = schema.some((f) => f.discovery === 'folders');
     const foldersQuery = useInstallationFolders(account.id, needsFolders);
@@ -192,7 +194,7 @@ export function SyncSettingsForm({
                 </div>
                 <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--fg-3)', lineHeight: 1.5 }}>
                     Choose per folder whether to sync it.{' '}
-                    <b style={{ color: 'var(--fg-2)' }}>Auto</b> follows the source default — sync
+                    <b style={{ color: 'var(--fg-2)' }}>{translateInterface("Auto")}</b> follows the source default — sync
                     everything except the folders you <b style={{ color: 'var(--fg-2)' }}>Skip</b>.
                 </p>
 
@@ -222,7 +224,7 @@ export function SyncSettingsForm({
                         <span>
                             Whitelist active — only the {nSync} folder{nSync === 1 ? '' : 's'} set to{' '}
                             <b>Sync</b> {nSync === 1 ? 'is' : 'are'} imported. Folders left on{' '}
-                            <b>Auto</b> are skipped until you clear every Sync mark.
+                            <b>{translateInterface("Auto")}</b> are skipped until you clear every Sync mark.
                         </span>
                     </div>
                 )}
@@ -303,8 +305,7 @@ export function SyncSettingsForm({
                             onClick={() => foldersQuery.refetch()}
                             style={miniButton()}
                         >
-                            Retry
-                        </button>
+                            {translateInterface("Retry")}</button>
                     </div>
                 )}
                 {fetchState === 'ready' && shownFolders.length === 0 && (
@@ -438,8 +439,7 @@ export function SyncSettingsForm({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid={`connector-${connectorKey}-settings-form-submit`}

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,6 +17,7 @@ export type ForgotPasswordPageProps = {
 };
 
 export function ForgotPasswordPage({ onBackToLogin }: ForgotPasswordPageProps = {}) {
+    const { t: translateInterface } = useUiTranslation();
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
@@ -41,16 +43,15 @@ export function ForgotPasswordPage({ onBackToLogin }: ForgotPasswordPageProps = 
     if (submitted) {
         return (
             <AuthLayout
-                title="Check your inbox"
-                subtitle="If that email matches an account, a reset link is on its way. The link expires in 60 minutes."
+                title={translateInterface("Check your inbox")}
+                subtitle={translateInterface("If that email matches an account, a reset link is on its way. The link expires in 60 minutes.")}
                 footer={
                     <button
                         type="button"
                         onClick={onBackToLogin}
                         style={{ background: 'transparent', border: 0, color: 'var(--fg-1)', cursor: 'pointer', fontWeight: 500 }}
                     >
-                        Back to sign in
-                    </button>
+                        {translateInterface("Back to sign in")}</button>
                 }
             >
                 <div
@@ -64,24 +65,22 @@ export function ForgotPasswordPage({ onBackToLogin }: ForgotPasswordPageProps = 
                         fontSize: 13,
                     }}
                 >
-                    Request received. Watch for an email from AskMyDocs within a few minutes.
-                </div>
+                    {translateInterface("Request received. Watch for an email from AskMyDocs within a few minutes.")}</div>
             </AuthLayout>
         );
     }
 
     return (
         <AuthLayout
-            title="Reset your password"
-            subtitle="Enter your email and we'll send a link to set a new one."
+            title={translateInterface("Reset your password")}
+            subtitle={translateInterface("Enter your email and we'll send a link to set a new one.")}
             footer={
                 <button
                     type="button"
                     onClick={onBackToLogin}
                     style={{ background: 'transparent', border: 0, color: 'var(--fg-1)', cursor: 'pointer', fontWeight: 500 }}
                 >
-                    Back to sign in
-                </button>
+                    {translateInterface("Back to sign in")}</button>
             }
         >
             <form onSubmit={onSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

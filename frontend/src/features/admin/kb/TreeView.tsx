@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { Button } from '../../../components/Button';
 import { FileTypeIcon, fileKind } from './FileTypeIcon';
@@ -39,6 +40,7 @@ export interface TreeViewProps {
 }
 
 export function TreeView(props: TreeViewProps) {
+    const { t: translateInterface } = useUiTranslation();
     const {
         data,
         serverSearch = false,
@@ -106,10 +108,10 @@ export function TreeView(props: TreeViewProps) {
                         data-testid="kb-tree-q"
                         type="search"
                         maxLength={200}
-                        aria-label="Search path or file name"
+                        aria-label={translateInterface("Search path or file name")}
                         value={q}
                         onChange={(e) => onQChange(e.target.value)}
-                        placeholder="Search path or file name…"
+                        placeholder={translateInterface("Search path or file name…")}
                         style={{
                             width: '100%',
                             padding: '7px 10px 7px 30px',
@@ -131,7 +133,7 @@ export function TreeView(props: TreeViewProps) {
                 >
                     <select
                         data-testid="kb-tree-mode"
-                        aria-label="Document mode filter"
+                        aria-label={translateInterface("Document mode filter")}
                         value={mode}
                         onChange={(e) => onModeChange(e.target.value as KbTreeMode)}
                         style={{
@@ -143,9 +145,9 @@ export function TreeView(props: TreeViewProps) {
                             color: 'var(--fg-1)',
                         }}
                     >
-                        <option value="all">All documents</option>
-                        <option value="canonical">Canonical only</option>
-                        <option value="raw">Raw only</option>
+                        <option value="all">{translateInterface("All documents")}</option>
+                        <option value="canonical">{translateInterface("Canonical only")}</option>
+                        <option value="raw">{translateInterface("Raw only")}</option>
                     </select>
                     {allowTrashedToggle ? (
                         <label
@@ -163,8 +165,7 @@ export function TreeView(props: TreeViewProps) {
                                 checked={withTrashed}
                                 onChange={(e) => onWithTrashedChange(e.target.checked)}
                             />
-                            Include deleted
-                        </label>
+                            {translateInterface("Include deleted")}</label>
                     ) : null}
                     {data ? (
                         <span
@@ -176,8 +177,7 @@ export function TreeView(props: TreeViewProps) {
                                 fontFamily: 'var(--font-mono)',
                             }}
                         >
-                            {data.counts.docs.toLocaleString()} docs · {data.counts.canonical} canonical
-                            {data.counts.trashed > 0 ? ` · ${data.counts.trashed} trashed` : ''}
+                            {data.counts.docs.toLocaleString()} {" " + translateInterface("docs ·") + " "}{data.counts.canonical} {" " + translateInterface("canonical")}{data.counts.trashed > 0 ? ` · ${data.counts.trashed} trashed` : ''}
                         </span>
                     ) : null}
                 </div>
@@ -199,24 +199,21 @@ export function TreeView(props: TreeViewProps) {
                         data-testid="kb-tree-skeleton"
                         style={{ padding: 12, color: 'var(--fg-3)', fontSize: 12 }}
                     >
-                        Loading tree…
-                    </div>
+                        {translateInterface("Loading tree…")}</div>
                 ) : null}
                 {state === 'error' ? (
                     <div
                         data-testid="kb-tree-error"
                         style={{ padding: 12, color: 'var(--danger-fg)', fontSize: 12 }}
                     >
-                        Could not load the KB tree. Try refreshing.
-                    </div>
+                        {translateInterface("Could not load the KB tree. Try refreshing.")}</div>
                 ) : null}
                 {state === 'empty' ? (
                     <div
                         data-testid="kb-tree-empty"
                         style={{ padding: 12, color: 'var(--fg-3)', fontSize: 12 }}
                     >
-                        No documents match the current filter.
-                    </div>
+                        {translateInterface("No documents match the current filter.")}</div>
                 ) : null}
                 {state === 'ready' ? (
                     <ul
@@ -241,11 +238,11 @@ export function TreeView(props: TreeViewProps) {
                 ) : null}
             </div>
             {serverSearch && (
-                <div className="kb-tree-pagination" aria-label="Document pages">
+                <div className="kb-tree-pagination" aria-label={translateInterface("Document pages")}>
                     <span>{data?.pagination ? `${data.pagination.loaded} shown · Page ${pageNumber}` : `Page ${pageNumber}`}</span>
-                    <Button variant="quiet" size="sm" iconOnly aria-label="Previous documents"
+                    <Button variant="quiet" size="sm" iconOnly aria-label={translateInterface("Previous documents")}
                         disabled={pageNumber <= 1 || state === 'loading'} onClick={onPreviousPage}><ChevronLeft size={16} /></Button>
-                    <Button variant="quiet" size="sm" iconOnly aria-label="Next documents"
+                    <Button variant="quiet" size="sm" iconOnly aria-label={translateInterface("Next documents")}
                         disabled={!data?.pagination?.has_more || state === 'loading'} onClick={onNextPage}><ChevronRight size={16} /></Button>
                 </div>
             )}

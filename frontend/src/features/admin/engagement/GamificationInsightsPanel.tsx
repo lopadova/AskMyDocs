@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
@@ -22,6 +23,7 @@ import {
  * surface in the DOM (R14). a11y per R15.
  */
 export function GamificationInsightsPanel(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const isSuperAdmin = useAuthStore((s) => s.roles).includes('super-admin');
 
@@ -78,8 +80,7 @@ export function GamificationInsightsPanel(): ReactNode {
                         data-testid="admin-gamification-insights-retry"
                         onClick={() => void query.refetch()}
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -95,8 +96,7 @@ export function GamificationInsightsPanel(): ReactNode {
                         data-testid="admin-gamification-regenerate-retry"
                         onClick={() => regenerate.mutate()}
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 

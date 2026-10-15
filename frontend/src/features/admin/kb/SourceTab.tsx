@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
@@ -32,6 +33,7 @@ interface FrontmatterErrorBag {
 }
 
 export function SourceTab({ documentId }: SourceTabProps) {
+    const { t: translateInterface } = useUiTranslation();
     const raw = useKbRaw(documentId);
     const mutation = useUpdateKbRaw(documentId);
     const toast = useToast();
@@ -231,14 +233,14 @@ export function SourceTab({ documentId }: SourceTabProps) {
             >
                 <ToolbarButton
                     testid="kb-editor-save"
-                    label={mutation.isPending ? 'Saving…' : 'Save'}
+                    label={mutation.isPending ? 'Saving…' : translateInterface("Save")}
                     onClick={handleSave}
                     disabled={!isDirty || mutation.isPending}
                     primary
                 />
                 <ToolbarButton
                     testid="kb-editor-cancel"
-                    label="Cancel"
+                    label={translateInterface("Cancel")}
                     onClick={handleCancel}
                     disabled={!isDirty}
                 />

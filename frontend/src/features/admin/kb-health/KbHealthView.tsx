@@ -1,9 +1,11 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AdminShell } from '../shell/AdminShell';
 import { adminKbApi } from '../admin.api';
 
 export function KbHealthView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [project, setProject] = useState<string>('');
     const [minScore, setMinScore] = useState<number>(0);
 
@@ -22,10 +24,9 @@ export function KbHealthView(): ReactNode {
     return (
         <AdminShell section="kb">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 22 }}>KB health heatmap</h1>
+                <h1 style={{ margin: 0, fontSize: 22 }}>{translateInterface("KB health heatmap")}</h1>
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-3)' }}>
-                    Decision-debt score per canonical document (higher = more debt).
-                </p>
+                    {translateInterface("Decision-debt score per canonical document (higher = more debt).")}</p>
 
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input
@@ -35,8 +36,7 @@ export function KbHealthView(): ReactNode {
                         style={{ padding: '6px 8px', border: '1px solid var(--hairline)', borderRadius: 8 }}
                     />
                     <label style={{ fontSize: 12 }}>
-                        Min score:
-                        <input
+                        {translateInterface("Min score:")}<input
                             type="number"
                             min={0}
                             max={100}
@@ -50,15 +50,15 @@ export function KbHealthView(): ReactNode {
                     </span>
                 </div>
 
-                {query.isLoading && <p>Loading…</p>}
-                {query.isError && <p style={{ color: 'var(--err)' }}>Unable to load KB health snapshot.</p>}
+                {query.isLoading && <p>{translateInterface("Loading…")}</p>}
+                {query.isError && <p style={{ color: 'var(--err)' }}>{translateInterface("Unable to load KB health snapshot.")}</p>}
 
                 {!query.isLoading && !query.isError && (
                     <>
                         <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--fg-2)' }}>
-                            <span>Total: {query.data?.meta.total ?? 0}</span>
-                            <span>Avg: {(query.data?.meta.avg_score ?? 0).toFixed(1)}</span>
-                            <span>Max: {query.data?.meta.max_score ?? 0}</span>
+                            <span>{translateInterface("Total:") + " "}{query.data?.meta.total ?? 0}</span>
+                            <span>{translateInterface("Avg:") + " "}{(query.data?.meta.avg_score ?? 0).toFixed(1)}</span>
+                            <span>{translateInterface("Max:") + " "}{query.data?.meta.max_score ?? 0}</span>
                         </div>
 
                         <div

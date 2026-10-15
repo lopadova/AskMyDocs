@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConnectionVM } from './connection-vm';
@@ -90,6 +91,7 @@ export function ConnectionActionsMenu({
     exporting,
     probing,
 }: ConnectionActionsMenuProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [confirmingRemove, setConfirmingRemove] = useState(false);
     const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -308,8 +310,7 @@ export function ConnectionActionsMenu({
                         }}
                         style={menuItemStyle(true)}
                     >
-                        Remove
-                    </button>
+                        {translateInterface("Remove")}</button>
                 )}
 
                 {confirmingRemove && (
@@ -340,8 +341,7 @@ export function ConnectionActionsMenu({
                             }}
                             style={menuItemStyle(false)}
                         >
-                            Cancel
-                        </button>
+                            {translateInterface("Cancel")}</button>
                     </>
                 )}
             </div>

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Unplug } from 'lucide-react';
@@ -7,6 +8,7 @@ import { Button } from '../../components/Button';
 import { disconnectConnection, getConnections, type OAuthConnection } from './oauth.api';
 
 export function OAuthConnectionsPage() {
+    const { t: translateInterface } = useUiTranslation();
     const [connections, setConnections] = useState<OAuthConnection[]>();
     const [needsLogin, setNeedsLogin] = useState(false);
     const [error, setError] = useState('');
@@ -36,11 +38,11 @@ export function OAuthConnectionsPage() {
         onNavigateForgot={() => window.location.assign('/forgot-password')}
         onNavigateRegister={() => window.location.assign('/register')} />;
 
-    return <AuthLayout title="Connected applications" subtitle="Manage external applications authorised to use your AskMyDocs account."
-        footer={<a href="/app">Return to AskMyDocs</a>}>
+    return <AuthLayout title={translateInterface("Connected applications")} subtitle={translateInterface("Manage external applications authorised to use your AskMyDocs account.")}
+        footer={<a href="/app">{translateInterface("Return to AskMyDocs")}</a>}>
         {error && <p role="alert" style={{ color: 'var(--err)', fontSize: 13 }}>{error}</p>}
-        {connections === undefined && !error && <p role="status">Loading applications…</p>}
-        {connections?.length === 0 && <p>No external applications connected.</p>}
+        {connections === undefined && !error && <p role="status">{translateInterface("Loading applications…")}</p>}
+        {connections?.length === 0 && <p>{translateInterface("No external applications connected.")}</p>}
         {connections?.map((item) => <section key={item.id} aria-label={item.name}
             style={{ padding: '16px 0', borderBottom: '1px solid var(--hairline)', overflowWrap: 'anywhere' }}>
             <h2 style={{ fontSize: 15, margin: '0 0 6px' }}>{item.name}</h2>
@@ -49,7 +51,7 @@ export function OAuthConnectionsPage() {
                 {item.expires_at ? `Expires ${new Date(item.expires_at).toLocaleDateString()}` : 'Access revoked'}
             </p>
             <Button variant="danger" size="sm" leadingIcon={<Unplug size={14} />}
-                busy={busy === item.id} disabled={busy !== null} onClick={() => void disconnect(item.id)}>Revoke access</Button>
+                busy={busy === item.id} disabled={busy !== null} onClick={() => void disconnect(item.id)}>{translateInterface("Revoke access")}</Button>
         </section>)}
     </AuthLayout>;
 }

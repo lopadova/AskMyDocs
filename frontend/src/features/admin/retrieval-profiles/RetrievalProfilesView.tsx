@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../../components/Button';
@@ -13,6 +14,7 @@ import {
  * back to a corpus-derived or generic semantic search.
  */
 export function RetrievalProfilesView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const queryClient = useQueryClient();
     const query = useQuery({
         queryKey: ['admin-retrieval-profiles'],
@@ -87,21 +89,20 @@ export function RetrievalProfilesView(): ReactNode {
     return (
         <div data-testid="admin-retrieval-profiles-view" data-state={query.isLoading ? 'loading' : query.isError ? 'error' : 'ready'} style={{ padding: 24, maxWidth: 940 }}>
             <header style={{ marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Retrieval profiles</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Retrieval profiles")}</h1>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 12, maxWidth: 760 }}>
-                Define the company vocabulary used to interpret a request before the KB is searched. This is administrator-authored configuration: documents and emails cannot change it.
-            </p>
+                {translateInterface("Define the company vocabulary used to interpret a request before the KB is searched. This is administrator-authored configuration: documents and emails cannot change it.")}</p>
 
-            {query.isLoading && <p data-testid="admin-retrieval-profiles-loading">Loading…</p>}
-            {query.isError && <p data-testid="admin-retrieval-profiles-error" role="alert">Unable to load retrieval profiles.</p>}
+            {query.isLoading && <p data-testid="admin-retrieval-profiles-loading">{translateInterface("Loading…")}</p>}
+            {query.isError && <p data-testid="admin-retrieval-profiles-error" role="alert">{translateInterface("Unable to load retrieval profiles.")}</p>}
             {!query.isLoading && !query.isError && profiles.length === 0 && (
-                <p data-testid="admin-retrieval-profiles-empty" style={{ color: 'var(--fg-3)' }}>No KB project is available yet.</p>
+                <p data-testid="admin-retrieval-profiles-empty" style={{ color: 'var(--fg-3)' }}>{translateInterface("No KB project is available yet.")}</p>
             )}
             {profiles.length > 0 && (
                 <form onSubmit={submit} aria-busy={mutation.isPending} style={{ display: 'grid', gap: 14 }}>
                     <label style={{ display: 'grid', gap: 5, maxWidth: 380 }}>
-                        <span>Project</span>
+                        <span>{translateInterface("Project")}</span>
                         <select data-testid="admin-retrieval-profile-project" value={projectKey} onChange={(event) => setProjectKey(event.target.value)} disabled={mutation.isPending}>
                             {profiles.map((profile) => (
                                 <option key={profile.project_key} value={profile.project_key}>
@@ -111,20 +112,20 @@ export function RetrievalProfilesView(): ReactNode {
                         </select>
                     </label>
                     <label style={{ display: 'grid', gap: 5 }}>
-                        <span>Company context</span>
+                        <span>{translateInterface("Company context")}</span>
                         <textarea data-testid="admin-retrieval-profile-context" value={context} onChange={(event) => setContext(event.target.value)} minLength={20} required rows={5} disabled={mutation.isPending} />
                     </label>
                     <label style={{ display: 'grid', gap: 5 }}>
-                        <span>Glossary (JSON)</span>
+                        <span>{translateInterface("Glossary (JSON)")}</span>
                         <textarea data-testid="admin-retrieval-profile-glossary" value={glossaryText} onChange={(event) => setGlossaryText(event.target.value)} rows={6} disabled={mutation.isPending} spellCheck={false} />
                         <small style={{ color: 'var(--fg-3)' }}>[&#123;"term":"ordine","meaning":"pratica commerciale","aliases":["pratica"]&#125;]</small>
                     </label>
-                    <TwoColumnField label="Relevant entities" value={entitiesText} onChange={setEntitiesText} testId="admin-retrieval-profile-entities" disabled={mutation.isPending} />
-                    <TwoColumnField label="Expected facts" value={factsText} onChange={setFactsText} testId="admin-retrieval-profile-facts" disabled={mutation.isPending} />
-                    <TwoColumnField label="Preferred source types" value={sourceTypesText} onChange={setSourceTypesText} testId="admin-retrieval-profile-source-types" disabled={mutation.isPending} hint="One per line, for example markdown, text or email." />
+                    <TwoColumnField label={translateInterface("Relevant entities")} value={entitiesText} onChange={setEntitiesText} testId="admin-retrieval-profile-entities" disabled={mutation.isPending} />
+                    <TwoColumnField label={translateInterface("Expected facts")} value={factsText} onChange={setFactsText} testId="admin-retrieval-profile-facts" disabled={mutation.isPending} />
+                    <TwoColumnField label={translateInterface("Preferred source types")} value={sourceTypesText} onChange={setSourceTypesText} testId="admin-retrieval-profile-source-types" disabled={mutation.isPending} hint={translateInterface("One per line, for example markdown, text or email.")} />
                     {formError && <p data-testid="admin-retrieval-profile-save-error" role="alert" style={{ color: 'var(--err)' }}>{formError}</p>}
                     <div>
-                        <Button type="submit" variant="primary" busy={mutation.isPending} data-testid="admin-retrieval-profile-save">Save retrieval profile</Button>
+                        <Button type="submit" variant="primary" busy={mutation.isPending} data-testid="admin-retrieval-profile-save">{translateInterface("Save retrieval profile")}</Button>
                     </div>
                 </form>
             )}
@@ -133,10 +134,11 @@ export function RetrievalProfilesView(): ReactNode {
 }
 
 function TwoColumnField({ label, value, onChange, testId, disabled, hint }: { label: string; value: string; onChange: (value: string) => void; testId: string; disabled: boolean; hint?: string }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <label style={{ display: 'grid', gap: 5 }}>
             <span>{label}</span>
-            <textarea data-testid={testId} value={value} onChange={(event) => onChange(event.target.value)} rows={3} disabled={disabled} placeholder="One item per line" />
+            <textarea data-testid={testId} value={value} onChange={(event) => onChange(event.target.value)} rows={3} disabled={disabled} placeholder={translateInterface("One item per line")} />
             {hint && <small style={{ color: 'var(--fg-3)' }}>{hint}</small>}
         </label>
     );

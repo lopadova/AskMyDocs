@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 
@@ -24,6 +25,7 @@ export function CopyButton({
     label = 'Copy',
     size = 'sm',
 }: CopyButtonProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [state, setState] = useState<'idle' | 'copied' | 'error'>('idle');
 
     const copy = async () => {
@@ -51,7 +53,7 @@ export function CopyButton({
             aria-label={`${label} to clipboard`}
         >
             {state === 'copied' ? <Check aria-hidden /> : <Copy aria-hidden />}
-            {state === 'copied' ? 'Copied' : state === 'error' ? 'Copy failed' : label}
+            {state === 'copied' ? translateInterface("Copied") : state === 'error' ? 'Copy failed' : label}
         </Button>
     );
 }

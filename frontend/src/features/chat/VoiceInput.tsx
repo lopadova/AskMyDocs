@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
@@ -37,6 +38,7 @@ function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 }
 
 export function VoiceInput({ onTranscript }: VoiceInputProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [listening, setListening] = useState(false);
     const [supported, setSupported] = useState<boolean>(true);
     const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -97,7 +99,7 @@ export function VoiceInput({ onTranscript }: VoiceInputProps): ReactNode {
             data-testid="chat-composer-voice"
             data-state={listening ? 'listening' : supported ? 'idle' : 'unsupported'}
             aria-pressed={listening}
-            aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+            aria-label={listening ? 'Stop voice input' : translateInterface("Start voice input")}
             disabled={!supported}
             aria-disabled={!supported}
             title={supported ? (listening ? 'Listening…' : 'Voice input') : 'Voice input not supported in this browser'}

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import type { ConnectorInstallationDto, TestFetchResponse } from './connectors.api';
 
@@ -20,6 +21,7 @@ export interface TestFetchResultModalProps {
 }
 
 export function TestFetchResultModal({ account, result, onClose }: TestFetchResultModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const titleId = 'connector-test-fetch-title';
     const message = result.message;
 
@@ -72,7 +74,7 @@ export function TestFetchResultModal({ account, result, onClose }: TestFetchResu
                     >
                         <Field label="Subject" testid="connector-test-fetch-subject" value={message.subject} />
                         <Field
-                            label="From"
+                            label={translateInterface("From")}
                             testid="connector-test-fetch-from"
                             value={
                                 message.from_name
@@ -91,7 +93,7 @@ export function TestFetchResultModal({ account, result, onClose }: TestFetchResu
                             value={`${message.to_count} recipient${message.to_count === 1 ? '' : 's'} · ${message.attachments_count} attachment${message.attachments_count === 1 ? '' : 's'}`}
                         />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <dt style={labelStyle()}>Preview</dt>
+                            <dt style={labelStyle()}>{translateInterface("Preview")}</dt>
                             <dd
                                 data-testid="connector-test-fetch-snippet"
                                 style={{
@@ -138,8 +140,7 @@ export function TestFetchResultModal({ account, result, onClose }: TestFetchResu
                             cursor: 'pointer',
                         }}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

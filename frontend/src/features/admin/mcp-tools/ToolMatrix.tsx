@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, useEffect } from 'react';
 import type { McpServerEntry } from './mcp-tools.api';
 
@@ -20,6 +21,7 @@ const ALLOW_ALL_SENTINEL = '*';
  * `enabled_tools` actually changes server-side.
  */
 export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
+    const { t: translateInterface } = useUiTranslation();
     const discoveredTools = useMemo(
         () => server.handshake_response?.tools ?? [],
         [server.handshake_response],
@@ -179,8 +181,7 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                     disabled={!dirty || busy}
                     style={baseBtnStyle}
                 >
-                    Reset
-                </button>
+                    {translateInterface("Reset")}</button>
                 <button
                     type="button"
                     data-testid={`admin-mcp-server-${server.id}-tool-matrix-save`}
@@ -188,7 +189,7 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                     disabled={!dirty || busy}
                     style={primaryBtnStyle(!dirty || busy)}
                 >
-                    {busy ? 'Saving…' : 'Save changes'}
+                    {busy ? 'Saving…' : translateInterface("Save changes")}
                 </button>
             </div>
         </div>

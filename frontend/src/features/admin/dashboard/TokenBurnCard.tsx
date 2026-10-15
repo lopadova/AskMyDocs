@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Suspense } from 'react';
 import type { AdminTokenBurnRow } from '../admin.api';
 import { ChartCard, ChartFallback, EmptyChart, type ChartState } from './ChartCard';
@@ -15,13 +16,14 @@ export interface TokenBurnCardProps {
  * across reloads.
  */
 export function TokenBurnCard({ data, state, days }: TokenBurnCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const hasData = data.length > 0 && data.some((row) => row.total_tokens > 0);
     const resolvedState: ChartState = state === 'ready' && !hasData ? 'empty' : state;
 
     return (
         <ChartCard
             slug="token-burn"
-            title="Token burn"
+            title={translateInterface("Token burn")}
             subtitle={`${days}-day window`}
             state={resolvedState}
         >

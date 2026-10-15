@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { Button } from '../../components/Button';
 import type { AdminApiError } from '../admin/shared/errors';
@@ -9,6 +10,7 @@ export interface McpConnectionErrorDialogProps {
 }
 
 export function McpConnectionErrorDialog({ error, onClose }: McpConnectionErrorDialogProps) {
+    const { t: translateInterface } = useUiTranslation();
     const closeRef = useRef<HTMLButtonElement>(null);
     const backend = error.details.backend_diagnostic;
 
@@ -41,7 +43,7 @@ export function McpConnectionErrorDialog({ error, onClose }: McpConnectionErrorD
                         size="sm"
                         iconOnly
                         aria-label="Close error details"
-                        title="Close"
+                        title={translateInterface("Close")}
                         onClick={onClose}
                     >
                         ×
@@ -64,7 +66,7 @@ export function McpConnectionErrorDialog({ error, onClose }: McpConnectionErrorD
                 </div>
 
                 <div style={footerStyle}>
-                    <Button variant="secondary" onClick={onClose}>Close</Button>
+                    <Button variant="secondary" onClick={onClose}>{translateInterface("Close")}</Button>
                 </div>
             </div>
         </div>

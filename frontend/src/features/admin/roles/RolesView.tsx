@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
@@ -22,6 +23,7 @@ import { RoleDialog } from './RoleDialog';
 const PROTECTED_ROLE_NAMES = new Set(['super-admin', 'admin']);
 
 export function RolesView() {
+    const { t: translateInterface } = useUiTranslation();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
     const [dialogRole, setDialogRole] = useState<AdminRole | null>(null);
@@ -89,12 +91,10 @@ export function RolesView() {
                                 color: 'var(--fg-0)',
                             }}
                         >
-                            Roles
-                            <GlobalScopeBadge testId="roles-global-badge" />
+                            {translateInterface("Roles")}<GlobalScopeBadge testId="roles-global-badge" />
                         </h1>
                         <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                            Spatie-backed roles and permission matrix — shared by every team.
-                        </p>
+                            {translateInterface("Spatie-backed roles and permission matrix — shared by every team.")}</p>
                     </div>
                     <button
                         type="button"
@@ -114,8 +114,7 @@ export function RolesView() {
                             cursor: 'pointer',
                         }}
                     >
-                        <Icon.Plus size={14} /> New role
-                    </button>
+                        <Icon.Plus size={14} /> {" " + translateInterface("New role")}</button>
                 </div>
 
                 <div
@@ -131,30 +130,27 @@ export function RolesView() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sans)' }}>
                         <thead>
                             <tr style={{ background: 'var(--bg-0)' }}>
-                                <th style={thStyle}>Role</th>
-                                <th style={thStyle}>Permissions</th>
-                                <th style={thStyle}>Users</th>
-                                <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+                                <th style={thStyle}>{translateInterface("Role")}</th>
+                                <th style={thStyle}>{translateInterface("Permissions")}</th>
+                                <th style={thStyle}>{translateInterface("Users")}</th>
+                                <th style={{ ...thStyle, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                             </tr>
                         </thead>
                         <tbody>
                             {state === 'loading' ? (
                                 <tr>
                                     <td colSpan={4} data-testid="roles-loading" style={emptyCellStyle}>
-                                        Loading roles…
-                                    </td>
+                                        {translateInterface("Loading roles…")}</td>
                                 </tr>
                             ) : state === 'error' ? (
                                 <tr>
                                     <td colSpan={4} data-testid="roles-error" style={{ ...emptyCellStyle, color: '#fca5a5' }}>
-                                        Failed to load roles.
-                                    </td>
+                                        {translateInterface("Failed to load roles.")}</td>
                                 </tr>
                             ) : state === 'empty' ? (
                                 <tr>
                                     <td colSpan={4} data-testid="roles-empty" style={emptyCellStyle}>
-                                        No roles found.
-                                    </td>
+                                        {translateInterface("No roles found.")}</td>
                                 </tr>
                             ) : (
                                 roles.map((r) => {
@@ -209,7 +205,7 @@ export function RolesView() {
                                                         className="focus-ring"
                                                         data-testid={`roles-row-${r.name}-edit`}
                                                         onClick={() => openEdit(r)}
-                                                        title="Edit"
+                                                        title={translateInterface("Edit")}
                                                         style={iconButtonStyle}
                                                     >
                                                         <Icon.Edit size={13} />
@@ -220,7 +216,7 @@ export function RolesView() {
                                                         data-testid={`roles-row-${r.name}-delete`}
                                                         onClick={() => handleDelete(r)}
                                                         disabled={protectedRole}
-                                                        title={protectedRole ? 'System role — cannot delete' : 'Delete'}
+                                                        title={protectedRole ? 'System role — cannot delete' : translateInterface("Delete")}
                                                         style={{
                                                             ...iconButtonStyle,
                                                             color: protectedRole ? 'var(--fg-3)' : '#fca5a5',

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminTag, CreateTagPayload, UpdateTagPayload } from './admin-tags.api';
 
@@ -42,6 +43,7 @@ export function TagFormDialog({
     submitError,
     isSubmitting,
 }: TagFormDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = tag !== null;
     const [projectKey, setProjectKey] = useState(tag?.project_key ?? defaultProjectKey ?? '');
     const [slug, setSlug] = useState(tag?.slug ?? '');
@@ -121,7 +123,7 @@ export function TagFormDialog({
                 </h2>
 
                 <label htmlFor="admin-tag-project" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Project key</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Project key")}</span>
                     <input
                         id="admin-tag-project"
                         data-testid="admin-tag-form-project"
@@ -142,7 +144,7 @@ export function TagFormDialog({
                 </label>
 
                 <label htmlFor="admin-tag-slug" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Slug</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Slug")}</span>
                     <input
                         id="admin-tag-slug"
                         data-testid="admin-tag-form-slug"
@@ -159,7 +161,7 @@ export function TagFormDialog({
                 </label>
 
                 <label htmlFor="admin-tag-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Label</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Label")}</span>
                     <input
                         id="admin-tag-label"
                         data-testid="admin-tag-form-label"
@@ -232,15 +234,14 @@ export function TagFormDialog({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="admin-tag-form-submit"
                         disabled={isSubmitting}
                         style={buttonStyle('primary', !!isSubmitting)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save") : translateInterface("Create")}
                     </button>
                 </div>
             </form>

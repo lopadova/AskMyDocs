@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import {
     useEffect,
     useRef,
@@ -124,6 +125,7 @@ export function Composer({
     realtime,
     error,
 }: ComposerProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const draft = useChatStore((s) => s.draft);
     const setDraft = useChatStore((s) => s.setDraft);
     const appendToDraft = useChatStore((s) => s.appendToDraft);
@@ -280,7 +282,7 @@ export function Composer({
             <div className="chat-composer-inner">
                 <form
                     data-testid="chat-composer"
-                    aria-label="Message composer"
+                    aria-label={translateInterface("Message composer")}
                     onSubmit={(e) => {
                         e.preventDefault();
                         void send();
@@ -298,7 +300,7 @@ export function Composer({
                     <textarea
                         name="message"
                         data-testid="chat-composer-input"
-                        aria-label="Your message"
+                        aria-label={translateInterface("Your message")}
                         aria-invalid={Boolean(localError)}
                         aria-autocomplete={mentionQuery !== null ? 'list' : undefined}
                         aria-expanded={mentionQuery !== null}
@@ -311,7 +313,7 @@ export function Composer({
                         onFocus={() => setFocused(true)}
                         onBlur={() => setFocused(false)}
                         onKeyDown={onKeyDown}
-                        placeholder="Ask anything grounded in your knowledge base…"
+                        placeholder={translateInterface("Ask anything grounded in your knowledge base…")}
                         rows={2}
                     />
                     {mentionQuery !== null && (
@@ -330,7 +332,7 @@ export function Composer({
                 </div>
                 <fieldset
                     className="chat-composer-options"
-                    aria-label="Sources and filters"
+                    aria-label={translateInterface("Sources and filters")}
                     disabled={isStreaming || realtime?.active === true}
                 >
                     <FilterBar
@@ -353,9 +355,9 @@ export function Composer({
                                         collection_id: raw === '' ? null : Number(raw),
                                     }));
                                 }}
-                                aria-label="Knowledge base scope"
+                                aria-label={translateInterface("Knowledge base scope")}
                             >
-                                <option value="">All documents</option>
+                                <option value="">{translateInterface("All documents")}</option>
                                 {availableCollections.map((row) => (
                                     <option key={row.id} value={row.id}>
                                         {row.name}
@@ -364,23 +366,23 @@ export function Composer({
                             </select>
                             <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
                         </label>
-                        <label className="chat-composer-scope" title="How many cascading searches the agent runs before answering">
+                        <label className="chat-composer-scope" title={translateInterface("How many cascading searches the agent runs before answering")}>
                             <span aria-hidden="true"><Icon.Sliders size={12} /></span>
                             <select
                                 data-testid="chat-depth-picker"
                                 value={depth}
                                 onChange={(e) => onDepthChange(Number(e.target.value))}
-                                aria-label="Investigation depth"
+                                aria-label={translateInterface("Investigation depth")}
                             >
-                                <option value={1}>Depth 1 · quick</option>
-                                <option value={2}>Depth 2</option>
-                                <option value={3}>Depth 3 · balanced</option>
-                                <option value={4}>Depth 4</option>
-                                <option value={5}>Depth 5 · thorough</option>
+                                <option value={1}>{translateInterface("Depth 1 · quick")}</option>
+                                <option value={2}>{translateInterface("Depth 2")}</option>
+                                <option value={3}>{translateInterface("Depth 3 · balanced")}</option>
+                                <option value={4}>{translateInterface("Depth 4")}</option>
+                                <option value={5}>{translateInterface("Depth 5 · thorough")}</option>
                             </select>
                             <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
                         </label>
-                        <ContextChip icon="Book" label="canonical only" />
+                        <ContextChip icon="Book" label={translateInterface("canonical only")} />
                         {onLiveSourcesChange && (
                             <LiveSourcesControl
                                 sources={liveSources}
@@ -392,15 +394,15 @@ export function Composer({
                     </div>
                 </fieldset>
                 <div className="chat-composer-actions">
-                    <div className="chat-composer-tools" aria-label="Message tools">
+                    <div className="chat-composer-tools" aria-label={translateInterface("Message tools")}>
                         <Button
                             variant="quiet"
                             size="sm"
                             iconOnly
                             className="chat-composer-tool-button"
                             data-testid="chat-composer-attach"
-                            aria-label="Attach file"
-                            title="Attach file"
+                            aria-label={translateInterface("Attach file")}
+                            title={translateInterface("Attach file")}
                             disabled={isStreaming || realtime?.active === true}
                         >
                             <Icon.Plus size={13} />
@@ -420,7 +422,7 @@ export function Composer({
                             />
                         )}
                     </div>
-                    <span className="chat-composer-shortcut">Shift+⏎ for a new line</span>
+                    <span className="chat-composer-shortcut">{translateInterface("Shift+⏎ for a new line")}</span>
                     <span style={{ flex: 1 }} />
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}
@@ -450,11 +452,10 @@ export function Composer({
                             size="sm"
                             data-testid="chat-composer-stop"
                             onClick={() => onStop?.()}
-                            aria-label="Stop streaming"
+                            aria-label={translateInterface("Stop streaming")}
                             leadingIcon={<Icon.Close size={12} />}
                         >
-                            Stop
-                        </Button>
+                            {translateInterface("Stop")}</Button>
                     ) : (
                         <Button
                             type="submit"
@@ -464,8 +465,7 @@ export function Composer({
                             leadingIcon={<Icon.Send size={12} />}
                             disabled={composerDisabled}
                         >
-                            Send
-                        </Button>
+                            {translateInterface("Send")}</Button>
                     )}
                 </div>
                 </form>
@@ -483,6 +483,7 @@ function ComposerErrorControl({
     testId: 'chat-composer-error' | 'message-error';
     autoOpen: boolean;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
@@ -517,27 +518,26 @@ function ComposerErrorControl({
                 size="sm"
                 className="chat-composer-error-trigger"
                 data-testid={`${testId}-trigger`}
-                aria-label="Show error details"
+                aria-label={translateInterface("Show error details")}
                 aria-expanded={open}
                 aria-haspopup="dialog"
-                title="Show error details"
+                title={translateInterface("Show error details")}
                 leadingIcon={<Icon.Alert size={13} />}
                 onClick={() => setOpen((current) => !current)}
             >
-                Issue
-            </Button>
+                {translateInterface("Issue")}</Button>
             {open && (
                 <div
                     className="chat-composer-error-popover"
                     data-testid={testId}
                     role="dialog"
-                    aria-label="Request error details"
+                    aria-label={translateInterface("Request error details")}
                 >
                     <Alert variant="destructive">
                         <AlertIcon>
                             <Icon.Alert size={15} />
                         </AlertIcon>
-                        <AlertTitle>Request not completed</AlertTitle>
+                        <AlertTitle>{translateInterface("Request not completed")}</AlertTitle>
                         <AlertDescription>{error}</AlertDescription>
                     </Alert>
                 </div>

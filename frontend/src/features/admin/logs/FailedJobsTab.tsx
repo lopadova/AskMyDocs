@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Fragment, useState } from 'react';
 import { useFailedJobs } from './logs.api';
 
@@ -172,6 +173,7 @@ function Pagination({
     onPage: (p: number) => void;
     testidPrefix: string;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`${testidPrefix}-pagination`}
@@ -191,7 +193,7 @@ function Pagination({
                 ← Prev
             </button>
             <span>
-                Page {meta.current_page} / {meta.last_page} ({meta.total} rows)
+                {translateInterface("Page") + " "}{meta.current_page} / {meta.last_page} ({meta.total} rows)
             </span>
             <button
                 type="button"
@@ -199,8 +201,7 @@ function Pagination({
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >
-                Next →
-            </button>
+                {translateInterface("Next →")}</button>
         </div>
     );
 }

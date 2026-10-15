@@ -5,6 +5,7 @@ import { FilterChip } from './FilterChip';
 import { FilterPickerPopover } from './FilterPickerPopover';
 import { FilterPresetsDropdown } from './FilterPresetsDropdown';
 import { countSelectedFilters, type FilterState } from './chat.api';
+import { useUiTranslation } from '../../lib/ui-locale';
 
 /**
  * T2.7 — Persistent filter bar above the chat composer textarea.
@@ -43,6 +44,7 @@ export function FilterBar({
     availableTags = [],
     docLabels = {},
 }: FilterBarProps): ReactNode {
+    const { t } = useUiTranslation();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const selectedCount = countSelectedFilters(filters);
 
@@ -75,16 +77,16 @@ export function FilterBar({
                 leadingIcon={<Icon.Filter size={13} />}
                 data-testid="chat-filter-bar-add"
                 className="chat-filter-trigger"
-                aria-label="Add chat filter"
+                aria-label={t('Add chat filter')}
                 aria-expanded={popoverOpen}
                 aria-haspopup="dialog"
                 onClick={() => setPopoverOpen((v) => !v)}
             >
-                Filter
+                {t('Filter')}
                 {selectedCount > 0 && (
                     <span
                         data-testid="chat-filter-bar-count"
-                        aria-label={`${selectedCount} filters selected`}
+                        aria-label={t('{count} filters selected', { count: selectedCount })}
                         style={{
                             display: 'inline-flex',
                             alignItems: 'center',

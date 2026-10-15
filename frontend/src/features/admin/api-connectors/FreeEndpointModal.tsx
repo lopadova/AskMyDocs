@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { HttpMethod, ProbePayload, ProbeResult } from './api-connectors.api';
 import { ResponseViewer } from './ResponseViewer';
@@ -62,6 +63,7 @@ export function FreeEndpointModal({
     isSending,
     onClose,
 }: FreeEndpointModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [method, setMethod] = useState<HttpMethod>('GET');
     const [url, setUrl] = useState('');
     const [headersText, setHeadersText] = useState('');
@@ -251,7 +253,7 @@ export function FreeEndpointModal({
                         disabled={isSending}
                         style={buttonStyle('primary', !!isSending)}
                     >
-                        {isSending ? 'Sending…' : 'Send'}
+                        {isSending ? 'Sending…' : translateInterface("Send")}
                     </button>
                 </div>
 
@@ -264,8 +266,7 @@ export function FreeEndpointModal({
                         onClick={onClose}
                         style={buttonStyle('secondary', false)}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

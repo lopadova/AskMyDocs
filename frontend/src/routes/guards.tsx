@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../lib/ui-locale";
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import axios from 'axios';
@@ -49,6 +50,7 @@ function AuthGate({
     waitFor: 'authed' | 'guest';
     onAuthenticated?: () => void;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const user = useAuthStore((s) => s.user);
     const loading = useAuthStore((s) => s.loading);
     const navigate = useNavigate();
@@ -88,8 +90,7 @@ function AuthGate({
                 }}
             >
                 <span className="shimmer" style={{ padding: '6px 18px', borderRadius: 8 }}>
-                    Loading…
-                </span>
+                    {translateInterface("Loading…")}</span>
             </div>
         );
     }

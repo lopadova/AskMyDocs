@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../Icons';
 import { ProjectDot } from './Avatar';
@@ -36,6 +37,7 @@ function teamColor(teams: Team[], tenantId: string): string {
 }
 
 export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement | null>(null);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -84,7 +86,7 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
-                aria-label={`Active team: ${team.name}`}
+                aria-label={translateInterface('Active team: {name}', { name: team.name })}
             >
                 <ProjectDot color={teamColor(teams, team.tenant_id)} size={8} />
                 <span className="shell-context-trigger-label">{team.name}</span>
@@ -148,8 +150,7 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
                             <ProjectDot color={teamColor(teams, t.tenant_id)} size={10} />
                             <span style={{ flex: 1 }}>{t.name}</span>
                             <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
-                                {t.projects.length} projects
-                            </span>
+                                {t.projects.length} {" " + translateInterface("projects")}</span>
                             {team.tenant_id === t.tenant_id && <Icon.Check size={13} />}
                         </button>
                     ))}

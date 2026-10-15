@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ApiConnector } from '../api-connectors/api-connectors.api';
 import { ConnectorExportButton } from '../api-connectors/ConnectorExportButton';
 import { Button } from '../../../components/Button';
@@ -34,6 +35,7 @@ function hostOf(url: string | null): string {
 }
 
 export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compact = false }: ApiConnectionTileProps) {
+    const { t: translateInterface } = useUiTranslation();
     const routes = connector.routes ?? [];
     const activeTools = routes.filter((r) => r.status === 'active').length;
     const base = `api-connection-tile-${connector.id}`;
@@ -90,8 +92,7 @@ export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compa
                     aria-label={`Edit ${connector.name}`}
                     onClick={() => onEdit(connector)}
                 >
-                    Edit
-                </Button>
+                    {translateInterface("Edit")}</Button>
                 <Button
                     type="button"
                     data-testid={`${base}-remove`}
@@ -99,8 +100,7 @@ export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compa
                     onClick={() => onRemove(connector)}
                     variant="danger"
                 >
-                    Remove
-                </Button>
+                    {translateInterface("Remove")}</Button>
             </div>
         </div>
     );

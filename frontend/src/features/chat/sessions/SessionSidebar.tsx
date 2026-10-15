@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../../components/Icons';
@@ -49,6 +50,7 @@ export function SessionSidebar({
     onSelect,
     onOpenKnowledgeBase,
 }: SessionSidebarProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [search, setSearch] = useState('');
     const [showArchived, setShowArchived] = useState(false);
@@ -183,7 +185,7 @@ export function SessionSidebar({
             data-testid="chat-sessions-sidebar"
             data-state={state}
             data-count={sessions.length}
-            aria-label="Chat sessions"
+            aria-label={translateInterface("Chat sessions")}
             className="chat-sessions-sidebar chat-conversation-sidebar"
         >
             {/* Knowledge base sits ABOVE the sessions: it is the shared
@@ -198,8 +200,8 @@ export function SessionSidebar({
                     <Icon.Book size={15} />
                 </span>
                 <span className="chat-sessions-kb-copy">
-                    <span className="chat-sessions-kb-title">Knowledge base</span>
-                    <span className="chat-sessions-kb-hint">Browse documents</span>
+                    <span className="chat-sessions-kb-title">{translateInterface("Knowledge base")}</span>
+                    <span className="chat-sessions-kb-hint">{translateInterface("Browse documents")}</span>
                 </span>
                 <Icon.Chevron size={11} />
             </button>
@@ -209,8 +211,7 @@ export function SessionSidebar({
                     <select> already carries aria-label="Project scope", and
                     a <label> without htmlFor is the R15 anti-pattern. */}
                 <span className="chat-sessions-scope-label" aria-hidden="true">
-                    Project
-                </span>
+                    {translateInterface("Project")}</span>
                 <ProjectSelector
                     value={projectScopeValue}
                     projects={teamProjectKeys}
@@ -229,8 +230,7 @@ export function SessionSidebar({
                     onClick={() => createSession.mutate()}
                     leadingIcon={<Icon.Plus size={13} />}
                 >
-                    New session
-                </Button>
+                    {translateInterface("New session")}</Button>
                 <Button
                     variant="secondary"
                     size="sm"
@@ -238,8 +238,7 @@ export function SessionSidebar({
                     onClick={() => setFolderDialog({ mode: 'create' })}
                     leadingIcon={<Icon.Folder size={13} />}
                 >
-                    New folder
-                </Button>
+                    {translateInterface("New folder")}</Button>
             </div>
 
             {createSession.isError && (
@@ -256,7 +255,7 @@ export function SessionSidebar({
                 in place with no explanation (R11/R14). */}
             {deleteSession.isError && (
                 <p className="chat-sessions-error" role="alert" data-testid="chat-sessions-delete-error">
-                    The session could not be deleted. {deleteSession.error.message}
+                    {translateInterface("The session could not be deleted.") + " "}{deleteSession.error.message}
                 </p>
             )}
             {deleteFolder.isError && (
@@ -265,19 +264,18 @@ export function SessionSidebar({
                     role="alert"
                     data-testid="chat-sessions-folder-delete-error"
                 >
-                    The folder could not be deleted. {deleteFolder.error.message}
+                    {translateInterface("The folder could not be deleted.") + " "}{deleteFolder.error.message}
                 </p>
             )}
 
             <div className="chat-sessions-search">
                 <label className="sr-only" htmlFor="chat-sessions-search-input">
-                    Search sessions
-                </label>
+                    {translateInterface("Search sessions")}</label>
                 <input
                     id="chat-sessions-search-input"
                     type="search"
                     data-testid="chat-sessions-search"
-                    placeholder="Search sessions"
+                    placeholder={translateInterface("Search sessions")}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
@@ -285,28 +283,25 @@ export function SessionSidebar({
 
             {state === 'loading' && (
                 <p data-testid="chat-sessions-loading" className="chat-sessions-hint">
-                    Loading sessions…
-                </p>
+                    {translateInterface("Loading sessions…")}</p>
             )}
             {state === 'error' && (
                 <p data-testid="chat-sessions-error" role="alert" className="chat-sessions-hint">
-                    Sessions could not be loaded.
-                </p>
+                    {translateInterface("Sessions could not be loaded.")}</p>
             )}
             {state === 'empty' && (
                 <p data-testid="chat-sessions-empty" className="chat-sessions-hint">
-                    No sessions yet. Start one to see it here.
-                </p>
+                    {translateInterface("No sessions yet. Start one to see it here.")}</p>
             )}
             {state === 'ready' && visible.length === 0 && (
                 <p data-testid="chat-sessions-no-results" className="chat-sessions-hint">
-                    No session matches “{search}”.
+                    {translateInterface("No session matches “")}{search}”.
                 </p>
             )}
 
             {pinned.length > 0 && (
                 <section className="chat-sessions-group" data-testid="chat-sessions-group-pinned">
-                    <h3 className="chat-sessions-group-label">Pinned</h3>
+                    <h3 className="chat-sessions-group-label">{translateInterface("Pinned")}</h3>
                     {pinned.map((c) => (
                         <SessionRow key={c.id} conversation={c} active={c.id === activeId} {...rowHandlers} />
                     ))}
@@ -374,9 +369,7 @@ export function SessionSidebar({
                                 data-testid={`chat-sessions-folder-${folder.id}-delete-confirm-prompt`}
                             >
                                 <p>
-                                    Delete “{folder.name}”? Any sessions filed here are moved
-                                    out of the folder, not deleted.
-                                </p>
+                                    {translateInterface("Delete “")}{folder.name}{translateInterface("”? Any sessions filed here are moved out of the folder, not deleted.")}</p>
                                 <div className="chat-sessions-folder-confirm-actions">
                                     <Button
                                         variant="danger"
@@ -387,22 +380,20 @@ export function SessionSidebar({
                                             deleteFolder.mutate(folder.id);
                                         }}
                                     >
-                                        Delete folder
-                                    </Button>
+                                        {translateInterface("Delete folder")}</Button>
                                     <Button
                                         variant="secondary"
                                         size="sm"
                                         data-testid={`chat-sessions-folder-${folder.id}-delete-cancel`}
                                         onClick={() => setConfirmingFolderDelete(null)}
                                     >
-                                        Cancel
-                                    </Button>
+                                        {translateInterface("Cancel")}</Button>
                                 </div>
                             </div>
                         )}
                         <div id={panelId} hidden={collapsed}>
                             {rows.length === 0 ? (
-                                <p className="chat-sessions-hint is-nested">Empty folder.</p>
+                                <p className="chat-sessions-hint is-nested">{translateInterface("Empty folder.")}</p>
                             ) : (
                                 rows.map((c) => (
                                     <SessionRow
@@ -421,7 +412,7 @@ export function SessionSidebar({
             {unfiled.length > 0 && (
                 <section className="chat-sessions-group" data-testid="chat-sessions-group-unfiled">
                     <h3 className="chat-sessions-group-label">
-                        {folders.length > 0 ? 'Unfiled' : 'Sessions'}
+                        {folders.length > 0 ? 'Unfiled' : translateInterface("Sessions")}
                     </h3>
                     {unfiled.map((c) => (
                         <SessionRow key={c.id} conversation={c} active={c.id === activeId} {...rowHandlers} />
@@ -439,13 +430,12 @@ export function SessionSidebar({
                     onClick={() => setShowArchived((v) => !v)}
                 >
                     <Icon.Archive size={13} />
-                    <span className="chat-sessions-group-label">Archived</span>
+                    <span className="chat-sessions-group-label">{translateInterface("Archived")}</span>
                 </button>
                 <div id="chat-sessions-archived-panel" hidden={!showArchived}>
                     {archivedQuery.isLoading && (
                         <p className="chat-sessions-hint is-nested" data-testid="chat-sessions-archived-loading">
-                            Loading…
-                        </p>
+                            {translateInterface("Loading…")}</p>
                     )}
                     {archivedQuery.isError && (
                         <p
@@ -453,13 +443,11 @@ export function SessionSidebar({
                             role="alert"
                             data-testid="chat-sessions-archived-error"
                         >
-                            Archived sessions could not be loaded.
-                        </p>
+                            {translateInterface("Archived sessions could not be loaded.")}</p>
                     )}
                     {archivedQuery.data?.length === 0 && (
                         <p className="chat-sessions-hint is-nested" data-testid="chat-sessions-archived-empty">
-                            Nothing archived.
-                        </p>
+                            {translateInterface("Nothing archived.")}</p>
                     )}
                     {(archivedQuery.data ?? []).map((c) => (
                         <SessionRow key={c.id} conversation={c} active={c.id === activeId} {...rowHandlers} />
@@ -472,8 +460,8 @@ export function SessionSidebar({
             {folderDialog?.mode === 'create' && (
                 <NameDialog
                     testId="chat-sessions-folder-dialog"
-                    title="New folder"
-                    description="Group related sessions, for example by issue."
+                    title={translateInterface("New folder")}
+                    description={translateInterface("Group related sessions, for example by issue.")}
                     submitLabel="Create"
                     initialValue=""
                     onSubmit={async (name) => {
@@ -487,8 +475,8 @@ export function SessionSidebar({
             {folderDialog?.mode === 'rename' && (
                 <NameDialog
                     testId="chat-sessions-folder-dialog"
-                    title="Rename folder"
-                    description="Sessions filed here keep their place."
+                    title={translateInterface("Rename folder")}
+                    description={translateInterface("Sessions filed here keep their place.")}
                     submitLabel="Save"
                     initialValue={folderDialog.folder.name}
                     onSubmit={async (name) => {
@@ -502,8 +490,8 @@ export function SessionSidebar({
             {renaming !== null && (
                 <NameDialog
                     testId="chat-sessions-rename-dialog"
-                    title="Rename session"
-                    description="Only the title changes; the transcript is untouched."
+                    title={translateInterface("Rename session")}
+                    description={translateInterface("Only the title changes; the transcript is untouched.")}
                     submitLabel="Save"
                     initialValue={renaming.title ?? ''}
                     onSubmit={async (title) => {

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type {
     ApiRoute,
@@ -70,6 +71,7 @@ export function RelationEditor({
     submitError,
     isSubmitting,
 }: RelationEditorProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = !!relation;
     const [listRouteId, setListRouteId] = useState<string>(
         relation ? String(relation.list_route_id) : '',
@@ -265,8 +267,7 @@ export function RelationEditor({
                         onClick={onClose}
                         style={buttonStyle('secondary', false)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="api-route-relation-form-submit"

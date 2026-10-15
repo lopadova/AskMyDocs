@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Icon } from '../../../components/Icons';
 import type { CampaignGrant, CampaignTenantGrant, ProjectRole, Tenant } from './invitations.api';
 
@@ -114,6 +115,7 @@ export interface GrantEditorProps {
 }
 
 export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
+    const { t: translateInterface } = useUiTranslation();
     const patch = (p: Partial<GrantDraft>) => onChange({ ...value, ...p });
 
     const addTenant = () =>
@@ -130,7 +132,7 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
             <legend style={{ fontSize: 12, color: 'var(--fg-2)', padding: '0 6px' }}>Grant on redemption</legend>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label htmlFor="grant-role" style={labelStyle}>Role</label>
+                <label htmlFor="grant-role" style={labelStyle}>{translateInterface("Role")}</label>
                 <input
                     id="grant-role"
                     data-testid="admin-invitations-campaign-grant-role"
@@ -185,7 +187,7 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
                         style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexWrap: 'wrap', border: '1px dashed var(--panel-border, rgba(255,255,255,.1))', borderRadius: 6, padding: 8 }}
                     >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            <label htmlFor={`grant-tenant-${i}-id`} style={labelStyle}>Tenant</label>
+                            <label htmlFor={`grant-tenant-${i}-id`} style={labelStyle}>{translateInterface("Tenant")}</label>
                             <select
                                 id={`grant-tenant-${i}-id`}
                                 data-testid={`admin-invitations-campaign-grant-tenant-${i}-id`}
@@ -200,7 +202,7 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
                             </select>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            <label htmlFor={`grant-tenant-${i}-role`} style={labelStyle}>Role</label>
+                            <label htmlFor={`grant-tenant-${i}-role`} style={labelStyle}>{translateInterface("Role")}</label>
                             <input
                                 id={`grant-tenant-${i}-role`}
                                 data-testid={`admin-invitations-campaign-grant-tenant-${i}-role`}
@@ -210,7 +212,7 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
                             />
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 140 }}>
-                            <label htmlFor={`grant-tenant-${i}-projects`} style={labelStyle}>Projects</label>
+                            <label htmlFor={`grant-tenant-${i}-projects`} style={labelStyle}>{translateInterface("Projects")}</label>
                             <input
                                 id={`grant-tenant-${i}-projects`}
                                 data-testid={`admin-invitations-campaign-grant-tenant-${i}-projects`}

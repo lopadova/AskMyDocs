@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { MessageCitation } from './chat.api';
 import { Button } from '../../components/Button';
@@ -121,6 +122,7 @@ const ELLIPSIS: CSSProperties = {
 };
 
 function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: CitationChipProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const origin = citation.origin ?? 'primary';
     const palette = ORIGIN_PALETTE[origin] ?? ORIGIN_PALETTE.primary;
     // Visible chip label: just the filename. The aria-label + popover keep
@@ -260,8 +262,7 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                             fontFamily: 'var(--font-mono)',
                         }}
                     >
-                        auto
-                    </span>
+                        {translateInterface("auto")}</span>
                 )}
                 {heading && (
                     <>
