@@ -200,8 +200,23 @@ FOCUS;
                 }
                 $queries[] = $query;
             }
+            $normalizeReference = fn ($value) => is_string($value) ? $this->literalReference($value, $question) : $value;
+            if (is_array($data['focus']['identifiers'] ?? null)) {
+                $data['focus']['identifiers'] = array_map($normalizeReference, $data['focus']['identifiers']);
+            }
+            foreach (is_array($data['subquestions'] ?? null) ? $data['subquestions'] : [] as $index => $subquestion) {
+                if (is_array($subquestion['identifiers'] ?? null)) {
+                    $data['subquestions'][$index]['identifiers'] = array_map($normalizeReference, $subquestion['identifiers']);
+                }
+            }
+            if (is_array($data['resolved_references'] ?? null)) {
+                $data['resolved_references'] = array_map($normalizeReference, $data['resolved_references']);
+            }
             $mentions = [];
             foreach ($data['mentions'] as $mention) {
+                if (is_array($mention) && is_string($mention['text'] ?? null)) {
+                    $mention['text'] = $normalizeReference($mention['text']);
+                }
                 if (! is_array($mention) || count($mention) !== 2
                     || array_diff(['text', 'type'], array_keys($mention)) !== []
                     || ! is_string($mention['text']) || ! is_string($mention['type'])
@@ -216,6 +231,16 @@ FOCUS;
                     continue;
                 }
                 $mentions[] = ['text' => $match[0], 'type' => $mention['type']];
+            }
+            // A clock embedded in a verified date phrase is a useful literal
+            // navigation token. It adds no fact or inferred source identity.
+            foreach ($mentions as $mention) {
+                preg_match_all('/(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?!\d)/u', $mention['text'], $clocks);
+                foreach ($clocks[0] as $clock) {
+                    if (count($mentions) < 12 && ! in_array($clock, array_column($mentions, 'text'), true)) {
+                        $mentions[] = ['text' => $clock, 'type' => 'identifier'];
+                    }
+                }
             }
             if ($reasoningContext !== null) {
                 // A strict JSON shape cannot prevent misclassifying an explicitly
@@ -308,5 +333,19 @@ FOCUS;
             Log::warning('Chat question preprocessing was unavailable.', ['exception' => $exception::class, 'reason' => $failureStage]);
             return QuestionUnderstanding::fromArray([...$fallback->toArray(), 'failure_reason' => $failureStage]);
         }
+    }
+
+    private function literalReference(string $value, string $question): string
+    {
+        $value = trim($value);
+        $pairs = ['«' => '»', '“' => '”', '‘' => '’', '"' => '"', "'" => "'"];
+        $first = mb_substr($value, 0, 1);
+        if (mb_strlen($value) > 2 && isset($pairs[$first]) && mb_substr($value, -1) === $pairs[$first]) {
+            $inner = trim(mb_substr($value, 1, -1));
+            if ($inner !== '' && preg_match('/(?<![\pL\pN_-])'.preg_quote($inner, '/').'(?![\pL\pN_-])/iu', $question) === 1) {
+                return $inner;
+            }
+        }
+        return $value;
     }
 }

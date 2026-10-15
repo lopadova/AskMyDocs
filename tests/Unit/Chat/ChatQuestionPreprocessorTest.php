@@ -151,6 +151,23 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $this->assertSame(['6664456131', 'U123', 'ORDER-123'], $result->targetIdentifiers());
     }
 
+    public function test_quoted_titles_and_literal_clocks_remain_searchable_without_inventing_references(): void
+    {
+        $focus = ['topic' => 'email', 'identifiers' => ['«ORDER NOTICE»', '9 ottobre 2026 alle 21:43'], 'aspect' => 'order', 'fields' => ['orderNumber']];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response([
+            'language' => 'it', 'intent' => 'Ordine della notifica', 'action' => 'research', 'kb_queries' => ['ORDER NOTICE 21:43'],
+            'mentions' => [['text' => '«ORDER NOTICE»', 'type' => 'name'], ['text' => '9 ottobre 2026 alle 21:43', 'type' => 'identifier']],
+            'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+            'transition' => 'new', 'focus' => $focus, 'subquestions' => [$focus + ['question' => 'Quale ordine nella notifica?', 'kb_queries' => ['ORDER NOTICE 21:43'], 'context_mode' => 'new', 'requires_research' => true]],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '',
+        ]));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('La notifica «ORDER NOTICE» del 9 ottobre 2026 alle 21:43 riguarda quale ordine?', reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertSame(['ORDER NOTICE', '9 ottobre 2026 alle 21:43'], $result->targetIdentifiers());
+        $this->assertContains('21:43', $result->mentionTexts());
+    }
+
     public function test_a_lowercase_name_remains_a_verbatim_mention_and_language_names_are_normalized(): void
     {
         $ai = Mockery::mock(AiManager::class);
