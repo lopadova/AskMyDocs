@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useUiTranslation } from "../../lib/ui-locale";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearch } from '@tanstack/react-router';
 import { Icon } from '../../components/Icons';
@@ -28,6 +29,7 @@ import { kbBrowseApi } from './kb-browse.api';
  * the tenant, exactly as chat citations already do.
  */
 export function KnowledgeBrowseView(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const currentTeam = useTeamStore((s) => s.currentTeam);
     const teams = useTeamStore((s) => s.teams);
 
@@ -52,6 +54,10 @@ export function KnowledgeBrowseView(): ReactNode {
     const [project, setProject] = useState<string>('');
     const [mode, setMode] = useState<KbTreeMode>('all');
     const [q, setQ] = useState('');
+    const [showTreeOnMobile, setShowTreeOnMobile] = useState(false);
+    const treeRef = useRef<HTMLDivElement>(null);
+    const detailRef = useRef<HTMLDivElement>(null);
+    const moveFocus = useRef(false);
     const [selected, setSelected] = useState<{ path: string; documentId: number | null } | null>(null);
     // Tracked separately from `selected`, because `null` cannot tell
     // "never clicked" apart from "clicked, but the node selects no
@@ -100,13 +106,19 @@ export function KnowledgeBrowseView(): ReactNode {
               ? 'empty'
               : 'ready';
 
+    useEffect(() => {
+        if (!moveFocus.current || !window.matchMedia?.('(max-width: 900px)').matches) return;
+        moveFocus.current = false;
+        if (showTreeOnMobile) treeRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+        else detailRef.current?.focus();
+    }, [documentId, showTreeOnMobile]);
+
     return (
-        <div data-testid="kb-browse-view" className="kb-browse-layout">
-            <div className="kb-browse-tree">
+        <div data-testid="kb-browse-view" className="kb-browse-layout" data-document-open={documentId !== null && !showTreeOnMobile ? 'true' : 'false'}>
+            <div className="kb-browse-tree" ref={treeRef}>
                 <div className="kb-browse-scope">
                     <label className="kb-browse-scope-label" htmlFor="kb-browse-project">
-                        Project
-                    </label>
+                        {translateInterface("Project")}</label>
                     <select
                         id="kb-browse-project"
                         data-testid="kb-browse-project"
@@ -116,7 +128,7 @@ export function KnowledgeBrowseView(): ReactNode {
                             setSelected(null);
                         }}
                     >
-                        <option value="">All projects</option>
+                        <option value="">{translateInterface("All projects")}</option>
                         {projects.map((key) => (
                             <option key={key} value={key}>
                                 {key}
@@ -147,34 +159,34 @@ export function KnowledgeBrowseView(): ReactNode {
                             return;
                         }
                         setSelected({ path, documentId: meta.meta.id });
+                        moveFocus.current = true;
+                        setShowTreeOnMobile(false);
                     }}
                 />
             </div>
 
-            <div className="kb-browse-detail" data-testid="kb-browse-detail" data-state={docState}>
+            <div className="kb-browse-detail" ref={detailRef} tabIndex={-1} aria-label={translateInterface('Document details')} data-testid="kb-browse-detail" data-state={docState}>
+                <Button variant="quiet" className="kb-mobile-back" leadingIcon={<Icon.Chevron size={16} style={{ transform: 'rotate(180deg)' }} />} onClick={() => { moveFocus.current = true; setShowTreeOnMobile(true); }}>{translateInterface('Browse documents')}</Button>
                 {docState === 'idle' && (
                     <p className="kb-browse-hint" data-testid="kb-browse-detail-idle">
-                        Select a document to read it.
-                    </p>
+                        {translateInterface("Select a document to read it.")}</p>
                 )}
 
                 {docState === 'loading' && (
                     <p className="kb-browse-hint" data-testid="kb-browse-detail-loading">
-                        Loading document…
-                    </p>
+                        {translateInterface("Loading document…")}</p>
                 )}
 
                 {docState === 'error' && (
                     <div className="kb-browse-hint" role="alert" data-testid="kb-browse-detail-error">
-                        <p>This document could not be opened.</p>
+                        <p>{translateInterface("This document could not be opened.")}</p>
                         <Button
                             variant="secondary"
                             size="sm"
                             data-testid="kb-browse-detail-retry"
                             onClick={() => void docQuery.refetch()}
                         >
-                            Retry
-                        </Button>
+                            {translateInterface("Retry")}</Button>
                     </div>
                 )}
 
@@ -207,8 +219,7 @@ export function KnowledgeBrowseView(): ReactNode {
 
                         {docState === 'empty' ? (
                             <p className="kb-browse-hint" data-testid="kb-browse-detail-empty">
-                                This document has no indexed content yet.
-                            </p>
+                                {translateInterface("This document has no indexed content yet.")}</p>
                         ) : (
                             <div data-testid="kb-browse-detail-body">
                                 <Markdown

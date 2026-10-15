@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, type ReactNode } from 'react';
+import { useUiTranslation } from '../../lib/ui-locale';
 import { MessageBubble } from './MessageBubble';
 import { AgentActivityBar } from './AgentActivityBar';
 import { Icon } from '../../components/Icons';
@@ -117,6 +118,7 @@ export function MessageThread({
     onCancelAgent,
     onContinueAgent,
 }: MessageThreadProps): ReactNode {
+    const { t } = useUiTranslation();
     const threadRef = useRef<HTMLDivElement>(null);
 
     // Stream-aware auto-scroll trigger. During token-by-token streaming
@@ -177,7 +179,7 @@ export function MessageThread({
             ref={threadRef}
             data-testid="chat-thread"
             data-state={state}
-            aria-label="Conversation messages"
+            aria-label={t('Conversation messages')}
             aria-live="polite"
             aria-busy={isLoadingHistory || isStreaming}
             className="chat-thread-scroll"
@@ -325,7 +327,7 @@ function EmptyThread(): ReactNode {
     ];
     return (
         <div data-testid="chat-thread-empty" className="chat-empty-state">
-            <span className="chat-empty-icon" aria-hidden="true"><Icon.Sparkles size={24} /></span>
+            <picture aria-hidden="true"><source type="image/avif" srcSet="/editorial/dialogue-small.avif" /><img className="chat-empty-art" src="/editorial/dialogue-small.webp" width={640} height={427} alt="" decoding="async" /></picture>
             <h2>What would you like to explore?</h2>
             <p>Ask your knowledge base. Follow the sources. Keep the conversation going.</p>
             <div className="chat-empty-prompts">

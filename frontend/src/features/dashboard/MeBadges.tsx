@@ -1,6 +1,8 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { meDashboardApi, ME_BADGES_QUERY_KEY } from './me-dashboard.api';
+import { Award } from 'lucide-react';
 
 /**
  * v8.15/W5 — the gamification badges section on the "My KB" dashboard.
@@ -10,6 +12,7 @@ import { meDashboardApi, ME_BADGES_QUERY_KEY } from './me-dashboard.api';
  * show progress toward their threshold. R11 testids per badge.
  */
 export function MeBadges(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: ME_BADGES_QUERY_KEY,
         queryFn: () => meDashboardApi.badges(),
@@ -22,7 +25,7 @@ export function MeBadges(): ReactNode {
         return (
             <section data-testid="me-badges" data-state="error" role="alert" style={{ marginTop: 20 }}>
                 Could not load your badges.{' '}
-                <button type="button" data-testid="me-badges-retry" onClick={() => void query.refetch()}>Retry</button>
+                <button type="button" data-testid="me-badges-retry" onClick={() => void query.refetch()}>{translateInterface("Retry")}</button>
             </section>
         );
     }
@@ -34,7 +37,7 @@ export function MeBadges(): ReactNode {
 
     return (
         <section data-testid="me-badges" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
-            <h3>Your badges</h3>
+            <h3>{translateInterface("Your badges")}</h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 {query.data.badges.map((b) => (
                     <div
@@ -51,8 +54,8 @@ export function MeBadges(): ReactNode {
                             textAlign: 'center',
                         }}
                     >
-                        <div style={{ fontSize: 24 }} aria-hidden="true">{b.icon}</div>
-                        <div style={{ fontWeight: 600 }}>{b.label}</div>
+                        <div className="badge-art" aria-hidden="true"><Award size={26} /></div>
+                        <div style={{ fontWeight: 600 }}>{translateInterface(b.label)}</div>
                         <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>
                             {b.earned ? 'Earned' : `${b.progress}/${b.threshold}`}
                         </div>

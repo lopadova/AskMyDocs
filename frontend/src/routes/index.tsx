@@ -7,12 +7,10 @@ import {
     redirect,
     useNavigate,
     useParams,
-    useRouterState,
     useSearch,
 } from '@tanstack/react-router';
 import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
-import { StandaloneShell } from '../components/shell/StandaloneShell';
 import { ChatView } from '../features/chat/ChatView';
 import { AnonymousChatView } from '../features/chat/AnonymousChatView';
 import { SessionsView } from '../features/chat/sessions/SessionsView';
@@ -65,7 +63,8 @@ import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
 import { DigestFeedCard } from '../features/digest/DigestFeedCard';
 import { DigestPreferences } from '../features/digest/DigestPreferences';
-import { MeDashboard } from '../features/dashboard/MeDashboard';
+import { WorkspaceHome } from '../features/navigation/WorkspaceHome';
+import { AreaHubView } from '../features/navigation/AreaHubView';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
 import { ConnectedAppsView } from '../features/mcp-connections/ConnectedAppsView';
 import { UiFoundationsDemo } from '../features/developer/ButtonSystemDemo';
@@ -263,7 +262,7 @@ function TeamRootRedirect() {
 
     useEffect(() => {
         if (hash !== null) {
-            navigate({ to: '/app/$teamHash/chat', params: { teamHash: hash }, replace: true });
+            navigate({ to: '/app/me', replace: true });
         } else if (isSystemAdmin) {
             navigate({ to: '/app/system/tenants', replace: true });
         } else if (onboardingRequired) {
@@ -301,9 +300,6 @@ function TeamGate() {
     const isSystemAdmin = useAuthStore((state) => state.features.system_admin === true);
     const onboardingRequired = useAuthStore((state) => state.onboarding.required);
     const navigate = useNavigate();
-    // Subscribed, not `window.location`: the chrome choice below is a
-    // RENDER decision, so it has to re-evaluate when the route changes.
-    const pathname = useRouterState({ select: (s) => s.location.pathname });
 
     const team = teams.find((t) => t.hash === teamHash);
 
@@ -338,35 +334,30 @@ function TeamGate() {
         return null; // redirecting (legacy URL) or syncing (deep link)
     }
 
-    // The full-screen chat surfaces step OUT of the app frame: their only
-    // sidebar is the session rail, so AppShell's primary navigation would
-    // be a second, competing one. Everything else in the team subtree
-    // keeps the normal shell.
-    return isStandaloneSurface(pathname) ? <StandaloneShell /> : <AppShell />;
+    // Every tenant surface keeps the same frame, including sessions and the reader library.
+    return <AppShell />;
 }
 
-/**
- * Surfaces that render without the app frame, keyed off the segment after
- * the team hash.
- *
- * Matched on the PATH rather than on route ids because this decision is
- * made by the PARENT route, which is defined before its children — and a
- * path check keeps the rule readable in one place instead of spreading a
- * flag across every child definition.
- */
-const STANDALONE_SEGMENTS = new Set(['sessions', 'knowledge']);
-
+/** Backward-compatible predicate for clients that imported the former shell policy. */
 export function isStandaloneSurface(pathname: string): boolean {
-    // /app/{teamHash}/{segment}/... → the third segment decides.
-    const segment = pathname.replace(/^\/app\/[^/]+\/?/, '').split('/')[0];
-
-    return STANDALONE_SEGMENTS.has(segment);
+    // Kept for integrations importing the old predicate. All surfaces now share the app frame.
+    void pathname;
+    return false;
 }
 
 const teamRoute = createRoute({
     getParentRoute: () => appRoute,
     path: '$teamHash',
     component: TeamGate,
+});
+
+const areaHubRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'area/$hubId',
+    component: function AreaHubRoute() {
+        const { hubId } = areaHubRoute.useParams();
+        return <AreaHubView hubId={hubId} />;
+    },
 });
 
 // True only when the URL's `$teamHash` segment is a real team. The
@@ -385,7 +376,7 @@ function useHashIsKnownTeam(teamHash: string): boolean {
 function TeamIndexRedirect() {
     const { teamHash } = teamRoute.useParams();
     if (!useHashIsKnownTeam(teamHash)) return null;
-    return <Navigate to="/app/$teamHash/chat" params={{ teamHash }} replace />;
+    return <Navigate to="/app/me" replace />;
 }
 
 const teamIndexRoute = createRoute({
@@ -1458,12 +1449,12 @@ function AdminNotificationPreferencesRoute() {
 // authenticated user (no RequireRole); AdminShell keeps the sidebar consistent.
 function DigestRoute() {
     return (
-        <AdminShell section="digest">
+        <AppShell tenantScoped={false}><AdminShell section="digest">
             <div style={{ display: 'grid', gap: 20 }}>
                 <DigestFeedCard />
                 <DigestPreferences />
             </div>
-        </AdminShell>
+        </AdminShell></AppShell>
     );
 }
 
@@ -1476,9 +1467,7 @@ const digestRoute = createRoute({
 // v8.15/W4.2 — personal "your KB" dashboard (any authenticated user).
 function MeDashboardRoute() {
     return (
-        <AdminShell section="my-kb">
-            <MeDashboard />
-        </AdminShell>
+        <AppShell tenantScoped={false}><WorkspaceHome /></AppShell>
     );
 }
 const meDashboardRoute = createRoute({
@@ -1490,7 +1479,7 @@ const meDashboardRoute = createRoute({
 const connectedAppsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'connected-apps',
-    component: ConnectedAppsView,
+    component: () => <AppShell tenantScoped={false}><ConnectedAppsView /></AppShell>,
 });
 
 // v8.15/W4.2 — admin engagement analytics. RequireRole wraps the panel here in
@@ -1563,6 +1552,7 @@ const adminEvalHarnessSplatRoute = createRoute({
 // /app redirector stays directly on appRoute.
 const teamChildren = [
     teamIndexRoute,
+    areaHubRoute,
     chatRoute,
     chatAnonymousRoute,
     chatConversationRoute,

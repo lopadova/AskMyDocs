@@ -13,9 +13,9 @@ test.describe('Tenant control — system administrator', () => {
         await page.goto('/app');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        const entry = page.getByTestId('sidebar-nav-tenant-control');
-        await expect(entry).toBeVisible();
-        await entry.click();
+        await page.getByRole('combobox', { name: 'Workspace area' }).selectOption('system');
+        const entry = page.getByTestId('hub-link-tenant-control');
+        if (await entry.count()) await entry.click();
 
         await expect(page).toHaveURL(/\/app\/system\/tenants$/);
         await expect(page.getByTestId('tenant-control-view')).toBeVisible({ timeout: 15_000 });

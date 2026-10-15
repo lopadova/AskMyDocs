@@ -1,3 +1,5 @@
+import { Button } from '../../../components/Button';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
@@ -19,6 +21,7 @@ import { AdminShell } from '../shell/AdminShell';
  *      `/api/admin/projects/keys` endpoint.
  */
 export function TabularReviewsList(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [createOpen, setCreateOpen] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
@@ -93,37 +96,35 @@ export function TabularReviewsList(): ReactNode {
             data-state={dataState}
             aria-busy={dataState === 'loading'}
         >
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-                <h2 style={{ fontSize: 18, margin: 0 }}>Tabular Reviews</h2>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+                <h2 style={{ fontSize: 18, margin: 0 }}>{translateInterface("Tabular Reviews")}</h2>
                 {canMutate && (
                     <div style={{ display: 'flex', gap: 10 }}>
-                        <button
+                        <Button variant="secondary"
                             type="button"
                             data-testid="admin-tabular-reviews-from-template"
                             onClick={() => setGalleryOpen(true)}
-                            style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--hairline)', background: 'var(--bg-2)', cursor: 'pointer' }}
+
                         >
-                            From template
-                        </button>
-                        <button
+                            {translateInterface("From template")}</Button>
+                        <Button variant="primary"
                             type="button"
                             data-testid="admin-tabular-reviews-create"
                             onClick={() => { setTemplateInitial(null); setCreateOpen(true); }}
-                            style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white', cursor: 'pointer' }}
+
                         >
-                            + New review
-                        </button>
+                            {translateInterface("+ New review")}</Button>
                     </div>
                 )}
             </header>
 
-            {dataState === 'loading' && <p data-testid="admin-tabular-reviews-loading">Loading…</p>}
+            {dataState === 'loading' && <p data-testid="admin-tabular-reviews-loading">{translateInterface("Loading…")}</p>}
             {dataState === 'error' && (
                 <p data-testid="admin-tabular-reviews-error">
-                    Failed to load reviews: {reviewsQuery.error instanceof Error ? reviewsQuery.error.message : 'unknown error'}
+                    {translateInterface("Failed to load reviews:") + " "}{reviewsQuery.error instanceof Error ? reviewsQuery.error.message : 'unknown error'}
                 </p>
             )}
-            {dataState === 'empty' && <p data-testid="admin-tabular-reviews-empty">No tabular reviews yet. Create one to get started.</p>}
+            {dataState === 'empty' && <p data-testid="admin-tabular-reviews-empty">{translateInterface("No tabular reviews yet. Create one to get started.")}</p>}
             {mutationError && (
                 <p
                     data-testid="admin-tabular-reviews-mutation-error"
@@ -140,11 +141,11 @@ export function TabularReviewsList(): ReactNode {
                 >
                     <thead>
                         <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--hairline)' }}>
-                            <th style={{ padding: '8px 10px' }}>Title</th>
-                            <th style={{ padding: '8px 10px' }}>Project</th>
-                            <th style={{ padding: '8px 10px' }}>Columns</th>
-                            <th style={{ padding: '8px 10px' }}>Updated</th>
-                            <th style={{ padding: '8px 10px' }}>Actions</th>
+                            <th style={{ padding: '8px 10px' }}>{translateInterface("Title")}</th>
+                            <th style={{ padding: '8px 10px' }}>{translateInterface("Project")}</th>
+                            <th style={{ padding: '8px 10px' }}>{translateInterface("Columns")}</th>
+                            <th style={{ padding: '8px 10px' }}>{translateInterface("Updated")}</th>
+                            <th style={{ padding: '8px 10px' }}>{translateInterface("Actions")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -176,8 +177,7 @@ export function TabularReviewsList(): ReactNode {
                                             onClick={() => deleteMutation.mutate(r.id)}
                                             style={{ background: 'none', border: 'none', color: 'var(--danger, #c00)', cursor: 'pointer' }}
                                         >
-                                            Delete
-                                        </button>
+                                            {translateInterface("Delete")}</button>
                                     )}
                                 </td>
                             </tr>
@@ -243,6 +243,7 @@ const nextColumnKey = (): number => {
 };
 
 function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: DialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [title, setTitle] = useState(initial?.title ?? '');
     const [projectKey, setProjectKey] = useState('');
     const [columns, setColumns] = useState<KeyedColumn[]>(
@@ -288,11 +289,10 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                     overflow: 'auto',
                 }}
             >
-                <h3 id="create-tabular-review-title" style={{ marginTop: 0 }}>New Tabular Review</h3>
+                <h3 id="create-tabular-review-title" style={{ marginTop: 0 }}>{translateInterface("New Tabular Review")}</h3>
 
                 <label style={{ display: 'block', marginBottom: 6 }} htmlFor="create-tabular-review-title-input">
-                    Title
-                </label>
+                    {translateInterface("Title")}</label>
                 <input
                     id="create-tabular-review-title-input"
                     data-testid="admin-tabular-review-create-title"
@@ -302,8 +302,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                 />
 
                 <label style={{ display: 'block', marginBottom: 6 }} htmlFor="create-tabular-review-project-input">
-                    Project key
-                </label>
+                    {translateInterface("Project key")}</label>
                 <input
                     id="create-tabular-review-project-input"
                     data-testid="admin-tabular-review-create-project"
@@ -313,7 +312,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                 />
 
                 <div style={{ marginBottom: 12 }}>
-                    <strong>Columns</strong>
+                    <strong>{translateInterface("Columns")}</strong>
                     {columns.map((c, i) => (
                         // R29 — `_key` is the stable local id captured at
                         // row creation; index `i` is reserved for the
@@ -325,7 +324,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                             style={{ border: '1px solid var(--hairline)', borderRadius: 6, padding: 10, marginTop: 8 }}
                         >
                             <input
-                                placeholder="Name"
+                                placeholder={translateInterface("Name")}
                                 aria-label={`Column ${i + 1} name`}
                                 data-testid={`admin-tabular-review-create-column-${i}-name`}
                                 value={c.name}
@@ -333,7 +332,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                 style={{ width: '100%', padding: 6, marginBottom: 4 }}
                             />
                             <input
-                                placeholder="Extraction prompt"
+                                placeholder={translateInterface("Extraction prompt")}
                                 aria-label={`Column ${i + 1} prompt`}
                                 data-testid={`admin-tabular-review-create-column-${i}-prompt`}
                                 value={c.prompt ?? ''}
@@ -379,7 +378,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                 style={{ width: '100%', padding: 6, marginTop: 4 }}
                             >
                                 {AGENT_KINDS.map((a) => (
-                                    <option key={a} value={a}>agent: {a}</option>
+                                    <option key={a} value={a}>{translateInterface("agent:") + " "}{a}</option>
                                 ))}
                             </select>
                             {(c.agent ?? 'extract') === 'graph' && (
@@ -390,7 +389,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                     onChange={(e) => updateColumn(i, { metric: e.target.value || null })}
                                     style={{ width: '100%', padding: 6, marginTop: 4 }}
                                 >
-                                    <option value="">— pick a governance metric —</option>
+                                    <option value="">{translateInterface("— pick a governance metric —")}</option>
                                     {GOVERNANCE_METRICS.map((m) => (
                                         <option key={m} value={m}>{m}</option>
                                     ))}
@@ -403,8 +402,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                     onClick={() => removeColumn(i)}
                                     style={{ marginTop: 6, background: 'none', border: 'none', color: 'var(--danger, #c00)', cursor: 'pointer' }}
                                 >
-                                    Remove column
-                                </button>
+                                    {translateInterface("Remove column")}</button>
                             )}
                         </div>
                     ))}
@@ -414,8 +412,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                         onClick={addColumn}
                         style={{ marginTop: 8, padding: '5px 10px', borderRadius: 4, border: '1px solid var(--hairline)', background: 'var(--bg-2)' }}
                     >
-                        + Add column
-                    </button>
+                        {translateInterface("+ Add column")}</button>
                 </div>
 
                 {error && (
@@ -426,8 +423,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                     <button type="button" data-testid="admin-tabular-review-create-cancel" onClick={onClose}>
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="button"
                         data-testid="admin-tabular-review-create-submit"
@@ -458,7 +454,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                             cursor: 'pointer',
                         }}
                     >
-                        {submitting ? 'Creating…' : 'Create'}
+                        {submitting ? 'Creating…' : translateInterface("Create")}
                     </button>
                 </div>
             </div>
@@ -472,6 +468,7 @@ interface ShowProps {
 }
 
 function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [showMutationError, setShowMutationError] = useState<string | null>(null);
     // v8.19/W5 — the evidence side-panel: which cell (doc × column) is open.
@@ -519,8 +516,7 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
     if (showQuery.isLoading) {
         return (
             <div data-testid="admin-tabular-review-show" data-state="loading">
-                Loading…
-            </div>
+                {translateInterface("Loading…")}</div>
         );
     }
     if (showQuery.isError || !showQuery.data) {
@@ -529,8 +525,8 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                 {/* Copilot iter 5: stable testid on the error-state back
                   * button so E2E/RTL can resilient-recover from a failed
                   * show-page fetch (mirrors the ready-state button below). */}
-                <button type="button" data-testid="admin-tabular-review-show-error-back" onClick={onBack}>← Back</button>
-                <p>Could not load review: {showQuery.error instanceof Error ? showQuery.error.message : 'unknown'}</p>
+                <button type="button" data-testid="admin-tabular-review-show-error-back" onClick={onBack}>{translateInterface("← Back")}</button>
+                <p>{translateInterface("Could not load review:") + " "}{showQuery.error instanceof Error ? showQuery.error.message : 'unknown'}</p>
             </div>
         );
     }
@@ -548,10 +544,9 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
                     <button type="button" data-testid="admin-tabular-review-show-back" onClick={onBack}>
-                        ← Back
-                    </button>
+                        {translateInterface("← Back")}</button>
                     <h2 style={{ display: 'inline-block', marginLeft: 12 }}>{review.title}</h2>
-                    <span style={{ marginLeft: 12, color: 'var(--fg-3)' }}>project: {review.project_key}</span>
+                    <span style={{ marginLeft: 12, color: 'var(--fg-3)' }}>{translateInterface("project:") + " "}{review.project_key}</span>
                 </div>
                 {canMutate && (
                     <div style={{ display: 'flex', gap: 10 }}>
@@ -569,8 +564,7 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                             onClick={() => clearMutation.mutate()}
                             disabled={clearMutation.isPending}
                         >
-                            Clear cells
-                        </button>
+                            {translateInterface("Clear cells")}</button>
                     </div>
                 )}
             </header>
@@ -587,13 +581,12 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
 
             {cells.length === 0 ? (
                 <p data-testid="admin-tabular-review-show-empty">
-                    No cells yet. Press “Generate cells” to run the extractor.
-                </p>
+                    {translateInterface("No cells yet. Press “Generate cells” to run the extractor.")}</p>
             ) : (
                 <table data-testid="admin-tabular-review-show-grid" style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr>
-                            <th style={{ borderBottom: '1px solid var(--hairline)', padding: '6px 8px', textAlign: 'left' }}>Document</th>
+                            <th style={{ borderBottom: '1px solid var(--hairline)', padding: '6px 8px', textAlign: 'left' }}>{translateInterface("Document")}</th>
                             {columns.map((c, i) => (
                                 <th
                                     key={i}
@@ -714,13 +707,13 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                                 data-testid="admin-tabular-review-evidence-panel-close"
                                 onClick={() => setSelectedCell(null)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}
-                                aria-label="Close evidence panel"
+                                aria-label={translateInterface("Close evidence panel")}
                             >
                                 ×
                             </button>
                         </header>
                         <p style={{ color: 'var(--fg-3)', fontSize: 12, marginTop: 0 }}>
-                            Document #{selectedCell.docId}
+                            {translateInterface("Document #")}{selectedCell.docId}
                             {col?.agent ? ` · agent: ${col.agent}` : ''}
                             {col?.metric ? ` · metric: ${col.metric}` : ''}
                         </p>
@@ -733,18 +726,17 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                                 {cell.content.reasoning}
                             </p>
                         )}
-                        <h4 style={{ marginBottom: 6 }}>Citations</h4>
+                        <h4 style={{ marginBottom: 6 }}>{translateInterface("Citations")}</h4>
                         {citations.length === 0 ? (
                             <p data-testid="admin-tabular-review-evidence-no-citations" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                                No cited evidence (deterministic or unsupported cell).
-                            </p>
+                                {translateInterface("No cited evidence (deterministic or unsupported cell).")}</p>
                         ) : (
                             <ul data-testid="admin-tabular-review-evidence-citations" style={{ paddingLeft: 16 }}>
                                 {citations.map((raw, ci) => {
                                     const c = (raw ?? {}) as { chunk_id?: unknown; quote?: unknown };
                                     return (
                                         <li key={ci} data-testid={`admin-tabular-review-evidence-citation-${ci}`} style={{ marginBottom: 8, fontSize: 13 }}>
-                                            <code style={{ color: 'var(--fg-3)' }}>chunk {String(c.chunk_id ?? '?')}</code>
+                                            <code style={{ color: 'var(--fg-3)' }}>{translateInterface("chunk") + " "}{String(c.chunk_id ?? '?')}</code>
                                             {typeof c.quote === 'string' && c.quote !== '' && (
                                                 <blockquote style={{ margin: '4px 0 0', paddingLeft: 8, borderLeft: '2px solid var(--hairline)' }}>
                                                     {c.quote}
@@ -774,6 +766,7 @@ interface GalleryProps {
  * instead of building them by hand. Picking one pre-fills the create dialog.
  */
 function TemplateGalleryDialog({ onClose, onPick }: GalleryProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: ['admin-workflows', 'system'],
         queryFn: () => adminWorkflowsApi.list('system'),
@@ -789,19 +782,19 @@ function TemplateGalleryDialog({ onClose, onPick }: GalleryProps): ReactNode {
             data-testid="admin-tabular-review-template-gallery"
             role="dialog"
             aria-modal="true"
-            aria-label="Ready-made report templates"
+            aria-label={translateInterface("Ready-made report templates")}
             data-state={state}
             aria-busy={state === 'loading'}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 55 }}
         >
             <div style={{ background: 'var(--bg-1)', padding: 24, borderRadius: 8, width: 'min(560px, 90vw)', maxHeight: '85vh', overflow: 'auto' }}>
                 <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ marginTop: 0 }}>Start from a ready-made template</h3>
-                    <button type="button" data-testid="admin-tabular-review-template-gallery-close" onClick={onClose} aria-label="Close template gallery" style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>×</button>
+                    <h3 style={{ marginTop: 0 }}>{translateInterface("Start from a ready-made template")}</h3>
+                    <button type="button" data-testid="admin-tabular-review-template-gallery-close" onClick={onClose} aria-label={translateInterface("Close template gallery")} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>×</button>
                 </header>
-                {state === 'loading' && <p data-testid="admin-tabular-review-template-gallery-loading">Loading…</p>}
-                {state === 'error' && <p data-testid="admin-tabular-review-template-gallery-error" role="alert">Could not load templates.</p>}
-                {state === 'empty' && <p data-testid="admin-tabular-review-template-gallery-empty">No ready-made templates available.</p>}
+                {state === 'loading' && <p data-testid="admin-tabular-review-template-gallery-loading">{translateInterface("Loading…")}</p>}
+                {state === 'error' && <p data-testid="admin-tabular-review-template-gallery-error" role="alert">{translateInterface("Could not load templates.")}</p>}
+                {state === 'empty' && <p data-testid="admin-tabular-review-template-gallery-empty">{translateInterface("No ready-made templates available.")}</p>}
                 {state === 'ready' && (
                     <ul data-testid="admin-tabular-review-template-gallery-list" style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8, marginTop: 12 }}>
                         {templates.map((w) => (
@@ -814,7 +807,7 @@ function TemplateGalleryDialog({ onClose, onPick }: GalleryProps): ReactNode {
                                 >
                                     <strong>{w.title}</strong>
                                     <span style={{ display: 'block', color: 'var(--fg-3)', fontSize: 12 }}>
-                                        {(w.columns_config ?? []).length} columns · {w.practice ?? 'generic'}
+                                        {(w.columns_config ?? []).length} {" " + translateInterface("columns ·") + " "}{w.practice ?? 'generic'}
                                     </span>
                                 </button>
                             </li>

@@ -1,145 +1,26 @@
-import type { ReactNode } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Button } from '../Button';
 import { Icon } from '../Icons';
 import { SegmentedControl } from './SegmentedControl';
+import { useUiTranslation } from '../../lib/ui-locale';
 import type { Density, FontPair, Theme } from './hooks';
 import type { SidebarSection } from './Sidebar';
-import { NAV_ITEMS } from './nav-config';
 import type { SeedUser } from '../../lib/seed';
 
 export type TweaksPanelProps = {
-    open: boolean;
-    onClose: () => void;
-    theme: Theme;
-    setTheme: (t: Theme) => void;
-    density: Density;
-    setDensity: (d: Density) => void;
-    font: FontPair;
-    setFont: (f: FontPair) => void;
-    section: SidebarSection;
-    setSection: (s: SidebarSection) => void;
-    userRole?: SeedUser['role'];
+    open: boolean; onClose: () => void; theme: Theme; setTheme: (theme: Theme) => void;
+    density: Density; setDensity: (density: Density) => void; font: FontPair; setFont: (font: FontPair) => void;
+    section: SidebarSection; setSection: (section: SidebarSection) => void; userRole?: SeedUser['role'];
 };
 
-function TweakRow({ label, children }: { label: string; children: ReactNode }) {
-    return (
-        <div>
-            <div
-                style={{
-                    fontSize: 10.5,
-                    color: 'var(--fg-3)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '.08em',
-                    fontFamily: 'var(--font-mono)',
-                    marginBottom: 6,
-                }}
-            >
-                {label}
-            </div>
-            {children}
-        </div>
-    );
-}
-
-export function TweaksPanel({
-    open,
-    onClose,
-    theme,
-    setTheme,
-    density,
-    setDensity,
-    font,
-    setFont,
-    section,
-    setSection,
-    userRole = 'super-admin',
-}: TweaksPanelProps) {
-    if (!open) {
-        return null;
-    }
-    return (
-        <div
-            role="dialog"
-            aria-label="Tweaks panel"
-            style={{
-                position: 'fixed',
-                right: 16,
-                top: 72,
-                zIndex: 500,
-                width: 300,
-            }}
-            className="panel popin"
-        >
-            <div
-                style={{
-                    padding: '12px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    borderBottom: '1px solid var(--hairline)',
-                }}
-            >
-                <Icon.Sliders size={14} />
-                <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500 }}>Tweaks</span>
-                <span style={{ flex: 1 }} />
-                <button type="button" className="btn icon sm ghost" aria-label="Close tweaks" onClick={onClose}>
-                    <Icon.Close size={13} />
-                </button>
-            </div>
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <TweakRow label="Theme">
-                    <SegmentedControl<Theme>
-                        options={[
-                            { v: 'dark', l: 'Dark' },
-                            { v: 'light', l: 'Light' },
-                        ]}
-                        value={theme}
-                        onChange={setTheme}
-                    />
-                </TweakRow>
-                <TweakRow label="Density">
-                    <SegmentedControl<Density>
-                        options={[
-                            { v: 'compact', l: 'Compact' },
-                            { v: 'balanced', l: 'Balanced' },
-                            { v: 'comfortable', l: 'Comfort' },
-                        ]}
-                        value={density}
-                        onChange={setDensity}
-                    />
-                </TweakRow>
-                <TweakRow label="Typography">
-                    <SegmentedControl<FontPair>
-                        small
-                        options={[
-                            { v: 'geist', l: 'Geist' },
-                            { v: 'inter', l: 'Inter' },
-                            { v: 'plex', l: 'Plex' },
-                        ]}
-                        value={font}
-                        onChange={setFont}
-                    />
-                </TweakRow>
-                <TweakRow label="Active section">
-                    <select
-                        className="input"
-                        value={section}
-                        onChange={(e) => setSection(e.target.value as SidebarSection)}
-                        aria-label="Active section"
-                        style={{ height: 30, fontSize: 12 }}
-                    >
-                        {/* Derived from the single nav source so this dev
-                            jump-to-section selector stays in sync with every
-                            section in the unified rail (R18 — not a stale
-                            hard-coded subset). */}
-                        {NAV_ITEMS.filter(
-                            (item) => item.roles === undefined || item.roles.includes(userRole),
-                        ).map((item) => (
-                            <option key={item.id} value={item.id}>
-                                {item.label}
-                            </option>
-                        ))}
-                    </select>
-                </TweakRow>
-            </div>
-        </div>
-    );
+export function TweaksPanel({ open, onClose, theme, setTheme, density, setDensity, font, setFont }: TweaksPanelProps) {
+    const { t } = useUiTranslation();
+    return <Dialog.Root open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
+        <Dialog.Portal><Dialog.Overlay className="palette-overlay" /><Dialog.Content className="interface-preferences" aria-describedby={undefined}>
+            <header><Dialog.Title>{t('Interface settings')}</Dialog.Title><Dialog.Close asChild><Button variant="quiet" size="sm" iconOnly aria-label={t('Close')}><Icon.Close size={18} /></Button></Dialog.Close></header>
+            <fieldset><legend>{t('Theme')}</legend><SegmentedControl<Theme> options={[{ v: 'dark', l: t('Dark') }, { v: 'light', l: t('Light') }]} value={theme} onChange={setTheme} /></fieldset>
+            <fieldset><legend>{t('Density')}</legend><SegmentedControl<Density> options={[{ v: 'compact', l: t('Compact') }, { v: 'balanced', l: t('Balanced') }, { v: 'comfortable', l: t('Comfortable') }]} value={density} onChange={setDensity} /></fieldset>
+            <fieldset><legend>{t('Typography')}</legend><SegmentedControl<FontPair> options={[{ v: 'geist', l: 'Geist' }, { v: 'inter', l: 'Inter' }, { v: 'plex', l: 'Plex' }]} value={font} onChange={setFont} /></fieldset>
+        </Dialog.Content></Dialog.Portal>
+    </Dialog.Root>;
 }

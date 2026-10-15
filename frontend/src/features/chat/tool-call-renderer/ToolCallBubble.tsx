@@ -1,4 +1,6 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useCallback, useEffect, useState } from 'react';
+import { Check, Circle, Clock, LockKeyhole, TriangleAlert } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { Button } from '../../../components/Button';
 import { McpAppFrame, type McpAppHandle } from './McpAppFrame';
@@ -51,6 +53,7 @@ interface ToolCallBubbleProps {
 }
 
 export function ToolCallBubble({ toolCall, conversationId, onMcpAppMessage }: ToolCallBubbleProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [expanded, setExpanded] = useState(false);
     const [interactionStatus, setInteractionStatus] = useState<ToolCallStatus | null>(null);
     const [interactionResult, setInteractionResult] = useState<unknown>(null);
@@ -303,7 +306,7 @@ export function ToolCallBubble({ toolCall, conversationId, onMcpAppMessage }: To
                     {taskStatusMessage ? <div style={{ color: 'var(--fg-1)' }}>{taskStatusMessage}</div> : null}
                     {requiresLocalInteraction && toolCall.status === 'confirmation_required' ? (
                         <div style={{ display: 'flex', gap: 8 }}>
-                            <Button variant="primary" size="sm" busy={submitting} data-testid={`chat-tool-call-${toolCall.id}-confirm`} onClick={() => void respond({ confirmed: true })}>Confirm</Button>
+                            <Button variant="primary" size="sm" busy={submitting} data-testid={`chat-tool-call-${toolCall.id}-confirm`} onClick={() => void respond({ confirmed: true })}>{translateInterface("Confirm")}</Button>
                             <Button variant="secondary" size="sm" disabled={submitting} data-testid={`chat-tool-call-${toolCall.id}-decline`} onClick={() => void respond({ confirmed: false })}>Decline</Button>
                         </div>
                     ) : (
@@ -347,7 +350,7 @@ export function ToolCallBubble({ toolCall, conversationId, onMcpAppMessage }: To
                         </Section>
                     ) : null}
                     {effectiveStatus === 'error' || effectiveStatus === 'timeout' || effectiveStatus === 'denied' || effectiveStatus === 'cancelled' ? (
-                        <Section title="Error" testid={`chat-tool-call-${toolCall.id}-error`} tone="error">
+                        <Section title={translateInterface("Error")} testid={`chat-tool-call-${toolCall.id}-error`} tone="error">
                             <pre
                                 style={{
                                     margin: 0,
@@ -394,22 +397,7 @@ function readAppHandle(artifact: unknown): McpAppHandle | null {
 
 function StatusIcon({ status }: { status: ToolCallStatus }) {
     const fillColor = paletteForStatus(status).iconFill;
-    const symbol = (() => {
-        switch (status) {
-            case 'pending':
-                return '⏳';
-            case 'ok':
-                return '✓';
-            case 'error':
-                return '⚠';
-            case 'timeout':
-                return '⌛';
-            case 'denied':
-                return '🔒';
-            default:
-                return '•';
-        }
-    })();
+    const StatusGlyph = status === 'ok' ? Check : status === 'error' ? TriangleAlert : status === 'denied' ? LockKeyhole : ['pending', 'timeout'].includes(status) ? Clock : Circle;
     return (
         <span
             aria-hidden="true"
@@ -426,7 +414,7 @@ function StatusIcon({ status }: { status: ToolCallStatus }) {
                 fontWeight: 700,
             }}
         >
-            {symbol}
+            <StatusGlyph size={12} aria-hidden="true" />
         </span>
     );
 }

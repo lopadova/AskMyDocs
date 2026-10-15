@@ -39,11 +39,11 @@ describe('Topbar', () => {
 
         expect(screen.getByTestId('app-topbar')).toHaveClass('app-topbar');
         expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Chat');
-        expect(screen.getByRole('status', { name: 'All systems operational' })).toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: 'All systems operational' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Open tweaks panel' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Interface settings' }));
         expect(setTheme).toHaveBeenCalledWith('light');
         expect(onToggleTweaks).toHaveBeenCalledOnce();
     });

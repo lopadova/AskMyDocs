@@ -41,8 +41,8 @@ function Logo(p: IconProps): ReactElement {
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={p.style}>
             <defs>
                 <linearGradient id="lg" x1="0" x2="1" y1="0" y2="1">
-                    <stop offset="0" stopColor="#8b5cf6" />
-                    <stop offset="1" stopColor="#22d3ee" />
+                    <stop offset="0" stopColor="var(--accent-a)" />
+                    <stop offset="1" stopColor="var(--accent-b)" />
                 </linearGradient>
             </defs>
             <path

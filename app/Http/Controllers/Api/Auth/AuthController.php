@@ -217,6 +217,12 @@ class AuthController extends Controller
             // so the link never points at the unregistered /admin/invitations
             // 404 route when the package mount is OFF (R14/R43).
             'features' => [
+                'modules' => [
+                    'flows' => ['enabled' => (bool) config('flow-admin.enabled', false)],
+                    'eval-harness' => ['enabled' => (bool) config('eval-harness-ui.enabled', false)],
+                    'evidence-risk-review' => ['enabled' => (bool) config('evidence-risk-review.api.enabled', false)],
+                    'pii-redactor' => ['enabled' => (bool) config('pii-redactor-admin.enabled', false)],
+                ],
                 'invitations_admin' => (bool) config('invitations-admin.enabled', false),
                 'system_admin' => $user->can(\App\Support\PlatformAccess::PLATFORM_ADMIN_PERMISSION),
                 'realtime_agent_live' => $this->realtimeAgentAvailability->status(),

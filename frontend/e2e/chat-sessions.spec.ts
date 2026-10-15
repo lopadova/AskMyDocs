@@ -233,27 +233,15 @@ test.describe('Sessions workspace — organising chat sessions', () => {
         await expect(page.getByTestId('chat-sessions-folder-dialog')).toBeVisible();
     });
 
-    test('the workspace renders without the app frame, and offers a way back', async ({ page }) => {
+    test('both conversation modes retain the shared app navigation', async ({ page }) => {
         await page.goto('/app/sessions');
-        await expect(page.getByTestId(SIDEBAR)).toHaveAttribute('data-state', 'ready', {
-            timeout: 20_000,
-        });
-
-        // The session rail must be the ONLY sidebar: the primary
-        // navigation and the app topbar are absent, not merely hidden.
-        await expect(page.getByTestId('standalone-shell')).toBeVisible();
-        await expect(page.getByTestId('appshell-root')).toHaveCount(0);
-        await expect(page.getByTestId('app-topbar')).toHaveCount(0);
-
-        // A chrome-less view still needs an exit and the tenant scope.
-        await expect(page.getByTestId('standalone-back')).toBeVisible();
-        await expect(page.getByTestId('team-switcher-trigger')).toBeVisible();
-
-        await page.getByTestId('standalone-back').click();
-
-        // Back inside the app frame, on the classic chat.
-        await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId(SIDEBAR)).toHaveAttribute('data-state', 'ready', { timeout: 20_000 });
+        await expect(page.getByTestId('appshell-root')).toBeVisible();
+        await expect(page.getByTestId('app-topbar')).toBeVisible();
+        await expect(page.getByTestId('standalone-shell')).toHaveCount(0);
+        await page.getByRole('navigation', { name: 'Conversations' }).getByRole('link', { name: 'Quick chat' }).click();
         await expect(page).toHaveURL(/\/chat$/);
+        await expect(page.getByTestId('appshell-root')).toBeVisible();
     });
 
     test('the classic chat keeps the app frame', async ({ page }) => {

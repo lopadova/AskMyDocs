@@ -1,4 +1,6 @@
 import { type ReactNode } from 'react';
+import { BookOpen, Calendar, FileText, Folder, Globe, Link, Tag, X, type LucideIcon } from 'lucide-react';
+import { useUiTranslation } from '../../lib/ui-locale';
 
 /**
  * T2.7 — single removable filter chip rendered inside FilterBar.
@@ -26,17 +28,7 @@ export interface FilterChipProps {
     onRemove: () => void;
 }
 
-const DIMENSION_GLYPH: Record<FilterChipProps['dimension'], string> = {
-    project: '⚐',
-    tag: '#',
-    source: '📄',
-    canonical: '⚙',
-    connector: '🔌',
-    doc: '@',
-    folder: '/',
-    language: '🌐',
-    date: '⌛',
-};
+const DIMENSION_GLYPH: Record<FilterChipProps['dimension'], LucideIcon> = { project: BookOpen, tag: Tag, source: FileText, canonical: FileText, connector: Link, doc: FileText, folder: Folder, language: Globe, date: Calendar };
 
 const DIMENSION_LABEL: Record<FilterChipProps['dimension'], string> = {
     project: 'Project',
@@ -51,10 +43,12 @@ const DIMENSION_LABEL: Record<FilterChipProps['dimension'], string> = {
 };
 
 export function FilterChip({ dimension, value, label, onRemove }: FilterChipProps): ReactNode {
+    const { t } = useUiTranslation();
+    const Glyph = DIMENSION_GLYPH[dimension];
     const display = label ?? value;
     const testId = `filter-chip-${dimension}-${value}`;
     const removeTestId = `${testId}-remove`;
-    const ariaLabel = `${DIMENSION_LABEL[dimension]} filter: ${display}. Remove`;
+    const ariaLabel = t('{dimension} filter: {value}. Remove', { dimension: t(DIMENSION_LABEL[dimension]), value: display });
 
     return (
         <span
@@ -75,8 +69,8 @@ export function FilterChip({ dimension, value, label, onRemove }: FilterChipProp
                 lineHeight: 1.4,
             }}
         >
-            <span aria-hidden="true" style={{ color: 'var(--fg-3)' }}>{DIMENSION_GLYPH[dimension]}</span>
-            <span style={{ color: 'var(--fg-2)' }}>{DIMENSION_LABEL[dimension]}:</span>
+            <span aria-hidden="true" style={{ color: 'var(--fg-3)' }}><Glyph size={12} /></span>
+            <span style={{ color: 'var(--fg-2)' }}>{t(DIMENSION_LABEL[dimension])}:</span>
             <span style={{ color: 'var(--fg-0)', fontWeight: 500 }}>{display}</span>
             <button
                 type="button"
@@ -98,7 +92,7 @@ export function FilterChip({ dimension, value, label, onRemove }: FilterChipProp
                     marginLeft: 2,
                 }}
             >
-                ×
+                <X size={12} aria-hidden="true" />
             </button>
         </span>
     );

@@ -1,253 +1,67 @@
-import { useState } from 'react';
+import type { MouseEvent } from 'react';
 import { Icon } from '../Icons';
+import { Button } from '../Button';
 import { Avatar } from './Avatar';
-import { NAV_GROUPS, type SidebarSection } from './nav-config';
+import type { SidebarSection } from './nav-config';
 import type { SeedUser } from '../../lib/seed';
 import type { AuthFeatures } from '../../lib/auth-store';
+import { useUiTranslation } from '../../lib/ui-locale';
+import { areaForSection, canAccessNav, hubForSection, hubHref, NAV_AREAS, NAV_HUBS, navHref, navItem, navLabel, visibleHubItems, WORKSPACE_ITEMS, type HubId, type NavArea, type NavHub } from './navigation';
 
 export type { SidebarSection } from './nav-config';
-
 export type SidebarProps = {
-    // null when the current route has no nav entry (e.g. an admin sub-page
-    // reached from a link, not the rail) — nothing highlights then.
-    active: SidebarSection | null;
-    onNav: (id: SidebarSection) => void;
-    collapsed?: boolean;
-    user: SeedUser;
-    projectCount: number;
-    features?: AuthFeatures;
-    hasTenants?: boolean;
+    active: SidebarSection | null; onNav: (id: SidebarSection) => void; collapsed?: boolean;
+    user: SeedUser; projectCount: number; features?: AuthFeatures; hasTenants?: boolean;
+    roles?: string[]; permissions?: string[]; teamHash?: string | null; area?: NavArea;
+    activeHubId?: HubId; onHub?: (hub: NavHub) => void; onAreaChange?: (area: NavArea) => void; onClose?: () => void;
 };
 
-/*
- * The ONE host navigation. Every admin section lives here, grouped and
- * collapsible — the old secondary `AdminShell` rail is gone, so nothing
- * appears twice. Groups default to expanded; the group that owns the active
- * section is always forced open so the current page is never hidden.
- */
-export function Sidebar({
-    active,
-    onNav,
-    collapsed = false,
-    user,
-    projectCount,
-    features = {},
-    hasTenants = true,
-}: SidebarProps) {
-    const visibleGroups = NAV_GROUPS
-        .map((group) => ({
-            ...group,
-            items: group.items.filter((item) =>
-                (item.roles === undefined || item.roles.includes(user.role))
-                && (item.feature === undefined || features[item.feature] === true)
-                && (hasTenants || item.scope === 'system'),
-            ),
-        }))
-        .filter((group) => group.items.length > 0);
-    const activeGroupId = visibleGroups.find((g) => g.items.some((i) => i.id === active))?.id;
-    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+function activate(event: MouseEvent<HTMLAnchorElement>, action: () => void) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); action();
+}
 
-    // The active group is force-open (so the current page is never hidden), so
-    // toggling its collapse state would be a no-op now but silently collapse it
-    // the moment the user navigates away — a hidden side effect. Ignore the
-    // toggle for the active group entirely.
-    const toggleGroup = (id: string) => {
-        if (id === activeGroupId) {
-            return;
-        }
-        setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
-    };
+export function Sidebar({ active, onNav, user, projectCount, features = {}, hasTenants = true, roles, permissions,
+    teamHash = null, area, activeHubId, onHub, onAreaChange, onClose }: SidebarProps) {
+    const { t } = useUiTranslation();
+    const access = { roles: roles ?? [user.role], permissions, features, hasTenant: hasTenants };
+    const currentArea = area ?? areaForSection(active);
+    const currentHub = activeHubId ?? hubForSection(active)?.id;
+    const accessibleHubs = NAV_HUBS.filter((hub) => visibleHubItems(hub, access, true).length > 0);
+    const availableAreas = NAV_AREAS.filter((candidate) => candidate.id === 'workspace' || accessibleHubs.some((hub) => hub.area === candidate.id));
+    const workspace = WORKSPACE_ITEMS.map(navItem).filter((item) => canAccessNav(item, access));
 
-    return (
-        <aside
-            aria-label="Primary navigation"
-            data-testid="sidebar-nav"
-            style={{
-                width: collapsed ? 60 : 232,
-                minWidth: collapsed ? 60 : 232,
-                borderRight: '1px solid var(--hairline)',
-                background: 'var(--bg-1)',
-                display: 'flex',
-                flexDirection: 'column',
-                transition: 'width .22s',
-            }}
-        >
-            <div style={{ padding: '14px 14px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Icon.Logo size={22} />
-                {!collapsed && (
-                    <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, letterSpacing: '-0.01em' }}>AskMyDocs</div>
-                        <div
-                            style={{
-                                fontSize: 10.5,
-                                color: 'var(--fg-3)',
-                                fontFamily: 'var(--font-mono)',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.04em',
-                            }}
-                        >
-                            Enterprise
-                        </div>
-                    </div>
-                )}
-            </div>
-            <div style={{ padding: collapsed ? '4px 8px 8px' : '4px 10px 8px' }}>
-                <button
-                    type="button"
-                    data-testid="sidebar-command-palette"
-                    className="focus-ring"
-                    aria-label="Open command palette"
-                    onClick={() => window.dispatchEvent(new CustomEvent('amd:palette'))}
-                    style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '8px 10px',
-                        background: 'var(--bg-2)',
-                        border: '1px solid var(--panel-border)',
-                        borderRadius: 9,
-                        color: 'var(--fg-2)',
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        justifyContent: collapsed ? 'center' : 'flex-start',
-                    }}
-                >
-                    <Icon.Search size={14} />
-                    {!collapsed && (
-                        <>
-                            <span style={{ flex: 1, textAlign: 'left' }}>Search…</span>
-                            <span className="kbd">⌘K</span>
-                        </>
-                    )}
-                </button>
-            </div>
-            <nav style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
-                {visibleGroups.map((group) => {
-                    // The active section's group is always shown; user toggle wins
-                    // otherwise. In icon-collapsed mode there are no group headers
-                    // to re-expand with, so force every group open — a group can
-                    // never get stuck hidden with no way to reveal it.
-                    const groupOpen = collapsed || group.id === activeGroupId || !collapsedGroups[group.id];
-                    return (
-                        <div key={group.id} style={{ marginTop: 10 }}>
-                            {!collapsed && (
-                                <button
-                                    type="button"
-                                    data-testid={`sidebar-group-${group.id}`}
-                                    aria-expanded={groupOpen}
-                                    onClick={() => toggleGroup(group.id)}
-                                    className="focus-ring"
-                                    style={{
-                                        width: '100%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 6,
-                                        background: 'transparent',
-                                        border: 0,
-                                        cursor: 'pointer',
-                                        fontSize: 10,
-                                        color: 'var(--fg-3)',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '.08em',
-                                        padding: '6px 10px 4px',
-                                        fontFamily: 'var(--font-mono)',
-                                    }}
-                                >
-                                    <Icon.ChevronDown
-                                        size={11}
-                                        style={{
-                                            transition: 'transform .15s',
-                                            transform: groupOpen ? 'none' : 'rotate(-90deg)',
-                                        }}
-                                    />
-                                    <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
-                                </button>
-                            )}
-                            {groupOpen &&
-                                group.items.map((it) => {
-                                    const IconCmp = Icon[it.icon];
-                                    const isActive = active === it.id;
-                                    return (
-                                        <button
-                                            key={it.id}
-                                            type="button"
-                                            data-testid={`sidebar-nav-${it.id}`}
-                                            onClick={() => onNav(it.id)}
-                                            className="focus-ring"
-                                            aria-label={it.label}
-                                            aria-current={isActive ? 'page' : undefined}
-                                            title={collapsed ? it.label : undefined}
-                                            style={{
-                                                width: '100%',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 10,
-                                                padding: collapsed ? '8px 10px' : '7px 10px',
-                                                background: isActive ? 'var(--bg-3)' : 'transparent',
-                                                color: isActive ? 'var(--fg-0)' : 'var(--fg-2)',
-                                                border: '1px solid ' + (isActive ? 'var(--panel-border)' : 'transparent'),
-                                                borderRadius: 8,
-                                                cursor: 'pointer',
-                                                fontSize: 13,
-                                                fontWeight: isActive ? 500 : 400,
-                                                justifyContent: collapsed ? 'center' : 'flex-start',
-                                                position: 'relative',
-                                                marginBottom: 2,
-                                            }}
-                                        >
-                                            {isActive && (
-                                                <span
-                                                    style={{
-                                                        position: 'absolute',
-                                                        left: -10,
-                                                        top: 6,
-                                                        bottom: 6,
-                                                        width: 2,
-                                                        background: 'var(--grad-accent)',
-                                                        borderRadius: 2,
-                                                    }}
-                                                />
-                                            )}
-                                            <IconCmp size={15} />
-                                            {!collapsed && <span style={{ flex: 1, textAlign: 'left' }}>{it.label}</span>}
-                                        </button>
-                                    );
-                                })}
-                        </div>
-                    );
-                })}
-            </nav>
-            <div
-                style={{
-                    padding: 10,
-                    borderTop: '1px solid var(--hairline)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                }}
-            >
-                <Avatar user={user} size={28} />
-                {!collapsed && (
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                        <div
-                            style={{
-                                fontSize: 12.5,
-                                fontWeight: 500,
-                                color: 'var(--fg-0)',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                            }}
-                        >
-                            {user.name}
-                        </div>
-                        <div style={{ fontSize: 10.5, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-                            {user.role} · {projectCount} project{projectCount === 1 ? '' : 's'}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </aside>
-    );
+    return <aside aria-label={t('Primary navigation')} data-testid="sidebar-nav" className="editorial-sidebar">
+        <div className="editorial-brand"><Icon.Logo size={27} /><span>AskMyDocs<span className="editorial-brand-dot">.</span></span>
+            {onClose && <Button variant="quiet" size="sm" iconOnly aria-label={t('Close navigation')} className="sidebar-mobile-close" onClick={onClose}><Icon.Close size={18} /></Button>}
+        </div>
+        <label className="sidebar-area-label"><span className="sr-only">{t('Workspace area')}</span>
+            <select aria-label={t('Workspace area')} data-testid="sidebar-area-switcher" value={currentArea} onChange={(event) => onAreaChange?.(event.target.value as NavArea)}>
+                {availableAreas.map((candidate) => <option key={candidate.id} value={candidate.id}>{t(candidate.label)}</option>)}
+            </select>
+        </label>
+        <Button variant="quiet" className="sidebar-search" size="md" data-testid="sidebar-command-palette" aria-label={t('Open command palette')} onClick={() => window.dispatchEvent(new CustomEvent('amd:palette'))}>
+            <Icon.Search size={17} /><span>{t('Search…')}</span><kbd>⌘K</kbd>
+        </Button>
+        <nav className="editorial-sidebar-items">
+            <p className="editorial-eyebrow">{t(NAV_AREAS.find((candidate) => candidate.id === currentArea)?.label ?? 'My workspace')}</p>
+            {currentArea === 'workspace' && workspace.map((item) => {
+                const ItemIcon = Icon[item.icon];
+                const selected = active === item.id || (item.id === 'chat' && active === 'sessions');
+                return <a key={item.id} href={navHref(item, teamHash)} data-testid={`sidebar-nav-${item.id}`} aria-current={selected ? 'page' : undefined} onClick={(event) => activate(event, () => onNav(item.id))}>
+                    <ItemIcon size={18} /><span>{t(item.id === 'chat' ? "Conversations" : navLabel(item))}</span>
+                </a>;
+            })}
+            {currentArea !== 'workspace' && accessibleHubs.filter((hub) => hub.area === currentArea).map((hub) => {
+                const HubIcon = Icon[hub.icon];
+                const first = visibleHubItems(hub, access, true)[0];
+                const href = teamHash ? hubHref(hub, teamHash) : navHref(first, teamHash);
+                return <a key={hub.id} href={href} data-testid={`sidebar-hub-${hub.id}`} aria-current={currentHub === hub.id ? 'page' : undefined} onClick={(event) => activate(event, () => onHub ? onHub(hub) : onNav(first.id))}>
+                    <HubIcon size={18} /><span>{t(hub.label)}</span>
+                </a>;
+            })}
+        </nav>
+        <div className="editorial-sidebar-context"><Icon.Book size={15} /><span>{projectCount} {projectCount === 1 ? t('Project').toLowerCase() : t('Projects').toLowerCase()}</span></div>
+        <div className="editorial-sidebar-user"><Avatar user={user} size={32} /><div><strong>{user.name}</strong><span>{user.role}</span></div></div>
+    </aside>;
 }

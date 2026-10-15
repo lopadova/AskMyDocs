@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +11,8 @@ import {
 import { extractAxiosErrors } from '../auth/auth-errors';
 import { FieldError, type FieldErrors } from '../auth/AuthLayout';
 import { useAuthStore } from '../../lib/auth-store';
+import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 
 const optionalSlug = z
     .string()
@@ -29,6 +32,7 @@ export type CompanyOnboardingViewProps = {
 };
 
 export function CompanyOnboardingView({ onSuccess }: CompanyOnboardingViewProps = {}) {
+    const { t: translateInterface } = useUiTranslation();
     const setMe = useAuthStore((state) => state.setMe);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors>();
     const [formError, setFormError] = useState<string>();
@@ -104,16 +108,16 @@ export function CompanyOnboardingView({ onSuccess }: CompanyOnboardingViewProps 
                     width: '100%',
                 }}
             >
-                <h1 id="company-onboarding-title" style={{ fontSize: 22, margin: '0 0 8px' }}>
-                    Crea la tua azienda
+                <EditorialArtwork artwork="community" className="onboarding-art" />
+                <h1 id="company-onboarding-title" style={{ fontFamily: 'var(--font-editorial)', fontSize: 38, margin: '0 0 12px' }}>
+                    {translateInterface('Create your organisation')}
                 </h1>
                 <p style={{ color: 'var(--fg-3)', lineHeight: 1.6, margin: '0 0 22px' }}>
-                    Il tuo account è pronto, ma non appartiene ancora a un’azienda.
-                    Completa questo passaggio per entrare in AskMyDocs come Super Admin.
+                    {translateInterface('Your account is ready. Create your organisation to start using AskMyDocs as its Super Admin.')}
                 </p>
 
                 <form
-                    aria-label="Create company"
+                    aria-label={translateInterface("Create company")}
                     data-testid="company-onboarding-form"
                     onSubmit={submit}
                     noValidate
@@ -133,12 +137,12 @@ export function CompanyOnboardingView({ onSuccess }: CompanyOnboardingViewProps 
                                 padding: '10px 12px',
                             }}
                         >
-                            {formError}
+                            {translateInterface(formError)}
                         </div>
                     )}
 
                     <div>
-                        <label htmlFor="company_name" style={labelStyle}>Nome azienda</label>
+                        <label htmlFor="company_name" style={labelStyle}>{translateInterface('Company name')}</label>
                         <input
                             id="company_name"
                             className="input"
@@ -155,13 +159,13 @@ export function CompanyOnboardingView({ onSuccess }: CompanyOnboardingViewProps 
                     </div>
 
                     <div>
-                        <label htmlFor="tenant_slug" style={labelStyle}>Identificativo azienda (opzionale)</label>
+                        <label htmlFor="tenant_slug" style={labelStyle}>{translateInterface('Organisation identifier (optional)')}</label>
                         <input
                             id="tenant_slug"
                             className="input"
                             data-testid="company-onboarding-slug"
                             autoComplete="off"
-                            placeholder="generato dal nome se vuoto"
+                            placeholder={translateInterface('Generated from the name when empty')}
                             {...register('tenant_slug')}
                         />
                         <FieldError
@@ -174,13 +178,13 @@ export function CompanyOnboardingView({ onSuccess }: CompanyOnboardingViewProps 
                     </div>
 
                     <div>
-                        <label htmlFor="project_key" style={labelStyle}>Progetto iniziale (opzionale)</label>
+                        <label htmlFor="project_key" style={labelStyle}>{translateInterface('Initial project (optional)')}</label>
                         <input
                             id="project_key"
                             className="input"
                             data-testid="company-onboarding-project"
                             autoComplete="off"
-                            placeholder="uguale all’identificativo se vuoto"
+                            placeholder={translateInterface('Uses the organisation identifier when empty')}
                             {...register('project_key')}
                         />
                         <FieldError
@@ -191,16 +195,15 @@ export function CompanyOnboardingView({ onSuccess }: CompanyOnboardingViewProps 
                         />
                     </div>
 
-                    <button
+                    <Button
                         type="submit"
-                        className="btn primary"
+                        variant="primary"
                         data-testid="company-onboarding-submit"
-                        disabled={submitting}
-                        aria-busy={submitting}
+                        busy={submitting}
                         style={{ justifyContent: 'center', marginTop: 4 }}
                     >
-                        {submitting ? 'Creazione in corso…' : 'Crea azienda e continua'}
-                    </button>
+                        {translateInterface('Create organisation and continue')}
+                    </Button>
                 </form>
             </div>
         </section>

@@ -1,3 +1,5 @@
+import { useUiTranslation } from "../../lib/ui-locale";
+import { Award } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { meDashboardApi, ME_COACHING_QUERY_KEY } from './me-dashboard.api';
@@ -13,6 +15,7 @@ import { meDashboardApi, ME_COACHING_QUERY_KEY } from './me-dashboard.api';
  * feature exists. API errors surface in the DOM (R14). a11y per R15.
  */
 export function CoachingCard(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: ME_COACHING_QUERY_KEY,
         queryFn: () => meDashboardApi.coaching(),
@@ -24,11 +27,10 @@ export function CoachingCard(): ReactNode {
     if (query.isError) {
         return (
             <section data-testid="me-coaching" data-state="error" role="alert" style={{ marginTop: 20 }}>
-                <h3 style={{ marginTop: 0 }}>AI coaching</h3>
-                Could not load your coaching insights.{' '}
+                <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
+                {translateInterface("Could not load your coaching insights.")}{' '}
                 <button type="button" data-testid="me-coaching-retry" onClick={() => void query.refetch()}>
-                    Retry
-                </button>
+                    {translateInterface("Retry")}</button>
             </section>
         );
     }
@@ -36,8 +38,8 @@ export function CoachingCard(): ReactNode {
     if (query.isLoading) {
         return (
             <section data-testid="me-coaching" data-state="loading" aria-busy="true" style={{ marginTop: 20 }}>
-                <h3 style={{ marginTop: 0 }}>AI coaching</h3>
-                <p style={{ color: 'var(--fg-3)' }}>Loading your coaching insights…</p>
+                <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
+                <p style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading your coaching insights…")}</p>
             </section>
         );
     }
@@ -46,10 +48,9 @@ export function CoachingCard(): ReactNode {
     if (!query.data?.available || !insight) {
         return (
             <section data-testid="me-coaching" data-state="empty" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
-                <h3 style={{ marginTop: 0 }}>AI coaching</h3>
+                <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
                 <p data-testid="me-coaching-empty" style={{ color: 'var(--fg-3)' }}>
-                    No coaching yet — keep contributing and your personalised AI insights will appear here.
-                </p>
+                    {translateInterface("No coaching yet — keep contributing and your personalised AI insights will appear here.")}</p>
             </section>
         );
     }
@@ -65,7 +66,7 @@ export function CoachingCard(): ReactNode {
 
     return (
         <section data-testid="me-coaching" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
-            <h3 style={{ marginTop: 0 }}>AI coaching</h3>
+            <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
             <p data-testid="me-coaching-headline" style={{ fontWeight: 600, fontSize: 16 }}>
                 {narrative.headline}
             </p>
@@ -73,7 +74,7 @@ export function CoachingCard(): ReactNode {
 
             {strengths.length > 0 && (
                 <div data-testid="me-coaching-strengths">
-                    <h4>Strengths</h4>
+                    <h4>{translateInterface('Strengths')}</h4>
                     <ul>
                         {strengths.map((s, i) => (
                             <li key={`strength-${i}`}>{s}</li>
@@ -84,7 +85,7 @@ export function CoachingCard(): ReactNode {
 
             {growth.length > 0 && (
                 <div data-testid="me-coaching-growth">
-                    <h4>Growth areas</h4>
+                    <h4>{translateInterface('Growth areas')}</h4>
                     <ul>
                         {growth.map((g, i) => (
                             <li key={`growth-${i}`}>{g}</li>
@@ -95,7 +96,7 @@ export function CoachingCard(): ReactNode {
 
             {nextSteps.length > 0 && (
                 <div data-testid="me-coaching-next-steps">
-                    <h4>Next steps</h4>
+                    <h4>{translateInterface('Next steps')}</h4>
                     <ul>
                         {nextSteps.map((n, i) => (
                             <li key={`next-${i}`}>{n}</li>
@@ -119,8 +120,8 @@ export function CoachingCard(): ReactNode {
                                 textAlign: 'center',
                             }}
                         >
-                            <div style={{ fontSize: 24 }} aria-hidden="true">{t.icon}</div>
-                            <div style={{ fontWeight: 600 }}>{t.label}</div>
+                            <div className="badge-art" aria-hidden="true"><Award size={26} /></div>
+                            <div style={{ fontWeight: 600 }}>{translateInterface(t.label)}</div>
                             <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{t.reason}</div>
                         </div>
                     ))}

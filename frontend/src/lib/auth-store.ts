@@ -22,6 +22,8 @@ export type AuthProject = {
  * so the link never points at the unregistered /admin/invitations 404.
  */
 export type AuthFeatures = {
+    /** Configured availability, independent of runtime health and authorisation. */
+    modules?: Record<string, { enabled: boolean }>;
     invitations_admin?: boolean;
     system_admin?: boolean;
     realtime_agent_live?: {

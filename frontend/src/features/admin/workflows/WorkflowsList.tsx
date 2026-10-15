@@ -1,3 +1,5 @@
+import { Button } from '../../../components/Button';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
@@ -24,6 +26,7 @@ import { AdminShell } from '../shell/AdminShell';
  * iter 7).
  */
 export function WorkflowsList(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [scope, setScope] = useState<'mine' | 'shared' | 'system'>('mine');
     const [createOpen, setCreateOpen] = useState(false);
@@ -139,27 +142,25 @@ export function WorkflowsList(): ReactNode {
             data-state={dataState}
             aria-busy={dataState === 'loading'}
         >
-            <header style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                <h2 style={{ margin: 0, flex: 1 }}>Workflows</h2>
+            <header style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 16 }}>
+                <h2 style={{ margin: 0, flex: 1 }}>{translateInterface("Workflows")}</h2>
                 {canCreate && (
-                    <button
+                    <Button variant="primary"
                         type="button"
                         data-testid="admin-workflows-create"
                         onClick={() => setCreateOpen(true)}
-                        style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid var(--hairline)' }}
+
                     >
-                        + New workflow
-                    </button>
+                        {translateInterface("+ New workflow")}</Button>
                 )}
                 {canSuggest && (
-                    <button
+                    <Button variant="secondary"
                         type="button"
                         data-testid="admin-workflows-suggest"
                         onClick={() => setSuggestOpen(true)}
-                        style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--accent-soft, transparent)' }}
+
                     >
-                        Get suggestions from my data
-                    </button>
+                        {translateInterface("Get suggestions from my data")}</Button>
                 )}
             </header>
 
@@ -173,7 +174,7 @@ export function WorkflowsList(): ReactNode {
                 </p>
             )}
 
-            <nav aria-label="Workflow scope" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <nav aria-label={translateInterface("Workflow scope")} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 {(['mine', 'shared', 'system'] as const).map((s) => (
                     <button
                         key={s}
@@ -189,19 +190,19 @@ export function WorkflowsList(): ReactNode {
                             cursor: 'pointer',
                         }}
                     >
-                        {s === 'mine' ? 'Mine' : s === 'shared' ? 'Shared with me' : 'System'}
+                        {s === 'mine' ? 'Mine' : s === 'shared' ? 'Shared with me' : translateInterface("System")}
                     </button>
                 ))}
             </nav>
 
-            {dataState === 'loading' && <p data-testid="admin-workflows-loading">Loading…</p>}
+            {dataState === 'loading' && <p data-testid="admin-workflows-loading">{translateInterface("Loading…")}</p>}
             {dataState === 'error' && (
                 <p data-testid="admin-workflows-error">
-                    Failed to load workflows: {wfQuery.error instanceof Error ? wfQuery.error.message : 'unknown error'}
+                    {translateInterface("Failed to load workflows:") + " "}{wfQuery.error instanceof Error ? wfQuery.error.message : 'unknown error'}
                 </p>
             )}
             {dataState === 'empty' && (
-                <p data-testid="admin-workflows-empty">No workflows in this scope yet.</p>
+                <p data-testid="admin-workflows-empty">{translateInterface("No workflows in this scope yet.")}</p>
             )}
             {dataState === 'ready' && (
                 <ul
@@ -236,7 +237,7 @@ export function WorkflowsList(): ReactNode {
                                 </span>
                             </div>
                             {w.practice && (
-                                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>practice: {w.practice}</span>
+                                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{translateInterface("practice:") + " "}{w.practice}</span>
                             )}
                             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
                                 {/* Hide hits a per-user preference table; BE admits any role for this action, so the button is always rendered. */}
@@ -247,8 +248,7 @@ export function WorkflowsList(): ReactNode {
                                     onClick={() => hideMutation.mutate(w.id)}
                                     style={{ fontSize: 12, background: 'none', border: '1px solid var(--hairline)', padding: '3px 8px', borderRadius: 4 }}
                                 >
-                                    Hide
-                                </button>
+                                    {translateInterface("Hide")}</button>
                             </div>
                         </li>
                     ))}
@@ -290,6 +290,7 @@ interface CreateProps {
 }
 
 function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreateProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [title, setTitle] = useState('');
     const [type, setType] = useState<'assistant' | 'tabular'>('assistant');
     const [promptMd, setPromptMd] = useState('');
@@ -314,11 +315,10 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
             }}
         >
             <div style={{ background: 'var(--bg-1)', padding: 24, borderRadius: 8, width: 'min(560px, 90vw)' }}>
-                <h3 id="create-wf-title" style={{ marginTop: 0 }}>New workflow</h3>
+                <h3 id="create-wf-title" style={{ marginTop: 0 }}>{translateInterface("New workflow")}</h3>
 
                 <label htmlFor="wf-title-input" style={{ display: 'block', marginBottom: 4 }}>
-                    Title
-                </label>
+                    {translateInterface("Title")}</label>
                 <input
                     id="wf-title-input"
                     data-testid="admin-workflow-create-title"
@@ -328,7 +328,7 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                 />
 
                 <fieldset style={{ marginBottom: 12, border: '1px solid var(--hairline)', padding: 8, borderRadius: 4 }}>
-                    <legend>Type</legend>
+                    <legend>{translateInterface("Type")}</legend>
                     <label style={{ marginRight: 16 }}>
                         <input
                             type="radio"
@@ -337,22 +337,20 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                             checked={type === 'assistant'}
                             onChange={() => setType('assistant')}
                         />{' '}
-                        Assistant
-                    </label>
-                    <label title="Tabular workflows require a columns-config builder — coming in v4.7.x">
+                        {translateInterface("Assistant")}</label>
+                    <label title={translateInterface("Tabular workflows require a columns-config builder — coming in v4.7.x")}>
                         <input
                             type="radio"
                             name="workflow-type"
                             data-testid="admin-workflow-create-type-tabular"
                             disabled
                         />{' '}
-                        Tabular <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>(v4.7.x)</span>
+                        {translateInterface("Tabular") + " "}<span style={{ fontSize: 11, color: 'var(--fg-3)' }}>(v4.7.x)</span>
                     </label>
                 </fieldset>
 
                 <label htmlFor="wf-prompt-input" style={{ display: 'block', marginBottom: 4 }}>
-                    Prompt (markdown)
-                </label>
+                    {translateInterface("Prompt (markdown)")}</label>
                 <textarea
                     id="wf-prompt-input"
                     data-testid="admin-workflow-create-prompt"
@@ -363,8 +361,7 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                 />
 
                 <label htmlFor="wf-practice-input" style={{ display: 'block', marginBottom: 4 }}>
-                    Practice (optional)
-                </label>
+                    {translateInterface("Practice (optional)")}</label>
                 <input
                     id="wf-practice-input"
                     data-testid="admin-workflow-create-practice"
@@ -380,10 +377,9 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
-                    <button type="button" data-testid="admin-workflow-create-cancel" onClick={onClose}>
-                        Cancel
-                    </button>
-                    <button
+                    <Button variant="quiet" type="button" data-testid="admin-workflow-create-cancel" onClick={onClose}>
+                        {translateInterface("Cancel")}</Button>
+                    <Button variant="primary"
                         type="button"
                         data-testid="admin-workflow-create-submit"
                         disabled={submitting || title.trim() === '' || promptMd.trim() === ''}
@@ -403,16 +399,10 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                                 columns_config: undefined,
                             })
                         }
-                        style={{
-                            padding: '6px 14px',
-                            borderRadius: 4,
-                            border: '1px solid var(--accent)',
-                            background: 'var(--accent)',
-                            color: 'white',
-                        }}
+
                     >
-                        {submitting ? 'Creating…' : 'Create'}
-                    </button>
+                        {submitting ? 'Creating…' : translateInterface("Create")}
+                    </Button>
                 </div>
             </div>
         </div>
@@ -433,6 +423,7 @@ interface SuggestProps {
 }
 
 function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingForIdx }: SuggestProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid="admin-workflow-suggestions-gallery"
@@ -452,18 +443,17 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingF
         >
             <div style={{ background: 'var(--bg-1)', padding: 24, borderRadius: 8, width: 'min(720px, 92vw)', maxHeight: '90vh', overflow: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 id="admin-workflow-suggestions-title" style={{ marginTop: 0 }}>AI-suggested workflows</h3>
-                    <button type="button" data-testid="admin-workflow-suggestions-close" onClick={onClose}>
-                        Close
-                    </button>
+                    <h3 id="admin-workflow-suggestions-title" style={{ marginTop: 0 }}>{translateInterface("AI-suggested workflows")}</h3>
+                    <Button variant="quiet" type="button" data-testid="admin-workflow-suggestions-close" onClick={onClose}>
+                        {translateInterface("Close")}</Button>
                 </div>
 
-                {isLoading && <p data-testid="admin-workflow-suggestions-loading">Analyzing your knowledge base…</p>}
+                {isLoading && <p data-testid="admin-workflow-suggestions-loading">{translateInterface("Analyzing your knowledge base…")}</p>}
                 {isError && (
-                    <p data-testid="admin-workflow-suggestions-error">Could not load suggestions. Try again.</p>
+                    <p data-testid="admin-workflow-suggestions-error">{translateInterface("Could not load suggestions. Try again.")}</p>
                 )}
                 {!isLoading && !isError && data.length === 0 && (
-                    <p data-testid="admin-workflow-suggestions-empty">No suggestions available yet.</p>
+                    <p data-testid="admin-workflow-suggestions-empty">{translateInterface("No suggestions available yet.")}</p>
                 )}
 
                 {!isLoading && !isError && data.length > 0 && (

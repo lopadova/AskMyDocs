@@ -38,7 +38,8 @@ export function AdminShell({ section, children }: AdminShellProps) {
                 color: 'var(--fg-1)',
             }}
         >
-            <main
+            <section
+                className="admin-page-content"
                 style={{
                     flex: 1,
                     minWidth: 0,
@@ -47,7 +48,7 @@ export function AdminShell({ section, children }: AdminShellProps) {
                 }}
             >
                 {children}
-            </main>
+            </section>
         </div>
     );
 }

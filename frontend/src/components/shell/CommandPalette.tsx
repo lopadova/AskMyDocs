@@ -1,208 +1,65 @@
-import { useEffect, useRef, useState } from 'react';
-import { Icon, type IconName } from '../Icons';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Icon } from '../Icons';
 import { Button } from '../Button';
-
-type PaletteItem = {
-    icon: IconName;
-    label: string;
-    group: string;
-    kbd?: string;
-};
-
-const ITEMS: PaletteItem[] = [
-    { icon: 'Chat', label: 'New chat', group: 'Actions', kbd: 'N' },
-    { icon: 'Search', label: 'Search knowledge base', group: 'Actions', kbd: '/' },
-    { icon: 'Folder', label: 'Open KB tree', group: 'Navigate' },
-    { icon: 'Grid', label: 'Admin dashboard', group: 'Navigate' },
-    { icon: 'Sparkles', label: 'AI Insights (5 new)', group: 'Navigate' },
-    { icon: 'Users', label: 'Manage users', group: 'Admin' },
-    { icon: 'Wrench', label: 'Run kb:validate-canonical', group: 'Commands' },
-    { icon: 'Wrench', label: 'Run kb:rebuild-graph', group: 'Commands' },
-    { icon: 'File', label: 'remote-work-policy.md', group: 'Documents' },
-    { icon: 'File', label: 'incident-response.md', group: 'Documents' },
-    { icon: 'File', label: 'data-protection.md', group: 'Documents' },
-];
+import { useAuthStore } from '../../lib/auth-store';
+import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
+import { useUiTranslation } from '../../lib/ui-locale';
+import { hubForSection, navHref, navLabel, searchNavigation } from './navigation';
 
 export function CommandPalette() {
     const [open, setOpen] = useState(false);
-    const [q, setQ] = useState('');
-    const inputRef = useRef<HTMLInputElement | null>(null);
-
+    const [query, setQuery] = useState('');
+    const [selected, setSelected] = useState(0);
+    const { t } = useUiTranslation();
+    const navigate = useNavigate();
+    const roles = useAuthStore((state) => state.roles);
+    const permissions = useAuthStore((state) => state.permissions);
+    const features = useAuthStore((state) => state.features);
+    const teamHash = useTeamStore(selectCurrentHash);
+    const results = useMemo(() => searchNavigation(query, { roles, permissions, features, hasTenant: teamHash !== null }, t), [query, roles, permissions, features, teamHash, t]);
     useEffect(() => {
         const trigger = () => setOpen(true);
-        const key = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-                e.preventDefault();
-                trigger();
-                return;
-            }
+        const key = (event: KeyboardEvent) => {
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setOpen((current) => !current); }
         };
-        window.addEventListener('amd:palette', trigger as EventListener);
+        window.addEventListener('amd:palette', trigger);
         window.addEventListener('keydown', key);
-        return () => {
-            window.removeEventListener('amd:palette', trigger as EventListener);
-            window.removeEventListener('keydown', key);
-        };
+        return () => { window.removeEventListener('amd:palette', trigger); window.removeEventListener('keydown', key); };
     }, []);
-
-    useEffect(() => {
-        if (!open) {
-            setQ('');
-            return;
-        }
-        const handle = window.setTimeout(() => inputRef.current?.focus(), 20);
-        return () => window.clearTimeout(handle);
-    }, [open]);
-
-    if (!open) {
-        return null;
-    }
-
-    const needle = q.toLowerCase();
-    const filtered = needle ? ITEMS.filter((i) => i.label.toLowerCase().includes(needle)) : ITEMS;
-    const grouped = filtered.reduce<Record<string, PaletteItem[]>>((acc, it) => {
-        (acc[it.group] = acc[it.group] || []).push(it);
-        return acc;
-    }, {});
-
-    return (
-        <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Command palette"
-            style={{
-                position: 'fixed',
-                inset: 0,
-                zIndex: 1000,
-                background: 'rgba(0,0,0,0.55)',
-                backdropFilter: 'blur(8px)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'center',
-                paddingTop: '12vh',
-            }}
-        >
-            <div
-                onClick={(e) => e.stopPropagation()}
-                className="panel popin"
-                style={{
-                    width: 620,
-                    maxWidth: '92vw',
-                    background: 'var(--panel-solid)',
-                    boxShadow: 'var(--shadow-lg)',
-                    border: '1px solid var(--panel-border-strong)',
-                    overflow: 'hidden',
-                }}
-            >
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '14px 16px',
-                        borderBottom: '1px solid var(--hairline)',
-                    }}
-                >
-                    <Icon.Search size={16} style={{ color: 'var(--fg-3)' }} />
-                    <input
-                        ref={inputRef}
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        placeholder="Search commands, documents, users…"
-                        aria-label="Search"
-                        style={{
-                            flex: 1,
-                            background: 'transparent',
-                            border: 0,
-                            outline: 'none',
-                            color: 'var(--fg-0)',
-                            fontSize: 14,
-                            fontFamily: 'var(--font-sans)',
-                        }}
-                    />
-                    <Button
-                        variant="quiet"
-                        size="sm"
-                        iconOnly
-                        aria-label="Close command palette"
-                        onClick={() => setOpen(false)}
-                    >
-                        <Icon.Close size={15} />
-                    </Button>
-                </div>
-                <div style={{ maxHeight: 420, overflow: 'auto', padding: 6 }}>
-                    {Object.entries(grouped).map(([g, its]) => (
-                        <div key={g} style={{ marginTop: 6 }}>
-                            <div
-                                style={{
-                                    padding: '6px 10px',
-                                    fontSize: 10,
-                                    color: 'var(--fg-3)',
-                                    fontFamily: 'var(--font-mono)',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '.08em',
-                                }}
-                            >
-                                {g}
-                            </div>
-                            {its.map((it, i) => {
-                                const IconCmp = Icon[it.icon];
-                                return (
-                                    <button
-                                        key={`${g}-${i}`}
-                                        type="button"
-                                        onClick={() => setOpen(false)}
-                                        style={{
-                                            width: '100%',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 12,
-                                            padding: '8px 10px',
-                                            borderRadius: 7,
-                                            border: 0,
-                                            cursor: 'pointer',
-                                            color: 'var(--fg-1)',
-                                            background: 'transparent',
-                                            textAlign: 'left',
-                                            fontSize: 13,
-                                        }}
-                                        onMouseOver={(e) => {
-                                            (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-3)';
-                                        }}
-                                        onMouseOut={(e) => {
-                                            (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                                        }}
-                                    >
-                                        <IconCmp size={14} />
-                                        <span style={{ flex: 1 }}>{it.label}</span>
-                                        {it.kbd && <span className="kbd">{it.kbd}</span>}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    ))}
-                </div>
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 14,
-                        padding: '8px 14px',
-                        borderTop: '1px solid var(--hairline)',
-                        fontSize: 11,
-                        color: 'var(--fg-3)',
-                    }}
-                >
-                    <span>
-                        <span className="kbd">↑↓</span> navigate
-                    </span>
-                    <span>
-                        <span className="kbd">⏎</span> select
-                    </span>
-                    <span style={{ flex: 1 }} />
-                    <span className="mono">AskMyDocs v2.4.0</span>
-                </div>
+    useEffect(() => { if (!open) { setQuery(''); setSelected(0); } }, [open]);
+    const choose = (index: number) => {
+        const item = results[index];
+        if (!item) return;
+        setOpen(false);
+        void navigate({ to: navHref(item, teamHash) });
+    };
+    return <Dialog.Root open={open} onOpenChange={setOpen}>
+        <Dialog.Portal><Dialog.Overlay className="palette-overlay" /><Dialog.Content className="navigation-palette" aria-describedby={undefined}>
+            <Dialog.Title className="sr-only">{t('Search pages and tools')}</Dialog.Title>
+            <div className="navigation-palette-input"><Icon.Search size={20} /><input
+                aria-label={t('Search pages and tools')} placeholder={t('Search pages and tools')} value={query}
+                role="combobox" aria-expanded="true" aria-controls="navigation-search-results" aria-autocomplete="list"
+                aria-activedescendant={results[selected] ? 'navigation-result-' + results[selected].id : undefined}
+                onChange={(event) => { setQuery(event.target.value); setSelected(0); }}
+                onKeyDown={(event) => {
+                    if (event.key === 'ArrowDown') { event.preventDefault(); setSelected((current) => Math.min(current + 1, results.length - 1)); }
+                    if (event.key === 'ArrowUp') { event.preventDefault(); setSelected((current) => Math.max(current - 1, 0)); }
+                    if (event.key === 'Enter') { event.preventDefault(); choose(selected); }
+                }} />
+                <Dialog.Close asChild><Button variant="quiet" size="sm" iconOnly aria-label={t('Close command palette')}><Icon.Close size={18} /></Button></Dialog.Close>
             </div>
-        </div>
-    );
+            <div id="navigation-search-results" className="navigation-search-results" role="listbox" aria-label={t('Available pages')}>
+                {results.length === 0 && <div className="navigation-search-empty"><h2>{t('No matching pages.')}</h2><p>{t('Try a different name or keyword.')}</p></div>}
+                {results.map((item, index) => {
+                    const ItemIcon = Icon[item.icon];
+                    return <Link role="option" aria-selected={selected === index} id={'navigation-result-' + item.id} key={item.id} to={navHref(item, teamHash)} onMouseEnter={() => setSelected(index)} onClick={() => setOpen(false)}>
+                        <ItemIcon size={18} /><span>{t(navLabel(item))}<small>{t(hubForSection(item.id)?.label ?? 'My workspace')}</small></span><Icon.Chevron size={16} />
+                    </Link>;
+                })}
+            </div>
+            <div className="navigation-palette-footer"><span>{t('Navigate')} <kbd>↑ ↓</kbd></span><span>{t('Open')} <kbd>Enter</kbd></span><span>{t('Close')} <kbd>Esc</kbd></span></div>
+        </Dialog.Content></Dialog.Portal>
+    </Dialog.Root>;
 }

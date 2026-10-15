@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
+import { useUiTranslation } from '../../lib/ui-locale';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 
 export function NoTenantAssignedView(): ReactNode {
+    const { t } = useUiTranslation();
     return (
-        <main
+        <div
             data-state="empty"
             data-testid="no-tenant-assigned-view"
             style={{
@@ -24,17 +27,17 @@ export function NoTenantAssignedView(): ReactNode {
                     textAlign: 'center',
                 }}
             >
+                <EditorialArtwork artwork="community" className="onboarding-art" />
                 <h1
                     id="no-tenant-assigned-title"
                     style={{ color: 'var(--fg-0)', fontSize: 20, margin: 0 }}
                 >
-                    Nessun tenant assegnato
+                    {t('No organisation assigned')}
                 </h1>
                 <p style={{ color: 'var(--fg-3)', lineHeight: 1.6, margin: '10px 0 0' }}>
-                    Il tuo account non dispone ancora di un contesto operativo.
-                    Contatta un amministratore per ricevere una membership.
+                    {t('Your account does not have a workspace yet. Contact an administrator to join an organisation.')}
                 </p>
             </section>
-        </main>
+        </div>
     );
 }

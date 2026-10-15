@@ -2,19 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { isStandaloneSurface } from './index';
 
 /**
- * Which surfaces render without the app frame. Getting this wrong is
- * visible but silent — either the Sessions view grows a second sidebar,
- * or an admin page loses its navigation entirely — so the boundary is
- * pinned here rather than discovered in a screenshot.
+ * The former standalone policy stays import-compatible while every
+ * authenticated surface retains the shared application navigation.
  */
 describe('isStandaloneSurface', () => {
-    it('covers the sessions workspace and its conversation URLs', () => {
-        expect(isStandaloneSurface('/app/h-acme/sessions')).toBe(true);
-        expect(isStandaloneSurface('/app/h-acme/sessions/12')).toBe(true);
+    it('keeps the sessions workspace and conversation URLs in the common frame', () => {
+        expect(isStandaloneSurface('/app/h-acme/sessions')).toBe(false);
+        expect(isStandaloneSurface('/app/h-acme/sessions/12')).toBe(false);
     });
 
-    it('covers the reader KB browser', () => {
-        expect(isStandaloneSurface('/app/h-acme/knowledge')).toBe(true);
+    it('keeps the reader library in the common frame', () => {
+        expect(isStandaloneSurface('/app/h-acme/knowledge')).toBe(false);
     });
 
     it('leaves the classic chat inside the app frame', () => {

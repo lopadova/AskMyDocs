@@ -45,13 +45,13 @@ test.describe('Browse KB — viewer can read the knowledge base', () => {
         await expect(page.getByTestId('kb-browse-detail-path')).toBeVisible();
     });
 
-    test('renders without the app frame', async ({ page }) => {
+    test('retains the shared app frame', async ({ page }) => {
         await page.goto('/app/knowledge');
 
         await expect(page.getByTestId('kb-browse-view')).toBeVisible({ timeout: 20_000 });
-        await expect(page.getByTestId('standalone-shell')).toBeVisible();
-        await expect(page.getByTestId('appshell-root')).toHaveCount(0);
-        await expect(page.getByTestId('standalone-back')).toBeVisible();
+        await expect(page.getByTestId('standalone-shell')).toHaveCount(0);
+        await expect(page.getByTestId('appshell-root')).toBeVisible();
+        await expect(page.getByTestId('sidebar-nav-chat')).toBeVisible();
     });
 
     test('the "Include deleted" control is absent for a reader', async ({ page }) => {
