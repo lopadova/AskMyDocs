@@ -32,10 +32,39 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $reference = $payload['evidence']['documents'][0]['evidence'][0]['source_ref'];
             $this->assertSame('d252_'.substr($hash, 0, 12), $reference);
             $this->assertSame([$reference], data_get($options, 'tools.0.function.parameters.properties.claims.items.properties.source_ref.enum'));
+            $this->assertFalse($payload['table_artifact_available']);
+            $this->assertSame([false], data_get($options, 'tools.0.function.parameters.properties.render_table.enum'));
+            $this->assertStringContainsString('put the actual requested records and values in source-bound claims', $system);
+            $this->assertStringContainsString('a shipping label, return form and replacement product are distinct', $system);
             return new AiResponse('', 'fake', 'fake-agent');
         });
         $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
         (new \ReflectionMethod($synthesizer, 'draft'))->invoke($synthesizer, 'What happened?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null);
+    }
+
+    public function test_only_renderable_tool_records_allow_a_table_handoff_and_never_during_repair(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $tool = new AgentToolDefinition(name: 'list_items', displayName: 'Items', description: 'Items', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true,
+            physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1, executorReference: 10);
+        $evidence->addToolResult($tool, [], ['items' => [['id' => 1, 'name' => 'Product A']]], 56);
+        $ai = Mockery::mock(AiManager::class);
+        $draftIndex = 0;
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturnUsing(function ($system, $messages, $options) use (&$draftIndex) {
+            $payload = json_decode($messages[0]['content'], true);
+            $allowed = $draftIndex++ === 0;
+            $this->assertSame($allowed, $payload['table_artifact_available']);
+            $this->assertSame($allowed ? null : [false], data_get($options, 'tools.0.function.parameters.properties.render_table.enum'));
+            $this->assertSame('Product A', data_get($payload, 'evidence.api_tools.0.result.items.0.name'));
+            return new AiResponse('', 'fake', 'fake-agent');
+        });
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        $draft = new \ReflectionMethod($synthesizer, 'draft');
+        $outcome = new AgentLoopOutcome('answer', $evidence, []);
+        $draft->invoke($synthesizer, 'List items', $this->context(), $outcome, null);
+        $draft->invoke($synthesizer, 'List items', $this->context(), $outcome, null, null, null, true);
+        $draft->invoke($synthesizer, 'List items', $this->context(), $outcome, null, null, 3);
     }
 
     public function test_document_claims_are_not_discarded_by_an_unrenderable_table_flag(): void
