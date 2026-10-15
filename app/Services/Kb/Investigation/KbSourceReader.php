@@ -104,10 +104,31 @@ class KbSourceReader
                 $anchorText = (string) $chunks->firstWhere('id', $chunkId)?->chunk_text;
                 $position = $anchorText === '' ? false : mb_strpos($original, trim($anchorText));
                 if ($position === false) {
+                    // The card separator can be assigned to the last original
+                    // chunk. Remove only that trailing Markdown rule, then
+                    // require an exact literal match in the verified original.
+                    $withoutSeparator = trim(preg_replace('/(?:\R[\t ]*)+---[\t ]*\z/u', '', trim($anchorText)) ?? '');
+                    if ($withoutSeparator !== '' && $withoutSeparator !== trim($anchorText)) {
+                        $position = mb_strpos($original, $withoutSeparator);
+                    }
+                }
+                if ($position === false) {
                     return null;
                 }
                 $window = max(1, (int) config('kb.investigation.long_source_max_chars', 9000));
-                $excerpt = mb_substr($original, max(0, $position - intdiv($window, 3)), $window);
+                $start = max(0, $position - intdiv($window, 3));
+                if ($start > 0 && $window >= 600) {
+                    // Preserve the email identity and table column headings.
+                    // A middle-of-report row otherwise loses the labels that
+                    // explain adjacent values. Both portions remain literal;
+                    // the omission is explicit and never claims completeness.
+                    $headerSize = min(1000, intdiv($window, 6));
+                    $gap = "\n\n[... omitted source text ...]\n\n";
+                    $excerpt = mb_substr($original, 0, $headerSize).$gap
+                        .mb_substr($original, $start, $window - $headerSize - mb_strlen($gap));
+                } else {
+                    $excerpt = mb_substr($original, $start, $window);
+                }
                 $usedChunks = $chunks->where('id', $chunkId);
             }
         } elseif ($isShort) {

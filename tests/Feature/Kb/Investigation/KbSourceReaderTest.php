@@ -51,6 +51,23 @@ final class KbSourceReaderTest extends TestCase
         $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk)));
     }
 
+    public function test_long_original_keeps_column_labels_with_the_matching_middle_row(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        config(['kb.investigation.full_source_max_chars' => 200, 'kb.investigation.long_source_max_chars' => 600]);
+        $original = "# Report\n\nColumns: Record Reason\n\n".str_repeat('Earlier rows. ', 200)."CASE-2026 Wrong size\n".str_repeat('Later rows. ', 100);
+        $document = $this->document('Triaged report', ['connector' => 'imap', 'disk' => 'kb',
+            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $anchor = $this->chunk($document, 1, "CASE-2026 Wrong size\n\n---");
+        $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $anchor));
+        $this->assertFalse($source['complete_source']);
+        $this->assertStringContainsString('Columns: Record Reason', $source['excerpt']);
+        $this->assertStringContainsString('CASE-2026 Wrong size', $source['excerpt']);
+        $this->assertStringContainsString('omitted source text', $source['excerpt']);
+        $this->assertLessThanOrEqual(600, mb_strlen($source['excerpt']));
+    }
+
     public function test_anonymous_re_read_rejects_a_source_restricted_document(): void
     {
         $document = $this->document('Email privata');

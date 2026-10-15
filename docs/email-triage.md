@@ -83,6 +83,11 @@ parent remains `connector=imap`, so historical campaign filters can find it.
 Chat evidence for a triaged parent rereads the hash-verified original without
 the generated card. Search tags navigate to a source; they do not become the
 sender's statements or independently prove a sentiment classification.
+For a long original, the reader keeps the email/table header with a bounded
+matching window and marks omitted text explicitly. If the generated card's
+Markdown separator was assigned to the last original chunk, it removes that
+separator only for navigation and still requires an exact match in the verified
+raw body. A generated-card-only chunk cannot become original evidence.
 
 ## Queues and deployment
 
