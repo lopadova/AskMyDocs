@@ -396,6 +396,34 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertSame($unknown, $projector->resolveSourceIdentity($evidence, $unknown));
     }
 
+    public function test_literal_navigation_excerpt_preserves_the_full_original_for_judgment(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus'] = $u['subquestions'][0] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'rules', 'fields' => ['*']];
+        $claims[1]['quote'] = 'accepts ADR class 3';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('HUB-MI-07 rules?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        Http::assertSent(function ($request) use ($evidence) {
+            return isset($request['state']['pairs'][0])
+                && ($request['state']['pairs'][0]['literal_excerpt'] ?? null) === 'accepts ADR class 3'
+                && in_array($evidence['documents'][0]['evidence'][0]['content'], $request['state']['sources'], true);
+        });
+    }
+
+    public function test_navigation_recovers_raw_spacing_without_replacing_the_source(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $evidence['documents'][0]['evidence'][0]['content'] = 'HUB-MI-07 accepts   ADR class 3 freight.';
+        $u['focus'] = $u['subquestions'][0] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'rules', 'fields' => ['*']];
+        $claims[1]['quote'] = 'accepts ADR class 3';
+        app(FocusedClaimEvaluator::class)->evaluate('HUB-MI-07 rules?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        Http::assertSent(fn ($request) => isset($request['state']['pairs'][0])
+            && ($request['state']['pairs'][0]['literal_excerpt'] ?? null) === 'accepts   ADR class 3'
+            && in_array('HUB-MI-07 accepts   ADR class 3 freight.', $request['state']['sources'], true));
+    }
+
     public function test_source_reference_cannot_override_hash_identity_scope_or_record_membership(): void
     {
         $this->fake();
