@@ -16,7 +16,7 @@ final class TriageProfiles
 {
     public function supports(ConnectorInstallation $installation): bool
     {
-        return $installation->connector_name === 'imap';
+        return EmailConnectorRegistry::supports($installation);
     }
 
     public function current(ConnectorInstallation $installation): ?EmailTriageProfile

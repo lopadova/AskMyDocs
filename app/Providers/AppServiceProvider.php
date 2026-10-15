@@ -153,7 +153,11 @@ class AppServiceProvider extends ServiceProvider
         // `ConnectorRegistry` (singleton-bound by
         // `Padosoft\AskMyDocsConnectorBase\ConnectorServiceProvider`)
         // that auto-discovers every connector composer-package via
-        // `extra.askmydocs.connectors`. No host-side binding required.
+        // `extra.askmydocs.connectors`. Local alternate manifests supplement
+        // this with metadata from Composer packages actually installed.
+
+        $this->app->extend(\Padosoft\AskMyDocsConnectorBase\ConnectorRegistry::class,
+            fn ($registry, $app) => \App\Connectors\EmailApiPackageDiscovery::extend($registry, $app));
 
         // v4.6 — alias the package's `TenantContext` to the host's so
         // both surfaces observe the same request-scoped tenant. The
@@ -294,6 +298,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(Dispatcher::class)->listen(
             McpToolInvocationFinished::class,
             McpConnectorInvocationAuditListener::class,
+        );
+        $this->app->make(Dispatcher::class)->listen(
+            'askmydocs.email.prepared.v1',
+            \App\Listeners\Connectors\PreparedEmailListener::class,
         );
         $this->app->make(Dispatcher::class)->listen(
             AgentUsageRecorded::class,

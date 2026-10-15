@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Connectors;
 
 use App\Services\Kb\Ocr\OcrService;
+use App\Services\EmailTriage\EmailConnectorRegistry;
 use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
@@ -97,6 +98,30 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // The connector's MIME is a label from another system: canonical form
         // (lower-case, no parameters) before it is gated, persisted or resolved.
         $mimeType = SourceType::normaliseMime($mimeType);
+        if (EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))
+            && ! EmailConnectorRegistry::isAttachment($metadata) && $mimeType !== 'text/markdown') {
+            throw new RuntimeException('Email API bodies must use text/markdown.');
+        }
+
+        if (EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))) {
+            $metadata = OcrService::stripTrustedOnlyKeys($metadata);
+            $metadata = app(\App\Services\EmailTriage\EmailTriageService::class)->trustedSourceMetadata(
+                $tenantId, $projectKey, $relativePath, $metadata,
+            );
+            // Trusted execution location travels with delayed ingest jobs; remote
+            // metadata cannot point their integrity check at another disk.
+            $metadata['disk'] = $disk;
+            $metadata['prefix'] = (string) config('kb.sources.path_prefix', '');
+            if (EmailConnectorRegistry::isAttachment($metadata)) {
+                $actualHash = app(\App\Services\EmailTriage\EmailTriageService::class)->hashFile(
+                    $disk, app(\App\Services\EmailTriage\EmailTriageService::class)->fullPath($metadata['prefix'], $relativePath),
+                );
+                if (isset($metadata['email_attachment_hash']) && $metadata['email_attachment_hash'] !== $actualHash) {
+                    throw new RuntimeException('Email attachment bytes do not match their provider commitment.');
+                }
+                $metadata['email_attachment_hash'] = $actualHash;
+            }
+        }
 
         // v8.36/W1 (R43) — the connector path bypasses the controller, the
         // staging request and the folder walker, so it gates images itself:
@@ -116,7 +141,9 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         }
 
         // Connector metadata is not a host control surface either (ADR 0029).
-        $metadata = OcrService::stripTrustedOnlyKeys($metadata);
+        if (! EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))) {
+            $metadata = OcrService::stripTrustedOnlyKeys($metadata);
+        }
         $metadata = $this->withGeneratedFixtureMetadata($projectKey, $metadata);
         $relativePath = $this->prepareImapSourcePath(
             projectKey: $projectKey,
@@ -152,6 +179,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
                 mimeType: $mimeType,
                 tenantId: $tenantId,
             );
+            app(\App\Services\EmailTriage\EmailTriageService::class)->dispatched($metadata, $tenantId);
         }
 
         // v8.21 (Ciclo 2) — count this document against the connector sync run
@@ -200,8 +228,9 @@ final class HostIngestionBridge implements ConnectorIngestionContract
         // The IMAP connector has already written the attachment to the KB
         // disk before calling here; a refused image would otherwise sit as
         // orphan bytes nobody ingests or prunes (R4: the delete is checked).
-        $removed = $connectorKey === 'imap' ? $this->removeRefusedSource($relativePath, $disk) : null;
-        $cleanupFailed = $connectorKey === 'imap' && $removed === null;
+        $emailConnector = EmailConnectorRegistry::supportsKey($connectorKey);
+        $removed = $emailConnector ? $this->removeRefusedSource($relativePath, $disk) : null;
+        $cleanupFailed = $emailConnector && $removed === null;
 
         // Written with the tenant the CONNECTOR passed — never the worker's
         // TenantContext, which may belong to another tenant by now (R30).
@@ -632,6 +661,10 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             $metadata['fixture_id'],
         );
 
+        if (EmailConnectorRegistry::isApi((string) ($metadata['connector'] ?? ''))) {
+            return $metadata;
+        }
+
         $messageId = $metadata['imap_message_id'] ?? null;
 
         if (! is_string($messageId)) {
@@ -879,28 +912,30 @@ final class HostIngestionBridge implements ConnectorIngestionContract
 
         // metadata is stored as JSON; portable JSON query for SQLite +
         // PostgreSQL via Eloquent's `->`-arrow nested key syntax.
-        $documents = KnowledgeDocument::query()
+        $query = KnowledgeDocument::query()
             ->where('tenant_id', $tenantId)
-            ->where("metadata->{$metadataKey}", $remoteId)
-            ->get();
-
-        if ($documents->isEmpty()) {
-            return false;
-        }
-
-        $actedUpon = false;
-        DB::transaction(function () use ($documents, &$actedUpon): void {
-            foreach ($documents as $document) {
-                if ($document->trashed()) {
-                    // Idempotent — repeated incremental sweeps stop
-                    // double-counting after the first sweep soft-deletes
-                    // the row. The prune job hard-deletes later.
-                    continue;
-                }
-
-                $this->deleter->delete($document, force: false);
-                $actedUpon = true;
+            ->where("metadata->{$metadataKey}", $remoteId);
+        if (EmailConnectorRegistry::isApi($installation->connector_name)) {
+            if ($metadataKey !== 'email_message_key'
+                || preg_match('/\A'.preg_quote($installation->connector_name, '/').':[a-f0-9]{64}\z/D', $remoteId) !== 1) {
+                throw new RuntimeException('Email API deletion requires the scoped v1 message key.');
             }
+            $query->where('metadata->installation_id', (int) $installation->id)
+                ->where('metadata->connector', $installation->connector_name);
+        }
+        $actedUpon = false;
+        // One parent can have many historical versions; never materialize all
+        // revisions or attachment rows while reconciling a tombstone.
+        $query->chunkById(100, function ($documents) use (&$actedUpon): void {
+            DB::transaction(function () use ($documents, &$actedUpon): void {
+                foreach ($documents as $document) {
+                    if ($document->trashed()) {
+                        continue;
+                    }
+                    $this->deleter->delete($document, force: false);
+                    $actedUpon = true;
+                }
+            });
         });
 
         return $actedUpon;

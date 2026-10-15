@@ -77,3 +77,7 @@ public/_serve_router.php
 /desktop/src-tauri/gen/
 /desktop/node_modules/
 /desktop/dist/
+
+# Unpublished email packages: generated local Composer manifests only.
+/composer.email-local.json
+/composer.email-local.lock
