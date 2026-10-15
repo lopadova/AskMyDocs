@@ -1,4 +1,4 @@
-import { COPY, LANGUAGES, resolveLocale, translate } from './i18n.js';
+import { COPY, LANGUAGES, resolveLocale, translate } from './i18n.js?v=editorial-1';
 
 const STORAGE_KEY = 'askmydoc.landing.lang'; // Preserve the previous landing's preference.
 let saved;
@@ -43,7 +43,7 @@ function renderScenario({ focusTab = false } = {}) {
     return tab;
   }));
   const label = element('p', 'answer-label');
-  const star = element('span', '', '✳');
+  const star = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); star.setAttribute('viewBox', '0 0 24 24'); star.setAttribute('width', '16'); star.setAttribute('height', '16'); star.innerHTML = '<path d="M12 3v18M3 12h18M6 6l12 12M6 18 18 6" fill="none" stroke="currentColor" stroke-width="1.5"/>';
   star.setAttribute('aria-hidden', 'true');
   label.append(star, document.createTextNode(copy.experience.answer));
   const sources = element('div', 'demo-sources');
@@ -52,7 +52,7 @@ function renderScenario({ focusTab = false } = {}) {
     button.type = 'button';
     button.setAttribute('aria-haspopup', 'dialog');
     button.append(element('span', 'source-number', `0${index + 1}`), document.createTextNode(source.title));
-    const arrow = element('span', '', '↗');
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); arrow.setAttribute('viewBox', '0 0 24 24'); arrow.setAttribute('width', '16'); arrow.setAttribute('height', '16'); arrow.innerHTML = '<path d="M7 17 17 7M7 7h10v10" fill="none" stroke="currentColor" stroke-width="1.5"/>';
     arrow.setAttribute('aria-hidden', 'true');
     button.append(arrow);
     button.addEventListener('click', () => showSource(index));
@@ -81,7 +81,7 @@ function renderLanguage() {
   document.querySelector('meta[property="og:title"]').content = copy.title;
   document.querySelector('meta[property="og:description"]').content = copy.description;
   languageSelect.value = locale;
-  document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = translate(locale, node.dataset.i18n); });
+  document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = translate(locale, node.dataset.i18n).replace(/[↗↑↓]/g, '').trim(); });
   document.querySelectorAll('[data-i18n-alt]').forEach((node) => { node.alt = translate(locale, node.dataset.i18nAlt); });
   document.querySelectorAll('[data-i18n-aria]').forEach((node) => { node.setAttribute('aria-label', translate(locale, node.dataset.i18nAria)); });
   const faqList = document.getElementById('faq-list');
@@ -97,7 +97,7 @@ function renderLanguage() {
 
 function setLocale(next) {
   locale = next;
-  try { localStorage.setItem(STORAGE_KEY, next); } catch { /* In-memory and URL selection still work. */ }
+  try { localStorage.setItem(STORAGE_KEY, next); if (next === 'it' || next === 'en') localStorage.setItem('amd-ui-locale', next); } catch { /* In-memory and URL selection still work. */ }
   const url = new URL(location.href);
   url.searchParams.set('lang', next);
   history.replaceState(null, '', url);

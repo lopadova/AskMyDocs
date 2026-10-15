@@ -211,13 +211,13 @@ export const COPY = {
     "footer": {
       "tagline": "Il vostro sapere. Una nuova possibilità.",
       "docs": "Documentazione ↗",
-      "credit": "Immagini editoriali create con AI.",
+      "credit": "Illustrazioni editoriali create con AI.",
       "top": "Torna all’inizio"
     },
     "images": {
-      "hero": "Luce pomeridiana in un atelier, tra libri, materiali e persone al lavoro",
-      "archive": "Archivio di libri e volumi tra scaffali in legno e pietra naturale",
-      "team": "Un team collabora attorno a un tavolo in uno studio luminoso"
+      "hero": "Illustrazione di una biblioteca aperta, tra libri e percorsi di conoscenza",
+      "archive": "Illustrazione di un archivio di documenti ordinati",
+      "team": "Illustrazione di persone che collaborano attorno a un tavolo"
     }
   },
   "en": {
@@ -431,9 +431,9 @@ export const COPY = {
       "top": "Back to top"
     },
     "images": {
-      "hero": "Afternoon light in an atelier, with books, materials and people at work",
-      "archive": "An archive of books among wooden shelves and natural stone",
-      "team": "A team collaborates around a table in a light-filled studio"
+      "hero": "Illustration of an open library, books, and paths of knowledge",
+      "archive": "Illustration of an organised document archive",
+      "team": "Illustration of people collaborating around a table"
     }
   },
   "fr": {
@@ -647,9 +647,9 @@ export const COPY = {
       "top": "Retour en haut"
     },
     "images": {
-      "hero": "Lumière d’après-midi dans un atelier, entre livres, matières et personnes au travail",
-      "archive": "Une archive de livres entre étagères en bois et pierre naturelle",
-      "team": "Une équipe collabore autour d’une table dans un studio lumineux"
+      "hero": "Illustration d’une bibliothèque ouverte, de livres et de chemins du savoir",
+      "archive": "Illustration d’archives documentaires organisées",
+      "team": "Illustration de personnes réunies autour d’une table"
     }
   },
   "de": {
@@ -863,9 +863,9 @@ export const COPY = {
       "top": "Nach oben"
     },
     "images": {
-      "hero": "Nachmittagslicht in einem Atelier, mit Büchern, Materialien und arbeitenden Menschen",
-      "archive": "Ein Bücherarchiv zwischen Holzregalen und Naturstein",
-      "team": "Ein Team arbeitet an einem Tisch in einem lichtdurchfluteten Studio"
+      "hero": "Illustration einer offenen Bibliothek mit Büchern und Wissenswegen",
+      "archive": "Illustration eines geordneten Dokumentenarchivs",
+      "team": "Illustration von Menschen bei der Zusammenarbeit an einem Tisch"
     }
   },
   "es": {
@@ -1079,9 +1079,9 @@ export const COPY = {
       "top": "Volver al inicio"
     },
     "images": {
-      "hero": "Luz de tarde en un atelier, entre libros, materiales y personas trabajando",
-      "archive": "Un archivo de libros entre estanterías de madera y piedra natural",
-      "team": "Un equipo colabora alrededor de una mesa en un estudio luminoso"
+      "hero": "Ilustración de una biblioteca abierta, libros y caminos de conocimiento",
+      "archive": "Ilustración de un archivo de documentos organizado",
+      "team": "Ilustración de personas colaborando alrededor de una mesa"
     }
   }
 };

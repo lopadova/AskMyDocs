@@ -2,15 +2,15 @@
 /* AskMyDocs editorial landing. Native .btn compatibility follows the product button contract. */
 :root {
   color-scheme: dark;
-  --paper: #0e1411;
-  --paper-dark: #151d18;
-  --ink: #eeeae0;
+  --paper: #101318;
+  --paper-dark: #191e25;
+  --ink: #f2eee6;
   --muted: #acb0a6;
   --line: #ffffff21;
-  --accent: #c9ad83;
-  --dark: #171f1a;
+  --accent: #b4c4a8;
+  --dark: #191e25;
   --white: #fcf8ef;
-  --sans: 'DM Sans',Arial,sans-serif;
+  --sans: 'Geist',Arial,sans-serif;
   --serif: 'Instrument Serif',Georgia,serif;
   --gutter: clamp(24px,4.8vw,84px);
   --mono: 'DM Mono',monospace;
@@ -949,16 +949,17 @@ h1 em {
   display: none;
 }
 .faq summary:after {
-  content: '+';
+  content: '';
   position: absolute;
   right: 3px;
   top: 17px;
-  font-size: 20px;
-  font-weight: 400;
-  color: var(--accent);
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 5v14M5 12h14' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .faq details[open] summary:after {
-  content: '−';
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12h14' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E");
 }
 .faq details p {
   font-size: 12px;
@@ -1796,3 +1797,9 @@ dialog blockquote {
   inset: 55% 0 0;
   background: linear-gradient(transparent,#0d140cd9);
 }
+
+/* Shared with the application editorial series. */
+.hero-image { object-position: 60% center; }
+.archive-visual img { object-position: center; }
+.hero-insight { background: #191e25de; }
+.text-link svg, .btn svg, .footer-links svg { flex-shrink: 0; vertical-align: middle; }
