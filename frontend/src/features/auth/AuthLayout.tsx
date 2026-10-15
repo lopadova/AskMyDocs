@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { LanguagePicker } from '../../components/shell/LanguagePicker';
 import { useTheme } from '../../components/shell/hooks';
 import { useUiTranslation } from '../../lib/ui-locale';
@@ -12,7 +13,7 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
     useEffect(() => { document.documentElement.lang = locale; }, [locale]);
     return <div className="editorial-auth">
         <aside className="editorial-auth-story">
-            <picture aria-hidden="true"><source type="image/avif" srcSet="/editorial/knowledge.avif" /><img src="/editorial/knowledge.webp" alt="" width={1280} height={853} decoding="async" /></picture>
+            <EditorialArtwork artwork="knowledge" sizes="(max-width: 800px) 100vw, 50vw" />
             <a className="editorial-brand" href="/landing"><Icon.Logo size={30} /><span>AskMyDocs.</span></a>
             <div className="editorial-auth-caption"><p className="editorial-eyebrow">{t('Knowledge, with its sources.')}</p><h2>{t('A question opens a world.')}</h2><p>{t('Bring your knowledge into focus.')}</p></div>
         </aside>

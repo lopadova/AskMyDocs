@@ -14,7 +14,22 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-f72dc24c-97f7-498a-903d-b131c4e8e33e.png",
+          "edit_reference": "exec-1109e1b0-9d18-4333-beb4-ee650ba6ea94.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and both people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. Retain the large calm negative space on the left, now softly lit. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio.",
+          "asset_stem": "knowledge-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-1109e1b0-9d18-4333-beb4-ee650ba6ea94.png",
+          "prompt": "Use case: stylized-concept. Create a polished, original editorial gouache illustration for AskMyDocs, a sophisticated knowledge-work application. Wide landscape 1536x1024 composition. Hand-painted shapes, finely textured paper grain, quiet intelligent atmosphere, soft sculptural light. Palette: deep charcoal #101318 and midnight blue, warm ivory, muted sage #B4C4A8 and small brass accents #D7B989. Contemporary European art magazine aesthetic. No text, lettering, numbers, logos, UI, borders, watermarks or neon. A single coherent scene, never a grid or contact sheet. Keep primary shapes in the central 70% so landscape and card crops work. Subject: SHARED KNOWLEDGE. An imaginative architectural library at dusk, layered archive shelves and sculptural paper forms surrounding a softly glowing shared reading table. Two small abstract human figures exchange an open book. Spacious cinematic composition with dark negative space on the left for website copy. Refined, artistic, tactile, warm and human.",
+          "asset_stem": "knowledge-night"
+        }
+      }
     },
     {
       "id": "dialogue",
@@ -27,7 +42,22 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-a8d292ce-94b2-47e1-9b25-193bd1f2e9d0.png",
+          "edit_reference": "exec-379be482-9863-4a3a-8ce0-413a532b731e.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: dialogue. Preserve that reference exactly.",
+          "asset_stem": "dialogue-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-379be482-9863-4a3a-8ce0-413a532b731e.png",
+          "prompt": "Use case: stylized-concept. Create a polished, original editorial gouache illustration for AskMyDocs, a sophisticated knowledge-work application. Wide landscape 1536x1024 composition. Hand-painted shapes, finely textured paper grain, quiet intelligent atmosphere, soft sculptural light. Palette: deep charcoal #101318 and midnight blue, warm ivory, muted sage #B4C4A8 and small brass accents #D7B989. Contemporary European art magazine aesthetic. No text, lettering, numbers, logos, UI, borders, watermarks or neon. A single coherent scene, never a grid or contact sheet. Keep primary shapes in the central 70% so landscape and card crops work. DIALOGUE. Two abstract seated human figures at opposite ends of an oval reading table exchange floating ivory paper shapes that form a single flowing ribbon between them. A quiet circular moonlike opening in the charcoal architectural wall. Intimate, human, balanced editorial composition.",
+          "asset_stem": "dialogue-night"
+        }
+      }
     },
     {
       "id": "archive",
@@ -40,7 +70,23 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-ef705f9e-140c-4d05-8d1a-2cef8b40165c.png",
+          "edit_reference": "exec-4dcedd45-5e06-4204-862c-15775ee2a851.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: archive. Preserve that reference exactly.",
+          "asset_stem": "archive-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-579383ad-876f-4b68-b65b-4c8c2f840bea.png",
+          "edit_reference": "exec-4dcedd45-5e06-4204-862c-15775ee2a851.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene at NIGHT for the dark interface theme. Change ONLY lighting, time of day and light color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, plants, objects and books. Keep the same hand-painted gouache/paper texture and elegant restrained editorial style. Replace any sunset/daytime outdoor light with a deep midnight-blue sky and subtle stars and cool silver moonlight; no sunlight or orange horizon. Illuminate interiors with soft blue-gray reflected moonlight and a restrained warm brass ambient glow, so the books and architecture remain readable against deep charcoal walls, with rich detail in the shadows. It must be truly nocturnal, not just a dark overlay. No new physical objects or lamps, no changes to architecture or furniture, no changes to crop or scene layout. No text, logos or watermark. Output one landscape image matching the reference aspect ratio. Reference identity: archive. Preserve that reference exactly.",
+          "asset_stem": "archive-night"
+        }
+      }
     },
     {
       "id": "connections",
@@ -53,7 +99,22 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-51a18ae6-b98a-492d-af00-8efbc01a61b9.png",
+          "edit_reference": "exec-c79e351f-0dd7-45eb-a840-e973b0ee9d37.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: connections. Preserve that reference exactly.",
+          "asset_stem": "connections-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-c79e351f-0dd7-45eb-a840-e973b0ee9d37.png",
+          "prompt": "Use case: stylized-concept. Create a polished, original editorial gouache illustration for AskMyDocs, a sophisticated knowledge-work application. Wide landscape 1536x1024 composition. Hand-painted shapes, finely textured paper grain, quiet intelligent atmosphere, soft sculptural light. Palette: deep charcoal #101318 and midnight blue, warm ivory, muted sage #B4C4A8 and small brass accents #D7B989. Contemporary European art magazine aesthetic. No text, lettering, numbers, logos, UI, borders, watermarks or neon. A single coherent scene, never a grid or contact sheet. Keep primary shapes in the central 70% so landscape and card crops work. CONNECTIONS. An imaginative network of low architectural bridges joins several small library pavilions across a still dark river. Muted sage trees, warm lit windows, ivory paperlike structures, brass reflections. Clear shapes and a feeling of reliable connection.",
+          "asset_stem": "connections-night"
+        }
+      }
     },
     {
       "id": "processes",
@@ -66,7 +127,23 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-08034aa1-18b5-4758-b8c4-c759db756238.png",
+          "edit_reference": "exec-a3625bfd-cc89-4790-b6c1-8b8d67c0478e.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: processes. Preserve that reference exactly.",
+          "asset_stem": "processes-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-e14a5cf2-7a4a-4a71-af38-7a11d309369b.png",
+          "edit_reference": "exec-a3625bfd-cc89-4790-b6c1-8b8d67c0478e.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene at NIGHT for the dark interface theme. Change ONLY lighting, time of day and light color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, plants, objects and books. Keep the same hand-painted gouache/paper texture and elegant restrained editorial style. Replace any sunset/daytime outdoor light with a deep midnight-blue sky and subtle stars and cool silver moonlight; no sunlight or orange horizon. Illuminate interiors with soft blue-gray reflected moonlight and a restrained warm brass ambient glow, so the books and architecture remain readable against deep charcoal walls, with rich detail in the shadows. It must be truly nocturnal, not just a dark overlay. No new physical objects or lamps, no changes to architecture or furniture, no changes to crop or scene layout. No text, logos or watermark. Output one landscape image matching the reference aspect ratio. Reference identity: processes. Preserve that reference exactly.",
+          "asset_stem": "processes-night"
+        }
+      }
     },
     {
       "id": "community",
@@ -79,7 +156,22 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-c8a8a112-fb31-4b18-a510-dc88bf74fc63.png",
+          "edit_reference": "exec-9413635b-5c16-4e97-af9f-a32c0c8a79c4.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: community. Preserve that reference exactly.",
+          "asset_stem": "community-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-9413635b-5c16-4e97-af9f-a32c0c8a79c4.png",
+          "prompt": "Use case: stylized-concept. Create a polished, original editorial gouache illustration for AskMyDocs, a sophisticated knowledge-work application. Wide landscape 1536x1024 composition. Hand-painted shapes, finely textured paper grain, quiet intelligent atmosphere, soft sculptural light. Palette: deep charcoal #101318 and midnight blue, warm ivory, muted sage #B4C4A8 and small brass accents #D7B989. Contemporary European art magazine aesthetic. No text, lettering, numbers, logos, UI, borders, watermarks or neon. A single coherent scene, never a grid or contact sheet. Keep primary shapes in the central 70% so landscape and card crops work. COMMUNITY. Three abstract human figures collaborate around a circular table with open books and large sheets of paper in a quiet midnight-blue studio. Sage plants, sculptural chair silhouettes, warm ivory light, a feeling of thoughtful shared work.",
+          "asset_stem": "community-night"
+        }
+      }
     },
     {
       "id": "trust",
@@ -92,7 +184,23 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-0ea1cda9-d2f0-423c-8a77-523f480a874b.png",
+          "edit_reference": "exec-4574a20e-dccd-412e-84b1-9cf1a001973d.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: trust. Preserve that reference exactly.",
+          "asset_stem": "trust-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-bc2e585b-8ed0-4004-82fb-e9724ab723d3.png",
+          "edit_reference": "exec-4574a20e-dccd-412e-84b1-9cf1a001973d.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene at NIGHT for the dark interface theme. Change ONLY lighting, time of day and light color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, plants, objects and books. Keep the same hand-painted gouache/paper texture and elegant restrained editorial style. Replace any sunset/daytime outdoor light with a deep midnight-blue sky and subtle stars and cool silver moonlight; no sunlight or orange horizon. Illuminate interiors with soft blue-gray reflected moonlight and a restrained warm brass ambient glow, so the books and architecture remain readable against deep charcoal walls, with rich detail in the shadows. It must be truly nocturnal, not just a dark overlay. No new physical objects or lamps, no changes to architecture or furniture, no changes to crop or scene layout. No text, logos or watermark. Output one landscape image matching the reference aspect ratio. Reference identity: trust. Preserve that reference exactly.",
+          "asset_stem": "trust-night"
+        }
+      }
     },
     {
       "id": "observatory",
@@ -105,7 +213,28 @@
       "widths": [
         640,
         1280
-      ]
+      ],
+      "variants": {
+        "day": {
+          "theme": "light",
+          "master": "exec-f8046b62-265e-447c-893f-d443124ef3db.png",
+          "edit_reference": "exec-2bfcade4-2bf9-45fe-bdc6-1b15f7e91022.png",
+          "prompt": "Use case: lighting-weather. Edit target: the attached AskMyDocs editorial illustration. Create the exact SAME scene in bright, natural DAYTIME for the light interface theme. Change ONLY illumination, time of day and the lighting color grade. Preserve the exact composition, camera framing, crop, perspective, every architectural edge, position and silhouette, landscape, objects, books, plants, and any people with their exact poses, clothing and faces. Keep the hand-painted gouache/paper texture and the elegant restrained editorial style. Replace dark evening/night outdoor light with clear pale blue midday sky and soft sunshine; remove any visible moon/stars, retain the same cloud shapes where possible. Illuminate the entire interior with soft reflected daylight, airy warm ivory stone, pale sage foliage, soft brass highlights, natural gentle shadows, readable midtones. This must feel like daytime throughout, not merely increased exposure. No added/removed objects except moon/stars, no new text, no layout changes. Output one landscape image matching the reference aspect ratio. Reference identity: observatory. Preserve that reference exactly.",
+          "asset_stem": "observatory-day"
+        },
+        "night": {
+          "theme": "dark",
+          "master": "exec-2bfcade4-2bf9-45fe-bdc6-1b15f7e91022.png",
+          "prompt": "Use case: stylized-concept. Create a polished, original editorial gouache illustration for AskMyDocs, a sophisticated knowledge-work application. Wide landscape 1536x1024 composition. Hand-painted shapes, finely textured paper grain, quiet intelligent atmosphere, soft sculptural light. Palette: deep charcoal #101318 and midnight blue, warm ivory, muted sage #B4C4A8 and small brass accents #D7B989. Contemporary European art magazine aesthetic. No text, lettering, numbers, logos, UI, borders, watermarks or neon. A single coherent scene, never a grid or contact sheet. Keep primary shapes in the central 70% so landscape and card crops work. OBSERVATORY. A quiet circular observatory room with a large brass armillary-like sculptural instrument, open books, a panoramic dusk sky and softly illuminated ivory architectural platforms. An artistic metaphor for clarity and oversight, no charts, diagrams or text.",
+          "asset_stem": "observatory-night"
+        }
+      }
     }
-  ]
+  ],
+  "variant_policy": "Paired day/light and night/dark illustrations retain the same scene and composition; only illumination and time of day change.",
+  "legacy_base_assets": "Original unsuffixed assets remain unchanged for compatibility. Current consumers use explicit -day and -night variants.",
+  "variant_naming": {
+    "light": "{id}-day[-small].{format}",
+    "dark": "{id}-night[-small].{format}"
+  }
 }

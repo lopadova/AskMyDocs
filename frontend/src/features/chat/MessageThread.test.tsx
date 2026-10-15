@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,6 +55,24 @@ describe('MessageThread agent activity', () => {
             configurable: true,
             value: vi.fn(),
         });
+    });
+
+    it('keeps the empty chat illustration in sync with the rendered theme', async () => {
+        const originalTheme = document.documentElement.getAttribute('data-theme');
+        try {
+            document.documentElement.dataset.theme = 'dark';
+            renderThread(<MessageThread conversationId={1} messages={[]} sdkStatus="ready" />);
+            const image = screen.getByTestId('chat-thread-empty').querySelector('img')!;
+            expect(image).toHaveClass('chat-empty-art');
+            expect(image).toHaveAttribute('src', '/editorial/dialogue-night-small.webp');
+            await act(async () => { document.documentElement.dataset.theme = 'light'; });
+            expect(image).toHaveAttribute('src', '/editorial/dialogue-day-small.webp');
+        } finally {
+            await act(async () => {
+                if (originalTheme) document.documentElement.setAttribute('data-theme', originalTheme);
+                else document.documentElement.removeAttribute('data-theme');
+            });
+        }
     });
 
     it('moves persisted activity into the answer footer and opens its timeline in a modal', async () => {

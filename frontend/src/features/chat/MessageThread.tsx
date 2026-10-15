@@ -4,6 +4,7 @@ import { MessageBubble } from './MessageBubble';
 import { AgentActivityBar } from './AgentActivityBar';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { useChatStore } from './chat.store';
 import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
@@ -327,7 +328,7 @@ function EmptyThread(): ReactNode {
     ];
     return (
         <div data-testid="chat-thread-empty" className="chat-empty-state">
-            <picture aria-hidden="true"><source type="image/avif" srcSet="/editorial/dialogue-small.avif" /><img className="chat-empty-art" src="/editorial/dialogue-small.webp" width={640} height={427} alt="" decoding="async" /></picture>
+            <EditorialArtwork artwork="dialogue" imgClassName="chat-empty-art" resolution="small" />
             <h2>What would you like to explore?</h2>
             <p>Ask your knowledge base. Follow the sources. Keep the conversation going.</p>
             <div className="chat-empty-prompts">
