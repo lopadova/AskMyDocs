@@ -18,6 +18,7 @@ final class EvidenceProjector
                     'document_id' => $document['document_id'], 'tool_execution_id' => null,
                     'evidence_hash' => $chunk['evidence_hash'],
                 ];
+                $evidence['documents'][$index]['evidence'][$chunkIndex]['source_ref'] = $this->sourceRef('d', $document['document_id'], $chunk['evidence_hash']);
             }
         }
         foreach ($evidence['api_tools'] ?? [] as $index => $tool) {
@@ -26,6 +27,7 @@ final class EvidenceProjector
                     'document_id' => null, 'tool_execution_id' => $tool['execution_id'],
                     'evidence_hash' => $tool['evidence_hash'],
                 ];
+                $evidence['api_tools'][$index]['source_ref'] = $this->sourceRef('t', $tool['execution_id'], $tool['evidence_hash']);
             }
             $records = self::records($tool);
             if ($records !== []) {
@@ -37,7 +39,7 @@ final class EvidenceProjector
     }
 
     /**
-     * Recover omitted source keys only from a UNIQUE hash in the current envelope.
+     * Recover omitted keys from an exact host reference or UNIQUE current hash.
      * Never interpret malformed model keys, overwrite explicit identities, search
      * the database, or borrow evidence from another task. bind() and the validator
      * still enforce scope, record identity and literal membership afterwards.
@@ -45,6 +47,30 @@ final class EvidenceProjector
     public function resolveSourceIdentity(array $evidence, array $claim): array
     {
         $hash = $claim['evidence_hash'] ?? null;
+        if (($claim['document_id'] ?? null) === null && ($claim['tool_execution_id'] ?? null) === null
+            && $hash === '' && is_string($claim['source_ref'] ?? null)) {
+            $matches = [];
+            foreach ($evidence['documents'] ?? [] as $document) {
+                foreach ($document['evidence'] ?? [] as $chunk) {
+                    if (is_int($document['document_id'] ?? null) && is_string($chunk['evidence_hash'] ?? null)
+                        && $claim['source_ref'] === $this->sourceRef('d', $document['document_id'], $chunk['evidence_hash'])) {
+                        $matches['d:'.$document['document_id'].':'.$chunk['evidence_hash']] = [
+                            'document_id' => $document['document_id'], 'tool_execution_id' => null, 'evidence_hash' => $chunk['evidence_hash']];
+                    }
+                }
+            }
+            foreach ($evidence['api_tools'] ?? [] as $tool) {
+                if (is_int($tool['execution_id'] ?? null) && is_string($tool['evidence_hash'] ?? null)
+                    && $claim['source_ref'] === $this->sourceRef('t', $tool['execution_id'], $tool['evidence_hash'])) {
+                    $matches['t:'.$tool['execution_id'].':'.$tool['evidence_hash']] = [
+                        'document_id' => null, 'tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash']];
+                }
+            }
+            // Only an exact, unique reference in the CURRENT envelope resolves.
+            // Explicit IDs/hashes are never overwritten. bind() still checks
+            // scope, record identity and literal membership against the full hash.
+            return count($matches) === 1 ? [...$claim, ...array_values($matches)[0]] : $claim;
+        }
         if (($claim['document_id'] ?? null) !== null || ($claim['tool_execution_id'] ?? null) !== null
             || ! is_string($hash) || $hash === '') {
             return $claim;
@@ -64,6 +90,11 @@ final class EvidenceProjector
         }
 
         return count($matches) === 1 ? [...$claim, ...array_values($matches)[0]] : $claim;
+    }
+
+    private function sourceRef(string $kind, int $id, string $hash): string
+    {
+        return $kind.$id.'_'.substr($hash, 0, 12);
     }
 
     /** Table rows stay literal; match exact requested identities, never a wrapper query echo. */

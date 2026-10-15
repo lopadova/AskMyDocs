@@ -380,6 +380,51 @@ class FocusedClaimEvaluatorTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_current_source_reference_resolves_full_identity_without_overwriting_explicit_keys(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['source_ref'];
+        $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $evidence, [$claim], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertSame(67, $result['claims'][0]['tool_execution_id']);
+        $this->assertSame('tool', $result['claims'][0]['evidence_hash']);
+        $this->assertSame('current_source_reference', $result['semantic_validation'][0]['checks'][0]['source_resolution']['method']);
+        $unknown = [...$claim, 'source_ref' => 'unknown'];
+        $this->assertSame($unknown, $projector->resolveSourceIdentity($evidence, $unknown));
+    }
+
+    public function test_source_reference_cannot_override_hash_identity_scope_or_record_membership(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['source_ref'];
+        $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
+        foreach (['unknown', 'explicit_hash', 'explicit_id', 'project', 'record', 'flow'] as $failure) {
+            $candidate = $claim;
+            $current = $evidence;
+            $understanding = $u;
+            match ($failure) {
+                'unknown' => $candidate['source_ref'] = 'unknown',
+                'explicit_hash' => $candidate['evidence_hash'] = 'incorrect',
+                'explicit_id' => $candidate['tool_execution_id'] = 999,
+                'project' => $current['api_tools'][0]['project_key'] = 'another',
+                'record' => $current['api_tools'][0]['result']['records'][0]['trackingCode'] = 'TRACK-OTHER',
+                'flow' => $current['api_tools'][0]['research_flow_ids'] = [1],
+            };
+            if ($failure === 'flow') {
+                $understanding['independent_research'] = true;
+                $candidate['subquestion_id'] = 0;
+            }
+            $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $current, [$candidate], $understanding, 'demo', 'acme');
+            $this->assertFalse($result['valid'], $failure);
+        }
+        Http::assertNothingSent();
+    }
+
     public function test_oversized_related_source_is_not_dropped_and_does_not_pollute_other_pairs(): void
     {
         $this->fake();
