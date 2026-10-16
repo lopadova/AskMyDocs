@@ -10,7 +10,7 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['frontend/src/main.tsx'],
+            input: ['frontend/src/main.tsx', 'frontend/src/landing-select.tsx'],
             refresh: true,
         }),
         react(),

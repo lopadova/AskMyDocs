@@ -16,9 +16,10 @@ use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
-// Public editorial landing. Explicit route also serves the directory URL in Herd.
-Route::get('/landing', fn () => response()->file(public_path('landing/index.html')))
+// Render one source so the public language control shares the application's Select.
+Route::get('/landing', fn () => view('landing'))
     ->name('landing');
+Route::get('/landing/index.html', fn (\Illuminate\Http\Request $request) => redirect('/landing'.($request->getQueryString() ? '?'.$request->getQueryString() : ''), 301));
 
 /*
 |--------------------------------------------------------------------------

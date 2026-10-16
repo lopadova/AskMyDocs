@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { COPY, LANGUAGES, resolveLocale, translate } from '../../public/landing/i18n.js';
 
 const publicRoot = resolve(process.cwd(), 'public');
-const html = readFileSync(resolve(publicRoot, 'landing/index.html'), 'utf8');
+const html = readFileSync(resolve(process.cwd(), 'resources/views/landing.blade.php'), 'utf8').replace(/^\s*@vite.*$/gm, '');
 const keys = (value, prefix = '') => Object.entries(value).flatMap(([key, item]) => {
   const path = prefix ? `${prefix}.${key}` : key;
   return typeof item === 'object' ? keys(item, path) : [path];
@@ -36,7 +36,7 @@ describe('public landing localisation', () => {
     for (const link of doc.querySelectorAll('a[href^="#"]')) expect(doc.querySelector(link.hash)).not.toBeNull();
     for (const node of doc.querySelectorAll('[src^="/"], link[href^="/"]')) {
       const path = node.getAttribute('src') ?? node.getAttribute('href');
-      expect(existsSync(resolve(publicRoot, path.slice(1))), path).toBe(true);
+      expect(existsSync(resolve(publicRoot, new URL(path, 'https://askmydocsdev.test').pathname.slice(1))), path).toBe(true);
     }
     expect(doc.querySelector('h1').textContent).toContain(COPY.it.hero.emphasis);
     expect(doc.querySelectorAll('h1')).toHaveLength(1);
@@ -59,9 +59,10 @@ describe('public landing interactions', () => {
   it('switches the entire experience, metadata and shareable URL while retaining the selected example', async () => {
     await import('../../public/landing/app.js');
     document.getElementById('scenario-1').click();
-    const select = document.getElementById('language');
-    select.value = 'fr';
-    select.dispatchEvent(new Event('change'));
+    const languageRoot = document.getElementById('language-select-root');
+    languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-request', { detail: { locale: 'fr' } }));
+    expect(languageRoot.dataset.locale).toBe('fr');
+    expect(JSON.parse(languageRoot.dataset.languages)).toEqual(LANGUAGES);
     expect(document.documentElement.lang).toBe('fr');
     expect(document.title).toBe(COPY.fr.title);
     expect(document.querySelector('meta[name="description"]').content).toBe(COPY.fr.description);
@@ -75,6 +76,22 @@ describe('public landing interactions', () => {
     expect(document.getElementById('source-excerpt').textContent).toBe(COPY.fr.scenarios[1].sources[0].excerpt);
     document.getElementById('close-source').click();
     expect(document.querySelector('dialog').open).toBe(false);
+  });
+
+  it('initialises the React island contract from the URL and ignores unsupported locale requests', async () => {
+    history.replaceState(null, '', '/landing?lang=de');
+    await import('../../public/landing/app.js');
+    const languageRoot = document.getElementById('language-select-root');
+    expect(languageRoot.dataset.locale).toBe('de');
+    const changed = vi.fn();
+    languageRoot.addEventListener('amd:landing-locale-changed', changed);
+    languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-request', { detail: { locale: '__proto__' } }));
+    expect(languageRoot.dataset.locale).toBe('de');
+    expect(document.documentElement.lang).toBe('de');
+    expect(changed).not.toHaveBeenCalled();
+    languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-request', { detail: { locale: 'es' } }));
+    expect(changed).toHaveBeenCalledOnce();
+    expect(languageRoot.dataset.locale).toBe('es');
   });
 
   it('supports keyboard tabs, wraps between examples and gives one tab a focus stop', async () => {

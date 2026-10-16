@@ -5,7 +5,8 @@ let saved;
 try { saved = localStorage.getItem(STORAGE_KEY); } catch { /* Private browsing can disable storage. */ }
 let locale = resolveLocale({ search: location.search, saved, languages: navigator.languages ?? [navigator.language] });
 let scenarioIndex = 0;
-const languageSelect = document.getElementById('language');
+const languageRoot = document.getElementById('language-select-root');
+languageRoot.dataset.languages = JSON.stringify(LANGUAGES);
 const tabs = document.getElementById('scenario-tabs');
 const answer = document.getElementById('demo-answer');
 const sourceDialog = document.getElementById('source-dialog');
@@ -80,7 +81,8 @@ function renderLanguage() {
   document.querySelector('meta[name="description"]').content = copy.description;
   document.querySelector('meta[property="og:title"]').content = copy.title;
   document.querySelector('meta[property="og:description"]').content = copy.description;
-  languageSelect.value = locale;
+  languageRoot.dataset.locale = locale;
+  languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-changed'));
   document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = translate(locale, node.dataset.i18n).replace(/[↗↑↓]/g, '').trim(); });
   document.querySelectorAll('[data-i18n-alt]').forEach((node) => { node.alt = translate(locale, node.dataset.i18nAlt); });
   document.querySelectorAll('[data-i18n-aria]').forEach((node) => { node.setAttribute('aria-label', translate(locale, node.dataset.i18nAria)); });
@@ -104,14 +106,10 @@ function setLocale(next) {
   renderLanguage();
 }
 
-languageSelect.replaceChildren(...LANGUAGES.map(({ code, name }) => {
-  const option = element('option', '', code.toUpperCase());
-  option.value = code;
-  option.lang = code;
-  option.label = `${code.toUpperCase()} · ${name}`;
-  return option;
-}));
-languageSelect.addEventListener('change', () => setLocale(languageSelect.value));
+languageRoot.addEventListener('amd:landing-locale-request', (event) => {
+  const next = event.detail?.locale;
+  if (LANGUAGES.some(({ code }) => code === next)) setLocale(next);
+});
 window.addEventListener('popstate', () => {
   locale = resolveLocale({ search: location.search, saved: locale });
   renderLanguage();

@@ -31,6 +31,16 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
+.landing-page {
+  --font-sans: var(--sans);
+  --panel-solid: var(--paper-dark);
+  --panel-border-strong: var(--line);
+  --bg-2: var(--paper-dark);
+  --bg-3: #26332a;
+  --fg-0: var(--ink);
+  --fg-3: var(--muted);
+  --accent-a: var(--accent);
+}
 ::selection {
   background: #d6c3a8;
   color: #101710;
@@ -240,20 +250,23 @@ a,button,summary,select {
   gap: 5px;
   align-items: center;
 }
-.language-control svg {
+.language-control > svg {
   width: 15px;
   height: 15px;
 }
-.language-control select {
-  padding: 8px 2px;
+.language-control [data-slot='select-trigger'] {
+  padding: 8px;
   background: transparent;
   border: 0;
   font-size: 11px;
   color: var(--ink);
   cursor: pointer;
-  min-height: 40px;
-  max-width: 117px;
+  min-height: 44px;
+  width: 76px;
+  box-shadow: none;
 }
+.landing-page [data-slot='select-trigger'] .landing-language-name,
+.landing-page [data-slot='select-content'] .landing-language-code { display: none; }
 .menu-toggle {
   display: none;
 }
@@ -1354,11 +1367,8 @@ dialog blockquote {
     width: 40px;
     padding: 8px;
   }
-  .language-control svg {
+  .language-control > svg {
     display: none;
-  }
-  .language-control select {
-    padding: 8px 4px;
   }
   .mobile-nav {
     position: absolute;
@@ -1777,10 +1787,6 @@ dialog blockquote {
 .header-cta:hover {
   background: #c9ad831a;
   border-color: var(--accent);
-}
-.language-control option {
-  background: var(--paper);
-  color: var(--ink);
 }
 .hero-insight:hover {
   border-color: #c9ad8399;

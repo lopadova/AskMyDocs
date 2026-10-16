@@ -1,8 +1,8 @@
 # Public editorial landing
 
 Open `/landing?lang=it` on the application host (locally, `https://askmydocsdev.test`).
-The public route serves `public/landing/index.html`; the existing root and sign-in flow
-are unchanged. `/landing/index.html` also works as a static entry point.
+The public route renders `resources/views/landing.blade.php`; the existing root and sign-in flow
+are unchanged. Legacy `/landing/index.html` links redirect here with their language query preserved.
 
 The visual direction combines a dark editorial palette, bronze accents, a full-width
 photographic hero, serif headlines and restrained technical details. The product story
@@ -12,12 +12,15 @@ the platform, alongside project knowledge, onboarding and hospitality.
 ## Editing
 
 - `public/landing/i18n.js`: curated Italian, English, French, German and Spanish copy.
-- `public/landing/index.html`: structure and Italian fallback content. Keep fallback
+- `resources/views/landing.blade.php`: structure and Italian fallback content. Keep fallback
   text aligned with the Italian dictionary when editing copy.
 - `public/landing/styles.css`: independent, responsive dark theme. Native buttons use
-  the AskMyDocs compatibility contract; no React runtime is needed on this static page.
+  the AskMyDocs compatibility contract. The language menu uses the application's shadcn Select.
 - `public/landing/app.js`: language selection, keyboard tabs, source dialogs, mobile
-  navigation and FAQ rendering. No build, remote scripts or AI requests are required.
+  navigation and FAQ rendering. Locale and available languages are published to the React island
+  through `#language-select-root` data and custom events.
+- `frontend/src/landing-select.tsx`: Vite entry mounting the language Select island. Run the normal
+  frontend build after changing its component; the remaining editorial interactions stay in `app.js`.
 
 Language precedence is `?lang=`, the existing `askmydoc.landing.lang` preference,
 supported browser languages, then Italian. Selection updates the URL, document title,

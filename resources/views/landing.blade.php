@@ -15,10 +15,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=DM+Mono:wght@400;500&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/landing/styles.css?v=editorial-day-night-1">
-    <script type="module" src="/landing/app.js?v=editorial-day-night-1"></script>
+    <link rel="stylesheet" href="/landing/styles.css?v=shadcn-select-1">
+    @viteReactRefresh
+    @vite('frontend/src/landing-select.tsx')
+    <script type="module" src="/landing/app.js?v=shadcn-select-1"></script>
   </head>
-  <body>
+  <body class="landing-page">
     <a class="skip-link" href="#main" data-i18n="skip">Vai al contenuto</a>
     <header class="header">
       <a class="brand" href="#top" aria-label="AskMyDocs"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M4 25 16 5l12 20H4ZM10 25l6-10 6 10M16 5v10"></path></svg><span>AskMyDocs<span class="brand-period">.</span></span></a>
@@ -33,8 +35,8 @@
             <circle cx="12" cy="12" r="9"></circle>
             <path d="M3 12h18M12 3a20 20 0 0 1 0 18 20 20 0 0 1 0-18"></path>
           </svg>
-          <label class="sr-only" for="language" data-i18n="language">Lingua</label>
-          <select id="language"><option value="it" lang="it">IT</option><option value="en" lang="en">EN</option><option value="fr" lang="fr">FR</option><option value="de" lang="de">DE</option><option value="es" lang="es">ES</option></select>
+          <label id="language-label" class="sr-only" for="language" data-i18n="language">Lingua</label>
+          <div id="language-select-root" data-locale="it"></div>
         </div>
         <a class="login-link" href="/login" data-i18n="nav.login">Accedi</a>
         <a class="btn btn-primary header-cta" href="/app/me"><span data-i18n="nav.demo">Entra nella demo</span><span aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></span></a>
