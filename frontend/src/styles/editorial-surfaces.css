@@ -26,7 +26,7 @@
 .admin-page-content > :is(div, section, article) > h1,
 .admin-page-content > :is(div, section, article) > header :is(h1, h2) {
     font-family: var(--font-editorial); font-size: clamp(32px,3vw,44px) !important; line-height: 1.12;
-    font-weight: 400 !important; letter-spacing: -.025em; color: var(--fg-0); margin-top: 0 !important;
+    font-weight: var(--design-heading-weight,400) !important; letter-spacing: var(--design-heading-spacing,-.025em); color: var(--fg-0); margin-top: 0 !important;
 }
 .admin-page-content :is(input, [data-slot='select-trigger'], textarea) { accent-color: var(--accent-a); font-family: var(--font-sans); }
 .hub-card .hub-card-copy { flex: 1; min-width: 0; }

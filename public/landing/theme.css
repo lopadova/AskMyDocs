@@ -1,0 +1,111 @@
+/* Public-page bridge. Humanistic dark keeps its original rendering. Alternate
+ * palettes come from design-themes.css, without loading app layout CSS. */
+:root[data-design-theme='humanistic'][data-theme='light'] {
+    --font-stack-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --bg-0: #f4f2ed; --bg-1: #eeece5; --bg-2: #fffdf8; --bg-3: #e4e6dc; --bg-4: #d3d8ca;
+    --panel: #fffdf8; --panel-solid: #fffdf8; --panel-border: #25322a21; --panel-border-strong: #25322a40; --hairline: #25322a21;
+    --fg-0: #19241f; --fg-1: #2e3934; --fg-2: #4d5b53; --fg-3: #59675e; --fg-4: #69766b;
+    --accent-a: #416147; --accent-b: #735c34; --accent-mid: #527051; --accent-glow: 65 97 71;
+    --ok: #2c6b49; --warn: #83510c; --err: #a63642; --info: #315b70;
+    --primary-foreground: #fffdf8; --design-primary-bg: var(--accent-a);
+    --design-control-radius: 8px; --design-card-radius: 14px; --design-card-padding: 24px;
+    --design-heading-weight: 400; --design-heading-spacing: -.025em;
+    --shadow-sm: 0 1px 2px #14142814;
+    --shadow-lg: 0 22px 50px -12px #1414282e;
+    color-scheme: light;
+}
+.landing-page .theme-toggle { width: 44px; min-width: 44px; min-height: 44px; padding: 10px; }
+.landing-page .theme-icon-light { display: none; }
+:root[data-theme='light'] .landing-page .theme-icon-light { display: block; }
+:root[data-theme='light'] .landing-page .theme-icon-dark { display: none; }
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page {
+    /* Reset the old Select aliases on body before mapping landing names; using
+     * inherit avoids cycles such as --ink -> --fg-0 -> --ink. Portals share body. */
+    --font-sans: inherit; --panel-solid: inherit; --panel-border-strong: inherit;
+    --bg-2: inherit; --bg-3: inherit; --fg-0: inherit; --fg-3: inherit; --accent-a: inherit;
+    --paper: var(--bg-0); --paper-dark: var(--bg-1); --dark: var(--bg-1);
+    --ink: var(--fg-0); --white: var(--fg-0); --muted: var(--fg-2);
+    --accent: var(--accent-a); --line: var(--panel-border);
+    --sans: var(--font-sans); --serif: var(--font-editorial); --mono: var(--font-mono);
+    --gutter: clamp(24px, 4.8vw, 84px);
+    --landing-section-space: 104px;
+    font-family: var(--sans);
+}
+:root[data-design-theme='tech-pro'] .landing-page { --gutter: clamp(24px, 4vw, 72px); --landing-section-space: 90px; }
+:root[data-design-theme='retro-future'] .landing-page { --landing-section-space: 112px; }
+:root[data-design-theme='dynamic-office'] .landing-page { --gutter: clamp(24px, 4.5vw, 80px); --landing-section-space: 104px; }
+:root[data-design-theme='luxury'] .landing-page { --gutter: clamp(24px, 5.2vw, 92px); --landing-section-space: 128px; }
+
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(h1, h2) {
+    font-family: var(--serif);
+    font-weight: var(--design-heading-weight);
+    letter-spacing: var(--design-heading-spacing);
+}
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.header, .chapter-strip, .experience-stage, .trust-details article, .closing) { border-color: var(--line); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .header { background: color-mix(in srgb, var(--paper) 82%, transparent); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.chapter-strip, .footer, .mobile-nav, .experience-stage, dialog) { background: var(--paper-dark); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.experience, .trust) { background: linear-gradient(135deg, var(--bg-2), var(--paper-dark)); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .closing { background: radial-gradient(ellipse at 50% 115%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 67%), var(--paper-dark); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.vision, .experience, .possibilities, .trust, .faq, .closing) { padding-block: var(--landing-section-space); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.hero-image, .archive-visual img, .team-visual img) { filter: none; }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-visual::after {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--paper) 99%, transparent) 0%, color-mix(in srgb, var(--paper) 95%, transparent) 45%, color-mix(in srgb, var(--paper) 45%, transparent) 75%, color-mix(in srgb, var(--paper) 12%, transparent) 100%), linear-gradient(0deg, var(--paper), transparent 45%);
+}
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.archive-visual, .team-visual)::after { background: linear-gradient(transparent, color-mix(in srgb, var(--paper) 96%, transparent)); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.hero .eyebrow, h1 em, .chapter-strip i, .demo-badge, .answer-label, .trust-details article > span) { color: var(--accent); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.hero-description, .hero-note, .image-index, .hero-insight div > span, .answer-text, .demo-disclaimer) { color: var(--muted); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.image-index, .archive-caption) { text-shadow: none; }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.archive-caption, .team-visual figcaption) { color: var(--ink); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.archive-caption, .team-visual figcaption, .image-index) {
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    border-radius: var(--design-control-radius);
+    padding: 12px 14px;
+}
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-insight {
+    background: color-mix(in srgb, var(--paper-dark) 96%, transparent);
+    border-color: var(--panel-border-strong);
+    border-radius: var(--design-card-radius);
+    box-shadow: var(--shadow-lg);
+}
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-insight:hover { background: var(--bg-2); border-color: var(--accent); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.experience-stage, .team-visual, dialog) { border-radius: var(--design-card-radius); overflow: hidden; }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.btn, .scenario-tab, .source-link) { border-radius: var(--design-control-radius); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .btn:not(.btn-quiet):not(.header-cta) {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--design-primary-bg, var(--accent)) 96%, white), var(--design-primary-bg, var(--accent)));
+    border-color: var(--design-primary-bg, var(--accent));
+    color: var(--primary-foreground);
+}
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .btn:not(.btn-quiet):not(.header-cta):hover { background: color-mix(in srgb, var(--design-primary-bg, var(--accent)) 92%, white); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.btn-quiet, .header-cta, .demo-badge) { background: color-mix(in srgb, var(--ink) 3%, transparent); border-color: var(--panel-border-strong); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.btn-quiet, .header-cta):hover { background: var(--bg-3); border-color: var(--accent); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .scenario-tab[aria-selected='true'] { background: var(--bg-3); border-color: var(--accent); color: var(--ink); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .status-dot { background: var(--ok); box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 22%, transparent); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .closing-watermark { color: color-mix(in srgb, var(--accent) 5%, transparent); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(:focus-visible, .trust :focus-visible) { outline-color: var(--accent); box-shadow: 0 0 0 3px var(--paper); }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page dialog { border-color: var(--panel-border-strong); box-shadow: var(--shadow-lg); overflow-y: auto; }
+:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page dialog::backdrop { background: color-mix(in srgb, var(--paper) 75%, #000); }
+
+@media (min-width: 761px) {
+    :root:is([data-design-theme='tech-pro'], [data-design-theme='dynamic-office']) .landing-page h1 { font-size: clamp(65px, 6.4vw, 102px); }
+}
+@media (max-width: 760px) {
+    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page { --landing-section-space: 60px; }
+    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-visual::after { background: linear-gradient(90deg, color-mix(in srgb, var(--paper) 96%, transparent), color-mix(in srgb, var(--paper) 80%, transparent)), linear-gradient(0deg, var(--paper), transparent 65%); }
+    :root:is([data-design-theme='tech-pro'], [data-design-theme='dynamic-office']) .landing-page .hero h1 { font-size: clamp(48px, 12vw, 72px); }
+}
+@media (pointer: coarse), (max-width: 640px) {
+    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.btn, .source-link, .scenario-tab, #close-source) { min-height: 44px; }
+    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page #close-source { min-width: 44px; }
+}
+@media (max-width: 420px) {
+    .landing-page .header-actions { gap: 5px; }
+    .landing-page .language-control [data-slot='select-trigger'] { width: 64px; padding-inline: 6px; }
+}
+@media (max-width: 360px) {
+    .landing-page .header { gap: 8px; }
+    .landing-page .header .brand { font-size: 18px; gap: 0; }
+    .landing-page .header .brand-mark { display: none; }
+}

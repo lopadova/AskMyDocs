@@ -61,6 +61,21 @@ use App\Http\Controllers\Api\Widget\WidgetSetupController;
 use App\Http\Controllers\Api\Widget\WidgetUserTokenController;
 use Illuminate\Support\Facades\Route;
 
+// Public presentation metadata contains only an allowlisted theme identifier.
+Route::get('/appearance', [\App\Http\Controllers\Api\AppearanceController::class, 'show'])
+    ->name('api.appearance.show');
+
+// Installation appearance is global: do not apply tenant.authorize or infer
+// write access from platform.admin. Stateful writes retain normal web CSRF.
+Route::middleware(['web', 'auth:sanctum', 'role:super-admin', 'token.ability:appearance:manage'])
+    ->prefix('system/appearance')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\AppearanceController::class, 'show'])
+            ->name('api.system.appearance.show');
+        Route::put('/', [\App\Http\Controllers\Api\AppearanceController::class, 'update'])
+            ->name('api.system.appearance.update');
+    });
+
 /*
 |--------------------------------------------------------------------------
 | Sanctum SPA — Auth endpoints

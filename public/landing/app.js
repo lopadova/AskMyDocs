@@ -1,4 +1,4 @@
-import { COPY, LANGUAGES, resolveLocale, translate } from './i18n.js?v=editorial-1';
+import { COPY, LANGUAGES, resolveLocale, translate } from './i18n.js?v=design-themes-2';
 
 const STORAGE_KEY = 'askmydoc.landing.lang'; // Preserve the previous landing's preference.
 let saved;
@@ -12,6 +12,31 @@ const answer = document.getElementById('demo-answer');
 const sourceDialog = document.getElementById('source-dialog');
 const menuButton = document.querySelector('.menu-toggle');
 const mobileNav = document.getElementById('mobile-nav');
+const themeButton = document.getElementById('theme-toggle');
+
+function readAppearance() {
+  try {
+    const value = localStorage.getItem('amd-theme');
+    return value === 'light' || value === 'dark' ? value : 'dark';
+  } catch { return 'dark'; }
+}
+let appearance = readAppearance();
+function renderAppearance() {
+  document.documentElement.dataset.theme = appearance;
+  themeButton.setAttribute('aria-pressed', String(appearance === 'light'));
+}
+function syncAppearance() {
+  appearance = readAppearance();
+  renderAppearance();
+}
+renderAppearance();
+themeButton.addEventListener('click', () => {
+  appearance = appearance === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem('amd-theme', appearance); } catch { /* In-memory appearance still works. */ }
+  renderAppearance();
+});
+window.addEventListener('focus', syncAppearance);
+window.addEventListener('storage', (event) => { if (event.key === 'amd-theme') syncAppearance(); });
 
 function element(tag, className, text) {
   const node = document.createElement(tag);

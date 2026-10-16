@@ -66,11 +66,11 @@ export function useFontPair(initial: FontPair = 'geist'): [FontPair, Setter<Font
     useEffect(() => {
         const [sans, mono] = FONT_MAP[font] ?? FONT_MAP.geist;
         document.documentElement.style.setProperty(
-            '--font-sans',
+            '--user-font-sans',
             `${sans}, ui-sans-serif, system-ui, sans-serif`,
         );
         document.documentElement.style.setProperty(
-            '--font-mono',
+            '--user-font-mono',
             `${mono}, ui-monospace, Menlo, monospace`,
         );
         writeStorage('amd-font', font);

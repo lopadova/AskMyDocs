@@ -4,8 +4,8 @@ Open `/landing?lang=it` on the application host (locally, `https://askmydocsdev.
 The public route renders `resources/views/landing.blade.php`; the existing root and sign-in flow
 are unchanged. Legacy `/landing/index.html` links redirect here with their language query preserved.
 
-The visual direction combines a dark editorial palette, bronze accents, a full-width
-photographic hero, serif headlines and restrained technical details. The product story
+The default visual direction combines a dark editorial palette, sage and brass accents,
+painted illustrations, serif headlines and restrained technical details. The product story
 addresses organisations and teams; fashion, design and luxury are one application of
 the platform, alongside project knowledge, onboarding and hospitality.
 
@@ -16,6 +16,8 @@ the platform, alongside project knowledge, onboarding and hospitality.
   text aligned with the Italian dictionary when editing copy.
 - `public/landing/styles.css`: independent, responsive dark theme. Native buttons use
   the AskMyDocs compatibility contract. The language menu uses the application's shadcn Select.
+- `public/landing/theme.css`: bridges the installation design tokens into the public layout;
+  its alternate-theme rules preserve the default humanistic rendering.
 - `public/landing/app.js`: language selection, keyboard tabs, source dialogs, mobile
   navigation and FAQ rendering. Locale and available languages are published to the React island
   through `#language-select-root` data and custom events.
@@ -33,21 +35,48 @@ Fonts are loaded from Google Fonts, with local serif, sans-serif and monospace f
 
 ## Images
 
-Three original images were generated with ImageGen for this page on 7 September 2026.
-The direction is warm editorial photography of an atelier, an archive and a creative
-team: walnut, natural stone, afternoon light and candid compositions. No real client,
-brand endorsement or documented business event is implied. AI origin is disclosed
-in the footer in every language.
+The landing shares the application's editorial `knowledge`, `archive` and `community`
+subjects. Each subject has matching day/night lighting and responsive WebP exports
+at 640 and 1280 pixels. The hero is preloaded; lower images load lazily. AI origin is
+disclosed in the footer in every language.
 
-| Asset | Original generated file | Export |
+Humanistic assets live in `/editorial`; alternate themes use `/editorial/themes/{theme}`.
+Blade resolves the installation theme before rendering and serves night images initially,
+matching the original dark landing. `data-editorial-artwork` identifies each subject for
+the runtime to keep theme and appearance changes in sync without replacing content.
+The header light-mode toggle shares `amd-theme` with the application: it validates the saved
+value, defaults to dark, and refreshes on focus or cross-tab changes. Humanistic light uses
+the same ivory/sage palette as the application; the original Humanistic dark remains intact.
+
+## Installation design themes
+
+One installation setting controls landing, authentication and the authenticated application.
+Its identifiers are `humanistic`, `tech-pro`, `retro-future`, `dynamic-office` and `luxury`.
+The light/dark appearance remains independent of this design identity.
+
+Super-admins choose the identity under **System → Appearance** (`/app/system/appearance`).
+Selection and day/night previews remain local until **Save platform theme** succeeds.
+The public bootstrap and authenticated session read the same singleton setting; browser
+preferences cannot override the installation identity. Existing open tabs refresh it on return.
+
+| Theme | Typography | Palette and geometry |
 | --- | --- | --- |
-| `hero` | `exec-114fbd4c-dd0d-4765-b8cf-221b3467e2d7.png` | Studio, materials and people |
-| `archive` | `exec-d0de7655-8a58-4aa0-b87e-00be89b25a88.png` | Books and archival shelves |
-| `team` | `exec-e092c2bb-2c8f-4dca-a0b4-66f76f9b7d6d.png` | Team collaboration |
+| Humanistic | Geist / Instrument Serif | Existing sage, brass and graphite; original geometry |
+| Tech Pro | IBM Plex Sans / Space Grotesk | White/blue or navy/ice; precise corners |
+| Retro Future | DM Sans / Fraunces | Cream, burnt orange and teal; soft corners |
+| Dynamic Office | Manrope | Lime and navy; generous cards |
+| Luxury | DM Sans / Cormorant Garamond | Cream, navy and champagne; restrained corners |
 
-Each image has 1536-pixel and 768-pixel WebP exports in `public/landing/images`.
-All six exports total approximately 539 KiB. The hero is preloaded; lower images load
-lazily. The original PNGs remain in the generation archive.
+`frontend/src/styles/design-themes.css` owns palette, type, radii and content spacing.
+Legacy font preferences apply only to Humanistic. The landing consumes these tokens through
+its bridge and never imports the application layout stylesheet. New themes must preserve
+focus rings, menu labels, mobile targets and reduced-motion behavior.
+
+The four new identities include eight subjects in two lighting variants: 64 AI-generated
+scenes exported in AVIF and WebP at 640/1280 px. Their original prompts, master filenames
+and night-edit references are recorded in `public/editorial/themes/manifest.json`.
+Night editions change lighting while keeping each corresponding daytime scene and subjects.
+The existing Humanistic collection remains available at its original URLs.
 
 ## Verification
 

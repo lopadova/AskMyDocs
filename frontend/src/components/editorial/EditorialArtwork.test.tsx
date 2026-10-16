@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthLayout } from '../../features/auth/AuthLayout';
 import { useTheme } from '../shell/hooks';
 import { EditorialArtwork } from './EditorialArtwork';
+import { applyVisualTheme } from '@/lib/visual-theme';
 
 function ThemeControl() {
     const [theme, setTheme] = useTheme();
@@ -17,14 +18,28 @@ async function setRenderedTheme(theme?: string) {
 }
 
 describe('EditorialArtwork theme variants', () => {
+    it('switches authentication lighting without changing the installation identity', async () => {
+        document.documentElement.dataset.designTheme = 'luxury';
+        localStorage.setItem('amd-theme', 'light');
+        const { container } = render(<AuthLayout title="Sign in"><form aria-label="Login form" /></AuthLayout>);
+        const image = container.querySelector('.editorial-auth-story img')!;
+        await act(async () => undefined);
+        expect(image).toHaveAttribute('src', '/editorial/themes/luxury/knowledge-day.webp');
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' })));
+        expect(image).toHaveAttribute('src', '/editorial/themes/luxury/knowledge-night.webp');
+        expect(document.documentElement).toHaveAttribute('data-design-theme', 'luxury');
+        expect(localStorage.getItem('amd-theme')).toBe('dark');
+    });
     beforeEach(() => {
         document.documentElement.removeAttribute('data-theme');
+        document.documentElement.removeAttribute('data-design-theme');
         localStorage.removeItem('amd-theme');
     });
 
     afterEach(() => {
         cleanup();
         document.documentElement.removeAttribute('data-theme');
+        document.documentElement.removeAttribute('data-design-theme');
         localStorage.removeItem('amd-theme');
         vi.restoreAllMocks();
     });
@@ -126,5 +141,47 @@ describe('EditorialArtwork theme variants', () => {
         expect(image).toHaveAttribute('src', '/editorial/knowledge-day.webp');
         expect(container.querySelector('.editorial-auth-story picture source')).toHaveAttribute('sizes', '(max-width: 800px) 100vw, 50vw');
         expect(screen.getByRole('form', { name: 'Login form' })).toBeInTheDocument();
+    });
+
+    it('recomputes both image formats as installation identity and color mode change independently', async () => {
+        document.documentElement.dataset.designTheme = 'tech-pro';
+        const { container } = render(<EditorialArtwork artwork="archive" />);
+        const image = container.querySelector('img')!;
+        const source = container.querySelector('source')!;
+        expect(image).toHaveAttribute('src', '/editorial/themes/tech-pro/archive-night.webp');
+        await setRenderedTheme('light');
+        expect(image).toHaveAttribute('src', '/editorial/themes/tech-pro/archive-day.webp');
+        await act(async () => { applyVisualTheme('luxury'); });
+        expect(image).toHaveAttribute('srcset', '/editorial/themes/luxury/archive-day-small.webp 640w, /editorial/themes/luxury/archive-day.webp 1280w');
+        expect(source).toHaveAttribute('srcset', '/editorial/themes/luxury/archive-day-small.avif 640w, /editorial/themes/luxury/archive-day.avif 1280w');
+        await setRenderedTheme('dark');
+        expect(image).toHaveAttribute('src', '/editorial/themes/luxury/archive-night.webp');
+        await act(async () => { applyVisualTheme('humanistic'); });
+        expect(image).toHaveAttribute('src', '/editorial/archive-night.webp');
+    });
+
+    it('keeps a fixed preview independent from live theme changes without mutating global appearance', async () => {
+        document.documentElement.dataset.designTheme = 'tech-pro';
+        document.documentElement.dataset.theme = 'dark';
+        const writePreference = vi.spyOn(localStorage, 'setItem');
+        const { container } = render(<EditorialArtwork artwork="observatory" designTheme="luxury" colorMode="light" resolution="small" />);
+        const image = container.querySelector('img')!;
+        expect(image).toHaveAttribute('src', '/editorial/themes/luxury/observatory-day-small.webp');
+        expect(document.documentElement).toHaveAttribute('data-design-theme', 'tech-pro');
+        expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+        await act(async () => { applyVisualTheme('retro-future'); });
+        await setRenderedTheme('light');
+        expect(image).toHaveAttribute('src', '/editorial/themes/luxury/observatory-day-small.webp');
+        expect(container.querySelector('source')).toHaveAttribute('srcset', '/editorial/themes/luxury/observatory-day-small.avif');
+        expect(writePreference).not.toHaveBeenCalled();
+    });
+
+    it('allows previewing a design while still following the global personal color mode', async () => {
+        const { container } = render(<EditorialArtwork artwork="community" designTheme="dynamic-office" />);
+        const image = container.querySelector('img')!;
+        expect(image).toHaveAttribute('src', '/editorial/themes/dynamic-office/community-night.webp');
+        await setRenderedTheme('light');
+        expect(image).toHaveAttribute('src', '/editorial/themes/dynamic-office/community-day.webp');
+        expect(document.documentElement).not.toHaveAttribute('data-design-theme');
     });
 });

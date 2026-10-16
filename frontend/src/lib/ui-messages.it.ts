@@ -7,6 +7,7 @@ export const IT_MESSAGES: Record<string, string> = {
     'Home': 'Home', 'Conversations': 'Conversazioni', 'Quick chat': 'Chat rapida', 'Organised sessions': 'Sessioni organizzate',
     'Library': 'Biblioteca', 'Updates': 'Aggiornamenti', 'Personal apps': 'App personali',
     'Overview': 'Panoramica', 'Knowledge': 'Conoscenza', 'Integrations': 'Integrazioni', 'Automation': 'Automazioni',
+    'Appearance': 'Aspetto', 'Choose the platform’s visual identity.': 'Scegli l’identità visiva della piattaforma.',
     'People and projects': 'Persone e progetti', 'Governance': 'Governance', 'Operations': 'Operazioni',
     'Documents': 'Documenti', 'Quality': 'Qualità', 'Wiki': 'Wiki', 'Settings': 'Impostazioni',
     'Workspace area': 'Area di lavoro', 'Open navigation': 'Apri navigazione', 'Close navigation': 'Chiudi navigazione',

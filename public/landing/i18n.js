@@ -10,6 +10,7 @@ export const COPY = {
     "skip": "Vai al contenuto",
     "navigation": "Navigazione principale",
     "language": "Lingua",
+    "theme": "Modalità chiara",
     "menu": "Apri il menu",
     "close": "Chiudi",
     "nav": {
@@ -226,6 +227,7 @@ export const COPY = {
     "skip": "Skip to content",
     "navigation": "Main navigation",
     "language": "Language",
+    "theme": "Light mode",
     "menu": "Open menu",
     "close": "Close",
     "nav": {
@@ -442,6 +444,7 @@ export const COPY = {
     "skip": "Aller au contenu",
     "navigation": "Navigation principale",
     "language": "Langue",
+    "theme": "Mode clair",
     "menu": "Ouvrir le menu",
     "close": "Fermer",
     "nav": {
@@ -658,6 +661,7 @@ export const COPY = {
     "skip": "Zum Inhalt",
     "navigation": "Hauptnavigation",
     "language": "Sprache",
+    "theme": "Heller Modus",
     "menu": "Menü öffnen",
     "close": "Schließen",
     "nav": {
@@ -874,6 +878,7 @@ export const COPY = {
     "skip": "Ir al contenido",
     "navigation": "Navegación principal",
     "language": "Idioma",
+    "theme": "Modo claro",
     "menu": "Abrir el menú",
     "close": "Cerrar",
     "nav": {

@@ -29,11 +29,12 @@ export const api: AxiosInstance = axios.create({
  * - `/api/auth/*` + `/sanctum/*`: a stale persisted team would otherwise
  *   403 the bootstrap `me()` call and lock the user out before the team
  *   list can re-sync.
- * - `/api/system-admin/*`: the global control plane administers the tenant
- *   registry itself; target scoping is explicit in its service queries.
+ * - `/api/system-admin/*` + `/api/system/*`: the global control plane
+ *   administers the tenant registry and installation settings themselves;
+ *   target scoping is explicit in its service queries.
  * - `/testing/*`: E2E reset/seed endpoints operate deployment-wide.
  */
-const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/oauth/', '/api/system-admin/', '/sanctum/', '/testing/'];
+const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/oauth/', '/api/system-admin/', '/api/system/', '/sanctum/', '/testing/'];
 
 api.interceptors.request.use((config) => {
     const team = useTeamStore.getState().currentTeam;

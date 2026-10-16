@@ -1,5 +1,9 @@
+@php
+    $designTheme = app(\App\Services\Appearance\InstallationAppearance::class)->theme();
+    $editorialBase = $designTheme === 'humanistic' ? '/editorial' : '/editorial/themes/'.$designTheme;
+@endphp
 <!doctype html>
-<html lang="it">
+<html lang="it" data-design-theme="{{ $designTheme }}" data-theme="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,16 +13,17 @@
     <meta property="og:title" content="AskMyDocs — Il sapere che fa la differenza.">
     <meta property="og:description" content="La piattaforma AI che connette documenti, persone e conoscenza. Risposte con fonti, controllo dei dati e un nuovo vantaggio per il vostro team.">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="/editorial/knowledge-night.webp">
+    <meta property="og:image" content="{{ $editorialBase }}/knowledge-night.webp" data-editorial-og="knowledge">
     <link rel="icon" href="/landing/favicon.svg" type="image/svg+xml">
-    <link rel="preload" href="/editorial/knowledge-night.webp" as="image" imagesrcset="/editorial/knowledge-night-small.webp 640w, /editorial/knowledge-night.webp 1280w" imagesizes="100vw" fetchpriority="high">
+    <link rel="preload" href="{{ $editorialBase }}/knowledge-night.webp" as="image" imagesrcset="{{ $editorialBase }}/knowledge-night-small.webp 640w, {{ $editorialBase }}/knowledge-night.webp 1280w" imagesizes="100vw" fetchpriority="high" data-editorial-preload="knowledge">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=DM+Mono:wght@400;500&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/landing/styles.css?v=shadcn-select-1">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;family=DM+Mono:wght@400;500&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/landing/styles.css?v=design-themes-2">
+    <link rel="stylesheet" href="/landing/theme.css?v=design-themes-2">
     @viteReactRefresh
     @vite('frontend/src/landing-select.tsx')
-    <script type="module" src="/landing/app.js?v=shadcn-select-1"></script>
+    <script type="module" src="/landing/app.js?v=design-themes-2"></script>
   </head>
   <body class="landing-page">
     <a class="skip-link" href="#main" data-i18n="skip">Vai al contenuto</a>
@@ -38,6 +43,10 @@
           <label id="language-label" class="sr-only" for="language" data-i18n="language">Lingua</label>
           <div id="language-select-root" data-locale="it"></div>
         </div>
+        <button type="button" class="btn btn-quiet theme-toggle" id="theme-toggle" data-i18n-aria="theme" aria-label="Modalità chiara" aria-pressed="false">
+          <svg class="theme-icon-light" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+          <svg class="theme-icon-dark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.8 14a9 9 0 0 1-10.8-10.8A9 9 0 1 0 20.8 14Z"/></svg>
+        </button>
         <a class="login-link" href="/login" data-i18n="nav.login">Accedi</a>
         <a class="btn btn-primary header-cta" href="/app/me"><span data-i18n="nav.demo">Entra nella demo</span><span aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></span></a>
         <button class="btn btn-quiet menu-toggle" aria-controls="mobile-nav" aria-expanded="false" data-i18n-aria="menu" aria-label="Apri il menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16"></path></svg></button>
@@ -66,7 +75,7 @@
           </div>
         </div>
         <div class="hero-visual">
-          <img class="hero-image" src="/editorial/knowledge-night.webp" srcset="/editorial/knowledge-night-small.webp 640w, /editorial/knowledge-night.webp 1280w" sizes="100vw" width="1280" height="853" alt="Illustrazione di una biblioteca aperta, tra libri e percorsi di conoscenza" data-i18n-alt="images.hero" fetchpriority="high">
+          <img class="hero-image" src="{{ $editorialBase }}/knowledge-night.webp" srcset="{{ $editorialBase }}/knowledge-night-small.webp 640w, {{ $editorialBase }}/knowledge-night.webp 1280w" sizes="100vw" width="1280" height="853" alt="Illustrazione di una biblioteca aperta, tra libri e percorsi di conoscenza" data-i18n-alt="images.hero" data-editorial-artwork="knowledge" fetchpriority="high">
           <div class="image-index">
             <span>01 / 03</span>
             <span data-i18n="hero.caption">Il sapere umano. Una nuova prospettiva.</span>
@@ -127,7 +136,7 @@
         </div>
         <div class="experience-stage">
           <div class="archive-visual">
-            <img src="/editorial/archive-night.webp" srcset="/editorial/archive-night-small.webp 640w, /editorial/archive-night.webp 1280w" sizes="(max-width: 760px) 100vw, 30vw" width="1280" height="853" loading="lazy" alt="Illustrazione di un archivio di documenti ordinati" data-i18n-alt="images.archive">
+            <img src="{{ $editorialBase }}/archive-night.webp" srcset="{{ $editorialBase }}/archive-night-small.webp 640w, {{ $editorialBase }}/archive-night.webp 1280w" sizes="(max-width: 760px) 100vw, 30vw" width="1280" height="853" loading="lazy" alt="Illustrazione di un archivio di documenti ordinati" data-i18n-alt="images.archive" data-editorial-artwork="archive">
             <span class="archive-caption" data-i18n="experience.photoCaption">Un archivio. Infinite connessioni.</span>
           </div>
           <div class="demo-workspace">
@@ -152,7 +161,7 @@
         </div>
         <div class="possibilities-grid">
           <figure class="team-visual">
-            <img src="/editorial/community-night.webp" srcset="/editorial/community-night-small.webp 640w, /editorial/community-night.webp 1280w" sizes="(max-width: 760px) 100vw, 48vw" width="1280" height="853" loading="lazy" alt="Illustrazione di persone che collaborano attorno a un tavolo" data-i18n-alt="images.team">
+            <img src="{{ $editorialBase }}/community-night.webp" srcset="{{ $editorialBase }}/community-night-small.webp 640w, {{ $editorialBase }}/community-night.webp 1280w" sizes="(max-width: 760px) 100vw, 48vw" width="1280" height="853" loading="lazy" alt="Illustrazione di persone che collaborano attorno a un tavolo" data-i18n-alt="images.team" data-editorial-artwork="community">
             <figcaption>
               <span>03 / 03</span>
               <span data-i18n="possibilities.caption">Persone, idee e conoscenza. Insieme.</span>
@@ -265,7 +274,7 @@
     <dialog id="source-dialog" aria-labelledby="source-title">
       <div class="source-dialog-top">
         <span class="eyebrow" data-i18n="experience.sourceLabel">Fonte dimostrativa</span>
-        <button class="btn btn-quiet" id="close-source" data-i18n-aria="close" aria-label="Chiudi">✕</button>
+        <button class="btn btn-quiet" id="close-source" data-i18n-aria="close" aria-label="Chiudi"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </div>
       <h2 id="source-title"></h2>
       <p class="source-meta" id="source-meta"></p>

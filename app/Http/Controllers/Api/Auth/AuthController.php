@@ -210,6 +210,9 @@ class AuthController extends Controller
                 'density' => 'balanced',
                 'language' => SupportedLocale::normalize($user->locale),
             ],
+            'appearance' => [
+                'theme' => app(\App\Services\Appearance\InstallationAppearance::class)->theme(),
+            ],
             // R27 additive — UI capability hints for the SPA (never strip or
             // rename existing keys). `invitations_admin` mirrors the
             // INVITATIONS_ADMIN_ENABLED master switch: the native Invitations

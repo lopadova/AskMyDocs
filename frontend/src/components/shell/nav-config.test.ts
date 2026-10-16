@@ -38,6 +38,13 @@ describe('nav-config route identity', () => {
         expect(sessions?.feature).toBeUndefined();
         expect(browse?.feature).toBeUndefined();
     });
+    it('keeps appearance global and exclusive to super-admins', () => {
+        const appearance = NAV_ITEMS.find((item) => item.id === 'appearance');
+        expect(appearance?.scope).toBe('system');
+        expect(appearance?.roles).toEqual(['super-admin']);
+        expect(SECTION_ROUTES.appearance).toBe('/app/system/appearance');
+        expect(deriveSection(matcherFor('/app/system/appearance'))).toBe('appearance');
+    });
 });
 
 describe('deriveSection', () => {

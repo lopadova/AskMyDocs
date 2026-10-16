@@ -1,9 +1,21 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, beforeEach } from 'vitest';
 import { useAuthStore, hasRole, hasPermission } from './auth-store';
 
+let originalIdentity: string | null;
+let originalMode: string | null;
+
 beforeEach(() => {
+    originalIdentity = document.documentElement.getAttribute('data-design-theme');
+    originalMode = document.documentElement.getAttribute('data-theme');
     useAuthStore.getState().clear();
     useAuthStore.setState({ loading: true });
+});
+
+afterEach(() => {
+    if (originalIdentity === null) document.documentElement.removeAttribute('data-design-theme');
+    else document.documentElement.setAttribute('data-design-theme', originalIdentity);
+    if (originalMode === null) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', originalMode);
 });
 
 describe('useAuthStore', () => {
@@ -67,5 +79,38 @@ describe('useAuthStore', () => {
         expect(hasRole(state, 'super-admin')).toBe(false);
         expect(hasPermission(state, 'kb.read.any')).toBe(true);
         expect(hasPermission(state, 'nope')).toBe(false);
+    });
+
+    it('applies the installation identity from me while preserving the personal light/dark choice', () => {
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.dataset.designTheme = 'humanistic';
+        useAuthStore.getState().setMe({
+            user: { id: 1, name: 'Elena', email: 'elena@acme.io' }, roles: [], permissions: [], projects: [],
+            preferences: { theme: 'dark' }, appearance: { theme: 'tech-pro' },
+        });
+        expect(document.documentElement).toHaveAttribute('data-design-theme', 'tech-pro');
+        expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+        expect(useAuthStore.getState().loading).toBe(false);
+    });
+
+    it('preserves the server-rendered identity for old or invalid me payloads', () => {
+        document.documentElement.dataset.designTheme = 'luxury';
+        const identity = { user: { id: 1, name: 'Elena', email: 'elena@acme.io' }, roles: [], permissions: [], projects: [] };
+        useAuthStore.getState().setMe(identity);
+        expect(document.documentElement).toHaveAttribute('data-design-theme', 'luxury');
+        useAuthStore.getState().setMe({ ...identity, appearance: { theme: 'unknown-theme' } });
+        expect(document.documentElement).toHaveAttribute('data-design-theme', 'luxury');
+    });
+
+    it('keeps the installation identity on logout for guest authentication screens', () => {
+        document.documentElement.dataset.theme = 'light';
+        useAuthStore.getState().setMe({
+            user: { id: 1, name: 'Elena', email: 'elena@acme.io' }, roles: ['super-admin'], permissions: [], projects: [],
+            appearance: { theme: 'retro-future' },
+        });
+        useAuthStore.getState().clear();
+        expect(useAuthStore.getState().user).toBeNull();
+        expect(document.documentElement).toHaveAttribute('data-design-theme', 'retro-future');
+        expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     });
 });

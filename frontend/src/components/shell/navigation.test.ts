@@ -28,6 +28,12 @@ describe('navigation admission and discovery', () => {
         expect(canAccessNav(navItem('app-settings'), system)).toBe(false);
         expect(canAccessNav(navItem('users'), system)).toBe(false);
     });
+    it('reserves global appearance for super-admins, including those without a tenant', () => {
+        expect(canAccessNav(navItem('appearance'), { ...admin, roles: ['super-admin'], hasTenant: false })).toBe(true);
+        expect(canAccessNav(navItem('appearance'), { ...admin, roles: ['system-admin'], permissions: ['platform.admin'], features: { system_admin: true } })).toBe(false);
+        expect(canAccessNav(navItem('appearance'), admin)).toBe(false);
+        expect(visibleHubItems(NAV_HUBS.find((hub) => hub.id === 'system')!, { ...admin, roles: ['super-admin'], hasTenant: false }).map((item) => item.id)).toContain('appearance');
+    });
     it('keeps inactive features discoverable in hubs while omitting them from search', () => {
         const access = { ...admin, features: { modules: { flows: { enabled: false } } } };
         const automation = NAV_HUBS.find((hub) => hub.id === 'automation')!;

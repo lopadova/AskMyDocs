@@ -149,6 +149,8 @@
 .editorial-auth-caption > p { color: #d2d0c6; font-size: 14px; }
 .editorial-auth-main { display: flex; flex-direction: column; padding: 24px 40px 48px; min-width: 0; }
 .editorial-auth-tools { display: flex; align-items: center; justify-content: space-between; }
+.editorial-auth-preferences { display: flex; align-items: center; gap: 8px; }
+.editorial-auth-preferences .auth-theme-toggle { min-width: 44px; min-height: 44px; }
 .editorial-auth-tools > a { text-decoration: none; color: var(--fg-2); font-size: 13px; }
 .editorial-auth-form { width: 100%; max-width: 430px; margin: auto; padding: 40px 0; }
 .editorial-auth-form > h1 { font: 400 44px/1.07 var(--font-editorial); color: var(--fg-0); margin: 0 0 16px; }

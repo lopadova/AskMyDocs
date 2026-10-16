@@ -5,7 +5,11 @@ import { resolve } from 'node:path';
 import { COPY, LANGUAGES, resolveLocale, translate } from '../../public/landing/i18n.js';
 
 const publicRoot = resolve(process.cwd(), 'public');
-const html = readFileSync(resolve(process.cwd(), 'resources/views/landing.blade.php'), 'utf8').replace(/^\s*@vite.*$/gm, '');
+const html = readFileSync(resolve(process.cwd(), 'resources/views/landing.blade.php'), 'utf8')
+  .replace(/@php[\s\S]*?@endphp/g, '')
+  .replace(/{{\s*\$designTheme\s*}}/g, 'humanistic')
+  .replace(/{{\s*\$editorialBase\s*}}/g, '/editorial')
+  .replace(/^\s*@vite.*$/gm, '');
 const keys = (value, prefix = '') => Object.entries(value).flatMap(([key, item]) => {
   const path = prefix ? `${prefix}.${key}` : key;
   return typeof item === 'object' ? keys(item, path) : [path];
@@ -92,6 +96,54 @@ describe('public landing interactions', () => {
     languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-request', { detail: { locale: 'es' } }));
     expect(changed).toHaveBeenCalledOnce();
     expect(languageRoot.dataset.locale).toBe('es');
+  });
+
+  it('starts from the application appearance preference without changing the installation identity', async () => {
+    document.documentElement.dataset.designTheme = 'humanistic';
+    localStorage.setItem('amd-theme', 'light');
+    await import('../../public/landing/app.js');
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(document.documentElement.dataset.designTheme).toBe('humanistic');
+    expect(document.getElementById('theme-toggle').getAttribute('aria-pressed')).toBe('true');
+    expect(document.getElementById('theme-toggle').getAttribute('aria-label')).toBe(COPY.it.theme);
+  });
+
+  it('switches and persists light/dark while preserving the selected language and example', async () => {
+    history.replaceState(null, '', '/landing?lang=fr#experience');
+    await import('../../public/landing/app.js');
+    document.getElementById('scenario-1').click();
+    const toggle = document.getElementById('theme-toggle');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(toggle.getAttribute('aria-label')).toBe(COPY.fr.theme);
+    toggle.click();
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem('amd-theme')).toBe('light');
+    expect(document.querySelector('.demo-question').textContent).toBe(COPY.fr.scenarios[1].question);
+    expect(location.search).toBe('?lang=fr');
+    toggle.click();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(localStorage.getItem('amd-theme')).toBe('dark');
+  });
+
+  it('uses dark for an invalid appearance value and persists a valid choice on activation', async () => {
+    localStorage.setItem('amd-theme', 'sepia');
+    await import('../../public/landing/app.js');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    document.getElementById('theme-toggle').click();
+    expect(localStorage.getItem('amd-theme')).toBe('light');
+  });
+
+  it('refreshes appearance from another application page on focus or storage changes', async () => {
+    await import('../../public/landing/app.js');
+    localStorage.setItem('amd-theme', 'light');
+    window.dispatchEvent(new Event('focus'));
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(document.getElementById('theme-toggle').getAttribute('aria-pressed')).toBe('true');
+    localStorage.setItem('amd-theme', 'dark');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'amd-theme', newValue: 'dark' }));
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
   it('supports keyboard tabs, wraps between examples and gives one tab a focus stop', async () => {

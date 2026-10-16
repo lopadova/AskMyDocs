@@ -23,6 +23,7 @@ export type SidebarSection =
     | 'teams'
     | 'tenant-control'
     | 'super-admins'
+    | 'appearance'
     | 'users'
     | 'roles'
     | 'kb'
@@ -118,6 +119,14 @@ export const NAV_GROUPS: NavGroup[] = [
                 icon: 'Shield',
                 route: '/app/system/super-admins',
                 feature: 'system_admin',
+                scope: 'system',
+            },
+            {
+                id: 'appearance',
+                label: 'Appearance',
+                icon: 'Sliders',
+                route: '/app/system/appearance',
+                roles: ['super-admin'],
                 scope: 'system',
             },
         ],

@@ -26,12 +26,12 @@ export const NAV_HUBS: NavHub[] = [
     { id: 'organisation', area: 'admin', label: 'People and projects', description: 'Bring people, access, and projects together.', icon: 'Users', artwork: 'community', topics: [{ label: 'People and projects', items: ['projects', 'teams', 'users', 'roles', 'invitations'] }] },
     { id: 'governance', area: 'admin', label: 'Governance', description: 'Keep oversight of privacy, evidence, and compliance.', icon: 'Shield', artwork: 'trust', topics: [{ label: 'Governance', items: ['ai-act-compliance', 'compliance-reports', 'evidence-risk-review', 'pii-redactor'] }] },
     { id: 'operations', area: 'admin', label: 'Operations', description: 'Observe services and keep your workspace running.', icon: 'Activity', artwork: 'observatory', topics: [{ label: 'Operations', items: ['eval-harness', 'widget', 'logs', 'maintenance'] }] },
-    { id: 'system', area: 'system', label: 'System', description: 'Manage the platform and its shared configuration.', icon: 'Sliders', artwork: 'trust', topics: [{ label: 'System', items: ['tenant-control', 'super-admins', 'app-settings', 'mcp-tools', 'mcp-tokens'] }] },
+    { id: 'system', area: 'system', label: 'System', description: 'Manage the platform and its shared configuration.', icon: 'Sliders', artwork: 'trust', topics: [{ label: 'System', items: ['tenant-control', 'super-admins', 'appearance', 'app-settings', 'mcp-tools', 'mcp-tokens'] }] },
 ];
 
 const PERSONAL = new Set<SidebarSection>(['my-kb', 'digest', 'connected-apps']);
 const WORKSPACE = new Set<SidebarSection>([...WORKSPACE_ITEMS, 'sessions']);
-const SUPER_ONLY = new Set<SidebarSection>(['mcp-tools', 'mcp-tokens', 'app-settings']);
+const SUPER_ONLY = new Set<SidebarSection>(['mcp-tools', 'mcp-tokens', 'app-settings', 'appearance']);
 const DPO = new Set<SidebarSection>(['ai-act-compliance', 'evidence-risk-review', 'pii-redactor', 'flows']);
 const VIEWER_READ = new Set<SidebarSection>(['tabular-reviews', 'workflows']);
 export const NAV_LABELS: Partial<Record<SidebarSection, string>> = { 'my-kb': 'Home', chat: 'Quick chat', sessions: 'Organised sessions', 'kb-browse': 'Library', digest: 'Updates', 'connected-apps': 'Personal apps' };
@@ -49,7 +49,7 @@ export const NAV_DESCRIPTIONS: Partial<Record<SidebarSection, string>> = {
     projects: 'Organise knowledge into projects.', teams: 'Manage your organisation and its identity.', users: 'Manage accounts and project memberships.', roles: 'Review shared roles and their permissions.', invitations: 'Invite people and follow their access journey.',
     'ai-act-compliance': 'Consult oversight and compliance registers.', 'compliance-reports': 'Generate and verify quarterly evidence reports.', 'evidence-risk-review': 'Review evidence, risks, and decisions.', 'pii-redactor': 'Inspect personal-data protection and its audit trail.',
     'eval-harness': 'Evaluate answer quality and compare runs.', widget: 'Manage embedded assistants and their sessions.', logs: 'Inspect activity, errors, and operational events.', maintenance: 'Run approved maintenance and review its history.',
-    'tenant-control': 'Manage organisations across the platform.', 'super-admins': 'Review platform administrators and their associations.', 'app-settings': 'Manage shared runtime configuration.', 'mcp-tools': 'Manage MCP servers and audit tool calls.', 'mcp-tokens': 'Manage external MCP access tokens.',
+    'tenant-control': 'Manage organisations across the platform.', 'super-admins': 'Review platform administrators and their associations.', appearance: 'Choose the platform’s visual identity.', 'app-settings': 'Manage shared runtime configuration.', 'mcp-tools': 'Manage MCP servers and audit tool calls.', 'mcp-tokens': 'Manage external MCP access tokens.',
 };
 export function navDescription(item: NavItem): string { return NAV_DESCRIPTIONS[item.id] ?? ''; }
 export function navItem(id: SidebarSection): NavItem { return NAV_ITEMS.find((item) => item.id === id)!; }

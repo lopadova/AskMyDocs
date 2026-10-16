@@ -227,7 +227,7 @@ export function McpConnectionsPanel({
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="mcp-connection-form-title"
-                        style={{ ...modalPanelStyle(720), minWidth: 0, padding: 0, gap: 0, overflow: 'hidden' }}
+                        style={{ ...modalPanelStyle(720), borderRadius: 'var(--design-card-radius, 12px)', minWidth: 0, padding: 0, gap: 0, overflow: 'hidden' }}
                     >
                         <div style={modalHeaderStyle}>
                             <SourceAvatar connectorKey="mcp" displayName="MCP" size={38} radius={10} />
@@ -755,23 +755,23 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
     );
 }
 
-const panelStyle: CSSProperties = { display: 'grid', gap: 14, border: '1px solid var(--hairline)', borderRadius: 14, background: 'var(--bg-1)', padding: 18 };
+const panelStyle: CSSProperties = { display: 'grid', gap: 14, border: '1px solid var(--hairline)', borderRadius: 'var(--design-card-radius, 14px)', background: 'var(--bg-1)', padding: 'var(--design-card-padding, 18px)' };
 const embeddedPanelStyle: CSSProperties = { display: 'grid', gap: 10 };
 const titleStyle: CSSProperties = { margin: 0, color: 'var(--fg-0)', fontSize: 18 };
 const subtitleStyle: CSSProperties = { margin: '6px 0 0', color: 'var(--fg-3)', fontSize: 13, lineHeight: 1.5 };
 const groupHeadingStyle: CSSProperties = { margin: 0, fontSize: 12, fontWeight: 650, textTransform: 'uppercase', letterSpacing: '.055em', color: 'var(--fg-3)' };
-const cardStyle: CSSProperties = { position: 'relative', border: '1px solid var(--hairline)', borderRadius: 12, background: 'var(--bg-1)', boxShadow: '0 1px 0 rgba(255,255,255,.02)' };
-const cardHeaderStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: 13, flexWrap: 'wrap' };
+const cardStyle: CSSProperties = { position: 'relative', border: '1px solid var(--hairline)', borderRadius: 'var(--design-card-radius, 12px)', background: 'var(--bg-1)', boxShadow: '0 1px 0 rgba(255,255,255,.02)' };
+const cardHeaderStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: 'var(--design-card-padding, 13px)', flexWrap: 'wrap' };
 const cardActionsStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' };
 const endpointStyle: CSSProperties = { marginTop: 4, color: 'var(--fg-3)', fontSize: 11.5, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const summaryBadgeStyle: CSSProperties = { borderRadius: 999, padding: '3px 8px', background: 'var(--bg-2)', color: 'var(--fg-2)', fontSize: 10.5, whiteSpace: 'nowrap' };
-const detailsStyle: CSSProperties = { display: 'grid', gap: 12, padding: '0 13px 13px', borderTop: '1px solid var(--hairline)' };
+const detailsStyle: CSSProperties = { display: 'grid', gap: 12, padding: '0 var(--design-card-padding, 13px) var(--design-card-padding, 13px)', borderTop: '1px solid var(--hairline)' };
 const metadataBarStyle: CSSProperties = { display: 'flex', gap: 14, padding: '10px 0 0', color: 'var(--fg-3)', fontSize: 10.5, fontFamily: 'var(--font-mono)', overflow: 'hidden' };
 const capabilityStyle: CSSProperties = { border: '1px solid var(--hairline)', borderRadius: 9, background: 'var(--bg-0)', padding: '0 10px' };
 const capabilityHeadingStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 7, minHeight: 36, color: 'var(--fg-1)', fontSize: 12, fontWeight: 650 };
 const emptyCapabilityStyle: CSSProperties = { padding: '0 0 10px', color: 'var(--fg-3)', fontSize: 11.5 };
 const countBadgeStyle: CSSProperties = { borderRadius: 999, padding: '1px 7px', color: 'var(--fg-2)', background: 'var(--bg-2)', fontSize: 10.5, fontWeight: 600 };
-const inputStyle: CSSProperties = { width: '100%', boxSizing: 'border-box', borderRadius: 8, border: '1px solid var(--hairline)', background: 'var(--bg-2)', color: 'var(--fg-0)', padding: '9px 10px', font: 'inherit' };
+const inputStyle: CSSProperties = { width: '100%', boxSizing: 'border-box', borderRadius: 'var(--design-control-radius, 8px)', border: '1px solid var(--hairline)', background: 'var(--bg-2)', color: 'var(--fg-0)', padding: '9px 10px', font: 'inherit' };
 const emptyStyle: CSSProperties = { padding: 18, textAlign: 'center', color: 'var(--fg-3)', border: '1px dashed var(--hairline)', borderRadius: 10, fontSize: 12.5 };
 const errorStyle: CSSProperties = { padding: 10, color: '#fca5a5', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, fontSize: 12.5 };
 const successStyle: CSSProperties = { padding: 10, color: '#86efac', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 8, fontSize: 12.5 };

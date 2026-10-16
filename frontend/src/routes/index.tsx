@@ -52,6 +52,7 @@ import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallbac
 import { ApiConnectorsView } from '../features/admin/api-connectors/ApiConnectorsView';
 import { IngestionView } from '../features/admin/ingestion/IngestionView';
 import { AppSettingsView } from '../features/admin/app-settings/AppSettingsView';
+import { AppearanceView } from '../features/system-admin/appearance/AppearanceView';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
 import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
@@ -663,6 +664,22 @@ const systemAdminSuperAdminsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'system/super-admins',
     component: SystemAdminSuperAdminsRoute,
+});
+
+function SystemAppearanceRoute() {
+    return (
+        <AppShell tenantScoped={false}>
+            <RequireRole roles={['super-admin']}>
+                <AppearanceView />
+            </RequireRole>
+        </AppShell>
+    );
+}
+
+const systemAppearanceRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'system/appearance',
+    component: SystemAppearanceRoute,
 });
 
 function NoTenantAssignedRoute() {
@@ -1622,6 +1639,7 @@ const routeTree = rootRoute.addChildren([
         appIndexRoute,
         systemAdminTenantControlRoute,
         systemAdminSuperAdminsRoute,
+        systemAppearanceRoute,
         companyOnboardingRoute,
         tenantWelcomeRoute,
         noTenantAssignedRoute,
