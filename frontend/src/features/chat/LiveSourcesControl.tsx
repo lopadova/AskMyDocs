@@ -1,5 +1,6 @@
 import { useUiTranslation } from "../../lib/ui-locale";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import * as Popover from '@radix-ui/react-popover';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
 import type { LiveSourceKind, LiveSourceOption, LiveSourceSelection } from './chat.api';
@@ -52,7 +53,6 @@ function LiveSourceGroup({
     const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
-    const rootRef = useRef<HTMLDivElement>(null);
     const enabled = useMemo(() => new Set(enabledKeys), [enabledKeys]);
     const visible = useMemo(() => {
         const normalized = query.trim().toLocaleLowerCase();
@@ -65,21 +65,8 @@ function LiveSourceGroup({
     }, [options, query]);
 
     useEffect(() => {
-        if (!open) return;
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setOpen(false);
-        };
-        const onPointerDown = (event: MouseEvent) => {
-            if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-        };
-        document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('mousedown', onPointerDown, true);
-
-        return () => {
-            document.removeEventListener('keydown', onKeyDown);
-            document.removeEventListener('mousedown', onPointerDown, true);
-        };
-    }, [open]);
+        if (disabled) setOpen(false);
+    }, [disabled]);
 
     if (options.length === 0) return null;
 
@@ -96,114 +83,120 @@ function LiveSourceGroup({
     };
 
     return (
-        <div className="chat-live-source-group" ref={rootRef}>
-            <button
-                type="button"
-                className="chat-live-source-trigger"
-                data-kind={kind}
-                data-state={enabledCount === 0 ? 'off' : allEnabled ? 'all' : 'partial'}
-                data-testid={`chat-live-source-${kind}-trigger`}
-                aria-label={translateInterface('{kind} sources: {count} of {total} enabled', { kind: label, count: enabledCount, total: options.length })}
-                aria-expanded={open}
-                aria-haspopup="dialog"
-                disabled={disabled}
-                onClick={() => setOpen((current) => !current)}
-            >
-                <span className="chat-live-source-icon" aria-hidden="true"><IconComponent size={13} /></span>
-                <span>{label}</span>
-                <span className="chat-live-source-status" aria-hidden="true" />
-                <span className="chat-live-source-count">{enabledCount}/{options.length}</span>
-                <span aria-hidden="true"><Icon.ChevronDown size={11} /></span>
-            </button>
-
-            {open && (
-                <div
-                    className="chat-live-source-popover"
-                    data-testid={`chat-live-source-${kind}-popover`}
-                    role="dialog"
-                    aria-label={translateInterface('{kind} source settings', { kind: label })}
-                >
-                    <header className="chat-live-source-popover-header">
-                        <span className="chat-live-source-popover-icon" data-kind={kind} aria-hidden="true">
-                            <IconComponent size={15} />
-                        </span>
-                        <span>
-                            <strong>{translateInterface('{kind} connections', { kind: label })}</strong>
-                            <small>{translateInterface('Choose what the agent may call')}</small>
-                        </span>
-                        <Button
-                            variant="quiet"
-                            size="sm"
-                            iconOnly
-                            aria-label={translateInterface('Close {kind} source settings', { kind: label })}
-                            data-testid={`chat-live-source-${kind}-close`}
-                            onClick={() => setOpen(false)}
-                        >
-                            <Icon.Close size={13} />
-                        </Button>
-                    </header>
-
-                    {options.length > 7 && (
-                        <label className="chat-live-source-search">
-                            <span aria-hidden="true"><Icon.Search size={13} /></span>
-                            <input
-                                data-testid={`chat-live-source-${kind}-search`}
-                                type="search"
-                                value={query}
-                                onChange={(event) => setQuery(event.target.value)}
-                                placeholder={translateInterface('Find a {kind} connection', { kind: label })}
-                                aria-label={translateInterface('Search {kind} connections', { kind: label })}
-                            />
-                        </label>
-                    )}
-
+        <Popover.Root open={open && !disabled} onOpenChange={setOpen}>
+            <div className="chat-live-source-group">
+                <Popover.Trigger asChild>
                     <button
                         type="button"
-                        className="chat-live-source-all"
-                        role="switch"
-                        data-testid={`chat-live-source-${kind}-toggle-all`}
-                        aria-checked={allEnabled}
-                        onClick={() => onChange(allEnabled ? [] : options.map((option) => option.key))}
+                        className="chat-live-source-trigger"
+                        data-kind={kind}
+                        data-state={enabledCount === 0 ? 'off' : allEnabled ? 'all' : 'partial'}
+                        data-testid={`chat-live-source-${kind}-trigger`}
+                        aria-label={translateInterface('{kind} sources: {count} of {total} enabled', { kind: label, count: enabledCount, total: options.length })}
+                        aria-expanded={open && !disabled}
+                        aria-haspopup="dialog"
+                        disabled={disabled}
                     >
-                        <span>
-                            <strong>{translateInterface(allEnabled ? 'Disable all' : 'Enable all')}</strong>
-                            <small>{translateInterface('{count} of {total} available', { count: enabledCount, total: options.length })}</small>
-                        </span>
-                        <Switch checked={allEnabled} />
+                        <span className="chat-live-source-icon" aria-hidden="true"><IconComponent size={13} /></span>
+                        <span>{label}</span>
+                        <span className="chat-live-source-status" aria-hidden="true" />
+                        <span className="chat-live-source-count">{enabledCount}/{options.length}</span>
+                        <span aria-hidden="true"><Icon.ChevronDown size={11} /></span>
                     </button>
+                </Popover.Trigger>
 
-                    <div className="chat-live-source-list">
-                        {visible.map((option) => {
-                            const checked = enabled.has(option.key);
-                            return (
-                                <button
-                                    key={option.key}
-                                    type="button"
-                                    className="chat-live-source-row"
-                                    data-testid={`chat-live-source-option-${option.key}`}
-                                    role="switch"
-                                    aria-checked={checked}
-                                    onClick={() => setOne(option.key, !checked)}
-                                >
-                                    <span className="chat-live-source-row-copy">
-                                        <strong>{option.name}</strong>
-                                        <small>
-                                            {option.tool_count} {option.tool_count === 1 ? 'tool' : 'tools'}
-                                            {option.project_key ? ` · ${option.project_key}` : ''}
-                                        </small>
-                                    </span>
-                                    <Switch checked={checked} />
-                                </button>
-                            );
-                        })}
-                        {visible.length === 0 && (
-                            <div className="chat-live-source-empty">{translateInterface('No matching connections.')}</div>
+                <Popover.Portal>
+                    <Popover.Content
+                        className="chat-live-source-popover"
+                        data-testid={`chat-live-source-${kind}-popover`}
+                        aria-label={translateInterface('{kind} source settings', { kind: label })}
+                        side="top"
+                        align="end"
+                        sideOffset={9}
+                        collisionPadding={14}
+                        hideWhenDetached
+                    >
+                        <header className="chat-live-source-popover-header">
+                            <span className="chat-live-source-popover-icon" data-kind={kind} aria-hidden="true">
+                                <IconComponent size={15} />
+                            </span>
+                            <span>
+                                <strong>{translateInterface('{kind} connections', { kind: label })}</strong>
+                                <small>{translateInterface('Choose what the agent may call')}</small>
+                            </span>
+                            <Popover.Close asChild><Button
+                                variant="quiet"
+                                size="sm"
+                                iconOnly
+                                aria-label={translateInterface('Close {kind} source settings', { kind: label })}
+                                data-testid={`chat-live-source-${kind}-close`}
+                            >
+                                <Icon.Close size={13} />
+                            </Button></Popover.Close>
+                        </header>
+
+                        {options.length > 7 && (
+                            <label className="chat-live-source-search">
+                                <span aria-hidden="true"><Icon.Search size={13} /></span>
+                                <input
+                                    data-testid={`chat-live-source-${kind}-search`}
+                                    type="search"
+                                    value={query}
+                                    onChange={(event) => setQuery(event.target.value)}
+                                    placeholder={translateInterface('Find a {kind} connection', { kind: label })}
+                                    aria-label={translateInterface('Search {kind} connections', { kind: label })}
+                                />
+                            </label>
                         )}
-                    </div>
-                    <footer>{translateInterface('Applies to the next message')}</footer>
-                </div>
-            )}
-        </div>
+
+                        <button
+                            type="button"
+                            className="chat-live-source-all"
+                            role="switch"
+                            data-testid={`chat-live-source-${kind}-toggle-all`}
+                            aria-checked={allEnabled}
+                            onClick={() => onChange(allEnabled ? [] : options.map((option) => option.key))}
+                        >
+                            <span>
+                                <strong>{translateInterface(allEnabled ? 'Disable all' : 'Enable all')}</strong>
+                                <small>{translateInterface('{count} of {total} available', { count: enabledCount, total: options.length })}</small>
+                            </span>
+                            <Switch checked={allEnabled} />
+                        </button>
+
+                        <div className="chat-live-source-list">
+                            {visible.map((option) => {
+                                const checked = enabled.has(option.key);
+                                return (
+                                    <button
+                                        key={option.key}
+                                        type="button"
+                                        className="chat-live-source-row"
+                                        data-testid={`chat-live-source-option-${option.key}`}
+                                        role="switch"
+                                        aria-checked={checked}
+                                        onClick={() => setOne(option.key, !checked)}
+                                    >
+                                        <span className="chat-live-source-row-copy">
+                                            <strong>{option.name}</strong>
+                                            <small>
+                                                {option.tool_count} {option.tool_count === 1 ? 'tool' : 'tools'}
+                                                {option.project_key ? ` · ${option.project_key}` : ''}
+                                            </small>
+                                        </span>
+                                        <Switch checked={checked} />
+                                    </button>
+                                );
+                            })}
+                            {visible.length === 0 && (
+                                <div className="chat-live-source-empty">{translateInterface('No matching connections.')}</div>
+                            )}
+                        </div>
+                        <footer>{translateInterface('Applies to the next message')}</footer>
+                    </Popover.Content>
+                </Popover.Portal>
+            </div>
+        </Popover.Root>
     );
 }
 

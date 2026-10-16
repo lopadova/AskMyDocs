@@ -1780,19 +1780,22 @@ textarea:focus-visible {
 }
 .chat-live-source-trigger > span:last-child { display: grid; place-items: center; color: var(--fg-3); }
 .chat-live-source-popover {
-  position: absolute;
   z-index: 80;
-  left: 0;
-  bottom: calc(100% + 9px);
-  width: min(340px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 28px));
+  max-height: min(520px, var(--radix-popover-content-available-height, calc(100dvh - 28px)));
   overflow: hidden;
   border: 1px solid var(--panel-border-strong);
   border-radius: 15px;
   background: color-mix(in srgb, var(--panel-solid) 98%, var(--accent-a) 2%);
   box-shadow: 0 22px 60px -26px rgba(4, 6, 18, .48), var(--shadow);
   color: var(--fg-1);
+  font-family: var(--font-sans);
+  transform-origin: var(--radix-popover-content-transform-origin);
   animation: chat-live-source-enter .16s ease-out both;
 }
+.chat-live-source-popover > :not(.chat-live-source-list) { flex-shrink: 0; }
 @keyframes chat-live-source-enter {
   from { opacity: 0; transform: translateY(5px) scale(.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -1804,7 +1807,7 @@ textarea:focus-visible {
   padding: 12px;
   border-bottom: 1px solid var(--panel-border);
 }
-.chat-live-source-popover-header > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.chat-live-source-popover-header > span:nth-child(2) { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .chat-live-source-popover-header strong { color: var(--fg-0); font-size: 12px; font-weight: 670; }
 .chat-live-source-popover-header small { color: var(--fg-3); font-size: 10.5px; }
 .chat-live-source-popover-icon {
@@ -1880,6 +1883,7 @@ textarea:focus-visible {
 .chat-live-source-all small,
 .chat-live-source-row small { color: var(--fg-3); font-size: 10px; }
 .chat-live-source-list {
+  min-height: 0;
   max-height: min(280px, 38vh);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -3156,14 +3160,11 @@ textarea:focus-visible {
     bottom: 92px;
     width: auto;
   }
-  .chat-live-source-popover {
-    position: fixed;
-    left: 14px;
-    right: 14px;
-    bottom: 92px;
-    width: auto;
-    max-height: min(520px, calc(100vh - 120px));
-  }
+  .chat-live-source-trigger,
+  .chat-live-source-all,
+  .chat-live-source-row { min-height: 44px; }
+  .chat-live-source-popover-header .ui-button { min-width: 44px; min-height: 44px; }
+  .chat-live-source-search input { font-size: 16px; }
   .chat-live-source-list { max-height: min(280px, 36vh); }
 }
 
