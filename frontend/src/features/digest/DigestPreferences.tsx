@@ -1,8 +1,25 @@
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { digestApi, DIGEST_PREFERENCES_QUERY_KEY } from './digest.api';
+import './digest.css';
+
+const SECTION_LABELS: Record<string, string> = {
+    metrics: 'Activity overview',
+    new_docs: 'New & promoted',
+    stale_docs: 'Needs review',
+    top_gaps: 'Top unanswered',
+    leaderboard: 'Top contributors',
+};
+
+const FREQUENCY_HINTS: Record<string, string> = {
+    weekly: 'A summary every week.',
+    monthly: 'A summary every month.',
+    off: 'Pause scheduled updates.',
+};
 
 /**
  * v8.15/W3.2 — per-user digest preferences: cadence (radio) + section toggles
@@ -69,17 +86,19 @@ export function DigestPreferences(): ReactNode {
             data-testid="digest-pref"
             data-state={dataState}
             aria-busy={query.isFetching}
-            style={{ padding: 24, maxWidth: 560 }}
+            className="digest-preferences editorial-surface"
         >
-            <h2 style={{ marginTop: 0 }}>{translateInterface("Digest preferences")}</h2>
+            <EditorialArtwork artwork="processes" className="editorial-surface-art" resolution="small" />
+            <h2 className="digest-panel-title">{translateInterface("Digest preferences")}</h2>
+            <p className="digest-panel-description">{translateInterface('Choose the rhythm and content of your updates.')}</p>
 
             {dataState === 'loading' && <p data-testid="digest-pref-loading">{translateInterface("Loading…")}</p>}
 
             {dataState === 'error' && (
-                <div data-testid="digest-pref-error" role="alert">
+                <div className="digest-message" data-testid="digest-pref-error" role="alert">
                     {translateInterface("Could not load your preferences.")}{' '}
-                    <button type="button" data-testid="digest-pref-retry" onClick={() => void query.refetch()}>
-                        {translateInterface("Retry")}</button>
+                    <Button variant="quiet" size="sm" data-testid="digest-pref-retry" onClick={() => void query.refetch()}>
+                        {translateInterface("Retry")}</Button>
                 </div>
             )}
 
@@ -97,59 +116,66 @@ export function DigestPreferences(): ReactNode {
                         saveMut.mutate({ frequency, sections: allSelected ? null : sections });
                     }}
                 >
-                    <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
-                        <legend style={{ fontWeight: 600, marginBottom: 8 }}>{translateInterface("How often?")}</legend>
+                    <fieldset className="digest-fieldset">
+                        <legend>{translateInterface("How often?")}</legend>
+                        <div className="digest-frequency-options">
                         {query.data.available_frequencies.map((freq) => (
-                            <label key={freq} style={{ display: 'block', padding: '4px 0' }}>
+                            <label key={freq} className="digest-frequency-option" data-selected={frequency === freq}>
                                 <input
                                     type="radio"
                                     name="digest-frequency"
                                     value={freq}
                                     checked={frequency === freq}
-                                    aria-label={`${freq} digest`}
                                     data-testid={`digest-pref-frequency-${freq}`}
                                     onChange={() => setFrequency(freq)}
-                                />{' '}
-                                {translateInterface(freq === 'off' ? 'Off' : freq.charAt(0).toUpperCase() + freq.slice(1))}
+                                />
+                                <span>
+                                    <strong>{translateInterface(freq === 'off' ? 'Off' : freq.charAt(0).toUpperCase() + freq.slice(1))}</strong>
+                                    {FREQUENCY_HINTS[freq] && <small>{translateInterface(FREQUENCY_HINTS[freq])}</small>}
+                                </span>
                             </label>
                         ))}
+                        </div>
                     </fieldset>
 
-                    <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
-                        <legend style={{ fontWeight: 600, marginBottom: 8 }}>{translateInterface("Sections to include")}</legend>
+                    <fieldset className="digest-fieldset">
+                        <legend>{translateInterface("Sections to include")}</legend>
+                        <div className="digest-section-options">
                         {query.data.available_sections.map((key) => (
-                            <label key={key} style={{ display: 'block', padding: '4px 0' }}>
+                            <label key={key} className="digest-section-option">
                                 <input
                                     type="checkbox"
                                     checked={sections.includes(key)}
-                                    aria-label={`Include ${key.replace('_', ' ')}`}
                                     data-testid={`digest-pref-section-${key}`}
                                     onChange={() => toggleSection(key)}
-                                />{' '}
-                                {translateInterface(key.replaceAll('_', ' '))}
+                                />
+                                <span>{translateInterface(SECTION_LABELS[key] ?? key.replaceAll('_', ' '))}</span>
                             </label>
                         ))}
+                        </div>
                     </fieldset>
 
-                    {dirty && <span data-testid="digest-pref-dirty">{translateInterface("Unsaved changes")}</span>}
+                    {dirty && <span className="digest-save-status" data-testid="digest-pref-dirty">{translateInterface("Unsaved changes")}</span>}
 
                     {saveMut.isError && (
-                        <div data-testid="digest-pref-save-error" role="alert" style={{ color: 'var(--err)' }}>
+                        <div className="digest-save-status digest-save-error" data-testid="digest-pref-save-error" role="alert">
                             {translateInterface("Could not save your preferences. Please try again.")}</div>
                     )}
                     {saveMut.isSuccess && !dirty && (
-                        <div data-testid="digest-pref-save-success" role="status">
+                        <div className="digest-save-status" data-testid="digest-pref-save-success" role="status">
                             {translateInterface("Saved.")}</div>
                     )}
 
-                    <div style={{ marginTop: 12 }}>
-                        <button
+                    <div className="digest-preferences-actions">
+                        <Button
                             type="submit"
+                            variant="primary"
                             data-testid="digest-pref-save"
-                            disabled={!dirty || saveMut.isPending}
+                            disabled={!dirty}
+                            busy={saveMut.isPending}
                         >
-                            {saveMut.isPending ? 'Saving…' : translateInterface("Save preferences")}
-                        </button>
+                            {translateInterface("Save preferences")}
+                        </Button>
                     </div>
                 </form>
             )}

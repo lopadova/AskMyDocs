@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles/globals.css';
 import './styles/editorial.css';
+import './styles/editorial-surfaces.css';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {

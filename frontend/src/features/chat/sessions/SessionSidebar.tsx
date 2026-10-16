@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../../components/Icons';
 import { Button } from '../../../components/Button';
+import { EditorialArtwork } from '../../../components/editorial/EditorialArtwork';
 import { ProjectSelector } from '../ProjectSelector';
 import {
     chatApi,
@@ -192,13 +193,11 @@ export function SessionSidebar({
                 material every session draws on, not one of them. */}
             <button
                 type="button"
-                className="chat-sessions-kb-entry"
+                className="chat-sessions-kb-entry editorial-surface"
                 data-testid="chat-sessions-kb-entry"
                 onClick={onOpenKnowledgeBase}
             >
-                <span className="chat-sessions-kb-icon" aria-hidden="true">
-                    <Icon.Book size={15} />
-                </span>
+                <EditorialArtwork artwork="archive" className="editorial-surface-art" resolution="small" />
                 <span className="chat-sessions-kb-copy">
                     <span className="chat-sessions-kb-title">{translateInterface("Knowledge base")}</span>
                     <span className="chat-sessions-kb-hint">{translateInterface("Browse documents")}</span>
@@ -228,7 +227,6 @@ export function SessionSidebar({
                     data-testid="chat-sessions-new"
                     busy={createSession.isPending}
                     onClick={() => createSession.mutate()}
-                    leadingIcon={<Icon.Plus size={13} />}
                 >
                     {translateInterface("New session")}</Button>
                 <Button
@@ -236,7 +234,6 @@ export function SessionSidebar({
                     size="sm"
                     data-testid="chat-sessions-new-folder"
                     onClick={() => setFolderDialog({ mode: 'create' })}
-                    leadingIcon={<Icon.Folder size={13} />}
                 >
                     {translateInterface("New folder")}</Button>
             </div>

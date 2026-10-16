@@ -1,0 +1,193 @@
+.personal-dashboard {
+    display: grid;
+    gap: 28px;
+    padding: 24px;
+    min-width: 0;
+}
+
+.personal-dashboard .personal-dashboard-title {
+    margin: 0;
+    color: var(--fg-0);
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -.025em;
+}
+
+.personal-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.personal-kpi {
+    min-width: 0;
+    min-height: 138px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 22px 24px;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    background: var(--bg-1);
+}
+
+.personal-kpi-label {
+    color: var(--fg-2);
+    font-size: 12px;
+    line-height: 1.5;
+    font-weight: 500;
+}
+
+.personal-kpi-value {
+    color: var(--fg-0);
+    font-size: 32px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: -.04em;
+}
+
+.personal-kpi-hint, .personal-badge-status {
+    color: var(--fg-3);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.personal-dashboard h3 {
+    margin: 0 0 18px;
+    color: var(--fg-0);
+    font-size: 18px;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: -.02em;
+}
+
+.personal-review, .personal-coaching {
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 26px 28px;
+    background: var(--bg-1);
+    min-width: 0;
+}
+
+.personal-review p, .personal-panel-description {
+    margin: 0;
+    max-width: 76ch;
+    color: var(--fg-2);
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+.personal-review-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.personal-review-list li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    padding: 14px 0;
+    border-top: 1px solid var(--hairline);
+    color: var(--fg-1);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.personal-review-list li:first-child { border-top: 0; padding-top: 0; }
+.personal-review-list li:last-child { padding-bottom: 0; }
+.personal-review-list em { color: var(--fg-3); font-size: 12px; font-style: normal; }
+
+.personal-badge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+}
+
+.personal-badge {
+    min-width: 0;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    background: var(--bg-1);
+    padding: 22px;
+}
+
+.personal-badge[data-earned='true'] { border-color: color-mix(in srgb, var(--accent) 42%, var(--hairline)); }
+.personal-badge-label { color: var(--fg-1); font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.personal-badge[data-earned='false'] .personal-badge-label { color: var(--fg-2); }
+.personal-badge-status { margin-top: auto; }
+
+.personal-badge-progress {
+    appearance: none;
+    width: 100%;
+    height: 3px;
+    border: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    color: var(--accent);
+    background: var(--hairline);
+    accent-color: var(--accent);
+}
+.personal-badge-progress::-webkit-progress-bar { background: var(--hairline); border-radius: 10px; }
+.personal-badge-progress::-webkit-progress-value { background: var(--accent); border-radius: 10px; }
+.personal-badge-progress::-moz-progress-bar { background: var(--accent); border-radius: 10px; }
+
+.personal-coaching-headline {
+    margin: 0 0 12px;
+    max-width: 65ch;
+    color: var(--fg-0);
+    font-size: 19px;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+.personal-coaching-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 24px;
+}
+
+.personal-coaching-columns > div { min-width: 0; margin-top: 26px; }
+.personal-coaching-columns h4 { margin: 0 0 12px; color: var(--fg-1); font-size: 13px; font-weight: 600; }
+.personal-coaching-columns ul { margin: 0; padding-left: 18px; color: var(--fg-2); font-size: 14px; line-height: 1.7; }
+.personal-coaching-columns li + li { margin-top: 8px; }
+
+.personal-coaching-titles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 26px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+}
+.personal-coaching-title { min-width: 0; padding: 0 18px 0 0; }
+.personal-coaching-title .personal-panel-description { margin-top: 6px; font-size: 12px; }
+
+.personal-dashboard-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 18px 22px; border: 1px solid var(--hairline); border-radius: 14px; background: var(--bg-1); color: var(--fg-2); font-size: 14px; }
+.personal-coaching > .ui-button { margin-top: 14px; }
+
+@media (max-width: 700px) {
+    .personal-dashboard { gap: 24px; padding: 20px; }
+    .personal-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .personal-kpi { min-height: 140px; padding: 18px; }
+    .personal-kpi-value { font-size: 28px; }
+    .personal-review, .personal-coaching { padding: 22px; }
+    .personal-badge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .personal-badge { min-height: 148px; padding: 18px; }
+    .personal-coaching-columns { grid-template-columns: 1fr; gap: 0; }
+    .personal-dashboard h3 { font-size: 17px; }
+}
+
+@media (max-width: 360px) {
+    .personal-kpi-grid, .personal-badge-grid { grid-template-columns: 1fr; }
+}

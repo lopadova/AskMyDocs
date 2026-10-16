@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { Icon } from '../Icons';
 import { Button } from '../Button';
@@ -17,14 +18,16 @@ export type TopbarProps = {
     team: Team | null; teams: Team[]; onTeamChange: (team: Team) => void;
     theme: Theme; setTheme: (theme: Theme) => void; onToggleTweaks: () => void;
     crumbs?: BreadcrumbItem[]; onOpenNav?: () => void; navOpen?: boolean;
+    sidebarCollapsed?: boolean; onToggleSidebar?: () => void;
 };
 
-export function Topbar({ team, teams, onTeamChange, theme, setTheme, onToggleTweaks, crumbs = [], onOpenNav, navOpen = false }: TopbarProps) {
+export function Topbar({ team, teams, onTeamChange, theme, setTheme, onToggleTweaks, crumbs = [], onOpenNav, navOpen = false, sidebarCollapsed = false, onToggleSidebar }: TopbarProps) {
     const { t } = useUiTranslation();
     const roles = useAuthStore((state) => state.roles);
     const canCheckHealth = roles.some((role) => role === 'admin' || role === 'super-admin');
     return <header className="app-topbar" data-testid="app-topbar">
         <div className="app-topbar-leading">
+            {onToggleSidebar && <Tooltip label={t(sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}><Button variant="quiet" size="sm" iconOnly className="desktop-navigation-trigger" aria-label={t(sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')} aria-expanded={!sidebarCollapsed} aria-controls="app-desktop-navigation" onClick={onToggleSidebar}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</Button></Tooltip>}
             {onOpenNav && <Button variant="quiet" size="sm" iconOnly id="app-navigation-trigger" className="mobile-navigation-trigger" aria-label={t('Open navigation')} aria-expanded={navOpen} aria-haspopup="dialog" onClick={onOpenNav}><Icon.Menu size={20} /></Button>}
             {team !== null && teams.length > 0 && <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />}
             <nav className="app-topbar-crumbs" aria-label={t('Breadcrumb')}>

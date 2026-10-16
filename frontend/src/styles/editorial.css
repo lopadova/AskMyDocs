@@ -6,8 +6,8 @@
     --panel: #191e25; --panel-solid: #191e25; --panel-border: #ffffff14; --panel-border-strong: #ffffff29; --hairline: #ffffff14;
     --fg-0: #f2eee6; --fg-1: #deddd7; --fg-2: #b2b7b9; --fg-3: #929c9f; --fg-4: #778286;
     --accent-a: #b4c4a8; --accent-b: #d7b989; --accent-mid: #c2c1a5; --accent-glow: 180 196 168;
-    --grad-accent: linear-gradient(135deg, #b4c4a8, #d7c59c); --grad-accent-soft: linear-gradient(135deg, #b4c4a810, #d7b98910);
-    --font-editorial: 'Instrument Serif', Georgia, serif; --editorial-sidebar-width: 248px;
+    --grad-accent: linear-gradient(135deg, #416147, #527151); --grad-accent-soft: linear-gradient(135deg, #b4c4a810, #d7b98910);
+    --font-editorial: 'Instrument Serif', Georgia, serif; --editorial-sidebar-width: 248px; --page-gutter: clamp(20px,3vw,42px);
     --accent: var(--accent-a); --danger: var(--err); --primary-foreground: #19231b;
 }
 :root[data-theme='light'] {
@@ -83,11 +83,7 @@
 .hub-card-icon { display: flex; align-items: center; justify-content: center; color: var(--accent-a); flex-shrink: 0; width: 40px; height: 40px; border: 1px solid var(--hairline); background: var(--bg-2); border-radius: 10px; }
 .hub-card.is-inactive { opacity: .75; }
 .module-badge { font-size: 10px; color: var(--fg-2); border: 1px solid var(--hairline); padding: 5px 8px; border-radius: 5px; white-space: nowrap; }
-.workspace-home [data-testid='me-dashboard'] { padding: 0 !important; }
-.workspace-home [data-testid='me-dashboard'] > h2 { font-size: 20px; margin: 30px 0 20px; }
-.workspace-home [data-testid='me-dashboard-kpis'] { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
-.badge-art { display: flex; justify-content: center; color: var(--accent-a); margin: 6px 0 12px; }
-[data-testid='digest-feed-content'] strong, [data-testid='digest-feed-metrics'] li { display: inline-flex; gap: 6px; align-items: center; }
+.workspace-home .personal-dashboard { padding: 0; }
 .onboarding-art { display: block; height: 150px; margin: -12px -12px 24px; overflow: hidden; border-radius: 10px; }
 .onboarding-art img { width: 100%; height: 100%; object-fit: cover; }
 .collections-workspace { width: 100%; padding: clamp(20px,3vw,40px); }
@@ -192,7 +188,6 @@
     .kb-browse-detail { min-height: 100%; }
 }
 @media (max-width: 640px) {
-    .workspace-home [data-testid='me-dashboard-kpis'] { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
     .editorial-page { padding: 18px 16px; }
     .editorial-hero { grid-template-columns: 1fr; margin-bottom: 24px; }
     .editorial-hero-copy { padding: 26px 24px; }

@@ -412,7 +412,7 @@ textarea:focus-visible {
   box-shadow:
     0 0 0 2px var(--bg-1),
     0 0 0 4px color-mix(in srgb, var(--accent-a) 58%, transparent),
-    0 8px 20px -14px rgba(109, 83, 220, .8);
+    0 8px 20px -14px color-mix(in srgb, var(--accent-a) 60%, transparent);
 }
 
 .btn:disabled,
@@ -426,16 +426,16 @@ textarea:focus-visible {
 
 .btn.primary,
 .ui-button[data-variant="primary"] {
-  --button-bg: linear-gradient(180deg, #725be2 0%, #624bd4 100%);
-  --button-bg-hover: linear-gradient(180deg, #8069eb 0%, #6b53dc 100%);
-  --button-border: #4e3ab7;
+  --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--accent-a) 88%, white), var(--accent-a));
+  --button-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--accent-a) 78%, white), color-mix(in srgb, var(--accent-a) 92%, white));
+  --button-border: color-mix(in srgb, var(--accent-a) 76%, var(--bg-0));
   --button-inner: rgba(255, 255, 255, .19);
-  --button-glow: rgba(125, 99, 239, .46);
-  --button-color: #fff;
+  --button-glow: color-mix(in srgb, var(--accent-a) 35%, transparent);
+  --button-color: var(--primary-foreground, var(--bg-0));
   --button-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .11),
-    0 1px 1px rgba(33, 23, 93, .5),
-    0 5px 12px -9px rgba(94, 71, 210, .64);
+    0 1px 1px rgba(5, 12, 8, .2),
+    0 5px 12px -9px color-mix(in srgb, var(--accent-a) 30%, transparent);
 }
 
 .btn.ghost,

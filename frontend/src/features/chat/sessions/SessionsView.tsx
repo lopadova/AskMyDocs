@@ -1,4 +1,5 @@
 import { useUiTranslation } from "../../../lib/ui-locale";
+import { EditorialArtwork } from '../../../components/editorial/EditorialArtwork';
 import '../chat-reader.css';
 import { type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
@@ -138,11 +139,9 @@ export function SessionsView(): ReactNode {
                             position: 'relative',
                         }}
                     >
-                        <header data-testid="chat-sessions-header" className="chat-header-shell">
+                        <header data-testid="chat-sessions-header" className="chat-header-shell editorial-surface">
                             {historyToggle}
-                            <span className="chat-header-icon" aria-hidden="true">
-                                <Icon.Chat size={17} />
-                            </span>
+                            <EditorialArtwork artwork="dialogue" className="editorial-surface-art" resolution="small" />
                             <div className="chat-header-content">
                                 <div className="chat-header-title-row">
                                     {activeId !== null ? (

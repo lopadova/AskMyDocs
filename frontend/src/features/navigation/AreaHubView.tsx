@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { EditorialHero } from '../../components/editorial/EditorialHero';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { Icon } from '../../components/Icons';
 import { useAuthStore } from '../../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
@@ -23,10 +24,9 @@ export function AreaHubView({ hubId }: { hubId: string }) {
             return <section className="hub-topic" key={topic.label}>
                 <h2>{t(topic.label)}</h2><div className="hub-card-grid">
                     {items.map((item) => {
-                        const ItemIcon = Icon[item.icon];
                         const enabled = moduleEnabled(item, features);
-                        const content = <><span className="hub-card-icon"><ItemIcon size={22} /></span><span><strong>{t(navLabel(item))}</strong><small>{t(enabled ? navDescription(item) : 'This feature is not enabled in this installation.')}</small></span>{enabled ? <Icon.Chevron size={17} /> : <span className="module-badge">{t('Not enabled')}</span>}</>;
-                        return enabled ? <Link className="hub-card" key={item.id} to={navHref(item, teamHash)} data-testid={`hub-link-${item.id}`}>{content}</Link> : <div className="hub-card is-inactive" key={item.id} aria-disabled="true" data-testid={`hub-inactive-${item.id}`}>{content}</div>;
+                        const content = <><EditorialArtwork artwork={hub.artwork} className="editorial-surface-art" resolution="small" /><span className="hub-card-copy"><strong>{t(navLabel(item))}</strong><small>{t(enabled ? navDescription(item) : 'This feature is not enabled in this installation.')}</small></span>{enabled ? <Icon.Chevron size={17} /> : <span className="module-badge">{t('Not enabled')}</span>}</>;
+                        return enabled ? <Link className="hub-card editorial-surface" key={item.id} to={navHref(item, teamHash)} data-testid={`hub-link-${item.id}`}>{content}</Link> : <div className="hub-card editorial-surface is-inactive" key={item.id} aria-disabled="true" data-testid={`hub-inactive-${item.id}`}>{content}</div>;
                     })}
                 </div>
             </section>;

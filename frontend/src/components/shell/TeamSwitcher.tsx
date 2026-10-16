@@ -26,7 +26,7 @@ export type TeamSwitcherProps = {
 
 // Deterministic accent per team — teams (unlike the old seed projects)
 // carry no colour of their own.
-const TEAM_COLORS = ['#8b5cf6', '#22d3ee', '#f97316', '#a3e635', '#f43f5e', '#eab308'];
+const TEAM_COLORS = ['#a9bda2', '#c2a97e', '#839fa3', '#bba38f', '#9ca78c', '#8caea1'];
 
 function teamColor(teams: Team[], tenantId: string): string {
     const idx = Math.max(

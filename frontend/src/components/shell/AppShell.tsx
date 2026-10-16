@@ -8,12 +8,12 @@ import { Topbar, type BreadcrumbItem } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { SectionNavigation } from './SectionNavigation';
 import { TweaksPanel } from './TweaksPanel';
-import { useDensity, useFontPair, useTheme } from './hooks';
+import { useDensity, useFontPair, useSidebarCollapsed, useTheme } from './hooks';
 import { USERS, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
 import { useTeamStore } from '../../lib/team-store';
 import { useUiTranslation } from '../../lib/ui-locale';
-import { Icon } from '../Icons';
+import { EditorialArtwork } from '../editorial/EditorialArtwork';
 
 const ROLE_PRIORITY: SeedUser['role'][] = ['system-admin', 'super-admin', 'admin', 'dpo', 'editor', 'viewer'];
 
@@ -24,6 +24,7 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
     const [font, setFont] = useFontPair('geist');
     const [tweaksOpen, setTweaksOpen] = useState(false);
     const [navOpen, setNavOpen] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed();
     const navigate = useNavigate();
     const match = useMatchRoute();
     const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -86,7 +87,7 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
     const inactive = section !== null && !moduleEnabled(navItem(section), features);
     return <div className="editorial-app" data-testid="appshell-root" data-section={section} data-area={area}>
         <a className="skip-navigation" href="#main-content">{t('Skip to content')}</a>
-        <div className="desktop-sidebar"><Sidebar {...sidebarProps} /></div>
+        <div className="desktop-sidebar" id="app-desktop-navigation" hidden={sidebarCollapsed}>{!sidebarCollapsed && <Sidebar {...sidebarProps} />}</div>
         <Dialog.Root open={navOpen} onOpenChange={setNavOpen}>
             <Dialog.Portal><Dialog.Overlay className="navigation-overlay" /><Dialog.Content className="navigation-drawer" onCloseAutoFocus={(event) => { event.preventDefault(); document.getElementById('app-navigation-trigger')?.focus(); }}>
                 <Dialog.Title className="sr-only">{t('Primary navigation')}</Dialog.Title>
@@ -103,10 +104,11 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
                 const rest = pathname.replace(/^\/app\/[^/]+/, '');
                 void navigate({ to: '/app/' + target.hash + rest });
             }} theme={theme} setTheme={setTheme} onToggleTweaks={() => setTweaksOpen((open) => !open)}
-                crumbs={crumbs} onOpenNav={() => setNavOpen(true)} navOpen={navOpen} />
+                crumbs={crumbs} onOpenNav={() => setNavOpen(true)} navOpen={navOpen}
+                sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)} />
             {!hubRoute && <SectionNavigation hub={hub} section={section} access={access} teamHash={activeTeam?.hash ?? null} />}
             <main className="editorial-app-content" tabIndex={-1} key={tenantScoped ? activeTeam?.tenant_id ?? 'no-tenant' : 'personal'} id="main-content">
-                {inactive ? <section className="feature-unavailable" role="status"><Icon.Sliders size={28} /><h1>{item && t(navLabel(item))}</h1><p>{t('This feature is not enabled in this installation.')}</p></section> : children ?? <Outlet />}
+                {inactive ? <section className="feature-unavailable editorial-surface" role="status"><EditorialArtwork artwork={hub?.artwork ?? 'trust'} className="editorial-surface-art" resolution="small" /><h1>{item && t(navLabel(item))}</h1><p>{t('This feature is not enabled in this installation.')}</p></section> : children ?? <Outlet />}
             </main>
         </div>
         <CommandPalette />

@@ -2,11 +2,14 @@ import type { MouseEvent } from 'react';
 import { Icon } from '../Icons';
 import { Button } from '../Button';
 import { Avatar } from './Avatar';
+import { EditorialArtwork } from '../editorial/EditorialArtwork';
 import type { SidebarSection } from './nav-config';
 import type { SeedUser } from '../../lib/seed';
 import type { AuthFeatures } from '../../lib/auth-store';
 import { useUiTranslation } from '../../lib/ui-locale';
-import { areaForSection, canAccessNav, hubForSection, hubHref, NAV_AREAS, NAV_HUBS, navHref, navItem, navLabel, visibleHubItems, WORKSPACE_ITEMS, type HubId, type NavArea, type NavHub } from './navigation';
+import { areaForSection, canAccessNav, hubForSection, hubHref, NAV_AREAS, NAV_HUBS, navHref, navItem, navLabel, visibleHubItems, WORKSPACE_ITEMS, type Artwork, type HubId, type NavArea, type NavHub } from './navigation';
+
+const WORKSPACE_ART: Partial<Record<SidebarSection, Artwork>> = { 'my-kb': 'knowledge', chat: 'dialogue', 'kb-browse': 'archive', digest: 'observatory', 'connected-apps': 'connections' };
 
 export type { SidebarSection } from './nav-config';
 export type SidebarProps = {
@@ -35,10 +38,12 @@ export function Sidebar({ active, onNav, user, projectCount, features = {}, hasT
         <div className="editorial-brand"><Icon.Logo size={27} /><span>AskMyDocs<span className="editorial-brand-dot">.</span></span>
             {onClose && <Button variant="quiet" size="sm" iconOnly aria-label={t('Close navigation')} className="sidebar-mobile-close" onClick={onClose}><Icon.Close size={18} /></Button>}
         </div>
-        <label className="sidebar-area-label"><span className="sr-only">{t('Workspace area')}</span>
+        <label className="sidebar-area-label editorial-surface"><span className="sr-only">{t('Workspace area')}</span>
+            <EditorialArtwork artwork={currentArea === 'workspace' ? 'knowledge' : currentArea === 'admin' ? 'community' : 'trust'} className="editorial-surface-art" resolution="small" />
             <select aria-label={t('Workspace area')} data-testid="sidebar-area-switcher" value={currentArea} onChange={(event) => onAreaChange?.(event.target.value as NavArea)}>
                 {availableAreas.map((candidate) => <option key={candidate.id} value={candidate.id}>{t(candidate.label)}</option>)}
             </select>
+            <span className="sidebar-area-chevron" aria-hidden="true"><Icon.ChevronDown size={14} /></span>
         </label>
         <Button variant="quiet" className="sidebar-search" size="md" data-testid="sidebar-command-palette" aria-label={t('Open command palette')} onClick={() => window.dispatchEvent(new CustomEvent('amd:palette'))}>
             <Icon.Search size={17} /><span>{t('Search…')}</span><kbd>⌘K</kbd>
@@ -46,22 +51,20 @@ export function Sidebar({ active, onNav, user, projectCount, features = {}, hasT
         <nav className="editorial-sidebar-items">
             <p className="editorial-eyebrow">{t(NAV_AREAS.find((candidate) => candidate.id === currentArea)?.label ?? 'My workspace')}</p>
             {currentArea === 'workspace' && workspace.map((item) => {
-                const ItemIcon = Icon[item.icon];
                 const selected = active === item.id || (item.id === 'chat' && active === 'sessions');
-                return <a key={item.id} href={navHref(item, teamHash)} data-testid={`sidebar-nav-${item.id}`} aria-current={selected ? 'page' : undefined} onClick={(event) => activate(event, () => onNav(item.id))}>
-                    <ItemIcon size={18} /><span>{t(item.id === 'chat' ? "Conversations" : navLabel(item))}</span>
+                return <a className="editorial-surface" key={item.id} href={navHref(item, teamHash)} data-testid={`sidebar-nav-${item.id}`} aria-current={selected ? 'page' : undefined} onClick={(event) => activate(event, () => onNav(item.id))}>
+                    <EditorialArtwork artwork={WORKSPACE_ART[item.id] ?? 'knowledge'} className="editorial-surface-art" resolution="small" /><span>{t(item.id === 'chat' ? "Conversations" : navLabel(item))}</span>
                 </a>;
             })}
             {currentArea !== 'workspace' && accessibleHubs.filter((hub) => hub.area === currentArea).map((hub) => {
-                const HubIcon = Icon[hub.icon];
                 const first = visibleHubItems(hub, access, true)[0];
                 const href = teamHash ? hubHref(hub, teamHash) : navHref(first, teamHash);
-                return <a key={hub.id} href={href} data-testid={`sidebar-hub-${hub.id}`} aria-current={currentHub === hub.id ? 'page' : undefined} onClick={(event) => activate(event, () => onHub ? onHub(hub) : onNav(first.id))}>
-                    <HubIcon size={18} /><span>{t(hub.label)}</span>
+                return <a className="editorial-surface" key={hub.id} href={href} data-testid={`sidebar-hub-${hub.id}`} aria-current={currentHub === hub.id ? 'page' : undefined} onClick={(event) => activate(event, () => onHub ? onHub(hub) : onNav(first.id))}>
+                    <EditorialArtwork artwork={hub.artwork} className="editorial-surface-art" resolution="small" /><span>{t(hub.label)}</span>
                 </a>;
             })}
         </nav>
-        <div className="editorial-sidebar-context"><Icon.Book size={15} /><span>{projectCount} {projectCount === 1 ? t('Project').toLowerCase() : t('Projects').toLowerCase()}</span></div>
+        <div className="editorial-sidebar-context"><span>{projectCount} {projectCount === 1 ? t('Project').toLowerCase() : t('Projects').toLowerCase()}</span></div>
         <div className="editorial-sidebar-user"><Avatar user={user} size={32} /><div><strong>{user.name}</strong><span>{user.role}</span></div></div>
     </aside>;
 }

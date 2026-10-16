@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { chatApi, type Conversation } from './chat.api';
 import { useChatStore } from './chat.store';
 
@@ -59,11 +60,9 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
             aria-label={translateInterface("Conversations")}
             className="chat-conversation-sidebar"
         >
-            <div className="chat-conversation-sidebar-head">
+            <div className="chat-conversation-sidebar-head editorial-surface">
+                <EditorialArtwork artwork="dialogue" className="editorial-surface-art" resolution="small" />
                 <div className="chat-conversation-sidebar-heading">
-                    <span className="chat-conversation-sidebar-heading-icon" aria-hidden="true">
-                        <Icon.Chat size={14} />
-                    </span>
                     <span className="chat-conversation-sidebar-heading-copy">
                         <strong>{translateInterface("Conversations")}</strong>
                         <small aria-live="polite">
@@ -84,7 +83,6 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         data-testid="chat-new-conversation"
                         onClick={() => createMutation.mutate()}
                         busy={createMutation.isPending}
-                        leadingIcon={<Icon.Plus size={14} />}
                     >
                         {createMutation.isPending ? 'Creating…' : translateInterface("New chat")}
                     </Button>
@@ -95,7 +93,6 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         data-testid="chat-new-anonymous-chat"
                         onClick={onNewAnonymous}
                         title={translateInterface("Start a chat that is not saved")}
-                        leadingIcon={<Icon.Eye size={13} />}
                     >
                         {translateInterface("Anonymous")}</Button>
                 </div>
@@ -133,7 +130,6 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                         data-testid="chat-sidebar-empty"
                         className="chat-conversation-empty"
                     >
-                        <span aria-hidden="true"><Icon.Chat size={18} /></span>
                         <strong>{translateInterface("Your conversations will appear here")}</strong>
                         <small>{translateInterface("Start a new chat to begin.")}</small>
                     </div>
@@ -226,9 +222,6 @@ function ConversationRow({ c, active, onSelect }: ConversationRowProps): ReactNo
             onClick={() => onSelect(c.id)}
             title={c.title ?? 'Untitled chat'}
         >
-            <span className="conv-row-icon" aria-hidden="true">
-                <Icon.Chat size={13} />
-            </span>
             <span className="conv-row-copy">
                 <span className="conv-row-title">
                     {c.title ?? 'Untitled chat'}

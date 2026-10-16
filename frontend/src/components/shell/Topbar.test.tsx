@@ -21,6 +21,20 @@ const team: Team = {
 };
 
 describe('Topbar', () => {
+    it('offers a labelled desktop control to close and reopen the sidebar', () => {
+        const onToggleSidebar = vi.fn();
+        const props = { team, teams: [team], onTeamChange: vi.fn(), theme: 'dark' as const, setTheme: vi.fn(), onToggleTweaks: vi.fn(), onToggleSidebar };
+        const { rerender } = render(<Topbar {...props} sidebarCollapsed={false} />);
+        const collapse = screen.getByRole('button', { name: 'Collapse sidebar' });
+        expect(collapse).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.click(collapse);
+        expect(onToggleSidebar).toHaveBeenCalledOnce();
+        rerender(<Topbar {...props} sidebarCollapsed />);
+        const expand = screen.getByRole('button', { name: 'Expand sidebar' });
+        expect(expand).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(expand);
+        expect(onToggleSidebar).toHaveBeenCalledTimes(2);
+    });
     it('separates context, health, tools and identity into stable groups', () => {
         const setTheme = vi.fn();
         const onToggleTweaks = vi.fn();

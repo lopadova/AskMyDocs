@@ -61,8 +61,7 @@ import { ComplianceReportsView } from '../features/admin/compliance/ComplianceRe
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
-import { DigestFeedCard } from '../features/digest/DigestFeedCard';
-import { DigestPreferences } from '../features/digest/DigestPreferences';
+import { DigestWorkspace } from '../features/digest/DigestWorkspace';
 import { WorkspaceHome } from '../features/navigation/WorkspaceHome';
 import { AreaHubView } from '../features/navigation/AreaHubView';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
@@ -1449,12 +1448,7 @@ function AdminNotificationPreferencesRoute() {
 // authenticated user (no RequireRole); AdminShell keeps the sidebar consistent.
 function DigestRoute() {
     return (
-        <AppShell tenantScoped={false}><AdminShell section="digest">
-            <div style={{ display: 'grid', gap: 20 }}>
-                <DigestFeedCard />
-                <DigestPreferences />
-            </div>
-        </AdminShell></AppShell>
+        <AppShell tenantScoped={false}><DigestWorkspace /></AppShell>
     );
 }
 

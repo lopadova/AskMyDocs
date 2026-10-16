@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Icon } from '../Icons';
+import { EditorialArtwork } from '../editorial/EditorialArtwork';
 import { Button } from '../Button';
 import { useAuthStore } from '../../lib/auth-store';
 import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
@@ -53,9 +54,8 @@ export function CommandPalette() {
             <div id="navigation-search-results" className="navigation-search-results" role="listbox" aria-label={t('Available pages')}>
                 {results.length === 0 && <div className="navigation-search-empty"><h2>{t('No matching pages.')}</h2><p>{t('Try a different name or keyword.')}</p></div>}
                 {results.map((item, index) => {
-                    const ItemIcon = Icon[item.icon];
-                    return <Link role="option" aria-selected={selected === index} id={'navigation-result-' + item.id} key={item.id} to={navHref(item, teamHash)} onMouseEnter={() => setSelected(index)} onClick={() => setOpen(false)}>
-                        <ItemIcon size={18} /><span>{t(navLabel(item))}<small>{t(hubForSection(item.id)?.label ?? 'My workspace')}</small></span><Icon.Chevron size={16} />
+                    return <Link className="editorial-surface" role="option" aria-selected={selected === index} id={'navigation-result-' + item.id} key={item.id} to={navHref(item, teamHash)} onMouseEnter={() => setSelected(index)} onClick={() => setOpen(false)}>
+                        <EditorialArtwork artwork={hubForSection(item.id)?.artwork ?? 'knowledge'} className="editorial-surface-art" resolution="small" /><span>{t(navLabel(item))}<small>{t(hubForSection(item.id)?.label ?? 'My workspace')}</small></span><Icon.Chevron size={16} />
                     </Link>;
                 })}
             </div>

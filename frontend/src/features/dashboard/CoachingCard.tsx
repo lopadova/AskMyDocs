@@ -1,8 +1,10 @@
 import { useUiTranslation } from "../../lib/ui-locale";
-import { Award } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { meDashboardApi, ME_COACHING_QUERY_KEY } from './me-dashboard.api';
+import './editorial-dashboard.css';
 
 /**
  * v8.18/W4 — the AI coaching card on the "My KB" dashboard. Renders the
@@ -26,20 +28,22 @@ export function CoachingCard(): ReactNode {
     // Surface a real backend/API failure instead of swallowing it (R14).
     if (query.isError) {
         return (
-            <section data-testid="me-coaching" data-state="error" role="alert" style={{ marginTop: 20 }}>
-                <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
+            <section data-testid="me-coaching" data-state="error" role="alert" className="personal-coaching editorial-surface">
+                <EditorialArtwork artwork="community" className="editorial-surface-art" resolution="small" />
+                <h3>{translateInterface("AI coaching")}</h3>
                 {translateInterface("Could not load your coaching insights.")}{' '}
-                <button type="button" data-testid="me-coaching-retry" onClick={() => void query.refetch()}>
-                    {translateInterface("Retry")}</button>
+                <Button size="sm" data-testid="me-coaching-retry" onClick={() => void query.refetch()} busy={query.isFetching}>
+                    {translateInterface("Retry")}</Button>
             </section>
         );
     }
 
     if (query.isLoading) {
         return (
-            <section data-testid="me-coaching" data-state="loading" aria-busy="true" style={{ marginTop: 20 }}>
-                <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
-                <p style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading your coaching insights…")}</p>
+            <section data-testid="me-coaching" data-state="loading" aria-busy="true" className="personal-coaching editorial-surface">
+                <EditorialArtwork artwork="community" className="editorial-surface-art" resolution="small" />
+                <h3>{translateInterface("AI coaching")}</h3>
+                <p className="personal-panel-description">{translateInterface("Loading your coaching insights…")}</p>
             </section>
         );
     }
@@ -47,9 +51,10 @@ export function CoachingCard(): ReactNode {
     const insight = query.data?.insight;
     if (!query.data?.available || !insight) {
         return (
-            <section data-testid="me-coaching" data-state="empty" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
-                <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
-                <p data-testid="me-coaching-empty" style={{ color: 'var(--fg-3)' }}>
+            <section data-testid="me-coaching" data-state="empty" aria-busy={query.isFetching} className="personal-coaching editorial-surface">
+                <EditorialArtwork artwork="community" className="editorial-surface-art" resolution="small" />
+                <h3>{translateInterface("AI coaching")}</h3>
+                <p data-testid="me-coaching-empty" className="personal-panel-description">
                     {translateInterface("No coaching yet — keep contributing and your personalised AI insights will appear here.")}</p>
             </section>
         );
@@ -65,64 +70,60 @@ export function CoachingCard(): ReactNode {
     const titleList = Array.isArray(titles) ? titles : [];
 
     return (
-        <section data-testid="me-coaching" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
-            <h3 style={{ marginTop: 0 }}>{translateInterface("AI coaching")}</h3>
-            <p data-testid="me-coaching-headline" style={{ fontWeight: 600, fontSize: 16 }}>
+        <section data-testid="me-coaching" data-state="ready" aria-busy={query.isFetching} className="personal-coaching editorial-surface">
+            <EditorialArtwork artwork="community" className="editorial-surface-art" resolution="small" />
+            <h3>{translateInterface("AI coaching")}</h3>
+            <p data-testid="me-coaching-headline" className="personal-coaching-headline">
                 {narrative.headline}
             </p>
-            <p style={{ color: 'var(--fg-2)' }}>{narrative.summary}</p>
+            <p className="personal-panel-description">{narrative.summary}</p>
 
-            {strengths.length > 0 && (
-                <div data-testid="me-coaching-strengths">
-                    <h4>{translateInterface('Strengths')}</h4>
-                    <ul>
-                        {strengths.map((s, i) => (
-                            <li key={`strength-${i}`}>{s}</li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+            <div className="personal-coaching-columns">
+                {strengths.length > 0 && (
+                    <div data-testid="me-coaching-strengths">
+                        <h4>{translateInterface('Strengths')}</h4>
+                        <ul>
+                            {strengths.map((s, i) => (
+                                <li key={`strength-${i}`}>{s}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
 
-            {growth.length > 0 && (
-                <div data-testid="me-coaching-growth">
-                    <h4>{translateInterface('Growth areas')}</h4>
-                    <ul>
-                        {growth.map((g, i) => (
-                            <li key={`growth-${i}`}>{g}</li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+                {growth.length > 0 && (
+                    <div data-testid="me-coaching-growth">
+                        <h4>{translateInterface('Growth areas')}</h4>
+                        <ul>
+                            {growth.map((g, i) => (
+                                <li key={`growth-${i}`}>{g}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
 
-            {nextSteps.length > 0 && (
-                <div data-testid="me-coaching-next-steps">
-                    <h4>{translateInterface('Next steps')}</h4>
-                    <ul>
-                        {nextSteps.map((n, i) => (
-                            <li key={`next-${i}`}>{n}</li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+                {nextSteps.length > 0 && (
+                    <div data-testid="me-coaching-next-steps">
+                        <h4>{translateInterface('Next steps')}</h4>
+                        <ul>
+                            {nextSteps.map((n, i) => (
+                                <li key={`next-${i}`}>{n}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
 
             {titleList.length > 0 && (
-                <div data-testid="me-coaching-titles" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+                <div data-testid="me-coaching-titles" className="personal-coaching-titles">
                     {titleList.map((t) => (
                         <div
                             key={t.key}
                             data-testid={`me-coaching-title-${t.key}`}
                             title={t.reason}
-                            style={{
-                                border: '1px solid var(--hairline)',
-                                borderRadius: 12,
-                                padding: '10px 14px',
-                                minWidth: 140,
-                                textAlign: 'center',
-                            }}
+                            className="personal-coaching-title"
                         >
-                            <div className="badge-art" aria-hidden="true"><Award size={26} /></div>
-                            <div style={{ fontWeight: 600 }}>{translateInterface(t.label)}</div>
-                            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{t.reason}</div>
+                            <div className="personal-badge-label">{translateInterface(t.label)}</div>
+                            <div className="personal-panel-description">{t.reason}</div>
                         </div>
                     ))}
                 </div>
