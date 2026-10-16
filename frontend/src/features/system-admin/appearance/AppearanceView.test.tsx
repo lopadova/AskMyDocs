@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth-store';
 import { setLocalUiLocale } from '@/lib/ui-locale';
 import { RequireRole } from '@/routes/role-guard';
+import { chooseSelectOption } from '@/test-utils/select';
 import { appearanceApi } from './appearance.api';
 import { AppearanceView } from './AppearanceView';
 
@@ -108,10 +109,98 @@ describe('AppearanceView', () => {
         renderView();
         await screen.findByRole('radio', { name: 'Umanistico' });
         expect(screen.getByRole('heading', { name: 'Aspetto', level: 1 })).toBeInTheDocument();
-        expect(screen.getAllByRole('radio')).toHaveLength(5);
+        expect(screen.getAllByRole('radio')).toHaveLength(18);
         expect(screen.getByRole('radio', { name: 'Futuro retrò anni 70' })).toBeInTheDocument();
         expect(screen.getByRole('radio', { name: 'Dinamico office sportivo' })).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Atlante cartografico' })).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Officina blueprint' })).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Orbite semantiche' })).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Indice prismatico' })).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Flussi d’inchiostro' })).toBeInTheDocument();
         expect(applyTheme).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByTestId('appearance-category-filter'));
+        expect(screen.getByRole('option', { name: 'Tutti (18)' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Identità originali (5)' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Ambientazioni (10)' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Astratti (3)' })).toBeInTheDocument();
+    });
+
+    it('filters the collection through the shared select and shows category counts and labels', async () => {
+        renderView();
+        await screen.findByRole('radio', { name: 'Cartographic atlas' });
+        expect(screen.getByTestId('appearance-theme-count')).toHaveTextContent('18 of 18 themes');
+
+        await chooseSelectOption(screen.getByTestId('appearance-category-filter'), 'identity');
+        expect(screen.getAllByRole('radio')).toHaveLength(5);
+        expect(screen.getByTestId('appearance-theme-count')).toHaveTextContent('5 of 18 themes');
+        expect(within(screen.getByTestId('appearance-theme-humanistic')).getByText('Original identities')).toBeInTheDocument();
+        expect(screen.queryByRole('radio', { name: 'Cartographic atlas' })).not.toBeInTheDocument();
+
+        await chooseSelectOption(screen.getByTestId('appearance-category-filter'), 'worlds');
+        expect(screen.getAllByRole('radio')).toHaveLength(10);
+        expect(screen.getByTestId('appearance-theme-count')).toHaveTextContent('10 of 18 themes');
+        expect(within(screen.getByTestId('appearance-theme-cartographic')).getByText('Worlds')).toBeInTheDocument();
+
+        await chooseSelectOption(screen.getByTestId('appearance-category-filter'), 'abstract');
+        expect(screen.getAllByRole('radio')).toHaveLength(3);
+        expect(screen.getByTestId('appearance-theme-count')).toHaveTextContent('3 of 18 themes');
+        expect(within(screen.getByTestId('appearance-theme-semantic-orbits')).getByText('Abstract themes')).toBeInTheDocument();
+        expect(screen.getByTestId('system-appearance-active')).toHaveTextContent('Humanistic');
+        expect(appearanceApi.save).not.toHaveBeenCalled();
+        expect(applyTheme).not.toHaveBeenCalled();
+    });
+
+    it('keeps an abstract draft available for preview and saving outside its category', async () => {
+        const user = userEvent.setup();
+        renderView();
+        await chooseSelectOption(await screen.findByTestId('appearance-category-filter'), 'abstract');
+        await user.click(screen.getByRole('radio', { name: 'Ink flows' }));
+        await chooseSelectOption(screen.getByTestId('appearance-category-filter'), 'worlds');
+
+        expect(screen.queryByRole('radio', { name: 'Ink flows' })).not.toBeInTheDocument();
+        expect(screen.getByTestId('appearance-workspace-preview')).toHaveAttribute('data-design-theme', 'ink-flow');
+        expect(screen.getByTestId('system-appearance-save')).toBeEnabled();
+        expect(applyTheme).not.toHaveBeenCalled();
+        await user.click(screen.getByTestId('system-appearance-save'));
+        await screen.findByTestId('system-appearance-saved');
+        expect(appearanceApi.save).toHaveBeenCalledWith('ink-flow', expect.anything());
+        expect(applyTheme).toHaveBeenCalledExactlyOnceWith('ink-flow');
+        expect(screen.getByTestId('system-appearance-active')).toHaveTextContent('Ink flows');
+        expect(screen.getByTestId('appearance-category-filter')).toHaveAttribute('data-value', 'worlds');
+    });
+
+    it('saves a selected world even while the current filter hides its card', async () => {
+        const user = userEvent.setup();
+        renderView();
+        await user.click(await screen.findByRole('radio', { name: 'Cartographic atlas' }));
+        await chooseSelectOption(screen.getByTestId('appearance-category-filter'), 'identity');
+
+        expect(screen.queryByRole('radio', { name: 'Cartographic atlas' })).not.toBeInTheDocument();
+        expect(screen.getByTestId('appearance-hidden-selection')).toBeInTheDocument();
+        expect(screen.getByTestId('appearance-workspace-preview')).toHaveAttribute('data-design-theme', 'cartographic');
+        expect(screen.getByTestId('system-appearance-save')).toBeEnabled();
+        expect(screen.getByTestId('system-appearance-active')).toHaveTextContent('Humanistic');
+
+        await user.click(screen.getByTestId('system-appearance-save'));
+        await screen.findByTestId('system-appearance-saved');
+        expect(appearanceApi.save).toHaveBeenCalledWith('cartographic', expect.anything());
+        expect(applyTheme).toHaveBeenCalledExactlyOnceWith('cartographic');
+        expect(screen.getByTestId('system-appearance-active')).toHaveTextContent('Cartographic atlas');
+        expect(screen.getByTestId('appearance-category-filter')).toHaveAttribute('data-value', 'identity');
+        expect(screen.getAllByRole('radio')).toHaveLength(5);
+    });
+
+    it('can reveal an original identity draft after filtering it out', async () => {
+        const user = userEvent.setup();
+        renderView();
+        await user.click(await screen.findByRole('radio', { name: 'Tech PRO' }));
+        await chooseSelectOption(screen.getByTestId('appearance-category-filter'), 'worlds');
+        expect(screen.getByTestId('appearance-workspace-preview')).toHaveAttribute('data-design-theme', 'tech-pro');
+
+        await user.click(screen.getByRole('button', { name: 'Show selected theme' }));
+        expect(screen.getByTestId('appearance-category-filter')).toHaveAttribute('data-value', 'identity');
+        expect(screen.getByRole('radio', { name: 'Tech PRO' })).toBeChecked();
+        expect(appearanceApi.save).not.toHaveBeenCalled();
     });
 
     it('refreshes the active theme on window focus without overwriting an unsaved selection', async () => {

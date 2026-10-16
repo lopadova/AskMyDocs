@@ -44,6 +44,9 @@ describe('public landing localisation', () => {
     }
     expect(doc.querySelector('h1').textContent).toContain(COPY.it.hero.emphasis);
     expect(doc.querySelectorAll('h1')).toHaveLength(1);
+    const editorialImages = doc.querySelectorAll('img[data-i18n-alt]');
+    expect(editorialImages).toHaveLength(3);
+    for (const image of editorialImages) expect(image.alt).toBe(translate('it', image.dataset.i18nAlt));
   });
 });
 
@@ -60,24 +63,26 @@ describe('public landing interactions', () => {
     HTMLDialogElement.prototype.close = function () { this.open = false; };
   });
 
-  it('switches the entire experience, metadata and shareable URL while retaining the selected example', async () => {
+  it.each(['en', 'fr'])('switches the entire experience, metadata and shareable URL to %s while retaining the selected example', async (locale) => {
     await import('../../public/landing/app.js');
     document.getElementById('scenario-1').click();
     const languageRoot = document.getElementById('language-select-root');
-    languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-request', { detail: { locale: 'fr' } }));
-    expect(languageRoot.dataset.locale).toBe('fr');
+    languageRoot.dispatchEvent(new CustomEvent('amd:landing-locale-request', { detail: { locale } }));
+    expect(languageRoot.dataset.locale).toBe(locale);
     expect(JSON.parse(languageRoot.dataset.languages)).toEqual(LANGUAGES);
-    expect(document.documentElement.lang).toBe('fr');
-    expect(document.title).toBe(COPY.fr.title);
-    expect(document.querySelector('meta[name="description"]').content).toBe(COPY.fr.description);
-    expect(document.querySelector('.demo-question').textContent).toBe(COPY.fr.scenarios[1].question);
-    expect(document.querySelector('.hero-image').alt).toBe(COPY.fr.images.hero);
-    expect(location.search).toBe('?lang=fr');
+    expect(document.documentElement.lang).toBe(locale);
+    expect(document.title).toBe(COPY[locale].title);
+    expect(document.querySelector('meta[name="description"]').content).toBe(COPY[locale].description);
+    expect(document.querySelector('.demo-question').textContent).toBe(COPY[locale].scenarios[1].question);
+    for (const image of document.querySelectorAll('img[data-i18n-alt]')) {
+      expect(image.alt).toBe(translate(locale, image.dataset.i18nAlt));
+    }
+    expect(location.search).toBe(`?lang=${locale}`);
     expect(location.hash).toBe('#experience');
-    expect(localStorage.getItem('askmydoc.landing.lang')).toBe('fr');
+    expect(localStorage.getItem('askmydoc.landing.lang')).toBe(locale);
     document.querySelector('.source-link').click();
     expect(document.querySelector('dialog').open).toBe(true);
-    expect(document.getElementById('source-excerpt').textContent).toBe(COPY.fr.scenarios[1].sources[0].excerpt);
+    expect(document.getElementById('source-excerpt').textContent).toBe(COPY[locale].scenarios[1].sources[0].excerpt);
     document.getElementById('close-source').click();
     expect(document.querySelector('dialog').open).toBe(false);
   });

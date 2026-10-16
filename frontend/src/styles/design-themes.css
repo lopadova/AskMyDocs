@@ -196,7 +196,7 @@
 
 /* Shared component adaptation. No element-wide radius reset: pills, icons,
  * spinners, circles and third-party visualisations retain their geometry. */
-:is(:root, .design-theme-preview)[data-design-theme]:not([data-design-theme='humanistic']) {
+:is(:root, .design-theme-preview)[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) {
     --page-gutter: var(--design-page-gutter);
     --design-hero-padding: clamp(26px, 3.5vw, calc(var(--design-card-padding) + 24px));
     --design-hero-compact-padding: calc(var(--design-card-padding) + 8px);
@@ -205,99 +205,99 @@
     --accent: var(--bg-3);
     --glow: 0 0 0 1px color-mix(in srgb, var(--accent-a) 30%, transparent), 0 10px 40px -8px color-mix(in srgb, var(--accent-a) 22%, transparent);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) ::selection {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) ::selection {
     background: color-mix(in srgb, var(--accent-a) 28%, var(--bg-2));
     color: var(--fg-0);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .editorial-sidebar {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .editorial-sidebar {
     padding: var(--design-sidebar-padding);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.editorial-sidebar-items > a, .sidebar-area-label, .section-topics a, .section-pages a, .conversation-modes a, .navigation-search-results > a) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.editorial-sidebar-items > a, .sidebar-area-label, .section-topics a, .section-pages a, .conversation-modes a, .navigation-search-results > a) {
     border-radius: var(--design-control-radius);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.editorial-hero, .onboarding-art, .collections-empty picture) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.editorial-hero, .onboarding-art, .collections-empty picture) {
     border-radius: var(--design-hero-radius);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.hub-card, .collection-editor, .panel, [data-slot='card'], .navigation-palette, [data-slot='dialog-content'], [data-slot='select-content'], .personal-kpi, .personal-review, .personal-coaching, .personal-badge, .personal-dashboard-notice, .digest-workspace-heading, .digest-feed, .digest-preferences, .digest-metrics > div, .appearance-theme-card, .appearance-selection, .chat-composer, .chat-live-source-popover, .chat-composer-error-popover, .chat-sessions-row-menu) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.hub-card, .collection-editor, .panel, [data-slot='card'], .navigation-palette, [data-slot='dialog-content'], [data-slot='select-content'], .personal-kpi, .personal-review, .personal-coaching, .personal-badge, .personal-dashboard-notice, .digest-workspace-heading, .digest-feed, .digest-preferences, .digest-metrics > div, .appearance-theme-card, .appearance-selection, .chat-composer, .chat-live-source-popover, .chat-composer-error-popover, .chat-sessions-row-menu) {
     border-radius: var(--design-card-radius);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.hub-card, .collection-editor, .personal-kpi, .personal-review, .personal-coaching, .personal-badge, .personal-dashboard-notice, .digest-workspace-heading, .digest-feed, .digest-preferences, .digest-metrics > div, .appearance-card-copy, .appearance-selection) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.hub-card, .collection-editor, .personal-kpi, .personal-review, .personal-coaching, .personal-badge, .personal-dashboard-notice, .digest-workspace-heading, .digest-feed, .digest-preferences, .digest-metrics > div, .appearance-card-copy, .appearance-selection) {
     padding: var(--design-card-padding);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.digest-frequency-option, .chat-live-source-search) { border-radius: var(--design-control-radius); }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.personal-dashboard, .digest-workspace) { --accent: var(--accent-a); }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .appearance-workspace { padding: var(--page-gutter); }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .editorial-hero-copy { padding: var(--design-hero-padding); }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .editorial-hero--compact .editorial-hero-copy { padding: var(--design-hero-compact-padding); }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .chat-live-source-popover-header { padding: max(12px, calc(var(--design-card-padding) * .6)); }
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.digest-frequency-option, .chat-live-source-search) { border-radius: var(--design-control-radius); }
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.personal-dashboard, .digest-workspace) { --accent: var(--accent-a); }
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .appearance-workspace { padding: var(--page-gutter); }
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .editorial-hero-copy { padding: var(--design-hero-padding); }
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .editorial-hero--compact .editorial-hero-copy { padding: var(--design-hero-compact-padding); }
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .chat-live-source-popover-header { padding: max(12px, calc(var(--design-card-padding) * .6)); }
 
-:root[data-design-theme]:not([data-design-theme='humanistic']) [data-slot='card'] {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) [data-slot='card'] {
     padding-block: var(--design-card-padding);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is([data-slot='card-header'], [data-slot='card-content'], [data-slot='card-footer']) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is([data-slot='card-header'], [data-slot='card-content'], [data-slot='card-footer']) {
     padding-inline: var(--design-card-padding);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.editorial-hero h1, .editorial-auth-form > h1, .editorial-auth-caption h2, .collections-header h1, .chat-reader .chat-empty-state h2, .chat-conversation-sidebar-heading-copy strong, .digest-workspace-heading h1) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.editorial-hero h1, .editorial-auth-form > h1, .editorial-auth-caption h2, .collections-header h1, .chat-reader .chat-empty-state h2, .chat-conversation-sidebar-heading-copy strong, .digest-workspace-heading h1) {
     font-family: var(--font-editorial);
     font-weight: var(--design-heading-weight);
     letter-spacing: var(--design-heading-spacing);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.ui-button, .btn, [data-slot='button']) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.ui-button, .btn, [data-slot='button']) {
     --button-radius: var(--design-control-radius);
     border-radius: var(--design-control-radius);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .ui-button:not([data-size='sm']):not([data-size='lg']) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .ui-button:not([data-size='sm']):not([data-size='lg']) {
     --button-padding: var(--design-button-padding);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.ui-button[data-variant='primary'], .btn.primary) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.ui-button[data-variant='primary'], .btn.primary) {
     --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--design-primary-bg, var(--accent-a)) 96%, white), var(--design-primary-bg, var(--accent-a)));
     --button-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--design-primary-bg, var(--accent-a)) 92%, white), var(--design-primary-bg, var(--accent-a)));
     --button-border: color-mix(in srgb, var(--design-primary-bg, var(--accent-a)) 76%, var(--bg-0));
     --button-color: var(--primary-foreground);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .ui-button[data-variant='danger'] {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .ui-button[data-variant='danger'] {
     --button-bg: #b02c3e; --button-bg-hover: #9e2334; --button-color: #ffffff;
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .editorial-action {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .editorial-action {
     border-radius: var(--design-control-radius);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .editorial-action:not(.editorial-action--quiet) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .editorial-action:not(.editorial-action--quiet) {
     background: var(--design-primary-bg, var(--accent-a));
     border-color: var(--design-primary-bg, var(--accent-a));
     color: var(--primary-foreground);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is([data-slot='select-trigger'], [data-slot='input'], [data-slot='textarea'], .collection-editor input, .collection-editor textarea, .editorial-auth-form input:not([type='checkbox']), .editorial-auth-form textarea, .chat-conversation-search) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is([data-slot='select-trigger'], [data-slot='input'], [data-slot='textarea'], .collection-editor input, .collection-editor textarea, .editorial-auth-form input:not([type='checkbox']), .editorial-auth-form textarea, .chat-conversation-search) {
     border-radius: var(--design-control-radius);
     font-family: var(--font-sans);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.admin-page-content, .kb-browse-document) table {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.admin-page-content, .kb-browse-document) table {
     border-color: var(--panel-border);
     font-family: var(--font-sans);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) :is(.admin-page-content, .kb-browse-document) :is(th, td):not([style*='padding']) {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) :is(.admin-page-content, .kb-browse-document) :is(th, td):not([style*='padding']) {
     padding: var(--design-table-cell-padding);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .grid-bg {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .grid-bg {
     background-image: radial-gradient(circle at 10% -10%, color-mix(in srgb, var(--accent-a) 9%, transparent), transparent 40%), radial-gradient(circle at 90% 110%, color-mix(in srgb, var(--accent-b) 7%, transparent), transparent 40%), linear-gradient(var(--hairline) 1px, transparent 1px), linear-gradient(90deg, var(--hairline) 1px, transparent 1px);
 }
-:root[data-design-theme]:not([data-design-theme='humanistic']) .glow-frame::before {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) .glow-frame::before {
     background: conic-gradient(from var(--glow-angle), var(--accent-a), var(--accent-b), var(--accent-a));
 }
 
 /* Density changes content rhythm; existing component heights and pointer/coarse
  * minimums continue to control targets. Narrow layouts keep the established gutters. */
-:root[data-design-theme]:not([data-design-theme='humanistic'])[data-density='compact'] {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'])[data-density='compact'] {
     --design-table-cell-padding: 10px 14px; --design-card-padding: 20px;
 }
-:root[data-design-theme]:not([data-design-theme='humanistic'])[data-density='comfortable'] {
+:root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'])[data-density='comfortable'] {
     --design-table-cell-padding: 14px 18px; --design-card-padding: 28px;
 }
 @media (max-width: 960px) {
-    :root[data-design-theme]:not([data-design-theme='humanistic']) { --design-page-gutter: 22px; }
+    :root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']) { --design-page-gutter: 22px; }
 }
 @media (max-width: 640px) {
-    :root[data-design-theme]:not([data-design-theme='humanistic']),
-    :root[data-design-theme]:not([data-design-theme='humanistic'])[data-density] {
+    :root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury']),
+    :root[data-design-theme]:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'])[data-density] {
         --design-page-gutter: 16px; --design-card-padding: 20px;
         --design-hero-padding: 24px; --design-hero-compact-padding: 20px;
     }

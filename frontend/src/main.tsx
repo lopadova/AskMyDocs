@@ -5,6 +5,7 @@ import './styles/globals.css';
 import './styles/editorial.css';
 import './styles/editorial-surfaces.css';
 import './styles/design-themes.css';
+import './styles/design-worlds.css';
 import { initializeVisualTheme } from './lib/visual-theme';
 
 initializeVisualTheme();

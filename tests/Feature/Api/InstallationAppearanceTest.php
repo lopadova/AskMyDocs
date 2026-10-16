@@ -59,22 +59,38 @@ final class InstallationAppearanceTest extends TestCase
         $this->assertDatabaseCount('installation_appearance', 0);
     }
 
-    public function test_super_admin_without_a_tenant_can_persist_all_five_themes_in_one_global_record(): void
+    public static function designThemes(): array
+    {
+        return array_map(fn (string $theme): array => [$theme], [
+            'humanistic', 'tech-pro', 'retro-future', 'dynamic-office', 'luxury',
+            'cartographic', 'polar', 'orbital', 'botanical', 'oceanic',
+            'newsroom', 'archaeological', 'alpine', 'paper-world', 'blueprint',
+            'semantic-orbits', 'prismatic-index', 'ink-flow',
+        ]);
+    }
+
+    public function test_super_admin_without_a_tenant_can_persist_all_eighteen_themes_in_one_global_record(): void
     {
         $user = $this->user('super-admin');
         $this->actingAsWithoutTenant($user);
         $this->getJson('/api/system/appearance')->assertOk()->assertJsonPath('data.theme', 'humanistic');
+        $themes = array_column(self::designThemes(), 0);
+        $this->assertEqualsCanonicalizing($themes, InstallationAppearance::THEMES);
 
-        foreach (InstallationAppearance::THEMES as $theme) {
+        foreach ($themes as $theme) {
             $this->putJson('/api/system/appearance', ['theme' => $theme])
                 ->assertOk()->assertExactJson(['data' => ['theme' => $theme]]);
+            $this->getJson('/api/system/appearance')->assertOk()->assertJsonPath('data.theme', $theme);
             $this->getJson('/api/appearance')->assertOk()->assertJsonPath('data.theme', $theme);
+            $this->getJson('/api/auth/me')->assertOk()
+                ->assertJsonPath('appearance.theme', $theme)
+                ->assertJsonPath('preferences.theme', 'dark');
             $this->assertDatabaseHas('installation_appearance', ['id' => 1, 'theme' => $theme, 'updated_by' => $user->id]);
             $this->assertDatabaseCount('installation_appearance', 1);
         }
 
         // A fresh resolver reads the persisted record rather than per-request state.
-        $this->assertSame('luxury', (new InstallationAppearance)->theme());
+        $this->assertSame('ink-flow', (new InstallationAppearance)->theme());
     }
 
     public static function invalidThemePayloads(): array
@@ -84,11 +100,20 @@ final class InstallationAppearanceTest extends TestCase
             'null' => [['theme' => null]],
             'empty' => [['theme' => '']],
             'unknown' => [['theme' => 'corporate']],
+            'world category' => [['theme' => 'worlds']],
+            'localized world category' => [['theme' => 'ambientazioni']],
+            'classic category' => [['theme' => 'classic']],
+            'identity category' => [['theme' => 'identity']],
+            'abstract category' => [['theme' => 'abstract']],
+            'all categories filter' => [['theme' => 'all']],
             'wrong case' => [['theme' => 'Luxury']],
+            'world wrong case' => [['theme' => 'Polar']],
             'array' => [['theme' => ['luxury']]],
             'number' => [['theme' => 1]],
             'attribute injection' => [['theme' => '"><script>alert(1)</script>']],
             'css location' => [['theme' => 'https://example.com/theme.css']],
+            'local css location' => [['theme' => '/editorial/themes/polar/theme.css']],
+            'css traversal' => [['theme' => '../../theme.css']],
         ];
     }
 
@@ -106,16 +131,16 @@ final class InstallationAppearanceTest extends TestCase
 
     public function test_selected_theme_is_shared_by_all_tenants_and_does_not_change_light_dark_preferences(): void
     {
-        AppearanceRecord::create(['id' => 1, 'theme' => 'tech-pro']);
+        AppearanceRecord::create(['id' => 1, 'theme' => 'ink-flow']);
         $this->actingAsWithoutTenant($this->user('viewer'));
 
         foreach (['company-a', 'company-b'] as $tenant) {
             $this->getJson('/api/auth/me', ['X-Tenant-Id' => $tenant])
                 ->assertOk()
-                ->assertJsonPath('appearance.theme', 'tech-pro')
+                ->assertJsonPath('appearance.theme', 'ink-flow')
                 ->assertJsonPath('preferences.theme', 'dark');
             $this->getJson('/api/appearance', ['X-Tenant-Id' => $tenant])
-                ->assertOk()->assertExactJson(['data' => ['theme' => 'tech-pro']]);
+                ->assertOk()->assertExactJson(['data' => ['theme' => 'ink-flow']]);
         }
     }
 
@@ -141,13 +166,16 @@ final class InstallationAppearanceTest extends TestCase
         $this->get('/landing')->assertOk()->assertSee('data-design-theme="humanistic"', false)->assertDontSee('<script>bad</script>', false);
     }
 
-    public function test_guest_landing_and_all_auth_shells_receive_the_selected_theme_before_react_mounts(): void
+    #[DataProvider('designThemes')]
+    public function test_guest_landing_and_all_auth_shells_receive_the_selected_theme_before_react_mounts(string $theme): void
     {
-        AppearanceRecord::create(['id' => 1, 'theme' => 'retro-future']);
+        AppearanceRecord::create(['id' => 1, 'theme' => $theme]);
         $this->withoutVite();
 
+        $this->getJson('/api/appearance')->assertOk()->assertExactJson(['data' => ['theme' => $theme]]);
+
         foreach (['/landing', '/app/me', '/login', '/register', '/forgot-password', '/reset-password?token=test&email=reader%40example.com'] as $path) {
-            $this->get($path)->assertOk()->assertSee('data-design-theme="retro-future"', false);
+            $this->get($path)->assertOk()->assertSee('data-design-theme="'.$theme.'"', false);
         }
     }
 

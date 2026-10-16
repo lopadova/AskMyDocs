@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { LandingLanguageSelect } from './features/landing/LandingLanguageSelect';
 import './styles/design-themes.css';
+import './styles/design-worlds.css';
 import { getArtworkBase, initializeVisualTheme, subscribeAppearance } from './lib/visual-theme';
 import type { Artwork } from './components/shell/navigation';
 

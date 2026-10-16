@@ -40,6 +40,19 @@ class LandingPageTest extends TestCase
             ['retro-future', '/editorial/themes/retro-future'],
             ['dynamic-office', '/editorial/themes/dynamic-office'],
             ['luxury', '/editorial/themes/luxury'],
+            ['cartographic', '/editorial/themes/cartographic'],
+            ['polar', '/editorial/themes/polar'],
+            ['orbital', '/editorial/themes/orbital'],
+            ['botanical', '/editorial/themes/botanical'],
+            ['oceanic', '/editorial/themes/oceanic'],
+            ['newsroom', '/editorial/themes/newsroom'],
+            ['archaeological', '/editorial/themes/archaeological'],
+            ['alpine', '/editorial/themes/alpine'],
+            ['paper-world', '/editorial/themes/paper-world'],
+            ['blueprint', '/editorial/themes/blueprint'],
+            ['semantic-orbits', '/editorial/themes/semantic-orbits'],
+            ['prismatic-index', '/editorial/themes/prismatic-index'],
+            ['ink-flow', '/editorial/themes/ink-flow'],
         ];
     }
 

@@ -15,7 +15,26 @@ final class InstallationAppearance
 {
     public const DEFAULT_THEME = 'humanistic';
 
-    public const THEMES = ['humanistic', 'tech-pro', 'retro-future', 'dynamic-office', 'luxury'];
+    public const THEMES = [
+        'humanistic',
+        'tech-pro',
+        'retro-future',
+        'dynamic-office',
+        'luxury',
+        'cartographic',
+        'polar',
+        'orbital',
+        'botanical',
+        'oceanic',
+        'newsroom',
+        'archaeological',
+        'alpine',
+        'paper-world',
+        'blueprint',
+        'semantic-orbits',
+        'prismatic-index',
+        'ink-flow',
+    ];
 
     public function theme(): string
     {

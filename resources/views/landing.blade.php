@@ -75,7 +75,7 @@
           </div>
         </div>
         <div class="hero-visual">
-          <img class="hero-image" src="{{ $editorialBase }}/knowledge-night.webp" srcset="{{ $editorialBase }}/knowledge-night-small.webp 640w, {{ $editorialBase }}/knowledge-night.webp 1280w" sizes="100vw" width="1280" height="853" alt="Illustrazione di una biblioteca aperta, tra libri e percorsi di conoscenza" data-i18n-alt="images.hero" data-editorial-artwork="knowledge" fetchpriority="high">
+          <img class="hero-image" src="{{ $editorialBase }}/knowledge-night.webp" srcset="{{ $editorialBase }}/knowledge-night-small.webp 640w, {{ $editorialBase }}/knowledge-night.webp 1280w" sizes="100vw" width="1280" height="853" alt="Illustrazione editoriale dedicata ai percorsi di ricerca nella conoscenza" data-i18n-alt="images.hero" data-editorial-artwork="knowledge" fetchpriority="high">
           <div class="image-index">
             <span>01 / 03</span>
             <span data-i18n="hero.caption">Il sapere umano. Una nuova prospettiva.</span>
@@ -136,7 +136,7 @@
         </div>
         <div class="experience-stage">
           <div class="archive-visual">
-            <img src="{{ $editorialBase }}/archive-night.webp" srcset="{{ $editorialBase }}/archive-night-small.webp 640w, {{ $editorialBase }}/archive-night.webp 1280w" sizes="(max-width: 760px) 100vw, 30vw" width="1280" height="853" loading="lazy" alt="Illustrazione di un archivio di documenti ordinati" data-i18n-alt="images.archive" data-editorial-artwork="archive">
+            <img src="{{ $editorialBase }}/archive-night.webp" srcset="{{ $editorialBase }}/archive-night-small.webp 640w, {{ $editorialBase }}/archive-night.webp 1280w" sizes="(max-width: 760px) 100vw, 30vw" width="1280" height="853" loading="lazy" alt="Illustrazione editoriale dedicata all’organizzazione delle fonti documentali" data-i18n-alt="images.archive" data-editorial-artwork="archive">
             <span class="archive-caption" data-i18n="experience.photoCaption">Un archivio. Infinite connessioni.</span>
           </div>
           <div class="demo-workspace">
@@ -161,7 +161,7 @@
         </div>
         <div class="possibilities-grid">
           <figure class="team-visual">
-            <img src="{{ $editorialBase }}/community-night.webp" srcset="{{ $editorialBase }}/community-night-small.webp 640w, {{ $editorialBase }}/community-night.webp 1280w" sizes="(max-width: 760px) 100vw, 48vw" width="1280" height="853" loading="lazy" alt="Illustrazione di persone che collaborano attorno a un tavolo" data-i18n-alt="images.team" data-editorial-artwork="community">
+            <img src="{{ $editorialBase }}/community-night.webp" srcset="{{ $editorialBase }}/community-night-small.webp 640w, {{ $editorialBase }}/community-night.webp 1280w" sizes="(max-width: 760px) 100vw, 48vw" width="1280" height="853" loading="lazy" alt="Illustrazione editoriale dedicata ai collegamenti tra le conoscenze" data-i18n-alt="images.team" data-editorial-artwork="community">
             <figcaption>
               <span>03 / 03</span>
               <span data-i18n="possibilities.caption">Persone, idee e conoscenza. Insieme.</span>

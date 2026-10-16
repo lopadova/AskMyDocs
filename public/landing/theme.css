@@ -1,5 +1,6 @@
 /* Public-page bridge. Humanistic dark keeps its original rendering. Alternate
- * palettes come from design-themes.css, without loading app layout CSS. */
+ * palettes come from the design stylesheets, without loading app layout CSS.
+ * The visual worlds retain the original Humanistic page geometry. */
 :root[data-design-theme='humanistic'][data-theme='light'] {
     --font-stack-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
     --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
@@ -39,8 +40,17 @@
 :root[data-design-theme='dynamic-office'] .landing-page { --gutter: clamp(24px, 4.5vw, 80px); --landing-section-space: 104px; }
 :root[data-design-theme='luxury'] .landing-page { --gutter: clamp(24px, 5.2vw, 92px); --landing-section-space: 128px; }
 
+/* Public light geometry for Humanistic, worlds and abstract themes. The four
+ * alternate original identities keep their own radius tokens. */
+:root[data-design-theme][data-theme='light']:not(:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'])) .landing-page {
+    --design-control-radius: 8px;
+    --design-card-radius: 14px;
+}
+
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(h1, h2) {
     font-family: var(--serif);
+}
+:root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(h1, h2) {
     font-weight: var(--design-heading-weight);
     letter-spacing: var(--design-heading-spacing);
 }
@@ -49,7 +59,7 @@
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.chapter-strip, .footer, .mobile-nav, .experience-stage, dialog) { background: var(--paper-dark); }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.experience, .trust) { background: linear-gradient(135deg, var(--bg-2), var(--paper-dark)); }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .closing { background: radial-gradient(ellipse at 50% 115%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 67%), var(--paper-dark); }
-:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.vision, .experience, .possibilities, .trust, .faq, .closing) { padding-block: var(--landing-section-space); }
+:root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page :is(.vision, .experience, .possibilities, .trust, .faq, .closing) { padding-block: var(--landing-section-space); }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.hero-image, .archive-visual img, .team-visual img) { filter: none; }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-visual::after {
     background: linear-gradient(90deg, color-mix(in srgb, var(--paper) 99%, transparent) 0%, color-mix(in srgb, var(--paper) 95%, transparent) 45%, color-mix(in srgb, var(--paper) 45%, transparent) 75%, color-mix(in srgb, var(--paper) 12%, transparent) 100%), linear-gradient(0deg, var(--paper), transparent 45%);
@@ -61,18 +71,20 @@
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.archive-caption, .team-visual figcaption) { color: var(--ink); }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.archive-caption, .team-visual figcaption, .image-index) {
     background: color-mix(in srgb, var(--paper) 94%, transparent);
+}
+:root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page :is(.archive-caption, .team-visual figcaption, .image-index) {
     border-radius: var(--design-control-radius);
     padding: 12px 14px;
 }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-insight {
     background: color-mix(in srgb, var(--paper-dark) 96%, transparent);
     border-color: var(--panel-border-strong);
-    border-radius: var(--design-card-radius);
     box-shadow: var(--shadow-lg);
 }
+:root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page .hero-insight { border-radius: var(--design-card-radius); }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-insight:hover { background: var(--bg-2); border-color: var(--accent); }
-:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.experience-stage, .team-visual, dialog) { border-radius: var(--design-card-radius); overflow: hidden; }
-:root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.btn, .scenario-tab, .source-link) { border-radius: var(--design-control-radius); }
+:root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page :is(.experience-stage, .team-visual, dialog) { border-radius: var(--design-card-radius); overflow: hidden; }
+:root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page :is(.btn, .scenario-tab, .source-link) { border-radius: var(--design-control-radius); }
 :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .btn:not(.btn-quiet):not(.header-cta) {
     background: linear-gradient(180deg, color-mix(in srgb, var(--design-primary-bg, var(--accent)) 96%, white), var(--design-primary-bg, var(--accent)));
     border-color: var(--design-primary-bg, var(--accent));
@@ -92,13 +104,13 @@
     :root:is([data-design-theme='tech-pro'], [data-design-theme='dynamic-office']) .landing-page h1 { font-size: clamp(65px, 6.4vw, 102px); }
 }
 @media (max-width: 760px) {
-    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page { --landing-section-space: 60px; }
+    :root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page { --landing-section-space: 60px; }
     :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page .hero-visual::after { background: linear-gradient(90deg, color-mix(in srgb, var(--paper) 96%, transparent), color-mix(in srgb, var(--paper) 80%, transparent)), linear-gradient(0deg, var(--paper), transparent 65%); }
     :root:is([data-design-theme='tech-pro'], [data-design-theme='dynamic-office']) .landing-page .hero h1 { font-size: clamp(48px, 12vw, 72px); }
 }
 @media (pointer: coarse), (max-width: 640px) {
-    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page :is(.btn, .source-link, .scenario-tab, #close-source) { min-height: 44px; }
-    :root:is([data-design-theme]:not([data-design-theme='humanistic']), [data-design-theme='humanistic'][data-theme='light']) .landing-page #close-source { min-width: 44px; }
+    :root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page :is(.btn, .source-link, .scenario-tab, #close-source) { min-height: 44px; }
+    :root:is([data-design-theme='tech-pro'], [data-design-theme='retro-future'], [data-design-theme='dynamic-office'], [data-design-theme='luxury'], [data-design-theme][data-theme='light']) .landing-page #close-source { min-width: 44px; }
 }
 @media (max-width: 420px) {
     .landing-page .header-actions { gap: 5px; }

@@ -216,9 +216,9 @@ export const COPY = {
       "top": "Torna all’inizio"
     },
     "images": {
-      "hero": "Illustrazione di una biblioteca aperta, tra libri e percorsi di conoscenza",
-      "archive": "Illustrazione di un archivio di documenti ordinati",
-      "team": "Illustrazione di persone che collaborano attorno a un tavolo"
+      "hero": "Illustrazione editoriale dedicata ai percorsi di ricerca nella conoscenza",
+      "archive": "Illustrazione editoriale dedicata all’organizzazione delle fonti documentali",
+      "team": "Illustrazione editoriale dedicata ai collegamenti tra le conoscenze"
     }
   },
   "en": {
@@ -433,9 +433,9 @@ export const COPY = {
       "top": "Back to top"
     },
     "images": {
-      "hero": "Illustration of an open library, books, and paths of knowledge",
-      "archive": "Illustration of an organised document archive",
-      "team": "Illustration of people collaborating around a table"
+      "hero": "Editorial illustration exploring paths through research and knowledge",
+      "archive": "Editorial illustration exploring the organisation of document sources",
+      "team": "Editorial illustration exploring connections across shared knowledge"
     }
   },
   "fr": {

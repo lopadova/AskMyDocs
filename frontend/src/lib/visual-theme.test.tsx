@@ -1,9 +1,21 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Artwork } from '@/components/shell/navigation';
 import {
     applyVisualTheme, getArtworkBase, getColorMode, getVisualTheme, initializeVisualTheme,
-    isVisualTheme, refreshVisualTheme, useVisualTheme, type VisualThemeId,
+    isVisualTheme, refreshVisualTheme, useVisualTheme, VISUAL_THEMES, type VisualThemeId,
 } from './visual-theme';
+
+const CLASSIC_IDENTITIES = ['humanistic', 'tech-pro', 'retro-future', 'dynamic-office', 'luxury'] as const;
+const WORLD_IDENTITIES = [
+    'cartographic', 'polar', 'orbital', 'botanical', 'oceanic',
+    'newsroom', 'archaeological', 'alpine', 'paper-world', 'blueprint',
+] as const;
+const ABSTRACT_IDENTITIES = ['semantic-orbits', 'prismatic-index', 'ink-flow'] as const;
+const ROLE_SCENES: Record<Artwork, 'knowledge' | 'archive' | 'community'> = {
+    knowledge: 'knowledge', dialogue: 'community', archive: 'archive', connections: 'community',
+    processes: 'archive', community: 'community', trust: 'archive', observatory: 'knowledge',
+};
 
 function themeResponse(theme: unknown): Response {
     return new Response(JSON.stringify({ data: { theme } }), { status: 200 });
@@ -48,20 +60,50 @@ describe('installation visual theme', () => {
         expect(getArtworkBase('knowledge', 'dark')).toBe('/editorial/knowledge-night');
     });
 
-    it('accepts exactly the five supported installation identities', () => {
-        for (const theme of ['humanistic', 'tech-pro', 'retro-future', 'dynamic-office', 'luxury']) expect(isVisualTheme(theme)).toBe(true);
-        for (const theme of [null, undefined, '', 'Luxury', {}, ['luxury'], 1, 'https://example.com/theme.css']) expect(isVisualTheme(theme)).toBe(false);
+    it('accepts all eighteen installation themes while rejecting category names and unsafe values', () => {
+        const allowed = [...CLASSIC_IDENTITIES, ...WORLD_IDENTITIES, ...ABSTRACT_IDENTITIES];
+        expect(VISUAL_THEMES.map((theme) => theme.id)).toEqual(allowed);
+        for (const theme of allowed) expect(isVisualTheme(theme)).toBe(true);
+        for (const theme of [null, undefined, '', 'Luxury', {}, ['luxury'], 1, 'all', 'identity', 'worlds', 'abstract', 'https://example.com/theme.css']) expect(isVisualTheme(theme)).toBe(false);
+    });
+
+    it('groups eighteen unique installation IDs into five identities, ten worlds and three abstractions', () => {
+        expect(VISUAL_THEMES).toHaveLength(18);
+        expect(new Set(VISUAL_THEMES.map((theme) => theme.id)).size).toBe(18);
+        expect(new Set(VISUAL_THEMES.map((theme) => theme.category))).toEqual(new Set(['identity', 'worlds', 'abstract']));
+        expect(VISUAL_THEMES.filter((theme) => theme.category === 'identity').map((theme) => theme.id)).toEqual(CLASSIC_IDENTITIES);
+        expect(VISUAL_THEMES.filter((theme) => theme.category === 'worlds').map((theme) => theme.id)).toEqual(WORLD_IDENTITIES);
+        expect(VISUAL_THEMES.filter((theme) => theme.category === 'abstract').map((theme) => theme.id)).toEqual(ABSTRACT_IDENTITIES);
+    });
+
+    it.each([...WORLD_IDENTITIES, ...ABSTRACT_IDENTITIES])('maps every editorial role to the three available scenes for %s in day and night', (identity) => {
+        for (const mode of ['light', 'dark'] as const) {
+            const lighting = mode === 'light' ? 'day' : 'night';
+            for (const [role, scene] of Object.entries(ROLE_SCENES)) {
+                expect(getArtworkBase(role as Artwork, mode, identity)).toBe(`/editorial/themes/${identity}/${scene}-${lighting}`);
+            }
+        }
+    });
+
+    it.each(CLASSIC_IDENTITIES)('preserves all eight original artwork filenames for %s in day and night', (identity) => {
+        const directory = identity === 'humanistic' ? '/editorial' : `/editorial/themes/${identity}`;
+        for (const mode of ['light', 'dark'] as const) {
+            const lighting = mode === 'light' ? 'day' : 'night';
+            for (const role of Object.keys(ROLE_SCENES)) {
+                expect(getArtworkBase(role as Artwork, mode, identity)).toBe(`${directory}/${role}-${lighting}`);
+            }
+        }
     });
 
     it('applies identity without changing the personal color mode or writing local preferences', () => {
         document.documentElement.dataset.theme = 'light';
         const writePreference = vi.spyOn(localStorage, 'setItem');
-        applyVisualTheme('luxury');
-        expect(getVisualTheme()).toBe('luxury');
+        applyVisualTheme('ink-flow');
+        expect(getVisualTheme()).toBe('ink-flow');
         expect(getColorMode()).toBe('light');
-        expect(getArtworkBase('archive', getColorMode())).toBe('/editorial/themes/luxury/archive-day');
+        expect(getArtworkBase('observatory', getColorMode())).toBe('/editorial/themes/ink-flow/knowledge-day');
         applyVisualTheme('invalid' as VisualThemeId);
-        expect(getVisualTheme()).toBe('luxury');
+        expect(getVisualTheme()).toBe('ink-flow');
         expect(writePreference).not.toHaveBeenCalled();
     });
 
