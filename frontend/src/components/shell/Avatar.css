@@ -1,0 +1,17 @@
+.shell-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border: 1px solid var(--panel-border-strong);
+    background: color-mix(in srgb, var(--accent-a) 10%, var(--bg-3));
+    color: var(--fg-1);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: .015em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+    user-select: none;
+}

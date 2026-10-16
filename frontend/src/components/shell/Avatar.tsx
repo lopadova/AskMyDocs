@@ -1,3 +1,5 @@
+import './Avatar.css';
+
 export type AvatarUser = {
     name?: string;
     avatar?: string;
@@ -11,34 +13,32 @@ export type AvatarProps = {
 };
 
 function initials(user: AvatarUser): string {
-    if (user.avatar) {
-        return user.avatar;
+    const monogram = user.avatar?.trim();
+    if (monogram) {
+        return monogram.toUpperCase();
     }
     if (!user.name) {
         return '';
     }
     return user.name
-        .split(' ')
-        .map((n) => n[0])
+        .trim()
+        .split(/\s+/)
         .slice(0, 2)
-        .join('');
+        .map((part) => Array.from(part)[0])
+        .join('')
+        .toUpperCase();
 }
 
 export function Avatar({ user, size = 28 }: AvatarProps) {
     return (
         <div
+            className="shell-avatar"
+            aria-hidden="true"
             style={{
                 width: size,
                 height: size,
-                borderRadius: 999,
-                background: `linear-gradient(135deg, ${user.color ?? '#8b5cf6'}, ${user.color2 ?? '#22d3ee'})`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: Math.max(6, Math.round(size * 0.26)),
                 fontSize: Math.max(10, size * 0.38),
-                fontWeight: 600,
-                color: '#0a0a14',
-                flex: '0 0 auto',
             }}
         >
             {initials(user)}
