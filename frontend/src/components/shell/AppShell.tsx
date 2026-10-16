@@ -7,7 +7,6 @@ import { areaForSection, hubForSection, hubHref, NAV_AREAS, NAV_HUBS, navLabel, 
 import { Topbar, type BreadcrumbItem } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { SectionNavigation } from './SectionNavigation';
-import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useSidebarCollapsed, useTheme } from './hooks';
 import { USERS, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
@@ -20,9 +19,9 @@ const ROLE_PRIORITY: SeedUser['role'][] = ['system-admin', 'super-admin', 'admin
 export function AppShell({ children, tenantScoped = true }: { children?: ReactNode; tenantScoped?: boolean } = {}) {
     const { t, locale } = useUiTranslation();
     const [theme, setTheme] = useTheme('dark');
-    const [density, setDensity] = useDensity('balanced');
-    const [font, setFont] = useFontPair('geist');
-    const [tweaksOpen, setTweaksOpen] = useState(false);
+    // Keep existing typography and spacing preferences when retiring the old editor.
+    useDensity('balanced');
+    useFontPair('geist');
     const [navOpen, setNavOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed();
     const navigate = useNavigate();
@@ -103,7 +102,7 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
                 }
                 const rest = pathname.replace(/^\/app\/[^/]+/, '');
                 void navigate({ to: '/app/' + target.hash + rest });
-            }} theme={theme} setTheme={setTheme} onToggleTweaks={() => setTweaksOpen((open) => !open)}
+            }} theme={theme} setTheme={setTheme}
                 crumbs={crumbs} onOpenNav={() => setNavOpen(true)} navOpen={navOpen}
                 sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)} />
             {!hubRoute && <SectionNavigation hub={hub} section={section} access={access} teamHash={activeTeam?.hash ?? null} />}
@@ -112,7 +111,5 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
             </main>
         </div>
         <CommandPalette />
-        <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} theme={theme} setTheme={setTheme} density={density} setDensity={setDensity}
-            font={font} setFont={setFont} section={section ?? 'my-kb'} setSection={onNav} userRole={sidebarUser.role} />
     </div>;
 }

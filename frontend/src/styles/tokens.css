@@ -834,7 +834,6 @@ textarea:focus-visible {
   .app-topbar-leading { flex: 1; }
   .shell-team-switcher { width: 100%; }
   .shell-context-trigger { width: 100%; max-width: 126px; }
-  .app-topbar-tools .app-topbar-icon-button[aria-label="Open tweaks panel"] { display: none; }
 }
 
 /* Button system reference page. It is intentionally composed only from
@@ -1119,7 +1118,6 @@ textarea:focus-visible {
   .ui-foundations-chrome-preview { padding-inline: 10px; }
   .ui-foundations-crumb { display: none; }
   .ui-foundations-chrome-actions { flex: 0 0 auto; }
-  .ui-foundations-chrome-preview .app-topbar-tools .app-topbar-icon-button:last-child { display: none; }
   .ui-foundations-user { display: none; }
 }
 

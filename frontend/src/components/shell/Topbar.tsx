@@ -16,12 +16,12 @@ import type { Theme } from './hooks';
 export type BreadcrumbItem = string | { label: string; onClick?: () => void };
 export type TopbarProps = {
     team: Team | null; teams: Team[]; onTeamChange: (team: Team) => void;
-    theme: Theme; setTheme: (theme: Theme) => void; onToggleTweaks: () => void;
+    theme: Theme; setTheme: (theme: Theme) => void;
     crumbs?: BreadcrumbItem[]; onOpenNav?: () => void; navOpen?: boolean;
     sidebarCollapsed?: boolean; onToggleSidebar?: () => void;
 };
 
-export function Topbar({ team, teams, onTeamChange, theme, setTheme, onToggleTweaks, crumbs = [], onOpenNav, navOpen = false, sidebarCollapsed = false, onToggleSidebar }: TopbarProps) {
+export function Topbar({ team, teams, onTeamChange, theme, setTheme, crumbs = [], onOpenNav, navOpen = false, sidebarCollapsed = false, onToggleSidebar }: TopbarProps) {
     const { t } = useUiTranslation();
     const roles = useAuthStore((state) => state.roles);
     const canCheckHealth = roles.some((role) => role === 'admin' || role === 'super-admin');
@@ -44,7 +44,6 @@ export function Topbar({ team, teams, onTeamChange, theme, setTheme, onToggleTwe
                 <LanguagePicker />
                 {team !== null && <NotificationBell />}
                 <Tooltip label={t(theme === 'dark' ? "Light mode" : "Dark mode")}><Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label={t('Toggle theme')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}</Button></Tooltip>
-                <Tooltip label={t('Interface settings')}><Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label={t('Interface settings')} onClick={onToggleTweaks}><Icon.Sliders size={15} /></Button></Tooltip>
             </div>
             <UserMenu />
         </div>

@@ -23,7 +23,7 @@ const team: Team = {
 describe('Topbar', () => {
     it('offers a labelled desktop control to close and reopen the sidebar', () => {
         const onToggleSidebar = vi.fn();
-        const props = { team, teams: [team], onTeamChange: vi.fn(), theme: 'dark' as const, setTheme: vi.fn(), onToggleTweaks: vi.fn(), onToggleSidebar };
+        const props = { team, teams: [team], onTeamChange: vi.fn(), theme: 'dark' as const, setTheme: vi.fn(), onToggleSidebar };
         const { rerender } = render(<Topbar {...props} sidebarCollapsed={false} />);
         const collapse = screen.getByRole('button', { name: 'Collapse sidebar' });
         expect(collapse).toHaveAttribute('aria-expanded', 'true');
@@ -37,7 +37,6 @@ describe('Topbar', () => {
     });
     it('separates context, health, tools and identity into stable groups', () => {
         const setTheme = vi.fn();
-        const onToggleTweaks = vi.fn();
 
         render(
             <Topbar
@@ -46,7 +45,6 @@ describe('Topbar', () => {
                 onTeamChange={vi.fn()}
                 theme="dark"
                 setTheme={setTheme}
-                onToggleTweaks={onToggleTweaks}
                 crumbs={['Chat']}
             />,
         );
@@ -57,9 +55,8 @@ describe('Topbar', () => {
         expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Interface settings' }));
         expect(setTheme).toHaveBeenCalledWith('light');
-        expect(onToggleTweaks).toHaveBeenCalledOnce();
+        expect(screen.queryByRole('button', { name: 'Interface settings' })).not.toBeInTheDocument();
     });
 
     it('keeps global tools available without tenant context', () => {
@@ -70,7 +67,6 @@ describe('Topbar', () => {
                 onTeamChange={vi.fn()}
                 theme="light"
                 setTheme={vi.fn()}
-                onToggleTweaks={vi.fn()}
             />,
         );
 

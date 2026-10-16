@@ -62,7 +62,6 @@ export function ButtonSystemDemo(): ReactNode {
                                 <span className="notification-bell-badge" aria-hidden="true">3</span>
                             </Button>
                             <Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label="Theme demo"><Icon.Moon size={15} /></Button>
-                            <Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label="Settings demo"><Icon.Sliders size={15} /></Button>
                         </div>
                         <div className="ui-foundations-user"><span>DS</span><strong>Demo Super-Admin</strong><Icon.ChevronDown size={12} /></div>
                     </div>

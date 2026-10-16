@@ -129,11 +129,6 @@
 .navigation-search-empty h2 { font-size: 16px; }
 .navigation-palette-footer { display: flex; gap: 16px; border-top: 1px solid var(--hairline); padding: 12px 18px; font-size: 10px; color: var(--fg-3); }
 .navigation-palette-footer kbd { color: var(--fg-1); margin-left: 5px; }
-.interface-preferences { position: fixed; z-index: 1102; top: 80px; right: 20px; width: min(340px,calc(100vw - 32px)); padding: 22px; background: var(--panel-solid); border: 1px solid var(--panel-border-strong); border-radius: 12px; }
-.interface-preferences header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-.interface-preferences h2 { font-size: 16px; margin: 0; }
-.interface-preferences fieldset { border: 0; padding: 0; margin: 20px 0; }
-.interface-preferences legend { font-size: 12px; color: var(--fg-2); margin-bottom: 10px; }
 .ui-button[data-variant='primary'], .btn-primary { color: var(--primary-foreground); }
 .chat-empty-state .chat-empty-art { display: block; width: min(380px,100%); height: 170px; object-fit: cover; border-radius: 80px 80px 12px 12px; margin: 0 auto 24px; }
 .chat-reader .chat-empty-state h2 { font: 400 clamp(30px,3vw,44px)/1.1 var(--font-editorial); letter-spacing: -.02em; }
@@ -170,6 +165,7 @@
     .app-topbar-actions { gap: 6px; }
     .app-topbar-tools { padding: 0; gap: 2px; border: 0; }
     .app-topbar-tools .ui-button { min-width: 44px; height: 44px; }
+    .app-topbar .shell-user-trigger { min-width: 44px; min-height: 44px; }
     .mobile-navigation-trigger.ui-button { min-width: 44px; height: 44px; }
     .app-service-link { display: none; }
     .section-topics, .section-pages, .conversation-modes { padding-left: 16px; padding-right: 16px; }
@@ -198,7 +194,6 @@
     .editorial-hero-actions { gap: 9px; }
     .editorial-action { width: 100%; }
     .app-topbar { padding: 6px 8px; gap: 3px; }
-    .app-topbar-tools .ui-button[aria-label='Interface settings'], .app-topbar-tools .ui-button[aria-label='Preferenze interfaccia'] { display: none; }
     .app-topbar-tools .ui-button { width: 44px; }
     .app-topbar .team-switcher-trigger { max-width: 126px; }
     .language-picker [data-slot='select-trigger'] { min-height: 44px; }
