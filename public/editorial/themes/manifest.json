@@ -1,0 +1,527 @@
+{
+  "generator": "Built-in image_gen",
+  "date": "2026-10-16",
+  "series": "AskMyDocs visual themes",
+  "formats": [
+    "avif",
+    "webp"
+  ],
+  "widths": [
+    640,
+    1280
+  ],
+  "images": [
+    {
+      "theme": "tech-pro",
+      "artwork": "knowledge",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs knowledge editorial illustration. Create its TECH PRO design theme version for an enterprise AI knowledge platform. Preserve the main subject, composition, camera and both people exchanging an open book across the shared reading table, with large negative space on the left and library shelves. Reimagine the context as a refined near-future professional research office: white ceramic, silver brushed aluminium, clear smart glass, precise rectangular architecture, restrained cobalt blue and icy cyan details, a distant modern campus beyond the large window. Contemporary high-end architectural editorial photography with realistic material texture and natural human details, clean and calm, no sci-fi spectacle. Bright natural DAYLIGHT and soft blue sky, readable midtones, premium craftsmanship. No text, logos, lettering, numbers, UI, charts, neon cyberpunk, watermarks, borders or grids. Landscape 3:2 image, one complete scene.",
+      "master": "exec-35c5045e-a0dd-49d9-ad1e-0c5d59ced8ff.png",
+      "reference": "knowledge-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "dialogue",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs dialogue illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve two seated people at opposite ends of an oval table exchanging a flowing ribbon of ivory paper, round window and books. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-c4c98482-516a-45fe-8a57-6c161f1c6e9d.png",
+      "reference": "dialogue-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "archive",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs archive illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve the ordered archive shelves, books, library ladders and open book in the foreground, steps and illuminated alcove. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-9e4f9f80-3681-4a46-9039-7d59a3fa4f14.png",
+      "reference": "archive-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "connections",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs connections illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve multiple small library pavilions connected by elegant low bridges across still water, trees and distant landscape. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-f6141efc-e818-463c-88da-d949a90da74b.png",
+      "reference": "connections-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "processes",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs processes illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve the sculptural flowing paper ribbon carrying small stacks of books through three successive architectural openings. No people. This remains a poetic physical installation, not a diagram. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-e983d2c4-0a12-4d05-8ab3-e58519090f42.png",
+      "reference": "processes-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "community",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs community illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve three colleagues collaborating around a round table with books and documents: one seated man on the left, one woman standing in the center and one seated woman on the right. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-d60e5d24-5d98-4914-8985-50692b8c0abb.png",
+      "reference": "community-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "knowledge",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs knowledge illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve the shared library reading table and two people exchanging an open book, shelves and large window. Keep the left area quiet and spacious. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-94921270-bbee-412d-b766-16fd9bad835f.png",
+      "reference": "knowledge-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "trust",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs trust illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve an open book on a circular pedestal beside a mature olive tree beneath protective architectural arches and a circular skylight. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-e861b62c-739c-4074-bcfe-54e9c4b8ed0b.png",
+      "reference": "trust-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "dialogue",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs dialogue illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve two seated people at opposite ends of an oval table exchanging a flowing ribbon of ivory paper, round window and books. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-9c80c6fc-8309-4b42-982d-57ff057e76cc.png",
+      "reference": "dialogue-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "connections",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs connections illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve multiple small library pavilions connected by elegant low bridges across still water, trees and distant landscape. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-bc977cbf-b663-4e2f-ad27-456b76bc9112.png",
+      "reference": "connections-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "observatory",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs observatory illustration. Reinterpret its context and materials in this theme: refined near-future professional research office. White ceramic, brushed silver aluminium, precise rectangular architecture, clear smart glass, restrained cobalt blue and icy cyan details, contemporary modern campus. Architectural editorial photography, calm professional technology, no cyberpunk. Preserve a large sculptural armillary sphere on a circular table by panoramic windows, books and quiet lounge furniture, one resting dog. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-5a4d0bc5-34d9-4d17-8bf8-e24f676bfb36.png",
+      "reference": "observatory-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "processes",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs processes illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve the sculptural flowing paper ribbon carrying small stacks of books through three successive architectural openings. No people. This remains a poetic physical installation, not a diagram. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-f30205de-3fe2-4721-97ab-27331aed1213.png",
+      "reference": "processes-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "archive",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs archive illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve the ordered archive shelves, books, library ladders and open book in the foreground, steps and illuminated alcove. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-613cc2b4-031e-46e4-9725-8d61a62c7dca.png",
+      "reference": "archive-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "observatory",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs observatory illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve a large sculptural armillary sphere on a circular table by panoramic windows, books and quiet lounge furniture, one resting dog. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-e989b9f4-2737-4308-88b7-41ad6b73c692.png",
+      "reference": "observatory-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "community",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs community illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve three colleagues collaborating around a round table with books and documents: one seated man on the left, one woman standing in the center and one seated woman on the right. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-fa93115a-f9a8-415b-960b-b3e86a37e726.png",
+      "reference": "community-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "knowledge",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs knowledge illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve the shared library reading table and two people exchanging an open book, shelves and large window. Keep the left area quiet and spacious. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-a189a077-6f84-45f8-b2d1-d150125b0f5d.png",
+      "reference": "knowledge-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "dialogue",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs dialogue illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve two seated people at opposite ends of an oval table exchanging a flowing ribbon of ivory paper, round window and books. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-9b9ce832-be3a-4a51-b1a7-d89740e15a6f.png",
+      "reference": "dialogue-day.webp"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "trust",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs trust illustration. Reinterpret its context and materials in this theme: optimistic 1970s retro-futurist knowledge office. Rounded space-age architecture, cream molded fiberglass, walnut veneer, burnt orange upholstery, petrol teal accents, smoked glass, brushed chrome, sculptural globe lamps. Beautiful tactile architectural editorial photography with subtle analog film grain. Elegant space-age optimism, no grunge. Preserve an open book on a circular pedestal beside a mature olive tree beneath protective architectural arches and a circular skylight. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-4c8727b6-0f62-4cc1-b3a6-585c17b752a4.png",
+      "reference": "trust-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "archive",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs archive illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve the ordered archive shelves, books, library ladders and open book in the foreground, steps and illuminated alcove. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-03bcd0d8-b48e-47ba-b995-bea8f276609f.png",
+      "reference": "archive-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "trust",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs trust illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve an open book on a circular pedestal beside a mature olive tree beneath protective architectural arches and a circular skylight. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-73d8fd4f-7813-40c4-9141-170b6ab5979d.png",
+      "reference": "trust-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "connections",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs connections illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve multiple small library pavilions connected by elegant low bridges across still water, trees and distant landscape. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-f33ea30d-fbeb-4285-905d-96fd82f78b31.png",
+      "reference": "connections-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "observatory",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs observatory illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve a large sculptural armillary sphere on a circular table by panoramic windows, books and quiet lounge furniture, one resting dog. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-b6ca3475-ee1c-48b1-ac3e-53bbf6115fb0.png",
+      "reference": "observatory-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "processes",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs processes illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve the sculptural flowing paper ribbon carrying small stacks of books through three successive architectural openings. No people. This remains a poetic physical installation, not a diagram. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-61c4d421-d42d-4765-86be-98f0247eb8c9.png",
+      "reference": "processes-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "knowledge",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs knowledge illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve the shared library reading table and two people exchanging an open book, shelves and large window. Keep the left area quiet and spacious. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-07b01455-8320-4ecd-9ba6-e94fc6b5b799.png",
+      "reference": "knowledge-day.webp"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "community",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs community illustration. Reinterpret its context and materials in this theme: energetic contemporary office inspired by premium sports performance campuses. Bold diagonal architectural lines, navy graphite structure, pale concrete, lime green detailing, lightweight recycled mesh, dynamic modular furniture, open active collaborative workplace. Crisp realistic architectural editorial photography, sophisticated and focused, not a gym. Preserve three colleagues collaborating around a round table with books and documents: one seated man on the left, one woman standing in the center and one seated woman on the right. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-bbb14988-9959-4a42-bbbf-b4939929790e.png",
+      "reference": "community-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "dialogue",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs dialogue illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve two seated people at opposite ends of an oval table exchanging a flowing ribbon of ivory paper, round window and books. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-9ee2a29c-1925-4de0-838a-dbac10f8151a.png",
+      "reference": "dialogue-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "processes",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs processes illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve the sculptural flowing paper ribbon carrying small stacks of books through three successive architectural openings. No people. This remains a poetic physical installation, not a diagram. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-1322e9ca-0d05-47bc-bd87-cdb4a680eecc.png",
+      "reference": "processes-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "archive",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs archive illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve the ordered archive shelves, books, library ladders and open book in the foreground, steps and illuminated alcove. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-410ce211-1442-499e-ae0c-20f58cbfee32.png",
+      "reference": "archive-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "trust",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs trust illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve an open book on a circular pedestal beside a mature olive tree beneath protective architectural arches and a circular skylight. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-04911b89-52dc-44ef-943d-6b57733a11ea.png",
+      "reference": "trust-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "community",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs community illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve three colleagues collaborating around a round table with books and documents: one seated man on the left, one woman standing in the center and one seated woman on the right. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-10b077d1-6a57-4e32-92a9-8cfccc167d17.png",
+      "reference": "community-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "observatory",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs observatory illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve a large sculptural armillary sphere on a circular table by panoramic windows, books and quiet lounge furniture, one resting dog. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-fcd45c6e-eacf-4dcf-a796-5c1ff8c4e956.png",
+      "reference": "observatory-day.webp"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "connections",
+      "mode": "day",
+      "prompt": "Use case: style-transfer. Edit target: the supplied AskMyDocs connections illustration. Reinterpret its context and materials in this theme: exceptionally elegant luxury executive office and private knowledge club. Travertine, walnut, champagne brushed brass, navy velvet, ivory linen, sophisticated large windows, finely crafted quiet architecture. High-end interior editorial photography, understated and timeless, tasteful premium material detail, not ostentatious. Preserve multiple small library pavilions connected by elegant low bridges across still water, trees and distant landscape. No people. Retain the main subjects, their number, poses, conceptual relationship, wide camera framing and readable composition. Landscape 3:2, single coherent scene. Bright natural DAYTIME, soft sunshine, blue sky, airy midtones. Premium contemporary editorial image, convincing material texture. No text, logos, watermarks, lettering, UI, screens with text, grids or borders.",
+      "master": "exec-e9fa37f9-33b5-4d72-b622-77f60c553864.png",
+      "reference": "connections-day.webp"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "knowledge",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro knowledge daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-3478d1af-af51-42f5-bd64-070d31a3ba1a.png",
+      "reference": "exec-35c5045e-a0dd-49d9-ad1e-0c5d59ced8ff.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "dialogue",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro dialogue daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-ca60ddc1-30fe-4a99-a7ee-0b72ca99b1b9.png",
+      "reference": "exec-c4c98482-516a-45fe-8a57-6c161f1c6e9d.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "archive",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro archive daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-54eddc70-a931-4678-99b4-f0594f9fb1d2.png",
+      "reference": "exec-9e4f9f80-3681-4a46-9039-7d59a3fa4f14.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "connections",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro connections daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-cd419199-3db0-40dd-904f-216fafd677c7.png",
+      "reference": "exec-f6141efc-e818-463c-88da-d949a90da74b.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "processes",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro processes daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-3453041c-96f1-4aa1-bbf3-05b0c9a08cf5.png",
+      "reference": "exec-e983d2c4-0a12-4d05-8ab3-e58519090f42.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "trust",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro trust daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-18597291-2d3e-49ce-a039-1afb4539164b.png",
+      "reference": "exec-e861b62c-739c-4074-bcfe-54e9c4b8ed0b.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "community",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro community daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-f24d8c68-2874-40af-801e-8ee8ffc96efc.png",
+      "reference": "exec-d60e5d24-5d98-4914-8985-50692b8c0abb.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "dialogue",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future dialogue daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-292364c5-228e-4a4e-a8c2-bc55406ec4ed.png",
+      "reference": "exec-9c80c6fc-8309-4b42-982d-57ff057e76cc.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "knowledge",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future knowledge daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-c22b8ac9-24b5-4a39-a48e-e9eb9e7c519b.png",
+      "reference": "exec-94921270-bbee-412d-b766-16fd9bad835f.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "connections",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future connections daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-b7a44197-5a44-4c30-b03b-62e01fd8b295.png",
+      "reference": "exec-bc977cbf-b663-4e2f-ad27-456b76bc9112.png"
+    },
+    {
+      "theme": "tech-pro",
+      "artwork": "observatory",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied tech-pro observatory daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-c4a18771-8b8b-468a-9d8c-79c4cda71596.png",
+      "reference": "exec-5a4d0bc5-34d9-4d17-8bf8-e24f676bfb36.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "processes",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future processes daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-140838a3-fdc5-441e-a8a1-6b77248e8d33.png",
+      "reference": "exec-f30205de-3fe2-4721-97ab-27331aed1213.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "archive",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future archive daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-6cdf367f-99ac-4442-b3eb-ac4add114a84.png",
+      "reference": "exec-613cc2b4-031e-46e4-9725-8d61a62c7dca.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "community",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future community daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-39f56ae3-8251-468a-bfd6-978338166b14.png",
+      "reference": "exec-fa93115a-f9a8-415b-960b-b3e86a37e726.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "knowledge",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office knowledge daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-86367ec9-e430-49b9-81ea-2dbc3d2110cf.png",
+      "reference": "exec-a189a077-6f84-45f8-b2d1-d150125b0f5d.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "observatory",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future observatory daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-5a2cc13c-9da1-4935-b052-07eae63f0276.png",
+      "reference": "exec-e989b9f4-2737-4308-88b7-41ad6b73c692.png"
+    },
+    {
+      "theme": "retro-future",
+      "artwork": "trust",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied retro-future trust daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-faa046e8-e501-41e9-a4f7-ed469be6a776.png",
+      "reference": "exec-4c8727b6-0f62-4cc1-b3a6-585c17b752a4.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "dialogue",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office dialogue daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-d67a68bb-dc97-4bda-ad34-da382315a97c.png",
+      "reference": "exec-9b9ce832-be3a-4a51-b1a7-d89740e15a6f.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "archive",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office archive daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-e9d17e40-1f49-4f4f-8f32-9cc351cbdbb3.png",
+      "reference": "exec-03bcd0d8-b48e-47ba-b995-bea8f276609f.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "trust",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office trust daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-d8af02d6-5d3b-4df7-b757-b15534c3bab3.png",
+      "reference": "exec-73d8fd4f-7813-40c4-9141-170b6ab5979d.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "observatory",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office observatory daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-bb6a892e-cb8f-42dc-a933-20448d568005.png",
+      "reference": "exec-b6ca3475-ee1c-48b1-ac3e-53bbf6115fb0.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "connections",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office connections daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-f5fb33e5-d75d-4d25-a984-630aba0f95de.png",
+      "reference": "exec-f33ea30d-fbeb-4285-905d-96fd82f78b31.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "processes",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office processes daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-93729377-df1e-47eb-a3f0-7a94dc5cec23.png",
+      "reference": "exec-61c4d421-d42d-4765-86be-98f0247eb8c9.png"
+    },
+    {
+      "theme": "dynamic-office",
+      "artwork": "community",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied dynamic-office community daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-95698f26-186d-477a-ae28-af04cb0db4f2.png",
+      "reference": "exec-bbb14988-9959-4a42-bbbf-b4939929790e.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "knowledge",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury knowledge daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-c0414ed4-756b-4e6b-9094-fdc56758306d.png",
+      "reference": "exec-07b01455-8320-4ecd-9ba6-e94fc6b5b799.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "processes",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury processes daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-6e5e7c3d-8b54-4f1b-aefb-fe3a77a9b518.png",
+      "reference": "exec-1322e9ca-0d05-47bc-bd87-cdb4a680eecc.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "dialogue",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury dialogue daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-587a2007-e467-4283-a727-3f3dc9c10ec0.png",
+      "reference": "exec-9ee2a29c-1925-4de0-838a-dbac10f8151a.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "archive",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury archive daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-cf50a38a-c1be-4d43-9bee-a2230f343708.png",
+      "reference": "exec-410ce211-1442-499e-ae0c-20f58cbfee32.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "trust",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury trust daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-6d9b28ca-ba4e-4d26-9212-64345714d393.png",
+      "reference": "exec-04911b89-52dc-44ef-943d-6b57733a11ea.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "observatory",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury observatory daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-72c7ac5f-9012-4c27-ad1c-763e77ca8c40.png",
+      "reference": "exec-fcd45c6e-eacf-4dcf-a796-5c1ff8c4e956.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "community",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury community daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-5b84574e-13f8-46cb-8e7a-cc4cb209d58f.png",
+      "reference": "exec-10b077d1-6a57-4e32-92a9-8cfccc167d17.png"
+    },
+    {
+      "theme": "luxury",
+      "artwork": "connections",
+      "mode": "night",
+      "prompt": "Use case: lighting-weather. Edit target: the supplied luxury connections daytime editorial image. Create the exact SAME scene at NIGHT for the dark interface version. Change ONLY illumination, time of day and lighting color grade. Preserve exact camera, framing, crop, perspective, all architectural edges, positions, furniture, books, plants, people with identical poses and clothing, and every object silhouette. Preserve this design theme's materials and editorial photographic style. Replace daylight outside with true deep midnight-blue sky, distant restrained night lights and cool moonlight. Interior lit by existing fixtures with gentle warm practical light and subtle cool reflected night light, readable rich shadows and material detail. No sunlight or sunset orange horizon. Do not add physical lamps or objects. This must be nighttime throughout, not a dark overlay. Keep same 3:2 landscape. No text, logos, UI, watermark, grids or borders.",
+      "master": "exec-cbc10c76-1ba3-4bcd-a42a-cab616df00de.png",
+      "reference": "exec-e9fa37f9-33b5-4d72-b622-77f60c553864.png"
+    }
+  ]
+}
