@@ -9,6 +9,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Kb\Investigation\KbSourceReader;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class KbSourceReaderTest extends TestCase
@@ -35,29 +36,45 @@ final class KbSourceReaderTest extends TestCase
         $this->assertStringContainsString('cinque giorni lavorativi', $source['excerpt']);
     }
 
-    public function test_automatic_triage_card_is_not_returned_as_the_senders_evidence(): void
+    public static function emailConnectors(): array
+    {
+        return ['IMAP' => ['imap'], 'Gmail' => ['gmail'], 'Microsoft Mail' => ['microsoft-mail']];
+    }
+
+    #[DataProvider('emailConnectors')]
+    public function test_automatic_triage_card_is_not_returned_as_the_senders_evidence(string $connector): void
     {
         \Illuminate\Support\Facades\Storage::fake('kb');
         $original = "# Return request\n\nCould you please send me a return label?";
-        $document = $this->document('Triaged email', ['connector' => 'imap', 'disk' => 'kb',
-            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]);
+        $document = $this->document('Triaged email', $this->triagedMetadata($connector, $original));
         \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
         $chunk = $this->chunk($document, 0, $original."\n\n## Scheda di triage automatica\nSentiment: arrabbiato");
         $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk));
         $this->assertTrue($source['complete_source']);
         $this->assertSame($original, $source['excerpt']);
         $this->assertStringNotContainsString('arrabbiato', $source['excerpt']);
+    }
+
+    #[DataProvider('emailConnectors')]
+    public function test_changed_or_missing_original_is_rejected_without_using_the_derived_card(string $connector): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = "# Return request\n\nCould you please send me a return label?";
+        $document = $this->document('Triaged email', $this->triagedMetadata($connector, $original));
+        $chunk = $this->chunk($document, 0, $original."\n\n## Scheda di triage automatica\nSentiment: arrabbiato");
         \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, 'Changed original');
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk)));
+        \Illuminate\Support\Facades\Storage::disk('kb')->delete($document->source_path);
         $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk)));
     }
 
-    public function test_long_original_keeps_column_labels_with_the_matching_middle_row(): void
+    #[DataProvider('emailConnectors')]
+    public function test_long_original_keeps_column_labels_with_the_matching_middle_row(string $connector): void
     {
         \Illuminate\Support\Facades\Storage::fake('kb');
         config(['kb.investigation.full_source_max_chars' => 200, 'kb.investigation.long_source_max_chars' => 600]);
         $original = "# Report\n\nColumns: Record Reason\n\n".str_repeat('Earlier rows. ', 200)."CASE-2026 Wrong size\n".str_repeat('Later rows. ', 100);
-        $document = $this->document('Triaged report', ['connector' => 'imap', 'disk' => 'kb',
-            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]);
+        $document = $this->document('Triaged report', $this->triagedMetadata($connector, $original));
         \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
         $anchor = $this->chunk($document, 1, "CASE-2026 Wrong size\n\n---");
         $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $anchor));
@@ -116,6 +133,13 @@ final class KbSourceReaderTest extends TestCase
         $this->assertStringContainsString('SEZIONE CLIENTE DOPO', $source['excerpt']);
         $this->assertStringNotContainsString('INTRODUZIONE LONTANA', $source['excerpt']);
         $this->assertStringNotContainsString('APPENDICE LONTANA', $source['excerpt']);
+    }
+
+    /** @return array<string,mixed> */
+    private function triagedMetadata(string $connector, string $original): array
+    {
+        return ['connector' => $connector, 'disk' => 'kb', 'email_body_hash' => hash('sha256', $original),
+            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]];
     }
 
     /** @param array<string,mixed> $metadata */

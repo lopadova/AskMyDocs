@@ -7,6 +7,7 @@ namespace App\Services\Kb\Investigation;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
+use App\Services\EmailTriage\EmailConnectorRegistry;
 use App\Support\TenantContext;
 
 /**
@@ -83,7 +84,8 @@ class KbSourceReader
         $fullLimit = (int) config('kb.investigation.full_source_max_chars', 24000);
         $isShort = $totalChars <= $fullLimit;
 
-        if (data_get($document->metadata, 'connector') === 'imap'
+        $connector = data_get($document->metadata, 'connector');
+        if (is_string($connector) && EmailConnectorRegistry::supportsKey($connector)
             && data_get($document->metadata, 'attachment_filename') === null
             && data_get($document->metadata, 'email_triage.evaluation_id')) {
             try {
