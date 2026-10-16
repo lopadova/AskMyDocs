@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../../lib/ui-locale";
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuthStore } from '../../../../lib/auth-store';
@@ -259,22 +260,22 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                         <div style={{ display: 'flex', gap: 8 }}>
                             <label htmlFor="kb-upload-project-select" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <span style={labelTxt}>Target project</span>
-                                <select
+                                <SelectField
                                     id="kb-upload-project-select"
                                     data-testid="kb-upload-project-select"
                                     aria-label="Target project"
                                     value={projectKey}
                                     disabled={phase !== 'selecting'}
-                                    onChange={(e) => setProjectKey(e.target.value)}
+                                    onValueChange={(nextValue) => setProjectKey(nextValue)}
                                     style={fieldStyle}
                                 >
-                                    <option value="">{translateInterface("Select a project…")}</option>
+                                    <SelectOption value="">{translateInterface("Select a project…")}</SelectOption>
                                     {projectOptions.map((key) => (
-                                        <option key={key} value={key}>
+                                        <SelectOption key={key} value={key}>
                                             {key}
-                                        </option>
+                                        </SelectOption>
                                     ))}
-                                </select>
+                                </SelectField>
                             </label>
                             <label htmlFor="kb-upload-target-path" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <span style={labelTxt}>Subfolder (optional)</span>

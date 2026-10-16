@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { seedDb } from './setup-helpers';
@@ -58,7 +59,7 @@ test.describe('Admin Source Permissions', () => {
 
         await page.getByRole('button', { name: /dismiss/i }).first().click();
 
-        await page.getByTestId('admin-source-acl-status-filter').selectOption('ignored');
+        await chooseSelectOption(page.getByTestId('admin-source-acl-status-filter'), 'ignored');
 
         await expect(page.getByTestId('admin-source-acl-table')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByRole('button', { name: /reopen/i }).first()).toBeVisible();

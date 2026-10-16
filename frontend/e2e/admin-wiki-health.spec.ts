@@ -1,3 +1,4 @@
+import { chooseSelectOption, openSelect } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { seedDb } from './setup-helpers';
@@ -24,8 +25,9 @@ test.describe('Admin Wiki Health', () => {
         // Exact-match the option text — the DemoSeeder also creates `engineering`,
         // which a bare `hasText: 'eng'` substring would collide with.
         const projectSelect = page.getByTestId('admin-wiki-health-project');
-        await expect(projectSelect.locator('option', { hasText: /^eng$/ })).toHaveCount(1, { timeout: 15_000 });
-        await projectSelect.selectOption('eng');
+        const projects = await openSelect(projectSelect);
+        await expect(projects.getByRole('option', { name: 'eng', exact: true })).toHaveCount(1, { timeout: 15_000 });
+        await chooseSelectOption(projectSelect, 'eng');
 
         // Real lint report renders with the seeded dangling finding.
         await expect(page.getByTestId('admin-wiki-health-report')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
@@ -58,7 +60,7 @@ test.describe('Admin Wiki Health', () => {
 
         await page.goto('/app/admin/kb/wiki-health');
         await expect(page.getByTestId('admin-wiki-health-view')).toBeVisible({ timeout: 15_000 });
-        await page.getByTestId('admin-wiki-health-project').selectOption('eng');
+        await chooseSelectOption(page.getByTestId('admin-wiki-health-project'), 'eng');
         await expect(page.getByTestId('admin-wiki-health-error')).toHaveAttribute('data-state', 'error', { timeout: 15_000 });
     });
 });

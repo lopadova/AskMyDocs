@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
@@ -59,11 +60,11 @@ export function OAuthConsentPage({ requestId }: { requestId: string }) {
                 {consent.scopes.map((scope) => <li key={scope.id}>{scope.description}</li>)}
             </ul>
             <label htmlFor="oauth-tenant" style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>{translateInterface("Company")}</label>
-            <select id="oauth-tenant" className="input" value={tenant} disabled={busy !== null || consent.teams.length === 0}
-                onChange={(event) => setTenant(event.target.value)} style={{ width: '100%', marginBottom: 12 }}>
-                {consent.teams.length === 0 && <option value="">{translateInterface("No company available")}</option>}
-                {consent.teams.map((team) => <option key={team.tenant_id} value={team.tenant_id}>{team.name}</option>)}
-            </select>
+            <SelectField id="oauth-tenant" className="input" value={tenant} disabled={busy !== null || consent.teams.length === 0}
+                onValueChange={(value) => setTenant(value)} style={{ width: '100%', marginBottom: 12 }}>
+                {consent.teams.length === 0 && <SelectOption value="">{translateInterface("No company available")}</SelectOption>}
+                {consent.teams.map((team) => <SelectOption key={team.tenant_id} value={team.tenant_id}>{team.name}</SelectOption>)}
+            </SelectField>
             {consent.teams.length === 0 && <p role="status" style={{ fontSize: 13 }}>{translateInterface("You need membership in an active company to connect this application.")}</p>}
             <p style={{ fontSize: 12, color: 'var(--fg-2)' }}>
                 {translateInterface("The connection can access this company for up to") + " "}{consent.token_ttl_days} {" " + translateInterface("days, using your document permissions. You can revoke access at any time.")}</p>

@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
@@ -197,29 +198,29 @@ export function UsersView() {
                             }}
                         />
                     </div>
-                    <select
+                    <SelectField
                         data-testid="users-filter-role"
                         value={role}
-                        onChange={(e) => setRole(e.target.value)}
+                        onValueChange={(selectedValue) => setRole(selectedValue)}
                         style={selectStyle}
                     >
-                        <option value="">{translateInterface("All roles")}</option>
+                        <SelectOption value="">{translateInterface("All roles")}</SelectOption>
                         {uniqueRoleNames.map((r) => (
-                            <option key={r} value={r}>
+                            <SelectOption key={r} value={r}>
                                 {r}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
-                    <select
+                    </SelectField>
+                    <SelectField
                         data-testid="users-filter-active"
                         value={active}
-                        onChange={(e) => setActive(e.target.value as typeof active)}
+                        onValueChange={(selectedValue) => setActive(selectedValue as typeof active)}
                         style={selectStyle}
                     >
-                        <option value="all">{translateInterface("Active + inactive")}</option>
-                        <option value="active">{translateInterface("Active only")}</option>
-                        <option value="inactive">{translateInterface("Inactive only")}</option>
-                    </select>
+                        <SelectOption value="all">{translateInterface("Active + inactive")}</SelectOption>
+                        <SelectOption value="active">{translateInterface("Active only")}</SelectOption>
+                        <SelectOption value="inactive">{translateInterface("Inactive only")}</SelectOption>
+                    </SelectField>
                     <label
                         style={{
                             display: 'inline-flex',

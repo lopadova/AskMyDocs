@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ApiAuthProfile, AuthProfilePayload, AuthType } from './api-connectors.api';
@@ -142,23 +143,23 @@ export function AuthProfileForm({
                     <span style={fieldCaptionStyle()}>
                         Auth type<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
                     </span>
-                    <select
+                    <SelectField
                         id="api-auth-profile-form-type"
                         data-testid="api-auth-profile-form-type"
                         value={type}
-                        onChange={(e) => {
-                            setType(e.target.value as AuthType);
+                        onValueChange={(selectedValue) => {
+                            setType(selectedValue as AuthType);
                             // Reset credentials when the type changes — the field set differs.
                             setCredentials({});
                         }}
                         style={inputStyle()}
                     >
                         {(Object.keys(AUTH_TYPE_LABELS) as AuthType[]).map((t) => (
-                            <option key={t} value={t}>
+                            <SelectOption key={t} value={t}>
                                 {AUTH_TYPE_LABELS[t]}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                     {fieldErrors?.type && (
                         <span data-testid="api-auth-profile-form-type-error" role="alert" style={errorTextStyle()}>
                             {fieldErrors.type}

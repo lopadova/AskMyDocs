@@ -70,7 +70,7 @@
     color: var(--fg-2);
 }
 
-.err-filterbar select,
+.err-filterbar [data-slot='select-trigger'],
 .err-section textarea,
 .err-section input[type='text'] {
     background: var(--bg-1, rgba(127, 127, 127, 0.08));

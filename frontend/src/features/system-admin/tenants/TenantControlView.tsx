@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
@@ -85,21 +86,21 @@ export function TenantControlView(): ReactNode {
                 </label>
                 <label htmlFor="tenant-control-status" style={visuallyLabelled}>
                     <span style={srOnly}>{translateInterface("Tenant status")}</span>
-                    <select
+                    <SelectField
                         id="tenant-control-status"
                         data-testid="tenant-control-status"
                         value={status}
-                        onChange={(event) => {
-                            setStatus(event.target.value as TenantStatus | '');
+                        onValueChange={(value) => {
+                            setStatus(value as TenantStatus | '');
                             setPage(1);
                         }}
                         style={inputStyle}
                     >
-                        <option value="">{translateInterface("All statuses")}</option>
-                        <option value="active">{translateInterface("Active")}</option>
-                        <option value="suspended">{translateInterface("Suspended")}</option>
-                        <option value="archived">{translateInterface("Archived")}</option>
-                    </select>
+                        <SelectOption value="">{translateInterface("All statuses")}</SelectOption>
+                        <SelectOption value="active">{translateInterface("Active")}</SelectOption>
+                        <SelectOption value="suspended">{translateInterface("Suspended")}</SelectOption>
+                        <SelectOption value="archived">{translateInterface("Archived")}</SelectOption>
+                    </SelectField>
                 </label>
                 <button type="submit" data-testid="tenant-control-search-submit" style={secondaryButton}>{translateInterface("Search")}</button>
                 {tenantsQuery.data && (
@@ -331,17 +332,17 @@ function TenantDetailContent({
                 </label>
                 <label htmlFor="tenant-control-detail-status" style={labelStyle}>
                     <span>{translateInterface("Status")}</span>
-                    <select
+                    <SelectField
                         id="tenant-control-detail-status"
                         data-testid="tenant-control-detail-status"
                         value={status}
-                        onChange={(event) => setStatus(event.target.value as TenantStatus)}
+                        onValueChange={(value) => setStatus(value as TenantStatus)}
                         style={inputStyle}
                     >
-                        <option value="active">{translateInterface("Active")}</option>
-                        <option value="suspended">{translateInterface("Suspended")}</option>
-                        <option value="archived">{translateInterface("Archived")}</option>
-                    </select>
+                        <SelectOption value="active">{translateInterface("Active")}</SelectOption>
+                        <SelectOption value="suspended">{translateInterface("Suspended")}</SelectOption>
+                        <SelectOption value="archived">{translateInterface("Archived")}</SelectOption>
+                    </SelectField>
                 </label>
                 <button
                     type="button"

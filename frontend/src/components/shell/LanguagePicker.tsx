@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useState } from 'react';
 import { updateLocale } from '../../features/auth/auth.api';
 import { useAuthStore } from '../../lib/auth-store';
@@ -20,5 +21,5 @@ export function LanguagePicker() {
         } catch { setError(true); }
         finally { setBusy(false); }
     }
-    return <div className="language-picker"><select aria-label={t('Interface language')} value={locale} disabled={busy} onChange={(event) => void change(event.target.value as UiLocale)}><option value="it">IT</option><option value="en">EN</option></select>{error && <span className="language-picker-error" role="alert">{t('Could not save the language. Try again.')}</span>}</div>;
+    return <div className="language-picker"><SelectField aria-label={t('Interface language')} value={locale} disabled={busy} onValueChange={(value) => void change(value as UiLocale)}><SelectOption value="it">IT</SelectOption><SelectOption value="en">EN</SelectOption></SelectField>{error && <span className="language-picker-error" role="alert">{t('Could not save the language. Try again.')}</span>}</div>;
 }

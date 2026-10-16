@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type {
@@ -141,40 +142,40 @@ export function RelationEditor({
                         <span style={fieldCaptionStyle()}>
                             List route<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
                         </span>
-                        <select
+                        <SelectField
                             id="api-route-relation-form-list_route"
                             data-testid="api-route-relation-form-list_route"
                             value={listRouteId}
-                            onChange={(e) => selectList(e.target.value)}
+                            onValueChange={(selectedValue) => selectList(selectedValue)}
                             style={inputStyle()}
                         >
-                            <option value="">Select a list endpoint…</option>
+                            <SelectOption value="">Select a list endpoint…</SelectOption>
                             {listRoutes.map((r) => (
-                                <option key={r.id} value={r.id}>
+                                <SelectOption key={r.id} value={r.id}>
                                     {r.name} ({r.slug})
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </label>
 
                     <label htmlFor="api-route-relation-form-detail_route" style={{ ...fieldLabelStyle(), flex: '1 1 240px' }}>
                         <span style={fieldCaptionStyle()}>
                             Detail route<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
                         </span>
-                        <select
+                        <SelectField
                             id="api-route-relation-form-detail_route"
                             data-testid="api-route-relation-form-detail_route"
                             value={detailRouteId}
-                            onChange={(e) => selectDetail(e.target.value)}
+                            onValueChange={(selectedValue) => selectDetail(selectedValue)}
                             style={inputStyle()}
                         >
-                            <option value="">Select a detail endpoint…</option>
+                            <SelectOption value="">Select a detail endpoint…</SelectOption>
                             {detailRoutes.map((r) => (
-                                <option key={r.id} value={r.id}>
+                                <SelectOption key={r.id} value={r.id}>
                                     {r.name} ({r.slug})
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </label>
                 </div>
 

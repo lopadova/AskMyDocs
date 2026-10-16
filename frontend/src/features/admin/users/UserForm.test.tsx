@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserForm } from './UserForm';
 import type { AdminRole } from '../admin.api';
+import { chooseSelectOption } from '@/test-utils/select';
 
 const ROLES: AdminRole[] = [
     {
@@ -26,6 +27,22 @@ const ROLES: AdminRole[] = [
 ];
 
 describe('UserForm', () => {
+    it('submits project and membership role chosen from the shared selects', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(<UserForm mode="create" roles={ROLES} projectKeys={['default', 'engineering']} onSubmit={onSubmit} />);
+
+        await user.type(screen.getByTestId('user-form-name'), 'Alice');
+        await user.type(screen.getByTestId('user-form-email'), 'alice@example.com');
+        await user.type(screen.getByTestId('user-form-password'), 'secure-password');
+        await chooseSelectOption(screen.getByTestId('user-form-initial-project'), 'engineering');
+        await chooseSelectOption(screen.getByTestId('user-form-membership-role'), 'admin');
+        await user.click(screen.getByTestId('user-form-submit'));
+
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+        expect(onSubmit.mock.calls[0][0]).toMatchObject({ initial_project_key: 'engineering', membership_role: 'admin' });
+    });
+
     it('renders zod field errors with the documented testids on submit', async () => {
         const user = userEvent.setup();
         const onSubmit = vi.fn();

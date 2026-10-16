@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { CredentialFieldSchema } from './connectors.api';
@@ -190,20 +191,20 @@ export function FieldRow({
             <label htmlFor={base} style={fieldCol()}>
                 {label}
                 {help}
-                <select
+                <SelectField
                     id={base}
                     data-testid={base}
                     value={String(value ?? '')}
-                    onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
+                    onValueChange={(selectedValue) => onChange(selectedValue === '' ? null : selectedValue)}
                     style={inputStyle()}
                 >
-                    {nullable && <option value="">— connector default —</option>}
+                    {nullable && <SelectOption value="">— connector default —</SelectOption>}
                     {Object.entries(field.options).map(([val, lbl]) => (
-                        <option key={val} value={val}>
+                        <SelectOption key={val} value={val}>
                             {lbl}
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
                 {errEl}
             </label>
         );

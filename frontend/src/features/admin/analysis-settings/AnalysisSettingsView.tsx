@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -149,22 +150,22 @@ function FlagControl({
     return (
         <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10.5, color: 'var(--fg-3)' }}>
             <span>{FLAG_LABELS[flag]}</span>
-            <select
+            <SelectField
                 id={id}
                 data-testid={id}
                 aria-label={`${FLAG_LABELS[flag]} for ${entry.project_key}`}
                 value={current}
                 disabled={busy}
-                onChange={(e) => {
-                    const v = e.target.value;
+                onValueChange={(nextValue) => {
+                    const v = nextValue;
                     onSet(entry, flag, v === 'inherit' ? null : v === 'on');
                 }}
                 style={{ fontSize: 11.5, padding: '2px 4px' }}
             >
-                <option value="inherit">{translateInterface("Inherit")}</option>
-                <option value="on">{translateInterface("On")}</option>
-                <option value="off">{translateInterface("Off")}</option>
-            </select>
+                <SelectOption value="inherit">{translateInterface("Inherit")}</SelectOption>
+                <SelectOption value="on">{translateInterface("On")}</SelectOption>
+                <SelectOption value="off">{translateInterface("Off")}</SelectOption>
+            </SelectField>
             <span data-testid={`${id}-effective`} style={{ color: entry.effective[flag] ? 'var(--ok, #3fb950)' : 'var(--fg-3)' }}>
                 → {entry.effective[flag] ? 'on' : 'off'}
             </span>

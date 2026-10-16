@@ -42,8 +42,7 @@
 textarea.route-editor-control { resize: vertical; }
 .route-editor-control.is-mono { font-family: var(--font-mono, monospace); font-size: 12px; }
 .route-editor-select { position: relative; min-width: 0; }
-.route-editor-select select { appearance: none; padding-right: 34px; cursor: pointer; }
-.route-editor-select > svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--fg-2); }
+.route-editor-select [data-slot="select-trigger"] { width: 100%; cursor: pointer; }
 .route-editor-base { display: block; margin-bottom: 6px; color: var(--fg-2); font: 12px/1.6 var(--font-mono, monospace); overflow-wrap: anywhere; }
 .route-editor-flash { background: color-mix(in srgb, var(--ok) 8%, transparent); border-radius: 8px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 8%, transparent); }
 .route-editor-error { margin: 7px 0 0; color: color-mix(in srgb, var(--err) 80%, var(--fg-0)); font-size: 12px; line-height: 1.6; }
@@ -85,7 +84,7 @@ textarea.route-editor-control { resize: vertical; }
 .route-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-top: 1px solid var(--hairline); background: var(--bg-1); }
 .route-editor-footer-actions { display: flex; align-items: center; gap: 10px; }
 .route-editor-footer-note { color: var(--fg-2); font-size: 12px; }
-.route-editor :is(input, textarea, select, summary, .route-editor-tab):focus-visible { outline: 2px solid var(--accent-a); outline-offset: 3px; }
+.route-editor :is(input, textarea, [data-slot="select-trigger"], summary, .route-editor-tab):focus-visible { outline: 2px solid var(--accent-a); outline-offset: 3px; }
 
 @media (max-width: 900px) {
     .route-editor-param-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) 48px; }

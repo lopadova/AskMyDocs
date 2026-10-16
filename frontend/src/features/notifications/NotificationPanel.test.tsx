@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chooseSelectOption } from '@/test-utils/select';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { NotificationPanel } from './NotificationPanel';
@@ -100,7 +101,7 @@ describe('NotificationPanel', () => {
         render(wrapped(<NotificationPanel />));
 
         await screen.findByTestId('notif-panel-filter-event_type');
-        await userEvent.selectOptions(
+        await chooseSelectOption(
             screen.getByTestId('notif-panel-filter-event_type'),
             'kb_canonical_promoted',
         );
@@ -182,7 +183,7 @@ describe('NotificationPanel', () => {
 
         render(wrapped(<NotificationPanel />));
 
-        await userEvent.selectOptions(
+        await chooseSelectOption(
             await screen.findByTestId('notif-panel-filter-event_type'),
             'kb_canonical_promoted',
         );

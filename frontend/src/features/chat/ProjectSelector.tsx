@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import type { ReactNode } from 'react';
 
@@ -32,7 +33,7 @@ import type { ReactNode } from 'react';
  * Single-project deployments (≤ 1 reachable project, no "All") render a
  * read-only label so they look exactly like the pre-selector chat.
  *
- * R11: stable `data-testid`. R15: the `<select>` carries an accessible
+ * R11: stable `data-testid`. R15: the selector carries an accessible
  * name via `aria-label` (placeholder/visual text is NOT a label).
  */
 
@@ -61,7 +62,7 @@ export function ProjectSelector({
     const { t: translateInterface } = useUiTranslation();
     // Always represent a concrete effective value, even if it is not in the
     // reachable list (e.g. a conversation bound to a project the user no
-    // longer has membership in) — otherwise the native <select> would
+    // longer has membership in) — otherwise the selector would
     // render blank and silently mis-report the scope. The empty string is
     // the "All projects" sentinel and is handled by `allowAll`, not here.
     const options =
@@ -76,25 +77,25 @@ export function ProjectSelector({
     }
 
     return (
-        <select
+        <SelectField
             className="chat-project-selector"
             data-testid="chat-project-selector"
             aria-label={translateInterface("Project scope")}
             value={value ?? '__unset__'}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
+            onValueChange={(value) => onChange(value)}
         >
             {value === null && (
-                <option value="__unset__" disabled>
+                <SelectOption value="__unset__" disabled>
                     default
-                </option>
+                </SelectOption>
             )}
-            {allowAll && <option value="">{translateInterface("All projects")}</option>}
+            {allowAll && <SelectOption value="">{translateInterface("All projects")}</SelectOption>}
             {options.map((key) => (
-                <option key={key} value={key}>
+                <SelectOption key={key} value={key}>
                     {key}
-                </option>
+                </SelectOption>
             ))}
-        </select>
+        </SelectField>
     );
 }

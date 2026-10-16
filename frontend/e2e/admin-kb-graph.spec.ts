@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -86,7 +87,7 @@ test.describe('Admin KB Graph + Export PDF', () => {
             timeout: 15_000,
         });
         // Switch to the engineering project so the runbook appears.
-        await page.getByTestId('kb-project-select').selectOption('engineering');
+        await chooseSelectOption(page.getByTestId('kb-project-select'), 'engineering');
         await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });

@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { Button } from '../../../components/Button';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
@@ -339,11 +340,11 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                 onChange={(e) => updateColumn(i, { prompt: e.target.value })}
                                 style={{ width: '100%', padding: 6, marginBottom: 4 }}
                             />
-                            <select
+                            <SelectField
                                 aria-label={`Column ${i + 1} format`}
                                 data-testid={`admin-tabular-review-create-column-${i}-format`}
                                 value={c.format}
-                                onChange={(e) => updateColumn(i, { format: e.target.value as FormatType })}
+                                onValueChange={(nextValue) => updateColumn(i, { format: nextValue as FormatType })}
                                 style={{ width: '100%', padding: 6 }}
                             >
                                 {/*
@@ -359,18 +360,18 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                  * `list`) that don't exist on the BE.
                                  */}
                                 {FORMAT_TYPES.map((ft) => (
-                                    <option key={ft} value={ft}>{ft}</option>
+                                    <SelectOption key={ft} value={ft}>{ft}</SelectOption>
                                 ))}
-                            </select>
+                            </SelectField>
                             {/* v8.19/W5 — the agentic dimension: extract (RAG LLM),
                               * graph (deterministic governance metric, no LLM), or
                               * verify (anti-hallucination second pass). */}
-                            <select
+                            <SelectField
                                 aria-label={`Column ${i + 1} agent`}
                                 data-testid={`admin-tabular-review-create-column-${i}-agent`}
                                 value={c.agent ?? 'extract'}
-                                onChange={(e) => {
-                                    const agent = e.target.value as AgentKind;
+                                onValueChange={(nextValue) => {
+                                    const agent = nextValue as AgentKind;
                                     // Drop a stale metric when leaving graph so a
                                     // non-graph column never carries a metric.
                                     updateColumn(i, agent === 'graph' ? { agent } : { agent, metric: null });
@@ -378,22 +379,22 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                 style={{ width: '100%', padding: 6, marginTop: 4 }}
                             >
                                 {AGENT_KINDS.map((a) => (
-                                    <option key={a} value={a}>{translateInterface("agent:") + " "}{a}</option>
+                                    <SelectOption key={a} value={a}>{translateInterface("agent:") + " "}{a}</SelectOption>
                                 ))}
-                            </select>
+                            </SelectField>
                             {(c.agent ?? 'extract') === 'graph' && (
-                                <select
+                                <SelectField
                                     aria-label={`Column ${i + 1} governance metric`}
                                     data-testid={`admin-tabular-review-create-column-${i}-metric`}
                                     value={c.metric ?? ''}
-                                    onChange={(e) => updateColumn(i, { metric: e.target.value || null })}
+                                    onValueChange={(nextValue) => updateColumn(i, { metric: nextValue || null })}
                                     style={{ width: '100%', padding: 6, marginTop: 4 }}
                                 >
-                                    <option value="">{translateInterface("— pick a governance metric —")}</option>
+                                    <SelectOption value="">{translateInterface("— pick a governance metric —")}</SelectOption>
                                     {GOVERNANCE_METRICS.map((m) => (
-                                        <option key={m} value={m}>{m}</option>
+                                        <SelectOption key={m} value={m}>{m}</SelectOption>
                                     ))}
-                                </select>
+                                </SelectField>
                             )}
                             {columns.length > 1 && (
                                 <button

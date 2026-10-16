@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
@@ -222,13 +223,13 @@ export function ConnectorForm({
 
                 <div style={fieldLabelStyle()}>
                     <label htmlFor="api-connector-form-user_agent" style={fieldCaptionStyle()}>User-Agent</label>
-                    <select
+                    <SelectField
                         id="api-connector-form-user_agent"
                         data-testid="api-connector-form-user_agent"
                         value={userAgentPreset}
                         disabled={isSubmitting}
-                        onChange={(e) => {
-                            const preset = e.target.value;
+                        onValueChange={(selectedValue) => {
+                            const preset = selectedValue;
                             setUserAgentPreset(preset);
                             if (preset !== 'custom') {
                                 setUserAgent(USER_AGENT_PRESETS.find((item) => item.id === preset)?.value ?? '');
@@ -238,11 +239,11 @@ export function ConnectorForm({
                         style={connectorInputStyle()}
                     >
                         {USER_AGENT_PRESETS.map((preset) => (
-                            <option key={preset.id} value={preset.id}>{preset.label}</option>
+                            <SelectOption key={preset.id} value={preset.id}>{preset.label}</SelectOption>
                         ))}
-                        <option value="custom">Custom</option>
-                        <option value="default">HTTP client default (Guzzle)</option>
-                    </select>
+                        <SelectOption value="custom">Custom</SelectOption>
+                        <SelectOption value="default">HTTP client default (Guzzle)</SelectOption>
+                    </SelectField>
                     <span id="api-connector-form-user_agent-hint" style={fieldCaptionStyle()}>
                         Identity sent to the API. Chrome is selected for new connectors.
                     </span>
@@ -268,20 +269,20 @@ export function ConnectorForm({
 
                 <label htmlFor="api-connector-form-project_key" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>KB project binding</span>
-                    <select
+                    <SelectField
                         id="api-connector-form-project_key"
                         data-testid="api-connector-form-project_key"
                         value={projectKey}
-                        onChange={(e) => setProjectKey(e.target.value)}
+                        onValueChange={(selectedValue) => setProjectKey(selectedValue)}
                         style={connectorInputStyle()}
                     >
-                        <option value="">Global (tenant default)</option>
+                        <SelectOption value="">Global (tenant default)</SelectOption>
                         {projects.map((p) => (
-                            <option key={p.project_key} value={p.project_key}>
+                            <SelectOption key={p.project_key} value={p.project_key}>
                                 {p.name} ({p.project_key})
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                     {fieldErrors?.project_key && (
                         <span
                             data-testid="api-connector-form-project_key-error"

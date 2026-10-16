@@ -10,10 +10,8 @@
 .desktop-navigation-trigger.ui-button { flex-shrink: 0; }
 .app-topbar-leading { gap: 14px; }
 .sidebar-area-label { display: block; margin-bottom: 4px; border: 1px solid var(--panel-border-strong); border-radius: 10px; background: var(--bg-2); }
-.sidebar-area-label select { position: relative; appearance: none; -webkit-appearance: none; border: 0; height: 46px; padding: 0 36px 0 14px; background: transparent; box-shadow: none; cursor: pointer; font-size: 12px; }
-.sidebar-area-label select:focus-visible { outline: 2px solid var(--accent-a); outline-offset: -3px; border-radius: 9px; }
-.sidebar-area-label option { background: var(--bg-2); color: var(--fg-0); }
-.sidebar-area-chevron { position: absolute; right: 13px; top: 16px; color: var(--fg-2); pointer-events: none; }
+.sidebar-area-label [data-slot='select-trigger'] { position: relative; border: 0; min-height: 46px; padding: 0 14px; background: transparent; box-shadow: none; cursor: pointer; font-size: 12px; }
+.sidebar-area-label [data-slot='select-trigger']:focus-visible { outline: 2px solid var(--accent-a); outline-offset: -3px; border-radius: 9px; }
 .sidebar-search.ui-button { margin-bottom: 22px; }
 .editorial-sidebar-items > a { min-height: 48px; padding-left: 15px; border-radius: 9px; }
 .editorial-sidebar-items > a > .editorial-surface-art { left: 35%; opacity: .18; }
@@ -30,7 +28,7 @@
     font-family: var(--font-editorial); font-size: clamp(32px,3vw,44px) !important; line-height: 1.12;
     font-weight: 400 !important; letter-spacing: -.025em; color: var(--fg-0); margin-top: 0 !important;
 }
-.admin-page-content :is(input, select, textarea) { accent-color: var(--accent-a); font-family: var(--font-sans); }
+.admin-page-content :is(input, [data-slot='select-trigger'], textarea) { accent-color: var(--accent-a); font-family: var(--font-sans); }
 .hub-card .hub-card-copy { flex: 1; min-width: 0; }
 .hub-card > .editorial-surface-art { left: 25%; opacity: .13; }
 .hub-card:hover > .editorial-surface-art { opacity: .22; }
@@ -59,7 +57,7 @@
 @media (max-width: 960px) {
     :root { --page-gutter: 22px; }
     .desktop-navigation-trigger.ui-button { display: none; }
-    .sidebar-area-label select { font-size: 16px; }
+    .sidebar-area-label [data-slot='select-trigger'] { font-size: 16px; }
 }
 @media (max-width: 640px) {
     :root { --page-gutter: 16px; }

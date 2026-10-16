@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, useMemo } from 'react';
 import { useMcpAudit, useMcpServers } from './mcp-tools-hooks';
@@ -90,23 +91,23 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
         >
             <label style={fieldStyle}>
                 <span style={fieldLabelStyle}>Server</span>
-                <select
+                <SelectField
                     value={filters.server_id ?? ''}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                         onChange({
-                            server_id: event.target.value ? Number(event.target.value) : undefined,
+                            server_id: nextValue ? Number(nextValue) : undefined,
                         })
                     }
                     data-testid="admin-mcp-audit-filter-server"
                     style={inputStyle}
                 >
-                    <option value="">{translateInterface("All servers")}</option>
+                    <SelectOption value="">{translateInterface("All servers")}</SelectOption>
                     {servers.map((server) => (
-                        <option key={server.id} value={server.id}>
+                        <SelectOption key={server.id} value={server.id}>
                             {server.name}
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
             </label>
             <label style={fieldStyle}>
                 <span style={fieldLabelStyle}>{translateInterface("Tool name")}</span>
@@ -121,28 +122,28 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
             </label>
             <label style={fieldStyle}>
                 <span style={fieldLabelStyle}>{translateInterface("Status")}</span>
-                <select
+                <SelectField
                     value={filters.status ?? ''}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                         onChange({
-                            status: event.target.value ? (event.target.value as McpAuditStatus) : undefined,
+                            status: nextValue ? (nextValue as McpAuditStatus) : undefined,
                         })
                     }
                     data-testid="admin-mcp-audit-filter-status"
                     style={inputStyle}
                 >
-                    <option value="">{translateInterface("Any")}</option>
-                    <option value="ok">OK</option>
-                    <option value="error">{translateInterface("Error")}</option>
-                    <option value="timeout">Timeout</option>
-                    <option value="denied">{translateInterface("Denied")}</option>
+                    <SelectOption value="">{translateInterface("Any")}</SelectOption>
+                    <SelectOption value="ok">OK</SelectOption>
+                    <SelectOption value="error">{translateInterface("Error")}</SelectOption>
+                    <SelectOption value="timeout">Timeout</SelectOption>
+                    <SelectOption value="denied">{translateInterface("Denied")}</SelectOption>
                     {/* v7.0/W6.3 — `transport_error` ships with the
                         package's circuit-breaker path. The BE accepts
                         any 32-char string for the `status` filter,
                         so this list is exhaustive only for the values
                         operators commonly need to triage. */}
-                    <option value="transport_error">{translateInterface("Transport error")}</option>
-                </select>
+                    <SelectOption value="transport_error">{translateInterface("Transport error")}</SelectOption>
+                </SelectField>
             </label>
             <label style={fieldStyle}>
                 <span style={fieldLabelStyle}>{translateInterface("From")}</span>

@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { test, expect } from './fixtures';
 
 /*
@@ -13,7 +14,7 @@ test.describe('Tenant control — system administrator', () => {
         await page.goto('/app');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        await page.getByRole('combobox', { name: 'Workspace area' }).selectOption('system');
+        await chooseSelectOption(page.getByRole('combobox', { name: 'Workspace area' }), 'system');
         const entry = page.getByTestId('hub-link-tenant-control');
         if (await entry.count()) await entry.click();
 
@@ -39,7 +40,7 @@ test.describe('Tenant control — system administrator', () => {
         await page.getByTestId('tenant-control-provision-tenant-slug').fill(slug);
         await page.getByTestId('tenant-control-provision-user-email').fill(`owner-${suffix}@example.test`);
         await page.getByTestId('tenant-control-provision-user-name').fill('E2E Tenant Owner');
-        await page.getByTestId('tenant-control-provision-role').selectOption('super-admin');
+        await chooseSelectOption(page.getByTestId('tenant-control-provision-role'), 'super-admin');
         await expect(page.getByTestId('tenant-control-provision-submit')).toBeEnabled();
         await page.getByTestId('tenant-control-provision-submit').click();
         await expect(page.getByTestId('tenant-control-provision-success')).toBeVisible();
@@ -50,13 +51,13 @@ test.describe('Tenant control — system administrator', () => {
         await expect(page.getByTestId('tenant-control-detail')).toContainText('E2E Tenant Owner');
 
         // Suspend and reactivate through real DB-backed, single-use previews.
-        await page.getByTestId('tenant-control-detail-status').selectOption('suspended');
+        await chooseSelectOption(page.getByTestId('tenant-control-detail-status'), 'suspended');
         await page.getByTestId('tenant-control-detail-save').click();
         await expect(page.getByTestId('tenant-control-lifecycle-confirm')).toBeVisible();
         await page.getByTestId('tenant-control-lifecycle-confirm-submit').click();
         await expect(page.getByTestId('tenant-control-detail-current-status')).toHaveText('suspended');
 
-        await page.getByTestId('tenant-control-detail-status').selectOption('active');
+        await chooseSelectOption(page.getByTestId('tenant-control-detail-status'), 'active');
         await page.getByTestId('tenant-control-detail-save').click();
         await expect(page.getByTestId('tenant-control-lifecycle-confirm')).toBeVisible();
         await page.getByTestId('tenant-control-lifecycle-confirm-submit').click();

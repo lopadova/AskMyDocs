@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -159,7 +160,7 @@ export function NotificationPanel(): ReactNode {
         // `/event-types` is loading/errored AND the current page has
         // zero rows containing the selected type (e.g. switching to
         // an unread tab with no matches), the value would otherwise
-        // be absent and the <select> would render an empty
+        // be absent and the selector would render an empty
         // selection while the filter is still active.
         if (eventType && !sources.includes(eventType)) {
             sources.push(eventType);
@@ -208,22 +209,22 @@ export function NotificationPanel(): ReactNode {
                     <label htmlFor="notif-panel-event-type-select" className="text-sm text-gray-600">
                         Event type:
                     </label>
-                    <select
+                    <SelectField
                         id="notif-panel-event-type-select"
                         data-testid="notif-panel-filter-event_type"
                         aria-label="Filter by event type"
                         value={eventType}
-                        onChange={(e) => {
-                            setEventType(e.target.value);
+                        onValueChange={(value) => {
+                            setEventType(value);
                             setPage(1);
                         }}
                         className="rounded border border-gray-300 px-2 py-1 text-sm"
                     >
-                        <option value="">All event types</option>
+                        <SelectOption value="">All event types</SelectOption>
                         {eventTypeOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            <SelectOption key={opt.value} value={opt.value}>{opt.label}</SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
 
                     <button
                         type="button"

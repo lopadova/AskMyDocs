@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chooseSelectOption } from '@/test-utils/select';
 import { OAuthConsentPage } from './OAuthConsentPage';
 import { OAuthConnectionsPage } from './OAuthConnectionsPage';
 import { decideConsent, disconnectConnection, getConnections, getConsent } from './oauth.api';
@@ -31,7 +32,7 @@ describe('OAuth consent', () => {
         expect(await screen.findByRole('heading', { name: 'Connect Partner app' })).toBeInTheDocument();
         expect(screen.getByText('Search and read your documents')).toBeInTheDocument();
         expect(decideConsent).not.toHaveBeenCalled();
-        await user.selectOptions(screen.getByLabelText('Company'), 'other');
+        await chooseSelectOption(screen.getByLabelText('Company'), 'other');
         await user.click(screen.getByRole('button', { name: 'Connect application' }));
         expect(decideConsent).toHaveBeenCalledWith('request-one', 'approve', 'other');
     });

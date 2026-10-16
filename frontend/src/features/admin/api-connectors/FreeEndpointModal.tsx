@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { HttpMethod, ProbePayload, ProbeResult } from './api-connectors.api';
@@ -153,19 +154,19 @@ export function FreeEndpointModal({
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                     <label htmlFor="api-probe-method" style={{ ...fieldLabelStyle(), flex: '0 0 110px' }}>
                         <span style={fieldCaptionStyle()}>Method</span>
-                        <select
+                        <SelectField
                             id="api-probe-method"
                             data-testid="api-probe-method"
                             value={method}
-                            onChange={(e) => setMethod(e.target.value as HttpMethod)}
+                            onValueChange={(selectedValue) => setMethod(selectedValue as HttpMethod)}
                             style={inputStyle()}
                         >
                             {HTTP_METHODS.map((m) => (
-                                <option key={m} value={m}>
+                                <SelectOption key={m} value={m}>
                                     {m}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </label>
                     <label htmlFor="api-probe-url" style={{ ...fieldLabelStyle(), flex: 1 }}>
                         <span style={fieldCaptionStyle()}>URL</span>

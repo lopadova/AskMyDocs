@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 /*
  * Cross-mount port of `vendor/padosoft/eval-harness-ui/resources/js/
  * pages/TrendPage.tsx`. Imports rewritten to relative paths;
@@ -113,64 +114,64 @@ const TrendPage = () => {
             */}
           <label className="text-sm">
             {t('label_dataset')}
-            <select
+            <SelectField
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={dataset}
-              onChange={(event) => setDataset(event.target.value)}
+              onValueChange={(nextValue) => setDataset(nextValue)}
               data-testid="eval-harness-trend-select-dataset"
             >
-              <option value="">seleziona</option>
+              <SelectOption value="">seleziona</SelectOption>
               {datasetOptions.map((name) => (
-                <option key={name} value={name}>
+                <SelectOption key={name} value={name}>
                   {name}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="text-sm">
             {t('label_metric')}
-            <select
+            <SelectField
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={metric}
-              onChange={(event) => setMetric(event.target.value)}
+              onValueChange={(nextValue) => setMetric(nextValue)}
               data-testid="eval-harness-trend-select-metric"
             >
               {metricOptions.map((item) => (
-                <option key={item} value={item}>
+                <SelectOption key={item} value={item}>
                   {metricLabel(item, item)}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="text-sm">
             {t('label_cohort')}
-            <select
+            <SelectField
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={cohort}
-              onChange={(event) => setCohort(event.target.value)}
+              onValueChange={(nextValue) => setCohort(nextValue)}
               data-testid="eval-harness-trend-select-cohort"
             >
               {selectedCohorts.map((item) => (
-                <option key={item} value={item}>
+                <SelectOption key={item} value={item}>
                   {item}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="text-sm">
             {t('label_limit')}
-            <select
+            <SelectField
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={limit}
-              onChange={(event) => setLimit(Number(event.target.value))}
+              onValueChange={(nextValue) => setLimit(Number(nextValue))}
               data-testid="eval-harness-trend-select-limit"
             >
               {[10, 30, 50, 100].map((size) => (
-                <option key={size} value={size}>
+                <SelectOption key={size} value={size}>
                   {size}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <fieldset className="text-sm">
             <legend className="mb-1">{t('label_overlays')}</legend>

@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { composer, waitForThreadReady } from './helpers';
+import { chooseSelectOption, composer, openSelect, waitForThreadReady } from './helpers';
 import { buildAssistantMessage, stubChatAssistantReply } from './helpers/stub-chat';
 
 /*
@@ -47,13 +47,14 @@ test.describe('Chat project selector', () => {
         const selector = page.getByTestId('chat-project-selector');
         await expect(selector).toBeVisible({ timeout: 15_000 });
         // The reachable memberships are offered as real options (R18).
-        await expect(page.getByRole('option', { name: 'engineering' })).toBeAttached();
-        await expect(page.getByRole('option', { name: 'hr-portal' })).toBeAttached();
+        const projects = await openSelect(selector);
+        await expect(projects.getByRole('option', { name: 'engineering', exact: true })).toBeVisible();
+        await expect(projects.getByRole('option', { name: 'hr-portal', exact: true })).toBeVisible();
 
         // Bind a brand-new conversation to `engineering` by selecting it
         // before the first turn, then send so requireConversation() creates
         // the conversation scoped to it.
-        await selector.selectOption('engineering');
+        await chooseSelectOption(selector, 'engineering');
         const { input, send } = composer(page);
         await input.fill('What is the on-call rotation?');
         await send.click();
@@ -68,14 +69,14 @@ test.describe('Chat project selector', () => {
 
         // Switch to a DIFFERENT project. Because the active conversation is
         // bound to `engineering`, this must reset to a fresh chat.
-        await selector.selectOption('hr-portal');
+        await chooseSelectOption(selector, 'hr-portal');
 
         await expect.poll(() => page.url(), { timeout: 15_000 }).not.toMatch(/\/chat\/\d+/);
         // Scope to the header — "New chat" also appears on the sidebar's
         // new-conversation affordance, so an unscoped getByText is ambiguous.
         await expect(page.getByTestId('chat-header').getByText('New chat')).toBeVisible();
         // The selector now reflects the freshly chosen scope for the new chat.
-        await expect(selector).toHaveValue('hr-portal');
+        await expect(selector).toHaveAttribute('data-value', 'hr-portal');
     });
 
     test('the "All projects" scope constrains retrieval to the reachable projects', async ({ page }) => {
@@ -98,8 +99,8 @@ test.describe('Chat project selector', () => {
 
         // Pick "All projects" (the empty-string sentinel) — a project-less
         // conversation that MUST be constrained to the user's memberships.
-        await selector.selectOption({ label: 'All projects' });
-        await expect(selector).toHaveValue('');
+        await chooseSelectOption(selector, { label: 'All projects' });
+        await expect(selector).toHaveAttribute('data-value', '');
 
         const { input, send } = composer(page);
         await input.fill('Summarise everything I can reach.');

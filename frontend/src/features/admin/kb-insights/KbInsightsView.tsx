@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,11 +38,11 @@ export function KbInsightsView(): ReactNode {
                 <span style={{ flex: 1 }} />
                 <label htmlFor="kb-insights-status" style={{ color: 'var(--fg-2)', fontSize: 11 }}>
                     {translateInterface("Status")}</label>
-                <select
+                <SelectField
                     id="kb-insights-status"
                     data-testid="admin-kb-insights-status-filter"
                     value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as '' | 'completed' | 'failed')}
+                    onValueChange={(nextValue) => setStatusFilter(nextValue as '' | 'completed' | 'failed')}
                     style={{
                         padding: '5px 10px',
                         borderRadius: 6,
@@ -51,10 +52,10 @@ export function KbInsightsView(): ReactNode {
                         fontSize: 12,
                     }}
                 >
-                    <option value="">{translateInterface("All")}</option>
-                    <option value="completed">{translateInterface("Completed")}</option>
-                    <option value="failed">{translateInterface("Failed")}</option>
-                </select>
+                    <SelectOption value="">{translateInterface("All")}</SelectOption>
+                    <SelectOption value="completed">{translateInterface("Completed")}</SelectOption>
+                    <SelectOption value="failed">{translateInterface("Failed")}</SelectOption>
+                </SelectField>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 640 }}>
                 {translateInterface("When a document is ingested, modified, or deleted, an AI pass suggests how to strengthen it, surfaces cross-references, and flags which other docs the change may have made obsolete (for a deletion, which remaining docs now have a dangling reference). Advice only — nothing here edits a document.")}</p>

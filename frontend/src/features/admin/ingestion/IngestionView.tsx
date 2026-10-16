@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
@@ -163,25 +164,25 @@ export function IngestionView() {
                         <label htmlFor="ingestion-account-select" style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
                             Account
                         </label>
-                        <select
+                        <SelectField
                             id="ingestion-account-select"
                             data-testid="ingestion-account-select"
                             value={effectiveId ?? ''}
-                            onChange={(e) => setSelectedId(e.target.value === '' ? null : Number(e.target.value))}
+                            onValueChange={(nextValue) => setSelectedId(nextValue === '' ? null : Number(nextValue))}
                             disabled={accounts.length === 0}
                             style={selectStyle}
                         >
-                            {connectorsQuery.isLoading && <option value="">{translateInterface("Loading accounts…")}</option>}
-                            {connectorsQuery.isError && <option value="">{translateInterface("Couldn’t load accounts")}</option>}
+                            {connectorsQuery.isLoading && <SelectOption value="">{translateInterface("Loading accounts…")}</SelectOption>}
+                            {connectorsQuery.isError && <SelectOption value="">{translateInterface("Couldn’t load accounts")}</SelectOption>}
                             {connectorsLoaded && accounts.length === 0 && (
-                                <option value="">{translateInterface("No connected accounts")}</option>
+                                <SelectOption value="">{translateInterface("No connected accounts")}</SelectOption>
                             )}
                             {accounts.map((a) => (
-                                <option key={a.installationId} value={a.installationId}>
+                                <SelectOption key={a.installationId} value={a.installationId}>
                                     {a.connectorKey} · {a.label}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </div>
 
                     {isImap && effectiveId !== null && (

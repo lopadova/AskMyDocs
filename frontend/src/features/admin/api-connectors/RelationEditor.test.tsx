@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -29,21 +30,26 @@ function setup(props: Partial<RelationEditorProps> = {}) {
 }
 
 describe('RelationEditor', () => {
-    it('filters the selects by endpoint type (list vs detail)', () => {
+    it('filters the selects by endpoint type (list vs detail)', async () => {
         setup();
         const listSelect = screen.getByTestId('api-route-relation-form-list_route');
         const detailSelect = screen.getByTestId('api-route-relation-form-detail_route');
         // list select offers only the list route (+ placeholder); detail only the detail route.
-        expect(listSelect.querySelectorAll('option')).toHaveLength(2);
-        expect(detailSelect.querySelectorAll('option')).toHaveLength(2);
+        await userEvent.click(listSelect);
+        expect(screen.getAllByRole('option')).toHaveLength(2);
         expect(screen.getByRole('option', { name: /List users/ })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /User detail/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /Untyped/ })).not.toBeInTheDocument();
+        await userEvent.keyboard('{Escape}');
+        await userEvent.click(detailSelect);
+        expect(screen.getAllByRole('option')).toHaveLength(2);
         expect(screen.getByRole('option', { name: /User detail/ })).toBeInTheDocument();
         expect(screen.queryByRole('option', { name: /Untyped/ })).not.toBeInTheDocument();
     });
 
     it('notifies the parent to fetch the selected route (for field suggestions)', async () => {
         const { onSelectListRoute } = setup();
-        await userEvent.selectOptions(screen.getByTestId('api-route-relation-form-list_route'), '1');
+        await chooseSelectOption(screen.getByTestId('api-route-relation-form-list_route'), '1');
         expect(onSelectListRoute).toHaveBeenCalledWith(1);
     });
 
@@ -58,8 +64,8 @@ describe('RelationEditor', () => {
 
     it('submits the relation payload with the field map', async () => {
         const { onSubmit } = setup();
-        await userEvent.selectOptions(screen.getByTestId('api-route-relation-form-list_route'), '1');
-        await userEvent.selectOptions(screen.getByTestId('api-route-relation-form-detail_route'), '2');
+        await chooseSelectOption(screen.getByTestId('api-route-relation-form-list_route'), '1');
+        await chooseSelectOption(screen.getByTestId('api-route-relation-form-detail_route'), '2');
         await userEvent.type(screen.getByTestId('api-route-relation-form-map-0-from'), 'id');
         await userEvent.type(screen.getByTestId('api-route-relation-form-map-0-to_param'), 'id');
         fireEvent.submit(screen.getByTestId('api-route-relation-form'));

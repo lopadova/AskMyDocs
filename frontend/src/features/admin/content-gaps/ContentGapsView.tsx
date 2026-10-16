@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,21 +54,21 @@ export function ContentGapsView(): ReactNode {
                 )}
                 <span style={{ flex: 1 }} />
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {translateInterface("Reason")}<select
+                    {translateInterface("Reason")}<SelectField
                         data-testid="admin-content-gaps-reason-filter"
                         aria-label={translateInterface("Filter by reason")}
                         value={reason}
-                        onChange={(e) => setReason(e.target.value)}
+                        onValueChange={(nextValue) => setReason(nextValue)}
                         style={{ fontSize: 11.5, padding: '2px 4px' }}
                     >
-                        <option value="">{translateInterface("All")}</option>
+                        <SelectOption value="">{translateInterface("All")}</SelectOption>
                         {/* R18 — options derived from available_reasons in the API response,
                             not a hard-coded literal subset, so new reason codes surface
                             automatically without a FE deploy. */}
                         {(query.data?.meta.available_reasons ?? []).map((r) => (
-                            <option key={r} value={r}>{reasonLabel(r)}</option>
+                            <SelectOption key={r} value={r}>{reasonLabel(r)}</SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input

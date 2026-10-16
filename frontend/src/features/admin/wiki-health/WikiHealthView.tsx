@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -65,18 +66,18 @@ export function WikiHealthView(): ReactNode {
                 <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Wiki Health")}</h1>
                 <span style={{ flex: 1 }} />
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {translateInterface("Project")}<select
+                    {translateInterface("Project")}<SelectField
                         data-testid="admin-wiki-health-project"
                         aria-label={translateInterface("Select project to lint")}
                         value={project}
-                        onChange={(e) => { setProject(e.target.value); setActionError(null); setFixNote(null); }}
+                        onValueChange={(nextValue) => { setProject(nextValue); setActionError(null); setFixNote(null); }}
                         style={{ fontSize: 11.5, padding: '2px 4px' }}
                     >
-                        <option value="">{translateInterface("Select a project…")}</option>
+                        <SelectOption value="">{translateInterface("Select a project…")}</SelectOption>
                         {(projectsQuery.data?.projects ?? []).map((p) => (
-                            <option key={p} value={p}>{p}</option>
+                            <SelectOption key={p} value={p}>{p}</SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 680 }}>

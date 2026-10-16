@@ -1,6 +1,6 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { AutoWikiSettingsView } from './AutoWikiSettingsView';
@@ -54,7 +54,7 @@ describe('AutoWikiSettingsView', () => {
         // eng has Auto-build overridden OFF → effective off.
         expect(screen.getByTestId('admin-autowiki-setting-eng-enabled-effective')).toHaveTextContent('off');
         // The control reflects the override value (off), not inherit.
-        expect(screen.getByTestId('admin-autowiki-setting-eng-enabled')).toHaveValue('off');
+        expect(screen.getByTestId('admin-autowiki-setting-eng-enabled')).toHaveAttribute('data-value', 'off');
     });
 
     it('changing a flag PUTs the override', async () => {
@@ -64,7 +64,7 @@ describe('AutoWikiSettingsView', () => {
         mockPut.mockResolvedValue({ data: { ok: true, setting: entry('eng', { enabled: false, canonical: null, non_canonical: null }, { enabled: false, canonical: false, non_canonical: false }) } });
         render(withQueryClient(<AutoWikiSettingsView />));
         await waitFor(() => expect(screen.getByTestId('admin-autowiki-setting-eng-enabled')).toBeInTheDocument());
-        await userEvent.selectOptions(screen.getByTestId('admin-autowiki-setting-eng-enabled'), 'off');
+        await chooseSelectOption(screen.getByTestId('admin-autowiki-setting-eng-enabled'), 'off');
         await waitFor(() => expect(mockPut).toHaveBeenCalledWith('/api/admin/kb/autowiki-settings', { project_key: 'eng', autowiki_enabled: false }));
     });
 
@@ -80,7 +80,7 @@ describe('AutoWikiSettingsView', () => {
         mockPut.mockRejectedValue(new Error('save boom 500'));
         render(withQueryClient(<AutoWikiSettingsView />));
         await waitFor(() => expect(screen.getByTestId('admin-autowiki-setting-eng-enabled')).toBeInTheDocument());
-        await userEvent.selectOptions(screen.getByTestId('admin-autowiki-setting-eng-enabled'), 'off');
+        await chooseSelectOption(screen.getByTestId('admin-autowiki-setting-eng-enabled'), 'off');
         expect(await screen.findByTestId('admin-autowiki-settings-save-error')).toHaveTextContent('save boom 500');
     });
 

@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { FormEvent, useState } from 'react';
 import { useRegisterMcpServer } from './mcp-tools-hooks';
@@ -129,17 +130,17 @@ export function RegisterServerDialog({ open, onClose, onCreated }: RegisterServe
                 </Field>
 
                 <Field label="Transport" required>
-                    <select
+                    <SelectField
                         value={transport}
-                        onChange={(event) => setTransport(event.target.value as McpTransport)}
+                        onValueChange={(nextValue) => setTransport(nextValue as McpTransport)}
                         data-testid="admin-mcp-register-transport"
                         aria-label="MCP transport"
                         style={inputStyle}
                     >
-                        <option value="stdio">stdio (child process)</option>
-                        <option value="sse">sse (Server-Sent Events)</option>
-                        <option value="http">http (streamable HTTP)</option>
-                    </select>
+                        <SelectOption value="stdio">stdio (child process)</SelectOption>
+                        <SelectOption value="sse">sse (Server-Sent Events)</SelectOption>
+                        <SelectOption value="http">http (streamable HTTP)</SelectOption>
+                    </SelectField>
                 </Field>
 
                 <Field

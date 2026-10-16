@@ -1,5 +1,7 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { AccountMetaForm } from './AccountMetaForm';
 import type { AdminProject } from '../projects/admin-projects.api';
 
@@ -23,27 +25,27 @@ const BASE = {
 };
 
 describe('AccountMetaForm', () => {
-    it('renders the label input + a project dropdown derived from the registry (R18)', () => {
+    it('renders the label input + a project dropdown derived from the registry (R18)', async () => {
         render(<AccountMetaForm {...BASE} onSubmit={vi.fn()} onClose={vi.fn()} />);
 
         expect(screen.getByTestId('connector-imap-account-form-label')).toBeInTheDocument();
-        const select = screen.getByTestId('connector-imap-account-form-project') as HTMLSelectElement;
+        const select = screen.getByTestId('connector-imap-account-form-project');
+        await userEvent.click(select);
+        const options = within(await screen.findByRole('listbox')).getAllByRole('option');
         // "Global (tenant default)" sentinel + one option per real project.
-        expect(select.options).toHaveLength(PROJECTS.length + 1);
-        expect(select.options[0].value).toBe('');
-        expect(Array.from(select.options).map((o) => o.value)).toContain('acme-hr');
+        expect(options).toHaveLength(PROJECTS.length + 1);
+        expect(options[0]).toHaveAttribute('data-value', '');
+        expect(options.map((o) => o.dataset.value)).toContain('acme-hr');
     });
 
-    it('submits the trimmed label + selected projectKey', () => {
+    it('submits the trimmed label + selected projectKey', async () => {
         const onSubmit = vi.fn();
         render(<AccountMetaForm {...BASE} onSubmit={onSubmit} onClose={vi.fn()} />);
 
         fireEvent.change(screen.getByTestId('connector-imap-account-form-label'), {
             target: { value: '  Support  ' },
         });
-        fireEvent.change(screen.getByTestId('connector-imap-account-form-project'), {
-            target: { value: 'acme-hr' },
-        });
+        await chooseSelectOption(screen.getByTestId('connector-imap-account-form-project'), 'acme-hr');
         fireEvent.click(screen.getByTestId('connector-imap-account-form-submit'));
 
         expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -64,7 +66,7 @@ describe('AccountMetaForm', () => {
         );
 
         expect(screen.getByTestId('connector-imap-account-form-label')).toHaveValue('sales');
-        expect(screen.getByTestId('connector-imap-account-form-project')).toHaveValue('eng');
+        expect(screen.getByTestId('connector-imap-account-form-project')).toHaveAttribute('data-value', 'eng');
     });
 
     it('surfaces a top-level error + a per-field label error', () => {

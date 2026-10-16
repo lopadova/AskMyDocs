@@ -1,5 +1,6 @@
+import { SelectField, SelectOption as SelectFieldOption } from '@/components/ui/select-field';
 /*
- * Labelled <select> filter used across the read tabs. Every control carries a
+ * Labelled shadcn Select filter used across the read tabs. Every control carries a
  * bound <label htmlFor> (R15 — placeholder/aria is not enough) and a stable
  * testid (R11/R29). The empty value is the "all" sentinel (no server filter).
  */
@@ -26,11 +27,11 @@ export function SelectFilter({ id, label, value, onChange, options, allLabel = '
             style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, fontSize: 11, color: 'var(--fg-3)' }}
         >
             <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-            <select
+            <SelectField
                 id={id}
                 data-testid={testid}
                 value={value}
-                onChange={(e) => onChange(e.target.value)}
+                onValueChange={(selectedValue) => onChange(selectedValue)}
                 style={{
                     padding: '5px 8px',
                     borderRadius: 6,
@@ -41,13 +42,13 @@ export function SelectFilter({ id, label, value, onChange, options, allLabel = '
                     minWidth: 150,
                 }}
             >
-                <option value="">{allLabel}</option>
+                <SelectFieldOption value="">{allLabel}</SelectFieldOption>
                 {options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
+                    <SelectFieldOption key={opt.value} value={opt.value}>
                         {opt.label}
-                    </option>
+                    </SelectFieldOption>
                 ))}
-            </select>
+            </SelectField>
         </label>
     );
 }

@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import {
     useEffect,
@@ -343,13 +344,13 @@ export function Composer({
                         docLabels={docLabelMap}
                     />
                     <div className="chat-composer-context">
-                        <label className="chat-composer-scope">
+                        <div className="chat-composer-scope">
                             <span aria-hidden="true"><Icon.Database size={12} /></span>
-                            <select
+                            <SelectField
                                 data-testid="chat-collection-picker"
                                 value={filters.collection_id ?? ''}
-                                onChange={(e) => {
-                                    const raw = e.target.value;
+                                onValueChange={(value) => {
+                                    const raw = value;
                                     onFiltersChange((prev) => ({
                                         ...prev,
                                         collection_id: raw === '' ? null : Number(raw),
@@ -357,31 +358,29 @@ export function Composer({
                                 }}
                                 aria-label={translateInterface("Knowledge base scope")}
                             >
-                                <option value="">{translateInterface("All documents")}</option>
+                                <SelectOption value="">{translateInterface("All documents")}</SelectOption>
                                 {availableCollections.map((row) => (
-                                    <option key={row.id} value={row.id}>
+                                    <SelectOption key={row.id} value={row.id}>
                                         {row.name}
-                                    </option>
+                                    </SelectOption>
                                 ))}
-                            </select>
-                            <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
-                        </label>
-                        <label className="chat-composer-scope" title={translateInterface("How many cascading searches the agent runs before answering")}>
+                            </SelectField>
+                        </div>
+                        <div className="chat-composer-scope" title={translateInterface("How many cascading searches the agent runs before answering")}>
                             <span aria-hidden="true"><Icon.Sliders size={12} /></span>
-                            <select
+                            <SelectField
                                 data-testid="chat-depth-picker"
                                 value={depth}
-                                onChange={(e) => onDepthChange(Number(e.target.value))}
+                                onValueChange={(value) => onDepthChange(Number(value))}
                                 aria-label={translateInterface("Investigation depth")}
                             >
-                                <option value={1}>{translateInterface("Depth 1 · quick")}</option>
-                                <option value={2}>{translateInterface("Depth 2")}</option>
-                                <option value={3}>{translateInterface("Depth 3 · balanced")}</option>
-                                <option value={4}>{translateInterface("Depth 4")}</option>
-                                <option value={5}>{translateInterface("Depth 5 · thorough")}</option>
-                            </select>
-                            <span aria-hidden="true"><Icon.ChevronDown size={10} /></span>
-                        </label>
+                                <SelectOption value={1}>{translateInterface("Depth 1 · quick")}</SelectOption>
+                                <SelectOption value={2}>{translateInterface("Depth 2")}</SelectOption>
+                                <SelectOption value={3}>{translateInterface("Depth 3 · balanced")}</SelectOption>
+                                <SelectOption value={4}>{translateInterface("Depth 4")}</SelectOption>
+                                <SelectOption value={5}>{translateInterface("Depth 5 · thorough")}</SelectOption>
+                            </SelectField>
+                        </div>
                         <ContextChip icon="Book" label={translateInterface("canonical only")} />
                         {onLiveSourcesChange && (
                             <LiveSourcesControl

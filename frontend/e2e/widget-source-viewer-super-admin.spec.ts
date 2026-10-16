@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '@playwright/test';
 import { resetAndLoginWidgetSuperAdmin } from './helpers/widget-super-admin';
@@ -35,8 +36,8 @@ async function createWidgetKey(page: Page, label: string): Promise<CreatedWidget
 
     const project = page.getByTestId('admin-widget-keys-project');
     await expect(project).toBeEnabled({ timeout: 15_000 });
-    await project.selectOption('hr-portal');
-    await expect(project).toHaveValue('hr-portal');
+    await chooseSelectOption(project, 'hr-portal');
+    await expect(project).toHaveAttribute('data-value', 'hr-portal');
 
     await page
         .getByTestId('admin-widget-keys-origins')

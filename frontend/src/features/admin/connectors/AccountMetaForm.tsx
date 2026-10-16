@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
@@ -167,20 +168,20 @@ export function AccountMetaForm({
 
             <label htmlFor={projectId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
-                <select
+                <SelectField
                     id={projectId}
                     data-testid={projectId}
                     value={projectKey}
-                    onChange={(e) => setProjectKey(e.target.value)}
+                    onValueChange={(selectedValue) => setProjectKey(selectedValue)}
                     style={inputStyle()}
                 >
-                    <option value="">Global (tenant default)</option>
+                    <SelectOption value="">Global (tenant default)</SelectOption>
                     {projects.map((p) => (
-                        <option key={p.project_key} value={p.project_key}>
+                        <SelectOption key={p.project_key} value={p.project_key}>
                             {p.name} ({p.project_key})
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
                 {fieldErrors?.project_key && (
                     <span
                         data-testid={`${projectId}-error`}

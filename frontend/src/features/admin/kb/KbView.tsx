@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { ColumnResizeHandle, useFileColumnWidth } from './ColumnResizeHandle';
 import { BookOpen } from 'lucide-react';
@@ -197,11 +198,11 @@ export function KbView() {
                             }}
                         >
                             {translateInterface("Project")}</label>
-                        <select
+                        <SelectField
                             data-testid="kb-project-select"
                             aria-label={translateInterface("Project")}
                             value={project}
-                            onChange={(e) => { setProject(e.target.value); setCursors([0]); }}
+                            onValueChange={(nextValue) => { setProject(nextValue); setCursors([0]); }}
                             style={{
                                 padding: '6px 8px',
                                 fontSize: 12.5,
@@ -211,13 +212,13 @@ export function KbView() {
                                 color: 'var(--fg-1)',
                             }}
                         >
-                            <option value="">{translateInterface("All projects")}</option>
+                            <SelectOption value="">{translateInterface("All projects")}</SelectOption>
                             {projectOptions.map((key) => (
-                                <option key={key} value={key}>
+                                <SelectOption key={key} value={key}>
                                     {key}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                         <Button
                             variant="primary" size="sm"
                             leadingIcon={<Icon.Upload size={14} />}

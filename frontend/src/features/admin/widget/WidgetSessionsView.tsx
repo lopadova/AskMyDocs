@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -107,24 +108,24 @@ export function WidgetSessionsView() {
 
             {/* Filters */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <select
+                <SelectField
                     data-testid="admin-widget-sessions-filter-status"
                     value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
+                    onValueChange={(nextValue) => setFilterStatus(nextValue)}
                     aria-label={translateInterface("Filter by status")}
                 >
-                    <option value="">{translateInterface("All statuses")}</option>
-                    <option value="active">{translateInterface("Active")}</option>
+                    <SelectOption value="">{translateInterface("All statuses")}</SelectOption>
+                    <SelectOption value="active">{translateInterface("Active")}</SelectOption>
                     {/* #33 — il dominio reale ha 7 stati: waiting_tool/waiting_user
                         mancavano, rendendo non-filtrabili proprio le sessioni
                         "appese" che l'operatore deve cercare. */}
-                    <option value="waiting_user">{translateInterface("Waiting user")}</option>
-                    <option value="waiting_tool">{translateInterface("Waiting tool")}</option>
-                    <option value="completed">{translateInterface("Completed")}</option>
-                    <option value="blocked">{translateInterface("Blocked")}</option>
-                    <option value="aborted">{translateInterface("Aborted")}</option>
-                    <option value="error">{translateInterface("Error")}</option>
-                </select>
+                    <SelectOption value="waiting_user">{translateInterface("Waiting user")}</SelectOption>
+                    <SelectOption value="waiting_tool">{translateInterface("Waiting tool")}</SelectOption>
+                    <SelectOption value="completed">{translateInterface("Completed")}</SelectOption>
+                    <SelectOption value="blocked">{translateInterface("Blocked")}</SelectOption>
+                    <SelectOption value="aborted">{translateInterface("Aborted")}</SelectOption>
+                    <SelectOption value="error">{translateInterface("Error")}</SelectOption>
+                </SelectField>
             </div>
 
             {/* States (R14) */}

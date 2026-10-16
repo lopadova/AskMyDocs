@@ -207,7 +207,7 @@ export function SessionSidebar({
 
             <div className="chat-sessions-scope">
                 {/* A decorative caption, not a <label>: ProjectSelector's
-                    <select> already carries aria-label="Project scope", and
+                    selector already carries aria-label="Project scope", and
                     a <label> without htmlFor is the R15 anti-pattern. */}
                 <span className="chat-sessions-scope-label" aria-hidden="true">
                     {translateInterface("Project")}</span>

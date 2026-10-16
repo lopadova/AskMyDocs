@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { Icon } from '../../../components/Icons';
 import type { CampaignGrant, CampaignTenantGrant, ProjectRole, Tenant } from './invitations.api';
@@ -157,18 +158,18 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <label htmlFor="grant-project-role" style={labelStyle}>Project role</label>
-                    <select
+                    <SelectField
                         id="grant-project-role"
                         data-testid="admin-invitations-campaign-grant-project-role"
                         value={value.project_role}
-                        onChange={(e) => patch({ project_role: e.target.value })}
+                        onValueChange={(selectedValue) => patch({ project_role: selectedValue })}
                         style={inputStyle}
                     >
-                        <option value="">—</option>
+                        <SelectOption value="">—</SelectOption>
                         {PROJECT_ROLES.map((r) => (
-                            <option key={r} value={r}>{r}</option>
+                            <SelectOption key={r} value={r}>{r}</SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </div>
             </div>
 
@@ -188,18 +189,18 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
                     >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <label htmlFor={`grant-tenant-${i}-id`} style={labelStyle}>{translateInterface("Tenant")}</label>
-                            <select
+                            <SelectField
                                 id={`grant-tenant-${i}-id`}
                                 data-testid={`admin-invitations-campaign-grant-tenant-${i}-id`}
                                 value={row.tenant_id}
-                                onChange={(e) => patchTenant(i, { tenant_id: e.target.value })}
+                                onValueChange={(selectedValue) => patchTenant(i, { tenant_id: selectedValue })}
                                 style={inputStyle}
                             >
-                                <option value="">Select…</option>
+                                <SelectOption value="">Select…</SelectOption>
                                 {tenants.map((t) => (
-                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                    <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
                                 ))}
-                            </select>
+                            </SelectField>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <label htmlFor={`grant-tenant-${i}-role`} style={labelStyle}>{translateInterface("Role")}</label>
@@ -224,18 +225,18 @@ export function GrantEditor({ value, onChange, tenants }: GrantEditorProps) {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <label htmlFor={`grant-tenant-${i}-prole`} style={labelStyle}>Project role</label>
-                            <select
+                            <SelectField
                                 id={`grant-tenant-${i}-prole`}
                                 data-testid={`admin-invitations-campaign-grant-tenant-${i}-project-role`}
                                 value={row.project_role}
-                                onChange={(e) => patchTenant(i, { project_role: e.target.value })}
+                                onValueChange={(selectedValue) => patchTenant(i, { project_role: selectedValue })}
                                 style={inputStyle}
                             >
-                                <option value="">—</option>
+                                <SelectOption value="">—</SelectOption>
                                 {PROJECT_ROLES.map((r) => (
-                                    <option key={r} value={r}>{r}</option>
+                                    <SelectOption key={r} value={r}>{r}</SelectOption>
                                 ))}
-                            </select>
+                            </SelectField>
                         </div>
                         <button
                             type="button"

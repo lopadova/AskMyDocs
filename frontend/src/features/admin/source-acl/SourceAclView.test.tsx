@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -124,7 +125,7 @@ describe('SourceAclView', () => {
         render(withQueryClient(<SourceAclView />));
         await screen.findByTestId('admin-source-acl-empty');
 
-        await userEvent.selectOptions(
+        await chooseSelectOption(
             screen.getByTestId('admin-source-acl-status-filter'),
             'ignored',
         );

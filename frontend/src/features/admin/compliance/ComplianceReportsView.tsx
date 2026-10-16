@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -70,16 +71,16 @@ export function ComplianceReportsView() {
                         onChange={(e) => setTenantId(e.target.value)}
                         placeholder="tenant-id"
                     />
-                    <select
+                    <SelectField
                         data-testid="compliance-reports-quarter"
                         value={quarter}
-                        onChange={(e) => setQuarter(Number(e.target.value) as 1 | 2 | 3 | 4)}
+                        onValueChange={(nextValue) => setQuarter(Number(nextValue) as 1 | 2 | 3 | 4)}
                     >
-                        <option value={1}>Q1</option>
-                        <option value={2}>Q2</option>
-                        <option value={3}>Q3</option>
-                        <option value={4}>Q4</option>
-                    </select>
+                        <SelectOption value={1}>Q1</SelectOption>
+                        <SelectOption value={2}>Q2</SelectOption>
+                        <SelectOption value={3}>Q3</SelectOption>
+                        <SelectOption value={4}>Q4</SelectOption>
+                    </SelectField>
                     <input
                         data-testid="compliance-reports-year"
                         type="number"

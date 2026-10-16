@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -11,7 +12,7 @@ const sections = [
 
 test('administration hubs lead to the original views and retain active context', async ({ page }) => {
     await page.goto('/app/chat');
-    await page.getByRole('combobox', { name: 'Workspace area' }).selectOption('admin');
+    await chooseSelectOption(page.getByRole('combobox', { name: 'Workspace area' }), 'admin');
     for (const section of sections) {
         await page.getByTestId(`sidebar-hub-${section.hub}`).click();
         await page.getByTestId(`hub-link-${section.id}`).click();

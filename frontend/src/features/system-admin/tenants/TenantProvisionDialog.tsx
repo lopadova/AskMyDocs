@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -391,18 +392,18 @@ export function TenantProvisionDialog({
                             {(isNew || isExisting) && (
                                 <label htmlFor="tenant-control-user-role" style={labelStyle}>
                                     <span>Initial role</span>
-                                    <select
+                                    <SelectField
                                         id="tenant-control-user-role"
                                         data-testid="tenant-control-provision-role"
                                         value={role}
-                                        onChange={(event) => setRole(event.target.value as typeof role)}
+                                        onValueChange={(value) => setRole(value as typeof role)}
                                         style={inputStyle}
                                     >
-                                        <option value="super-admin">Super admin · maximum tenant privilege (membership still required)</option>
-                                        <option value="admin">Admin · tenant management + all projects</option>
-                                        <option value="editor">Editor · content editing</option>
-                                        <option value="viewer">Viewer · read access</option>
-                                    </select>
+                                        <SelectOption value="super-admin">Super admin · maximum tenant privilege (membership still required)</SelectOption>
+                                        <SelectOption value="admin">Admin · tenant management + all projects</SelectOption>
+                                        <SelectOption value="editor">Editor · content editing</SelectOption>
+                                        <SelectOption value="viewer">Viewer · read access</SelectOption>
+                                    </SelectField>
                                     <span style={hintStyle}>
                                         This application role is shared across every tenant associated with the account.
                                         Existing accounts are never promoted by this workflow.

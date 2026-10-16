@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chooseSelectOption } from '@/test-utils/select';
 import { Sidebar } from './Sidebar';
 import { USERS } from '../../lib/seed';
 
@@ -21,12 +22,14 @@ describe('Sidebar areas', () => {
         expect(screen.getByTestId('sidebar-hub-knowledge')).toHaveAttribute('href', '/app/team-hash/area/knowledge');
         expect(screen.queryByTestId('sidebar-nav-mcp-tokens')).not.toBeInTheDocument();
     });
-    it('hides the system area from an ordinary admin', () => {
+    it('hides the system area from an ordinary admin', async () => {
         render(<Sidebar {...props} roles={['admin']} permissions={[]} features={{ system_admin: false }} />);
+        await userEvent.click(screen.getByRole('combobox', { name: 'Workspace area' }));
         expect(screen.queryByRole('option', { name: 'System' })).not.toBeInTheDocument();
     });
-    it('admits the platform area from the actual capability and permission', () => {
+    it('admits the platform area from the actual capability and permission', async () => {
         render(<Sidebar {...props} area="system" roles={['admin']} permissions={['platform.admin']} features={{ system_admin: true }} />);
+        await userEvent.click(screen.getByRole('combobox', { name: 'Workspace area' }));
         expect(screen.getByRole('option', { name: 'System' })).toBeInTheDocument();
         expect(screen.getByTestId('sidebar-hub-system')).toHaveAttribute('href', '/app/team-hash/area/system');
     });
@@ -49,7 +52,7 @@ describe('Sidebar areas', () => {
         render(<Sidebar {...props} onNav={onNav} onAreaChange={onAreaChange} />);
         await user.click(screen.getByRole('link', { name: 'Library' }));
         expect(onNav).toHaveBeenCalledWith('kb-browse');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Workspace area' }), 'admin');
+        await chooseSelectOption(screen.getByRole('combobox', { name: 'Workspace area' }), 'admin');
         expect(onAreaChange).toHaveBeenCalledWith('admin');
     });
     it('opens the real navigation search', async () => {

@@ -1,3 +1,4 @@
+import { SelectField as SharedSelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -843,19 +844,19 @@ function SelectField<T extends string>({
 }) {
     return (
         <FieldRow id={id} label={label}>
-            <select
+            <SharedSelectField
                 id={id}
                 data-testid={`admin-widget-appearance-field-${id}`}
                 value={value}
-                onChange={(e) => onChange(e.target.value)}
+                onValueChange={(nextValue) => onChange(nextValue)}
                 className={CONTROL_CLASS}
             >
                 {options.map((o) => (
-                    <option key={o.value} value={o.value}>
+                    <SelectOption key={o.value} value={o.value}>
                         {o.label}
-                    </option>
+                    </SelectOption>
                 ))}
-            </select>
+            </SharedSelectField>
         </FieldRow>
     );
 }

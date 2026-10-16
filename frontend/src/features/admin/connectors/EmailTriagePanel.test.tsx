@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -35,7 +36,7 @@ it('previews one email with the draft without starting a campaign or ingest', as
     vi.mocked(emailTriageApi.preview).mockResolvedValue({ card: 'Scheda di triage automatica: lamentela', coverage: { partial: true, body_truncated: false, attachments: [] }, tags: ['lamentela'], usage: { cost: 0.00001 }, latency_ms: 50, result: { fields: [] } });
     mount();
     await userEvent.click(await screen.findByRole('button', { name: 'Aggiungi esempio lamentela' }));
-    await userEvent.selectOptions(screen.getByLabelText('Email'), '42');
+    await chooseSelectOption(screen.getByLabelText('Email'), '42');
     await userEvent.click(screen.getByRole('button', { name: 'Analizza senza aggiornare l’ingest' }));
     await screen.findByText('Scheda di triage automatica: lamentela');
     expect(emailTriageApi.preview).toHaveBeenCalledWith(10, 42, expect.objectContaining({ rules: expect.any(Array) }));

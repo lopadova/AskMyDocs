@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -103,13 +104,13 @@ export function RetrievalProfilesView(): ReactNode {
                 <form onSubmit={submit} aria-busy={mutation.isPending} style={{ display: 'grid', gap: 14 }}>
                     <label style={{ display: 'grid', gap: 5, maxWidth: 380 }}>
                         <span>{translateInterface("Project")}</span>
-                        <select data-testid="admin-retrieval-profile-project" value={projectKey} onChange={(event) => setProjectKey(event.target.value)} disabled={mutation.isPending}>
+                        <SelectField data-testid="admin-retrieval-profile-project" value={projectKey} onValueChange={(nextValue) => setProjectKey(nextValue)} disabled={mutation.isPending}>
                             {profiles.map((profile) => (
-                                <option key={profile.project_key} value={profile.project_key}>
+                                <SelectOption key={profile.project_key} value={profile.project_key}>
                                     {profile.project_key}{profile.configured ? '' : ' — configuration required'}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </label>
                     <label style={{ display: 'grid', gap: 5 }}>
                         <span>{translateInterface("Company context")}</span>

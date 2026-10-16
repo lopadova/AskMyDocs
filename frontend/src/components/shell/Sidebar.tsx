@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import type { MouseEvent } from 'react';
 import { Icon } from '../Icons';
 import { Button } from '../Button';
@@ -38,13 +39,12 @@ export function Sidebar({ active, onNav, user, projectCount, features = {}, hasT
         <div className="editorial-brand"><Icon.Logo size={27} /><span>AskMyDocs<span className="editorial-brand-dot">.</span></span>
             {onClose && <Button variant="quiet" size="sm" iconOnly aria-label={t('Close navigation')} className="sidebar-mobile-close" onClick={onClose}><Icon.Close size={18} /></Button>}
         </div>
-        <label className="sidebar-area-label editorial-surface"><span className="sr-only">{t('Workspace area')}</span>
+        <div className="sidebar-area-label editorial-surface">
             <EditorialArtwork artwork={currentArea === 'workspace' ? 'knowledge' : currentArea === 'admin' ? 'community' : 'trust'} className="editorial-surface-art" resolution="small" />
-            <select aria-label={t('Workspace area')} data-testid="sidebar-area-switcher" value={currentArea} onChange={(event) => onAreaChange?.(event.target.value as NavArea)}>
-                {availableAreas.map((candidate) => <option key={candidate.id} value={candidate.id}>{t(candidate.label)}</option>)}
-            </select>
-            <span className="sidebar-area-chevron" aria-hidden="true"><Icon.ChevronDown size={14} /></span>
-        </label>
+            <SelectField aria-label={t('Workspace area')} data-testid="sidebar-area-switcher" value={currentArea} onValueChange={(value) => onAreaChange?.(value as NavArea)}>
+                {availableAreas.map((candidate) => <SelectOption key={candidate.id} value={candidate.id}>{t(candidate.label)}</SelectOption>)}
+            </SelectField>
+        </div>
         <Button variant="quiet" className="sidebar-search" size="md" data-testid="sidebar-command-palette" aria-label={t('Open command palette')} onClick={() => window.dispatchEvent(new CustomEvent('amd:palette'))}>
             <Icon.Search size={17} /><span>{t('Search…')}</span><kbd>⌘K</kbd>
         </Button>

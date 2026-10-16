@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
@@ -118,20 +119,20 @@ export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerP
                 // submit. The min/max attrs stay for spinner-stepping UX only.
                 <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <Field id="gen-campaign" label="Campaign (optional)" error={fieldErrors.campaign_id}>
-                        <select
+                        <SelectField
                             id="gen-campaign"
                             data-testid="admin-invitations-codes-generate-campaign"
                             value={campaignId}
-                            onChange={(e) => setCampaignId(e.target.value)}
+                            onValueChange={(selectedValue) => setCampaignId(selectedValue)}
                             style={drawerInput}
                         >
-                            <option value="">Standalone (no campaign)</option>
+                            <SelectOption value="">Standalone (no campaign)</SelectOption>
                             {campaigns.map((c) => (
-                                <option key={c.id} value={c.id}>
+                                <SelectOption key={c.id} value={c.id}>
                                     {c.name}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </Field>
 
                     <Field id="gen-count" label="Count (1–1000)" error={fieldErrors.count}>

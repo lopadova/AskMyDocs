@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -60,8 +61,8 @@ describe('ContentGapsView', () => {
         mockGet.mockResolvedValue(page(GAPS.slice(0, 1), ['no_relevant_context']));
         render(withQueryClient(<ContentGapsView />));
         await waitFor(() => expect(screen.getByTestId('admin-content-gap-1')).toBeVisible());
-        const select = screen.getByTestId('admin-content-gaps-reason-filter') as HTMLSelectElement;
-        const optionValues = Array.from(select.options).map((o) => o.value);
+        await userEvent.click(screen.getByTestId('admin-content-gaps-reason-filter'));
+        const optionValues = screen.getAllByRole('option').map((option) => option.dataset.value);
         expect(optionValues).toEqual(['', 'no_relevant_context']);
         // llm_self_refusal must NOT appear — it's not in available_reasons.
         expect(optionValues).not.toContain('llm_self_refusal');
@@ -92,7 +93,7 @@ describe('ContentGapsView', () => {
         mockGet.mockResolvedValue(page(GAPS, ['no_relevant_context', 'llm_self_refusal']));
         render(withQueryClient(<ContentGapsView />));
         await waitFor(() => expect(screen.getByTestId('admin-content-gap-1')).toBeVisible());
-        await userEvent.selectOptions(screen.getByTestId('admin-content-gaps-reason-filter'), 'llm_self_refusal');
+        await chooseSelectOption(screen.getByTestId('admin-content-gaps-reason-filter'), 'llm_self_refusal');
         await waitFor(() => {
             expect(mockGet).toHaveBeenLastCalledWith('/api/admin/kb/content-gaps?reason=llm_self_refusal');
         });

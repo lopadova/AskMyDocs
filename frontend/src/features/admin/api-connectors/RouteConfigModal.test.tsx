@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -107,7 +108,7 @@ describe('RouteConfigModal', () => {
         expect(vars.config.identity.description).toBe('Edited.');
     });
 
-    it('param source toggles the conditional value / secret_ref field', () => {
+    it('param source toggles the conditional value / secret_ref field', async () => {
         render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
         fireEvent.click(screen.getByTestId('api-route-form-param-add'));
@@ -115,11 +116,11 @@ describe('RouteConfigModal', () => {
         expect(screen.queryByTestId('api-route-form-param-0-value')).not.toBeInTheDocument();
         expect(screen.queryByTestId('api-route-form-param-0-secret_ref')).not.toBeInTheDocument();
 
-        fireEvent.change(screen.getByTestId('api-route-form-param-0-source'), { target: { value: 'secret' } });
+        await chooseSelectOption(screen.getByTestId('api-route-form-param-0-source'), 'secret');
         expect(screen.getByTestId('api-route-form-param-0-secret_ref')).toBeInTheDocument();
         expect(screen.queryByTestId('api-route-form-param-0-value')).not.toBeInTheDocument();
 
-        fireEvent.change(screen.getByTestId('api-route-form-param-0-source'), { target: { value: 'fixed' } });
+        await chooseSelectOption(screen.getByTestId('api-route-form-param-0-source'), 'fixed');
         expect(screen.getByTestId('api-route-form-param-0-value')).toBeInTheDocument();
         expect(screen.queryByTestId('api-route-form-param-0-secret_ref')).not.toBeInTheDocument();
     });
@@ -234,11 +235,12 @@ describe('RouteConfigModal', () => {
         expect(screen.getByTestId('api-route-form-name')).toHaveValue('Ordini');
     });
 
-    it('describes inherited authentication instead of promising an anonymous call', () => {
+    it('describes inherited authentication instead of promising an anonymous call', async () => {
         const inherited = { ...connector, default_auth_profile_id: 5, auth_profiles: [{ id: 5, type: 'basic' }] } as ApiConnector;
         const route = { id: 2, config: config() } as ApiRoute;
         render(<RouteConfigModal connector={inherited} route={route} onClose={vi.fn()} />);
-        expect(screen.getByTestId('api-route-form-auth_profile_id')).toHaveValue('');
+        expect(screen.getByTestId('api-route-form-auth_profile_id')).toHaveAttribute('data-value', '');
+        await userEvent.click(screen.getByTestId('api-route-form-auth_profile_id'));
         expect(screen.getByRole('option', { name: 'Predefinito del connettore (#5)' })).toBeInTheDocument();
         expect(screen.queryByRole('option', { name: 'Nessuno (chiamata anonima)' })).not.toBeInTheDocument();
     });

@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -22,8 +23,8 @@ function submit() {
 describe('ConnectorForm User-Agent', () => {
     it('defaults new connectors to Chrome and preserves other headers when selecting a browser', async () => {
         const onSubmit = setup();
-        expect(screen.getByLabelText('User-Agent')).toHaveValue('chrome');
-        await userEvent.selectOptions(screen.getByLabelText('User-Agent'), 'firefox');
+        expect(screen.getByLabelText('User-Agent')).toHaveAttribute('data-value', 'chrome');
+        await chooseSelectOption(screen.getByLabelText('User-Agent'), 'firefox');
         fireEvent.change(screen.getByTestId('api-connector-form-headers'), { target: { value: 'X-Account: orders' } });
         fireEvent.change(screen.getByTestId('api-connector-form-name'), { target: { value: 'Orders' } });
         await userEvent.click(screen.getByTestId('api-connector-form-submit'));
@@ -42,10 +43,10 @@ describe('ConnectorForm User-Agent', () => {
 
     it('preserves an existing custom value regardless of header casing and replaces it without duplicates', async () => {
         const onSubmit = setup({ 'uSeR-aGeNt': 'PartnerClient/2.0', 'X-Account': 'orders' });
-        expect(screen.getByLabelText('User-Agent')).toHaveValue('custom');
+        expect(screen.getByLabelText('User-Agent')).toHaveAttribute('data-value', 'custom');
         expect(screen.getByLabelText('Custom User-Agent')).toHaveValue('PartnerClient/2.0');
         expect(screen.getByTestId('api-connector-form-headers')).toHaveValue('X-Account: orders');
-        await userEvent.selectOptions(screen.getByLabelText('User-Agent'), 'safari');
+        await chooseSelectOption(screen.getByLabelText('User-Agent'), 'safari');
         submit();
         expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
             headers: { 'User-Agent': expect.stringContaining('Version/18.1 Safari/'), 'X-Account': 'orders' },
@@ -54,7 +55,7 @@ describe('ConnectorForm User-Agent', () => {
 
     it('accepts a custom value and requires a nonblank value', async () => {
         const onSubmit = setup();
-        await userEvent.selectOptions(screen.getByLabelText('User-Agent'), 'custom');
+        await chooseSelectOption(screen.getByLabelText('User-Agent'), 'custom');
         const input = screen.getByLabelText('Custom User-Agent');
         fireEvent.change(input, { target: { value: '   ' } });
         expect(input).toBeInvalid();
@@ -66,14 +67,14 @@ describe('ConnectorForm User-Agent', () => {
 
     it('preserves the HTTP client default for existing connectors with no User-Agent', () => {
         const onSubmit = setup({ 'X-Account': 'orders' });
-        expect(screen.getByLabelText('User-Agent')).toHaveValue('default');
+        expect(screen.getByLabelText('User-Agent')).toHaveAttribute('data-value', 'default');
         submit();
         expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ headers: { 'X-Account': 'orders' } }));
     });
 
     it('can remove an explicit User-Agent and restore the HTTP client default', async () => {
         const onSubmit = setup({ 'user-agent': 'PartnerClient/2.0', 'X-Account': 'orders' });
-        await userEvent.selectOptions(screen.getByLabelText('User-Agent'), 'default');
+        await chooseSelectOption(screen.getByLabelText('User-Agent'), 'default');
         expect(screen.queryByLabelText('Custom User-Agent')).not.toBeInTheDocument();
         submit();
         expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ headers: { 'X-Account': 'orders' } }));
@@ -81,14 +82,14 @@ describe('ConnectorForm User-Agent', () => {
 
     it('shows a saved preset when reopening the connector', async () => {
         const onSubmit = setup();
-        await userEvent.selectOptions(screen.getByLabelText('User-Agent'), 'askmydocs');
+        await chooseSelectOption(screen.getByLabelText('User-Agent'), 'askmydocs');
         submit();
         const payload = onSubmit.mock.calls[0][0];
         expect(payload.headers['User-Agent']).toBe('AskMyDocs/1.0');
         // The preset is recognised from the saved header, with no separate setting.
         cleanup();
         render(<ConnectorForm connector={{ ...payload, id: 2 } as ApiConnector} projects={[]} onSubmit={vi.fn()} onClose={vi.fn()} />);
-        expect(screen.getByLabelText('User-Agent')).toHaveValue('askmydocs');
+        expect(screen.getByLabelText('User-Agent')).toHaveAttribute('data-value', 'askmydocs');
     });
 
     it('reports conflicting headers instead of silently ignoring a second User-Agent', () => {

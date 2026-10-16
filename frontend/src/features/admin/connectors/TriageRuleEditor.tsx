@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import type { CSSProperties } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '../../../components/Button';
@@ -22,10 +23,10 @@ export function TriageRuleEditor({ rule, disabled, onChange, onRemove }: { rule:
             <fieldset disabled={disabled} style={{ ...stack, margin: '12px 0 0', padding: 0, border: 0 }}>
                 <label>Nome<input style={input} value={rule.label} required maxLength={100} onChange={(event) => onChange({ label: event.target.value })} /></label>
                 <label>Cosa deve riconoscere<textarea style={input} rows={2} value={rule.instructions} required maxLength={800} placeholder="Es.: il cliente esprime insoddisfazione per un ritardo o un disservizio." onChange={(event) => onChange({ instructions: event.target.value })} /></label>
-                <label>Tipo di risultato<select style={input} value={rule.type} onChange={(event) => {
-                    const type = event.target.value as TriageRule['type'];
+                <label>Tipo di risultato<SelectField style={input} value={rule.type} onValueChange={(selectedValue) => {
+                    const type = selectedValue as TriageRule['type'];
                     onChange({ type, options: type === 'noul' ? [option('true', 'Presente'), option('false', 'Assente')] : [option('low', 'Bassa'), option('high', 'Alta')] });
-                }}><option value="noul">Presente o assente</option><option value="choice">Una categoria</option><option value="score">Livello, dal basso all’alto</option></select></label>
+                }}><SelectOption value="noul">Presente o assente</SelectOption><SelectOption value="choice">Una categoria</SelectOption><SelectOption value="score">Livello, dal basso all’alto</SelectOption></SelectField></label>
                 {rule.options.map((value, index) => <details key={index}><summary style={{ cursor: 'pointer', fontSize: 12 }}>Risultato: {value.label}</summary>
                     <div style={{ ...stack, padding: '10px 0' }}>
                         <label>Nome del risultato<input style={input} value={value.label} required maxLength={100} onChange={(event) => editOption(index, { label: event.target.value })} /></label>

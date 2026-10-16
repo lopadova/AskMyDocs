@@ -1,8 +1,9 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Check, ChevronDown, Circle, Play, Plus, Save, Sparkles, X } from 'lucide-react';
+import { Check, Circle, Play, Plus, Save, Sparkles, X } from 'lucide-react';
 import { Button } from '../../../components/Button';
 import type {
     ApiConnector, ApiRoute, EndpointTypeChoice, HttpMethod, PaginationConfig,
@@ -215,10 +216,10 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
                                         </Field>
                                     </div>
                                     <Field label="Profilo di autenticazione" note="Usato per tutte le chiamate di questa rotta.">
-                                        <div className="route-editor-select"><select className="route-editor-control" data-testid="api-route-form-auth_profile_id" value={config.request.auth_profile_id ?? ''} onChange={e => patchRequest({ auth_profile_id: e.target.value === '' ? null : Number(e.target.value) })}>
-                                            <option value="">{connector.default_auth_profile_id != null ? `Predefinito del connettore (#${connector.default_auth_profile_id})` : 'Nessuno (chiamata anonima)'}</option>
-                                            {(connector.auth_profiles ?? []).map(p => <option key={p.id} value={p.id}>{p.type === 'basic' ? 'Username e password' : p.type} (#{p.id})</option>)}
-                                        </select><ChevronDown size={15} aria-hidden="true" /></div>
+                                        <div className="route-editor-select"><SelectField className="route-editor-control" data-testid="api-route-form-auth_profile_id" value={config.request.auth_profile_id ?? ''} onValueChange={(selectedValue) => patchRequest({ auth_profile_id: selectedValue === '' ? null : Number(selectedValue) })}>
+                                            <SelectOption value="">{connector.default_auth_profile_id != null ? `Predefinito del connettore (#${connector.default_auth_profile_id})` : 'Nessuno (chiamata anonima)'}</SelectOption>
+                                            {(connector.auth_profiles ?? []).map(p => <SelectOption key={p.id} value={p.id}>{p.type === 'basic' ? 'Username e password' : p.type} (#{p.id})</SelectOption>)}
+                                        </SelectField></div>
                                     </Field>
                                     <Field label="Descrizione" note="Spiega all’assistente quando usare questa rotta." flash={applied.identity}>
                                         <textarea className="route-editor-control" data-testid="api-route-form-description" rows={2} value={config.identity.description ?? ''} onChange={e => patchIdentity({ description: e.target.value || null })} />
@@ -339,7 +340,7 @@ function Field({ label, required, note, error, errorId, flash, children }: { lab
     return <div className={`route-editor-field ${flash ? 'route-editor-flash' : ''}`}><label><span className="route-editor-label">{label}{required && <span className="route-editor-required"> *</span>}</span>{children}</label>{note && <span className="route-editor-hint">{note}</span>}{error && <span data-testid={errorId} role="alert" className="route-editor-error">{error}</span>}</div>;
 }
 function Select({ testid, ariaLabel, value, onChange, options, labels }: { testid: string; ariaLabel?: string; value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string> }) {
-    return <div className="route-editor-select"><select className="route-editor-control" aria-label={ariaLabel} data-testid={testid} value={value} onChange={e => onChange(e.target.value)}>{options.map(o => <option key={o} value={o}>{labels?.[o] ?? o}</option>)}</select><ChevronDown size={15} aria-hidden="true" /></div>;
+    return <div className="route-editor-select"><SelectField className="route-editor-control" aria-label={ariaLabel} data-testid={testid} value={value} onValueChange={(selectedValue) => onChange(selectedValue)}>{options.map(o => <SelectOption key={o} value={o}>{labels?.[o] ?? o}</SelectOption>)}</SelectField></div>;
 }
 function PaginationCard({ pagination, setPagination, onDetect, detecting, detectSource }: {
     pagination: PaginationConfig | null; setPagination: (value: PaginationConfig | null) => void;

@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { seedDb } from './setup-helpers';
@@ -35,7 +36,7 @@ test.describe('Admin Doc Insights', () => {
             (r) => r.url().includes('/api/admin/kb/analyses') && r.url().includes('status=failed'),
             { timeout: 15_000 },
         );
-        await page.getByTestId('admin-kb-insights-status-filter').selectOption('failed');
+        await chooseSelectOption(page.getByTestId('admin-kb-insights-status-filter'), 'failed');
         const resp = await analysesCall;
         expect(resp.ok()).toBeTruthy();
 

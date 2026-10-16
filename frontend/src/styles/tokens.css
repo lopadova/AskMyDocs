@@ -1458,9 +1458,10 @@ textarea:focus-visible {
   font: 530 10px/1 var(--font-mono);
 }
 .chat-project-selector {
+  width: auto;
   max-width: 190px;
-  padding: 0 16px 0 1px;
-  outline: 0;
+  padding: 4px 1px;
+  box-shadow: none;
   cursor: pointer;
 }
 .chat-model-chip {
@@ -1588,24 +1589,18 @@ textarea:focus-visible {
   border-color: var(--panel-border-strong);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg-2) 9%, transparent);
 }
-.chat-composer-scope select {
+.chat-composer-scope [data-slot='select-trigger'] {
+  width: auto;
   max-width: 190px;
-  appearance: none;
-  padding: 0 14px 0 0;
+  min-height: 28px;
+  padding: 0;
   border: 0;
-  outline: 0;
+  box-shadow: none;
   background: transparent;
   color: var(--fg-1);
   cursor: pointer;
   font: inherit;
   font-weight: 590;
-}
-.chat-composer-scope > span:last-child {
-  position: absolute;
-  right: 6px;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
 }
 .chat-composer-shortcut {
   padding: 4px;
@@ -3601,7 +3596,7 @@ textarea:focus-visible {
   .chat-composer-options { gap: 4px; margin-inline: 10px; }
   .chat-composer-input { padding: 14px; }
   .chat-header-meta { flex-wrap: wrap; }
-  .chat-composer-scope select { max-width: 150px; }
+  .chat-composer-scope [data-slot='select-trigger'] { max-width: 150px; }
 }
 
 .chat-empty-state { max-width: 540px; margin: clamp(24px, 8vh, 96px) auto 24px; text-align: center; }
@@ -3884,7 +3879,7 @@ textarea:focus-visible {
 .kb-browse-scope { display: flex; align-items: center; gap: 8px; }
 .kb-browse-scope-label { color: var(--fg-3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 
-.kb-browse-scope select {
+.kb-browse-scope [data-slot='select-trigger'] {
   flex: 1;
   padding: 6px 8px;
   color: var(--fg-1);

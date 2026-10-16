@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { Fragment, useState } from 'react';
 import { useAuditLogs, type AuditLogsQuery } from './logs.api';
@@ -67,18 +68,18 @@ export function AuditTab() {
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Event type</span>
-                    <select
+                    <SelectField
                         data-testid="audit-filter-event-type"
                         value={eventType}
-                        onChange={(e) => setEventType(e.target.value)}
+                        onValueChange={(nextValue) => setEventType(nextValue)}
                         style={inputStyle}
                     >
                         {EVENT_TYPES.map((et) => (
-                            <option key={et} value={et}>
+                            <SelectOption key={et} value={et}>
                                 {et || 'any'}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Actor</span>

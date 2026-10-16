@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -163,8 +164,8 @@ describe('TabularReviewsList', () => {
         await userEvent.click(screen.getByTestId('admin-tabular-reviews-create'));
         await screen.findByTestId('admin-tabular-review-create-dialog');
 
-        const select = screen.getByTestId('admin-tabular-review-create-column-0-format') as HTMLSelectElement;
-        const optionValues = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+        await userEvent.click(screen.getByTestId('admin-tabular-review-create-column-0-format'));
+        const optionValues = screen.getAllByRole('option').map((option) => option.dataset.value);
 
         // Exact 17-element domain. The assertion is intentionally
         // order-insensitive (compare as a SET) — the UI surfaces these
@@ -235,11 +236,13 @@ describe('TabularReviewsList', () => {
 
         // No metric picker until the column's agent is `graph`.
         expect(screen.queryByTestId('admin-tabular-review-create-column-0-metric')).toBeNull();
-        await userEvent.selectOptions(screen.getByTestId('admin-tabular-review-create-column-0-agent'), 'graph');
-        const metric = (await screen.findByTestId('admin-tabular-review-create-column-0-metric')) as HTMLSelectElement;
-        const metricValues = Array.from(metric.querySelectorAll('option')).map((o) => o.value);
+        await chooseSelectOption(screen.getByTestId('admin-tabular-review-create-column-0-agent'), 'graph');
+        const metric = await screen.findByTestId('admin-tabular-review-create-column-0-metric');
+        await userEvent.click(metric);
+        const metricValues = screen.getAllByRole('option').map((option) => option.dataset.value);
         expect(metricValues).toContain('evidence_tier');
         expect(metricValues).toContain('supersession_status');
+        await userEvent.keyboard('{Escape}');
 
         // R16 — lock in the "no avoidable 422" gating: with title + project
         // filled but the graph column carrying NO metric, submit stays disabled;
@@ -248,7 +251,7 @@ describe('TabularReviewsList', () => {
         await userEvent.type(screen.getByTestId('admin-tabular-review-create-project'), 'eng');
         const submit = screen.getByTestId('admin-tabular-review-create-submit');
         expect(submit).toBeDisabled();
-        await userEvent.selectOptions(metric, 'evidence_tier');
+        await chooseSelectOption(metric, 'evidence_tier');
         expect(submit).toBeEnabled();
     });
 
@@ -312,7 +315,7 @@ describe('TabularReviewsList', () => {
         // The create dialog opens pre-filled with the template's title + graph column.
         await screen.findByTestId('admin-tabular-review-create-dialog');
         expect((screen.getByTestId('admin-tabular-review-create-title') as HTMLInputElement).value).toBe('Canonical KB Governance Audit');
-        expect((screen.getByTestId('admin-tabular-review-create-column-0-agent') as HTMLSelectElement).value).toBe('graph');
+        expect(screen.getByTestId('admin-tabular-review-create-column-0-agent')).toHaveAttribute('data-value', 'graph');
         expect(screen.getByTestId('admin-tabular-review-create-column-0-metric')).toBeVisible();
     });
 });

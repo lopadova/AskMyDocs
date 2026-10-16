@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
@@ -63,7 +64,7 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
     // row is open but the current selection isn't a valid option yet (initial
     // '' before the list resolved, or the picked key just got consumed by a
     // successful add), snap the selection to the first available key so the
-    // controlled <select> and the Add CTA stay consistent. The membership
+    // controlled Select and the Add CTA stay consistent. The membership
     // guard prevents an update loop once newProjectKey is a valid option.
     useEffect(() => {
         if (!adding || availableKeys.length === 0) return;
@@ -125,30 +126,30 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
                         alignItems: 'center',
                     }}
                 >
-                    <select
+                    <SelectField
                         data-testid="membership-add-project"
                         value={newProjectKey}
-                        onChange={(e) => setNewProjectKey(e.target.value)}
+                        onValueChange={(selectedValue) => setNewProjectKey(selectedValue)}
                         style={selectStyle}
                     >
                         {availableKeys.map((k) => (
-                            <option key={k} value={k}>
+                            <SelectOption key={k} value={k}>
                                 {k}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
-                    <select
+                    </SelectField>
+                    <SelectField
                         data-testid="membership-add-role"
                         value={newRole}
-                        onChange={(e) =>
-                            setNewRole(e.target.value as 'member' | 'admin' | 'owner')
+                        onValueChange={(selectedValue) =>
+                            setNewRole(selectedValue as 'member' | 'admin' | 'owner')
                         }
                         style={selectStyle}
                     >
-                        <option value="member">member</option>
-                        <option value="admin">admin</option>
-                        <option value="owner">owner</option>
-                    </select>
+                        <SelectOption value="member">member</SelectOption>
+                        <SelectOption value="admin">admin</SelectOption>
+                        <SelectOption value="owner">owner</SelectOption>
+                    </SelectField>
                     <button
                         type="button"
                         className="focus-ring"
@@ -264,18 +265,18 @@ function MembershipCard({
                 <strong style={{ fontSize: 13, color: 'var(--fg-0)' }}>
                     {membership.project_key}
                 </strong>
-                <select
+                <SelectField
                     data-testid={`membership-${membership.project_key}-role`}
                     value={membership.role}
-                    onChange={(e) =>
-                        onRoleChange(e.target.value as 'member' | 'admin' | 'owner')
+                    onValueChange={(selectedValue) =>
+                        onRoleChange(selectedValue as 'member' | 'admin' | 'owner')
                     }
                     style={selectStyle}
                 >
-                    <option value="member">member</option>
-                    <option value="admin">admin</option>
-                    <option value="owner">owner</option>
-                </select>
+                    <SelectOption value="member">member</SelectOption>
+                    <SelectOption value="admin">admin</SelectOption>
+                    <SelectOption value="owner">owner</SelectOption>
+                </SelectField>
                 <div style={{ flex: 1 }} />
                 <button
                     type="button"

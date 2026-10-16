@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../../lib/ui-locale";
 /*
  * EvidenceRiskReviewApp — native AskMyDocs admin SPA for the
@@ -150,40 +151,40 @@ function ReviewsTab() {
             <div className="err-filterbar">
                 <label htmlFor="err-reviews-profile">
                     Profile
-                    <select
+                    <SelectField
                         id="err-reviews-profile"
                         value={profile}
-                        onChange={(event) => {
-                            setProfile(event.target.value);
+                        onValueChange={(nextValue) => {
+                            setProfile(nextValue);
                             setPage(1);
                         }}
                         data-testid="admin-evidence-risk-review-reviews-profile"
                     >
-                        <option value="">All profiles</option>
+                        <SelectOption value="">All profiles</SelectOption>
                         {profiles.map((item) => (
-                            <option key={item.key} value={item.key}>
+                            <SelectOption key={item.key} value={item.key}>
                                 {item.label}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label htmlFor="err-reviews-verdict">
                     Minimum verdict
-                    <select
+                    <SelectField
                         id="err-reviews-verdict"
                         value={minVerdict}
-                        onChange={(event) => {
-                            setMinVerdict(event.target.value as RiskVerdict | '');
+                        onValueChange={(nextValue) => {
+                            setMinVerdict(nextValue as RiskVerdict | '');
                             setPage(1);
                         }}
                         data-testid="admin-evidence-risk-review-reviews-verdict"
                     >
                         {VERDICT_FILTERS.map((item) => (
-                            <option key={item.value || 'any'} value={item.value}>
+                            <SelectOption key={item.value || 'any'} value={item.value}>
                                 {item.label}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
             </div>
 
@@ -504,19 +505,19 @@ function TryTab() {
             <div className="err-filterbar">
                 <label htmlFor="err-try-profile">
                     Profile
-                    <select
+                    <SelectField
                         id="err-try-profile"
                         value={profile}
-                        onChange={(event) => setProfile(event.target.value)}
+                        onValueChange={(nextValue) => setProfile(nextValue)}
                         data-testid="admin-evidence-risk-review-try-profile"
                     >
-                        <option value="">Default</option>
+                        <SelectOption value="">Default</SelectOption>
                         {profiles.map((item) => (
-                            <option key={item.key} value={item.key}>
+                            <SelectOption key={item.key} value={item.key}>
                                 {item.label}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label className="err-checkbox">
                     <input

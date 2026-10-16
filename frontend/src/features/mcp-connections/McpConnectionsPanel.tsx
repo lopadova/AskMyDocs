@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -269,20 +270,20 @@ export function McpConnectionsPanel({
                             </Field>
 
                             <Field label="Project (optional)" hint={projectsError ? 'Projects could not be loaded.' : 'Controls where shared resources are indexed.'}>
-                                <select
+                                <SelectField
                                     data-testid="mcp-connection-project"
                                     value={form.project_key ?? ''}
                                     disabled={projectsLoading}
-                                    onChange={(event) => setForm({ ...form, project_key: event.target.value || null })}
+                                    onValueChange={(value) => setForm({ ...form, project_key: value || null })}
                                     style={inputStyle}
                                 >
-                                    <option value="">{projectsLoading ? 'Loading projects…' : 'Tenant default'}</option>
+                                    <SelectOption value="">{projectsLoading ? 'Loading projects…' : 'Tenant default'}</SelectOption>
                                     {projectOptions.map((project) => (
-                                        <option key={project.project_key} value={project.project_key}>
+                                        <SelectOption key={project.project_key} value={project.project_key}>
                                             {project.name ? `${project.name} · ${project.project_key}` : project.project_key}
-                                        </option>
+                                        </SelectOption>
                                     ))}
-                                </select>
+                                </SelectField>
                             </Field>
 
                             <fieldset style={authFieldsetStyle}>

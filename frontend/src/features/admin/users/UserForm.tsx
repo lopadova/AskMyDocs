@@ -1,7 +1,8 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
-import { useForm, type Resolver } from 'react-hook-form';
+import { Controller, useForm, type Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import type { AdminRole, AdminUser } from '../admin.api';
 
@@ -81,6 +82,7 @@ export function UserForm({
 
     const {
         register,
+        control,
         handleSubmit,
         setValue,
         watch,
@@ -176,35 +178,47 @@ export function UserForm({
                         error={errors.initial_project_key?.message}
                         testid="user-form-initial-project-error"
                     >
-                        <select
-                            aria-label="Initial project"
-                            data-testid="user-form-initial-project"
-                            {...register('initial_project_key')}
-                            className="focus-ring"
-                            style={inputStyle}
-                        >
-                            {projectKeys.length === 0 && <option value="">{translateInterface("No projects available")}</option>}
-                            {projectKeys.map((projectKey) => (
-                                <option key={projectKey} value={projectKey}>{projectKey}</option>
-                            ))}
-                        </select>
+                        <Controller control={control} name="initial_project_key" render={({ field }) => (
+                            <SelectField
+                                aria-label="Initial project"
+                                data-testid="user-form-initial-project"
+                                name={field.name}
+                                value={field.value}
+                                onValueChange={field.onChange}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                className="focus-ring"
+                                style={inputStyle}
+                            >
+                                {projectKeys.length === 0 && <SelectOption value="">{translateInterface("No projects available")}</SelectOption>}
+                                {projectKeys.map((projectKey) => (
+                                    <SelectOption key={projectKey} value={projectKey}>{projectKey}</SelectOption>
+                                ))}
+                            </SelectField>
+                        )} />
                     </Field>
                     <Field
                         label="Membership role"
                         error={errors.membership_role?.message}
                         testid="user-form-membership-role-error"
                     >
-                        <select
-                            aria-label="Membership role"
-                            data-testid="user-form-membership-role"
-                            {...register('membership_role')}
-                            className="focus-ring"
-                            style={inputStyle}
-                        >
-                            <option value="member">Member</option>
-                            <option value="admin">Admin</option>
-                            <option value="owner">Owner</option>
-                        </select>
+                        <Controller control={control} name="membership_role" render={({ field }) => (
+                            <SelectField
+                                aria-label="Membership role"
+                                data-testid="user-form-membership-role"
+                                name={field.name}
+                                value={field.value}
+                                onValueChange={field.onChange}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                className="focus-ring"
+                                style={inputStyle}
+                            >
+                                <SelectOption value="member">Member</SelectOption>
+                                <SelectOption value="admin">Admin</SelectOption>
+                                <SelectOption value="owner">Owner</SelectOption>
+                            </SelectField>
+                        )} />
                     </Field>
                 </div>
             )}

@@ -1,5 +1,7 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WidgetKeysView } from './WidgetKeysView';
 import { useKbProjects } from '../kb/kb-tree.api';
@@ -213,11 +215,13 @@ describe('WidgetKeysView', () => {
         });
 
         const picker = screen.getByTestId('admin-widget-keys-project');
-        expect(within(picker).getAllByRole('option').map((option) => option.textContent))
+        await userEvent.click(picker);
+        expect(screen.getAllByRole('option').map((option) => option.textContent))
             .toEqual(['Select a project…', 'engineering', 'hr-portal']);
+        await userEvent.keyboard('{Escape}');
         expect(screen.getByTestId('admin-widget-keys-create-submit')).toBeDisabled();
 
-        fireEvent.change(picker, { target: { value: 'hr-portal' } });
+        await chooseSelectOption(picker, "hr-portal");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         await waitFor(() => {
@@ -402,9 +406,7 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'Prod' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         const err = await screen.findByTestId('admin-widget-keys-create-error');
@@ -439,9 +441,7 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'Prod' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         const creds = await screen.findByTestId('admin-widget-keys-created-creds');
@@ -597,9 +597,7 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'Customer portal' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
         fireEvent.click(screen.getByTestId('admin-widget-keys-user-auth-toggle'));
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
@@ -714,12 +712,8 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'Inline' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-mode'), {
-            target: { value: 'inline' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-mode'), "inline");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         await waitFor(() => {
@@ -758,12 +752,8 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'Fullscreen' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-mode'), {
-            target: { value: 'fullscreen' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-mode'), "fullscreen");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         await waitFor(() => {
@@ -802,9 +792,7 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'Helper' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         await waitFor(() => {
@@ -871,9 +859,7 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'HostTools' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
 
         const toggle = screen.getByTestId(
             'admin-widget-keys-host-tools-toggle',
@@ -922,9 +908,7 @@ describe('WidgetKeysView', () => {
         fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
             target: { value: 'NoHostTools' },
         });
-        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
-            target: { value: 'main' },
-        });
+        await chooseSelectOption(screen.getByTestId('admin-widget-keys-project'), "main");
         fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
 
         await waitFor(() => {

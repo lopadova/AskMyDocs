@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chooseSelectOption } from '@/test-utils/select';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import type { KbTreeResponse } from '../admin/admin.api';
@@ -112,8 +113,9 @@ describe('KnowledgeBrowseView', () => {
         renderView(<KnowledgeBrowseView />);
 
         const select = await screen.findByTestId('kb-browse-project');
+        await userEvent.click(select);
         // R18: All projects + the two memberships from /api/auth/me.
-        expect(Array.from(select.querySelectorAll('option')).map((o) => o.textContent)).toEqual([
+        expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
             'All projects',
             'accounting',
             'engineering',
@@ -123,7 +125,7 @@ describe('KnowledgeBrowseView', () => {
     it('scopes the tree to the chosen project', async () => {
         renderView(<KnowledgeBrowseView />);
 
-        await userEvent.selectOptions(
+        await chooseSelectOption(
             await screen.findByTestId('kb-browse-project'),
             'engineering',
         );

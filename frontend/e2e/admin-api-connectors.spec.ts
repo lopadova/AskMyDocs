@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 
@@ -84,15 +85,15 @@ async function addRouteAndTest(
     await page.getByTestId(`api-connector-${connectorId}-route-add`).click();
     await expect(page.getByTestId('api-route-form')).toBeVisible();
     await page.getByTestId('api-route-form-name').fill(opts.name);
-    await page.getByTestId('api-route-form-http_method').selectOption('GET');
+    await chooseSelectOption(page.getByTestId('api-route-form-http_method'), 'GET');
     await page.getByTestId('api-route-form-url').fill(opts.url);
     if (opts.withIdParam) {
         await page.getByRole('tab', { name: /^Parametri/ }).click();
         await page.getByTestId('api-route-form-param-add').click();
         await page.getByTestId('api-route-form-param-0-name').fill('id');
         await page.getByTestId('api-route-form-param-0-location-path').click();
-        await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
-        await page.getByTestId('api-route-form-param-0-type').selectOption('integer');
+        await chooseSelectOption(page.getByTestId('api-route-form-param-0-source'), 'llm');
+        await chooseSelectOption(page.getByTestId('api-route-form-param-0-type'), 'integer');
     }
     if (opts.exampleArgs) {
         await page.getByRole('tab', { name: 'Prova', exact: true }).click();
@@ -164,7 +165,7 @@ test.describe('Admin API Connectors', () => {
         const routeForm = page.getByTestId('api-route-form');
         await expect(routeForm).toBeVisible();
         await page.getByTestId('api-route-form-name').fill('List users');
-        await page.getByTestId('api-route-form-http_method').selectOption('GET');
+        await chooseSelectOption(page.getByTestId('api-route-form-http_method'), 'GET');
         await page.getByTestId('api-route-form-url').fill(LIST_FIXTURE);
         await expect(routeForm.getByRole('tab', { name: 'Richiesta', exact: true })).toHaveAttribute('aria-selected', 'true');
 
@@ -238,9 +239,9 @@ test.describe('Admin API Connectors', () => {
 
         // Body is hidden for GET, shown for a body-bearing method.
         await expect(page.getByTestId('api-probe-body')).toHaveCount(0);
-        await page.getByTestId('api-probe-method').selectOption('POST');
+        await chooseSelectOption(page.getByTestId('api-probe-method'), 'POST');
         await expect(page.getByTestId('api-probe-body')).toBeVisible();
-        await page.getByTestId('api-probe-method').selectOption('GET');
+        await chooseSelectOption(page.getByTestId('api-probe-method'), 'GET');
         await expect(page.getByTestId('api-probe-body')).toHaveCount(0);
 
         // Failure path: sending an empty URL surfaces a validation error, no call.
@@ -295,12 +296,12 @@ test.describe('Admin API Connectors', () => {
         // Relate them: map the list item's `id` onto the detail's `id` param.
         await page.getByTestId(`api-connector-${connectorId}-relation-add`).click();
         await expect(page.getByTestId('api-route-relation-form')).toBeVisible();
-        // Options render as "{name} ({slug})"; Playwright's selectOption label is an
-        // exact string (no regex), so select by the value read from the matching option.
+        // Options render as "{name} ({slug})"; choose their visible labels while
+        // allowing the backend-generated slug to vary.
         const listRoute = page.getByTestId('api-route-relation-form-list_route');
-        await listRoute.selectOption((await listRoute.locator('option', { hasText: 'List users' }).getAttribute('value'))!);
+        await chooseSelectOption(listRoute, { label: /^List users \(/ });
         const detailRoute = page.getByTestId('api-route-relation-form-detail_route');
-        await detailRoute.selectOption((await detailRoute.locator('option', { hasText: 'User detail' }).getAttribute('value'))!);
+        await chooseSelectOption(detailRoute, { label: /^User detail \(/ });
         await page.getByTestId('api-route-relation-form-map-0-from').fill('id');
         await page.getByTestId('api-route-relation-form-map-0-to_param').fill('id');
         await page.getByTestId('api-route-relation-form-submit').click();
@@ -343,14 +344,14 @@ test.describe('Admin API Connectors', () => {
         await page.getByTestId(`api-connector-${connectorId}-route-add`).click();
         await expect(page.getByTestId('api-route-form')).toBeVisible();
         await page.getByTestId('api-route-form-name').fill('Paged catalog');
-        await page.getByTestId('api-route-form-http_method').selectOption('GET');
+        await chooseSelectOption(page.getByTestId('api-route-form-http_method'), 'GET');
         await page.getByTestId('api-route-form-url').fill(PAGED_FIXTURE);
         await page.getByRole('tab', { name: /^Parametri/ }).click();
         await page.getByTestId('api-route-form-param-add').click();
         await page.getByTestId('api-route-form-param-0-name').fill('q');
         await page.getByTestId('api-route-form-param-0-location-query').click();
-        await page.getByTestId('api-route-form-param-0-source').selectOption('llm');
-        await page.getByTestId('api-route-form-param-0-type').selectOption('string');
+        await chooseSelectOption(page.getByTestId('api-route-form-param-0-source'), 'llm');
+        await chooseSelectOption(page.getByTestId('api-route-form-param-0-type'), 'string');
 
         // Testa the in-memory config BEFORE saving — `q` flavours the fixture names.
         await page.getByRole('tab', { name: 'Prova', exact: true }).click();
@@ -367,7 +368,7 @@ test.describe('Admin API Connectors', () => {
         await page.getByRole('tab', { name: 'Risposta', exact: true }).click();
         await page.getByTestId('api-route-form-pagination-detect').click();
         await expect(page.getByTestId('api-route-form-pagination-source')).toBeVisible({ timeout: 20_000 });
-        await expect(page.getByTestId('api-route-form-pagination-type')).toHaveValue('cursor');
+        await expect(page.getByTestId('api-route-form-pagination-type')).toHaveAttribute('data-value', 'cursor');
         await expect(page.getByTestId('api-route-form-pagination-next_cursor_path')).toHaveValue('meta.next_cursor');
 
         // Save the whole config (incl. the detected pagination) → created + final test.

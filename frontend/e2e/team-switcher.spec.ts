@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { openSelect } from './helpers';
 import { test } from './fixtures';
 
 /*
@@ -113,7 +114,8 @@ test.describe('Team switcher', () => {
         });
         const select = page.getByTestId('kb-project-select');
         await expect(select).toBeVisible({ timeout: 15_000 });
-        await expect(select.locator('option')).toHaveText(['All projects', 'acme-kb'], {
+        const projects = await openSelect(select);
+        await expect(projects.getByRole('option')).toHaveText(['All projects', 'acme-kb'], {
             timeout: 15_000,
         });
 

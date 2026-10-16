@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -82,8 +83,8 @@ test.describe('Admin Project Membership', () => {
 
         // Assign hr-portal.
         await page.getByTestId('membership-add').click();
-        await page.getByTestId('membership-add-project').selectOption('hr-portal');
-        await page.getByTestId('membership-add-role').selectOption('member');
+        await chooseSelectOption(page.getByTestId('membership-add-project'), 'hr-portal');
+        await chooseSelectOption(page.getByTestId('membership-add-role'), 'member');
         await page.getByTestId('membership-add-save').click();
         await expect(page.getByTestId('membership-hr-portal')).toBeVisible({ timeout: 10_000 });
 
@@ -124,7 +125,7 @@ test.describe('Admin Project Membership', () => {
         await expect(page.getByTestId('membership-engineering')).toBeVisible();
 
         await page.getByTestId('membership-add').click();
-        await page.getByTestId('membership-add-project').selectOption('hr-portal');
+        await chooseSelectOption(page.getByTestId('membership-add-project'), 'hr-portal');
         await page.getByTestId('membership-add-save').click();
 
         // The error toast appears with the documented testid; no row added.

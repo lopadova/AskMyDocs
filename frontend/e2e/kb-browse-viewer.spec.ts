@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures';
+import { openSelect } from './helpers';
 
 /*
  * v8.x — the reader KB explorer, exercised as a VIEWER.
@@ -73,7 +74,8 @@ test.describe('Browse KB — viewer can read the knowledge base', () => {
         await expect(select).toBeVisible({ timeout: 20_000 });
         // R18: derived from /api/auth/me, so "All projects" plus whatever
         // this viewer actually belongs to — never a hard-coded list.
-        await expect(select.locator('option').first()).toHaveText('All projects');
+        const projects = await openSelect(select);
+        await expect(projects.getByRole('option').first()).toHaveText('All projects');
     });
 
     test('failure path — a missing document surfaces an error with a retry', async ({ page }) => {

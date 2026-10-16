@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -103,16 +104,16 @@ export function SourceAclView(): ReactNode {
             )}
 
             <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12 }}>
-                {translateInterface("Showing")}<select
+                {translateInterface("Showing")}<SelectField
                     data-testid="admin-source-acl-status-filter"
                     aria-label={translateInterface("Filter by decision status")}
                     value={status}
-                    onChange={(e) => setStatus(e.target.value as TriageStatus)}
+                    onValueChange={(nextValue) => setStatus(nextValue as TriageStatus)}
                     style={{ fontSize: 11.5, padding: '2px 4px' }}
                 >
-                    <option value="pending">{translateInterface("Awaiting a decision")}</option>
-                    <option value="ignored">{translateInterface("Dismissed")}</option>
-                </select>
+                    <SelectOption value="pending">{translateInterface("Awaiting a decision")}</SelectOption>
+                    <SelectOption value="ignored">{translateInterface("Dismissed")}</SelectOption>
+                </SelectField>
             </label>
 
             {actionError && (

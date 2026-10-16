@@ -1,3 +1,4 @@
+import { chooseSelectOption, openSelect } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -122,10 +123,11 @@ test.describe('Admin Tabular Reviews (W3)', () => {
         // No metric picker for the default `extract` agent.
         await expect(page.getByTestId('admin-tabular-review-create-column-0-metric')).toHaveCount(0);
 
-        await page.getByTestId('admin-tabular-review-create-column-0-agent').selectOption('graph');
+        await chooseSelectOption(page.getByTestId('admin-tabular-review-create-column-0-agent'), 'graph');
         const metric = page.getByTestId('admin-tabular-review-create-column-0-metric');
         await expect(metric).toBeVisible();
-        await expect(metric.locator('option', { hasText: 'evidence_tier' })).toHaveCount(1);
+        const metrics = await openSelect(metric);
+        await expect(metrics.getByRole('option', { name: 'evidence_tier', exact: true })).toHaveCount(1);
     });
 
     test('W5 — the ready-made template gallery opens and reaches a non-loading state', async ({ page }) => {

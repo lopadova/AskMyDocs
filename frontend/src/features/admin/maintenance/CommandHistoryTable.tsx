@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { Fragment, useState } from 'react';
 import { useCommandHistory, type HistoryRow } from './maintenance.api';
@@ -44,21 +45,21 @@ export function CommandHistoryTable() {
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>{translateInterface("Status")}</span>
-                    <select
+                    <SelectField
                         data-testid="history-filter-status"
                         value={statusFilter}
-                        onChange={(e) => {
-                            setStatusFilter(e.target.value);
+                        onValueChange={(nextValue) => {
+                            setStatusFilter(nextValue);
                             setPage(1);
                         }}
                         style={inputStyle}
                     >
-                        <option value="">any</option>
-                        <option value="started">started</option>
-                        <option value="completed">completed</option>
-                        <option value="failed">failed</option>
-                        <option value="rejected">rejected</option>
-                    </select>
+                        <SelectOption value="">any</SelectOption>
+                        <SelectOption value="started">started</SelectOption>
+                        <SelectOption value="completed">completed</SelectOption>
+                        <SelectOption value="failed">failed</SelectOption>
+                        <SelectOption value="rejected">rejected</SelectOption>
+                    </SelectField>
                 </label>
             </div>
 

@@ -95,7 +95,7 @@ describe('ConnectionSettingsForm', () => {
         expect(screen.getByTestId('connector-imap-settings-senders-exclude-chip-noreply-x-com-remove')).toBeTruthy();
 
         // Select + checkbox seed.
-        expect((screen.getByTestId('connector-imap-settings-body-format') as HTMLSelectElement).value).toBe('prefer_html');
+        expect(screen.getByTestId('connector-imap-settings-body-format')).toHaveAttribute('data-value', 'prefer_html');
         expect((screen.getByTestId('connector-imap-settings-skip-auto-generated') as HTMLInputElement).checked).toBe(false);
     });
 

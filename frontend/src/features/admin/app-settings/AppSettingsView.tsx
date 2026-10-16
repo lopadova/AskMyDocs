@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
@@ -99,37 +100,37 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                         {setting.value === null ? '—' : String(setting.value)}
                     </span>
                 ) : setting.type === 'enum' ? (
-                    <select
+                    <SelectField
                         aria-label={`${setting.label} value`}
                         data-testid={`app-setting-${setting.key}-input`}
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
+                        onValueChange={(nextValue) => setDraft(nextValue)}
                         style={inputStyle}
                     >
                         {/* Explicit empty option so a null value renders
                             deterministically (no React controlled-value warning)
                             and can be cleared by selecting "unset". */}
-                        <option value="">{translateInterface("— (unset)")}</option>
+                        <SelectOption value="">{translateInterface("— (unset)")}</SelectOption>
                         {(setting.enum ?? []).map((opt) => (
-                            <option key={opt} value={opt}>
+                            <SelectOption key={opt} value={opt}>
                                 {opt}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 ) : setting.type === 'bool' ? (
-                    <select
+                    <SelectField
                         aria-label={`${setting.label} value`}
                         data-testid={`app-setting-${setting.key}-input`}
                         // Reflect draft directly; a null value shows "unset" rather
                         // than masquerading as false.
                         value={draft === 'true' || draft === 'false' ? draft : ''}
-                        onChange={(e) => setDraft(e.target.value)}
+                        onValueChange={(nextValue) => setDraft(nextValue)}
                         style={inputStyle}
                     >
-                        <option value="">{translateInterface("— (unset)")}</option>
-                        <option value="true">{translateInterface("true")}</option>
-                        <option value="false">{translateInterface("false")}</option>
-                    </select>
+                        <SelectOption value="">{translateInterface("— (unset)")}</SelectOption>
+                        <SelectOption value="true">{translateInterface("true")}</SelectOption>
+                        <SelectOption value="false">{translateInterface("false")}</SelectOption>
+                    </SelectField>
                 ) : (
                     <input
                         type={setting.type === 'int' ? 'number' : 'text'}

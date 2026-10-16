@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -45,7 +46,7 @@ test.describe('Admin KB Upload', () => {
         );
 
         // Pick the first real project (derived from the DB, R18) — never a literal.
-        await page.getByTestId('kb-upload-project-select').selectOption({ index: 1 });
+        await chooseSelectOption(page.getByTestId('kb-upload-project-select'), { index: 1 });
 
         await page.getByTestId('kb-upload-file-input').setInputFiles({
             name: 'e2e-upload-doc.md',
@@ -85,7 +86,7 @@ test.describe('Admin KB Upload', () => {
         await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
 
         await page.getByTestId('kb-upload-open').click();
-        await page.getByTestId('kb-upload-project-select').selectOption({ index: 1 });
+        await chooseSelectOption(page.getByTestId('kb-upload-project-select'), { index: 1 });
 
         await page.getByTestId('kb-upload-file-input').setInputFiles({
             name: 'e2e-ocr-estimate.md',
@@ -107,7 +108,7 @@ test.describe('Admin KB Upload', () => {
         await expect(page.getByTestId('kb-upload-modal')).toBeHidden();
         await page.getByTestId('kb-upload-open').click();
         await expect(page.getByTestId('kb-upload-modal')).toBeVisible();
-        await page.getByTestId('kb-upload-project-select').selectOption({ index: 1 });
+        await chooseSelectOption(page.getByTestId('kb-upload-project-select'), { index: 1 });
         await page.getByTestId('kb-upload-file-input').setInputFiles({
             name: 'scan.png',
             mimeType: 'image/png',
@@ -124,7 +125,7 @@ test.describe('Admin KB Upload', () => {
         await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
 
         await page.getByTestId('kb-upload-open').click();
-        await page.getByTestId('kb-upload-project-select').selectOption({ index: 1 });
+        await chooseSelectOption(page.getByTestId('kb-upload-project-select'), { index: 1 });
 
         // setInputFiles bypasses the `accept` filter, so the rejection is the
         // BE's job — the real StageKbUploadRequest returns 422 for .exe.

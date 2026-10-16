@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -102,7 +103,7 @@ describe('AppSettingsView', () => {
         expect(screen.queryByTestId('app-setting-ai_finops.enabled-input')).not.toBeInTheDocument();
     });
 
-    it('saves an edited enum value (drives the edit → Save transition)', () => {
+    it('saves an edited enum value (drives the edit → Save transition)', async () => {
         listMock.data = [setting({ value: 'openai', source: 'config' })];
         wrap(<AppSettingsView />);
 
@@ -110,7 +111,7 @@ describe('AppSettingsView', () => {
         // Save is disabled until the value actually changes.
         expect(save).toBeDisabled();
 
-        fireEvent.change(screen.getByTestId('app-setting-ai.provider-input'), { target: { value: 'anthropic' } });
+        await chooseSelectOption(screen.getByTestId('app-setting-ai.provider-input'), "anthropic");
         expect(save).toBeEnabled();
 
         fireEvent.click(save);
@@ -120,14 +121,15 @@ describe('AppSettingsView', () => {
     it('renders a null-valued enum with the unset option selected (no crash)', () => {
         listMock.data = [setting({ value: null, source: 'config' })];
         wrap(<AppSettingsView />);
-        const select = screen.getByTestId('app-setting-ai.provider-input') as HTMLSelectElement;
-        expect(select.value).toBe('');
+        const select = screen.getByTestId('app-setting-ai.provider-input');
+        expect(select).toHaveAttribute('data-value', '');
+        expect(select).toHaveTextContent('— (unset)');
     });
 
-    it('clears an override by selecting the unset option (submits null)', () => {
+    it('clears an override by selecting the unset option (submits null)', async () => {
         listMock.data = [setting({ value: 'anthropic', source: 'tenant' })];
         wrap(<AppSettingsView />);
-        fireEvent.change(screen.getByTestId('app-setting-ai.provider-input'), { target: { value: '' } });
+        await chooseSelectOption(screen.getByTestId('app-setting-ai.provider-input'), "");
         fireEvent.click(screen.getByTestId('app-setting-ai.provider-save'));
         expect(mutateMock).toHaveBeenCalledWith({ key: 'ai.provider', value: null });
     });

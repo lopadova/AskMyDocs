@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -63,8 +64,8 @@ test.describe('Admin Users', () => {
         // knowledge_documents under hr-portal + engineering, so the picker —
         // derived from GET /api/admin/kb/projects — offers both).
         await page.getByTestId('membership-add').click();
-        await page.getByTestId('membership-add-project').selectOption('hr-portal');
-        await page.getByTestId('membership-add-role').selectOption('admin');
+        await chooseSelectOption(page.getByTestId('membership-add-project'), 'hr-portal');
+        await chooseSelectOption(page.getByTestId('membership-add-role'), 'admin');
         await page.getByTestId('membership-add-save').click();
 
         // The membership row materialises for the chosen project.

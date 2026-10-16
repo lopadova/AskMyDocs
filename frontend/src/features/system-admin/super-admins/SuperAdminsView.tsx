@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -75,21 +76,21 @@ export function SuperAdminsView(): ReactNode {
                 </label>
                 <label>
                     <span style={srOnly}>{translateInterface("Identity status")}</span>
-                    <select
+                    <SelectField
                         aria-label={translateInterface("Identity status")}
                         data-testid="system-super-admins-status"
-                        onChange={(event) => {
-                            setStatus(event.target.value as SuperAdminStatus | '');
+                        onValueChange={(value) => {
+                            setStatus(value as SuperAdminStatus | '');
                             setPage(1);
                         }}
                         style={inputStyle}
                         value={status}
                     >
-                        <option value="">{translateInterface("All statuses")}</option>
-                        <option value="active">{translateInterface("Active")}</option>
-                        <option value="inactive">{translateInterface("Inactive")}</option>
-                        <option value="deleted">{translateInterface("Deleted")}</option>
-                    </select>
+                        <SelectOption value="">{translateInterface("All statuses")}</SelectOption>
+                        <SelectOption value="active">{translateInterface("Active")}</SelectOption>
+                        <SelectOption value="inactive">{translateInterface("Inactive")}</SelectOption>
+                        <SelectOption value="deleted">{translateInterface("Deleted")}</SelectOption>
+                    </SelectField>
                 </label>
                 <button
                     data-testid="system-super-admins-search-submit"

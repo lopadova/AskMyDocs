@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { Button } from '../../../components/Button';
@@ -131,11 +132,11 @@ export function TreeView(props: TreeViewProps) {
                         flexWrap: 'wrap',
                     }}
                 >
-                    <select
+                    <SelectField
                         data-testid="kb-tree-mode"
                         aria-label={translateInterface("Document mode filter")}
                         value={mode}
-                        onChange={(e) => onModeChange(e.target.value as KbTreeMode)}
+                        onValueChange={(nextValue) => onModeChange(nextValue as KbTreeMode)}
                         style={{
                             padding: '6px 8px',
                             fontSize: 12.5,
@@ -145,10 +146,10 @@ export function TreeView(props: TreeViewProps) {
                             color: 'var(--fg-1)',
                         }}
                     >
-                        <option value="all">{translateInterface("All documents")}</option>
-                        <option value="canonical">{translateInterface("Canonical only")}</option>
-                        <option value="raw">{translateInterface("Raw only")}</option>
-                    </select>
+                        <SelectOption value="all">{translateInterface("All documents")}</SelectOption>
+                        <SelectOption value="canonical">{translateInterface("Canonical only")}</SelectOption>
+                        <SelectOption value="raw">{translateInterface("Raw only")}</SelectOption>
+                    </SelectField>
                     {allowTrashedToggle ? (
                         <label
                             style={{

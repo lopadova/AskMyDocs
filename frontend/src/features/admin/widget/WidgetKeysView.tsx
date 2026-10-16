@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -155,7 +156,7 @@ const MODE_OPTIONS: { value: WidgetMode; label: string; hint: string }[] = [
     },
 ];
 
-/** shadcn-styled control class shared by the native <select> here. */
+/** Compact layout for project and mode Select triggers. */
 const SELECT_CLASS =
     'border-input bg-background ring-offset-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none';
 
@@ -426,19 +427,19 @@ export function WidgetKeysView() {
                             <Label htmlFor="wk-mode">
                                 {translateInterface("Widget type") + " "}<span className="text-destructive">*</span>
                             </Label>
-                            <select
+                            <SelectField
                                 id="wk-mode"
                                 data-testid="admin-widget-keys-mode"
                                 value={newMode}
-                                onChange={(e) => setNewMode(e.target.value as WidgetMode)}
+                                onValueChange={(nextValue) => setNewMode(nextValue as WidgetMode)}
                                 className={SELECT_CLASS}
                             >
                                 {MODE_OPTIONS.map((o) => (
-                                    <option key={o.value} value={o.value}>
+                                    <SelectOption key={o.value} value={o.value}>
                                         {o.label}
-                                    </option>
+                                    </SelectOption>
                                 ))}
-                            </select>
+                            </SelectField>
                             <p className="text-muted-foreground text-xs">
                                 {MODE_OPTIONS.find((o) => o.value === newMode)?.hint}
                                 {' '}{translateInterface("You can change this later under") + " "}<em>{translateInterface("Appearance")}</em>.
@@ -477,11 +478,11 @@ export function WidgetKeysView() {
                             <Label htmlFor="wk-project">
                                 {translateInterface("Project") + " "}<span className="text-destructive">*</span>
                             </Label>
-                            <select
+                            <SelectField
                                 id="wk-project"
                                 data-testid="admin-widget-keys-project"
                                 value={newProjectKey}
-                                onChange={(e) => setNewProjectKey(e.target.value)}
+                                onValueChange={(nextValue) => setNewProjectKey(nextValue)}
                                 disabled={
                                     projectsQuery.isLoading
                                     || projectsQuery.isError
@@ -489,7 +490,7 @@ export function WidgetKeysView() {
                                 }
                                 className={SELECT_CLASS}
                             >
-                                <option value="" disabled>
+                                <SelectOption value="" disabled>
                                     {projectsQuery.isLoading
                                         ? 'Loading projects…'
                                         : projectsQuery.isError
@@ -497,13 +498,13 @@ export function WidgetKeysView() {
                                           : projectOptions.length === 0
                                             ? translateInterface("No projects available")
                                             : translateInterface("Select a project…")}
-                                </option>
+                                </SelectOption>
                                 {projectOptions.map((projectKey) => (
-                                    <option key={projectKey} value={projectKey}>
+                                    <SelectOption key={projectKey} value={projectKey}>
                                         {projectKey}
-                                    </option>
+                                    </SelectOption>
                                 ))}
-                            </select>
+                            </SelectField>
                             <p className="text-muted-foreground text-xs">
                                 {translateInterface("Which knowledge-base project the widget retrieves from. Answers and citations are grounded strictly in this project.")}</p>
                             {projectsQuery.isLoading && (

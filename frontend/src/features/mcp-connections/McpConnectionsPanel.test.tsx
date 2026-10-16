@@ -101,9 +101,10 @@ describe('McpConnectionsPanel OAuth onboarding', () => {
         await user.click(screen.getByRole('button', { name: 'Add MCP connection' }));
         const project = screen.getByRole('combobox', { name: /Project \(optional\)/ });
         expect(project).toHaveRole('combobox');
+        await user.click(project);
         expect(screen.getByRole('option', { name: 'Customer Support · support' })).toBeInTheDocument();
-        await user.selectOptions(project, 'support');
-        expect(project).toHaveValue('support');
+        await user.click(screen.getByRole('option', { name: 'Customer Support · support' }));
+        expect(project).toHaveAttribute('data-value', 'support');
 
         await user.type(screen.getByLabelText('Name'), 'Support MCP');
         await user.type(screen.getByLabelText('MCP endpoint', { exact: true }), 'https://mcp.example.test/rpc');

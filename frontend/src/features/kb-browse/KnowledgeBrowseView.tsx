@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -119,22 +120,22 @@ export function KnowledgeBrowseView(): ReactNode {
                 <div className="kb-browse-scope">
                     <label className="kb-browse-scope-label" htmlFor="kb-browse-project">
                         {translateInterface("Project")}</label>
-                    <select
+                    <SelectField
                         id="kb-browse-project"
                         data-testid="kb-browse-project"
                         value={project}
-                        onChange={(e) => {
-                            setProject(e.target.value);
+                        onValueChange={(value) => {
+                            setProject(value);
                             setSelected(null);
                         }}
                     >
-                        <option value="">{translateInterface("All projects")}</option>
+                        <SelectOption value="">{translateInterface("All projects")}</SelectOption>
                         {projects.map((key) => (
-                            <option key={key} value={key}>
+                            <SelectOption key={key} value={key}>
                                 {key}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </div>
 
                 <TreeView

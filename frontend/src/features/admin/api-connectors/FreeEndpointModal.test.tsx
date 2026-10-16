@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -24,7 +25,7 @@ describe('FreeEndpointModal', () => {
     it('renders the request form; the body field is hidden for GET', () => {
         setup();
         expect(screen.getByTestId('api-probe-url')).toBeInTheDocument();
-        expect(screen.getByTestId('api-probe-method')).toHaveValue('GET');
+        expect(screen.getByTestId('api-probe-method')).toHaveAttribute('data-value', 'GET');
         expect(screen.getByTestId('api-probe-headers')).toBeInTheDocument();
         expect(screen.getByTestId('api-probe-query')).toBeInTheDocument();
         expect(screen.queryByTestId('api-probe-body')).not.toBeInTheDocument();
@@ -32,9 +33,9 @@ describe('FreeEndpointModal', () => {
 
     it('shows the body field for POST and hides it again for GET', async () => {
         setup();
-        await userEvent.selectOptions(screen.getByTestId('api-probe-method'), 'POST');
+        await chooseSelectOption(screen.getByTestId('api-probe-method'), 'POST');
         expect(screen.getByTestId('api-probe-body')).toBeInTheDocument();
-        await userEvent.selectOptions(screen.getByTestId('api-probe-method'), 'GET');
+        await chooseSelectOption(screen.getByTestId('api-probe-method'), 'GET');
         expect(screen.queryByTestId('api-probe-body')).not.toBeInTheDocument();
     });
 
@@ -47,7 +48,7 @@ describe('FreeEndpointModal', () => {
 
     it('blocks send on an invalid JSON body and surfaces the error', async () => {
         const { onSend } = setup();
-        await userEvent.selectOptions(screen.getByTestId('api-probe-method'), 'POST');
+        await chooseSelectOption(screen.getByTestId('api-probe-method'), 'POST');
         await userEvent.type(screen.getByTestId('api-probe-url'), 'https://api.example.com/x');
         // Braces are userEvent keyboard modifiers — set the JSON via change instead.
         fireEvent.change(screen.getByTestId('api-probe-body'), { target: { value: '{ not json' } });
@@ -75,7 +76,7 @@ describe('FreeEndpointModal', () => {
 
     it('sends a POST with a parsed JSON body', async () => {
         const { onSend } = setup();
-        await userEvent.selectOptions(screen.getByTestId('api-probe-method'), 'POST');
+        await chooseSelectOption(screen.getByTestId('api-probe-method'), 'POST');
         await userEvent.type(screen.getByTestId('api-probe-url'), 'https://api.example.com/orders');
         fireEvent.change(screen.getByTestId('api-probe-body'), { target: { value: '{"sku":"A1"}' } });
         await userEvent.click(screen.getByTestId('api-probe-send'));

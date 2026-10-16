@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
@@ -372,20 +373,20 @@ export function CredentialConnectorForm({
                         style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
                     >
                         <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
-                        <select
+                        <SelectField
                             id={`connector-${entry.key}-form-project_key`}
                             data-testid={`connector-${entry.key}-form-project_key`}
                             value={projectKey}
-                            onChange={(e) => setProjectKey(e.target.value)}
+                            onValueChange={(selectedValue) => setProjectKey(selectedValue)}
                             style={inputStyle()}
                         >
-                            <option value="">Global (tenant default)</option>
+                            <SelectOption value="">Global (tenant default)</SelectOption>
                             {projects.map((p) => (
-                                <option key={p.project_key} value={p.project_key}>
+                                <SelectOption key={p.project_key} value={p.project_key}>
                                     {p.name} ({p.project_key})
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                         {fieldErrors?.project_key && (
                             <span
                                 data-testid={`connector-${entry.key}-form-project_key-error`}
@@ -581,20 +582,20 @@ function Field({ connectorKey, field, value, error, secretOptional, onChange }: 
             </span>
 
             {field.type === 'select' ? (
-                <select
+                <SelectField
                     id={id}
                     data-testid={testid}
                     required={required}
                     value={String(value ?? '')}
-                    onChange={(e) => onChange(e.target.value)}
+                    onValueChange={(selectedValue) => onChange(selectedValue)}
                     style={inputStyle()}
                 >
                     {Object.entries(field.options).map(([val, label]) => (
-                        <option key={val} value={val}>
+                        <SelectOption key={val} value={val}>
                             {label}
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
             ) : field.type === 'checkbox' ? (
                 <input
                     id={id}

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chooseSelectOption } from '@/test-utils/select';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { api } from '../../../lib/api';
@@ -211,7 +212,7 @@ describe('TenantControlView', () => {
 
         renderWithQuery(<TenantControlView />);
         await screen.findByTestId('tenant-control-detail');
-        await userEvent.selectOptions(screen.getByTestId('tenant-control-detail-status'), 'suspended');
+        await chooseSelectOption(screen.getByTestId('tenant-control-detail-status'), 'suspended');
         await userEvent.click(screen.getByTestId('tenant-control-detail-save'));
 
         expect(await screen.findByTestId('tenant-control-lifecycle-confirm')).toHaveTextContent('active → suspended');

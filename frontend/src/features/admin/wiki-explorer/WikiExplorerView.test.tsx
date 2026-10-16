@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,8 +54,7 @@ function routeGet(list: unknown) {
 
 async function selectProject(value = 'eng') {
     const sel = await screen.findByTestId('admin-wiki-explorer-project');
-    await screen.findByRole('option', { name: value });
-    await userEvent.selectOptions(sel, value);
+    await chooseSelectOption(sel, value);
 }
 
 describe('WikiExplorerView', () => {
@@ -68,10 +68,9 @@ describe('WikiExplorerView', () => {
     it('project options derive from the DB (R18)', async () => {
         mockGet.mockImplementation(routeGet(listResp([])));
         render(withQueryClient(<WikiExplorerView />));
-        await waitFor(() => {
-            const sel = screen.getByTestId('admin-wiki-explorer-project') as HTMLSelectElement;
-            expect(Array.from(sel.options).map((o) => o.value)).toEqual(['', 'eng', 'hr']);
-        });
+        await userEvent.click(screen.getByTestId('admin-wiki-explorer-project'));
+        await screen.findByRole('option', { name: 'hr' });
+        expect(screen.getAllByRole('option').map((option) => option.dataset.value)).toEqual(['', 'eng', 'hr']);
     });
 
     it('shows the empty state when the project has no pages', async () => {
