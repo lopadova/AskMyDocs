@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorImap\Imap\AttachmentPolicy;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapAttachment;
@@ -489,6 +490,9 @@ final class EmailTriageTest extends TestCase
 
     public function test_pilot_completes_ten_synthetic_rounds_even_if_one_fails_without_ingestion(): void
     {
+        // Synthetic messages use now() in their body headers; rereads must keep that date stable.
+        $this->freezeTime();
+        Sleep::fake();
         Storage::fake('local');
         $installation = $this->installation(false);
         $connectorContext = app(\Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class);
@@ -508,7 +512,8 @@ final class EmailTriageTest extends TestCase
         $this->app->instance(\App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract::class, $provider);
         $calls = 0;
         Http::fake(function ($request) use (&$calls) {
-            if (++$calls === 1) return Http::response([], 503);
+            // Exhaust the bounded HTTP retry budget so exactly one pilot round fails.
+            if (++$calls <= 3) return Http::response([], 503);
             $answers = [];
             foreach ($request['questions'] as $key => $question) {
                 $probabilities = array_fill_keys(array_keys($question['criteria']), 0.0);
@@ -536,6 +541,6 @@ final class EmailTriageTest extends TestCase
         $this->assertSame(0, EmailTriageMessage::count());
         $this->assertSame(0, KnowledgeDocument::count());
         Queue::assertNotPushed(IngestDocumentJob::class);
-        Http::assertSentCount(10);
+        Http::assertSentCount(12);
     }
 }
