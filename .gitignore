@@ -78,6 +78,6 @@ public/_serve_router.php
 /desktop/node_modules/
 /desktop/dist/
 
-# Unpublished email packages: generated local Composer manifests only.
+# Optional email package development: generated local Composer manifests only.
 /composer.email-local.json
 /composer.email-local.lock

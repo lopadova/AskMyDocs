@@ -11,6 +11,67 @@ The normative source is the frozen
 with provider details alongside it
 in `GMAIL.md` and `MICROSOFT-MAIL.md`. This page explains the host adapter.
 
+## Standard versioned installation
+
+As of 2026-10-16, both packages have published `v1.0.0` releases and are normal
+AskMyDocs production dependencies with `^1.0` constraints. Composer resolves
+their exact versions from the committed `composer.lock` using these VCS sources:
+
+| Composer package | Connector key | Release repository |
+| --- | --- | --- |
+| `padosoft/askmydocs-connector-gmail` | `gmail` | [Gmail API](https://github.com/padosoft/askmydocs-connector-gmail-api) |
+| `padosoft/askmydocs-connector-microsoft-mail` | `microsoft-mail` | [Outlook API](https://github.com/padosoft/askmydocs-connector-outlook-api) |
+
+On a checkout with the production manifest and lockfile, install the locked
+dependencies, refresh Laravel discovery and apply the package migrations:
+
+```sh
+composer install --prefer-dist --no-interaction
+php artisan package:discover --ansi
+php artisan migrate
+```
+
+The ordinary lockfile registry discovers both connector classes; Laravel loads
+their configuration and migrations through the package service providers.
+Installing a package does not authorize a mailbox. Complete the provider's
+OAuth setup and connect an account from the tenant's **Connectors** page.
+
+### Server OAuth configuration and callbacks
+
+Configure dedicated provider applications and keep their secrets server-side:
+
+```dotenv
+GMAIL_CLIENT_ID=
+GMAIL_CLIENT_SECRET=
+GMAIL_REDIRECT_URI=https://askmydocsdev.test/api/admin/connectors/gmail/oauth/callback
+MICROSOFT_MAIL_CLIENT_ID=
+MICROSOFT_MAIL_CLIENT_SECRET=
+MICROSOFT_MAIL_REDIRECT_URI=https://askmydocsdev.test/api/admin/connectors/microsoft-mail/oauth/callback
+MICROSOFT_MAIL_AUTHORITY=common
+```
+
+These URLs identify the existing HTTPS Herd routes. Register the exact callback
+accepted by each provider and use the deployment's actual domain outside local
+development. Google may reject a `.test` Web callback; use an approved HTTPS
+callback domain/proxy routed to this host callback when necessary, keeping the
+Herd `APP_URL` unchanged. The package OAuth guides document provider registration
+and callback requirements. After changing variables with cached configuration,
+run `php artisan config:clear` before starting a new connection.
+
+Gmail requests `https://www.googleapis.com/auth/gmail.readonly` and `openid`,
+with offline access. Enable Gmail API and configure the Google consent audience
+and testing users for the dedicated Web client. Microsoft requests delegated
+`Mail.Read`, `User.Read`, `offline_access` and `openid`; a configured shared
+mailbox additionally requests `Mail.Read.Shared`. Microsoft authority can be
+`common`, `organizations`, `consumers` or an organizational tenant GUID, matching
+the Entra application's supported account types. Shared mailbox targets require
+a persistent target GUID and the corresponding mailbox access.
+
+Start the account connection in the authenticated UI with the intended tenant
+active, complete consent, then check native health and folder/label discovery
+before choosing sources and syncing. A package release or successful Composer
+installation alone does not certify OAuth consent or mailbox access.
+
 ## Source identities and revisions
 
 For an API message the parent key is `connectorKey:sha256(JSON identity)`, where
@@ -113,10 +174,11 @@ be rerun with both Composer packages installed before claiming that deployment
 integration. Live OAuth/consent, Google restricted-scope review and Microsoft
 organization/shared-mailbox policy are separate deployment verification.
 
-## Local package integration without production path configuration
+## Optional local package development without production path configuration
 
-Use a dedicated worktree and keep its dependency directory isolated. Prepare a
-machine-local alternate manifest:
+For unreleased changes to either package, use a dedicated worktree and keep its
+dependency directory isolated. This development path is separate from the
+standard versioned installation above. Prepare a machine-local alternate manifest:
 
 ```sh
 php tests/Support/prepare-email-api-composer.php \
@@ -146,7 +208,7 @@ explicitly registers those providers because Testbench bypasses that cache.
 
 The smoke runs native discovery, health and full acquisition through the real
 host bridge for Gmail and Microsoft Mail, with triage enabled and disabled.
-Queues/HTTP/storage are faked; no mailbox or paid AI is used. Fixture-only host
-tests remain mandatory when either unpublished package is unavailable.
+Queues/HTTP/storage are faked; no mailbox or paid AI is used. The production
+integration suite requires both packages and fails explicitly if either is missing.
 
 See [email API verification](EMAIL-API-VERIFICATION.md) for reproducible fixture and local package checks.

@@ -21,7 +21,7 @@ use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
-/** Optional local-package smoke. STANDARD fixture tests remain mandatory without these unpublished libraries. */
+/** Installed production packages must acquire email through the real host bridge. */
 final class EmailApiPackageIntegrationTest extends TestCase
 {
     use RefreshDatabase;
@@ -44,13 +44,11 @@ final class EmailApiPackageIntegrationTest extends TestCase
     }
 
     #[DataProvider('providers')]
-    public function test_local_package_discovery_sync_and_triage_through_real_bridge(string $provider, bool $triage): void
+    public function test_installed_package_discovery_sync_and_triage_through_real_bridge(string $provider, bool $triage): void
     {
         $class = $provider === 'gmail' ? 'Padosoft\\AskMyDocsConnectorGmail\\GmailConnector'
             : 'Padosoft\\AskMyDocsConnectorMicrosoftMail\\MicrosoftMailConnector';
-        if (! class_exists($class)) {
-            $this->markTestSkipped('Install the local email package with the documented isolated Composer manifest.');
-        }
+        $this->assertTrue(class_exists($class), 'Install the required email packages from composer.lock before running the host integration suite.');
         Queue::fake();
         Storage::fake('kb');
         Storage::fake('local');

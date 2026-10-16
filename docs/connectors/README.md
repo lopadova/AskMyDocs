@@ -23,6 +23,18 @@ including synchronous preregistration, native mailbox/message identity and
 revision-scoped body/attachment receipts. The host owns the shared triage,
 assistant and campaigns; connector packages acquire read-only source data.
 
+Since 2026-10-16, both email API packages ship published `v1.0.0` releases and are
+standard production dependencies (`^1.0`). Their Composer names remain
+`padosoft/askmydocs-connector-gmail` and
+`padosoft/askmydocs-connector-microsoft-mail`; their VCS repositories are
+[Gmail API](https://github.com/padosoft/askmydocs-connector-gmail-api) and
+[Outlook API](https://github.com/padosoft/askmydocs-connector-outlook-api).
+Use the committed lockfile with `composer install`, then run
+`php artisan package:discover --ansi` and `php artisan migrate`.
+The [installation and OAuth guide](EMAIL-API.md#standard-versioned-installation)
+lists the server variables, HTTPS Herd callbacks and provider setup. Isolated
+local Composer manifests remain an optional workflow for package development.
+
 
 ---
 
