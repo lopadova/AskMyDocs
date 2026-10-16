@@ -1,0 +1,1147 @@
+{
+  "version": 1,
+  "created": "2026-10-16",
+  "generator": "Built-in image_gen",
+  "categories": {
+    "worlds": [
+      "cartographic",
+      "polar",
+      "orbital",
+      "botanical",
+      "oceanic",
+      "newsroom",
+      "archaeological",
+      "alpine",
+      "paper-world",
+      "blueprint"
+    ],
+    "abstract": [
+      "semantic-orbits",
+      "prismatic-index",
+      "ink-flow"
+    ]
+  },
+  "sceneAliases": {
+    "knowledge": "knowledge",
+    "observatory": "knowledge",
+    "archive": "archive",
+    "processes": "archive",
+    "trust": "archive",
+    "community": "community",
+    "dialogue": "community",
+    "connections": "community"
+  },
+  "exports": {
+    "full": {
+      "width": 1280,
+      "height": 853
+    },
+    "small": {
+      "width": 640,
+      "height": 427
+    },
+    "formats": {
+      "webp": {
+        "quality": 83
+      },
+      "avif": {
+        "quality": 58
+      }
+    },
+    "resampling": "Lanczos"
+  },
+  "images": [
+    {
+      "theme": "alpine",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-6c0642f4-1e2e-409f-8d74-25727553dc71.png",
+      "files": [
+        "alpine/archive-day.webp",
+        "alpine/archive-day-small.webp",
+        "alpine/archive-day.avif",
+        "alpine/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Contemporary gouache illustration with subtle woodcut-like edges, tactile wool, pine wood and warm paper, muted pine green and rust. A small alpine field-research cabin surrounded by forest and mountains, not a grand office or library. Subject: A close view of timber trays holding folded mountain maps, forestry survey sheets and weatherproof field notebooks on a cabin wall shelf. One source sheet lies on the workbench beneath an inspection lens; pinecone and a small desk light. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "alpine",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-a1065ea3-9004-41fe-b6b4-42cd71dfb715.png",
+      "referenceMaster": "exec-6c0642f4-1e2e-409f-8d74-25727553dc71.png",
+      "referenceVariant": "alpine/archive-day",
+      "files": [
+        "alpine/archive-night.webp",
+        "alpine/archive-night-small.webp",
+        "alpine/archive-night.avif",
+        "alpine/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: alpine; scene: archive."
+    },
+    {
+      "theme": "alpine",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-ee0dcd20-ecba-4132-8634-6cf233a21950.png",
+      "files": [
+        "alpine/community-day.webp",
+        "alpine/community-day-small.webp",
+        "alpine/community-day.avif",
+        "alpine/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Contemporary gouache illustration with subtle woodcut-like edges, tactile wool, pine wood and warm paper, muted pine green and rust. A small alpine field-research cabin surrounded by forest and mountains, not a grand office or library. Subject: Two outdoor researchers in a pine cabin study a vertical pinboard of mountain survey sheets together, one holding a source notebook. Wool clothing, small square windows, a restrained stove and the forest outside. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "alpine",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-f329b16c-b264-496c-995f-1321c2c7d0ff.png",
+      "referenceMaster": "exec-ee0dcd20-ecba-4132-8634-6cf233a21950.png",
+      "referenceVariant": "alpine/community-day",
+      "files": [
+        "alpine/community-night.webp",
+        "alpine/community-night-small.webp",
+        "alpine/community-night.avif",
+        "alpine/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: alpine; scene: community."
+    },
+    {
+      "theme": "alpine",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-35e5e92c-000d-4b50-a2c1-2651e2853ec2.png",
+      "files": [
+        "alpine/knowledge-day.webp",
+        "alpine/knowledge-day-small.webp",
+        "alpine/knowledge-day.avif",
+        "alpine/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Contemporary gouache illustration with subtle woodcut-like edges, tactile wool, pine wood and warm paper, muted pine green and rust. A small alpine field-research cabin surrounded by forest and mountains, not a grand office or library. Subject: A field researcher at a cabin window uses a magnifier to cross-reference a forestry survey map with an open document folio on a compact pine desk. A wool scarf, compass and thermos nearby; steep alpine peaks and pines through the small window. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "alpine",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-cd804720-bf3f-49f4-9e2f-7ec6661edd57.png",
+      "referenceMaster": "exec-35e5e92c-000d-4b50-a2c1-2651e2853ec2.png",
+      "referenceVariant": "alpine/knowledge-day",
+      "files": [
+        "alpine/knowledge-night.webp",
+        "alpine/knowledge-night-small.webp",
+        "alpine/knowledge-night.avif",
+        "alpine/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: alpine; scene: knowledge."
+    },
+    {
+      "theme": "archaeological",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-2e589801-f2f9-4225-9527-a9330c79ebe8.png",
+      "files": [
+        "archaeological/archive-day.webp",
+        "archaeological/archive-day-small.webp",
+        "archaeological/archive-day.avif",
+        "archaeological/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Atmospheric pen-and-ink field-journal illustration with warm watercolor washes, sand, umber and muted petrol, fine archaeological material detail. A desert excavation research camp, not a temple, treasure vault or library. Subject: Portable wooden field drawers and canvas document sleeves containing excavation drawings, weathered research photographs and soil-marked field notes. One archival record lies open on a folding crate under an inspection glass; tent ropes and sand in the background. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "archaeological",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-3f237fb9-4d9d-4500-9018-8d325ae87320.png",
+      "referenceMaster": "exec-2e589801-f2f9-4225-9527-a9330c79ebe8.png",
+      "referenceVariant": "archaeological/archive-day",
+      "files": [
+        "archaeological/archive-night.webp",
+        "archaeological/archive-night-small.webp",
+        "archaeological/archive-night.avif",
+        "archaeological/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: archaeological; scene: archive."
+    },
+    {
+      "theme": "archaeological",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-49ca4c9a-ad00-4d65-8486-5fbc85eb780b.png",
+      "files": [
+        "archaeological/community-day.webp",
+        "archaeological/community-day-small.webp",
+        "archaeological/community-day.avif",
+        "archaeological/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Atmospheric pen-and-ink field-journal illustration with warm watercolor washes, sand, umber and muted petrol, fine archaeological material detail. A desert excavation research camp, not a temple, treasure vault or library. Subject: Two archaeologists at the edge of a modest excavation compare folded site plans with a field notebook beside a canvas shade structure. Survey stakes, stratigraphic layers and rolled document sleeves; expansive desert light. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "archaeological",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-70da9550-fdf3-4315-9bd7-cf6f774bce99.png",
+      "referenceMaster": "exec-49ca4c9a-ad00-4d65-8486-5fbc85eb780b.png",
+      "referenceVariant": "archaeological/community-day",
+      "files": [
+        "archaeological/community-night.webp",
+        "archaeological/community-night-small.webp",
+        "archaeological/community-night.avif",
+        "archaeological/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: archaeological; scene: community."
+    },
+    {
+      "theme": "archaeological",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-2e21654e-1a87-49fd-bf93-f74265f4a897.png",
+      "files": [
+        "archaeological/knowledge-day.webp",
+        "archaeological/knowledge-day-small.webp",
+        "archaeological/knowledge-day.avif",
+        "archaeological/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Atmospheric pen-and-ink field-journal illustration with warm watercolor washes, sand, umber and muted petrol, fine archaeological material detail. A desert excavation research camp, not a temple, treasure vault or library. Subject: Top-down oblique view of an archaeologist's field table in a canvas desert shelter: excavation notebooks, site maps, contact photographs and a magnifying lens aligning a source note with a stratigraphic drawing. Wind-shaped dunes and dig stakes beyond the open tent. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "archaeological",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-462d118f-d974-4055-beaa-c478f267a60b.png",
+      "referenceMaster": "exec-2e21654e-1a87-49fd-bf93-f74265f4a897.png",
+      "referenceVariant": "archaeological/knowledge-day",
+      "files": [
+        "archaeological/knowledge-night.webp",
+        "archaeological/knowledge-night-small.webp",
+        "archaeological/knowledge-night.avif",
+        "archaeological/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: archaeological; scene: knowledge."
+    },
+    {
+      "theme": "blueprint",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-1812d984-4f80-4fea-be55-880a81e756fd.png",
+      "files": [
+        "blueprint/archive-day.webp",
+        "blueprint/archive-day-small.webp",
+        "blueprint/archive-day.avif",
+        "blueprint/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Precise axonometric architectural illustration with cyanotype ink linework, cool drafting paper, navy technical strokes and restrained orange, tactile printed blueprint grain. An engineering research workshop, not a computer UI or library. Subject: A technical drawing cabinet in an engineering workshop, shallow drawers open with unlettered plans, section drawings and organized specification folders. One blueprint corner inspected beneath a lens; cyanotype strokes and tiny orange indexing details. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "blueprint",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-606eb94e-6444-4653-b025-1e01143df7df.png",
+      "referenceMaster": "exec-1812d984-4f80-4fea-be55-880a81e756fd.png",
+      "referenceVariant": "blueprint/archive-day",
+      "files": [
+        "blueprint/archive-night.webp",
+        "blueprint/archive-night-small.webp",
+        "blueprint/archive-night.avif",
+        "blueprint/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: blueprint; scene: archive."
+    },
+    {
+      "theme": "blueprint",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-d2a46c51-6bee-4946-9cdd-a89f2a9bdea6.png",
+      "files": [
+        "blueprint/community-day.webp",
+        "blueprint/community-day-small.webp",
+        "blueprint/community-day.avif",
+        "blueprint/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Precise axonometric architectural illustration with cyanotype ink linework, cool drafting paper, navy technical strokes and restrained orange, tactile printed blueprint grain. An engineering research workshop, not a computer UI or library. Subject: Two engineers stand beside a large tilted drafting board comparing paper specifications with an unlettered technical drawing and a small physical prototype. Clear source-document research gesture, restrained orange workshop tools. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "blueprint",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-81e5be64-242c-4e53-9f88-83aa59811843.png",
+      "referenceMaster": "exec-d2a46c51-6bee-4946-9cdd-a89f2a9bdea6.png",
+      "referenceVariant": "blueprint/community-day",
+      "files": [
+        "blueprint/community-night.webp",
+        "blueprint/community-night-small.webp",
+        "blueprint/community-night.avif",
+        "blueprint/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: blueprint; scene: community."
+    },
+    {
+      "theme": "blueprint",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-30685cea-3ebd-456a-a693-209d700e4152.png",
+      "files": [
+        "blueprint/knowledge-day.webp",
+        "blueprint/knowledge-day-small.webp",
+        "blueprint/knowledge-day.avif",
+        "blueprint/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Precise axonometric architectural illustration with cyanotype ink linework, cool drafting paper, navy technical strokes and restrained orange, tactile printed blueprint grain. An engineering research workshop, not a computer UI or library. Subject: An engineer's drafting workstation viewed axonometrically: large unlettered technical drawings, folded source specifications, a magnifier highlighting one drawing detail and a simple physical mechanical prototype. Visible workshop surfaces and rolled plans, clean rigorous geometry. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "blueprint",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-eb6675af-f6ff-482d-ad94-4cdb857a3810.png",
+      "referenceMaster": "exec-30685cea-3ebd-456a-a693-209d700e4152.png",
+      "referenceVariant": "blueprint/knowledge-day",
+      "files": [
+        "blueprint/knowledge-night.webp",
+        "blueprint/knowledge-night-small.webp",
+        "blueprint/knowledge-night.avif",
+        "blueprint/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: blueprint; scene: knowledge."
+    },
+    {
+      "theme": "botanical",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-c3e89e8e-c694-49b7-be1a-79e97f68e554.png",
+      "files": [
+        "botanical/archive-day.webp",
+        "botanical/archive-day-small.webp",
+        "botanical/archive-day.avif",
+        "botanical/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Detailed botanical watercolor and colored-pencil editorial illustration, visible handmade paper grain, soft forest greens, cream and warm ochre. A lush working herbarium inside an angular glass greenhouse, not an architectural library. Subject: A close flat-lay of open herbarium folders, pressed leaves, delicate cyanotype botanical sheets and archival index dividers spread across a greenhouse potting bench. A physical loupe isolates one leaf record; large leaves and condensation at the edges. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "botanical",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-9224d432-11c0-4e6c-af86-a7608e75cb0f.png",
+      "referenceMaster": "exec-c3e89e8e-c694-49b7-be1a-79e97f68e554.png",
+      "referenceVariant": "botanical/archive-day",
+      "files": [
+        "botanical/archive-night.webp",
+        "botanical/archive-night-small.webp",
+        "botanical/archive-night.avif",
+        "botanical/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: botanical; scene: archive."
+    },
+    {
+      "theme": "botanical",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-e4de5ed1-4845-4aff-a8b2-395aaa5b08ae.png",
+      "files": [
+        "botanical/community-day.webp",
+        "botanical/community-day-small.webp",
+        "botanical/community-day.avif",
+        "botanical/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Detailed botanical watercolor and colored-pencil editorial illustration, visible handmade paper grain, soft forest greens, cream and warm ochre. A lush working herbarium inside an angular glass greenhouse, not an architectural library. Subject: Two botanists standing beside a greenhouse specimen board compare pressed-plant research sheets, one holding a folio and the other indicating a specimen. Dense ferns, glass panes and a practical wooden potting bench. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "botanical",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-cd176096-2b13-4bf0-a941-2d3f67678679.png",
+      "referenceMaster": "exec-e4de5ed1-4845-4aff-a8b2-395aaa5b08ae.png",
+      "referenceVariant": "botanical/community-day",
+      "files": [
+        "botanical/community-night.webp",
+        "botanical/community-night-small.webp",
+        "botanical/community-night.avif",
+        "botanical/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: botanical; scene: community."
+    },
+    {
+      "theme": "botanical",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-31d9907d-a278-4d67-a3e2-b323cd2b1a5e.png",
+      "files": [
+        "botanical/knowledge-day.webp",
+        "botanical/knowledge-day-small.webp",
+        "botanical/knowledge-day.avif",
+        "botanical/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Detailed botanical watercolor and colored-pencil editorial illustration, visible handmade paper grain, soft forest greens, cream and warm ochre. A lush working herbarium inside an angular glass greenhouse, not an architectural library. Subject: A botanist examines a pressed plant specimen on an inclined light table with a hand magnifier, matching it to a paper research sheet. Fern leaves, glass specimen jars and angular greenhouse panes fill the background; the document and specimen are the focus. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "botanical",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-6b1df142-feb5-4edb-880d-d2190e8ac8c7.png",
+      "referenceMaster": "exec-31d9907d-a278-4d67-a3e2-b323cd2b1a5e.png",
+      "referenceVariant": "botanical/knowledge-day",
+      "files": [
+        "botanical/knowledge-night.webp",
+        "botanical/knowledge-night-small.webp",
+        "botanical/knowledge-night.avif",
+        "botanical/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: botanical; scene: knowledge."
+    },
+    {
+      "theme": "cartographic",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-833f1083-82bf-468c-b0a2-01f6e0d73253.png",
+      "files": [
+        "cartographic/archive-day.webp",
+        "cartographic/archive-day-small.webp",
+        "cartographic/archive-day.avif",
+        "cartographic/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Refined hand-painted watercolor and ink on textured cotton paper, precise cartographic detail, muted parchment, sea-blue ink and terracotta; a historical cartographer's survey atelier, not a library. Subject: A wall of shallow wooden map drawers partially opened to reveal layered topographic sheets, rolled coastal charts and archival folders. A magnifying lens lies on a pulled-out drawer with a single map corner highlighted; small window daylight. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "cartographic",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-81af722f-ca37-4a7c-9ed3-b2784384ac90.png",
+      "referenceMaster": "exec-833f1083-82bf-468c-b0a2-01f6e0d73253.png",
+      "referenceVariant": "cartographic/archive-day",
+      "files": [
+        "cartographic/archive-night.webp",
+        "cartographic/archive-night-small.webp",
+        "cartographic/archive-night.avif",
+        "cartographic/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: cartographic; scene: archive."
+    },
+    {
+      "theme": "cartographic",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-02636c7f-9c5e-4d4f-bfa2-62239e91403a.png",
+      "files": [
+        "cartographic/community-day.webp",
+        "cartographic/community-day-small.webp",
+        "cartographic/community-day.avif",
+        "cartographic/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Refined hand-painted watercolor and ink on textured cotton paper, precise cartographic detail, muted parchment, sea-blue ink and terracotta; a historical cartographer's survey atelier, not a library. Subject: Two cartographers standing on opposite sides of a vertical work easel compare a folded source sheet against a pinned landscape chart; modest workshop, drafting tools and a view of a harbor through a narrow window. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "cartographic",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-4465b964-4ac2-4e2d-93da-506e237ddf52.png",
+      "referenceMaster": "exec-02636c7f-9c5e-4d4f-bfa2-62239e91403a.png",
+      "referenceVariant": "cartographic/community-day",
+      "files": [
+        "cartographic/community-night.webp",
+        "cartographic/community-night-small.webp",
+        "cartographic/community-night.avif",
+        "cartographic/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: cartographic; scene: community."
+    },
+    {
+      "theme": "cartographic",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-2c8cb72e-62b0-4065-9107-5d537e1f178f.png",
+      "files": [
+        "cartographic/knowledge-day.webp",
+        "cartographic/knowledge-day-small.webp",
+        "cartographic/knowledge-day.avif",
+        "cartographic/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Refined hand-painted watercolor and ink on textured cotton paper, precise cartographic detail, muted parchment, sea-blue ink and terracotta; a historical cartographer's survey atelier, not a library. Subject: Overhead oblique view of a cartographer's hands carefully aligning a small archival source document with a large unrolled coastline map on a worn drafting table. Brass dividers, compass, magnifier, red thread and folded survey sheets. The coastline and document layers are the visual focus. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "cartographic",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-6c0237b7-e5a7-4336-afa2-d1aee0e96e73.png",
+      "referenceMaster": "exec-2c8cb72e-62b0-4065-9107-5d537e1f178f.png",
+      "referenceVariant": "cartographic/knowledge-day",
+      "files": [
+        "cartographic/knowledge-night.webp",
+        "cartographic/knowledge-night-small.webp",
+        "cartographic/knowledge-night.avif",
+        "cartographic/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: cartographic; scene: knowledge."
+    },
+    {
+      "theme": "ink-flow",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-0087c405-768b-4cce-8628-466ccb3b2bdc.png",
+      "files": [
+        "ink-flow/archive-day.webp",
+        "ink-flow/archive-day-small.webp",
+        "ink-flow/archive-day.avif",
+        "ink-flow/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Abstract fluid-ink editorial artwork on richly textured warm washi paper, sumi-like black and indigo washes with restrained copper accents, hand-worked edges and visible paper fibers. No room, people, office or literal building. A refined visual metaphor for research from sources. Subject: Layered abstract paper fragments separated by precise pale channels in a deep ink wash; one source layer isolated by a delicate copper stroke. Beautiful quiet composition, tactile paper and organic indigo pools. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "ink-flow",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-558d97b4-4f04-4b3a-98cf-e974f60e33e3.png",
+      "referenceMaster": "exec-0087c405-768b-4cce-8628-466ccb3b2bdc.png",
+      "referenceVariant": "ink-flow/archive-day",
+      "files": [
+        "ink-flow/archive-night.webp",
+        "ink-flow/archive-night-small.webp",
+        "ink-flow/archive-night.avif",
+        "ink-flow/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: ink-flow; scene: archive."
+    },
+    {
+      "theme": "ink-flow",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-369affa4-5f67-43b5-b74b-25faf681a1a1.png",
+      "files": [
+        "ink-flow/community-day.webp",
+        "ink-flow/community-day-small.webp",
+        "ink-flow/community-day.avif",
+        "ink-flow/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Abstract fluid-ink editorial artwork on richly textured warm washi paper, sumi-like black and indigo washes with restrained copper accents, hand-worked edges and visible paper fibers. No room, people, office or literal building. A refined visual metaphor for research from sources. Subject: Two flowing indigo ink streams cross a field of warm paper and merge around a few unlettered source fragments into one clear channel. Natural marbling, graceful copper traces and open negative space. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "ink-flow",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-8d66a41d-6f05-47f8-960d-8031445afb36.png",
+      "referenceMaster": "exec-369affa4-5f67-43b5-b74b-25faf681a1a1.png",
+      "referenceVariant": "ink-flow/community-day",
+      "files": [
+        "ink-flow/community-night.webp",
+        "ink-flow/community-night-small.webp",
+        "ink-flow/community-night.avif",
+        "ink-flow/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: ink-flow; scene: community."
+    },
+    {
+      "theme": "ink-flow",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-87f6a189-274c-4961-85bf-4bc8dbee283b.png",
+      "files": [
+        "ink-flow/knowledge-day.webp",
+        "ink-flow/knowledge-day-small.webp",
+        "ink-flow/knowledge-day.avif",
+        "ink-flow/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Abstract fluid-ink editorial artwork on richly textured warm washi paper, sumi-like black and indigo washes with restrained copper accents, hand-worked edges and visible paper fibers. No room, people, office or literal building. A refined visual metaphor for research from sources. Subject: Several thin paper-like source fragments at the edge of a large fluid indigo ink current, the currents converge on one clean luminous paper opening. A subtle circular clearing evokes the focus of a search without drawing a UI or icon. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "ink-flow",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-aa6654bb-64e2-44f6-b31c-9afc887c2c72.png",
+      "referenceMaster": "exec-87f6a189-274c-4961-85bf-4bc8dbee283b.png",
+      "referenceVariant": "ink-flow/knowledge-day",
+      "files": [
+        "ink-flow/knowledge-night.webp",
+        "ink-flow/knowledge-night-small.webp",
+        "ink-flow/knowledge-night.avif",
+        "ink-flow/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: ink-flow; scene: knowledge."
+    },
+    {
+      "theme": "newsroom",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-7c5e7be5-ae98-4b27-ae25-d354851b200c.png",
+      "files": [
+        "newsroom/archive-day.webp",
+        "newsroom/archive-day-small.webp",
+        "newsroom/archive-day.avif",
+        "newsroom/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Expressive mid-century editorial risograph illustration and cut-paper collage, off-white stock, black-blue ink and bold crimson overprint, subtle registration texture. A bustling urban newspaper research desk, no bookshelves or elegant library arches. Subject: An oblique close-up of an open newspaper clipping drawer, neatly organized contact sheets, physical page proofs and a red grease pencil on a steel desk; selective magnifier revealing a document patch. Bold flat graphic shapes, no readable words. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "newsroom",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-2f3a9409-d458-4767-a52c-ae8929d6fdc9.png",
+      "referenceMaster": "exec-7c5e7be5-ae98-4b27-ae25-d354851b200c.png",
+      "referenceVariant": "newsroom/archive-day",
+      "files": [
+        "newsroom/archive-night.webp",
+        "newsroom/archive-night-small.webp",
+        "newsroom/archive-night.avif",
+        "newsroom/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: newsroom; scene: archive."
+    },
+    {
+      "theme": "newsroom",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-8a4f491a-41fb-4f32-b02d-0f85ad4d9e4d.png",
+      "files": [
+        "newsroom/community-day.webp",
+        "newsroom/community-day-small.webp",
+        "newsroom/community-day.avif",
+        "newsroom/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Expressive mid-century editorial risograph illustration and cut-paper collage, off-white stock, black-blue ink and bold crimson overprint, subtle registration texture. A bustling urban newspaper research desk, no bookshelves or elegant library arches. Subject: Two newsroom researchers stand at a large pinboard of abstract clippings and documentary photographs, comparing a paper source folder to one selected clipping. Rectangular city windows and a red desk lamp nearby. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "newsroom",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-0daabaaa-f767-48d1-9f3b-909152a1c963.png",
+      "referenceMaster": "exec-8a4f491a-41fb-4f32-b02d-0f85ad4d9e4d.png",
+      "referenceVariant": "newsroom/community-day",
+      "files": [
+        "newsroom/community-night.webp",
+        "newsroom/community-night-small.webp",
+        "newsroom/community-night.avif",
+        "newsroom/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: newsroom; scene: community."
+    },
+    {
+      "theme": "newsroom",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-ca67c560-321d-4ac3-a85c-90bd817a38da.png",
+      "files": [
+        "newsroom/knowledge-day.webp",
+        "newsroom/knowledge-day-small.webp",
+        "newsroom/knowledge-day.avif",
+        "newsroom/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Expressive mid-century editorial risograph illustration and cut-paper collage, off-white stock, black-blue ink and bold crimson overprint, subtle registration texture. A bustling urban newspaper research desk, no bookshelves or elegant library arches. Subject: A researcher at a metal newspaper morgue desk searches a large spread of clippings, contact sheets and source folders with a magnifying glass. Filing cabinet drawers, paper trays and city rooftops behind. Strong graphic composition with large visible document shapes. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "newsroom",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-8829d101-7dc4-48c1-bc06-e15cb44962c6.png",
+      "referenceMaster": "exec-ca67c560-321d-4ac3-a85c-90bd817a38da.png",
+      "referenceVariant": "newsroom/knowledge-day",
+      "files": [
+        "newsroom/knowledge-night.webp",
+        "newsroom/knowledge-night-small.webp",
+        "newsroom/knowledge-night.avif",
+        "newsroom/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: newsroom; scene: knowledge."
+    },
+    {
+      "theme": "oceanic",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-433db930-a1d1-4d77-8f08-71acbe729486.png",
+      "files": [
+        "oceanic/archive-day.webp",
+        "oceanic/archive-day-small.webp",
+        "oceanic/archive-day.avif",
+        "oceanic/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Tactile miniature-model editorial illustration rendered as layered painted paper and matte sculptural three-dimensional forms, deep teal, pale sea glass and restrained coral. A submerged marine research station beneath a clear ocean, no fantasy library. Subject: A compact underwater research-record vault seen close, with sealed transparent boxes containing folded survey sheets and waterproof logbooks; one source chart is spread beneath a round inspection lens. Rippling water light through a circular window. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "oceanic",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-d1b39453-b245-4e3d-9fbb-d5fdbbac68a3.png",
+      "referenceMaster": "exec-433db930-a1d1-4d77-8f08-71acbe729486.png",
+      "referenceVariant": "oceanic/archive-day",
+      "files": [
+        "oceanic/archive-night.webp",
+        "oceanic/archive-night-small.webp",
+        "oceanic/archive-night.avif",
+        "oceanic/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: oceanic; scene: archive."
+    },
+    {
+      "theme": "oceanic",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-a6df8eeb-e107-4d6c-8830-d3faa2fbd261.png",
+      "files": [
+        "oceanic/community-day.webp",
+        "oceanic/community-day-small.webp",
+        "oceanic/community-day.avif",
+        "oceanic/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Tactile miniature-model editorial illustration rendered as layered painted paper and matte sculptural three-dimensional forms, deep teal, pale sea glass and restrained coral. A submerged marine research station beneath a clear ocean, no fantasy library. Subject: Two marine researchers inside an underwater habitat compare waterproof expedition maps at a narrow standing bench, with a fish shoal beyond the glass and small coral-colored storage cylinders below. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "oceanic",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-b9276dca-3123-4664-b3da-4ba89cd4560f.png",
+      "referenceMaster": "exec-a6df8eeb-e107-4d6c-8830-d3faa2fbd261.png",
+      "referenceVariant": "oceanic/community-day",
+      "files": [
+        "oceanic/community-night.webp",
+        "oceanic/community-night-small.webp",
+        "oceanic/community-night.avif",
+        "oceanic/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: oceanic; scene: community."
+    },
+    {
+      "theme": "oceanic",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-e637488e-7118-4407-a4ce-dced42036ea3.png",
+      "files": [
+        "oceanic/knowledge-day.webp",
+        "oceanic/knowledge-day-small.webp",
+        "oceanic/knowledge-day.avif",
+        "oceanic/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Tactile miniature-model editorial illustration rendered as layered painted paper and matte sculptural three-dimensional forms, deep teal, pale sea glass and restrained coral. A submerged marine research station beneath a clear ocean, no fantasy library. Subject: A marine researcher on a curved walkway inside a submerged research dome examines waterproof research folios and a nautical source chart on a low pedestal. Broad dome windows reveal fish silhouettes and shafts of daylight descending through blue water. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "oceanic",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-02621706-271a-48a6-b14b-ac183744109d.png",
+      "referenceMaster": "exec-e637488e-7118-4407-a4ce-dced42036ea3.png",
+      "referenceVariant": "oceanic/knowledge-day",
+      "files": [
+        "oceanic/knowledge-night.webp",
+        "oceanic/knowledge-night-small.webp",
+        "oceanic/knowledge-night.avif",
+        "oceanic/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: oceanic; scene: knowledge."
+    },
+    {
+      "theme": "orbital",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-9da3c919-cd4e-4ad7-b0c6-707e416f2300.png",
+      "files": [
+        "orbital/archive-day.webp",
+        "orbital/archive-day-small.webp",
+        "orbital/archive-day.avif",
+        "orbital/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Premium cinematic three-dimensional science-fiction editorial art, realistic translucent polymers and brushed spacecraft metal, restrained indigo, lilac and cyan, daylight from the sun. Clearly an orbital research station above Earth, not a terrestrial office. Subject: Close view of a spacecraft's cylindrical research-record archive with individual transparent document cassettes and tethered paper charts, a selected folio pulled forward under a small physical optical magnifier; Earth visible through a compact porthole. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "orbital",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-3bfd2157-b5a4-4e69-aa8d-060f50791fb0.png",
+      "referenceMaster": "exec-9da3c919-cd4e-4ad7-b0c6-707e416f2300.png",
+      "referenceVariant": "orbital/archive-day",
+      "files": [
+        "orbital/archive-night.webp",
+        "orbital/archive-night-small.webp",
+        "orbital/archive-night.avif",
+        "orbital/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: orbital; scene: archive."
+    },
+    {
+      "theme": "orbital",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-b0ab6bdb-e9a5-46ef-bdc9-4cdf04e48f9f.png",
+      "files": [
+        "orbital/community-day.webp",
+        "orbital/community-day-small.webp",
+        "orbital/community-day.avif",
+        "orbital/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Premium cinematic three-dimensional science-fiction editorial art, realistic translucent polymers and brushed spacecraft metal, restrained indigo, lilac and cyan, daylight from the sun. Clearly an orbital research station above Earth, not a terrestrial office. Subject: Two researchers floating in an orbital station exchange a tethered document capsule and a folded research chart across a clear open compartment. Earth and a thin solar panel silhouette through the curved viewport, all poses calm and purposeful. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "orbital",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-a3d9c202-3bad-4228-ac93-fa3e23c22a2e.png",
+      "referenceMaster": "exec-b0ab6bdb-e9a5-46ef-bdc9-4cdf04e48f9f.png",
+      "referenceVariant": "orbital/community-day",
+      "files": [
+        "orbital/community-night.webp",
+        "orbital/community-night-small.webp",
+        "orbital/community-night.avif",
+        "orbital/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: orbital; scene: community."
+    },
+    {
+      "theme": "orbital",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-214bd2fc-cb48-42ab-9d08-6b8ceb0d9a26.png",
+      "files": [
+        "orbital/knowledge-day.webp",
+        "orbital/knowledge-day-small.webp",
+        "orbital/knowledge-day.avif",
+        "orbital/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Premium cinematic three-dimensional science-fiction editorial art, realistic translucent polymers and brushed spacecraft metal, restrained indigo, lilac and cyan, daylight from the sun. Clearly an orbital research station above Earth, not a terrestrial office. Subject: A researcher floating gently in zero gravity retrieves one tethered translucent document folio from a circular archival mechanism, comparing it with a floating folded paper source sheet. Huge curved spacecraft viewport shows Earth below, no monitors or user interfaces. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "orbital",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-0e336619-5898-4b88-9dcc-42589b42eb9a.png",
+      "referenceMaster": "exec-214bd2fc-cb48-42ab-9d08-6b8ceb0d9a26.png",
+      "referenceVariant": "orbital/knowledge-day",
+      "files": [
+        "orbital/knowledge-night.webp",
+        "orbital/knowledge-night-small.webp",
+        "orbital/knowledge-night.avif",
+        "orbital/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: orbital; scene: knowledge."
+    },
+    {
+      "theme": "paper-world",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-68a7dcb4-648d-4004-a20d-386839ac99ee.png",
+      "files": [
+        "paper-world/archive-day.webp",
+        "paper-world/archive-day-small.webp",
+        "paper-world/archive-day.avif",
+        "paper-world/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Surreal but refined handcrafted paper sculpture photographed with beautiful macro material detail, ivory card, charcoal shadows and ultramarine edges, a physical paper landscape with no real room or office. Soft daylight studio atmosphere, no text or signs. Subject: A sculptural canyon built from layered archival paper and shallow index drawers, one drawer sliding out to reveal an unlettered source sheet under a circular paper-cut aperture. Highly tactile stacked edges and graphic calm. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "paper-world",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-fad69240-c6aa-4647-9b38-0b5690df9c05.png",
+      "referenceMaster": "exec-68a7dcb4-648d-4004-a20d-386839ac99ee.png",
+      "referenceVariant": "paper-world/archive-day",
+      "files": [
+        "paper-world/archive-night.webp",
+        "paper-world/archive-night-small.webp",
+        "paper-world/archive-night.avif",
+        "paper-world/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: paper-world; scene: archive."
+    },
+    {
+      "theme": "paper-world",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-cbb6de88-e910-49c7-9058-2ad5d599c9a6.png",
+      "files": [
+        "paper-world/community-day.webp",
+        "paper-world/community-day-small.webp",
+        "paper-world/community-day.avif",
+        "paper-world/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Surreal but refined handcrafted paper sculpture photographed with beautiful macro material detail, ivory card, charcoal shadows and ultramarine edges, a physical paper landscape with no real room or office. Soft daylight studio atmosphere, no text or signs. Subject: Two small crafted paper figures connect separate stacks of folded research sheets by unrolling a single long source document between them across a shallow paper valley. Gentle sculptural shapes and a clear visual metaphor for shared understanding. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "paper-world",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-9fd4d00c-59c5-40f1-8271-c51eefb73ad5.png",
+      "referenceMaster": "exec-cbb6de88-e910-49c7-9058-2ad5d599c9a6.png",
+      "referenceVariant": "paper-world/community-day",
+      "files": [
+        "paper-world/community-night.webp",
+        "paper-world/community-night-small.webp",
+        "paper-world/community-night.avif",
+        "paper-world/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: paper-world; scene: community."
+    },
+    {
+      "theme": "paper-world",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-a8046a8e-1a8f-4b3c-8444-8c6e4e8239c9.png",
+      "files": [
+        "paper-world/knowledge-day.webp",
+        "paper-world/knowledge-day-small.webp",
+        "paper-world/knowledge-day.avif",
+        "paper-world/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Surreal but refined handcrafted paper sculpture photographed with beautiful macro material detail, ivory card, charcoal shadows and ultramarine edges, a physical paper landscape with no real room or office. Soft daylight studio atmosphere, no text or signs. Subject: A miniature paper archivist follows an ultramarine thread through a landscape of towering folded document strata to a single opened source sheet illuminated beneath a suspended physical magnifying lens. Broad poetic composition, layered paper cliffs and a clear route of discovery. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "paper-world",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-91ba5794-12ee-40b2-a729-e8f55ee03c25.png",
+      "referenceMaster": "exec-a8046a8e-1a8f-4b3c-8444-8c6e4e8239c9.png",
+      "referenceVariant": "paper-world/knowledge-day",
+      "files": [
+        "paper-world/knowledge-night.webp",
+        "paper-world/knowledge-night-small.webp",
+        "paper-world/knowledge-night.avif",
+        "paper-world/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: paper-world; scene: knowledge."
+    },
+    {
+      "theme": "polar",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-77c12276-bb88-4ba7-b8a1-c9969ef9aadf.png",
+      "files": [
+        "polar/archive-day.webp",
+        "polar/archive-day-small.webp",
+        "polar/archive-day.avif",
+        "polar/archive-day-small.avif"
+      ],
+      "prompt": "Use case: photorealistic-natural. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Candid high-end documentary expedition photography, believable cold-weather research equipment, icy blue, soft lavender shadows, snow texture and deep navy details. A remote polar field camp, never an office library. Subject: Inside a compact polar field tent, a close oblique view of organized waterproof field-log folders, glacial survey maps, specimen photographs and a magnifying glass on a rugged folding desk. Frosted tent window and pale ice beyond. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "polar",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-d7ebfb11-43e6-4fd4-9b5e-d33067d1905c.png",
+      "referenceMaster": "exec-77c12276-bb88-4ba7-b8a1-c9969ef9aadf.png",
+      "referenceVariant": "polar/archive-day",
+      "files": [
+        "polar/archive-night.webp",
+        "polar/archive-night-small.webp",
+        "polar/archive-night.avif",
+        "polar/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: polar; scene: archive."
+    },
+    {
+      "theme": "polar",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-c349735e-18f8-4ab1-85a4-6b57dac7e369.png",
+      "files": [
+        "polar/community-day.webp",
+        "polar/community-day-small.webp",
+        "polar/community-day.avif",
+        "polar/community-day-small.avif"
+      ],
+      "prompt": "Use case: photorealistic-natural. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Candid high-end documentary expedition photography, believable cold-weather research equipment, icy blue, soft lavender shadows, snow texture and deep navy details. A remote polar field camp, never an office library. Subject: Two polar scientists in insulated field clothing compare a large unfolded survey sheet at a folding field station counter, one pointing to an archival photograph. Heated fabric shelter with an ice landscape beyond the open entrance. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "polar",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-cdc63a93-1d3a-4a85-850f-90c2ebb2e371.png",
+      "referenceMaster": "exec-c349735e-18f8-4ab1-85a4-6b57dac7e369.png",
+      "referenceVariant": "polar/community-day",
+      "files": [
+        "polar/community-night.webp",
+        "polar/community-night-small.webp",
+        "polar/community-night.avif",
+        "polar/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: polar; scene: community."
+    },
+    {
+      "theme": "polar",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-0fd002f9-b199-48ac-8c1a-ae1466cb9548.png",
+      "files": [
+        "polar/knowledge-day.webp",
+        "polar/knowledge-day-small.webp",
+        "polar/knowledge-day.avif",
+        "polar/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: photorealistic-natural. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Candid high-end documentary expedition photography, believable cold-weather research equipment, icy blue, soft lavender shadows, snow texture and deep navy details. A remote polar field camp, never an office library. Subject: A bundled field researcher kneels on an immense glacial snowfield, retrieving and comparing paper field notes from an open weatherproof document case. Ice ridges and a small red research tent in the distance. Wide cinematic view, the organized source papers are clearly visible. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "polar",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-991b136e-b74b-4613-a442-777b4a24dedf.png",
+      "referenceMaster": "exec-0fd002f9-b199-48ac-8c1a-ae1466cb9548.png",
+      "referenceVariant": "polar/knowledge-day",
+      "files": [
+        "polar/knowledge-night.webp",
+        "polar/knowledge-night-small.webp",
+        "polar/knowledge-night.avif",
+        "polar/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. Where windows, sky, water or outdoors are visible, make the environment clearly nighttime, with deep blue ambient light and gentle practical task-light glow on the same existing research documents. Keep balanced readable midtones, rather than a uniformly darkened photograph. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: polar; scene: knowledge."
+    },
+    {
+      "theme": "prismatic-index",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-64acdfc7-660e-4cfc-845f-de5711ef941e.png",
+      "files": [
+        "prismatic-index/archive-day.webp",
+        "prismatic-index/archive-day-small.webp",
+        "prismatic-index/archive-day.avif",
+        "prismatic-index/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Abstract macro glass-and-light editorial photography, clear and frosted prisms, icy cyan and restrained magenta spectral refractions against pearl and charcoal. No office, room, people, screens, charts or UI. Physical sculptural metaphor for finding source documents. Subject: A fan of translucent rectangular glass folios organized in staggered depth, a slim magenta-cyan light band revealing one internal sheet. Macro caustics on a neutral surface, refined abstract visual index. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "prismatic-index",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-c10ab60b-1917-4e75-af81-f397b09cc7a4.png",
+      "referenceMaster": "exec-64acdfc7-660e-4cfc-845f-de5711ef941e.png",
+      "referenceVariant": "prismatic-index/archive-day",
+      "files": [
+        "prismatic-index/archive-night.webp",
+        "prismatic-index/archive-night-small.webp",
+        "prismatic-index/archive-night.avif",
+        "prismatic-index/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: prismatic-index; scene: archive."
+    },
+    {
+      "theme": "prismatic-index",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-7b1ff199-0eb5-4913-bf52-9d19b0d7c87f.png",
+      "files": [
+        "prismatic-index/community-day.webp",
+        "prismatic-index/community-day-small.webp",
+        "prismatic-index/community-day.avif",
+        "prismatic-index/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Abstract macro glass-and-light editorial photography, clear and frosted prisms, icy cyan and restrained magenta spectral refractions against pearl and charcoal. No office, room, people, screens, charts or UI. Physical sculptural metaphor for finding source documents. Subject: Two offset arrays of glass document planes share a single luminous refracted line through a central clear prism. Calm geometric relationship, overlapping cyan and magenta caustics signify source connections without diagrams. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "prismatic-index",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-fd4d0d2d-f2ad-47b8-b1a1-877f3baf8fb1.png",
+      "referenceMaster": "exec-7b1ff199-0eb5-4913-bf52-9d19b0d7c87f.png",
+      "referenceVariant": "prismatic-index/community-day",
+      "files": [
+        "prismatic-index/community-night.webp",
+        "prismatic-index/community-night-small.webp",
+        "prismatic-index/community-night.avif",
+        "prismatic-index/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: prismatic-index; scene: community."
+    },
+    {
+      "theme": "prismatic-index",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-065b7f57-8342-4ac2-a497-6f59c47f4fea.png",
+      "files": [
+        "prismatic-index/knowledge-day.webp",
+        "prismatic-index/knowledge-day-small.webp",
+        "prismatic-index/knowledge-day.avif",
+        "prismatic-index/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Abstract macro glass-and-light editorial photography, clear and frosted prisms, icy cyan and restrained magenta spectral refractions against pearl and charcoal. No office, room, people, screens, charts or UI. Physical sculptural metaphor for finding source documents. Subject: A precise stack of thin frosted glass document-like sheets passes through one clear optical prism, refracting a single cyan beam onto one selected source layer. Wide asymmetrical composition with negative space, convincing glass edges and gentle spectral light. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "prismatic-index",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-0aaeeae2-2982-4e8f-b55f-32e0f510b0c2.png",
+      "referenceMaster": "exec-065b7f57-8342-4ac2-a497-6f59c47f4fea.png",
+      "referenceVariant": "prismatic-index/knowledge-day",
+      "files": [
+        "prismatic-index/knowledge-night.webp",
+        "prismatic-index/knowledge-night-small.webp",
+        "prismatic-index/knowledge-night.avif",
+        "prismatic-index/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: prismatic-index; scene: knowledge."
+    },
+    {
+      "theme": "semantic-orbits",
+      "scene": "archive",
+      "mode": "day",
+      "master": "exec-88ef22bc-9c63-454e-9480-94c526964651.png",
+      "files": [
+        "semantic-orbits/archive-day.webp",
+        "semantic-orbits/archive-day-small.webp",
+        "semantic-orbits/archive-day.avif",
+        "semantic-orbits/archive-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Sophisticated abstract three-dimensional editorial composition, translucent lavender and warm coral resin forms, pearl ivory planes and deep ink shadows. No room, furniture, people, office or recognizable building. Spatial metaphor for finding connections across documents, realistic optical material detail. Subject: Layered translucent folio-like planes arranged in a calm circular index, one source layer drawn outward through a wide resin ring. Pale lavender, coral reflections and richly tactile frosted surfaces; no labels. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "semantic-orbits",
+      "scene": "archive",
+      "mode": "night",
+      "master": "exec-e3939780-cb79-4e14-bdbf-25dbd66185c5.png",
+      "referenceMaster": "exec-88ef22bc-9c63-454e-9480-94c526964651.png",
+      "referenceVariant": "semantic-orbits/archive-day",
+      "files": [
+        "semantic-orbits/archive-night.webp",
+        "semantic-orbits/archive-night-small.webp",
+        "semantic-orbits/archive-night.avif",
+        "semantic-orbits/archive-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: semantic-orbits; scene: archive."
+    },
+    {
+      "theme": "semantic-orbits",
+      "scene": "community",
+      "mode": "day",
+      "master": "exec-a564e27b-1ee1-43a0-b07f-bd73fa5fbe05.png",
+      "files": [
+        "semantic-orbits/community-day.webp",
+        "semantic-orbits/community-day-small.webp",
+        "semantic-orbits/community-day.avif",
+        "semantic-orbits/community-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Sophisticated abstract three-dimensional editorial composition, translucent lavender and warm coral resin forms, pearl ivory planes and deep ink shadows. No room, furniture, people, office or recognizable building. Spatial metaphor for finding connections across documents, realistic optical material detail. Subject: Two separate clusters of thin unlettered paper planes connected by one graceful shared orbital loop, their inner source layers meeting at a softly glowing central intersection. Poetic abstract shared knowledge, no icons. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "semantic-orbits",
+      "scene": "community",
+      "mode": "night",
+      "master": "exec-d35c0ea2-9c57-47ec-b545-92f3bad9c670.png",
+      "referenceMaster": "exec-a564e27b-1ee1-43a0-b07f-bd73fa5fbe05.png",
+      "referenceVariant": "semantic-orbits/community-day",
+      "files": [
+        "semantic-orbits/community-night.webp",
+        "semantic-orbits/community-night-small.webp",
+        "semantic-orbits/community-night.avif",
+        "semantic-orbits/community-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: semantic-orbits; scene: community."
+    },
+    {
+      "theme": "semantic-orbits",
+      "scene": "knowledge",
+      "mode": "day",
+      "master": "exec-9e4cd770-b311-43dd-a568-6ee08bfd8cd5.png",
+      "files": [
+        "semantic-orbits/knowledge-day.webp",
+        "semantic-orbits/knowledge-day-small.webp",
+        "semantic-orbits/knowledge-day.avif",
+        "semantic-orbits/knowledge-day-small.avif"
+      ],
+      "prompt": "Use case: stylized-concept. Asset type: editorial theme illustration for a document-research application. Create a completely original scene. Sophisticated abstract three-dimensional editorial composition, translucent lavender and warm coral resin forms, pearl ivory planes and deep ink shadows. No room, furniture, people, office or recognizable building. Spatial metaphor for finding connections across documents, realistic optical material detail. Subject: An open cluster of thin unlettered document planes suspended in space, several orbital rings converging on a single softly illuminated source plane. An elegant physical lens isolates that plane. Large calm areas and precisely balanced asymmetry. Bright daytime illumination with soft natural light and readable midtones; if a real environment is visible it is clearly daytime. Landscape 3:2 composition, primary research detail in the central/right two thirds with some quiet negative space so interface crops remain legible. This is a decorative editorial asset, not a UI mockup. Every document, chart or map has only abstract unlettered marks: absolutely no readable words, logos, numbers, captions, watermarks, grids of images or borders. One coherent scene only."
+    },
+    {
+      "theme": "semantic-orbits",
+      "scene": "knowledge",
+      "mode": "night",
+      "master": "exec-f1cdd597-e3dc-4deb-9835-24de13cfaa17.png",
+      "referenceMaster": "exec-9e4cd770-b311-43dd-a568-6ee08bfd8cd5.png",
+      "referenceVariant": "semantic-orbits/knowledge-day",
+      "files": [
+        "semantic-orbits/knowledge-night.webp",
+        "semantic-orbits/knowledge-night-small.webp",
+        "semantic-orbits/knowledge-night.avif",
+        "semantic-orbits/knowledge-night-small.avif"
+      ],
+      "prompt": "Use case: lighting-weather. Input image 1 is the exact edit target, a daytime editorial illustration for a document-research product. Create its matching NIGHT version. Change ONLY time of day and illumination. Preserve EXACTLY the same composition, camera angle, framing, every object and document, people and their poses, shapes, locations, materials, and original artistic technique. Do not redesign or restyle anything. This is an abstract artwork: keep all abstract forms and paper/document layers identical, without adding people, rooms, literal architecture, or new elements. Use deep charcoal/indigo night studio illumination with subtle local warm or cool highlights, preserving readable detail. Keep the full landscape 3:2 canvas and all original edges unchanged. Do not add readable text, symbols, logos, numbers, captions, watermarks, UI, collages or borders. Same scene and same subject, night lighting only. Theme: semantic-orbits; scene: knowledge."
+    }
+  ]
+}
