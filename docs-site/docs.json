@@ -105,6 +105,7 @@
           "architecture/ingestion-pipeline",
           "architecture/database-schema",
           "architecture/security-and-threat-model",
+          "architecture/governed-actions",
           "architecture/decisions"
         ]
       },
