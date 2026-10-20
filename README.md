@@ -1730,9 +1730,9 @@ Then sign in as a `super-admin` and open
 > count the pack really sent (`McpClient::physicalRequestCount()`). JSON-RPC
 > errors now arrive as `McpRemoteErrorException`; the host catches the common
 > `McpException`, so a server that answers `tools/list` with an error still
-> stays `active` with a `tools_list_warning`. Pack 2.0 requires
-> `guzzlehttp/guzzle ^7.8.2`, so the lock resolves Guzzle 7.x until the pack
-> also allows 8.
+> stays `active` with a `tools_list_warning`. Require pack `2.0.1` or later:
+> `2.0.0` allowed `guzzlehttp/guzzle ^7.8.2` only and forced a host on Guzzle 8
+> to downgrade it.
 
 ### Enabling AI Act compliance features (junior-proof)
 
