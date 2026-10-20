@@ -168,7 +168,8 @@ final class McpServersAdminControllerTest extends TestCase
         McpClient::useTransportResolver(static function (McpServerContract $s): McpTransportContract {
             // Script `initialize` to succeed but leave `tools/list`
             // un-scripted so the stub answers JSON-RPC -32601, which
-            // `McpClient::listTools()` wraps in `McpTransportException`.
+            // `McpClient::listTools()` raises as an `McpException` (a
+            // `McpRemoteErrorException` since pack 2.0).
             return (new StubMcpTransport())->scriptInitialize([
                 'protocolVersion' => '2024-11-05',
                 'serverInfo' => ['name' => 'slow-mcp', 'version' => '0.1.0'],

@@ -1712,9 +1712,27 @@ Then sign in as a `super-admin` and open
 > endpoint binding with loading / error / empty / ready states +
 > R21 happy + failure paths + ValidationError surfacing + SSE
 > consumer behaviour via MSW handlers shaped to the real wire
-> schema. AskMyDocs v7.1+ requires `padosoft/askmydocs-mcp-pack:^1.5`
-> (auto-resolved by composer) so all 22 admin endpoints answer the
-> SPA out of the box.
+> schema. AskMyDocs requires `padosoft/askmydocs-mcp-pack:^2.0`
+> (`^1.5` before the 2.0 upgrade; auto-resolved by composer) so all 22
+> admin endpoints answer the SPA out of the box.
+
+> **Upgrading the pack to 2.0:** run `php artisan migrate` (the pack adds
+> `mcp_tasks`, `mcp_artifacts` and `mcp_request_states`, and four nullable
+> columns on `mcp_tool_call_audit`). The pack's signed-URL artifact download
+> route (`GET /mcp-pack/v2/artifacts/{artifact}/download`) ships ON but is kept
+> OFF here (`MCP_PACK_ARTIFACTS_ENABLED=false`, R43). The pack now negotiates
+> before every `tools/call`, so an MCP tool call is no longer one wire message:
+> `server/discover` plus `tools/call` against a current server (2), and against
+> a legacy server `initialize` once per protocol revision it rejects, then
+> `notifications/initialized`, and one more round after a session recovery, up
+> to 11 messages. The agent budget refuses a call before any traffic unless that
+> worst case still fits under `agent.limits.physical_hard`, then charges the
+> count the pack really sent (`McpClient::physicalRequestCount()`). JSON-RPC
+> errors now arrive as `McpRemoteErrorException`; the host catches the common
+> `McpException`, so a server that answers `tools/list` with an error still
+> stays `active` with a `tools_list_warning`. Require pack `2.0.1` or later:
+> `2.0.0` allowed `guzzlehttp/guzzle ^7.8.2` only and forced a host on Guzzle 8
+> to downgrade it.
 
 ### Enabling AI Act compliance features (junior-proof)
 

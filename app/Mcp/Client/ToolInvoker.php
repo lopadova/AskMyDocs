@@ -8,7 +8,7 @@ use App\Mcp\Adapters\McpServerAdapter;
 use App\Models\McpServer;
 use App\Models\McpToolCallAudit;
 use App\Models\User;
-use Padosoft\AskMyDocsMcpPack\Exceptions\McpTransportException;
+use Padosoft\AskMyDocsMcpPack\Exceptions\McpException;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 
 /**
@@ -33,10 +33,26 @@ final class ToolInvoker
         array $toolInput,
         array $context = [],
     ): array {
+        return $this->invokeMeasured($user, $server, $toolName, $toolInput, $context)->result;
+    }
+
+    /**
+     * Same call as {@see self::invoke()}, but also reports how many physical
+     * messages the pack sent. A failure throws {@see McpToolInvocationFailed}
+     * (a `RuntimeException`) carrying that count.
+     */
+    public function invokeMeasured(
+        User $user,
+        McpServer $server,
+        string $toolName,
+        array $toolInput,
+        array $context = [],
+    ): McpToolInvocation {
         $start = microtime(true);
         $status = McpToolCallAudit::STATUS_OK;
         $result = [];
         $errorPayload = null;
+        $client = null;
 
         try {
             // Native transport via the package — `forServer()` reads
@@ -46,8 +62,9 @@ final class ToolInvoker
             $client = McpClient::forServer(new McpServerAdapter($server));
             $rawResult = $client->callTool($toolName, $toolInput);
             $result = is_array($rawResult) ? $rawResult : ['content' => $rawResult];
-        } catch (McpTransportException $exception) {
-            // Native transport failures classify into two buckets:
+        } catch (McpException $exception) {
+            // Pack failures (`McpException` covers both transport errors and, since
+            // pack 2.0, remote JSON-RPC errors) classify into two buckets:
             //
             //   - real timeouts (cURL "Operation timed out", stdio
             //     read timeout, SSE keep-alive miss) → `timeout`
@@ -75,6 +92,7 @@ final class ToolInvoker
             ];
         }
 
+        $physicalRequests = $client instanceof McpClient ? $client->physicalRequestCount() : 0;
         $durationMs = (int) round((microtime(true) - $start) * 1000);
         $hashInput = $status === McpToolCallAudit::STATUS_OK
             ? $result
@@ -96,21 +114,21 @@ final class ToolInvoker
         ]);
 
         if ($status !== McpToolCallAudit::STATUS_OK) {
-            throw new \RuntimeException($errorPayload['message'] ?? 'Tool invocation failed.');
+            throw new McpToolInvocationFailed($errorPayload['message'] ?? 'Tool invocation failed.', $physicalRequests);
         }
 
-        return $result;
+        return new McpToolInvocation($result, $physicalRequests);
     }
 
     /**
-     * Map an `McpTransportException` to the most accurate audit
+     * Map an `McpException` to the most accurate audit
      * status. Timeouts get the legacy `STATUS_TIMEOUT` so existing
      * dashboards keep firing; everything else gets the W6.3 widened
      * `STATUS_TRANSPORT_ERROR`. Pattern-match the message body case-
      * insensitively against the well-known timeout markers that cURL
      * / stream wrappers emit.
      */
-    private static function classifyTransportException(McpTransportException $exception): string
+    private static function classifyTransportException(McpException $exception): string
     {
         $message = strtolower($exception->getMessage() ?? '');
         $timeoutMarkers = [

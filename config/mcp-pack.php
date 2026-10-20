@@ -124,4 +124,29 @@ return [
         )),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | v2.0.0 — artifact download (DISABLED on this host)
+    |--------------------------------------------------------------------------
+    |
+    | Pack 2.0 registers `GET /mcp-pack/v2/artifacts/{artifact}/download`
+    | (signed URL) whenever `artifacts.enabled` is true, and ships it ON.
+    | AskMyDocs does not return artifacts from MCP tools, so the route is
+    | not mounted here (R43): flip `MCP_PACK_ARTIFACTS_ENABLED` only together
+    | with an R32 authorization-matrix row for the route.
+    |
+    | Laravel merges package config one level deep, so this block replaces
+    | the package's whole `artifacts` array and must restate every key the
+    | package reads. `McpPackArtifactsDefaultOffTest` fails when the package
+    | adds a key this block does not carry.
+    */
+    'artifacts' => [
+        'enabled' => env('MCP_PACK_ARTIFACTS_ENABLED', false),
+        'disk' => env('MCP_PACK_ARTIFACT_DISK', 'local'),
+        'max_bytes' => (int) env('MCP_PACK_ARTIFACT_MAX_BYTES', 26214400),
+        'ttl_seconds' => (int) env('MCP_PACK_ARTIFACT_TTL', 86400),
+        'signed_url_ttl_seconds' => (int) env('MCP_PACK_ARTIFACT_URL_TTL', 300),
+        'embed_below_bytes' => (int) env('MCP_PACK_ARTIFACT_EMBED_BELOW', 65536),
+    ],
+
 ];
