@@ -330,6 +330,63 @@ final class ActionApprovalServiceTest extends TestCase
         $this->assertSame(0, DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->count());
     }
 
+    public function test_an_acl_callback_that_throws_is_a_refusal_and_is_audited(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $explode = static function (ActionIntent $value): bool {
+            throw new \RuntimeException('policy backend unavailable');
+        };
+        $pending = $service->request($intent, $run->id);
+
+        $this->denied(fn () => $service->approve($pending->plainTextToken, $intent, $explode));
+        $this->assertSame('pending', DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->value('status'));
+
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, $explode));
+
+        $reasons = DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->orderBy('id')->get()
+            ->map(fn (object $row): string => (string) json_decode((string) $row->payload, true)['reason'])->all();
+        $this->assertSame(['acl_error', 'acl_error'], $reasons);
+    }
+
+    public function test_a_receipt_that_does_not_describe_its_own_approval_is_refused(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $allow = static fn (ActionIntent $value): bool => true;
+        $pending = $service->request($intent, $run->id);
+        $real = $service->approve($pending->plainTextToken, $intent, $allow);
+        $this->assertTrue($service->verifyForExecution($real, $intent, $allow));
+
+        $wrongApproval = new ActionApprovalReceipt(
+            approvalId: 'another-approval-id',
+            executionId: $real->executionId,
+            tokenHash: $real->tokenHash,
+            actionDigest: $real->actionDigest,
+            targetDigest: $real->targetDigest,
+            expiresAt: $real->expiresAt,
+            approvedAt: $real->approvedAt,
+        );
+        $wrongDigest = new ActionApprovalReceipt(
+            approvalId: $real->approvalId,
+            executionId: $real->executionId,
+            tokenHash: $real->tokenHash,
+            actionDigest: str_repeat('0', 64),
+            targetDigest: $real->targetDigest,
+            expiresAt: $real->expiresAt,
+            approvedAt: $real->approvedAt,
+        );
+
+        $this->assertFalse($service->verifyForExecution($wrongApproval, $intent, $allow));
+        $this->assertFalse($service->verifyForExecution($wrongDigest, $intent, $allow));
+        $reasons = DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->orderBy('id')->get()
+            ->map(fn (object $row): string => (string) json_decode((string) $row->payload, true)['reason'])->all();
+        $this->assertSame(['receipt_mismatch', 'receipt_mismatch'], $reasons);
+    }
+
     /** @param callable(): mixed $attempt */
     private function denied(callable $attempt): void
     {

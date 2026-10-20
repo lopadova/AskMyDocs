@@ -12,6 +12,7 @@ use Padosoft\LaravelFlow\ApprovalTokenManager;
 use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
 use Padosoft\LaravelFlow\Models\FlowAuditRecord;
 use Padosoft\LaravelFlow\Models\FlowRunRecord;
+use Throwable;
 
 /**
  * The common HITL/Flow boundary for executable ActionIntent values.
@@ -26,6 +27,12 @@ final class ActionApprovalService
     public const DENIED_EVENT = 'action_approval.denied';
 
     private const AUDIT_FIELD_LENGTH = 128;
+
+    private const ACL_ALLOW = 'allow';
+
+    private const ACL_DENY = 'deny';
+
+    private const ACL_ERROR = 'error';
 
     public function __construct(
         private readonly ApprovalTokenManager $tokens,
@@ -83,8 +90,9 @@ final class ActionApprovalService
             throw ActionApprovalException::invalid();
         }
 
-        if ($currentAcl($intent) !== true) {
-            $this->auditDenial('acl_denied', $pending, $intent);
+        $decision = $this->aclDecision($currentAcl, $intent);
+        if ($decision !== self::ACL_ALLOW) {
+            $this->auditDenial($decision === self::ACL_ERROR ? 'acl_error' : 'acl_denied', $pending, $intent);
             throw ActionApprovalException::invalid();
         }
 
@@ -145,7 +153,37 @@ final class ActionApprovalService
             return 'execution_mismatch';
         }
 
-        return $currentAcl($intent) === true ? null : 'acl_denied';
+        // The receipt is a value object the caller holds; it must describe the
+        // row its token hash resolves to, not merely carry a valid hash.
+        if ((string) $record->id !== $receipt->approvalId
+            || ! hash_equals($receipt->actionDigest, (string) data_get($record->payload, 'action_digest'))) {
+            return 'receipt_mismatch';
+        }
+
+        return match ($this->aclDecision($currentAcl, $intent)) {
+            self::ACL_ALLOW => null,
+            self::ACL_ERROR => 'acl_error',
+            default => 'acl_denied',
+        };
+    }
+
+    /**
+     * Only an exact `true` allows: a denied `Response` object or a message
+     * string is truthy. A callback that throws is a refusal too, reported for
+     * the operator and audited as its own reason rather than propagated as an
+     * unaudited failure.
+     *
+     * @param callable(ActionIntent): bool $currentAcl
+     */
+    private function aclDecision(callable $currentAcl, ActionIntent $intent): string
+    {
+        try {
+            return $currentAcl($intent) === true ? self::ACL_ALLOW : self::ACL_DENY;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return self::ACL_ERROR;
+        }
     }
 
     private function matches(FlowApprovalRecord $record, ActionIntent $intent): bool
