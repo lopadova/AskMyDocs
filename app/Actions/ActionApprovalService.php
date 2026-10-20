@@ -65,7 +65,7 @@ final class ActionApprovalService
 
     /** @param callable(ActionIntent): bool $currentAcl */
     public function approve(
-        string $plainTextToken,
+        #[\SensitiveParameter] string $plainTextToken,
         ActionIntent $intent,
         callable $currentAcl,
         array $actor = [],
@@ -83,7 +83,7 @@ final class ActionApprovalService
             throw ActionApprovalException::invalid();
         }
 
-        if (! $currentAcl($intent)) {
+        if ($currentAcl($intent) !== true) {
             $this->auditDenial('acl_denied', $pending, $intent);
             throw ActionApprovalException::invalid();
         }
@@ -145,22 +145,24 @@ final class ActionApprovalService
             return 'execution_mismatch';
         }
 
-        return $currentAcl($intent) ? null : 'acl_denied';
+        return $currentAcl($intent) === true ? null : 'acl_denied';
     }
 
     private function matches(FlowApprovalRecord $record, ActionIntent $intent): bool
     {
-        return hash_equals(
-            (string) data_get($record->payload, 'action_digest'),
-            $this->intentDigest($intent),
-        ) && (string) data_get($record->payload, 'tenant_id') === $intent->tenantId
+        return $record->step_name === self::APPROVAL_STEP
+            && $this->tenant->current() === $intent->tenantId
+            && hash_equals(
+                (string) data_get($record->payload, 'action_digest'),
+                $this->intentDigest($intent),
+            ) && (string) data_get($record->payload, 'tenant_id') === $intent->tenantId
             && (string) $record->tenant_id === $intent->tenantId
             && (string) data_get($record->payload, 'principal_id') === $intent->principalId;
     }
 
     private function runBelongsToTenant(string $runId, string $tenantId): bool
     {
-        return FlowRunRecord::query()
+        return FlowRunRecord::on($this->flowConnection())
             ->whereKey($runId)
             ->where('tenant_id', $tenantId)
             ->exists();
@@ -236,7 +238,7 @@ final class ActionApprovalService
      */
     private function auditDenial(string $reason, FlowApprovalRecord $record, ActionIntent $intent): void
     {
-        FlowAuditRecord::create([
+        FlowAuditRecord::on($this->flowConnection())->create([
             'run_id' => (string) $record->run_id,
             'step_name' => self::APPROVAL_STEP,
             'event' => self::DENIED_EVENT,
@@ -244,7 +246,7 @@ final class ActionApprovalService
             'payload' => [
                 'reason' => $reason,
                 'approval_id' => (string) $record->id,
-                'execution_id' => (string) data_get($record->payload, 'execution_id'),
+                'execution_id' => $this->bounded((string) data_get($record->payload, 'execution_id')),
                 'action_id' => $this->bounded($intent->actionId),
                 'principal_id' => $this->bounded($intent->principalId),
                 'attempt_tenant_id' => $this->bounded($intent->tenantId),
@@ -252,6 +254,13 @@ final class ActionApprovalService
             ],
             'occurred_at' => CarbonImmutable::now(),
         ]);
+    }
+
+    private function flowConnection(): ?string
+    {
+        $connection = config('laravel-flow.default_storage');
+
+        return is_string($connection) && $connection !== '' ? $connection : null;
     }
 
     private function bounded(string $value): string

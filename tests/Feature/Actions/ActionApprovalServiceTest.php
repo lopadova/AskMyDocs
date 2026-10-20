@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Actions;
 
 use App\Actions\ActionApprovalException;
+use App\Actions\ActionApprovalReceipt;
 use App\Actions\ActionApprovalService;
 use App\Actions\ActionIntent;
 use App\Flow\Definitions\PromotionFlow;
@@ -13,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Padosoft\LaravelFlow\ApprovalTokenManager;
 use Padosoft\LaravelFlow\Facades\Flow;
 use Padosoft\LaravelFlow\FlowExecutionOptions;
 use Tests\TestCase;
@@ -167,8 +169,81 @@ final class ActionApprovalServiceTest extends TestCase
         $this->assertSame($intent->argsDigest, $tampered->argsDigest);
 
         $this->assertFalse($service->verifyForExecution($receipt, $tampered, static fn (ActionIntent $value): bool => true));
-        $this->expectException(ActionApprovalException::class);
-        $service->approve($pending->plainTextToken, $tampered, static fn (ActionIntent $value): bool => true);
+
+        $stillPending = $service->request($intent, $run->id);
+        $this->denied(fn () => $service->approve($stillPending->plainTextToken, $tampered, static fn (ActionIntent $value): bool => true));
+        $this->assertSame(1, DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->where('status', 'pending')->count());
+    }
+
+    public function test_a_truthy_acl_result_that_is_not_true_is_not_an_allow(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+
+        $this->denied(fn () => $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): mixed => 'denied: not your project'));
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): mixed => 1));
+    }
+
+    public function test_verifying_from_another_ambient_tenant_is_refused_and_audited_on_the_owning_tenant(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+
+        $this->app->make(TenantContext::class)->set('other-tenant');
+
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): bool => true));
+        $row = DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('test-tenant', $row->tenant_id);
+        $this->assertSame('binding_mismatch', json_decode((string) $row->payload, true)['reason']);
+    }
+
+    public function test_pending_forged_and_lapsed_approvals_are_each_refused_with_their_own_reason(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $allow = static fn (ActionIntent $value): bool => true;
+
+        $pending = $service->request($intent, $run->id);
+        $notYetApproved = new ActionApprovalReceipt(
+            approvalId: $pending->approvalId,
+            executionId: $pending->executionId,
+            tokenHash: ApprovalTokenManager::hashToken($pending->plainTextToken),
+            actionDigest: $pending->actionDigest,
+            targetDigest: $pending->targetDigest,
+            expiresAt: $pending->expiresAt,
+            approvedAt: $pending->expiresAt,
+        );
+        $this->assertFalse($service->verifyForExecution($notYetApproved, $intent, $allow));
+
+        $approved = $service->request($intent, $run->id);
+        $real = $service->approve($approved->plainTextToken, $intent, $allow);
+        $forged = new ActionApprovalReceipt(
+            approvalId: $real->approvalId,
+            executionId: 'forged-execution-identity',
+            tokenHash: $real->tokenHash,
+            actionDigest: $real->actionDigest,
+            targetDigest: $real->targetDigest,
+            expiresAt: $real->expiresAt,
+            approvedAt: $real->approvedAt,
+        );
+        $this->assertFalse($service->verifyForExecution($forged, $intent, $allow));
+
+        $lapsing = $service->request($intent, $run->id);
+        $this->travelTo($lapsing->expiresAt->modify('+1 second'));
+        $this->denied(fn () => $service->approve($lapsing->plainTextToken, $intent, $allow));
+
+        $reasons = DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->orderBy('id')->get()
+            ->map(fn (object $row): string => (string) json_decode((string) $row->payload, true)['reason'])->all();
+        $this->assertSame(['not_approved', 'execution_mismatch', 'not_pending'], $reasons);
     }
 
     public function test_an_approval_cannot_be_issued_against_another_tenants_run(): void
