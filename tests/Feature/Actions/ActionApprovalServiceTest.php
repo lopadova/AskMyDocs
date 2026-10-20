@@ -84,15 +84,88 @@ final class ActionApprovalServiceTest extends TestCase
         $this->assertFalse($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): bool => false));
     }
 
-    private function intent(): ActionIntent
+    public function test_shifting_a_delimiter_between_fields_does_not_reuse_an_approval(): void
     {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $approved = $this->intent(resource: 'a|b', effect: 'c');
+        $shifted = $this->intent(resource: 'a', effect: 'b|c');
+        $pending = $service->request($approved, $run->id);
+        $receipt = $service->approve($pending->plainTextToken, $approved, static fn (ActionIntent $value): bool => true);
+
+        $this->assertTrue($service->verifyForExecution($receipt, $approved, static fn (ActionIntent $value): bool => true));
+        $this->assertFalse($service->verifyForExecution($receipt, $shifted, static fn (ActionIntent $value): bool => true));
+    }
+
+    public function test_receipt_is_refused_once_the_approval_has_expired(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+        $this->assertTrue($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): bool => true));
+
+        $this->travelTo($receipt->expiresAt->modify('+1 second'));
+
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): bool => true));
+    }
+
+    public function test_acl_denial_at_approval_time_refuses_without_spending_the_token(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+
+        try {
+            $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => false);
+            $this->fail('An approval that the current ACL denies must be refused.');
+        } catch (ActionApprovalException) {
+            $this->assertSame('pending', DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->value('status'));
+        }
+
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+        $this->assertSame($pending->executionId, $receipt->executionId);
+    }
+
+    public function test_another_tenant_or_principal_cannot_redeem_the_approval(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+
+        foreach ([
+            $this->intent(tenantId: 'other-tenant'),
+            $this->intent(principalId: 'user-2'),
+        ] as $foreign) {
+            try {
+                $service->approve($pending->plainTextToken, $foreign, static fn (ActionIntent $value): bool => true);
+                $this->fail('An approval bound to another tenant or principal must not be redeemable.');
+            } catch (ActionApprovalException) {
+                $this->assertSame('pending', DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->value('status'));
+            }
+        }
+
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+        $this->assertFalse($service->verifyForExecution($receipt, $this->intent(tenantId: 'other-tenant'), static fn (ActionIntent $value): bool => true));
+        $this->assertFalse($service->verifyForExecution($receipt, $this->intent(principalId: 'user-2'), static fn (ActionIntent $value): bool => true));
+    }
+
+    private function intent(
+        string $resource = 'knowledge_document',
+        string $effect = 'read',
+        string $tenantId = 'test-tenant',
+        string $principalId = 'user-1',
+    ): ActionIntent {
         return ActionIntent::fromModelProposal(
             actionId: 'search_knowledge_base',
-            tenantId: 'test-tenant',
-            principalId: 'user-1',
+            tenantId: $tenantId,
+            principalId: $principalId,
             proposal: [
-                'resource' => 'knowledge_document',
-                'effect' => 'read',
+                'resource' => $resource,
+                'effect' => $effect,
                 'target' => 'project/acme',
                 'args' => ['query' => 'retention policy'],
             ],

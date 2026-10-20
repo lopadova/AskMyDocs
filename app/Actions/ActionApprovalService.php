@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
+use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use Padosoft\LaravelFlow\ApprovalTokenManager;
 use Padosoft\LaravelFlow\IssuedApprovalToken;
@@ -19,7 +20,10 @@ final class ActionApprovalService
 {
     public const APPROVAL_STEP = 'action-intent-approval';
 
-    public function __construct(private readonly ApprovalTokenManager $tokens) {}
+    public function __construct(
+        private readonly ApprovalTokenManager $tokens,
+        private readonly ActionCanonicalizer $canonicalizer = new ActionCanonicalizer,
+    ) {}
 
     public function request(ActionIntent $intent, string $runId): PendingActionApproval
     {
@@ -75,6 +79,7 @@ final class ActionApprovalService
             && $record->status === FlowApprovalRecord::STATUS_APPROVED
             && $record->consumed_at !== null
             && $record->decided_at !== null
+            && ! $this->expired($record)
             && $this->matches($record, $intent)
             && hash_equals($receipt->executionId, (string) data_get($record->payload, 'execution_id'))
             && $currentAcl($intent);
@@ -103,20 +108,36 @@ final class ActionApprovalService
         );
     }
 
+    /**
+     * Flow only expires rows still pending, so an approved row stays readable
+     * forever; the expiry carried by the receipt must be enforced here. A row
+     * with no expiry is refused rather than treated as unbounded.
+     */
+    private function expired(FlowApprovalRecord $record): bool
+    {
+        return $record->expires_at === null
+            || $this->date($record->expires_at) <= CarbonImmutable::now();
+    }
+
+    /**
+     * Structured, not delimiter-joined: fields such as resource/effect/target
+     * come from the model proposal, and a joined string lets a `|` shift
+     * between neighbouring fields and reproduce another intent's digest.
+     */
     private function intentDigest(ActionIntent $intent): string
     {
-        return hash('sha256', implode('|', [
-            $intent->actionId,
-            $intent->schemaVersion,
-            $intent->tenantId,
-            $intent->principalId,
-            $intent->resource,
-            $intent->effect,
-            $intent->argsDigest,
-            $intent->target ?? '',
-            $intent->grant,
-            $intent->assurance,
-        ]));
+        return $this->canonicalizer->digest([
+            'action_id' => $intent->actionId,
+            'schema_version' => $intent->schemaVersion,
+            'tenant_id' => $intent->tenantId,
+            'principal_id' => $intent->principalId,
+            'resource' => $intent->resource,
+            'effect' => $intent->effect,
+            'args_digest' => $intent->argsDigest,
+            'target' => $intent->target,
+            'grant' => $intent->grant,
+            'assurance' => $intent->assurance,
+        ]);
     }
 
     private function date(mixed $value): DateTimeImmutable
