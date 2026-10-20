@@ -8,8 +8,10 @@ use App\Actions\ActionApprovalException;
 use App\Actions\ActionApprovalService;
 use App\Actions\ActionIntent;
 use App\Flow\Definitions\PromotionFlow;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Padosoft\LaravelFlow\Facades\Flow;
@@ -23,6 +25,7 @@ final class ActionApprovalServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        app(TenantContext::class)->set('test-tenant');
         Queue::fake();
         Storage::fake('kb');
     }
@@ -69,6 +72,24 @@ final class ActionApprovalServiceTest extends TestCase
             assurance: $intent->assurance,
         );
         $this->assertFalse($service->verifyForExecution($receipt, $changed, static fn (ActionIntent $value): bool => true));
+
+        $changedArgs = new ActionIntent(
+            actionId: $intent->actionId,
+            schemaVersion: $intent->schemaVersion,
+            tenantId: $intent->tenantId,
+            principalId: $intent->principalId,
+            resource: $intent->resource,
+            effect: $intent->effect,
+            args: ['query' => 'changed arguments'],
+            target: $intent->target,
+            grant: $intent->grant,
+            assurance: $intent->assurance,
+            evidenceRefs: $intent->evidenceRefs,
+            reservationRef: $intent->reservationRef,
+            argsDigest: $intent->argsDigest,
+        );
+        $this->assertFalse($service->verifyForExecution($receipt, $changedArgs, static fn (ActionIntent $value): bool => true));
+
         $this->expectException(ActionApprovalException::class);
         $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
     }
@@ -81,7 +102,26 @@ final class ActionApprovalServiceTest extends TestCase
         $pending = $service->request($intent, $run->id);
         $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
 
+        Log::spy();
         $this->assertFalse($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): bool => false));
+        Log::shouldHaveReceived('warning')->withArgs(static function (string $message, array $context): bool {
+            return $message === 'Action approval denied'
+                && $context['event'] === 'action_approval_denied'
+                && $context['tenant_id'] === 'test-tenant'
+                && $context['principal_id'] === 'user-1'
+                && is_string($context['correlation_id'])
+                && ! array_key_exists('token', $context)
+                && ! array_key_exists('args', $context);
+        });
+        $audit = DB::table('flow_audit')
+            ->where('run_id', $run->id)
+            ->where('event', 'action_approval_denied')
+            ->sole();
+        $auditPayload = json_decode((string) $audit->payload, true);
+        $this->assertSame('test-tenant', $auditPayload['tenant_id']);
+        $this->assertSame('user-1', $auditPayload['principal_id']);
+        $this->assertArrayNotHasKey('token', $auditPayload);
+        $this->assertArrayNotHasKey('args', $auditPayload);
     }
 
     public function test_shifting_a_delimiter_between_fields_does_not_reuse_an_approval(): void
@@ -118,15 +158,112 @@ final class ActionApprovalServiceTest extends TestCase
         $intent = $this->intent();
         $pending = $service->request($intent, $run->id);
 
+        Log::spy();
         try {
             $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => false);
             $this->fail('An approval that the current ACL denies must be refused.');
         } catch (ActionApprovalException) {
             $this->assertSame('pending', DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->value('status'));
         }
+        Log::shouldHaveReceived('warning')->withArgs(static function (string $message, array $context): bool {
+            return $message === 'Action approval denied'
+                && $context['tenant_id'] === 'test-tenant'
+                && $context['principal_id'] === 'user-1'
+                && is_string($context['correlation_id'])
+                && ! array_key_exists('token', $context)
+                && ! array_key_exists('args', $context);
+        });
+        $audit = DB::table('flow_audit')
+            ->where('run_id', $run->id)
+            ->where('event', 'action_approval_denied')
+            ->sole();
+        $this->assertSame('user-1', json_decode((string) $audit->payload, true)['principal_id']);
 
         $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
         $this->assertSame($pending->executionId, $receipt->executionId);
+    }
+
+    public function test_request_rejects_a_foreign_tenant_context_and_parent_run(): void
+    {
+        $context = app(TenantContext::class);
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+
+        try {
+            $service->request($this->intent(tenantId: 'other-tenant'), $run->id);
+            $this->fail('An intent for a different active tenant must be refused.');
+        } catch (ActionApprovalException) {
+            $this->assertSame(
+                0,
+                DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->count(),
+            );
+        }
+
+        $context->set('other-tenant');
+        $foreignRun = $this->pausedRun();
+        $context->set('test-tenant');
+
+        $this->expectException(ActionApprovalException::class);
+        $service->request($this->intent(), $foreignRun->id);
+    }
+
+    public function test_approval_and_execution_verification_require_the_active_parent_tenant(): void
+    {
+        $context = app(TenantContext::class);
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+
+        $context->set('other-tenant');
+        try {
+            $service->approve(
+                $pending->plainTextToken,
+                $this->intent(tenantId: 'other-tenant'),
+                static fn (ActionIntent $value): bool => true,
+            );
+            $this->fail('An approval whose parent run belongs to another tenant must be refused.');
+        } catch (ActionApprovalException) {
+            $this->assertSame('pending', DB::table('flow_approvals')->where('id', $pending->approvalId)->value('status'));
+        }
+
+        $context->set('test-tenant');
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+
+        $context->set('other-tenant');
+        $this->assertFalse($service->verifyForExecution(
+            $receipt,
+            $this->intent(tenantId: 'other-tenant'),
+            static fn (ActionIntent $value): bool => true,
+        ));
+    }
+
+    public function test_approval_row_tenant_must_match_context_and_parent_run(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+
+        DB::table('flow_approvals')
+            ->where('id', $pending->approvalId)
+            ->update(['tenant_id' => 'other-tenant']);
+        try {
+            $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+            $this->fail('An approval row owned by another tenant must be refused.');
+        } catch (ActionApprovalException) {
+            $this->assertSame('pending', DB::table('flow_approvals')->where('id', $pending->approvalId)->value('status'));
+        }
+
+        DB::table('flow_approvals')
+            ->where('id', $pending->approvalId)
+            ->update(['tenant_id' => 'test-tenant']);
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+
+        DB::table('flow_approvals')
+            ->where('id', $pending->approvalId)
+            ->update(['tenant_id' => 'other-tenant']);
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, static fn (ActionIntent $value): bool => true));
     }
 
     public function test_another_tenant_or_principal_cannot_redeem_the_approval(): void

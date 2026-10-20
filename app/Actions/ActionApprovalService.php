@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
+use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Padosoft\LaravelFlow\ApprovalTokenManager;
-use Padosoft\LaravelFlow\IssuedApprovalToken;
 use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
+use Throwable;
 
 /**
  * The common HITL/Flow boundary for executable ActionIntent values.
@@ -22,11 +26,17 @@ final class ActionApprovalService
 
     public function __construct(
         private readonly ApprovalTokenManager $tokens,
+        private readonly TenantContext $tenant,
         private readonly ActionCanonicalizer $canonicalizer = new ActionCanonicalizer,
     ) {}
 
     public function request(ActionIntent $intent, string $runId): PendingActionApproval
     {
+        if ($intent->tenantId !== $this->tenant->current() || ! $this->runBelongsToActiveTenant($runId)) {
+            $this->auditDenial($intent);
+            throw ActionApprovalException::invalid();
+        }
+
         $executionId = $this->uuid();
         $issued = $this->tokens->issue($runId, self::APPROVAL_STEP, [
             'execution_id' => $executionId,
@@ -56,15 +66,34 @@ final class ActionApprovalService
         array $actor = [],
     ): ActionApprovalReceipt {
         $pending = $this->tokens->pending($plainTextToken);
-        if (! $pending instanceof FlowApprovalRecord || ! $this->matches($pending, $intent) || ! $currentAcl($intent)) {
+        if (! $pending instanceof FlowApprovalRecord || ! $this->matches($pending, $intent)) {
+            $this->auditDenial($intent, $pending instanceof FlowApprovalRecord ? $pending : null);
             throw ActionApprovalException::invalid();
         }
 
-        $approved = $this->tokens->approve($plainTextToken, $actor, array_merge(
-            (array) $pending->payload,
-            ['action_digest' => $this->intentDigest($intent)],
-        ));
+        try {
+            $allowed = $currentAcl($intent);
+        } catch (Throwable) {
+            $this->auditDenial($intent, $pending, 'failed');
+            throw ActionApprovalException::invalid();
+        }
+        if (! $allowed) {
+            $this->auditDenial($intent, $pending);
+            throw ActionApprovalException::invalid();
+        }
+
+        try {
+            $approved = $this->tokens->approve($plainTextToken, $actor, array_merge(
+                (array) $pending->payload,
+                ['action_digest' => $this->intentDigest($intent)],
+            ));
+        } catch (Throwable) {
+            $this->auditDenial($intent, $pending, 'failed');
+            throw ActionApprovalException::invalid();
+        }
+
         if (! $approved instanceof FlowApprovalRecord || $approved->status !== FlowApprovalRecord::STATUS_APPROVED) {
+            $this->auditDenial($intent, $pending);
             throw ActionApprovalException::invalid();
         }
 
@@ -75,23 +104,103 @@ final class ActionApprovalService
     public function verifyForExecution(ActionApprovalReceipt $receipt, ActionIntent $intent, callable $currentAcl): bool
     {
         $record = $this->tokens->findByHash($receipt->tokenHash);
-        return $record instanceof FlowApprovalRecord
+        $validReceipt = $record instanceof FlowApprovalRecord
             && $record->status === FlowApprovalRecord::STATUS_APPROVED
             && $record->consumed_at !== null
             && $record->decided_at !== null
             && ! $this->expired($record)
             && $this->matches($record, $intent)
+            && (string) $record->id === $receipt->approvalId
             && hash_equals($receipt->executionId, (string) data_get($record->payload, 'execution_id'))
-            && $currentAcl($intent);
+            && hash_equals($receipt->actionDigest, (string) data_get($record->payload, 'action_digest'));
+
+        if (! $validReceipt) {
+            $this->auditDenial($intent, $record instanceof FlowApprovalRecord ? $record : null);
+            return false;
+        }
+
+        try {
+            if (! $currentAcl($intent)) {
+                $this->auditDenial($intent, $record);
+                return false;
+            }
+        } catch (Throwable) {
+            $this->auditDenial($intent, $record, 'failed');
+            return false;
+        }
+
+        return true;
     }
 
     private function matches(FlowApprovalRecord $record, ActionIntent $intent): bool
     {
-        return hash_equals(
-            (string) data_get($record->payload, 'action_digest'),
-            $this->intentDigest($intent),
-        ) && (string) data_get($record->payload, 'tenant_id') === $intent->tenantId
+        $tenantId = $this->tenant->current();
+
+        return $intent->tenantId === $tenantId
+            && (string) $record->tenant_id === $tenantId
+            && $record->step_name === self::APPROVAL_STEP
+            && $this->runBelongsToActiveTenant((string) $record->run_id)
+            && (string) data_get($record->payload, 'tenant_id') === $tenantId
+            && hash_equals(
+                (string) data_get($record->payload, 'action_digest'),
+                $this->intentDigest($intent),
+            )
             && (string) data_get($record->payload, 'principal_id') === $intent->principalId;
+    }
+
+    private function runBelongsToActiveTenant(string $runId): bool
+    {
+        return DB::table('flow_runs')
+            ->where('id', $runId)
+            ->where('tenant_id', $this->tenant->current())
+            ->exists();
+    }
+
+    private function auditDenial(ActionIntent $intent, ?FlowApprovalRecord $record = null, string $outcome = 'denied'): void
+    {
+        $payload = (array) ($record?->payload ?? []);
+        $actorId = Auth::id();
+        $principalId = $intent->principalId;
+        $actorId = is_scalar($actorId) ? substr((string) $actorId, 0, 128) : null;
+        $executionId = $payload['execution_id'] ?? null;
+        $correlationId = is_string($executionId) && preg_match('/^[a-f0-9-]{36}$/i', $executionId)
+            ? $executionId
+            : (is_string($record?->id) ? $record->id : $this->uuid());
+
+        Log::warning('Action approval ' . $outcome, [
+            'event' => 'action_approval_' . $outcome,
+            'correlation_id' => $correlationId,
+            'approval_id' => is_string($record?->id) ? $record->id : null,
+            'tenant_id' => $this->tenant->current(),
+            'principal_id' => substr($principalId, 0, 128),
+            'actor_id' => $actorId,
+        ]);
+
+        $tenantId = $this->tenant->current();
+        $runId = is_string($record?->run_id) ? $record->run_id : null;
+        if (
+            $runId !== null
+            && (string) $record->tenant_id === $tenantId
+            && $this->runBelongsToActiveTenant($runId)
+        ) {
+            $occurredAt = CarbonImmutable::now();
+            DB::table('flow_audit')->insert([
+                'tenant_id' => $tenantId,
+                'run_id' => $runId,
+                'step_name' => self::APPROVAL_STEP,
+                'event' => 'action_approval_' . $outcome,
+                'payload' => json_encode([
+                    'correlation_id' => $correlationId,
+                    'approval_id' => (string) $record->id,
+                    'tenant_id' => $tenantId,
+                    'principal_id' => substr($principalId, 0, 128),
+                    'actor_id' => $actorId,
+                    'outcome' => $outcome,
+                ], JSON_THROW_ON_ERROR),
+                'occurred_at' => $occurredAt,
+                'created_at' => $occurredAt,
+            ]);
+        }
     }
 
     private function receipt(FlowApprovalRecord $record): ActionApprovalReceipt
@@ -133,7 +242,7 @@ final class ActionApprovalService
             'principal_id' => $intent->principalId,
             'resource' => $intent->resource,
             'effect' => $intent->effect,
-            'args_digest' => $intent->argsDigest,
+            'args_digest' => $this->canonicalizer->digest($intent->args),
             'target' => $intent->target,
             'grant' => $intent->grant,
             'assurance' => $intent->assurance,
