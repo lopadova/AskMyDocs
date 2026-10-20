@@ -88,7 +88,10 @@ final readonly class AgentServerToolRunner
         AgentRun $run,
         AgentBudgetTracker $budget,
     ): AgentToolActionResult {
-        $capacity = $budget->canIssuePhysical();
+        // One tool call is several wire messages (see AgentToolRegistry::MCP_PHYSICAL_*),
+        // so capacity is checked for, and the ledger charged with, the worst case.
+        $physical = max(1, $tool->physicalMaximum);
+        $capacity = $budget->canIssuePhysical($physical);
         if (! $capacity->allowed()) {
             return new AgentToolActionResult(['error' => $capacity->reason], 0, false, $capacity->reason);
         }
@@ -110,14 +113,14 @@ final readonly class AgentServerToolRunner
                 'locale' => $context->locale,
                 'agent_run_id' => $run->id,
             ]);
-            $budget->recordResult(1, $this->bytes($result), true);
+            $budget->recordResult($physical, $this->bytes($result), true);
 
-            return new AgentToolActionResult($result, 1);
+            return new AgentToolActionResult($result, $physical);
         } catch (\Throwable $exception) {
             $body = ['error' => $exception->getMessage()];
-            $budget->recordResult(1, $this->bytes($body), false);
+            $budget->recordResult($physical, $this->bytes($body), false);
 
-            return new AgentToolActionResult($body, 1, false, 'mcp_tool_error');
+            return new AgentToolActionResult($body, $physical, false, 'mcp_tool_error');
         }
     }
 

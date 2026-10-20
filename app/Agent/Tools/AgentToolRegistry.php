@@ -14,6 +14,20 @@ use Padosoft\AskMyDocsConnectorApi\Services\ApiToolRegistry as ConnectorToolRegi
 
 final readonly class AgentToolRegistry
 {
+    /**
+     * Physical requests one MCP tool call can cost. askmydocs-mcp-pack 2.0
+     * negotiates on every call, and the host builds a fresh client per call:
+     * `server/discover` then `tools/call` on a current server, plus `initialize`
+     * and `notifications/initialized` on a legacy one. The count the pack really
+     * sends is not observable from here, so the budget plans for the common case
+     * and enforces and records the worst case.
+     */
+    public const MCP_PHYSICAL_MINIMUM = 2;
+
+    public const MCP_PHYSICAL_LIKELY = 2;
+
+    public const MCP_PHYSICAL_MAXIMUM = 4;
+
     public function __construct(
         private ConnectorToolRegistry $connectors,
         private McpServerRegistry $mcpServers,
@@ -159,9 +173,9 @@ final readonly class AgentToolRegistry
                     inputSchema: is_array($schema) ? $schema : ['type' => 'object', 'properties' => []],
                     readOnly: (bool) ($definition['readOnlyHint'] ?? false),
                     idempotent: (bool) ($definition['idempotentHint'] ?? false),
-                    physicalMinimum: 1,
-                    physicalLikely: 1,
-                    physicalMaximum: 1,
+                    physicalMinimum: self::MCP_PHYSICAL_MINIMUM,
+                    physicalLikely: self::MCP_PHYSICAL_LIKELY,
+                    physicalMaximum: self::MCP_PHYSICAL_MAXIMUM,
                     executorReference: $server->id,
                 );
             }
