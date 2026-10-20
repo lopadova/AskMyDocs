@@ -12,4 +12,9 @@ final class ActionApprovalException extends RuntimeException
     {
         return new self('Action approval is invalid, expired, already consumed, or no longer authorized.');
     }
+
+    public static function contextMismatch(): self
+    {
+        return new self('Action approval cannot be issued outside the active tenant or for a run that tenant does not own.');
+    }
 }

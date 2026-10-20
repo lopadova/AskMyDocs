@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
+use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
+use DateTimeInterface;
 use Padosoft\LaravelFlow\ApprovalTokenManager;
-use Padosoft\LaravelFlow\IssuedApprovalToken;
 use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
+use Padosoft\LaravelFlow\Models\FlowAuditRecord;
+use Padosoft\LaravelFlow\Models\FlowRunRecord;
 
 /**
  * The common HITL/Flow boundary for executable ActionIntent values.
@@ -20,13 +23,25 @@ final class ActionApprovalService
 {
     public const APPROVAL_STEP = 'action-intent-approval';
 
+    public const DENIED_EVENT = 'action_approval.denied';
+
+    private const AUDIT_FIELD_LENGTH = 128;
+
     public function __construct(
         private readonly ApprovalTokenManager $tokens,
+        private readonly TenantContext $tenant,
         private readonly ActionCanonicalizer $canonicalizer = new ActionCanonicalizer,
     ) {}
 
     public function request(ActionIntent $intent, string $runId): PendingActionApproval
     {
+        // Flow stamps the approval row from the ambient tenant while the intent
+        // carries its own; the two must agree and the run must belong to it, or
+        // a row owned by one tenant could carry a payload bound to another.
+        if ($this->tenant->current() !== $intent->tenantId || ! $this->runBelongsToTenant($runId, $intent->tenantId)) {
+            throw ActionApprovalException::contextMismatch();
+        }
+
         $executionId = $this->uuid();
         $issued = $this->tokens->issue($runId, self::APPROVAL_STEP, [
             'execution_id' => $executionId,
@@ -56,7 +71,20 @@ final class ActionApprovalService
         array $actor = [],
     ): ActionApprovalReceipt {
         $pending = $this->tokens->pending($plainTextToken);
-        if (! $pending instanceof FlowApprovalRecord || ! $this->matches($pending, $intent) || ! $currentAcl($intent)) {
+        if (! $pending instanceof FlowApprovalRecord) {
+            // An unknown token has no run to attribute a denial to; a consumed
+            // or lapsed one does.
+            $this->auditUnusableToken($this->tokens->find($plainTextToken), $intent);
+            throw ActionApprovalException::invalid();
+        }
+
+        if (! $this->matches($pending, $intent)) {
+            $this->auditDenial('binding_mismatch', $pending, $intent);
+            throw ActionApprovalException::invalid();
+        }
+
+        if (! $currentAcl($intent)) {
+            $this->auditDenial('acl_denied', $pending, $intent);
             throw ActionApprovalException::invalid();
         }
 
@@ -65,6 +93,8 @@ final class ActionApprovalService
             ['action_digest' => $this->intentDigest($intent)],
         ));
         if (! $approved instanceof FlowApprovalRecord || $approved->status !== FlowApprovalRecord::STATUS_APPROVED) {
+            // Lost the atomic consume to a concurrent approval of the same token.
+            $this->auditDenial('replayed', $pending, $intent);
             throw ActionApprovalException::invalid();
         }
 
@@ -75,14 +105,47 @@ final class ActionApprovalService
     public function verifyForExecution(ActionApprovalReceipt $receipt, ActionIntent $intent, callable $currentAcl): bool
     {
         $record = $this->tokens->findByHash($receipt->tokenHash);
-        return $record instanceof FlowApprovalRecord
-            && $record->status === FlowApprovalRecord::STATUS_APPROVED
-            && $record->consumed_at !== null
-            && $record->decided_at !== null
-            && ! $this->expired($record)
-            && $this->matches($record, $intent)
-            && hash_equals($receipt->executionId, (string) data_get($record->payload, 'execution_id'))
-            && $currentAcl($intent);
+        if (! $record instanceof FlowApprovalRecord) {
+            return false;
+        }
+
+        $reason = $this->executionDenial($record, $receipt, $intent, $currentAcl);
+        if ($reason === null) {
+            return true;
+        }
+
+        $this->auditDenial($reason, $record, $intent);
+
+        return false;
+    }
+
+    /**
+     * @param callable(ActionIntent): bool $currentAcl
+     * @return string|null the denial reason, or null when the effect may run
+     */
+    private function executionDenial(
+        FlowApprovalRecord $record,
+        ActionApprovalReceipt $receipt,
+        ActionIntent $intent,
+        callable $currentAcl,
+    ): ?string {
+        if ($record->status !== FlowApprovalRecord::STATUS_APPROVED || $record->consumed_at === null || $record->decided_at === null) {
+            return 'not_approved';
+        }
+
+        if ($this->expired($record)) {
+            return 'expired';
+        }
+
+        if (! $this->matches($record, $intent)) {
+            return 'binding_mismatch';
+        }
+
+        if (! hash_equals($receipt->executionId, (string) data_get($record->payload, 'execution_id'))) {
+            return 'execution_mismatch';
+        }
+
+        return $currentAcl($intent) ? null : 'acl_denied';
     }
 
     private function matches(FlowApprovalRecord $record, ActionIntent $intent): bool
@@ -91,12 +154,22 @@ final class ActionApprovalService
             (string) data_get($record->payload, 'action_digest'),
             $this->intentDigest($intent),
         ) && (string) data_get($record->payload, 'tenant_id') === $intent->tenantId
+            && (string) $record->tenant_id === $intent->tenantId
             && (string) data_get($record->payload, 'principal_id') === $intent->principalId;
+    }
+
+    private function runBelongsToTenant(string $runId, string $tenantId): bool
+    {
+        return FlowRunRecord::query()
+            ->whereKey($runId)
+            ->where('tenant_id', $tenantId)
+            ->exists();
     }
 
     private function receipt(FlowApprovalRecord $record): ActionApprovalReceipt
     {
         $payload = (array) $record->payload;
+
         return new ActionApprovalReceipt(
             approvalId: (string) $record->id,
             executionId: (string) ($payload['execution_id'] ?? ''),
@@ -109,9 +182,9 @@ final class ActionApprovalService
     }
 
     /**
-     * Flow only expires rows still pending, so an approved row stays readable
-     * forever; the expiry carried by the receipt must be enforced here. A row
-     * with no expiry is refused rather than treated as unbounded.
+     * Flow only expires rows that are still pending, so an approved row stays
+     * readable forever; the expiry carried by the receipt must be enforced
+     * here. A row with no expiry is refused rather than treated as unbounded.
      */
     private function expired(FlowApprovalRecord $record): bool
     {
@@ -122,7 +195,9 @@ final class ActionApprovalService
     /**
      * Structured, not delimiter-joined: fields such as resource/effect/target
      * come from the model proposal, and a joined string lets a `|` shift
-     * between neighbouring fields and reproduce another intent's digest.
+     * between neighbouring fields and reproduce another intent's digest. The
+     * arguments are digested from `args` themselves: `argsDigest` is a public
+     * constructor field and is not trusted to describe them.
      */
     private function intentDigest(ActionIntent $intent): string
     {
@@ -133,18 +208,68 @@ final class ActionApprovalService
             'principal_id' => $intent->principalId,
             'resource' => $intent->resource,
             'effect' => $intent->effect,
-            'args_digest' => $intent->argsDigest,
+            'args_digest' => $this->canonicalizer->digest($intent->args),
             'target' => $intent->target,
             'grant' => $intent->grant,
             'assurance' => $intent->assurance,
         ]);
     }
 
+    private function auditUnusableToken(?FlowApprovalRecord $record, ActionIntent $intent): void
+    {
+        if (! $record instanceof FlowApprovalRecord) {
+            return;
+        }
+
+        $this->auditDenial(
+            $record->status === FlowApprovalRecord::STATUS_APPROVED ? 'replayed' : 'not_pending',
+            $record,
+            $intent,
+        );
+    }
+
+    /**
+     * Append-only, attributed to the approval row's own run and tenant. The
+     * payload holds reason codes, identifiers and digests only: never the
+     * token, the arguments or free text from the proposal. A failed write
+     * propagates, so a denial that cannot be recorded is not silently dropped.
+     */
+    private function auditDenial(string $reason, FlowApprovalRecord $record, ActionIntent $intent): void
+    {
+        FlowAuditRecord::create([
+            'run_id' => (string) $record->run_id,
+            'step_name' => self::APPROVAL_STEP,
+            'event' => self::DENIED_EVENT,
+            'tenant_id' => (string) $record->tenant_id,
+            'payload' => [
+                'reason' => $reason,
+                'approval_id' => (string) $record->id,
+                'execution_id' => (string) data_get($record->payload, 'execution_id'),
+                'action_id' => $this->bounded($intent->actionId),
+                'principal_id' => $this->bounded($intent->principalId),
+                'attempt_tenant_id' => $this->bounded($intent->tenantId),
+                'action_digest' => $this->intentDigest($intent),
+            ],
+            'occurred_at' => CarbonImmutable::now(),
+        ]);
+    }
+
+    private function bounded(string $value): string
+    {
+        return mb_substr($value, 0, self::AUDIT_FIELD_LENGTH);
+    }
+
     private function date(mixed $value): DateTimeImmutable
     {
-        return $value instanceof DateTimeImmutable
-            ? $value
-            : DateTimeImmutable::createFromInterface($value);
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return DateTimeImmutable::createFromInterface($value);
+        }
+
+        throw ActionApprovalException::invalid();
     }
 
     private function uuid(): string
@@ -152,6 +277,7 @@ final class ActionApprovalService
         $bytes = random_bytes(16);
         $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
         $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 }

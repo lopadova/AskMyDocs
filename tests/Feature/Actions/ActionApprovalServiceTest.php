@@ -8,6 +8,7 @@ use App\Actions\ActionApprovalException;
 use App\Actions\ActionApprovalService;
 use App\Actions\ActionIntent;
 use App\Flow\Definitions\PromotionFlow;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -25,6 +26,7 @@ final class ActionApprovalServiceTest extends TestCase
         parent::setUp();
         Queue::fake();
         Storage::fake('kb');
+        $this->app->make(TenantContext::class)->set('test-tenant');
     }
 
     public function test_each_pending_confirmation_has_a_distinct_execution_identity(): void
@@ -153,6 +155,149 @@ final class ActionApprovalServiceTest extends TestCase
         $this->assertFalse($service->verifyForExecution($receipt, $this->intent(principalId: 'user-2'), static fn (ActionIntent $value): bool => true));
     }
 
+    public function test_changed_arguments_with_the_original_digest_are_not_approved(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+        $receipt = $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+
+        $tampered = $this->withArgs($intent, ['query' => 'something the approver never saw']);
+        $this->assertSame($intent->argsDigest, $tampered->argsDigest);
+
+        $this->assertFalse($service->verifyForExecution($receipt, $tampered, static fn (ActionIntent $value): bool => true));
+        $this->expectException(ActionApprovalException::class);
+        $service->approve($pending->plainTextToken, $tampered, static fn (ActionIntent $value): bool => true);
+    }
+
+    public function test_an_approval_cannot_be_issued_against_another_tenants_run(): void
+    {
+        $foreignRun = $this->pausedRunFor('other-tenant');
+        $service = $this->app->make(ActionApprovalService::class);
+
+        $this->expectException(ActionApprovalException::class);
+        try {
+            $service->request($this->intent(), $foreignRun->id);
+        } finally {
+            $this->assertSame(0, DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->count());
+        }
+    }
+
+    public function test_an_approval_cannot_be_issued_for_an_intent_outside_the_active_tenant(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $this->app->make(TenantContext::class)->set('other-tenant');
+
+        $this->expectException(ActionApprovalException::class);
+        try {
+            $service->request($this->intent(), $run->id);
+        } finally {
+            $this->assertSame(0, DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->count());
+        }
+    }
+
+    public function test_a_row_owned_by_another_tenant_is_not_redeemable_even_with_a_matching_payload(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $pending = $service->request($intent, $run->id);
+        DB::table('flow_approvals')->where('step_name', ActionApprovalService::APPROVAL_STEP)->update(['tenant_id' => 'other-tenant']);
+
+        $this->expectException(ActionApprovalException::class);
+        $service->approve($pending->plainTextToken, $intent, static fn (ActionIntent $value): bool => true);
+    }
+
+    public function test_every_attributable_denial_is_audited_without_arguments_or_tokens(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $intent = $this->intent();
+        $allow = static fn (ActionIntent $value): bool => true;
+        $deny = static fn (ActionIntent $value): bool => false;
+
+        $pending = $service->request($intent, $run->id);
+        $this->denied(fn () => $service->approve($pending->plainTextToken, $intent, $deny));
+        $this->denied(fn () => $service->approve($pending->plainTextToken, $this->intent(effect: 'write'), $allow));
+        $receipt = $service->approve($pending->plainTextToken, $intent, $allow);
+        $this->denied(fn () => $service->approve($pending->plainTextToken, $intent, $allow));
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, $deny));
+        $this->assertFalse($service->verifyForExecution($receipt, $this->intent(effect: 'write'), $allow));
+        $this->travelTo($receipt->expiresAt->modify('+1 second'));
+        $this->assertFalse($service->verifyForExecution($receipt, $intent, $allow));
+
+        $rows = DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->orderBy('id')->get();
+        $this->assertSame(
+            ['acl_denied', 'binding_mismatch', 'replayed', 'acl_denied', 'binding_mismatch', 'expired'],
+            $rows->map(fn (object $row): string => (string) json_decode((string) $row->payload, true)['reason'])->all(),
+        );
+        foreach ($rows as $row) {
+            $this->assertSame($run->id, $row->run_id);
+            $this->assertSame('test-tenant', $row->tenant_id);
+            $payload = (string) $row->payload;
+            $this->assertStringNotContainsString($pending->plainTextToken, $payload);
+            $this->assertStringNotContainsString('retention policy', $payload);
+            $this->assertSame($pending->executionId, json_decode($payload, true)['execution_id']);
+            $this->assertSame('user-1', json_decode($payload, true)['principal_id']);
+        }
+    }
+
+    public function test_an_unknown_token_is_refused_without_an_audit_row(): void
+    {
+        $run = $this->pausedRun();
+        $service = $this->app->make(ActionApprovalService::class);
+        $service->request($this->intent(), $run->id);
+
+        $this->denied(fn () => $service->approve('not-a-real-token', $this->intent(), static fn (ActionIntent $value): bool => true));
+
+        $this->assertSame(0, DB::table('flow_audit')->where('event', ActionApprovalService::DENIED_EVENT)->count());
+    }
+
+    /** @param callable(): mixed $attempt */
+    private function denied(callable $attempt): void
+    {
+        try {
+            $attempt();
+        } catch (ActionApprovalException) {
+            return;
+        }
+        $this->fail('The attempt must be refused with an ActionApprovalException.');
+    }
+
+    /** @param array<string, mixed> $args */
+    private function withArgs(ActionIntent $intent, array $args): ActionIntent
+    {
+        return new ActionIntent(
+            actionId: $intent->actionId,
+            schemaVersion: $intent->schemaVersion,
+            tenantId: $intent->tenantId,
+            principalId: $intent->principalId,
+            resource: $intent->resource,
+            effect: $intent->effect,
+            args: $args,
+            target: $intent->target,
+            grant: $intent->grant,
+            assurance: $intent->assurance,
+            evidenceRefs: $intent->evidenceRefs,
+            reservationRef: $intent->reservationRef,
+            argsDigest: $intent->argsDigest,
+        );
+    }
+
+    private function pausedRunFor(string $tenantId): object
+    {
+        $context = $this->app->make(TenantContext::class);
+        $previous = $context->current();
+        $context->set($tenantId);
+        try {
+            return $this->pausedRun($tenantId);
+        } finally {
+            $context->set($previous);
+        }
+    }
+
     private function intent(
         string $resource = 'knowledge_document',
         string $effect = 'read',
@@ -174,16 +319,16 @@ final class ActionApprovalServiceTest extends TestCase
         );
     }
 
-    private function pausedRun(): object
+    private function pausedRun(string $tenantId = 'test-tenant'): object
     {
         return Flow::execute(
             PromotionFlow::NAME,
             [
-                'tenant_id' => 'test-tenant',
+                'tenant_id' => $tenantId,
                 'project_key' => 'acme',
                 'markdown' => "---\nid: DEC-0001\nslug: approval-test\ntype: decision\nstatus: accepted\n---\n\n# Approval test\n\nBody.",
             ],
-            FlowExecutionOptions::make(correlationId: 'test-tenant'),
+            FlowExecutionOptions::make(correlationId: $tenantId),
         );
     }
 }
