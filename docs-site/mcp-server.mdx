@@ -69,12 +69,35 @@ enforces the caller's RBAC on every invocation.
 
 The transport, multi-turn tool-calling orchestrator, hash-only audit, and RBAC
 hooks are factored into the standalone **`padosoft/askmydocs-mcp-pack`** package
-(framework-agnostic; AskMyDocs pins `^1.5`). The host binds three adapters
+(framework-agnostic; AskMyDocs requires `^2.0`). The host binds three adapters
 (`McpHostBridge`, server registry, tool authorizer) so the pack drives the real
 AskMyDocs retrieval + Spatie RBAC + Eloquent audit. The host admin SPA
 (`/app/admin/mcp-tools`) surfaces server CRUD, the tool catalogue, and the audit
 log; the optional standalone `padosoft/askmydocs-mcp-pack-admin` panel (default
 `/admin/mcp-pack`) adds the circuit-breaker dashboard and the OpenAPI explorer.
+
+### Upgrading to pack 2.0
+
+- **Run `php artisan migrate`.** The pack adds `mcp_tasks`, `mcp_artifacts` and
+  `mcp_request_states`, and four nullable columns on `mcp_tool_call_audit`.
+- **Artifact download stays off.** The pack mounts a signed-URL route,
+  `GET /mcp-pack/v2/artifacts/{artifact}/download`, and ships it on. AskMyDocs
+  returns no MCP artifacts, so `config/mcp-pack.php` turns it off
+  (`MCP_PACK_ARTIFACTS_ENABLED=false`). Enable it only together with an
+  authorization-matrix row for the route.
+- **A tool call is several messages.** The pack negotiates before every
+  `tools/call`: `server/discover` plus the call against a current server (2
+  messages), and against a legacy server one `initialize` per protocol revision
+  it rejects, then `notifications/initialized`, and another round if the session
+  has to be recovered, up to 11 messages. The agent budget refuses a call before
+  any traffic unless that worst case still fits under `agent.limits.physical_hard`,
+  then charges the count the pack really sent.
+- **Errors keep their meaning.** JSON-RPC errors now arrive as
+  `McpRemoteErrorException`; the host catches the common `McpException`, so a
+  server that answers `tools/list` with an error still stays `active` with a
+  `tools_list_warning`, and remote errors keep the `transport_error` audit status.
+- **Guzzle.** Pack 2.0 requires `guzzlehttp/guzzle ^7.8.2`, so the lock resolves
+  Guzzle 7.x until the pack also allows 8.
 
 ## Gotchas & operations
 

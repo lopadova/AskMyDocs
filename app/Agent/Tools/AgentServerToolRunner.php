@@ -7,6 +7,7 @@ namespace App\Agent\Tools;
 use App\Agent\AgentExecutionContext;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Mcp\Client\McpToolAuthorizer;
+use App\Mcp\Client\McpToolInvocationFailed;
 use App\Mcp\Client\ToolInvoker;
 use App\Models\AgentRun;
 use App\Models\McpServer;
@@ -88,10 +89,12 @@ final readonly class AgentServerToolRunner
         AgentRun $run,
         AgentBudgetTracker $budget,
     ): AgentToolActionResult {
-        // One tool call is several wire messages (see AgentToolRegistry::MCP_PHYSICAL_*),
-        // so capacity is checked for, and the ledger charged with, the worst case.
-        $physical = max(1, $tool->physicalMaximum);
-        $capacity = $budget->canIssuePhysical($physical);
+        // One tool call is several wire messages, and the pack decides how many
+        // (see AgentToolRegistry::mcpPhysicalMaximum()). Capacity is therefore
+        // checked for the worst case before any traffic, so the call can never
+        // exceed the limit; the ledger is then charged what was really sent.
+        $worstCase = max(1, $tool->physicalMaximum);
+        $capacity = $budget->canIssuePhysical($worstCase);
         if (! $capacity->allowed()) {
             return new AgentToolActionResult(['error' => $capacity->reason], 0, false, $capacity->reason);
         }
@@ -108,15 +111,20 @@ final readonly class AgentServerToolRunner
         }
 
         try {
-            $result = $this->mcp->invoke($user, $server, $tool->name, $arguments, [
+            $invocation = $this->mcp->invokeMeasured($user, $server, $tool->name, $arguments, [
                 'conversation_id' => $run->conversation_id,
                 'locale' => $context->locale,
                 'agent_run_id' => $run->id,
             ]);
-            $budget->recordResult($physical, $this->bytes($result), true);
+            $budget->recordResult($invocation->physicalRequests, $this->bytes($invocation->result), true);
 
-            return new AgentToolActionResult($result, $physical);
+            return new AgentToolActionResult($invocation->result, $invocation->physicalRequests);
         } catch (\Throwable $exception) {
+            // A failure that reports its count is charged exactly; anything else
+            // has an unknown count, so it is charged the worst case.
+            $physical = $exception instanceof McpToolInvocationFailed
+                ? $exception->physicalRequests
+                : $worstCase;
             $body = ['error' => $exception->getMessage()];
             $budget->recordResult($physical, $this->bytes($body), false);
 

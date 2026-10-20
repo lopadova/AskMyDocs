@@ -33,10 +33,26 @@ final class ToolInvoker
         array $toolInput,
         array $context = [],
     ): array {
+        return $this->invokeMeasured($user, $server, $toolName, $toolInput, $context)->result;
+    }
+
+    /**
+     * Same call as {@see self::invoke()}, but also reports how many physical
+     * messages the pack sent. A failure throws {@see McpToolInvocationFailed}
+     * (a `RuntimeException`) carrying that count.
+     */
+    public function invokeMeasured(
+        User $user,
+        McpServer $server,
+        string $toolName,
+        array $toolInput,
+        array $context = [],
+    ): McpToolInvocation {
         $start = microtime(true);
         $status = McpToolCallAudit::STATUS_OK;
         $result = [];
         $errorPayload = null;
+        $client = null;
 
         try {
             // Native transport via the package — `forServer()` reads
@@ -76,6 +92,7 @@ final class ToolInvoker
             ];
         }
 
+        $physicalRequests = $client instanceof McpClient ? $client->physicalRequestCount() : 0;
         $durationMs = (int) round((microtime(true) - $start) * 1000);
         $hashInput = $status === McpToolCallAudit::STATUS_OK
             ? $result
@@ -97,10 +114,10 @@ final class ToolInvoker
         ]);
 
         if ($status !== McpToolCallAudit::STATUS_OK) {
-            throw new \RuntimeException($errorPayload['message'] ?? 'Tool invocation failed.');
+            throw new McpToolInvocationFailed($errorPayload['message'] ?? 'Tool invocation failed.', $physicalRequests);
         }
 
-        return $result;
+        return new McpToolInvocation($result, $physicalRequests);
     }
 
     /**

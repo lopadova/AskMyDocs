@@ -1721,14 +1721,18 @@ Then sign in as a `super-admin` and open
 > columns on `mcp_tool_call_audit`). The pack's signed-URL artifact download
 > route (`GET /mcp-pack/v2/artifacts/{artifact}/download`) ships ON but is kept
 > OFF here (`MCP_PACK_ARTIFACTS_ENABLED=false`, R43). The pack now negotiates
-> before every `tools/call` — `server/discover`, plus `initialize` and
-> `notifications/initialized` against a legacy server — so an MCP tool call is
-> 2 to 4 wire messages, and the agent budget charges and enforces the worst case
-> (`AgentToolRegistry::MCP_PHYSICAL_*`). JSON-RPC errors now arrive as
-> `McpRemoteErrorException`; the host catches the common `McpException`, so a
-> server that answers `tools/list` with an error still stays `active` with a
-> `tools_list_warning`. Pack 2.0 requires `guzzlehttp/guzzle ^7.8.2`, so the
-> lock resolves Guzzle 7.x until the pack also allows 8.
+> before every `tools/call`, so an MCP tool call is no longer one wire message:
+> `server/discover` plus `tools/call` against a current server (2), and against
+> a legacy server `initialize` once per protocol revision it rejects, then
+> `notifications/initialized`, and one more round after a session recovery, up
+> to 11 messages. The agent budget refuses a call before any traffic unless that
+> worst case still fits under `agent.limits.physical_hard`, then charges the
+> count the pack really sent (`McpClient::physicalRequestCount()`). JSON-RPC
+> errors now arrive as `McpRemoteErrorException`; the host catches the common
+> `McpException`, so a server that answers `tools/list` with an error still
+> stays `active` with a `tools_list_warning`. Pack 2.0 requires
+> `guzzlehttp/guzzle ^7.8.2`, so the lock resolves Guzzle 7.x until the pack
+> also allows 8.
 
 ### Enabling AI Act compliance features (junior-proof)
 

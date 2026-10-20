@@ -19,21 +19,27 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpTransportContract;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
+use Padosoft\AskMyDocsMcpPack\Support\JsonRpcMessage;
 use Tests\Support\Mcp\StubMcpTransport;
 use Tests\TestCase;
 
 /**
  * askmydocs-mcp-pack 2.0 negotiates before every tools/call, so one MCP tool
- * call is several wire messages, not one. The agent budget has to charge and
- * enforce that cost or a run with a single slot left silently exceeds its
- * physical limit.
+ * call is several wire messages, not one, and how many depends on the server
+ * (a current server, a legacy one, a legacy one that rejects the first protocol
+ * revision, a session that has to be recovered). The agent budget checks the
+ * worst case before any traffic and charges what the pack really sent.
  */
 final class AgentServerToolRunnerMcpBudgetTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const HARD_LIMIT = 10;
+    private const HARD_LIMIT = 30;
+
+    /** discover (unsupported) + initialize + notification + tools/call against the stub. */
+    private const STUB_LEGACY_MESSAGES = 4;
 
     private User $user;
 
@@ -46,6 +52,7 @@ final class AgentServerToolRunnerMcpBudgetTest extends TestCase
         Cache::flush();
         app(TenantContext::class)->set('default');
         config([
+            'mcp.enabled' => true,
             'mcp-pack.audit_model' => McpToolCallAudit::class,
             'agent.limits.physical_hard' => self::HARD_LIMIT,
         ]);
@@ -63,6 +70,13 @@ final class AgentServerToolRunnerMcpBudgetTest extends TestCase
             'endpoint' => 'http://upstream.test/mcp',
             'auth_config_encrypted' => null,
             'enabled_tools_json' => ['kb_search'],
+            'handshake_response_json' => ['tools' => [[
+                'name' => 'kb_search',
+                'description' => 'Search the knowledge base',
+                'inputSchema' => ['type' => 'object', 'properties' => []],
+                'readOnlyHint' => true,
+                'idempotentHint' => true,
+            ]]],
             'status' => McpServer::STATUS_ACTIVE,
             'created_by' => $this->user->id,
         ]);
@@ -74,30 +88,40 @@ final class AgentServerToolRunnerMcpBudgetTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_the_registry_plans_an_mcp_call_as_negotiation_plus_the_call(): void
+    public function test_the_registry_declares_an_mcp_call_from_the_cheapest_to_the_worst_case(): void
     {
         $tool = $this->tool();
 
         $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_MINIMUM, $tool->physicalMinimum);
-        $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_MAXIMUM, $tool->physicalMaximum);
-        $this->assertGreaterThan(1, $tool->physicalMinimum, 'a call is never a single wire message under pack 2.0');
-        $this->assertGreaterThan(AgentToolRegistry::MCP_PHYSICAL_LIKELY - 1, AgentToolRegistry::MCP_PHYSICAL_MAXIMUM - 1);
+        $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_LIKELY, $tool->physicalLikely);
+        $this->assertSame(AgentToolRegistry::mcpPhysicalMaximum(), $tool->physicalMaximum);
+        $this->assertGreaterThan(1, $tool->physicalMinimum, 'a call is never a single message under pack 2.0');
     }
 
-    public function test_a_successful_call_is_charged_its_worst_case_wire_cost(): void
+    public function test_the_worst_case_covers_every_legacy_revision_and_a_session_recovery(): void
     {
-        $this->transport();
+        // discover + one initialize per revision + notification + tools/call,
+        // then recovery: initialize + notification + tools/call.
+        $expected = 1 + count(McpClient::SUPPORTED_LEGACY_PROTOCOL_VERSIONS) + 1 + 1 + 3;
+
+        $this->assertSame($expected, AgentToolRegistry::mcpPhysicalMaximum());
+        $this->assertGreaterThan(4, AgentToolRegistry::mcpPhysicalMaximum(), 'four only covers the first legacy revision succeeding');
+    }
+
+    public function test_a_successful_call_is_charged_what_the_pack_sent(): void
+    {
+        $this->stubTransport();
         $run = $this->agentRun(['physical_calls' => 0]);
         $budget = new AgentBudgetTracker($run);
 
         $result = $this->runner()->execute($this->tool(), ['query' => 'hello'], $this->context($run), $run, $budget);
 
         $this->assertTrue($result->successful());
-        $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_MAXIMUM, $result->physicalRequests);
-        $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_MAXIMUM, $budget->snapshot()['physical_calls']);
+        $this->assertSame(self::STUB_LEGACY_MESSAGES, $result->physicalRequests);
+        $this->assertSame(self::STUB_LEGACY_MESSAGES, $budget->snapshot()['physical_calls']);
     }
 
-    public function test_a_failed_call_is_still_charged_its_worst_case_wire_cost(): void
+    public function test_a_failed_call_is_still_charged_what_the_pack_sent(): void
     {
         McpClient::useTransportResolver(fn () => (new StubMcpTransport())->scriptInitialize());
         $run = $this->agentRun(['physical_calls' => 0]);
@@ -107,13 +131,29 @@ final class AgentServerToolRunnerMcpBudgetTest extends TestCase
 
         $this->assertFalse($result->successful());
         $this->assertSame('mcp_tool_error', $result->stopReason);
-        $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_MAXIMUM, $result->physicalRequests);
-        $this->assertSame(AgentToolRegistry::MCP_PHYSICAL_MAXIMUM, $budget->snapshot()['physical_calls']);
+        $this->assertSame(self::STUB_LEGACY_MESSAGES, $result->physicalRequests);
+        $this->assertSame(self::STUB_LEGACY_MESSAGES, $budget->snapshot()['physical_calls']);
     }
 
-    public function test_a_call_is_refused_before_any_traffic_when_fewer_slots_remain_than_its_worst_case(): void
+    public function test_a_legacy_server_that_rejects_the_first_revision_costs_more_than_four(): void
     {
-        $used = self::HARD_LIMIT - (AgentToolRegistry::MCP_PHYSICAL_MAXIMUM - 1);
+        $transport = $this->rejectFirstRevisionTransport();
+        McpClient::useTransportResolver(fn () => $transport);
+        $run = $this->agentRun(['physical_calls' => 0]);
+        $budget = new AgentBudgetTracker($run);
+
+        $result = $this->runner()->execute($this->tool(), ['query' => 'hello'], $this->context($run), $run, $budget);
+
+        // discover, initialize (rejected), initialize (accepted), notification, tools/call
+        $this->assertTrue($result->successful());
+        $this->assertSame(5, $transport->messages);
+        $this->assertSame(5, $result->physicalRequests);
+        $this->assertSame(5, $budget->snapshot()['physical_calls']);
+    }
+
+    public function test_a_call_is_refused_before_any_traffic_when_fewer_slots_remain_than_the_worst_case(): void
+    {
+        $used = self::HARD_LIMIT - (AgentToolRegistry::mcpPhysicalMaximum() - 1);
         $run = $this->agentRun(['physical_calls' => $used]);
         $budget = new AgentBudgetTracker($run);
         $touched = false;
@@ -125,27 +165,42 @@ final class AgentServerToolRunnerMcpBudgetTest extends TestCase
 
         $result = $this->runner()->execute($this->tool(), ['query' => 'hello'], $this->context($run), $run, $budget);
 
-        $this->assertFalse($touched, 'no wire message may be sent once the worst case no longer fits');
+        $this->assertFalse($touched, 'no message may be sent once the worst case no longer fits');
         $this->assertFalse($result->complete);
         $this->assertSame('physical_hard_limit', $result->stopReason);
         $this->assertSame(0, $result->physicalRequests);
         $this->assertSame($used, $budget->snapshot()['physical_calls']);
     }
 
-    public function test_a_call_that_exactly_fits_is_allowed_and_fills_the_budget(): void
+    public function test_four_remaining_slots_are_not_enough_for_a_call_that_may_need_five(): void
     {
-        $this->transport();
-        $used = self::HARD_LIMIT - AgentToolRegistry::MCP_PHYSICAL_MAXIMUM;
+        $used = self::HARD_LIMIT - 4;
+        $run = $this->agentRun(['physical_calls' => $used]);
+        $budget = new AgentBudgetTracker($run);
+        $transport = $this->rejectFirstRevisionTransport();
+        McpClient::useTransportResolver(fn () => $transport);
+
+        $result = $this->runner()->execute($this->tool(), ['query' => 'hello'], $this->context($run), $run, $budget);
+
+        $this->assertSame(0, $transport->messages);
+        $this->assertSame('physical_hard_limit', $result->stopReason);
+        $this->assertSame($used, $budget->snapshot()['physical_calls']);
+    }
+
+    public function test_a_call_that_exactly_fits_the_worst_case_is_allowed(): void
+    {
+        $this->stubTransport();
+        $used = self::HARD_LIMIT - AgentToolRegistry::mcpPhysicalMaximum();
         $run = $this->agentRun(['physical_calls' => $used]);
         $budget = new AgentBudgetTracker($run);
 
         $result = $this->runner()->execute($this->tool(), ['query' => 'hello'], $this->context($run), $run, $budget);
 
         $this->assertTrue($result->successful());
-        $this->assertSame(self::HARD_LIMIT, $budget->snapshot()['physical_calls']);
+        $this->assertSame($used + self::STUB_LEGACY_MESSAGES, $budget->snapshot()['physical_calls']);
     }
 
-    private function transport(): void
+    private function stubTransport(): void
     {
         $transport = (new StubMcpTransport())->scriptInitialize()->scriptToolCall('kb_search', [
             'hits' => [['title' => 'Hello World', 'score' => 0.91]],
@@ -153,26 +208,57 @@ final class AgentServerToolRunnerMcpBudgetTest extends TestCase
         McpClient::useTransportResolver(fn () => $transport);
     }
 
+    /**
+     * A legacy server that has no `server/discover`, rejects the newest protocol
+     * revision as unsupported and accepts the next one.
+     */
+    private function rejectFirstRevisionTransport(): McpTransportContract
+    {
+        return new class implements McpTransportContract {
+            public int $messages = 0;
+
+            private int $initializeCalls = 0;
+
+            public function request(JsonRpcMessage $request): JsonRpcMessage
+            {
+                $this->messages++;
+
+                return match ($request->method) {
+                    'initialize' => ++$this->initializeCalls === 1
+                        ? JsonRpcMessage::errorResponse($request->id, -32602, 'Unsupported protocol version')
+                        : JsonRpcMessage::response($request->id, ['capabilities' => ['tools' => new \stdClass()]]),
+                    'tools/call' => JsonRpcMessage::response($request->id, ['hits' => [['title' => 'Hello World']]]),
+                    default => JsonRpcMessage::errorResponse($request->id, -32601, 'Method not found'),
+                };
+            }
+
+            public function notify(JsonRpcMessage $notification): void
+            {
+                $this->messages++;
+            }
+
+            public function isHealthy(): bool
+            {
+                return true;
+            }
+        };
+    }
+
     private function runner(): AgentServerToolRunner
     {
         return $this->app->make(AgentServerToolRunner::class);
     }
 
+    /** The definition the registry really produces for the advertised tool. */
     private function tool(): AgentToolDefinition
     {
-        return new AgentToolDefinition(
-            name: 'kb_search',
-            displayName: 'kb_search',
-            description: 'Search',
-            kind: 'mcp',
-            inputSchema: ['type' => 'object', 'properties' => []],
-            readOnly: true,
-            idempotent: true,
-            physicalMinimum: AgentToolRegistry::MCP_PHYSICAL_MINIMUM,
-            physicalLikely: AgentToolRegistry::MCP_PHYSICAL_LIKELY,
-            physicalMaximum: AgentToolRegistry::MCP_PHYSICAL_MAXIMUM,
-            executorReference: $this->server->id,
-        );
+        $run = $this->agentRun([]);
+        $tools = $this->app->make(AgentToolRegistry::class)->forContext($this->context($run), $this->user);
+
+        $this->assertArrayHasKey('kb_search', $tools, 'the registry must register the server\'s advertised MCP tool');
+        $this->assertSame('mcp', $tools['kb_search']->kind);
+
+        return $tools['kb_search'];
     }
 
     private function context(AgentRun $run): AgentExecutionContext
