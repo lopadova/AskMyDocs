@@ -1,0 +1,127 @@
+---
+title: "Connect Codex to a project"
+description: "OAuth sign-in, one company and project per connection, distinct MCP URLs, and document ingestion from Codex."
+icon: "plug"
+---
+
+AskMyDocs can serve as the project knowledge source for Codex. Each connection
+authorizes **one company and one project**, selected in the browser during OAuth
+consent. Another project gets another connection, plugin identity and MCP URL.
+You never copy API tokens, client IDs or secrets into the project.
+
+## Install and connect
+
+Open `/mcp/connect` on your AskMyDocs installation. Sign in, prepare a connection
+and download its plugin package. The archive contains the plugin and a local
+marketplace catalog. Extract it and add the extracted directory as a Codex
+marketplace; then install the AskMyDocs plugin from that source. The included
+catalog requests authentication on installation.
+
+For an operator preparing a local installation, the equivalent is:
+
+```bash
+php artisan askmydocs:mcp:plugin --output=/absolute/path/to/new-marketplace
+codex plugin marketplace add /absolute/path/to/new-marketplace
+```
+
+In Codex, choose the plugin and **Connect**. OAuth opens AskMyDocs, where you
+sign in, select a company, select one project in that company, and approve the
+requested permissions. A single available company or project is preselected.
+An existing connection remains bound to its original project on reauthorization.
+
+Clients that support adding an HTTP MCP server directly can use the unique URL
+shown by the setup page instead of installing the package. No bearer-token
+configuration is needed. The endpoint is:
+
+```text
+https://YOUR-ASKMYDOCS/mcp/knowledge/CONNECTION-UUID
+```
+
+The local marketplace is for local Codex clients. A public listing in the
+ChatGPT/Codex universal plugin directory requires submitting the deployed HTTPS
+MCP server through OpenAI's plugin publishing and review flow; creating a local
+package does not publish it. A Herd `.test` endpoint is reachable from the local
+Mac, not from ChatGPT cloud execution.
+
+## Search and read
+
+The connected server exposes these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `kb-connected-project-tool` | Identify the authorized company, project and scopes. |
+| `kb-connected-search-tool` | Search that project and return source identifiers and bounded text. |
+| `kb-connected-document-tool` | Read one authorized document, with chunk pagination. |
+| `kb-ingest-documents-tool` | Submit documents and return a browser approval link. |
+| `kb-import-status-tool` | Poll import progress and retrieve indexed document IDs. |
+
+Search and document tools have no tenant or project argument. Every request
+rechecks account activity, membership in the selected project, current client
+policy, token audience, expiry and revocation. Reading a document by its numeric
+ID cannot escape the selected project. Existing document access scopes apply.
+
+The PHP surface is `ConnectedProjectWorkspace` / `McpDocumentImportService`.
+The REST adapters are `POST /mcp/knowledge/{connection}/api/info`, `/search`,
+`/document` and `/imports`; they use the same OAuth authority and services.
+
+## Send documents from Codex
+
+Ask Codex to import specific local files. It can send Markdown and plain text
+as text, or PDF/DOCX bytes as base64. One call accepts at most ten files,
+5 MB per decoded file and 10 MB total. File signatures are checked. Arbitrary
+filesystem paths and download URLs are not accepted as file content.
+
+1. Codex submits the files to `kb-ingest-documents-tool`.
+2. AskMyDocs stages them and returns the import ID, file manifest and
+   `approval_url`. The files have not been indexed yet.
+3. Open that link. Review the destination, names, sizes and text previews, then
+   approve indexing. The MCP token cannot approve the operation itself.
+4. Codex polls `kb-import-status-tool`. Only `ready: true` means every file was
+   indexed successfully and can be used for retrieval.
+
+The import capability requires `mcp:ingest` plus the existing admin/super-admin
+ingestion role and unrestricted membership in the selected project. Read-only
+connections use `mcp:read`. Uploads use a separate content-addressed source
+namespace, preserving existing source files. Identical retries return the
+original import, including concurrent submissions. Approval is valid for one
+hour and is bound to the staged byte hashes; changed staged files are rejected.
+The queue rechecks the initiating user's current permissions before processing.
+
+The import delegates to `KbUploadStagingService` and `IngestDocumentJob`, the
+same conversion, chunking, PII handling, embedding and persistence pipeline used
+by existing uploads. It does not implement a second document index.
+
+## Authentication and deployment
+
+Protected-resource discovery is available at
+`/.well-known/oauth-protected-resource/mcp/knowledge/{connection}`. An
+unauthenticated MCP request returns a `WWW-Authenticate` challenge pointing at
+that exact resource metadata. The MCP authorization-server issuer is
+`APP_URL/oauth/mcp`, discovered at
+`/.well-known/oauth-authorization-server/oauth/mcp`.
+
+The existing authorization server provides public-client dynamic registration,
+authorization codes with mandatory S256 PKCE, issuer-bound callbacks, resource
+audience validation and refresh-token rotation. Access tokens last at most one
+hour (or the shorter Sanctum lifetime). Refresh families expire 90 days after
+consent; replaying a consumed refresh token revokes its family. Browser approval
+and connection management require a session and CSRF protection. The legacy
+`/mcp/kb` tenant-token endpoint and the existing API OAuth clients keep their
+separate authentication contracts.
+
+Deploy the migration and frontend build:
+
+```bash
+php artisan migrate
+npm run build
+```
+
+`laravel/mcp` is a production dependency. Use the installation's public HTTPS
+`APP_URL`, keep its queue worker running, and use a shared lock-capable cache
+store across workers. Dynamic registration and MCP traffic have independent
+rate limits. Tokens are hashed at rest; tool audit records omit document bodies
+and secrets. Revocation is available at `/oauth/connections`.
+
+See OpenAI's [MCP authentication](https://developers.openai.com/plugins/build/auth)
+and [plugin packaging](https://developers.openai.com/plugins/build/plugins)
+guides for client installation and public distribution.

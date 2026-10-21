@@ -4,6 +4,13 @@ description: "Expose the canonical knowledge base as Model Context Protocol tool
 icon: "terminal"
 ---
 
+## Connect Codex with OAuth
+
+For account sign-in, one project per connection, distinct MCP URLs and document
+ingestion from Codex, use [Connect Codex to a project](/codex-project-connection).
+The project server supports OAuth discovery and automatic client registration;
+its plugin does not contain a token or client secret.
+
 ## Motivation
 
 Retrieval is most useful when an *agent* can reach it. AskMyDocs exposes its
@@ -14,7 +21,7 @@ surface promotion candidates — over the same retrieval stack the chat UI uses.
 ## The `enterprise-kb` server
 
 The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
-`enterprise-kb`) exposes **25 tools** across four categories:
+`enterprise-kb`) exposes the tools registered in its source across these categories:
 
 - **Read-only retrieval** (hybrid search, document/chunk reads, recent changes,
   project-scoped search).
@@ -61,9 +68,9 @@ also an MCP tool.
 
 Expose the server and point your MCP client at it. The host ships an
 `askmydocs:mcp:connect` Artisan helper that prints the bootstrap snippet for a
-consumer client. Access is **token-gated** — mint a personal access token (Sanctum) or an
-MCP token in the admin (`/app/admin/mcp/tokens`) and the per-tool authorizer
-enforces the caller's RBAC on every invocation.
+consumer client. The legacy `/mcp/kb` endpoint uses an **MCP tenant token** minted in the admin
+MCP Tokens page; an ordinary Sanctum personal token does not authorize it.
+For user- and project-bound access, use the OAuth project connection above.
 
 ## The MCP pack
 

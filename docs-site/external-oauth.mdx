@@ -11,7 +11,10 @@ The external application never receives the user's password.
 
 The supported flow is OAuth authorization code with **mandatory S256 PKCE**.
 Clients are registered public clients with no client secret. Password grants,
-implicit grants, refresh tokens and OpenID Connect are not supported. Exchange
+implicit grants and OpenID Connect are not supported. The project-scoped MCP
+flow additionally supports automatic client registration and rotating refresh
+tokens; see [Connect Codex to a project](/codex-project-connection). Legacy API
+OAuth grants described here do not issue refresh tokens. Exchange
 the code from the external application's backend and store the key in its
 encrypted credential store.
 
@@ -36,7 +39,8 @@ The command prints the **client ID**. Repeat `--redirect-uri` to register more
 callbacks; omitting `--scope` permits both supported scopes. Callbacks require
 HTTPS and cannot contain fragments, credentials or reserved response parameters.
 In `local` or `testing`, HTTP callbacks on `.test` or loopback hosts are also
-accepted. URL matching is exact, including path, port and query string.
+accepted. URL matching is exact, including path and query string. HTTP loopback callbacks
+accept variable ports as required by RFC 8252.
 
 For the Herd project `AskMyDocsDev`, the authorization-server base URL is
 `https://askmydocsdev.test`. Use `APP_URL` for other deployments. No OAuth

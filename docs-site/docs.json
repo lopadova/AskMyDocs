@@ -79,6 +79,7 @@
         "pages": [
           "ai-providers",
           "mcp-server",
+          "codex-project-connection",
           "desktop-client",
           "external-oauth",
           "sister-packages"
