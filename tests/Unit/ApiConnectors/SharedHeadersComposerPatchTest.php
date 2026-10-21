@@ -32,6 +32,19 @@ PHP);
         rmdir($this->packagePath);
     }
 
+    public function test_installs_and_updates_register_the_shared_header_patch(): void
+    {
+        $manifest = json_decode(file_get_contents(dirname(__DIR__, 3).'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+
+        foreach (['post-install-cmd', 'post-update-cmd'] as $event) {
+            $this->assertContains(
+                '@php scripts/composer/patch-api-connector-headers.php',
+                $manifest['scripts'][$event] ?? [],
+                $event.' must apply the API connector shared-header patch.',
+            );
+        }
+    }
+
     public function test_composer_install_and_update_can_apply_the_patch_repeatedly(): void
     {
         $this->runPatch()->mustRun();

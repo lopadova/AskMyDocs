@@ -88,6 +88,40 @@ final class ApiConnectorSharedHeadersTest extends TestCase
             && $request->header(self::HEADER) === ['gateway-secret']);
     }
 
+    public function test_modal_test_endpoints_send_the_cloudflare_header_alongside_api_auth(): void
+    {
+        config()->set('connector-api.llm_assist.enabled', false);
+        $connector = $this->createConnector();
+        $profile = app(ConnectorAdminService::class)->createAuthProfile($connector, [
+            'type' => 'bearer', 'credentials' => ['token' => 'auth-secret'],
+        ]);
+        $connector->update(['default_auth_profile_id' => $profile->id]);
+        $route = $this->createRoute($connector);
+
+        // "Testa chiamata" tests the current config without saving it first.
+        $this->postJson('/api/admin/api-connectors/'.$connector->id.'/routes/test-config', [
+            'config' => [
+                'request' => ['http_method' => 'GET', 'url' => 'https://api.example.com/preview', 'params' => []],
+            ],
+            'example_args' => [],
+        ])->assertOk()->assertJsonPath('test.ok', true);
+
+        // Saving the modal also tests the persisted route through a separate endpoint.
+        $this->postJson('/api/admin/api-connectors/routes/'.$route->id.'/test', [
+            'example_args' => [],
+        ])->assertOk()->assertJsonPath('test.ok', true);
+
+        Http::assertSentCount(2);
+        $this->assertSame(
+            ['https://api.example.com/preview', 'https://api.example.com/orders'],
+            Http::recorded()->map(fn (array $record): string => $record[0]->url())->all(),
+        );
+        foreach (Http::recorded() as [$request]) {
+            $this->assertTrue($request->hasHeader(self::HEADER, 'gateway-secret'));
+            $this->assertTrue($request->hasHeader('Authorization', 'Bearer auth-secret'));
+        }
+    }
+
     public function test_removing_the_optional_header_takes_effect_on_the_next_request(): void
     {
         $connector = $this->createConnector();

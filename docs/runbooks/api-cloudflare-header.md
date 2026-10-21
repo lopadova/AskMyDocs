@@ -48,3 +48,24 @@ sorgenti inattese prima di scrivere i file. Quando il pacchetto incorporerà la
 correzione, verificare il comportamento e rimuovere script e hook Composer.
 Se l'installazione usa `--no-scripts`, eseguire esplicitamente
 `php scripts/composer/patch-api-connector-headers.php` prima di servire richieste.
+
+### Verifica dopo un deploy
+
+Gli hook `post-install-cmd` e `post-update-cmd` in `composer.json` sono necessari
+finché resta installata la beta.5. Senza questi hook un nuovo `vendor/` perde la
+correzione anche se il token risulta salvato nel modulo della connessione.
+Un checkout già corretto può continuare a funzionare e nascondere il problema.
+
+Per correggere un'installazione esistente, eseguire:
+
+```bash
+php scripts/composer/patch-api-connector-headers.php
+```
+
+Riavviare gli eventuali worker persistenti, quindi ripetere **Testa chiamata**.
+`ApiConnectorSharedHeadersTest` verifica gli header in uscita sia dall'endpoint
+`routes/test-config` usato dalla scheda Prova sia da `routes/{id}/test` usato
+dopo il salvataggio, insieme all'header `Authorization` del profilo API.
+`SharedHeadersComposerPatchTest` verifica anche che entrambi gli hook restino
+registrati. Un 403 persistente richiede la verifica della regola e del Ray ID
+nei Security Events di Cloudflare; il solo stato 403 non prova l'assenza del token.

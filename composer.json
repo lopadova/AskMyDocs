@@ -74,6 +74,14 @@
             "Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "post-install-cmd": [
+            "@php scripts/composer/patch-api-connector-headers.php"
+        ],
+        "post-update-cmd": [
+            "@php scripts/composer/patch-api-connector-headers.php"
+        ]
+    },
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
