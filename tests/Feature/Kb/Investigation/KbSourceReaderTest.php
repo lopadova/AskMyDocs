@@ -52,6 +52,7 @@ final class KbSourceReaderTest extends TestCase
         $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk));
         $this->assertTrue($source['complete_source']);
         $this->assertSame($original, $source['excerpt']);
+        $this->assertSame('verified_email_original', $source['evidence_origin']);
         $this->assertStringNotContainsString('arrabbiato', $source['excerpt']);
     }
 

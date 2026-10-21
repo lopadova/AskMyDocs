@@ -137,6 +137,37 @@ class EvidenceAccessTest extends TestCase
         $this->assertSame([], $access->current($parent, $this->context($parent), ['api_tools' => [$tool]])['api_tools']);
     }
 
+    public function test_verified_immutable_email_replaces_an_indexed_card_without_reusing_its_hash(): void
+    {
+        $run = $this->runFixture();
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = "# TRACK-55\n\nThe customer requests a return label.";
+        $indexed = $original."\n\n## Automatic triage\nRefund already paid.";
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'markdown',
+            'title' => 'TRACK-55 email', 'source_path' => 'fixture/original.md', 'status' => 'active', 'document_hash' => str_repeat('a', 64),
+            'metadata' => ['connector' => 'imap', 'disk' => 'kb', 'email_body_hash' => hash('sha256', $original),
+                'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]]);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => $indexed, 'chunk_hash' => hash('sha256', $indexed)]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $indexed, 'evidence_hash' => $chunk->chunk_hash, 'research_flow_ids' => [2]]]]]];
+        $access = app(AgentEvidenceAccess::class);
+        $safe = $access->current($run, $this->context($run), $evidence);
+        $fresh = $safe['documents'][0]['evidence'][0];
+        $this->assertSame($original, $fresh['content']);
+        $this->assertNotSame($chunk->chunk_hash, $fresh['evidence_hash']);
+        $this->assertSame(hash('sha256', $original), $fresh['evidence_hash']);
+        $this->assertTrue($fresh['complete_source']);
+        $this->assertSame([2], $fresh['research_flow_ids']);
+        $this->assertStringNotContainsString('already paid', $fresh['content']);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, 'Changed original');
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $document->update(['status' => 'archived']);
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+    }
+
     public function test_document_revalidation_rejects_change_revocation_and_cross_project(): void
     {
         $run = $this->runFixture();

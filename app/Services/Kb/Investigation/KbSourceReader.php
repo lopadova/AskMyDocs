@@ -84,6 +84,7 @@ class KbSourceReader
         $fullLimit = (int) config('kb.investigation.full_source_max_chars', 24000);
         $isShort = $totalChars <= $fullLimit;
 
+        $evidenceOrigin = null;
         $connector = data_get($document->metadata, 'connector');
         if (is_string($connector) && EmailConnectorRegistry::supportsKey($connector)
             && data_get($document->metadata, 'attachment_filename') === null
@@ -96,6 +97,7 @@ class KbSourceReader
             } catch (\Throwable) {
                 return null;
             }
+            $evidenceOrigin = 'verified_email_original';
             // Search tags locate the email; a generated classification is not
             // the sender's evidence and must never become a literal quotation.
             $isShort = mb_strlen($original) <= $fullLimit;
@@ -160,6 +162,7 @@ class KbSourceReader
             'complete_source' => $isShort,
             'chunk_ids' => $usedChunks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
             'candidate' => $candidate,
+            ...$evidenceOrigin === null ? [] : ['evidence_origin' => $evidenceOrigin],
         ];
     }
 }

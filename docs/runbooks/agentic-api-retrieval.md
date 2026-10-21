@@ -266,3 +266,13 @@ Finché il pacchetto connector-api beta.5 non incorpora questo supporto, gli hoo
 Composer applicano `scripts/composer/patch-api-connector-structured-responses.php`.
 Con installazioni `--no-scripts`, eseguire il patcher esplicitamente. Il patcher
 è idempotente e rifiuta sorgenti inattese prima di modificarli.
+
+## Rilettura delle email con scheda di triage
+
+Il lettore verifica l'hash dell'originale immutabile prima di esporlo come
+`verified_email_original`. Se l'estratto indicizzato include una scheda derivata
+o una formattazione differente, il controllo finale scarta quell'estratto e
+acquisisce il testo originale come nuova evidenza con un nuovo hash. Le frasi
+della scheda e le vecchie verifiche non vengono trasferite. Un originale con
+hash diverso, una fonte revocata o un documento di un altro progetto restano
+esclusi; il recupero non vale per documenti ordinari modificati.

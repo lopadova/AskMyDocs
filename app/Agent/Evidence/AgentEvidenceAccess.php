@@ -51,6 +51,19 @@ final readonly class AgentEvidenceAccess
                         $chunks[] = [...end($chunks), 'content' => $current,
                             'evidence_hash' => hash('sha256', $current), 'complete_source' => true];
                     }
+                } elseif ($current !== '' && ($source['evidence_origin'] ?? null) === 'verified_email_original') {
+                    // The reader has checked the immutable email's original hash.
+                    // An indexed/card excerpt may differ from that original. Discard
+                    // its old hash and facts; authorize only this freshly read text.
+                    $identityText = $source['title']."\n".$source['excerpt'];
+                    $matches = array_values(array_filter($identifiers,
+                        fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains($identityText, $id)));
+                    $chunks[] = [...array_intersect_key($chunk, array_flip(['chunk_id', 'research_flow_ids'])),
+                        'content' => $current, 'evidence_hash' => hash('sha256', $current),
+                        'source_title' => $this->masker->maskString($source['title']),
+                        'verified_identifier_hashes' => array_map(fn ($id) => hash('sha256', $id), $matches),
+                        'complete_source' => (bool) ($source['complete_source'] ?? false)];
+                    $safe['warnings'][] = ['code' => 'verified_email_original_refreshed', 'source' => 'document'];
                 } else {
                     $safe['warnings'][] = ['code' => 'source_changed_or_revoked', 'source' => 'document'];
                 }
