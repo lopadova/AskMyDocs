@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('amd-ui-locale', 'en'));
     await page.route('**/api/auth/me', (route) => route.fulfill({ status: 401, json: { message: 'Unauthenticated.' } }));
+    await page.route('**/sanctum/csrf-cookie', (route) => route.fulfill({ status: 204 }));
 });
 
 test('prepares a distinct plugin connection without requesting secrets', async ({ page }) => {
@@ -10,10 +11,28 @@ test('prepares a distinct plugin connection without requesting secrets', async (
         id: 'fixture', mcp_url: 'https://askmydocsdev.test/mcp/knowledge/fixture', download_url: '/fixture/plugin.zip',
     } }));
     await page.goto('/mcp/connect');
-    await page.getByRole('button', { name: 'Prepare Codex connection', exact: true }).click();
+    await page.getByRole('button', { name: 'Prepare connection', exact: true }).click();
     await expect(page.getByRole('link', { name: 'Download Codex plugin' })).toHaveAttribute('href', '/fixture/plugin.zip');
-    await expect(page.getByText('https://askmydocsdev.test/mcp/knowledge/fixture')).toBeVisible();
+    await expect(page.getByText('https://askmydocsdev.test/mcp/knowledge/fixture', { exact: true })).toBeVisible();
+    await page.getByText('Connect through the Codex CLI', { exact: true }).click();
+    await expect(page.getByText("codex mcp login 'askmydocs-fixture'", { exact: true })).toBeVisible();
     await expect(page.getByRole('textbox')).toHaveCount(0);
+});
+
+test('shows Claude cloud requirements and client-specific instructions with keyboard selection', async ({ page }) => {
+    await page.route('**/api/oauth/mcp-connections', (route) => route.fulfill({ status: 201, json: {
+        id: 'fixture', mcp_url: 'https://askmydocsdev.test/mcp/knowledge/fixture', download_url: '/fixture/plugin.zip',
+    } }));
+    await page.goto('/mcp/connect');
+    await page.getByLabel('Application', { exact: true }).focus();
+    await page.keyboard.press('ArrowDown');
+    await page.getByRole('option', { name: 'Claude web / Desktop', exact: true }).click();
+    await expect(page.getByRole('note')).toContainText('public HTTPS URL');
+    await page.getByRole('button', { name: 'Prepare connection', exact: true }).click();
+    await expect(page.getByText(/Choose Sign in now and Register automatically/)).toBeVisible();
+    await page.getByLabel('Application', { exact: true }).click();
+    await page.getByRole('option', { name: 'Claude Code', exact: true }).click();
+    await expect(page.getByText("claude mcp add --transport http 'askmydocs-fixture' 'https://askmydocsdev.test/mcp/knowledge/fixture'", { exact: true })).toBeVisible();
 });
 
 test('chooses one company and resets the project to that company before consent', async ({ page }) => {

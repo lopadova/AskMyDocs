@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chooseSelectOption } from '@/test-utils/select';
 import { McpConnectPage } from './McpConnectPage';
 import { McpImportReviewPage, type ImportReview } from './McpImportReviewPage';
 import { api, ensureCsrfCookie } from '../../lib/api';
@@ -15,19 +16,53 @@ beforeEach(() => { vi.resetAllMocks(); vi.mocked(ensureCsrfCookie).mockResolvedV
 
 describe('MCP connection setup', () => {
     it('creates a connection only after activation and exposes its download and unique URL', async () => {
-        vi.mocked(api.post).mockResolvedValue({ data: { mcp_url: 'https://askmydocs.test/mcp/knowledge/one', download_url: '/api/oauth/mcp-connections/one/plugin.zip' } });
+        vi.mocked(api.post).mockResolvedValue({ data: { id: 'one', mcp_url: 'https://askmydocs.test/mcp/knowledge/one', download_url: '/api/oauth/mcp-connections/one/plugin.zip' } });
         render(<McpConnectPage />);
         expect(api.post).not.toHaveBeenCalled();
-        await userEvent.click(screen.getByRole('button', { name: 'Prepare Codex connection' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Prepare connection' }));
         expect(api.post).toHaveBeenCalledWith('/api/oauth/mcp-connections');
         expect(await screen.findByRole('link', { name: 'Download Codex plugin' })).toHaveAttribute('href', '/api/oauth/mcp-connections/one/plugin.zip');
         expect(screen.getByText('https://askmydocs.test/mcp/knowledge/one')).toBeInTheDocument();
+        await userEvent.click(screen.getByText('Connect through the Codex CLI'));
+        expect(screen.getByText("codex mcp add 'askmydocs-one' --url 'https://askmydocs.test/mcp/knowledge/one'")).toBeInTheDocument();
+        expect(screen.getByText("codex mcp login 'askmydocs-one'")).toBeInTheDocument();
     });
     it('asks for sign-in on an expired session', async () => {
         vi.mocked(api.post).mockRejectedValue({ isAxiosError: true, response: { status: 401 } });
         render(<McpConnectPage />);
-        await userEvent.click(screen.getByRole('button', { name: 'Prepare Codex connection' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Prepare connection' }));
         expect(await screen.findByText('Sign in to continue')).toBeInTheDocument();
+    });
+    it('keeps one URL when switching client instructions and generates distinct names for another connection', async () => {
+        const user = userEvent.setup();
+        vi.mocked(api.post).mockResolvedValueOnce({ data: { id: 'one', mcp_url: 'https://askmydocs.test/mcp/knowledge/one' } })
+            .mockResolvedValueOnce({ data: { id: 'two', mcp_url: 'https://askmydocs.test/mcp/knowledge/two' } });
+        render(<McpConnectPage />);
+        await chooseSelectOption(screen.getByLabelText('Application'), 'claude-code');
+        expect(api.post).not.toHaveBeenCalled();
+        await user.click(screen.getByRole('button', { name: 'Prepare connection' }));
+        expect(await screen.findByText("claude mcp add --transport http 'askmydocs-one' 'https://askmydocs.test/mcp/knowledge/one'")).toBeInTheDocument();
+        await chooseSelectOption(screen.getByLabelText('Application'), 'cursor');
+        await user.click(screen.getByRole('button', { name: 'Copy configuration' }));
+        expect(JSON.parse(await navigator.clipboard.readText())).toEqual({ mcpServers: {
+            'askmydocs-one': { url: 'https://askmydocs.test/mcp/knowledge/one' },
+        } });
+        expect(api.post).toHaveBeenCalledTimes(1);
+        await user.click(screen.getByRole('button', { name: 'Prepare another connection' }));
+        await user.click(screen.getByRole('button', { name: 'Copy configuration' }));
+        expect(JSON.parse(await navigator.clipboard.readText())).toEqual({ mcpServers: {
+            'askmydocs-two': { url: 'https://askmydocs.test/mcp/knowledge/two' },
+        } });
+    });
+    it('explains Claude cloud reachability and automatic registration without manual OAuth credentials', async () => {
+        vi.mocked(api.post).mockResolvedValue({ data: { id: 'one', mcp_url: 'https://askmydocs.test/mcp/knowledge/one' } });
+        render(<McpConnectPage />);
+        await chooseSelectOption(screen.getByLabelText('Application'), 'claude');
+        expect(screen.getByRole('note')).toHaveTextContent('Anthropic cannot reach a local .test address.');
+        await userEvent.click(screen.getByRole('button', { name: 'Prepare connection' }));
+        expect(await screen.findByText(/Choose Sign in now and Register automatically/)).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'Download Codex plugin' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     });
 });
 

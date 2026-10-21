@@ -1,7 +1,7 @@
 # AskMyDocs — AI Hub & Intelligent Agentic Platform for the Enterprise
 
-**Codex project connection:** OAuth sign-in, one tenant/project per connection,
-distinct MCP URLs, and document ingestion with preview and progress. See the
+**MCP project connections for Codex, Claude and Cursor:** OAuth sign-in, one
+tenant/project per connection, distinct URLs, and document ingestion with preview and progress. See the
 [connection guide](docs-site/codex-project-connection.mdx).
 
 > **Enterprise RAG + Knowledge Graph + Agentic Tool Use, self-hostable, MIT licensed.**
