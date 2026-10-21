@@ -73,6 +73,12 @@ class KnowledgeBaseServer extends Server
      * @var array<int, class-string<\Laravel\Mcp\Server\Tool>>
      */
     protected array $tools = [
+        // OAuth project workspace tools fail closed outside a project connection.
+        \App\Mcp\Tools\KbConnectedProjectTool::class,
+        \App\Mcp\Tools\KbConnectedSearchTool::class,
+        \App\Mcp\Tools\KbConnectedDocumentTool::class,
+        \App\Mcp\Tools\KbIngestDocumentsTool::class,
+        \App\Mcp\Tools\KbImportStatusTool::class,
         // Phase 1 — base retrieval
         KbSearchTool::class,
         KbReadDocumentTool::class,

@@ -33,7 +33,7 @@ class RouteExposureTest extends TestCase
      * @var array<int, string>
      */
     /** Exact middleware names that authenticate. @var array<int, string> */
-    private const AUTH_EXACT = ['auth', 'tenant.authorize', 'widget.key', 'mcp.scope'];
+    private const AUTH_EXACT = ['auth', 'tenant.authorize', 'widget.key', 'mcp.scope', \App\Http\Middleware\AuthenticateMcpProject::class];
 
     /**
      * Prefixes that authenticate/authorize. `auth:` / `auth.` are precise so a
@@ -86,6 +86,8 @@ class RouteExposureTest extends TestCase
         // RFC 7009 revocation proves possession of the matching client's key;
         // repeat/unknown tokens are an intentionally indistinguishable 200.
         'oauth/revoke' => ['POST'],
+        // RFC 7591 public-client registration; MCP scopes only, callback validation and independent rate limit.
+        'oauth/register' => ['POST'],
         'api/widget/user-token' => '*',
         'csp-report' => '*',
         // v8.37/W3b round 7 — Laravel\Mcp\Server\Registrar::web() registers
@@ -96,6 +98,7 @@ class RouteExposureTest extends TestCase
         // POST /mcp/kb must always carry mcp.scope (AUTH_EXACT below) and
         // is never covered by this entry.
         'mcp/kb' => ['DELETE'],
+        'mcp/knowledge/{connection}' => ['DELETE'],
     ];
 
     protected function defineRoutes($router): void

@@ -17,6 +17,11 @@ final class OAuthAccessToken extends Model
     protected $guarded = ['id'];
     protected $casts = ['scopes' => 'array'];
 
+    public function mcpConnection(): BelongsTo
+    {
+        return $this->belongsTo(McpProjectConnection::class, 'mcp_connection_id');
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(OAuthClient::class, 'client_id');

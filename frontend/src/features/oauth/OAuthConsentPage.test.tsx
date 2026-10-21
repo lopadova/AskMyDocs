@@ -26,6 +26,16 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('OAuth consent', () => {
+    it('binds an MCP connection to the chosen company and one project', async () => {
+        vi.mocked(getConsent).mockResolvedValue({ ...consent, requires_project: true, teams: [
+            { tenant_id: 'acme', name: 'Acme', projects: [{ project_key: 'engineering', role: 'member' }, { project_key: 'legal', role: 'member' }] },
+            { tenant_id: 'other', name: 'Other', projects: [{ project_key: 'support', role: 'member' }] },
+        ] });
+        render(<OAuthConsentPage requestId="project-choice" />);
+        await chooseSelectOption(await screen.findByLabelText('Project'), 'legal');
+        await userEvent.click(screen.getByRole('button', { name: 'Connect application' }));
+        expect(decideConsent).toHaveBeenCalledWith('project-choice', 'approve', 'acme', 'legal');
+    });
     it('shows the app, callback origin, exact permissions and account before approving the selected company', async () => {
         const user = userEvent.setup();
         render(<OAuthConsentPage requestId="request-one" />);

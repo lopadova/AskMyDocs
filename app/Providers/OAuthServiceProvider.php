@@ -26,12 +26,14 @@ final class OAuthServiceProvider extends ServiceProvider
         foreach (['oauth-authorize', 'oauth-token', 'oauth-revoke'] as $limiter) {
             RateLimiter::for($limiter, static fn (Request $request) => Limit::perMinute(30)->by((string) $request->ip()));
         }
+        RateLimiter::for('oauth-register', static fn (Request $request) => Limit::perHour(10)->by((string) $request->ip()));
         Sanctum::authenticateAccessTokensUsing(static fn (PersonalAccessToken $token, bool $valid): bool =>
             app(OAuthAccessPolicy::class)->validate($token, $valid, request()));
 
         $this->loadRoutesFrom(__DIR__.'/../../routes/oauth.php');
         $this->commands([
             \App\Console\Commands\OAuthClientCommand::class,
+            \App\Console\Commands\McpPluginCommand::class,
             \App\Console\Commands\OAuthDisableClientCommand::class,
             \App\Console\Commands\OAuthPruneCommand::class,
         ]);

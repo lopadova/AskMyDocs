@@ -39,17 +39,18 @@ export function OAuthConnectionsPage() {
         onNavigateRegister={() => window.location.assign('/register')} />;
 
     return <AuthLayout title={translateInterface("Connected applications")} subtitle={translateInterface("Manage external applications authorised to use your AskMyDocs account.")}
-        footer={<a href="/app">{translateInterface("Return to AskMyDocs")}</a>}>
+        footer={<><a href="/mcp/connect">{translateInterface("Connect Codex")}</a> · <a href="/app">{translateInterface("Return to AskMyDocs")}</a></>}>
         {error && <p role="alert" style={{ color: 'var(--err)', fontSize: 13 }}>{error}</p>}
         {connections === undefined && !error && <p role="status">{translateInterface("Loading applications…")}</p>}
         {connections?.length === 0 && <p>{translateInterface("No external applications connected.")}</p>}
         {connections?.map((item) => <section key={item.id} aria-label={item.name}
             style={{ padding: '16px 0', borderBottom: '1px solid var(--hairline)', overflowWrap: 'anywhere' }}>
             <h2 style={{ fontSize: 15, margin: '0 0 6px' }}>{item.name}</h2>
-            <p style={{ fontSize: 12, color: 'var(--fg-2)' }}>{item.tenant_id} · {item.scopes.join(', ')}</p>
+            <p style={{ fontSize: 12, color: 'var(--fg-2)' }}>{item.tenant_id}{item.project_key ? ` / ${item.project_key}` : ''} · {item.scopes.join(', ')}</p>
             <p style={{ fontSize: 12, color: 'var(--fg-2)' }}>
                 {item.expires_at ? `Expires ${new Date(item.expires_at).toLocaleDateString()}` : 'Access revoked'}
             </p>
+            {item.mcp_url && <p style={{ overflowWrap: 'anywhere', fontSize: 12 }}><code>{item.mcp_url}</code></p>}
             <Button variant="danger" size="sm" leadingIcon={<Unplug size={14} />}
                 busy={busy === item.id} disabled={busy !== null} onClick={() => void disconnect(item.id)}>{translateInterface("Revoke access")}</Button>
         </section>)}

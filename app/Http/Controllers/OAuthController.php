@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\McpProjectConnection;
+use App\Models\OAuthRefreshToken;
+use App\Services\Auth\McpOAuthService;
 use App\Models\OAuthAccessToken;
 use App\Models\OAuthAuthorizationCode;
 use App\Models\OAuthClient;
@@ -25,20 +28,39 @@ final class OAuthController extends Controller
 {
     public function __construct(private readonly OAuthAccessPolicy $policy, private readonly UserTeamsResolver $teams) {}
 
+    public function register(Request $request): JsonResponse
+    {
+        $data = $this->validate($this->body($request), [
+            'client_name' => ['sometimes', 'string', 'max:120'],
+            'redirect_uris' => ['required', 'array', 'min:1', 'max:5'],
+            'redirect_uris.*' => ['required', 'string', 'max:2048'],
+            'token_endpoint_auth_method' => ['sometimes', 'in:none'],
+            'grant_types' => ['sometimes', 'array', 'max:2'],
+            'grant_types.*' => ['in:authorization_code,refresh_token'],
+            'response_types' => ['sometimes', 'array', 'size:1'],
+            'response_types.*' => ['in:code'],
+            'scope' => ['sometimes', 'string', 'max:255'],
+        ]);
+        return response()->json(app(McpOAuthService::class)->register($data), 201);
+    }
+
     public function metadata(): JsonResponse
     {
-        $issuer = $this->issuer();
+        $mcp = request()->is('.well-known/oauth-authorization-server/oauth/mcp');
+        $base = $this->issuer();
+        $issuer = $mcp ? $base.'/oauth/mcp' : $base;
         return response()->json([
             'issuer' => $issuer,
-            'authorization_endpoint' => $issuer.'/oauth/authorize',
-            'token_endpoint' => $issuer.'/oauth/token',
-            'revocation_endpoint' => $issuer.'/oauth/revoke',
+            'authorization_endpoint' => $base.'/oauth/authorize',
+            'token_endpoint' => $base.'/oauth/token',
+            'revocation_endpoint' => $base.'/oauth/revoke',
             'response_types_supported' => ['code'],
-            'grant_types_supported' => ['authorization_code'],
+            'grant_types_supported' => $mcp ? ['authorization_code', 'refresh_token'] : ['authorization_code'],
+            'registration_endpoint' => $base.'/oauth/register',
             'token_endpoint_auth_methods_supported' => ['none'],
             'revocation_endpoint_auth_methods_supported' => ['none'],
             'code_challenge_methods_supported' => ['S256'],
-            'scopes_supported' => array_keys(config('oauth.scopes')),
+            'scopes_supported' => $mcp ? McpOAuthService::SCOPES : ['kb:read', 'kb:chat'],
             'authorization_response_iss_parameter_supported' => true,
         ]);
     }
@@ -53,10 +75,22 @@ final class OAuthController extends Controller
             'code_challenge' => ['required', 'string', 'regex:/^[A-Za-z0-9_-]{43}$/D'],
             'code_challenge_method' => ['required', 'in:S256'],
             'scope' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'resource' => ['sometimes', 'string', 'max:2048'],
         ]);
         $client = $this->client($data['client_id']);
         $this->checkRedirect($client, $data['redirect_uri']);
         $data['scopes'] = $this->scopes($client, $data['scope'] ?? null);
+        if (array_intersect($data['scopes'], McpOAuthService::SCOPES) !== []) {
+            if (! in_array('mcp:read', $data['scopes'], true) || ! isset($data['resource'])) {
+                $this->error('invalid_target', 'MCP authorization requires its exact project connection resource.');
+            }
+            if (array_diff($data['scopes'], McpOAuthService::SCOPES) !== []) {
+                $this->error('invalid_scope', 'A project connection only accepts MCP scopes.');
+            }
+            $data['mcp_connection_id'] = app(McpOAuthService::class)->resource($data['resource'])->id;
+        } elseif (isset($data['resource'])) {
+            $this->error('invalid_target', 'This client does not authorize the requested resource.');
+        }
 
         // Server-side parameters bind the consent to this browser. The SPA
         // receives only an opaque handle, never editable redirect/PKCE fields.
@@ -74,6 +108,15 @@ final class OAuthController extends Controller
     {
         [$data, $client] = $this->pending($request, $authorization);
         $user = $this->activeUser($request);
+        $teams = $this->teams->resolve($user);
+        $connection = isset($data['mcp_connection_id']) ? McpProjectConnection::findOrFail($data['mcp_connection_id']) : null;
+        if ($connection?->project_key !== null) {
+            $teams = array_values(array_filter($teams, fn (array $team) => $team['tenant_id'] === $connection->tenant_id));
+            foreach ($teams as &$team) {
+                $team['projects'] = array_values(array_filter($team['projects'], fn (array $project) => $project['project_key'] === $connection->project_key));
+            }
+            unset($team);
+        }
         return response()->json([
             'client' => ['name' => $client->name, 'redirect_uri' => $data['redirect_uri']],
             'scopes' => array_map(static fn (string $scope): array => [
@@ -81,9 +124,12 @@ final class OAuthController extends Controller
             ], $data['scopes']),
             'teams' => array_map(static fn (array $team): array => [
                 'tenant_id' => $team['tenant_id'], 'name' => $team['name'],
-            ], $this->teams->resolve($user)),
+                'projects' => $team['projects'],
+            ], $teams),
             'user' => ['name' => $user->name, 'email' => $user->email],
-            'token_ttl_days' => (int) config('oauth.token_ttl_days'),
+            'token_ttl_days' => isset($data['mcp_connection_id']) ? 90 : (int) config('oauth.token_ttl_days'),
+            'requires_project' => isset($data['mcp_connection_id']),
+            'resource' => $data['resource'] ?? null,
         ]);
     }
 
@@ -94,8 +140,9 @@ final class OAuthController extends Controller
         $choice = $this->validate($this->body($request), [
             'decision' => ['required', 'in:approve,deny'],
             'tenant_id' => ['required_if:decision,approve', 'nullable', 'string', 'max:64'],
+            'project_key' => ['nullable', 'string', 'max:120'],
         ]);
-        $params = ['state' => $data['state'], 'iss' => $this->issuer()];
+        $params = ['state' => $data['state'], 'iss' => $this->issuer().(isset($data['mcp_connection_id']) ? '/oauth/mcp' : '')];
         if ($choice['decision'] === 'deny') {
             $params['error'] = 'access_denied';
         } else {
@@ -103,13 +150,20 @@ final class OAuthController extends Controller
                 $this->error('access_denied', 'Choose an active company you belong to.', 403);
             }
             $code = Str::random(64);
-            OAuthAuthorizationCode::create([
-                'code_hash' => hash('sha256', $code), 'client_id' => $client->id,
-                'user_id' => $user->id, 'tenant_id' => $choice['tenant_id'],
-                'redirect_uri' => $data['redirect_uri'], 'scopes' => $data['scopes'],
-                'code_challenge' => $data['code_challenge'],
-                'expires_at' => now()->addSeconds((int) config('oauth.code_ttl_seconds')),
-            ]);
+            DB::transaction(function () use ($data, $choice, $user, $client, $code): void {
+                if (isset($data['mcp_connection_id'])) {
+                    app(McpOAuthService::class)->bind(McpProjectConnection::findOrFail($data['mcp_connection_id']),
+                        $user, $choice['tenant_id'], $choice['project_key'] ?? '');
+                }
+                OAuthAuthorizationCode::create([
+                    'code_hash' => hash('sha256', $code), 'client_id' => $client->id,
+                    'user_id' => $user->id, 'tenant_id' => $choice['tenant_id'],
+                    'redirect_uri' => $data['redirect_uri'], 'scopes' => $data['scopes'],
+                    'mcp_connection_id' => $data['mcp_connection_id'] ?? null,
+                    'code_challenge' => $data['code_challenge'],
+                    'expires_at' => now()->addSeconds((int) config('oauth.code_ttl_seconds')),
+                ]);
+            });
             $params['code'] = $code;
         }
         $request->session()->forget('oauth.requests.'.$authorization);
@@ -120,6 +174,15 @@ final class OAuthController extends Controller
 
     public function token(Request $request): JsonResponse
     {
+        if ($request->input('grant_type') === 'refresh_token') {
+            $data = $this->validate($this->body($request), [
+                'client_id' => ['required', 'string', 'max:64'],
+                'refresh_token' => ['required', 'string', 'size:96'],
+                'resource' => ['required', 'string', 'max:2048'],
+                'scope' => ['sometimes', 'string', 'max:255'],
+            ]);
+            return response()->json(app(McpOAuthService::class)->refresh($data));
+        }
         if ($request->input('grant_type') !== 'authorization_code') {
             $this->error('unsupported_grant_type', 'Only authorization_code is supported.');
         }
@@ -129,6 +192,7 @@ final class OAuthController extends Controller
             'code' => ['required', 'string', 'size:64'],
             'redirect_uri' => ['required', 'string', 'max:2048'],
             'code_verifier' => ['required', 'string', 'regex:/^[A-Za-z0-9._~-]{43,128}$/D'],
+            'resource' => ['sometimes', 'string', 'max:2048'],
         ]);
         $client = $this->client($data['client_id']);
         $this->checkRedirect($client, $data['redirect_uri']);
@@ -141,10 +205,16 @@ final class OAuthController extends Controller
                 || array_diff($code->scopes, $client->scopes) !== []) {
                 $this->error('invalid_grant', 'The authorization code is invalid or expired.');
             }
+            $connection = $code->mcp_connection_id ? McpProjectConnection::find($code->mcp_connection_id) : null;
+            if ($code->mcp_connection_id && ($connection === null || ($data['resource'] ?? '') !== $connection->resource())) {
+                $this->error('invalid_target', 'The authorization code belongs to another resource.');
+            }
             $user = User::find($code->user_id);
             if ($user === null || ! $this->policy->canUseTenant($user, $code->tenant_id)) {
                 $this->error('invalid_grant', 'The authorization is no longer available.');
             }
+
+            if ($connection) app(McpOAuthService::class)->bind($connection, $user, $code->tenant_id, $connection->project_key);
 
             // The conditional update also covers engines where a row lock
             // alone does not prevent two requests from observing an unused code.
@@ -152,21 +222,23 @@ final class OAuthController extends Controller
                 ->where('expires_at', '>', now())->update(['consumed_at' => now()]) !== 1) {
                 $this->error('invalid_grant', 'The authorization code has already been used.');
             }
-            $expires = now()->addDays((int) config('oauth.token_ttl_days'));
+            $expires = $connection ? now()->addHour() : now()->addDays((int) config('oauth.token_ttl_days'));
             $sanctumTtl = (int) config('sanctum.expiration');
             if ($sanctumTtl > 0) {
                 $expires = $expires->min(now()->addMinutes($sanctumTtl));
             }
             $token = $user->createToken('OAuth: '.$client->name,
                 [...$code->scopes, OAuthAccessPolicy::TOKEN_MARKER], $expires);
-            OAuthAccessToken::create([
+            $grant = OAuthAccessToken::create([
                 'personal_access_token_id' => $token->accessToken->id, 'client_id' => $client->id,
                 'user_id' => $user->id, 'tenant_id' => $code->tenant_id, 'scopes' => $code->scopes,
+                'mcp_connection_id' => $code->mcp_connection_id,
             ]);
             return response()->json([
                 'access_token' => $token->plainTextToken, 'token_type' => 'Bearer',
                 'expires_in' => max(0, $expires->timestamp - now()->timestamp),
                 'scope' => implode(' ', $code->scopes), 'tenant_id' => $code->tenant_id,
+                ...($connection ? ['refresh_token' => app(McpOAuthService::class)->refreshToken($grant)] : []),
             ]);
         });
     }
@@ -180,6 +252,11 @@ final class OAuthController extends Controller
         if ($token !== null && OAuthAccessToken::where('personal_access_token_id', $token->id)
             ->where('client_id', $data['client_id'])->exists()) {
             $token->delete();
+        }
+        $refresh = OAuthRefreshToken::where('token_hash', hash('sha256', $data['token']))->first();
+        if ($refresh !== null) {
+            $grant = OAuthAccessToken::whereKey($refresh->oauth_access_token_id)->where('client_id', $data['client_id'])->first();
+            $grant?->token?->delete();
         }
         // RFC 7009: invalid/already-revoked tokens have the same response.
         return response('', 200);
@@ -203,10 +280,12 @@ final class OAuthController extends Controller
     public function connections(Request $request): JsonResponse
     {
         $user = $this->activeUser($request);
-        $items = OAuthAccessToken::with(['client', 'token'])->where('user_id', $user->id)->latest()->get();
+        $items = OAuthAccessToken::with(['client', 'token', 'mcpConnection'])->where('user_id', $user->id)->latest()->get();
         return response()->json(['connections' => $items->map(static fn (OAuthAccessToken $grant): array => [
             'id' => $grant->id, 'name' => $grant->client->name, 'tenant_id' => $grant->tenant_id,
-            'scopes' => $grant->scopes, 'created_at' => $grant->created_at->toIso8601String(),
+            'scopes' => $grant->scopes,
+            'project_key' => $grant->mcpConnection?->project_key,
+            'mcp_url' => $grant->mcpConnection?->resource(), 'created_at' => $grant->created_at->toIso8601String(),
             'expires_at' => $grant->token?->expires_at?->toIso8601String(),
             'last_used_at' => $grant->token?->last_used_at?->toIso8601String(),
         ])]);
@@ -252,9 +331,17 @@ final class OAuthController extends Controller
 
     private function checkRedirect(OAuthClient $client, string $uri): void
     {
-        if (! in_array($uri, $client->redirect_uris, true)) {
-            $this->error('invalid_request', 'The callback URL is not registered for this application.');
+        if (in_array($uri, $client->redirect_uris, true)) return;
+        // RFC 8252: loopback callback ports are selected afresh on each login.
+        $candidate = parse_url($uri);
+        foreach ($client->redirect_uris as $registered) {
+            $parts = parse_url($registered);
+            if (($candidate['scheme'] ?? '') === 'http' && in_array($candidate['host'] ?? '', ['127.0.0.1', '[::1]'], true)) {
+                unset($candidate['port'], $parts['port']);
+                if ($candidate === $parts) return;
+            }
         }
+        $this->error('invalid_request', 'The callback URL is not registered for this application.');
     }
 
     private function scopes(OAuthClient $client, ?string $scope): array

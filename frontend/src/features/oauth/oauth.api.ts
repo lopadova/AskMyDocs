@@ -3,13 +3,15 @@ import { api, ensureCsrfCookie } from '../../lib/api';
 export type OAuthConsent = {
     client: { name: string; redirect_uri: string };
     scopes: { id: string; description: string }[];
-    teams: { tenant_id: string; name: string }[];
+    teams: { tenant_id: string; name: string; projects?: { project_key: string; role: string }[] }[];
+    requires_project?: boolean;
+    resource?: string | null;
     user: { name: string; email: string };
     token_ttl_days: number;
 };
 
 export type OAuthConnection = {
-    id: number; name: string; tenant_id: string; scopes: string[];
+    id: number; name: string; tenant_id: string; scopes: string[]; project_key?: string | null; mcp_url?: string | null;
     created_at: string; expires_at: string | null; last_used_at: string | null;
 };
 
@@ -17,10 +19,10 @@ export async function getConsent(request: string): Promise<OAuthConsent> {
     return (await api.get<OAuthConsent>(`/api/oauth/authorization/${encodeURIComponent(request)}`)).data;
 }
 
-export async function decideConsent(request: string, decision: 'approve' | 'deny', tenantId: string) {
+export async function decideConsent(request: string, decision: 'approve' | 'deny', tenantId: string, projectKey?: string) {
     await ensureCsrfCookie();
     return (await api.post<{ redirect_to: string }>(`/api/oauth/authorization/${encodeURIComponent(request)}`, {
-        decision, ...(decision === 'approve' ? { tenant_id: tenantId } : {}),
+        decision, ...(decision === 'approve' ? { tenant_id: tenantId, ...(projectKey ? { project_key: projectKey } : {}) } : {}),
     })).data;
 }
 

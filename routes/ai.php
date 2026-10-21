@@ -53,3 +53,11 @@ use Laravel\Mcp\Facades\Mcp;
 
 Mcp::web('/mcp/kb', KnowledgeBaseServer::class)
     ->middleware(['throttle:mcp', 'mcp.scope']);
+
+Mcp::web('/mcp/knowledge/{connection}', \App\Mcp\Servers\ConnectedProjectServer::class)
+    ->withoutMiddleware([\Laravel\Mcp\Server\Middleware\AddWwwAuthenticateHeader::class])
+    ->middleware(['throttle:mcp', \App\Http\Middleware\AuthenticateMcpProject::class]);
+
+\Illuminate\Support\Facades\Route::post('/mcp/knowledge/{connection}/api/{action}', [\App\Http\Controllers\McpConnectionController::class, 'workspace'])
+    ->where('action', 'info|search|document|imports')
+    ->middleware(['throttle:mcp', \App\Http\Middleware\AuthenticateMcpProject::class]);

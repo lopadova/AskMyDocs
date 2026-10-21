@@ -35,6 +35,8 @@ final class OcrServiceMetadataTest extends TestCase
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'prefix' => '../x', 'disk' => 'other']));
         // ADR 0030 §4 — the client never sets the version actor.
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'version_actor' => 'user:9']));
+        // A client cannot attach a trusted MCP approval identity to another ingest.
+        $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'mcp_document_import_id' => 'forged']));
         // ADR 0030 §3 — the retention contract and the dropped-original stamp are host-owned: a client cannot
         // mark a `full_copy` row as one that no longer needs its shared original.
         $this->assertSame(['title' => 't'], OcrService::stripTrustedOnlyKeys(['title' => 't', 'source_retention' => 'reference_only', 'source_dropped' => true]));
@@ -54,7 +56,7 @@ final class OcrServiceMetadataTest extends TestCase
             ['version_actor' => 'user:9', 'version_reason' => 'r', 'ocr' => ['note' => 'kept']],
             OcrService::stripRunControlKeys(['version_actor' => 'user:9', 'version_reason' => 'r', 'dry_run' => true, 'ocr' => ['note' => 'kept', 'force' => true, 'rerun_lock' => ['key' => 'k', 'owner' => 'o']]]),
         );
-        $this->assertSame(['title' => 't'], OcrService::stripRunControlKeys(['title' => 't', 'ocr' => ['force' => true]]));
+        $this->assertSame(['title' => 't'], OcrService::stripRunControlKeys(['title' => 't', 'ocr' => ['force' => true], 'mcp_document_import_id' => 'one-job-only']));
     }
 
     public function test_the_persist_step_strips_only_the_run_control_keys_and_keeps_the_storage_namespace(): void

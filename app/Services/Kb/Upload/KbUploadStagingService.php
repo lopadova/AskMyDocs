@@ -162,7 +162,7 @@ final class KbUploadStagingService
      *
      * @param  list<string>|null  $expectedItemIds  optimistic-concurrency guard
      */
-    public function commit(KbIngestBatch $batch, ?array $expectedItemIds = null): KbIngestBatch
+    public function commit(KbIngestBatch $batch, ?array $expectedItemIds = null, array $trustedMetadata = []): KbIngestBatch
     {
         $tenantId = $this->tenant->current();
 
@@ -211,7 +211,7 @@ final class KbUploadStagingService
 
         $items = $batch->items()->where('status', KbIngestBatchItem::STATUS_STAGED)->get();
         foreach ($items as $item) {
-            $this->commitOne($batch, $item, $staging, $kb);
+            $this->commitOne($batch, $item, $staging, $kb, $trustedMetadata);
         }
 
         // Under async queues the items are now `queued`; finalize is driven by
@@ -226,7 +226,7 @@ final class KbUploadStagingService
         return $batch->refresh()->load('items');
     }
 
-    private function commitOne(KbIngestBatch $batch, KbIngestBatchItem $item, Filesystem $staging, Filesystem $kb): void
+    private function commitOne(KbIngestBatch $batch, KbIngestBatchItem $item, Filesystem $staging, Filesystem $kb, array $trustedMetadata = []): void
     {
         // v8.36 / ADR 0029 (R43) — the flag is re-read at commit, not only
         // at staging: a batch staged while OCR was on can be committed after
@@ -295,12 +295,12 @@ final class KbUploadStagingService
         //    Async failures never throw here — they're caught by the
         //    JobFailed listener after retries exhaust.
         try {
-            IngestDocumentJob::dispatchForCurrentTenant(
+            $dispatch = IngestDocumentJob::dispatchForCurrentTenant(
                 projectKey: $batch->project_key,
                 relativePath: $item->destination_path,
                 disk: $this->targetDiskName(),
                 title: pathinfo($item->original_filename, PATHINFO_FILENAME),
-                metadata: ['kb_upload_batch_item_id' => $item->id],
+                metadata: array_merge($trustedMetadata, ['kb_upload_batch_item_id' => $item->id]),
                 mimeType: $item->mime_type,
                 // Every committed upload batch is an intentional observation
                 // of the source at this point in time. A unique flow run key
@@ -309,6 +309,10 @@ final class KbUploadStagingService
                 // existing version without duplicating its chunks.
                 runKey: 'upload-'.$item->id,
             );
+            if (isset($trustedMetadata['mcp_document_import_id'])) {
+                $dispatch->afterCommit();
+            }
+            unset($dispatch);
         } catch (\Throwable $e) {
             $this->transitionItem($item, KbIngestBatchItem::STATUS_FAILED, [
                 'error' => 'Ingest failed: '.$e->getMessage(),

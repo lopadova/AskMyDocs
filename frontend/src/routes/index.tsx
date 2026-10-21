@@ -75,6 +75,8 @@ import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequirePermission, RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
+import { McpConnectPage } from '../features/oauth/McpConnectPage';
+import { McpImportReviewPage } from '../features/oauth/McpImportReviewPage';
 import { OAuthConsentPage } from '../features/oauth/OAuthConsentPage';
 import { OAuthConnectionsPage } from '../features/oauth/OAuthConnectionsPage';
 import { RegisterPage } from '../features/auth/RegisterPage';
@@ -134,6 +136,11 @@ const oauthConnectionsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/oauth/connections',
     component: OAuthConnectionsPage,
+});
+
+const mcpConnectRoute = createRoute({ getParentRoute: () => rootRoute, path: '/mcp/connect', component: McpConnectPage });
+const mcpImportReviewRoute = createRoute({ getParentRoute: () => rootRoute, path: '/mcp/import-review/$importId',
+    component: function McpImportRoute() { const { importId } = mcpImportReviewRoute.useParams(); return <McpImportReviewPage key={importId} importId={importId} />; },
 });
 
 function RegisterRoute() {
@@ -1632,6 +1639,8 @@ const routeTree = rootRoute.addChildren([
     loginRoute,
     oauthConsentRoute,
     oauthConnectionsRoute,
+    mcpConnectRoute,
+    mcpImportReviewRoute,
     registerRoute,
     forgotRoute,
     resetRoute,

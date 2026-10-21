@@ -18,7 +18,7 @@ final class OAuthClientCommand extends Command
     {
         $name = trim((string) $this->argument('name'));
         $uris = array_values(array_unique($this->option('redirect-uri')));
-        $scopes = array_values(array_unique($this->option('scope') ?: array_keys(config('oauth.scopes'))));
+        $scopes = array_values(array_unique($this->option('scope') ?: ['kb:read', 'kb:chat']));
         if ($name === '' || mb_strlen($name) > 255 || $uris === []
             || array_diff($scopes, array_keys(config('oauth.scopes'))) !== []) {
             $this->error('Supply a name, at least one --redirect-uri, and only supported scopes (kb:read, kb:chat).');

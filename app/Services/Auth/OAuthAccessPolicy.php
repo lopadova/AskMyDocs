@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Auth;
 
 use App\Compliance\TenantContextBridge;
+use App\Models\McpProjectConnection;
 use App\Models\OAuthAccessToken;
 use App\Models\ProjectMembership;
 use App\Models\User;
@@ -47,6 +48,24 @@ final class OAuthAccessPolicy
             || ! $this->canUseTenant($token->tokenable, $grant->tenant_id)
             || ($request->hasHeader('X-Tenant-Id') && $request->header('X-Tenant-Id') !== $grant->tenant_id)) {
             return false;
+        }
+
+        if ($request->is('mcp/knowledge/*')) {
+            $connection = $grant->mcp_connection_id ? McpProjectConnection::find($grant->mcp_connection_id) : null;
+            $resourcePath = preg_replace('#/api/(info|search|document|imports)$#D', '', $request->path());
+            $expected = rtrim((string) config('app.url'), '/').'/'.$resourcePath;
+            if ($connection === null || $connection->resource() !== $expected
+                || (int) $connection->user_id !== (int) $grant->user_id || $connection->tenant_id !== $grant->tenant_id
+                || ! ProjectMembership::forTenant($grant->tenant_id)->where('user_id', $grant->user_id)
+                    ->where('project_key', $connection->project_key)->exists()
+                || ! in_array('mcp:read', $grant->scopes, true) || ! $token->can('mcp:read')
+                || array_diff($grant->scopes, $grant->client->scopes) !== []) {
+                return false;
+            }
+            app(TenantContext::class)->set($grant->tenant_id);
+            $request->attributes->set('mcp.connection', $connection);
+            $request->attributes->set('mcp.grant', $grant);
+            return true;
         }
 
         // Protects even an admin's token from routes without token.ability.
