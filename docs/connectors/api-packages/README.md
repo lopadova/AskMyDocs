@@ -7,6 +7,7 @@ that same configuration, not a separate plugin or executable extension.
 - [Canonical JSON Schema, Draft 2020-12](v1/connector.schema.json)
 - [Complete example](v1/connector.example.json): two read-only tools and a list/detail relation
 - [External agent handoff](../../handoff/api-connector-packages.md)
+- [Implementation, changed files and actual verification results](verification-2026-10-21.md)
 
 The schema describes the canonical shape. The rules below add reference,
 credential, runtime and ZIP constraints checked by the application. Both apply.
