@@ -447,7 +447,7 @@ export function ApiConnectorsView() {
                     </div>
                     <div className="api-config-transfer-actions">
                         <Button data-testid="api-connector-import" leadingIcon={<Upload size={16} />}
-                            onClick={() => openModalReset({ kind: 'connector-import' })}>{translateInterface("Import configuration")}</Button>
+                            onClick={() => openModalReset({ kind: 'connector-import' })}>Import API</Button>
                         <Button
                             type="button"
                             data-testid="api-connector-probe"

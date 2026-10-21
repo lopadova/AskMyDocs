@@ -28,6 +28,41 @@ function upload(text = '{}') {
 }
 
 describe('ConnectorImportModal', () => {
+    it('uploads ZIPs to the server for bounded validation and allows keyboard submission', async () => {
+        const validate = vi.spyOn(apiConnectorsApi, 'previewImport').mockResolvedValue({ ...preview, required_credentials: [] });
+        const importConfig = vi.spyOn(apiConnectorsApi, 'importConfig').mockResolvedValue({ id: 42 } as never);
+        setup();
+        const file = new File(['PK archive'], 'connector.zip', { type: 'application/zip' });
+        fireEvent.change(screen.getByTestId('api-connector-import-file'), { target: { files: [file] } });
+        await screen.findByText(/No credentials are required/);
+        expect(validate).toHaveBeenCalledWith(file);
+        await userEvent.click(screen.getByText('Review configuration'));
+        expect(screen.getByText(/https:\/\/api.example.com\/orders/)).toBeInTheDocument();
+        screen.getByTestId('api-connector-import-submit').focus();
+        await userEvent.keyboard('{Enter}');
+        await waitFor(() => expect(importConfig).toHaveBeenCalledWith(preview.config, {}));
+    });
+
+    it('blocks oversized files and unsupported extensions before uploading', async () => {
+        const validate = vi.spyOn(apiConnectorsApi, 'previewImport');
+        setup();
+        const file = new File(['a'], 'connector.zip');
+        Object.defineProperty(file, 'size', { value: 5 * 1024 * 1024 + 1 });
+        fireEvent.change(screen.getByTestId('api-connector-import-file'), { target: { files: [file] } });
+        expect(await screen.findByRole('alert')).toHaveTextContent('5 MiB');
+        fireEvent.change(screen.getByTestId('api-connector-import-file'), { target: { files: [new File(['{}'], 'connector.php')] } });
+        expect(await screen.findByRole('alert')).toHaveTextContent('.json or .zip');
+        expect(validate).not.toHaveBeenCalled();
+    });
+
+    it('shows server archive/version validation errors and leaves import disabled', async () => {
+        vi.spyOn(apiConnectorsApi, 'previewImport').mockRejectedValue({ response: { status: 422, data: { message: 'Unsupported API connector configuration version. Supported version: 1.' } } });
+        setup();
+        fireEvent.change(screen.getByTestId('api-connector-import-file'), { target: { files: [new File(['PK bad'], 'connector.zip')] } });
+        expect(await screen.findByRole('alert')).toHaveTextContent('Supported version: 1');
+        expect(screen.getByTestId('api-connector-import-submit')).toBeDisabled();
+    });
+
     it('asks only for missing credentials and submits the complete validated configuration', async () => {
         vi.spyOn(apiConnectorsApi, 'previewImport').mockResolvedValue(preview);
         const importConfig = vi.spyOn(apiConnectorsApi, 'importConfig').mockResolvedValue({ id: 42 } as never);

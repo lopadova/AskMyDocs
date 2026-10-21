@@ -192,13 +192,13 @@ override shared headers. Export/import preserves the selected User-Agent.
 
 ## Export and import a complete connector
 
-Use **Export configuration** on an API connector card, either in the unified
-Connectors page or in API Connectors. The downloaded JSON includes the connector
+Use **Export API** on an API connector card, either in the unified
+Connectors page or in API Connectors. The downloaded ZIP contains a versioned `connector.json` with the connector
 settings, authentication profiles, every endpoint and parameter, schemas and tool
 definitions, status, operational limits, output transformations, pagination and
 list/detail relations. Runtime logs and test response bodies are excluded.
 
-Use **Import configuration** and select the file. AskMyDocs validates it and shows
+Use **Import API** and select a JSON configuration or ZIP package (up to 5 MiB). AskMyDocs validates it and shows
 the endpoint and relation counts, then asks only for missing credentials. API key
 and Bearer profiles ask for their key or token; Basic preserves the username and
 asks for the password; OAuth2 preserves the client ID and token endpoint and asks
@@ -211,6 +211,8 @@ new connector in the current tenant and restore profile and endpoint references
 with new local IDs. Existing names and tool slugs get a numeric suffix when needed.
 The entire import succeeds together; missing credentials or invalid references
 leave no partial connector behind.
+
+The [portable package contract](https://github.com/lopadova/AskMyDocs/blob/main/docs/connectors/api-packages/README.md), [JSON Schema](https://github.com/lopadova/AskMyDocs/blob/main/docs/connectors/api-packages/v1/connector.schema.json) and [external agent handoff](https://github.com/lopadova/AskMyDocs/blob/main/docs/handoff/api-connector-packages.md) explain how to generate importable files directly from endpoint specifications. ZIPs contain only `connector.json` and optionally `README.md`; contents are validated without extraction or execution.
 
 ## Gotchas
 

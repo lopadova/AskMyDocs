@@ -16,11 +16,11 @@ export function ConnectorExportButton({ connector, testId }: { connector: ApiCon
         inFlight.current = true;
         setBusy(true);
         try {
-            const config = await apiConnectorsApi.exportConfig(connector.id);
-            const url = URL.createObjectURL(new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' }));
+            const archive = await apiConnectorsApi.exportPackage(connector.id);
+            const url = URL.createObjectURL(archive);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `${connector.name.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 80) || 'api'}.askmydocs-api-connector.json`;
+            link.download = `${connector.name.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 80) || 'api'}.askmydocs-api.zip`;
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -35,6 +35,6 @@ export function ConnectorExportButton({ connector, testId }: { connector: ApiCon
     }
 
     return <Button data-testid={testId} onClick={exportConfig} busy={busy} leadingIcon={<Download size={16} />}>
-        Export configuration
+        Export API
     </Button>;
 }

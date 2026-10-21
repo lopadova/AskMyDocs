@@ -30,9 +30,10 @@ export function ConnectorImportModal({ onClose, onImported }: { onClose: () => v
         setFieldErrors({});
         setLoading(true);
         try {
-            if (file.size > 5 * 1024 * 1024) throw new Error('Choose a configuration file smaller than 5 MB.');
+            if (file.size > 5 * 1024 * 1024) throw new Error('Choose a JSON or ZIP file no larger than 5 MiB.');
+            if (! /\.(json|zip)$/i.test(file.name)) throw new Error('Choose a .json or .zip API connector package.');
             let config: unknown;
-            try { config = JSON.parse(await file.text()); }
+            try { config = /\.zip$/i.test(file.name) ? file : JSON.parse(await file.text()); }
             catch { throw new Error('This file does not contain valid JSON.'); }
             const result = await apiConnectorsApi.previewImport(config);
             if (selection.current === current) setPreview(result);
@@ -66,11 +67,11 @@ export function ConnectorImportModal({ onClose, onImported }: { onClose: () => v
                 opener.current?.focus();
             }}>
                 <form onSubmit={submit} data-testid="api-connector-import-form" aria-busy={busy} className="api-config-import-form">
-                    <DialogTitle>Import API connector</DialogTitle>
-                    <DialogDescription>Restore the complete configuration, including endpoints. Enter only the missing credentials.</DialogDescription>
+                    <DialogTitle>Import API</DialogTitle>
+                    <DialogDescription>Choose a JSON configuration or ZIP package (up to 5 MiB). Review its endpoints before importing, then enter the missing credentials. No API requests run during import.</DialogDescription>
                     <label style={fieldLabelStyle()} htmlFor="api-connector-import-file">
                         <span style={fieldCaptionStyle()}>Configuration file</span>
-                        <input id="api-connector-import-file" data-testid="api-connector-import-file" type="file" accept=".json,application/json"
+                        <input id="api-connector-import-file" data-testid="api-connector-import-file" type="file" accept=".json,.zip,application/json,application/zip"
                             onChange={loadFile} disabled={busy} style={inputStyle()} />
                     </label>
                     {loading && <p role="status">Reading configuration…</p>}
@@ -78,6 +79,12 @@ export function ConnectorImportModal({ onClose, onImported }: { onClose: () => v
                         <p data-testid="api-connector-import-summary" role="status">
                             <strong>{preview.name}</strong> · {preview.endpoint_count} endpoints · {preview.relation_count} relations
                         </p>
+                        <details>
+                            <summary>Review configuration</summary>
+                            <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto', fontSize: 12 }}>
+                                {JSON.stringify(preview.config, null, 2)}
+                            </pre>
+                        </details>
                         {preview.required_credentials.length === 0
                             ? <p>No credentials are required. The configuration is ready to import.</p>
                             : <p>Secrets were omitted from the export. All other settings will be restored automatically.</p>}

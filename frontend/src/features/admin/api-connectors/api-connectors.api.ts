@@ -409,13 +409,31 @@ export interface ConnectorImportPreview {
 export type ConnectorImportCredentials = Record<string, Record<string, string>>;
 
 export const apiConnectorsApi = {
+    async exportPackage(id: number): Promise<Blob> {
+        try {
+            const { data } = await api.get<Blob>(`${BASE}/${id}/export`, { params: { format: 'zip' }, responseType: 'blob' });
+            return data;
+        } catch (cause) {
+            const failure = cause as { response?: { data: unknown } };
+            if (failure.response?.data instanceof Blob) {
+                try { failure.response.data = JSON.parse(await failure.response.data.text()); } catch { /* retain transport error */ }
+            }
+            throw cause;
+        }
+    },
+
     async exportConfig(id: number): Promise<ApiConnectorConfig> {
         const { data } = await api.get<{ data: ApiConnectorConfig }>(`${BASE}/${id}/export`);
         return data.data;
     },
 
     async previewImport(config: unknown): Promise<ConnectorImportPreview> {
-        const { data } = await api.post<{ data: ConnectorImportPreview }>(`${BASE}/import/validate`, { config });
+        let payload: FormData | { config: unknown } = { config };
+        if (config instanceof File) {
+            payload = new FormData();
+            payload.append('file', config);
+        }
+        const { data } = await api.post<{ data: ConnectorImportPreview }>(`${BASE}/import/validate`, payload);
         return data.data;
     },
 

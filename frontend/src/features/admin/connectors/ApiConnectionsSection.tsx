@@ -145,7 +145,7 @@ export function ApiConnectionsSection({ createRequest = 0, embedded = false }: {
                     {connectors.length}
                 </span>
                 <Button data-testid="api-connector-gallery-import" leadingIcon={<Upload size={16} />}
-                    onClick={() => openModal({ kind: 'import' })}>{translateInterface("Import configuration")}</Button>
+                    onClick={() => openModal({ kind: 'import' })}>Import API</Button>
                 {!embedded && (
                     <>
                         <div style={{ flex: 1, minWidth: 12 }} />
