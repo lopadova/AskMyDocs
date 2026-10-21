@@ -131,7 +131,7 @@ export const IT_MESSAGES: Record<string, string> = {
     "Search, document reading and document imports use the same project permissions in every client. Sending a local file depends on the client’s file access.": "Ricerca, lettura e importazione dei documenti rispettano gli stessi permessi del progetto in ogni client. L’invio di un file locale dipende dall’accesso ai file consentito dal client.",
     "Unable to prepare this connection. Please try again.": "Impossibile preparare la connessione. Riprova.",
     "Connection ready": "Connessione pronta",
-    "Download this connection package. Install its plugin in Codex, select Connect, and finish sign-in in AskMyDocs.": "Scarica il pacchetto della connessione. Installa il plugin in Codex, seleziona Collega e completa l’accesso ad AskMyDocs.",
+    "Download this ZIP and upload it in Codex under Plugins, New plugin. Then select Connect and finish sign-in in AskMyDocs.": "Scarica questo ZIP e caricalo in Codex da Plugin, Nuovo plugin. Poi seleziona Collega e completa l’accesso ad AskMyDocs.",
     "Download Codex plugin": "Scarica plugin Codex",
     "MCP URL for clients that support adding a server directly:": "URL MCP per i client che consentono di aggiungere direttamente un server:",
     "No token or client secret is required. Create another connection to connect a second project.": "Non occorrono token o segreti da copiare. Crea un’altra connessione per collegare un secondo progetto.",

@@ -13,12 +13,14 @@ You never copy API tokens, client IDs or secrets into the project.
 ## Install and connect Codex
 
 Open `/mcp/connect` on your AskMyDocs installation. Sign in, prepare a connection
-and download its plugin package. The archive contains the plugin and a local
-marketplace catalog. Extract it and add the extracted directory as a Codex
-marketplace; then install the AskMyDocs plugin from that source. The included
-catalog requests authentication on installation.
+and download its plugin ZIP. Upload it in Codex under **Plugins > New plugin**.
+The archive contains `plugin.json`, `mcp.json`, `.codex-plugin/plugin.json`,
+`.mcp.json` and `skills/` directly at the plugin root. It does not contain a
+marketplace catalog or an outer `plugin/` directory. A marketplace archive is
+not a single-plugin upload.
 
-For an operator preparing a local installation, the equivalent is:
+Operators can instead generate a local marketplace directory (a separate
+distribution format, not the ZIP upload):
 
 ```bash
 php artisan askmydocs:mcp:plugin --output=/absolute/path/to/new-marketplace

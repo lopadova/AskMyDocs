@@ -39,16 +39,16 @@ final class McpConnectionController extends Controller
         abort_if($path === false, 503);
         $zip = new ZipArchive;
         abort_unless($zip->open($path, ZipArchive::OVERWRITE) === true, 503);
+        // This is a single-plugin upload, not a marketplace bundle. Codex looks
+        // for plugin.json / .codex-plugin/plugin.json at the archive root.
         foreach ($packages->files($entry) as $name => $content) {
-            if (! $zip->addFromString('plugin/'.$name, $content)) {
+            if (! $zip->addFromString($name, $content)) {
                 $zip->close();
                 abort(503, 'Unable to package plugin.');
             }
         }
-        $catalog = json_encode($packages->marketplace($entry), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        abort_unless($zip->addFromString('.agents/plugins/marketplace.json', $catalog), 503);
         abort_unless($zip->close(), 503);
-        return response()->download($path, 'askmydocs-'.$entry->id.'.zip')->deleteFileAfterSend(true);
+        return response()->download($path, 'askmydocs-'.$entry->id.'.zip', ['Cache-Control' => 'private, no-store'])->deleteFileAfterSend(true);
     }
 
     public function review(string $import, McpDocumentImportService $imports): \Illuminate\Http\JsonResponse

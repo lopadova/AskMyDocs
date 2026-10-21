@@ -203,13 +203,24 @@ class McpOAuthConnectionTest extends TestCase
         $zip = new \ZipArchive;
         $this->assertTrue($zip->open($package->baseResponse->getFile()->getPathname()));
         try {
-            $manifest = json_decode($zip->getFromName('plugin/plugin.json'), true, flags: JSON_THROW_ON_ERROR);
-            $mcp = json_decode($zip->getFromName('plugin/mcp.json'), true, flags: JSON_THROW_ON_ERROR);
+            $manifest = json_decode($zip->getFromName('plugin.json'), true, flags: JSON_THROW_ON_ERROR);
+            $mcp = json_decode($zip->getFromName('mcp.json'), true, flags: JSON_THROW_ON_ERROR);
+            $compatibility = json_decode($zip->getFromName('.codex-plugin/plugin.json'), true, flags: JSON_THROW_ON_ERROR);
             $this->assertSame('askmydocs-'.$first['id'], $manifest['name']);
             $this->assertSame($first['mcp_url'], $mcp['mcpServers']['knowledge']['url']);
             $this->assertSame('dcr', $mcp['mcpServers']['knowledge']['extensions']['com.openai']['auth']['client']['mode']);
-            $this->assertStringNotContainsString('Bearer ', $zip->getFromName('plugin/mcp.json'));
-            $this->assertNotFalse($zip->getFromName('.agents/plugins/marketplace.json'));
+            $this->assertStringNotContainsString('Bearer ', $zip->getFromName('mcp.json'));
+            $this->assertSame('1.0.1', $manifest['version']);
+            $this->assertSame($manifest['name'], $compatibility['name']);
+            $this->assertSame($manifest['author'], $compatibility['author']);
+            $this->assertSame($manifest['extensions']['com.openai']['interface'], $compatibility['interface']);
+            $this->assertStringStartsWith('./', $compatibility['mcpServers']);
+            $compatibilityMcp = json_decode($zip->getFromName(substr($compatibility['mcpServers'], 2)), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($first['mcp_url'], $compatibilityMcp['mcpServers']['knowledge']['url']);
+            $this->assertNotFalse($zip->getFromName('skills/askmydocs/SKILL.md'));
+            $this->assertFalse($zip->getFromName('plugin/plugin.json'));
+            $this->assertFalse($zip->getFromName('.agents/plugins/marketplace.json'));
+            $this->assertSame(5, $zip->numFiles);
         } finally { $zip->close(); $this->assertTrue(unlink($package->baseResponse->getFile()->getPathname())); }
     }
 

@@ -67,7 +67,7 @@ export function McpConnectPage() {
             <pre style={codeStyle}>{connection.mcp_url}</pre>
             <Button variant={client === 'claude' || client === 'other' ? 'primary' : 'secondary'} leadingIcon={<Copy size={16} />} onClick={() => void copy(connection.mcp_url)}>{t('Copy MCP URL')}</Button>
             {client === 'codex' && <>
-                <p>{t('Download this connection package. Install its plugin in Codex, select Connect, and finish sign-in in AskMyDocs.')}</p>
+                <p>{t('Download this ZIP and upload it in Codex under Plugins, New plugin. Then select Connect and finish sign-in in AskMyDocs.')}</p>
                 <a href={connection.download_url} className="btn btn-primary"><Download size={16} aria-hidden="true" />{t('Download Codex plugin')}</a>
                 <p>{t('Start a new Codex chat after installing the plugin. When you select Connect, your browser opens AskMyDocs for sign-in, company and project selection, and consent. Codex stores the resulting token automatically.')}</p>
                 <details style={{ marginTop: 12 }}>
