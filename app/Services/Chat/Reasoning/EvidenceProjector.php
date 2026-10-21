@@ -112,7 +112,7 @@ final class EvidenceProjector
                 continue;
             }
             $rows = array_values(array_filter(array_column($records, 'record'), fn ($record) => $ids === []
-                || array_intersect($ids, self::identities($record)) !== []
+                || array_intersect($ids, self::identities($record, $tool['presentation']['identity_fields'] ?? [])) !== []
                 || array_filter($record, fn ($value, $key) => preg_match('/(?:Id|Ids)$/', (string) $key)
                     && array_intersect($ids, is_array($value) ? $value : [(string) $value]) !== [], ARRAY_FILTER_USE_BOTH)));
             if ($rows !== []) {
@@ -144,11 +144,14 @@ final class EvidenceProjector
         return [];
     }
 
-    public static function identities(array $record): array
+    public static function identities(array $record, array $declaredFields = []): array
     {
         // Foreign keys and emailEvidence are not the identity of the returned record.
+        $fields = $declaredFields !== [] ? array_values(array_filter($declaredFields,
+            static fn ($key) => is_string($key) && preg_match('/^[a-zA-Z0-9_-]+$/', $key)))
+            : ['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode'];
         return array_values(array_filter(array_map(fn ($key) => isset($record[$key]) && is_scalar($record[$key])
-            ? (string) $record[$key] : null, ['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode'])));
+            ? (string) $record[$key] : null, $fields)));
     }
 
     public function bind(array $evidence, array $claim, array $ids, string $tenant, string $project): array
@@ -187,11 +190,11 @@ final class EvidenceProjector
                 return ['reason' => 'source_hash_mismatch'];
             }
             $records = self::records($source);
-            $matches = array_values(array_filter($records, static function ($entry) use ($ids, $claim): bool {
+            $matches = array_values(array_filter($records, static function ($entry) use ($ids, $claim, $source): bool {
                 if (isset($claim['record_path']) && $claim['record_path'] !== $entry['path']) {
                     return false;
                 }
-                return $ids === [] || array_intersect($ids, self::identities($entry['record'])) !== [];
+                return $ids === [] || array_intersect($ids, self::identities($entry['record'], $source['presentation']['identity_fields'] ?? [])) !== [];
             }));
             if (count($matches) !== 1) {
                 return ['reason' => $matches === [] ? 'entity_mismatch' : 'ambiguous_record'];

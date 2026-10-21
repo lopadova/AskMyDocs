@@ -88,6 +88,21 @@ final class AgentEvidenceEnvelopeTest extends TestCase
         }
     }
 
+    public function test_configured_record_identities_reach_the_grounding_envelope(): void
+    {
+        $tool = new AgentToolDefinition(name: 'search_erp', displayName: 'ERP', description: 'Records', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true,
+            physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1,
+            metadata: ['items_path' => 'items', 'output_schema' => ['type' => 'object', 'properties' => [
+                'items' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'erp_reference' => ['type' => 'string', 'x-identity' => true],
+                ]]],
+            ]]]);
+        $envelope = app(AgentEvidenceFactory::class)->empty();
+        $envelope->addToolResult($tool, [], ['items' => [['erp_reference' => 'ORDER-A']]], 42);
+        $this->assertSame(['erp_reference'], $envelope->apiTools()[0]['presentation']['identity_fields']);
+    }
+
     public function test_noncontained_or_different_chunk_passages_are_not_discarded(): void
     {
         $envelope = app(AgentEvidenceFactory::class)->empty();

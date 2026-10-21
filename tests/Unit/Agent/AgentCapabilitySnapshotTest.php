@@ -67,6 +67,22 @@ final class AgentCapabilitySnapshotTest extends TestCase
         $this->assertGreaterThan(0, $ranked[0]['score']);
     }
 
+    public function test_output_schema_can_declare_nonstandard_scalar_identity_fields(): void
+    {
+        $tool = $this->tool('search_records', 'Records', ['items_path' => 'data.items', 'output_schema' => [
+            'type' => 'object', 'properties' => ['data' => ['type' => 'object', 'properties' => ['items' => [
+                'type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'erp_id' => ['type' => 'integer', 'x-identity' => true],
+                    'erp_reference' => ['type' => 'string', 'x-identity' => true],
+                    'customer_id' => ['type' => 'integer'],
+                    'nested' => ['type' => 'object', 'x-identity' => true],
+                ]],
+            ]]]],
+        ]]);
+        $snapshot = (new AgentCapabilitySnapshotBuilder(new AgentCapabilityHint))->build([$tool->name => $tool]);
+        $this->assertSame(['erp_id', 'erp_reference'], $snapshot->get($tool->name)->identityFields);
+    }
+
     /** @param array<string,mixed> $metadata */
     private function tool(string $name, string $description, array $metadata = []): AgentToolDefinition
     {

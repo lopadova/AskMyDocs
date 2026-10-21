@@ -144,7 +144,15 @@ final readonly class AgentCapabilitySnapshotBuilder
                 $node = $node['items'];
             }
         }
-        $properties = is_array($node['properties'] ?? null) ? array_keys($node['properties']) : [];
+        $definitions = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+        $declared = array_keys(array_filter($definitions, static fn ($property) => is_array($property)
+            && ($property['x-identity'] ?? false) === true
+            && array_intersect((array) ($property['type'] ?? []), ['string', 'integer', 'number']) !== []));
+        if ($declared !== []) {
+            return array_values(array_filter($declared, static fn ($key) => is_string($key)
+                && preg_match('/^[a-zA-Z0-9_-]+$/', $key)));
+        }
+        $properties = array_keys($definitions);
         $preferred = ['id', 'public_id', 'uuid', 'code', 'number', 'slug', 'email'];
 
         return array_values(array_intersect($preferred, $properties));

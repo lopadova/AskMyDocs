@@ -132,7 +132,7 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         ];
     }
 
-    /** @return array{collection_path:string|null,operation:string|null} */
+    /** @return array{collection_path:string|null,operation:string|null,identity_fields:list<string>} */
     private function presentation(AgentToolDefinition $tool): array
     {
         $hint = is_array($tool->metadata['agent_capability_hint'] ?? null)
@@ -147,7 +147,11 @@ final class AgentEvidenceEnvelope implements JsonSerializable
             $operation = null;
         }
 
-        return ['collection_path' => $path, 'operation' => $operation];
+        $capability = app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class)
+            ->build([$tool->name => $tool])->get($tool->name);
+
+        return ['collection_path' => $path, 'operation' => $operation,
+            'identity_fields' => $capability?->identityFields ?? []];
     }
 
     /** @param list<mixed> $items @return list<array<string,mixed>> */
