@@ -12,6 +12,7 @@ use App\Models\OAuthAuthorizationCode;
 use App\Models\OAuthClient;
 use App\Models\User;
 use App\Services\Auth\OAuthAccessPolicy;
+use App\Services\Auth\PactAuthService;
 use App\Services\Auth\UserTeamsResolver;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -41,7 +42,8 @@ final class OAuthController extends Controller
             'response_types.*' => ['in:code'],
             'scope' => ['sometimes', 'string', 'max:255'],
         ]);
-        return response()->json(app(McpOAuthService::class)->register($data), 201);
+        $pact = app(PactAuthService::class);
+        return response()->json($pact->isRegistration($data) ? $pact->register($data) : app(McpOAuthService::class)->register($data), 201);
     }
 
     public function metadata(): JsonResponse
@@ -49,6 +51,7 @@ final class OAuthController extends Controller
         $mcp = request()->is('.well-known/oauth-authorization-server/oauth/mcp');
         $base = $this->issuer();
         $issuer = $mcp ? $base.'/oauth/mcp' : $base;
+        $pact = ! $mcp && app(PactAuthService::class)->enabled();
         return response()->json([
             'issuer' => $issuer,
             'authorization_endpoint' => $base.'/oauth/authorize',
@@ -60,8 +63,9 @@ final class OAuthController extends Controller
             'token_endpoint_auth_methods_supported' => ['none'],
             'revocation_endpoint_auth_methods_supported' => ['none'],
             'code_challenge_methods_supported' => ['S256'],
-            'scopes_supported' => $mcp ? McpOAuthService::SCOPES : ['kb:read', 'kb:chat'],
+            'scopes_supported' => $mcp ? McpOAuthService::SCOPES : ['kb:read', 'kb:chat', ...($pact ? [PactAuthService::SCOPE] : [])],
             'authorization_response_iss_parameter_supported' => true,
+            ...($pact ? ['pact' => app(PactAuthService::class)->metadata($base)] : []),
         ]);
     }
 
@@ -80,6 +84,13 @@ final class OAuthController extends Controller
         $client = $this->client($data['client_id']);
         $this->checkRedirect($client, $data['redirect_uri']);
         $data['scopes'] = $this->scopes($client, $data['scope'] ?? null);
+        if (in_array(PactAuthService::SCOPE, $data['scopes'], true)) {
+            if (! app(PactAuthService::class)->enabled() || $data['scopes'] !== [PactAuthService::SCOPE]
+                || $client->scopes !== [PactAuthService::SCOPE] || isset($data['resource'])) {
+                $this->error('invalid_scope', 'PactAuth requires its separate, project-bound delegation scope.');
+            }
+            app(PactAuthService::class)->checkRedirect($data['redirect_uri']);
+        }
         if (array_intersect($data['scopes'], McpOAuthService::SCOPES) !== []) {
             if (! in_array('mcp:read', $data['scopes'], true) || ! isset($data['resource'])) {
                 $this->error('invalid_target', 'MCP authorization requires its exact project connection resource.');
@@ -108,7 +119,17 @@ final class OAuthController extends Controller
     {
         [$data, $client] = $this->pending($request, $authorization);
         $user = $this->activeUser($request);
+        $pact = in_array(PactAuthService::SCOPE, $data['scopes'], true);
+        if ($pact) app(PactAuthService::class)->verified($user);
         $teams = $this->teams->resolve($user);
+        if ($pact) {
+            foreach ($teams as &$team) {
+                $team['projects'] = array_values(array_filter($team['projects'], fn (array $project) =>
+                    app(PactAuthService::class)->membership($user, $team['tenant_id'], $project['project_key']) !== null));
+            }
+            unset($team);
+            $teams = array_values(array_filter($teams, fn (array $team) => $team['projects'] !== []));
+        }
         $connection = isset($data['mcp_connection_id']) ? McpProjectConnection::findOrFail($data['mcp_connection_id']) : null;
         if ($connection?->project_key !== null) {
             $teams = array_values(array_filter($teams, fn (array $team) => $team['tenant_id'] === $connection->tenant_id));
@@ -127,8 +148,10 @@ final class OAuthController extends Controller
                 'projects' => $team['projects'],
             ], $teams),
             'user' => ['name' => $user->name, 'email' => $user->email],
-            'token_ttl_days' => isset($data['mcp_connection_id']) ? 90 : (int) config('oauth.token_ttl_days'),
-            'requires_project' => isset($data['mcp_connection_id']),
+            'token_ttl_days' => $pact ? (int) ceil(app(PactAuthService::class)->ttl() / 86400) : (isset($data['mcp_connection_id']) ? 90 : (int) config('oauth.token_ttl_days')),
+            'requires_project' => $pact || isset($data['mcp_connection_id']),
+            'requires_explicit_selection' => $pact,
+            ...($pact ? ['delegation_available' => false] : []),
             'resource' => $data['resource'] ?? null,
         ]);
     }
@@ -137,6 +160,8 @@ final class OAuthController extends Controller
     {
         [$data, $client] = $this->pending($request, $authorization);
         $user = $this->activeUser($request);
+        $pact = in_array(PactAuthService::SCOPE, $data['scopes'], true);
+        if ($pact) app(PactAuthService::class)->verified($user);
         $choice = $this->validate($this->body($request), [
             'decision' => ['required', 'in:approve,deny'],
             'tenant_id' => ['required_if:decision,approve', 'nullable', 'string', 'max:64'],
@@ -149,8 +174,12 @@ final class OAuthController extends Controller
             if (! $this->policy->canUseTenant($user, $choice['tenant_id'])) {
                 $this->error('access_denied', 'Choose an active company you belong to.', 403);
             }
+            $membershipHash = $pact ? app(PactAuthService::class)->membership($user, $choice['tenant_id'], $choice['project_key'] ?? '') : null;
+            if ($pact && $membershipHash === null) {
+                $this->error('access_denied', 'Choose one project you can access in the selected company.', 403);
+            }
             $code = Str::random(64);
-            DB::transaction(function () use ($data, $choice, $user, $client, $code): void {
+            DB::transaction(function () use ($data, $choice, $user, $client, $code, $pact, $membershipHash): void {
                 if (isset($data['mcp_connection_id'])) {
                     app(McpOAuthService::class)->bind(McpProjectConnection::findOrFail($data['mcp_connection_id']),
                         $user, $choice['tenant_id'], $choice['project_key'] ?? '');
@@ -160,6 +189,8 @@ final class OAuthController extends Controller
                     'user_id' => $user->id, 'tenant_id' => $choice['tenant_id'],
                     'redirect_uri' => $data['redirect_uri'], 'scopes' => $data['scopes'],
                     'mcp_connection_id' => $data['mcp_connection_id'] ?? null,
+                    'pact_project_key' => $pact ? $choice['project_key'] : null,
+                    'pact_membership_hash' => $membershipHash,
                     'code_challenge' => $data['code_challenge'],
                     'expires_at' => now()->addSeconds((int) config('oauth.code_ttl_seconds')),
                 ]);
@@ -213,6 +244,13 @@ final class OAuthController extends Controller
             if ($user === null || ! $this->policy->canUseTenant($user, $code->tenant_id)) {
                 $this->error('invalid_grant', 'The authorization is no longer available.');
             }
+            $pact = in_array(PactAuthService::SCOPE, $code->scopes, true);
+            if ($pact && ($code->scopes !== [PactAuthService::SCOPE] || $client->scopes !== [PactAuthService::SCOPE]
+                || $code->mcp_connection_id !== null || isset($data['resource'])
+                || ! is_string($code->pact_membership_hash)
+                || app(PactAuthService::class)->membership($user, $code->tenant_id, $code->pact_project_key ?? '') !== $code->pact_membership_hash)) {
+                $this->error('invalid_grant', 'The project authorization is no longer available.');
+            }
 
             if ($connection) app(McpOAuthService::class)->bind($connection, $user, $code->tenant_id, $connection->project_key);
 
@@ -223,6 +261,7 @@ final class OAuthController extends Controller
                 $this->error('invalid_grant', 'The authorization code has already been used.');
             }
             $expires = $connection ? now()->addHour() : now()->addDays((int) config('oauth.token_ttl_days'));
+            if ($pact) $expires = now()->addSeconds(app(PactAuthService::class)->ttl());
             $sanctumTtl = (int) config('sanctum.expiration');
             if ($sanctumTtl > 0) {
                 $expires = $expires->min(now()->addMinutes($sanctumTtl));
@@ -233,9 +272,11 @@ final class OAuthController extends Controller
                 'personal_access_token_id' => $token->accessToken->id, 'client_id' => $client->id,
                 'user_id' => $user->id, 'tenant_id' => $code->tenant_id, 'scopes' => $code->scopes,
                 'mcp_connection_id' => $code->mcp_connection_id,
+                'pact_project_key' => $code->pact_project_key,
+                'pact_membership_hash' => $code->pact_membership_hash,
             ]);
             return response()->json([
-                'access_token' => $token->plainTextToken, 'token_type' => 'Bearer',
+                'access_token' => $pact ? Str::after($token->plainTextToken, '|') : $token->plainTextToken, 'token_type' => 'Bearer',
                 'expires_in' => max(0, $expires->timestamp - now()->timestamp),
                 'scope' => implode(' ', $code->scopes), 'tenant_id' => $code->tenant_id,
                 ...($connection ? ['refresh_token' => app(McpOAuthService::class)->refreshToken($grant)] : []),
@@ -284,7 +325,7 @@ final class OAuthController extends Controller
         return response()->json(['connections' => $items->map(static fn (OAuthAccessToken $grant): array => [
             'id' => $grant->id, 'name' => $grant->client->name, 'tenant_id' => $grant->tenant_id,
             'scopes' => $grant->scopes,
-            'project_key' => $grant->mcpConnection?->project_key,
+            'project_key' => $grant->pact_project_key ?? $grant->mcpConnection?->project_key,
             'mcp_url' => $grant->mcpConnection?->resource(), 'created_at' => $grant->created_at->toIso8601String(),
             'expires_at' => $grant->token?->expires_at?->toIso8601String(),
             'last_used_at' => $grant->token?->last_used_at?->toIso8601String(),
@@ -331,6 +372,13 @@ final class OAuthController extends Controller
 
     private function checkRedirect(OAuthClient $client, string $uri): void
     {
+        if (in_array(PactAuthService::SCOPE, $client->scopes, true)) {
+            app(PactAuthService::class)->checkRedirect($uri);
+            if (! in_array($uri, $client->redirect_uris, true)) {
+                $this->error('invalid_request', 'The callback URL is not registered for this application.');
+            }
+            return;
+        }
         if (in_array($uri, $client->redirect_uris, true)) return;
         // RFC 8252: loopback callback ports are selected afresh on each login.
         $candidate = parse_url($uri);

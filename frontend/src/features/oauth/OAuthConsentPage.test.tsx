@@ -26,6 +26,27 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('OAuth consent', () => {
+    it('requires explicit company and project choices for PactAuth and clears the project when the company changes', async () => {
+        vi.mocked(getConsent).mockResolvedValue({ ...consent, requires_project: true, requires_explicit_selection: true, delegation_available: false, teams: [
+            { tenant_id: 'acme', name: 'Acme', projects: [{ project_key: 'engineering', role: 'member' }] },
+            { tenant_id: 'other', name: 'Other', projects: [{ project_key: 'legal', role: 'member' }] },
+        ] });
+        render(<OAuthConsentPage requestId="pact-choice" />);
+        const connect = await screen.findByRole('button', { name: 'Connect application' });
+        expect(screen.getByRole('status')).toHaveTextContent('Delegated tasks are not available yet.');
+        expect(connect).toBeDisabled();
+        expect(screen.getByLabelText('Company')).toHaveAttribute('data-value', '');
+        await chooseSelectOption(screen.getByLabelText('Company'), 'acme');
+        expect(connect).toBeDisabled();
+        await chooseSelectOption(screen.getByLabelText('Project'), 'engineering');
+        expect(connect).toBeEnabled();
+        await chooseSelectOption(screen.getByLabelText('Company'), 'other');
+        expect(connect).toBeDisabled();
+        expect(screen.getByLabelText('Project')).toHaveAttribute('data-value', '');
+        await chooseSelectOption(screen.getByLabelText('Project'), 'legal');
+        await userEvent.click(connect);
+        expect(decideConsent).toHaveBeenCalledWith('pact-choice', 'approve', 'other', 'legal');
+    });
     it('binds an MCP connection to the chosen company and one project', async () => {
         vi.mocked(getConsent).mockResolvedValue({ ...consent, requires_project: true, teams: [
             { tenant_id: 'acme', name: 'Acme', projects: [{ project_key: 'engineering', role: 'member' }, { project_key: 'legal', role: 'member' }] },

@@ -9,5 +9,6 @@ return [
         'mcp:read' => 'Search and read documents in the one project you select',
         'mcp:ingest' => 'Submit documents to that project, with browser approval before indexing',
         'kb:chat' => 'Ask questions using your knowledge base',
+        'pact:delegate' => 'Delegate read-only knowledge tasks in the one project you select; no document imports or email actions',
     ],
 ];

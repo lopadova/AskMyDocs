@@ -50,6 +50,22 @@ final class OAuthAccessPolicy
             return false;
         }
 
+        if (in_array(PactAuthService::SCOPE, $grant->scopes, true)) {
+            $allowedPath = ($request->isMethod('GET') && $request->path() === '.well-known/agent-card.json')
+                || ($request->isMethod('POST') && $request->path() === 'api/pact/a2a');
+            if (! $allowedPath || $grant->scopes !== [PactAuthService::SCOPE]
+                || ! app(PactAuthService::class)->clientAllowed($grant->client) || ! $token->can(PactAuthService::SCOPE)
+                || $grant->mcp_connection_id !== null || ! is_string($grant->pact_membership_hash)
+                || app(PactAuthService::class)->membership($token->tokenable, $grant->tenant_id, $grant->pact_project_key ?? '') !== $grant->pact_membership_hash) {
+                return false;
+            }
+            app(TenantContext::class)->set($grant->tenant_id);
+            app(ConnectorTenantContext::class)->set($grant->tenant_id);
+            app(TenantContextBridge::class)->syncFromHost();
+            $request->attributes->set('pact.grant', $grant);
+            return true;
+        }
+
         if ($request->is('mcp/knowledge/*')) {
             $connection = $grant->mcp_connection_id ? McpProjectConnection::find($grant->mcp_connection_id) : null;
             $resourcePath = preg_replace('#/api/(info|search|document|imports)$#D', '', $request->path());

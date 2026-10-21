@@ -17,6 +17,7 @@ final class OAuthServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../config/oauth.php', 'oauth');
+        $this->mergeConfigFrom(__DIR__.'/../../config/pact-auth.php', 'pact-auth');
     }
 
     public function boot(): void
@@ -36,6 +37,7 @@ final class OAuthServiceProvider extends ServiceProvider
             \App\Console\Commands\McpPluginCommand::class,
             \App\Console\Commands\OAuthDisableClientCommand::class,
             \App\Console\Commands\OAuthPruneCommand::class,
+            \App\Console\Commands\PactAuthClientCommand::class,
         ]);
         $this->callAfterResolving(\Illuminate\Console\Scheduling\Schedule::class,
             static fn (\Illuminate\Console\Scheduling\Schedule $schedule) => $schedule->command('oauth:prune')->daily());

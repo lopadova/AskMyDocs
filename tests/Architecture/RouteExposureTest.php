@@ -33,7 +33,7 @@ class RouteExposureTest extends TestCase
      * @var array<int, string>
      */
     /** Exact middleware names that authenticate. @var array<int, string> */
-    private const AUTH_EXACT = ['auth', 'tenant.authorize', 'widget.key', 'mcp.scope', \App\Http\Middleware\AuthenticateMcpProject::class];
+    private const AUTH_EXACT = ['auth', 'tenant.authorize', 'widget.key', 'mcp.scope', \App\Http\Middleware\AuthenticateMcpProject::class, \App\Http\Middleware\AuthenticatePactDelegation::class];
 
     /**
      * Prefixes that authenticate/authorize. `auth:` / `auth.` are precise so a

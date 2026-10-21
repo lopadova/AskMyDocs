@@ -14,6 +14,12 @@ Route::middleware(['api', \App\Http\Middleware\OAuthResponseHeaders::class])->gr
     Route::get('/oauth/userinfo', [OAuthController::class, 'userinfo'])->middleware('auth:sanctum')->name('oauth.userinfo');
 });
 
+Route::middleware(['api', \App\Http\Middleware\OAuthResponseHeaders::class,
+    \App\Http\Middleware\AuthenticatePactDelegation::class, 'throttle:oauth-authorize'])->group(function () {
+    Route::get('/.well-known/agent-card.json', [\App\Http\Controllers\PactController::class, 'unavailable']);
+    Route::post('/api/pact/a2a', [\App\Http\Controllers\PactController::class, 'unavailable']);
+});
+
 Route::middleware(['web', \App\Http\Middleware\OAuthResponseHeaders::class])->group(function () {
     Route::get('/oauth/authorize', [OAuthController::class, 'authorize'])->middleware('throttle:oauth-authorize')->name('oauth.authorize');
     Route::get('/oauth/consent', SpaController::class)->name('oauth.consent');

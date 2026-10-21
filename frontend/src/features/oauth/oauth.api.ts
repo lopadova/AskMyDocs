@@ -5,6 +5,8 @@ export type OAuthConsent = {
     scopes: { id: string; description: string }[];
     teams: { tenant_id: string; name: string; projects?: { project_key: string; role: string }[] }[];
     requires_project?: boolean;
+    requires_explicit_selection?: boolean;
+    delegation_available?: boolean;
     resource?: string | null;
     user: { name: string; email: string };
     token_ttl_days: number;
