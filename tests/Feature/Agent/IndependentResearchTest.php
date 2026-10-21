@@ -44,7 +44,7 @@ class IndependentResearchTest extends TestCase
         $initial->import(ResearchEvidence::tagged(['documents' => [['document_id' => 1,
             'evidence' => [['chunk_id' => 1, 'content' => 'ORDER-A is scheduled.', 'evidence_hash' => 'test-hash']]]]], 0));
         $reader = Mockery::mock(KbSourceReader::class);
-        $reader->shouldReceive('readCandidate')->andReturn(['excerpt' => 'ORDER-A is scheduled.']);
+        $reader->shouldReceive('readCandidate')->andReturn(['title' => 'ORDER-A', 'excerpt' => 'ORDER-A is scheduled.']);
         $this->app->instance(KbSourceReader::class, $reader);
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldNotReceive('chatWithProvider');
@@ -186,7 +186,10 @@ class IndependentResearchTest extends TestCase
         $progress = $parent->events()->where('type', 'research.finished')->sole()->payload_json['data']['tasks'];
         $this->assertSame(['answered', 'answered'], array_column($progress, 'task_status'));
         app(\App\Contracts\AgentRunHandler::class)->handle($parent);
-        $outcome = new \App\Agent\AgentLoopOutcome('answer', $initial, []);
+        // Resume the same reauthorized evidence, including its source metadata.
+        $resumed = app(AgentEvidenceFactory::class)->empty();
+        $resumed->import($parent->fresh()->result_json['evidence']);
+        $outcome = new \App\Agent\AgentLoopOutcome('answer', $resumed, []);
         app(\App\Agent\AgentAnswerSynthesizer::class)->synthesize($turn->content,
             \App\Agent\AgentExecutionContext::fromArray($parent->getAttributes()), $outcome,
             understanding: $parent->result_json['question_understanding'], durableRunId: $parent->run_id);
@@ -215,7 +218,7 @@ class IndependentResearchTest extends TestCase
             'actor_id' => (string) $user->id, 'locale' => 'en', 'timezone' => 'UTC', 'status' => 'running',
             'input_json' => ['question' => 'Four requests'], 'result_json' => ['question_understanding' => $u->toArray()]]);
         $reader = Mockery::mock(KbSourceReader::class);
-        $reader->shouldReceive('readCandidate')->andReturnUsing(fn ($candidate) => ['excerpt' => 'ITEM-'.($candidate['document']['id'] - 1).' is active.']);
+        $reader->shouldReceive('readCandidate')->andReturnUsing(fn ($candidate) => ['title' => 'Item', 'excerpt' => 'ITEM-'.($candidate['document']['id'] - 1).' is active.']);
         $this->app->instance(KbSourceReader::class, $reader);
         $seen = [];
         $ai = Mockery::mock(AiManager::class);
