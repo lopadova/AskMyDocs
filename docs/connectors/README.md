@@ -460,3 +460,9 @@ All endpoints behind `auth:sanctum` + `can:manageConnectors`
   test
 
 See [email API verification](EMAIL-API-VERIFICATION.md) for reproducible fixture and local package checks.
+
+## Portable API connector packages
+
+See the [versioned contract, schema and example](api-packages/README.md) and the
+[external agent handoff](../handoff/api-connector-packages.md) to author API
+connectors as JSON or ZIP files and use **Import API** / **Export API**.

@@ -1,0 +1,202 @@
+{
+  "_meta": {
+    "format": "askmydocs.api-connector-config",
+    "version": 1
+  },
+  "connector": {
+    "name": "Orders API example",
+    "description": "Portable read-only order tools. Replace api.example.com with the user-provided API host.",
+    "project_key": null,
+    "base_url": "https://api.example.com",
+    "headers": {
+      "Accept": "application/json"
+    },
+    "secret_headers": [],
+    "is_active": true
+  },
+  "default_auth_profile_ref": "auth-orders",
+  "auth_profiles": [
+    {
+      "ref": "auth-orders",
+      "type": "bearer",
+      "config": {},
+      "public_credentials": {},
+      "secret_fields": [
+        "token"
+      ],
+      "secret_headers": []
+    }
+  ],
+  "routes": [
+    {
+      "ref": "orders-list",
+      "name": "List orders",
+      "slug": "list_orders",
+      "description": "List orders",
+      "http_method": "GET",
+      "url": "https://api.example.com/v1/orders",
+      "mode": "tool",
+      "status": "active",
+      "endpoint_type": "list",
+      "endpoint_type_locked": true,
+      "auth_profile_ref": null,
+      "parameters": [
+        {
+          "name": "status",
+          "location": "query",
+          "source": "llm",
+          "type": "string",
+          "required": false,
+          "value": null,
+          "secret_ref": null,
+          "description": "Status",
+          "sort_order": 0
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Optional status filter"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "tool_definition": {
+        "name": "list_orders",
+        "description": "List orders. Use only when the user asks about orders.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "description": "Optional status filter"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "timeout_ms": 10000,
+      "cache_ttl_s": 0,
+      "rate_limit": 30,
+      "output_transform": null,
+      "pagination": null,
+      "items_path": "orders"
+    },
+    {
+      "ref": "orders-detail",
+      "name": "Read an order",
+      "slug": "get_order",
+      "description": "Read an order",
+      "http_method": "GET",
+      "url": "https://api.example.com/v1/orders/{id}",
+      "mode": "tool",
+      "status": "active",
+      "endpoint_type": "detail",
+      "endpoint_type_locked": true,
+      "auth_profile_ref": null,
+      "parameters": [
+        {
+          "name": "id",
+          "location": "path",
+          "source": "llm",
+          "type": "integer",
+          "required": true,
+          "value": null,
+          "secret_ref": null,
+          "description": "Id",
+          "sort_order": 0
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Order identifier"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      },
+      "tool_definition": {
+        "name": "get_order",
+        "description": "Read an order. Use only when the user asks about orders.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "Order identifier"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "timeout_ms": 10000,
+      "cache_ttl_s": 0,
+      "rate_limit": 30,
+      "output_transform": null,
+      "pagination": null
+    }
+  ],
+  "relations": [
+    {
+      "name": "Order details",
+      "list_route_ref": "orders-list",
+      "detail_route_ref": "orders-detail",
+      "field_map": [
+        {
+          "from": "id",
+          "to_param": "id",
+          "to_location": "path"
+        }
+      ],
+      "sort_order": 0
+    }
+  ]
+}

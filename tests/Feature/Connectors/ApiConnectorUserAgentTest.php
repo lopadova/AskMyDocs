@@ -69,7 +69,10 @@ final class ApiConnectorUserAgentTest extends TestCase
         $transfer = app(ConnectorConfigTransferService::class);
         $export = $transfer->export($connectorId);
         $this->assertSame($userAgent, $export['connector']['headers']['User-Agent']);
-        $imported = $transfer->import($export, []);
+        $this->assertSame(['X-Account'], $export['connector']['secret_headers']);
+        $this->assertArrayNotHasKey('X-Account', $export['connector']['headers']);
+        $imported = $transfer->import($export, ['shared-headers' => ['X-Account' => 'orders']]);
         $this->assertSame($userAgent, $imported->headers['User-Agent']);
+        $this->assertSame('orders', $imported->headers['X-Account']);
     }
 }
