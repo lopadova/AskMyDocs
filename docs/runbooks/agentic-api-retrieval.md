@@ -218,3 +218,51 @@ proteggere gli indirizzi esplicitamente vietati: non disabilitare
   tool e il loop può usare le altre evidenze.
 - Se la UI sembra ferma, verificare prima il worker `agent`, poi lo stream SSE e
   il suo ultimo `sequence`; il client deve ripartire da quel valore, non da zero.
+
+## Identificativi nei risultati API
+
+Le proprietà scalari dello schema di output possono dichiarare `"x-identity": true`
+per identificare il record restituito quando l'API usa nomi diversi da `id` o
+`code`. Per esempio, una collezione `order` può dichiarare `ord_ID` e
+`ord_codiceweb`; la chiave esterna del cliente non va marcata come identità
+dell'ordine. Il catalogo delle capacità conserva questa dichiarazione nelle
+evidenze e il controllo delle risposte la usa per associare ogni affermazione
+al record corretto. Restano obbligatori scope, hash e corrispondenza del record;
+un filtro di ricerca o una chiave esterna non certificano l'identità.
+
+Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
+`"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
+ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
+`status`, `ord_prezzotot` può essere `total`/`orderTotal` e `valute_codice`
+può essere `currency`. Se un ruolo è dichiarato da più proprietà viene ignorato
+perché ambiguo. In caso di giudizio semantico inconcludente, il fallback può
+mostrare soltanto i valori letterali richiesti del record già verificato,
+conservando identità, hash e valuta; non autorizza inferenze o altri record.
+
+## API di lettura che restituiscono XML
+
+Configurare prima il formato documentato dal servizio, per esempio un parametro
+query fisso `type=json`. Se una route legacy continua a rispondere XML, è
+possibile abilitare esplicitamente la normalizzazione nel suo `output_transform`:
+
+```json
+{
+  "response_format": "xml",
+  "xml_root": "resi",
+  "xml_list_paths": ["resi.reso", "resi.reso.articoli.articolo"],
+  "include": ["resi"]
+}
+```
+
+Il percorso della collezione sarà `resi.reso`. La normalizzazione è identica
+nei test della connessione e nell'esecuzione dei tool; nessun'altra route
+accetta XML implicitamente. I valori XML restano stringhe, conservando zeri
+iniziali e precisione dei decimali. I percorsi dichiarati restano liste anche
+con un solo record o una collezione vuota. Un documento malformato, un root
+diverso da quello atteso o una dichiarazione DTD/entity non sono evidenze valide,
+anche quando il server risponde HTTP 200.
+
+Finché il pacchetto connector-api beta.5 non incorpora questo supporto, gli hook
+Composer applicano `scripts/composer/patch-api-connector-structured-responses.php`.
+Con installazioni `--no-scripts`, eseguire il patcher esplicitamente. Il patcher
+è idempotente e rifiuta sorgenti inattese prima di modificarli.

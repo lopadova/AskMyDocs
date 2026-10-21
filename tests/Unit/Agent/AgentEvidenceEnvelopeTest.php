@@ -11,6 +11,25 @@ use Tests\TestCase;
 
 final class AgentEvidenceEnvelopeTest extends TestCase
 {
+    public function test_only_unambiguous_scalar_field_aliases_reach_the_evidence(): void
+    {
+        $tool = new AgentToolDefinition(name: 'erp', displayName: 'ERP', description: 'Records', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true,
+            physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1,
+            metadata: ['items_path' => 'items', 'output_schema' => ['properties' => [
+                'items' => ['type' => 'array', 'items' => ['properties' => [
+                    'state' => ['type' => 'string', 'x-field' => 'status'],
+                    'amount' => ['type' => 'number', 'x-field' => 'total'],
+                    'ambiguous_amount' => ['type' => 'number', 'x-field' => 'total'],
+                    'nested' => ['type' => 'object', 'x-field' => 'details'],
+                    'invalid' => ['type' => 'string', 'x-field' => 'not.a.path'],
+                ]]],
+            ]]]);
+        $envelope = app(AgentEvidenceFactory::class)->empty();
+        $envelope->addToolResult($tool, [], ['items' => [['state' => 'SHIPPED']]], 42);
+        $this->assertSame(['status' => 'state'], $envelope->apiTools()[0]['presentation']['field_aliases']);
+    }
+
     public function test_document_evidence_is_grouped_deduplicated_and_masked(): void
     {
         $chunk = [

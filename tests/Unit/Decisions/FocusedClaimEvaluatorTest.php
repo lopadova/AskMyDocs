@@ -8,6 +8,30 @@ use Tests\TestCase;
 
 class FocusedClaimEvaluatorTest extends TestCase
 {
+    public function test_declared_custom_fields_render_exact_requested_values_when_decision_is_unavailable(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
+        Http::fake(fn ($request) => isset($request['state']['original_question'])
+            ? Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => ['relevance_0' => ['type' => 'noul', 'noul' => .95]]])
+            : Http::response([], 503));
+        $record = ['erp_id' => 123, 'erp_reference' => 'ORDER-A', 'order_state' => 'SHIPPED', 'order_total' => 245, 'order_currency' => 'USD', 'unrequested_field' => 'omit me'];
+        $evidence = ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'h', 'presentation' => [
+            'collection_path' => 'items', 'identity_fields' => ['erp_id', 'erp_reference'],
+            'field_aliases' => ['status' => 'order_state', 'total' => 'order_total', 'currency' => 'order_currency'],
+        ], 'result' => ['items' => [$record]]]]];
+        $sub = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status and total', 'fields' => ['status', 'total']];
+        $claim = ['text' => 'ORDER-A is shipped and totals 245 USD.', 'tool_execution_id' => 42, 'evidence_hash' => 'h', 'record_path' => 'items.0'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status and total for ORDER-A?', $evidence, [$claim], ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| erp_reference | ORDER-A |', $text);
+        $this->assertStringContainsString('| order_state | SHIPPED |', $text);
+        $this->assertStringContainsString('| order_total | 245 |', $text);
+        $this->assertStringContainsString('| order_currency | USD |', $text);
+        $this->assertStringNotContainsString('unrequested_field', $text);
+        $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
+    }
+
     private function fixture(): array
     {
         $record = ['id' => 'SHIP-12', 'trackingCode' => 'TRACK-55', 'status' => 'scheduled', 'orderId' => 'ORDER-22', 'customerId' => 'RO-LONGO'];

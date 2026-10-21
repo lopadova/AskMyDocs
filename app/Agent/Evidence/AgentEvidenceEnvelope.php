@@ -132,7 +132,7 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         ];
     }
 
-    /** @return array{collection_path:string|null,operation:string|null,identity_fields:list<string>} */
+    /** @return array{collection_path:string|null,operation:string|null,identity_fields:list<string>,field_aliases:array<string,string>} */
     private function presentation(AgentToolDefinition $tool): array
     {
         $hint = is_array($tool->metadata['agent_capability_hint'] ?? null)
@@ -147,11 +147,30 @@ final class AgentEvidenceEnvelope implements JsonSerializable
             $operation = null;
         }
 
-        $capability = app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class)
-            ->build([$tool->name => $tool])->get($tool->name);
+        $builder = app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class);
+        $capability = $builder->build([$tool->name => $tool])->get($tool->name);
+        $aliases = $duplicates = [];
+        foreach ($builder->recordProperties($capability?->outputSchema, $path) as $field => $property) {
+            if (! is_array($property)) {
+                continue;
+            }
+            $roles = $property['x-field'] ?? [];
+            foreach (is_string($roles) ? [$roles] : (is_array($roles) ? $roles : []) as $role) {
+                if (! is_string($role) || ! preg_match('/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/', $role)
+                    || ! is_string($field) || ! preg_match('/^[a-zA-Z0-9_-]+$/', $field)
+                    || array_intersect((array) ($property['type'] ?? []), ['string', 'integer', 'number', 'boolean']) === []) {
+                    continue;
+                }
+                if (isset($aliases[$role])) {
+                    $duplicates[$role] = true;
+                }
+                $aliases[$role] = $field;
+            }
+        }
+        $aliases = array_diff_key($aliases, $duplicates);
 
         return ['collection_path' => $path, 'operation' => $operation,
-            'identity_fields' => $capability?->identityFields ?? []];
+            'identity_fields' => $capability?->identityFields ?? [], 'field_aliases' => $aliases];
     }
 
     /** @param list<mixed> $items @return list<array<string,mixed>> */

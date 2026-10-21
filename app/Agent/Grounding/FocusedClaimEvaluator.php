@@ -168,6 +168,11 @@ final readonly class FocusedClaimEvaluator
                 $meta = [...$meta, 'used' => true, 'status' => 'completed', 'model' => $result->model, 'usage' => $result->usage, 'latency_ms' => $result->latencyMs];
             } catch (\Throwable $exception) {
                 $meta = [...$meta, 'status' => 'error', 'reason' => 'provider_or_response_error', 'exception_class' => $exception::class];
+                if ($exception instanceof \App\Decisions\DecisionException) {
+                    // DecisionException messages contain a local contract error
+                    // or HTTP status, never the source text or credentials.
+                    $meta['decision_error'] = $exception->getMessage();
+                }
             }
         }
         $renderedTexts = [];
@@ -190,7 +195,8 @@ final readonly class FocusedClaimEvaluator
                 'reason' => $repeated ? 'already_communicated' : ($duplicate ? 'duplicate_fact' : ($category ?? 'decision_unavailable')),
                 'category' => $category, 'probabilities' => $decisions[$key]['probabilities'] ?? [], 'probability' => $probability,
                 'threshold' => (float) config('reasoning.threshold', 0.8), 'fallback' => $fallback, 'record_path' => $pair['bound']['path'],
-                'missing_fields' => $fallback === null ? [] : array_values(array_diff($pair['sub']['fields'] ?? [], ['*'], array_keys($pair['bound']['record'])))];
+                'missing_fields' => $fallback === null ? [] : array_values(array_filter($pair['sub']['fields'] ?? [],
+                    fn ($field) => $field !== '*' && ! array_key_exists($pair['bound']['field_aliases'][$field] ?? $field, $pair['bound']['record'])))];
             if ($claim !== null && ! $repeated && ! $duplicate) {
                 $checks[$key]['fact_id'] = $fingerprint;
                 $accepted[$fingerprint] = [...$claim, 'fact_id' => $fingerprint, 'subquestion_id' => $pair['check']['subquestion_id']];
@@ -248,21 +254,27 @@ final readonly class FocusedClaimEvaluator
     {
         $record = $pair['bound']['record'];
         $ids = $pair['sub']['identifiers'] ?? [];
-        if (! is_array($record) || $ids === [] || array_intersect($ids, EvidenceProjector::identities($record)) === []) {
+        if (! is_array($record) || $ids === [] || array_intersect($ids, EvidenceProjector::identities($record, $pair['bound']['identity_fields'] ?? [])) === []) {
             return null;
         }
         $fields = $pair['sub']['fields'] ?? [];
+        $aliases = $pair['bound']['field_aliases'] ?? [];
         // General details are explicit in the interpretation. Otherwise only exact
         // requested keys may be rendered; a missing key must not erase present ones.
         if ($fields === ['*']) {
             $fields = array_keys(array_filter($record, fn ($value) => is_scalar($value) || $value === null));
         } else {
-            $fields = array_values(array_intersect($fields, array_keys($record)));
+            $fields = array_values(array_intersect(array_map(fn ($field) => $aliases[$field] ?? $field, $fields), array_keys($record)));
+            // A monetary total retains its declared currency; never invent a conversion.
+            if (isset($aliases['total'], $aliases['currency'])
+                && in_array($aliases['total'], $fields, true) && array_key_exists($aliases['currency'], $record)) {
+                $fields[] = $aliases['currency'];
+            }
         }
         if ($fields === []) {
             return null;
         }
-        $selected = array_intersect_key($record, array_flip(array_merge(['id', 'code', 'trackingCode'], $fields)));
+        $selected = array_intersect_key($record, array_flip(array_merge(['id', 'code', 'trackingCode'], $pair['bound']['identity_fields'] ?? [], $fields)));
         $rows = [];
         foreach ($selected as $field => $value) {
             if (! is_scalar($value) && $value !== null) {

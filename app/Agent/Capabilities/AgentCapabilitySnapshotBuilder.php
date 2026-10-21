@@ -124,8 +124,8 @@ final readonly class AgentCapabilitySnapshotBuilder
         return null;
     }
 
-    /** @param array<string,mixed>|null $schema @return list<string> */
-    private function identityFields(?array $schema, ?string $collectionPath): array
+    /** @param array<string,mixed>|null $schema @return array<string,array<string,mixed>> */
+    public function recordProperties(?array $schema, ?string $collectionPath): array
     {
         if (! is_array($schema)) {
             return [];
@@ -144,7 +144,13 @@ final readonly class AgentCapabilitySnapshotBuilder
                 $node = $node['items'];
             }
         }
-        $definitions = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+        return is_array($node['properties'] ?? null) ? $node['properties'] : [];
+    }
+
+    /** @param array<string,mixed>|null $schema @return list<string> */
+    private function identityFields(?array $schema, ?string $collectionPath): array
+    {
+        $definitions = $this->recordProperties($schema, $collectionPath);
         $declared = array_keys(array_filter($definitions, static fn ($property) => is_array($property)
             && ($property['x-identity'] ?? false) === true
             && array_intersect((array) ($property['type'] ?? []), ['string', 'integer', 'number']) !== []));
