@@ -432,7 +432,7 @@ final readonly class AgentAnswerSynthesizer
         $evidence = $outcome->evidence->jsonSerialize();
         $system = $this->systemPrompt($context);
         if ($structuredRetry) {
-            $system .= "\nThe previous submission could not be parsed as complete JSON. Produce one complete submit_agent_answer function call conforming to its schema. Use only the original authorized evidence below; the malformed submission supplies no facts. Keep the response concise and close every JSON value.";
+            $system .= "\nThe previous attempt did not produce a usable complete structured response. Produce one complete submit_agent_answer function call conforming to its schema. Use only the original authorized evidence below; the failed attempt supplies no facts. Keep the response concise and close every JSON value.";
         }
         if ($repairAttempt) {
             $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
@@ -498,20 +498,21 @@ PROMPT;
         );
     }
 
-    /** A malformed provider tool call gets one fresh draft, never partial JSON salvage. */
+    /** Malformed output or a connection failure gets one retry with the same evidence. */
     private function structuredDraft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
         ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false): array
     {
         for ($attempt = 0; $attempt < 2; $attempt++) {
-            $response = $this->draft($question, $context, $outcome, $understanding, $turnContext,
-                claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1);
             try {
+                $response = $this->draft($question, $context, $outcome, $understanding, $turnContext,
+                    claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1);
                 return [$response, $this->payload($response->toolCalls, $response->content)];
-            } catch (\UnexpectedValueException $exception) {
+            } catch (\UnexpectedValueException|\Illuminate\Http\Client\ConnectionException $exception) {
                 if ($attempt === 1) {
                     throw $exception;
                 }
-                Log::warning('agent.synthesis.malformed_submission_retry', ['run_id' => $context->runId]);
+                Log::warning('agent.synthesis.submission_retry', ['run_id' => $context->runId,
+                    'reason' => $exception instanceof \UnexpectedValueException ? 'malformed_json' : 'connection_error']);
             }
         }
         throw new \LogicException('Unreachable structured draft state.');

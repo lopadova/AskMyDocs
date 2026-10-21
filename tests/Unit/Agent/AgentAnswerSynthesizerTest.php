@@ -32,7 +32,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
             if ($attempt++ === 0) {
                 return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => '{"claims":[']]);
             }
-            $this->assertStringContainsString('previous submission could not be parsed', $system);
+            $this->assertStringContainsString('previous attempt did not produce a usable complete structured response', $system);
             return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
                 'completeness' => 'complete', 'claims' => [['text' => $content, 'quote' => $content, 'document_id' => 252,
                     'tool_execution_id' => null, 'evidence_hash' => $hash]], 'render_table' => false, 'requires_selection' => false, 'limitations' => [],
@@ -42,6 +42,24 @@ final class AgentAnswerSynthesizerTest extends TestCase
             ->synthesize('What does ORDER-A request?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
         $this->assertSame($content, $answer->answer);
         $this->assertSame([252], array_column($answer->citations, 'document_id'));
+    }
+
+    public function test_connection_timeout_gets_one_retry_without_changing_evidence(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $firstInput = null;
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $messages) use (&$firstInput) {
+            $firstInput = $messages;
+            throw new \Illuminate\Http\Client\ConnectionException('Timed out');
+        });
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $messages) use (&$firstInput) {
+            $this->assertSame($firstInput, $messages);
+            return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => ['claims' => []]]]);
+        });
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        [, $payload] = (new \ReflectionMethod($synthesizer, 'structuredDraft'))->invoke($synthesizer,
+            'What does ORDER-A request?', $this->context(), new AgentLoopOutcome('answer', app(AgentEvidenceFactory::class)->empty(), []), null);
+        $this->assertSame(['claims' => []], $payload);
     }
 
     public function test_two_malformed_submissions_fail_without_a_third_provider_call(): void
