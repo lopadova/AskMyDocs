@@ -28,7 +28,7 @@ final class FocusContract
         return [
             'transition' => ['type' => 'string', 'enum' => ['new', 'continue', 'switch', 'correct', 'recap', 'provenance']],
             'focus' => $focus,
-            'subquestions' => ['type' => 'array', 'items' => $subquestion, 'description' => 'Decompose unrelated requests into separate standalone questions, including focus. Keep dependent steps for one request together. Never copy previous subquestions.'],
+            'subquestions' => ['type' => 'array', 'items' => $subquestion, 'description' => 'Decompose unrelated requests into separate standalone questions. Include the EXACT focus topic, identifiers, aspect and fields in one subquestion, without adding a paraphrased duplicate of that request. Keep dependent steps for one request together: one case history and its corresponding live API lookup form one task. Never copy previous subquestions.'],
             'resolved_references' => $strings + ['description' => 'Every identifier used in focus or subquestions but not literally typed now MUST be listed here, and MUST be in known_identifiers.'],
             'needs_clarification' => ['type' => 'boolean'],
             'clarification' => ['type' => 'string'],

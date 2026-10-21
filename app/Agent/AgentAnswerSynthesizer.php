@@ -101,8 +101,7 @@ final readonly class AgentAnswerSynthesizer
         if ($independent) {
             [$response, $payload] = $this->researchDrafts($context, $outcome, $understanding, $durableRunId);
         } else {
-            $response = $this->draft($question, $context, $outcome, $understanding, $turnContext);
-            $payload = $this->payload($response->toolCalls, $response->content);
+            [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext);
         }
         // Table/selection handoffs contain no synthesized factual prose; their
         // records are rendered from the structured tool artifact itself.
@@ -159,10 +158,9 @@ final readonly class AgentAnswerSynthesizer
                     }
                     $envelope = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
                     $envelope->import($repairEvidence);
-                    $repairedResponse = $this->draft($question, $context,
+                    [$repairedResponse, $repairedPayload] = $this->structuredDraft($question, $context,
                         new AgentLoopOutcome($outcome->decision, $envelope, $outcome->completedActions, $outcome->stopReason),
                         $understanding, json_encode($feedback, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), repairAttempt: true);
-                    $repairedPayload = $this->payload($repairedResponse->toolCalls, $repairedResponse->content);
                     // Repair is factual synthesis, never a new artifact/selection handoff.
                     $repairedPayload['render_table'] = false;
                     $repairedPayload['requires_selection'] = $payload['requires_selection'] ?? false;
@@ -429,10 +427,13 @@ final readonly class AgentAnswerSynthesizer
     }
 
     private function draft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
-        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false): \App\Ai\AiResponse
+        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false, bool $structuredRetry = false): \App\Ai\AiResponse
     {
         $evidence = $outcome->evidence->jsonSerialize();
         $system = $this->systemPrompt($context);
+        if ($structuredRetry) {
+            $system .= "\nThe previous submission could not be parsed as complete JSON. Produce one complete submit_agent_answer function call conforming to its schema. Use only the original authorized evidence below; the malformed submission supplies no facts. Keep the response concise and close every JSON value.";
+        }
         if ($repairAttempt) {
             $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
             $system .= "\nWhen a compound claim was inconclusive, split its clear observations from identity reconciliation, hypotheses and ambiguous explanations. Use separate atomic claims for the requested facts; do not repeat the same compound paragraph. Preserve the documented speaker without assuming that a forwarder and an embedded author are the same person. Keep only the uncertain part unresolved.";
@@ -497,6 +498,25 @@ PROMPT;
         );
     }
 
+    /** A malformed provider tool call gets one fresh draft, never partial JSON salvage. */
+    private function structuredDraft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
+        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false): array
+    {
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $response = $this->draft($question, $context, $outcome, $understanding, $turnContext,
+                claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1);
+            try {
+                return [$response, $this->payload($response->toolCalls, $response->content)];
+            } catch (\UnexpectedValueException $exception) {
+                if ($attempt === 1) {
+                    throw $exception;
+                }
+                Log::warning('agent.synthesis.malformed_submission_retry', ['run_id' => $context->runId]);
+            }
+        }
+        throw new \LogicException('Unreachable structured draft state.');
+    }
+
     /** Repair claims inherit only server-owned source/task associations. */
     private function bindRepairTasks(array $claims, array $evidence): array
     {
@@ -553,10 +573,10 @@ PROMPT;
                 $draft = $cached;
             } else {
                 try {
-                    $response = $evidence->hasEvidence() ? $this->draft($branch->intent, $context,
-                        new AgentLoopOutcome($branchIncomplete ? 'partial' : 'answer', $evidence, [], $flow['stop_reason'] ?? null), $branch->toArray(), claimBudget: $budget) : null;
+                    [$response, $branchPayload] = $evidence->hasEvidence() ? $this->structuredDraft($branch->intent, $context,
+                        new AgentLoopOutcome($branchIncomplete ? 'partial' : 'answer', $evidence, [], $flow['stop_reason'] ?? null), $branch->toArray(), claimBudget: $budget) : [null, []];
                     $draft = ['signature' => $signature, 'status' => $response === null ? ($branchIncomplete ? 'research_failed' : 'no_evidence') : 'completed',
-                        'model' => $response?->model, 'payload' => $response === null ? [] : $this->payload($response->toolCalls, $response->content)];
+                        'model' => $response?->model, 'payload' => $branchPayload];
                 } catch (\Throwable) {
                     $draft = ['signature' => $signature, 'status' => 'draft_failed', 'model' => null, 'payload' => []];
                 }
@@ -740,6 +760,7 @@ Sources marked historical_context are previous observations, even in a mixed req
 When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 When a source supplies source_ref, prefer copying that short reference into the claim and set document_id=null, tool_execution_id=null, evidence_hash="". The host resolves it only against the current authorized sources and validates the quote and full hash; never invent a reference. Otherwise copy the selected source's claim_source fields exactly, using separate JSON keys document_id, tool_execution_id and evidence_hash. Never shorten, calculate or repair a hash yourself. For tool records also copy the selected record_path from record_paths.
 For a case history, read the entire supplied conversation and cover the requested problem, customer response and latest documented merchant response, rather than stopping at the opening notice. Include the documented handling plan and conditions governing an unresolved outcome: a later follow-up does not erase an earlier investigation proposal or conditional refund. Keep promises qualified as promises, independently from completed actions. Preserve who performed each action. Never invent a message date from another case or from retrieval time. State recorded observations as historical; a document retrieved now does not establish current availability or an action completed today. A promised refund or shipment is not proof of execution.
+For a combined case-history and API request, reserve space for every explicitly requested live field before optional historical details. A compact table of requested fields from ONE API record is one source-bound claim: include that record's exact identity, status, total and currency when requested, and label its observation time. Keep order and return records separate. Do not spend multiple claims repeating the same currency or total. Keep historical email facts in their own source-bound claims.
 For EVERY thread-based fact, preserve the speaker of the specific message that establishes it. A customer's deduction or paraphrase of a preceding reply is only that customer's assertion, even when the question does not explicitly ask for merchant confirmation. Embedded quoted messages retain their original speakers. Never merge a merchant statement with a later customer's inference into one authoritative conclusion. Omit an unrequested inference or explicitly attribute it to the customer.
 Preserve explicit negation in every language. Never silently repair an awkward sentence or possible typo by reversing its meaning. If a reason is grammatically ambiguous, omit that unrequested reason or state its ambiguity; retain the clear fact separately. A customer's inability to supply information does not authorize inventing why it is unavailable.
 In a case summary, describe a voucher/gift card's value, validity and whether its code was communicated. Do not reproduce redeemable codes, access credentials or payment tokens unless the user explicitly requests that exact value. Do not include unrequested personal addresses.

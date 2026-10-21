@@ -19,6 +19,42 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_malformed_submission_is_retried_once_and_valid_claims_are_still_grounded(): void
+    {
+        config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false, 'agent.presentation.enabled' => false]);
+        $content = 'ORDER-A: replacement requested.';
+        $hash = hash('sha256', $content);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument(['document_id' => 252, 'title' => 'ORDER-A', 'evidence' => [['content' => $content, 'evidence_hash' => $hash]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $attempt = 0;
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system) use (&$attempt, $content, $hash) {
+            if ($attempt++ === 0) {
+                return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => '{"claims":[']]);
+            }
+            $this->assertStringContainsString('previous submission could not be parsed', $system);
+            return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
+                'completeness' => 'complete', 'claims' => [['text' => $content, 'quote' => $content, 'document_id' => 252,
+                    'tool_execution_id' => null, 'evidence_hash' => $hash]], 'render_table' => false, 'requires_selection' => false, 'limitations' => [],
+            ]]]);
+        });
+        $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('What does ORDER-A request?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
+        $this->assertSame($content, $answer->answer);
+        $this->assertSame([252], array_column($answer->citations, 'document_id'));
+    }
+
+    public function test_two_malformed_submissions_fail_without_a_third_provider_call(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(new AiResponse('', 'fake', 'fake-agent',
+            toolCalls: [['name' => 'submit_agent_answer', 'arguments' => '{"claims":[']]));
+        $this->expectException(\UnexpectedValueException::class);
+        $this->expectExceptionMessage('Synthesizer did not return structured JSON.');
+        (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
+            ->synthesize('What does ORDER-A request?', $this->context(), new AgentLoopOutcome('answer', app(AgentEvidenceFactory::class)->empty(), []));
+    }
+
     public function test_draft_source_reference_choices_are_limited_to_the_current_prompt(): void
     {
         config(['reasoning.selective_validation' => true]);
