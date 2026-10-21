@@ -23,6 +23,7 @@ class McpOAuthConnectionTest extends TestCase
     protected OAuthClient $client;
     protected McpProjectConnection $connection;
     protected string $verifier;
+    protected string $callback = 'http://127.0.0.1:31002/callback';
 
     protected function setUp(): void
     {
@@ -47,7 +48,7 @@ class McpOAuthConnectionTest extends TestCase
     protected function start(): string
     {
         $response = $this->get('/oauth/authorize?'.http_build_query([
-            'client_id' => $this->client->id, 'redirect_uri' => 'http://127.0.0.1:31002/callback',
+            'client_id' => $this->client->id, 'redirect_uri' => $this->callback,
             'response_type' => 'code', 'state' => 'state', 'scope' => 'mcp:read mcp:ingest',
             'resource' => $this->connection->resource(), 'code_challenge_method' => 'S256',
             'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $this->verifier, true)), '+/', '-_'), '='),
@@ -66,7 +67,7 @@ class McpOAuthConnectionTest extends TestCase
         Auth::forgetGuards();
         $result = $this->postJson('/oauth/token', ['grant_type' => 'authorization_code',
             'client_id' => $this->client->id, 'code' => $params['code'], 'code_verifier' => $this->verifier,
-            'redirect_uri' => 'http://127.0.0.1:31002/callback', 'resource' => $this->connection->resource()])
+            'redirect_uri' => $this->callback, 'resource' => $this->connection->resource()])
             ->assertOk()->assertJsonStructure(['access_token', 'refresh_token'])->json();
         Auth::forgetGuards();
         return $result;
@@ -148,11 +149,46 @@ class McpOAuthConnectionTest extends TestCase
 
     public function test_registration_refuses_unsafe_callbacks_and_broader_permissions(): void
     {
-        foreach (['http://attacker.example/callback', 'javascript:alert(1)', 'https://user@attacker.example/callback', 'https://example.org/callback#fragment'] as $url) {
+        foreach (['http://attacker.example/callback', 'http://localhost.attacker.example/callback',
+            'http://sub.localhost/callback', 'javascript:alert(1)', 'https://user@attacker.example/callback',
+            'https://example.org/callback#fragment', 'http://localhost:8787/callback?state=override'] as $url) {
             $this->postJson('/oauth/register', ['redirect_uris' => [$url]])->assertBadRequest();
         }
         $this->postJson('/oauth/register', ['redirect_uris' => ['https://chatgpt.com/connector_platform_oauth_redirect'],
             'scope' => 'mcp:read mcp:tools:write'])->assertBadRequest();
+    }
+
+    public static function desktopAndWebCallbacks(): array
+    {
+        return [
+            'Claude Code localhost random port' => ['http://localhost:31001/callback', 'http://localhost:31002/callback'],
+            'Cursor localhost fixed port' => ['http://localhost:8787/callback', 'http://localhost:8787/callback'],
+            'IPv6 loopback random port' => ['http://[::1]:31001/callback', 'http://[::1]:31002/callback'],
+            'remote HTTPS callback' => ['https://client.example/callback', 'https://client.example/callback'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('desktopAndWebCallbacks')]
+    public function test_desktop_and_web_callbacks_complete_project_oauth_without_manual_credentials(string $registered, string $callback): void
+    {
+        $registration = $this->postJson('/oauth/register', ['client_name' => 'Interoperability fixture',
+            'redirect_uris' => [$registered], 'token_endpoint_auth_method' => 'none'])->assertCreated();
+        $this->client = OAuthClient::findOrFail($registration->json('client_id'));
+        $this->callback = $callback;
+        $token = $this->grant()['access_token'];
+        $this->callTool($token, 'kb-connected-project-tool')->assertOk();
+        $this->assertSame('engineering', $this->connection->fresh()->project_key);
+
+        // Port variance never grants a different host, path, query or scheme.
+        foreach ([$callback.'/extra', $callback.'?unexpected=1', str_replace('://', '://other.', $callback),
+            preg_replace('/^https?:/', str_starts_with($callback, 'https:') ? 'http:' : 'https:', $callback)] as $mismatch) {
+            $this->getJson('/oauth/authorize?'.http_build_query([
+                'client_id' => $this->client->id, 'redirect_uri' => $mismatch,
+                'response_type' => 'code', 'state' => 'state', 'scope' => 'mcp:read',
+                'resource' => $this->connection->resource(), 'code_challenge_method' => 'S256',
+                'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $this->verifier, true)), '+/', '-_'), '='),
+            ]))->assertBadRequest()->assertJsonPath('error', 'invalid_request');
+        }
     }
 
     public function test_mcp_discovery_advertises_only_project_scopes_and_downloads_have_unique_identities(): void

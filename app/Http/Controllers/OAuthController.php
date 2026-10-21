@@ -380,11 +380,14 @@ final class OAuthController extends Controller
             return;
         }
         if (in_array($uri, $client->redirect_uris, true)) return;
-        // RFC 8252: loopback callback ports are selected afresh on each login.
+        // Desktop callback ports are selected afresh on each login. MCP clients
+        // may also use the exact localhost name; other callback components stay exact.
+        $loopbackHosts = array_intersect($client->scopes, McpOAuthService::SCOPES) !== []
+            ? McpOAuthService::LOOPBACK_HOSTS : ['127.0.0.1', '[::1]'];
         $candidate = parse_url($uri);
         foreach ($client->redirect_uris as $registered) {
             $parts = parse_url($registered);
-            if (($candidate['scheme'] ?? '') === 'http' && in_array($candidate['host'] ?? '', ['127.0.0.1', '[::1]'], true)) {
+            if (($candidate['scheme'] ?? '') === 'http' && in_array($candidate['host'] ?? '', $loopbackHosts, true)) {
                 unset($candidate['port'], $parts['port']);
                 if ($candidate === $parts) return;
             }

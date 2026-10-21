@@ -2,6 +2,11 @@
 
 The project OAuth server uses a separate MCP resource URL per connection.
 The OAuth session authority remains `OAuthController`; it is not duplicated.
+MCP desktop callbacks may use HTTP with the exact host `127.0.0.1`, `[::1]` or
+`localhost`. Only the port may vary after registration; path, query, host and
+scheme remain exact. Subdomains/suffixes of localhost and other HTTP hosts are
+rejected. PactAuth keeps its separate callback policy. Regression evidence is
+the desktop/web callback matrix in `McpOAuthConnectionTest`.
 
 | Path | Data/effect | Authorization and limits | Executable evidence |
 | --- | --- | --- | --- |

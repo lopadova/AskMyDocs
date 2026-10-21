@@ -19,6 +19,10 @@ final class McpOAuthService
 {
     public const SCOPES = ['mcp:read', 'mcp:ingest'];
 
+    // Some desktop MCP clients use the literal localhost name for their callback.
+    // Never accept suffixes, subdomains or arbitrary HTTP hosts here.
+    public const LOOPBACK_HOSTS = ['127.0.0.1', '[::1]', 'localhost'];
+
     public function resource(string $resource): McpProjectConnection
     {
         $prefix = rtrim((string) config('app.url'), '/').'/mcp/knowledge/';
@@ -52,7 +56,7 @@ final class McpOAuthService
         foreach ($data['redirect_uris'] as $uri) {
             $parts = parse_url($uri);
             parse_str($parts['query'] ?? '', $query);
-            $loopback = in_array($parts['host'] ?? '', ['127.0.0.1', '[::1]'], true);
+            $loopback = in_array($parts['host'] ?? '', self::LOOPBACK_HOSTS, true);
             if ($parts === false || filter_var($uri, FILTER_VALIDATE_URL) === false
                 || array_intersect(['code', 'state', 'error', 'error_description', 'iss'], array_keys($query)) !== [] || (isset($parts['user']) || isset($parts['pass'])) || isset($parts['fragment'])
                 || ! isset($parts['host']) || ! in_array($parts['scheme'] ?? '', ['http', 'https'], true)
