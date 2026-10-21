@@ -1,52 +1,23 @@
-import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
-import type { UseChatHelpers } from '@ai-sdk/react';
-import type { UIMessage } from 'ai';
-import {
-    consumeAgentRun,
-    type AgentRunEvent,
-    type AgentRunStreamResult,
-} from '../../lib/agent-run-events';
+import { useCallback, useEffect, useMemo, type SetStateAction } from 'react';
+import { useStore } from 'zustand';
 import { useTeamStore } from '../../lib/team-store';
-import {
-    chatApi,
-    isFilterStateEmpty,
-    type AgentTurnStarted,
-    type AgentSelectionRequest,
-    type FilterState,
-    type LiveSourceSelection,
-    type Message,
-} from './chat.api';
+import { getAgentChatSession, type AgentChatState, type AgentMessageOptions } from './agent-chat-session';
+import type { AgentTurnStarted, FilterState, LiveSourceSelection, Message } from './chat.api';
 
-type ChatStatus = UseChatHelpers<UIMessage>['status'];
+export type { AgentConfirmation } from './agent-chat-session';
 
 export interface UseAgentChatOptions {
     conversationId: number | null;
     filters: FilterState;
     liveSources?: LiveSourceSelection;
-    /** "Investigation depth" (1-5, default 3) — see chat.api.ts startAgentTurn(). */
+    /** Investigation depth (1-5, default 3). */
     depth?: number;
     initialMessages?: Message[];
     onFinish?: () => void;
     onError?: (error: Error) => void;
 }
 
-export interface AgentConfirmation {
-    physicalExtension: number;
-    logicalExtension: number;
-}
-
-interface AgentMessageOptions {
-    mcpAppId?: string;
-    selection?: AgentSelectionRequest;
-}
-
-export interface UseAgentChatResult {
-    messages: Message[];
-    status: ChatStatus;
-    error: Error | null;
-    events: AgentRunEvent[];
-    activeRun: AgentTurnStarted | null;
-    confirmation: AgentConfirmation | null;
+export interface UseAgentChatResult extends Omit<AgentChatState, 'unreadAt'> {
     sendMessage: (message: { text: string }, options?: AgentMessageOptions) => Promise<void>;
     stop: () => void;
     regenerate: () => void;
@@ -56,265 +27,28 @@ export interface UseAgentChatResult {
 }
 
 export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
-    const { conversationId, filters, liveSources, depth, initialMessages, onFinish, onError } = options;
-    const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
-    const [status, setStatus] = useState<ChatStatus>('ready');
-    const [error, setError] = useState<Error | null>(null);
-    const [events, setEvents] = useState<AgentRunEvent[]>([]);
-    const [activeRun, setActiveRun] = useState<AgentTurnStarted | null>(null);
-    const [confirmation, setConfirmation] = useState<AgentConfirmation | null>(null);
-    const abortRef = useRef<AbortController | null>(null);
-    const runRef = useRef<AgentTurnStarted | null>(null);
-    const turnInFlightRef = useRef(false);
-    const lastSequenceRef = useRef(0);
-    const generationRef = useRef(0);
-    const filtersRef = useRef(filters);
-    const liveSourcesRef = useRef(liveSources);
-    const depthRef = useRef(depth);
-    const initialMessagesRef = useRef(initialMessages);
-    const callbacksRef = useRef({ onFinish, onError });
+    const { conversationId, initialMessages } = options;
+    const userId = useTeamStore((state) => state.userId);
+    const tenantId = useTeamStore((state) => state.currentTeam);
+    const session = useMemo(() => getAgentChatSession(conversationId, userId, tenantId), [conversationId, userId, tenantId]);
+    const state = useStore(session.store);
 
-    filtersRef.current = filters;
-    liveSourcesRef.current = liveSources;
-    depthRef.current = depth;
-    initialMessagesRef.current = initialMessages;
-    callbacksRef.current = { onFinish, onError };
-
+    // Opening reads the answer; leaving detaches the view, never the run.
+    useEffect(() => session.attach(), [session]);
     useEffect(() => {
-        generationRef.current++;
-        abortRef.current?.abort();
-        abortRef.current = null;
-        runRef.current = null;
-        turnInFlightRef.current = false;
-        lastSequenceRef.current = 0;
-        setActiveRun(null);
-        setConfirmation(null);
-        setEvents([]);
-        setError(null);
-        setStatus('ready');
-        setMessages(initialMessagesRef.current ?? []);
-    }, [conversationId]);
+        if (initialMessages !== undefined) session.hydrate(initialMessages);
+    }, [session, initialMessages]);
 
-    // Message history commonly resolves after a newly-created conversation
-    // has already started its first turn. Hydrate idle conversations, but do
-    // not let that late empty snapshot cancel or overwrite an in-flight run.
-    useEffect(() => {
-        if (initialMessages !== undefined && !turnInFlightRef.current) {
-            setMessages(initialMessages);
-        }
-    }, [initialMessages]);
-
-    useEffect(() => () => abortRef.current?.abort(), []);
-
-    const recordEvent = useCallback((event: AgentRunEvent) => {
-        lastSequenceRef.current = Math.max(lastSequenceRef.current, event.sequence);
-        setEvents((current) => {
-            if (current.some((item) => item.sequence === event.sequence)) return current;
-            const next = [...current, event];
-            // Keep the task list/states while bounding the detailed timeline.
-            // Otherwise a long multi-task turn loses its header after 50 events.
-            const detailSequences = new Set(next.filter((item) => !item.type.startsWith('research.')).slice(-50).map((item) => item.sequence));
-            return next.filter((item) => item.type.startsWith('research.') || detailSequences.has(item.sequence));
-        });
-    }, []);
-
-    const settle = useCallback(async (
-        result: AgentRunStreamResult,
-        generation: number,
-    ): Promise<void> => {
-        if (generation !== generationRef.current) return;
-        if (result.reason === 'awaiting_confirmation') {
-            const extension = result.event.data.extension;
-            const values = typeof extension === 'object' && extension !== null
-                ? extension as Record<string, unknown>
-                : {};
-            setConfirmation({
-                physicalExtension: Math.max(1, Number(values.physical_extension ?? 25)),
-                logicalExtension: Math.max(0, Number(values.logical_extension ?? 0)),
-            });
-            setStatus('ready');
-            return;
-        }
-        setConfirmation(null);
-        if (result.reason === 'failed') {
-            throw new Error(result.event.message ?? 'The agent could not complete the search.');
-        }
-        // The durable terminal event ends the request. History hydration may
-        // take longer and must not keep the next voice/text request busy.
-        setStatus('ready');
-        setActiveRun(null);
-        runRef.current = null;
-        turnInFlightRef.current = false;
-        if (result.reason !== 'cancelled' && conversationId !== null) {
-            const refreshed = await chatApi.listMessages(conversationId);
-            if (generation !== generationRef.current) return;
-            setMessages(refreshed);
-        }
-        callbacksRef.current.onFinish?.();
-    }, [conversationId]);
-
-    const consume = useCallback(async (
-        run: AgentTurnStarted,
-        controller: AbortController,
-        generation: number,
-    ): Promise<void> => {
-        const result = await consumeAgentRun({
-            initialSequence: lastSequenceRef.current,
-            signal: controller.signal,
-            open: (after, signal) => fetchAgentEvents(run.events_url, after, signal),
-            onEvent: recordEvent,
-        });
-        await settle(result, generation);
-    }, [recordEvent, settle]);
-
-    const reportError = useCallback((reason: unknown, generation: number) => {
-        if (generation !== generationRef.current) return;
-        if (reason instanceof DOMException && reason.name === 'AbortError') return;
-        turnInFlightRef.current = false;
-        const next = reason instanceof Error ? reason : new Error(String(reason));
-        setError(next);
-        setStatus('error');
-        callbacksRef.current.onError?.(next);
-    }, []);
-
-    const sendMessage = useCallback(async (
-        { text }: { text: string },
-        messageOptions?: AgentMessageOptions,
-    ): Promise<void> => {
-        if (conversationId === null) throw new Error('A conversation is required.');
-        if (turnInFlightRef.current) throw new Error('Un attimo, una cosa alla volta. La richiesta precedente è ancora in corso.');
-        const generation = ++generationRef.current;
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setError(null);
-        setEvents([]);
-        setConfirmation(null);
-        setStatus('submitted');
-        turnInFlightRef.current = true;
-        lastSequenceRef.current = 0;
-        try {
-            const liveFilters = filtersRef.current;
-            const run = await chatApi.startAgentTurn(
-                conversationId,
-                text,
-                isFilterStateEmpty(liveFilters) ? undefined : liveFilters,
-                messageOptions?.mcpAppId,
-                messageOptions?.selection,
-                liveSourcesRef.current,
-                depthRef.current,
-            );
-            if (generation !== generationRef.current) return;
-            runRef.current = run;
-            setActiveRun(run);
-            setMessages((current) => current.some((item) => item.id === run.user_message.id)
-                ? current
-                : [...current, run.user_message]);
-            setStatus('streaming');
-            await consume(run, controller, generation);
-        } catch (reason) {
-            reportError(reason, generation);
-            throw reason;
-        }
-    }, [consume, conversationId, reportError]);
-
-    const stop = useCallback(() => {
-        const run = runRef.current;
-        abortRef.current?.abort();
-        turnInFlightRef.current = false;
-        setStatus('ready');
-        if (run) void chatApi.cancelAgentRun(run.cancel_url).catch(() => undefined);
-    }, []);
-
-    const continueRun = useCallback(async (): Promise<void> => {
-        const run = runRef.current;
-        const extension = confirmation;
-        if (!run || !extension) return;
-        const generation = ++generationRef.current;
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setError(null);
-        setStatus('submitted');
-        turnInFlightRef.current = true;
-        try {
-            await chatApi.continueAgentRun(
-                run.continue_url,
-                extension.physicalExtension,
-                extension.logicalExtension,
-            );
-            setConfirmation(null);
-            setStatus('streaming');
-            await consume(run, controller, generation);
-        } catch (reason) {
-            reportError(reason, generation);
-            throw reason;
-        }
-    }, [confirmation, consume, reportError]);
-
-    const adoptExternalRun = useCallback(async (run: AgentTurnStarted): Promise<void> => {
-        if (conversationId === null) throw new Error('A conversation is required.');
-        if (runRef.current?.run_id === run.run_id && turnInFlightRef.current) return;
-        if (turnInFlightRef.current) throw new Error('A request is already in progress.');
-        const generation = ++generationRef.current;
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-        runRef.current = run;
-        turnInFlightRef.current = true;
-        lastSequenceRef.current = 0;
-        setError(null);
-        setEvents([]);
-        setConfirmation(null);
-        setActiveRun(run);
-        setMessages((current) => current.some((item) => item.id === run.user_message.id)
-            ? current
-            : [...current, run.user_message]);
-        setStatus('streaming');
-
-        try {
-            await consume(run, controller, generation);
-        } catch (reason) {
-            reportError(reason, generation);
-            throw reason;
-        }
-    }, [consume, conversationId, reportError]);
-
+    // Capture callbacks at dispatch, bound to the conversation owning the
+    // request. Foreground navigation must never redirect its completion.
+    const sendMessage = useCallback((message: { text: string }, messageOptions?: AgentMessageOptions) =>
+        session.sendMessage(message, options, messageOptions), [session, options]);
+    const adoptExternalRun = useCallback((run: AgentTurnStarted) => session.adoptExternalRun(run, options), [session, options]);
+    const continueRun = useCallback(() => session.continueRun(options), [session, options]);
     const regenerate = useCallback(() => {
-        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
-        if (lastUser) void sendMessage({ text: lastUser.content });
-    }, [messages, sendMessage]);
+        const last = [...session.store.getState().messages].reverse().find((message) => message.role === 'user');
+        if (last) void sendMessage({ text: last.content }).catch(() => undefined);
+    }, [session, sendMessage]);
 
-    return {
-        messages,
-        status,
-        error,
-        events,
-        activeRun,
-        confirmation,
-        sendMessage,
-        stop,
-        regenerate,
-        continueRun,
-        adoptExternalRun,
-        setMessages,
-    };
-}
-
-async function fetchAgentEvents(url: string, after: number, signal: AbortSignal): Promise<Response> {
-    const team = useTeamStore.getState().currentTeam;
-    const separator = url.includes('?') ? '&' : '?';
-    const headers: Record<string, string> = {
-        Accept: 'text/event-stream, application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Last-Event-ID': String(after),
-    };
-    if (team !== null) headers['X-Tenant-Id'] = team;
-
-    return fetch(`${url}${separator}after=${after}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        headers,
-        signal,
-    });
+    return { ...state, sendMessage, adoptExternalRun, continueRun, regenerate, stop: session.stop, setMessages: session.setMessages };
 }

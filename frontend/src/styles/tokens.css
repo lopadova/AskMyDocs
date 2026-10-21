@@ -3406,6 +3406,33 @@ textarea:focus-visible {
   gap: 3px;
 }
 
+.conv-row-title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.conv-row-title-line > .conv-row-title { flex: 1; min-width: 0; }
+.chat-activity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 55%;
+  padding: 3px 5px;
+  border: 1px solid color-mix(in srgb, var(--accent-a) 25%, var(--hairline));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-a) 12%, var(--bg-2));
+  color: var(--fg-0);
+  font-size: 9px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.chat-activity-badge > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-activity-badge > svg { flex-shrink: 0; }
+.chat-activity-badge[data-state='running'] > svg { animation: ui-button-spin 1.2s linear infinite; }
+.chat-activity-badge[data-state='error'],
+.chat-activity-badge[data-state='confirmation'] { border-color: var(--fg-3); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-activity-badge[data-state='running'] > svg { animation: none; }
+}
+
 .conv-row-title {
   overflow: hidden;
   color: var(--fg-1);

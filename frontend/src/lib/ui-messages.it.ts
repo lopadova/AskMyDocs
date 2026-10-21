@@ -1,6 +1,12 @@
 import operational from './ui-messages-operational.it.json';
 
 export const IT_MESSAGES: Record<string, string> = {
+    'Searching': 'Ricerca',
+    'Search in progress': 'Ricerca in corso',
+    'Search continues in the background': 'La ricerca prosegue in background',
+    'Search failed': 'Ricerca non riuscita',
+    'Confirmation needed': 'Conferma richiesta',
+    'Unread reply received {minutes} minutes ago': 'Risposta da leggere ricevuta {minutes} minuti fa',
     ...operational,
     '{count}-day window': 'Ultimi {count} giorni',
     'My workspace': 'Il mio spazio', 'Administration': 'Amministrazione', 'System': 'Sistema',

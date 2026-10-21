@@ -135,13 +135,22 @@ export function Composer({
     const [localError, setLocalError] = useState<string | null>(null);
     // Re-entrancy guard for the submit action itself. `isStreaming`
     // catches the SDK's stream-in-flight state, but there's a brief
-    // window between `send()`'s entry and the SDK setting status to
+    // window between `send()`'s entry and the agent setting status to
     // 'submitted' (especially on the FIRST message where we await
     // onRequireConversation first). Without this ref a fast
     // double-click / double-Enter would queue two POSTs back-to-back
     // before isStreaming flips. Ref (not state) so we don't trigger
-    // an extra render when toggling.
-    const isSubmittingRef = useRef(false);
+    // an extra render when toggling. Track each conversation separately
+    // so a background request cannot lock another session's composer.
+    const submissionsRef = useRef(new Set<number | null>());
+    const currentConversationRef = useRef(conversationId);
+    currentConversationRef.current = conversationId;
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+    useEffect(() => { setLocalError(null); }, [conversationId]);
     // T2.8 — @mention popover state. `mentionQuery` is the chars after
     // the most recent unmatched `@` (truncated to next whitespace). It
     // drives use-mention-search via MentionPopover. `mentionAnchor` is
@@ -159,12 +168,12 @@ export function Composer({
 
     const send = async () => {
         // Re-entrancy + concurrency guard. `isStreaming` catches the
-        // mid-stream window; `isSubmittingRef` catches the brief
+        // mid-stream window; `submissionsRef` catches the brief
         // pre-stream window (between submit and the SDK's status
         // transition to 'submitted'). Together they reject every
         // double-fire path — Enter spam, click spam, programmatic
         // form-submit + Enter combo.
-        if (composerDisabled || isSubmittingRef.current) {
+        if (composerDisabled || submissionsRef.current.has(conversationId)) {
             return;
         }
         const trimmed = draft.trim();
@@ -172,7 +181,8 @@ export function Composer({
             setLocalError('Message is required.');
             return;
         }
-        isSubmittingRef.current = true;
+        let submissionId = conversationId;
+        submissionsRef.current.add(submissionId);
         try {
             let targetId = conversationId;
             if (targetId === null && onRequireConversation) {
@@ -182,12 +192,20 @@ export function Composer({
                 setLocalError('Could not start a new conversation.');
                 return;
             }
+            if (targetId !== submissionId) {
+                submissionsRef.current.delete(submissionId);
+                submissionId = targetId;
+                submissionsRef.current.add(submissionId);
+            }
             setLocalError(null);
             const content = trimmed;
             clearDraft();
             try {
                 await onSend(content);
             } catch (err) {
+                // A background failure must not replace the draft or error
+                // belonging to the conversation now open in this composer.
+                if (!mountedRef.current || currentConversationRef.current !== targetId) return;
                 // Restore the draft so the user doesn't lose their typed
                 // message on transport / 419 / network failure. The error
                 // surface (chat-composer-error) renders via the `error`
@@ -197,7 +215,7 @@ export function Composer({
                 setLocalError(err instanceof Error ? err.message : 'Failed to send message.');
             }
         } finally {
-            isSubmittingRef.current = false;
+            submissionsRef.current.delete(submissionId);
         }
     };
 

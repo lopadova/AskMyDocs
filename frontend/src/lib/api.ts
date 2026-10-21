@@ -46,7 +46,9 @@ api.interceptors.request.use((config) => {
         // config.headers can be undefined for ad-hoc request configs; initialise
         // it (without clobbering existing defaults) before stamping the header.
         config.headers ??= new AxiosHeaders();
-        config.headers['X-Tenant-Id'] = team;
+        // Background chat requests retain the tenant that owns the run,
+        // even if the user has since switched the foreground team.
+        config.headers['X-Tenant-Id'] ??= team;
     }
     return config;
 });
@@ -75,6 +77,7 @@ api.interceptors.response.use(
             axios.isAxiosError(error) &&
             error.response?.status === 403 &&
             (error.response.data as { error?: string } | undefined)?.error === 'tenant_forbidden'
+            && error.config?.headers?.['X-Tenant-Id'] === useTeamStore.getState().currentTeam
         ) {
             useTeamStore.getState().resetToFirstTeam();
             if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {

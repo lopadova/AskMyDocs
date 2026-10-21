@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { chatApi, type Conversation } from './chat.api';
 import { useChatStore } from './chat.store';
+import { ChatActivityBadge } from './ChatActivityBadge';
 
 export interface ConversationListProps {
     projectKey: string | null;
@@ -223,8 +224,9 @@ function ConversationRow({ c, active, onSelect }: ConversationRowProps): ReactNo
             title={c.title ?? 'Untitled chat'}
         >
             <span className="conv-row-copy">
-                <span className="conv-row-title">
-                    {c.title ?? 'Untitled chat'}
+                <span className="conv-row-title-line">
+                    <span className="conv-row-title">{c.title ?? 'Untitled chat'}</span>
+                    <ChatActivityBadge conversationId={c.id} active={active} />
                 </span>
                 <span className="conv-row-meta">
                     <span className="conv-row-project">

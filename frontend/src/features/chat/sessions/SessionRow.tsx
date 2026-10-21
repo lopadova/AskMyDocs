@@ -3,6 +3,7 @@ import { Icon } from '../../../components/Icons';
 import type { ChatFolder } from '../chat-folders.api';
 import type { Conversation, ConversationImportance } from '../chat.api';
 import { SessionRowMenu } from './SessionRowMenu';
+import { ChatActivityBadge } from '../ChatActivityBadge';
 
 const IMPORTANCE_LABEL: Record<ConversationImportance, string> = {
     critical: 'Critical',
@@ -26,7 +27,7 @@ export interface SessionRowProps {
 /**
  * One chat session in the Sessions sidebar.
  *
- * Stateless and fully controlled (R29): every action is a callback, so
+ * Every action is a callback (R29), so
  * the mutations live in one place in the sidebar and this component
  * stays trivial to test.
  *
@@ -73,7 +74,10 @@ export function SessionRow({
                     {isPinned ? <Icon.Pin size={13} /> : <Icon.Chat size={13} />}
                 </span>
                 <span className="conv-row-copy">
-                    <span className="conv-row-title">{title}</span>
+                    <span className="conv-row-title-line">
+                        <span className="conv-row-title">{title}</span>
+                        <ChatActivityBadge conversationId={conversation.id} active={active} />
+                    </span>
                     <span className="conv-row-meta">
                         <span className="conv-row-project">
                             {conversation.project_key ?? 'All projects'}

@@ -461,8 +461,8 @@ export const chatApi = {
         };
     },
 
-    async listMessages(conversationId: number): Promise<Message[]> {
-        const { data } = await api.get<Message[]>(`/conversations/${conversationId}/messages`);
+    async listMessages(conversationId: number, tenantId?: string): Promise<Message[]> {
+        const { data } = await api.get<Message[]>(`/conversations/${conversationId}/messages`, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
         return data;
     },
 
@@ -489,6 +489,7 @@ export const chatApi = {
         selection?: AgentSelectionRequest,
         liveSources?: LiveSourceSelection,
         depth?: number,
+        tenantId?: string,
     ): Promise<AgentTurnStarted> {
         const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest; live_sources?: LiveSourceSelection; depth?: number } = { content };
         if (filters && !isFilterStateEmpty(filters)) {
@@ -512,6 +513,7 @@ export const chatApi = {
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
             payload,
+            tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined,
         );
 
         return data;
@@ -540,19 +542,20 @@ export const chatApi = {
         return data.data;
     },
 
-    async cancelAgentRun(url: string): Promise<void> {
-        await api.post(url);
+    async cancelAgentRun(url: string, tenantId?: string): Promise<void> {
+        await api.post(url, undefined, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
     },
 
     async continueAgentRun(
         url: string,
         physicalExtension: number,
         logicalExtension = 0,
+        tenantId?: string,
     ): Promise<void> {
         await api.post(url, {
             physical_extension: physicalExtension,
             logical_extension: logicalExtension,
-        });
+        }, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
     },
 
     async listCollections(): Promise<ChatCollectionOption[]> {

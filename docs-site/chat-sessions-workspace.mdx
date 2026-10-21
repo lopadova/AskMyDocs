@@ -92,6 +92,27 @@ page.
 
 ## Data model
 
+### Background searches and unread replies
+
+Switching to another chat or creating one leaves the original agent run and
+its event subscription active. Each conversation owns its request, messages,
+activity timeline and confirmation state; the open view subscribes to that
+conversation without taking ownership of its lifetime. Searches in different
+conversations can run simultaneously. The Stop action cancels only its own run.
+
+Both chat lists show ongoing searches, requests awaiting confirmation and
+failures. A reply completed away from its conversation gets an unread badge
+showing elapsed whole minutes from the server's completion timestamp (`0 min`,
+`1 min`, etc.). Opening the conversation clears the badge. Replies completed
+while the conversation is open are already read. Partial answers use the same
+rule; cancellations and failures do not produce unread-answer badges.
+
+The registry belongs to the current browser application lifetime. Navigating
+between Chat, Sessions and other application pages preserves it; a full page
+reload clears these local indicators. Agent execution and saved messages remain
+durable on the server. Requests keep their original tenant when the foreground
+team changes, and logout/user changes discard the local registry.
+
 ```mermaid
 erDiagram
     CHAT_FOLDERS ||--o{ CONVERSATIONS : "files (nullOnDelete)"

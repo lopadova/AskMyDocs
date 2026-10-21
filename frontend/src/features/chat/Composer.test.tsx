@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { Composer } from './Composer';
@@ -78,6 +78,36 @@ describe('Composer', () => {
         fireEvent.submit(input.closest('form') as HTMLFormElement);
 
         expect(onSend).toHaveBeenCalledWith('Hello');
+    });
+
+    it('allows a new session to send while the previous send is pending and preserves its draft on a background error', async () => {
+        let failFirst!: (error: Error) => void;
+        let finishSecond!: () => void;
+        const onSend = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { failFirst = reject; }))
+            .mockImplementationOnce(() => new Promise<void>((resolve) => { finishSecond = resolve; }));
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const view = (conversationId: number) => <QueryClientProvider client={client}>
+            <Composer {...makeProps({ conversationId, onSend })} />
+        </QueryClientProvider>;
+        const { rerender } = render(view(1));
+        const submit = (text: string) => {
+            fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: text } });
+            fireEvent.submit(screen.getByTestId('chat-composer'));
+        };
+        submit('First question');
+        rerender(view(2));
+        submit('Second question');
+        expect(onSend).toHaveBeenCalledTimes(2);
+        // Returning to an in-flight session still rejects duplicate submits.
+        rerender(view(1));
+        submit('Duplicate');
+        expect(onSend).toHaveBeenCalledTimes(2);
+        rerender(view(2));
+        fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: 'New draft' } });
+        await act(async () => { failFirst(new Error('First run failed')); });
+        expect(screen.getByTestId('chat-composer-input')).toHaveValue('New draft');
+        expect(screen.queryByTestId('message-error-trigger')).not.toBeInTheDocument();
+        await act(async () => finishSecond());
     });
 
     it('uses a restrained container focus state and canonical action buttons', () => {

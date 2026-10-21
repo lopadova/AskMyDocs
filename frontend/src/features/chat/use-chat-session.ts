@@ -572,6 +572,9 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         depth,
         initialMessages,
         onFinish: () => {
+            // A background run belongs to its original team; the shared query
+            // cache may already have been cleared and reused for another one.
+            if (useTeamStore.getState().currentTeam !== currentTeam) return;
             // Refetch the conversations list (sidebar's recent activity
             // ordering) and the messages list for THIS conversation
             // (so the SDK's transient UIMessage gets swapped for the
