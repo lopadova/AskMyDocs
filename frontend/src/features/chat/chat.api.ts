@@ -325,14 +325,24 @@ export interface AgentRunLink {
     continue_url: string;
 }
 
-export interface AgentTurnStarted {
+export interface AgentRunReference {
     run_id: string;
     status: string;
     locale: string;
     events_url: string;
     cancel_url: string;
     continue_url: string;
+}
+
+export interface AgentTurnStarted extends AgentRunReference {
     user_message: Message;
+}
+
+export interface ConversationActivity {
+    conversation_id: number;
+    last_read_message_id: number;
+    latest_reply: { message_id: number; created_at: string } | null;
+    run: (AgentRunReference & { confirmation: { physicalExtension: number; logicalExtension: number } | null }) | null;
 }
 
 export interface RealtimeAgentConnection {
@@ -392,6 +402,18 @@ function filenameFromContentDisposition(header: string | undefined, fallback: st
 }
 
 export const chatApi = {
+    async listActivity(tenantId: string): Promise<ConversationActivity[]> {
+        const { data } = await api.get<ConversationActivity[]>('/conversations/activity', {
+            headers: { 'X-Tenant-Id': tenantId },
+        });
+        return data;
+    },
+
+    async markConversationRead(conversationId: number, messageId: number, tenantId?: string): Promise<{ last_read_message_id: number }> {
+        const { data } = await api.post<{ last_read_message_id: number }>(`/conversations/${conversationId}/read`,
+            { message_id: messageId }, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
+        return data;
+    },
     async listConversations(
         scope: ConversationArchiveScope = 'active',
     ): Promise<Conversation[]> {

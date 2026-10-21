@@ -110,6 +110,8 @@ Route::middleware('auth')->group(function () {
     // routes/api.php, which already carry the guard; the conversation
     // surface (the SPA's real chat path) was the gap.
     Route::prefix('conversations')->middleware('tenant.authorize')->group(function () use ($chatPostMiddleware) {
+        Route::get('/activity', [\App\Http\Controllers\Api\ConversationActivityController::class, 'index']);
+        Route::post('/{conversation}/read', [\App\Http\Controllers\Api\ConversationActivityController::class, 'read']);
         Route::get('/', [ConversationController::class, 'index']);
         Route::post('/', [ConversationController::class, 'store']);
         Route::patch('/{conversation}', [ConversationController::class, 'update']);

@@ -107,11 +107,14 @@ showing elapsed whole minutes from the server's completion timestamp (`0 min`,
 while the conversation is open are already read. Partial answers use the same
 rule; cancellations and failures do not produce unread-answer badges.
 
-The registry belongs to the current browser application lifetime. Navigating
-between Chat, Sessions and other application pages preserves it; a full page
-reload clears these local indicators. Agent execution and saved messages remain
-durable on the server. Requests keep their original tenant when the foreground
-team changes, and logout/user changes discard the local registry.
+Run status and read receipts are stored on the server. Refreshing or reopening
+the app recovers active searches and replies completed while it was closed.
+Recovery replays existing run events without posting the question again.
+Only entering the corresponding conversation acknowledges its displayed reply;
+loading or refreshing the chat list never clears badges. Read receipts name an
+exact assistant message, so a late receipt cannot acknowledge a later reply.
+Requests keep their original tenant when the foreground team changes, and
+logout/user changes discard the local registry without deleting server state.
 
 ```mermaid
 erDiagram

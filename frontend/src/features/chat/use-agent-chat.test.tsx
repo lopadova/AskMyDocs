@@ -6,7 +6,10 @@ import { useAgentChat } from './use-agent-chat';
 import { clearAgentChatSessions, getAgentChatSession } from './agent-chat-session';
 import { useTeamStore } from '../../lib/team-store';
 
-beforeEach(() => clearAgentChatSessions());
+beforeEach(() => {
+    clearAgentChatSessions();
+    vi.spyOn(chatApi, 'markConversationRead').mockImplementation(async (_id, messageId) => ({ last_read_message_id: messageId }));
+});
 afterEach(() => {
     clearAgentChatSessions();
     useTeamStore.setState({ userId: null, currentTeam: null });

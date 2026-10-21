@@ -3,7 +3,7 @@ import type { UseChatHelpers } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
 import { consumeAgentRun, type AgentRunEvent, type AgentRunStreamResult } from '../../lib/agent-run-events';
 import { useTeamStore } from '../../lib/team-store';
-import { chatApi, isFilterStateEmpty, type AgentTurnStarted, type AgentSelectionRequest, type FilterState, type LiveSourceSelection, type Message } from './chat.api';
+import { chatApi, isFilterStateEmpty, type AgentRunReference, type AgentTurnStarted, type AgentSelectionRequest, type ConversationActivity, type FilterState, type LiveSourceSelection, type Message } from './chat.api';
 
 export interface AgentConfirmation {
     physicalExtension: number;
@@ -28,7 +28,7 @@ export interface AgentChatState {
     status: UseChatHelpers<UIMessage>['status'];
     error: Error | null;
     events: AgentRunEvent[];
-    activeRun: AgentTurnStarted | null;
+    activeRun: AgentRunReference | null;
     confirmation: AgentConfirmation | null;
     unreadAt: number | null;
 }
@@ -46,22 +46,131 @@ export class AgentChatSession {
     private sequence = 0;
     private viewers = 0;
     private disposed = false;
+    private latestReplyId = 0;
+    private readThrough = 0;
+    private requestedReadThrough = 0;
+    private acknowledging = false;
+    private recoveredRunId: string | null = null;
 
     constructor(readonly conversationId: number | null, private readonly tenantId: string | null) {}
 
     attach = (): (() => void) => {
         this.viewers++;
         this.store.setState({ unreadAt: null });
+        this.readDisplayedReply();
         return () => { this.viewers = Math.max(0, this.viewers - 1); };
     };
 
     hydrate = (messages: Message[]): void => {
-        if (this.inFlight || this.refreshing) return;
         // Reopening can still supply the query cache's pre-run snapshot.
+        // A recovered run also needs its canonical history while streaming.
         const last = this.store.getState().messages.at(-1)?.id ?? 0;
         if ((messages.at(-1)?.id ?? 0) < last) return;
         this.store.setState({ messages });
+        this.readDisplayedReply();
     };
+
+    private readDisplayedReply(): void {
+        const reply = [...this.store.getState().messages].reverse().find((message) => message.role === 'assistant');
+        if (reply) this.latestReplyId = Math.max(this.latestReplyId, reply.id);
+        if (this.viewers > 0) {
+            this.requestedReadThrough = Math.max(this.requestedReadThrough, this.latestReplyId);
+            this.store.setState({ unreadAt: null });
+        } else if (this.latestReplyId > 0 && this.latestReplyId <= Math.max(this.readThrough, this.requestedReadThrough)) {
+            this.store.setState({ unreadAt: null });
+        }
+        void this.acknowledgeRead();
+    }
+
+    private async acknowledgeRead(): Promise<void> {
+        if (this.disposed || this.acknowledging || this.conversationId === null || this.tenantId === null
+            || this.requestedReadThrough <= this.readThrough) return;
+        const messageId = this.requestedReadThrough;
+        this.acknowledging = true;
+        try {
+            const receipt = await chatApi.markConversationRead(this.conversationId, messageId, this.tenantId);
+            if (this.disposed) return;
+            this.readThrough = Math.max(this.readThrough, receipt.last_read_message_id);
+        } catch {
+            // The next activity reconciliation retries the exact receipt,
+            // including when the user has already left this conversation.
+            return;
+        } finally {
+            this.acknowledging = false;
+        }
+        if (this.requestedReadThrough > this.readThrough) void this.acknowledgeRead();
+    }
+
+    /** Reconcile server truth after reload, focus, or another device's read. */
+    restore = (activity: ConversationActivity, onFinish?: () => void): void => {
+        if (this.disposed) return;
+        this.readThrough = Math.max(this.readThrough, activity.last_read_message_id);
+        if (activity.latest_reply && activity.latest_reply.message_id >= this.latestReplyId) {
+            this.latestReplyId = Math.max(this.latestReplyId, activity.latest_reply.message_id);
+            const unread = activity.latest_reply.message_id > Math.max(this.readThrough, this.requestedReadThrough);
+            if (unread && this.viewers === 0) {
+                const at = Date.parse(activity.latest_reply.created_at);
+                this.store.setState({ unreadAt: Number.isFinite(at) ? at : Date.now() });
+            } else if (!unread) {
+                this.store.setState({ unreadAt: null });
+            }
+        }
+        if (this.viewers > 0) this.readDisplayedReply();
+        else void this.acknowledgeRead();
+        const waitingForConfirmation = this.store.getState().confirmation !== null && this.store.getState().status === 'ready';
+        if ((this.inFlight && !waitingForConfirmation) || this.refreshing) return;
+        const run = activity.run;
+        if (!run) return;
+        const terminal = ['completed', 'partial', 'failed', 'cancelled'].includes(run.status);
+        if (terminal) {
+            this.inFlight = false;
+            this.store.setState({ status: run.status === 'failed' ? 'error' : 'ready', activeRun: null, confirmation: null });
+            // Only an open view needs a transcript; badges never load it.
+            const last = [...this.store.getState().messages].reverse().find((message) => message.role === 'assistant')?.id ?? 0;
+            if (this.viewers > 0 && this.latestReplyId > last) void this.refreshRecoveredHistory(onFinish);
+            return;
+        }
+        if (this.store.getState().events.some((event) => event.run_id === run.run_id
+            && ['run.completed', 'run.partial', 'run.failed', 'run.cancelled'].includes(event.type))) return;
+        if (run.status === 'awaiting_confirmation') {
+            this.inFlight = true;
+            this.store.setState({ status: 'ready', activeRun: run, confirmation: run.confirmation });
+            return;
+        }
+        // Replay the existing durable event log; never repeat the turn POST.
+        const sameRun = this.recoveredRunId === run.run_id;
+        this.recoveredRunId = run.run_id;
+        if (!sameRun) {
+            this.sequence = 0;
+            this.store.setState({ events: [] });
+        }
+        const controller = new AbortController();
+        this.controller?.abort();
+        this.controller = controller;
+        const generation = ++this.generation;
+        this.inFlight = true;
+        this.store.setState({ status: 'streaming', activeRun: run, confirmation: null, error: null });
+        void this.consume(run, controller, generation, { filters: {}, onFinish }).catch((reason) => {
+            this.reportError(reason, generation, { filters: {} });
+        });
+    };
+
+    private async refreshRecoveredHistory(onFinish?: () => void): Promise<void> {
+        if (this.refreshing || this.conversationId === null || this.tenantId === null) return;
+        this.refreshing = true;
+        const generation = this.generation;
+        try {
+            const messages = await chatApi.listMessages(this.conversationId, this.tenantId);
+            if (this.disposed || generation !== this.generation) return;
+            this.store.setState({ messages });
+            this.readDisplayedReply();
+            onFinish?.();
+        } catch {
+            // Reconciliation retries without resending the question.
+        } finally {
+            if (generation === this.generation) this.refreshing = false;
+        }
+    }
 
     setMessages = (next: Message[] | ((current: Message[]) => Message[])): void => {
         this.store.setState((state) => ({ messages: typeof next === 'function' ? next(state.messages) : next }));
@@ -76,7 +185,7 @@ export class AgentChatSession {
         this.inFlight = true;
         this.refreshing = false;
         this.sequence = 0;
-        this.store.setState({ error: null, events: [], confirmation: null, activeRun: null, status: 'submitted', unreadAt: null });
+        this.store.setState({ error: null, events: [], confirmation: null, activeRun: null, status: 'submitted' });
         return { controller: this.controller, generation: ++this.generation };
     }
 
@@ -116,6 +225,7 @@ export class AgentChatSession {
     };
 
     private adopt(run: AgentTurnStarted): void {
+        this.recoveredRunId = run.run_id;
         this.store.setState((state) => ({
             activeRun: run, status: 'streaming',
             messages: state.messages.some((message) => message.id === run.user_message.id)
@@ -133,7 +243,7 @@ export class AgentChatSession {
         });
     };
 
-    private async consume(run: AgentTurnStarted, controller: AbortController, generation: number, options: TurnOptions): Promise<void> {
+    private async consume(run: AgentRunReference, controller: AbortController, generation: number, options: TurnOptions): Promise<void> {
         const result = await consumeAgentRun({
             initialSequence: this.sequence,
             signal: controller.signal,
@@ -146,11 +256,11 @@ export class AgentChatSession {
     private async settle(result: AgentRunStreamResult, generation: number, options: TurnOptions): Promise<void> {
         if (generation !== this.generation) return;
         if (result.reason === 'awaiting_confirmation') {
-            const raw = result.event.data.extension;
+            const raw = result.event.data.extension ?? result.event.data.requested_extension;
             const extension = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {};
             this.store.setState({ status: 'ready', confirmation: {
-                physicalExtension: Math.max(1, Number(extension.physical_extension ?? 25)),
-                logicalExtension: Math.max(0, Number(extension.logical_extension ?? 0)),
+                physicalExtension: Math.max(1, Number(extension.physical_extension ?? extension.physical ?? 25)),
+                logicalExtension: Math.max(0, Number(extension.logical_extension ?? extension.logical ?? 0)),
             } });
             return;
         }
@@ -173,6 +283,7 @@ export class AgentChatSession {
             // The user may have left after the terminal event but before
             // history delivered the answer to the screen.
             this.store.setState({ messages, unreadAt: this.viewers === 0 ? answeredAt : null });
+            this.readDisplayedReply();
         }
         options.onFinish?.();
     }
@@ -196,7 +307,7 @@ export class AgentChatSession {
         if (run) void this.cancel(run);
     };
 
-    private cancel(run: AgentTurnStarted): Promise<void> {
+    private cancel(run: AgentRunReference): Promise<void> {
         return (this.tenantId === null ? chatApi.cancelAgentRun(run.cancel_url)
             : chatApi.cancelAgentRun(run.cancel_url, this.tenantId)).catch(() => undefined);
     }

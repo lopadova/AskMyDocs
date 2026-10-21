@@ -8,6 +8,7 @@ use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Conversation extends Model
 {
@@ -35,6 +36,7 @@ class Conversation extends Model
         // forge it.
         'session_recap' => 'array',
         'reasoning_state' => 'array', // Server owned; deliberately not mass assignable.
+        'last_read_message_id' => 'integer', // Only the explicit read endpoint may advance this.
     ];
 
     /**
@@ -94,5 +96,17 @@ class Conversation extends Model
     public function latestMessage(): HasMany
     {
         return $this->hasMany(Message::class)->latest('id')->limit(1);
+    }
+
+    public function latestAssistantMessage(): HasOne
+    {
+        return $this->hasOne(Message::class)->ofMany(['id' => 'max'],
+            fn ($query) => $query->where('role', 'assistant'));
+    }
+
+    public function latestAgentRun(): HasOne
+    {
+        return $this->hasOne(AgentRun::class)->ofMany(['id' => 'max'],
+            fn ($query) => $query->whereNull('input_json->research_parent_id'));
     }
 }
