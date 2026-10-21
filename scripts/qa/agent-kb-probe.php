@@ -50,7 +50,8 @@ $app['events']->listen(Illuminate\Http\Client\Events\ResponseReceived::class, fu
     if (parse_url($event->request->url(), PHP_URL_HOST) === 'openrouter.ai') {
         $data = $event->response->json();
         if (is_array($data)) {
-            $providerReplies[] = array_filter(['model' => $data['model'] ?? null, 'choices' => $data['choices'] ?? null,
+            $providerReplies[] = array_filter(['model' => $data['model'] ?? null, 'http_status' => $event->response->status(),
+                'choices' => $data['choices'] ?? null, 'answers' => $data['answers'] ?? null,
                 'error' => is_array($data['error'] ?? null) ? array_intersect_key($data['error'], array_flip(['code', 'message'])) : null], fn ($value) => $value !== null);
             if (in_array((int) data_get($data, 'error.code'), [401, 402], true)) {
                 $fatalProviderError = array_intersect_key($data['error'], array_flip(['code', 'message']));
@@ -68,7 +69,18 @@ foreach ($cases['cases'] as $case) {
         continue;
     }
     $resultPath = "{$output}/{$round}-{$id}.json";
+    $caseLock = fopen($resultPath.'.lock', 'c');
+    if ($caseLock === false) {
+        throw new RuntimeException('Cannot open QA case lock.');
+    }
+    chmod($resultPath.'.lock', 0600);
+    if (! flock($caseLock, LOCK_EX | LOCK_NB)) {
+        fclose($caseLock);
+        echo json_encode(['case' => $id, 'round' => $round, 'skipped' => 'already_running']).PHP_EOL;
+        continue;
+    }
     if (is_file($resultPath)) {
+        fclose($caseLock);
         echo json_encode(['case' => $id, 'round' => $round, 'skipped' => 'already_recorded']).PHP_EOL;
         continue;
     }
@@ -92,7 +104,22 @@ foreach ($cases['cases'] as $case) {
             ? app(App\Services\EmailTriage\TriageCampaigns::class)->body($document)
             : ($document->source_type === App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE
                 ? $source['excerpt'] : $document->chunks()->orderBy('chunk_order')->pluck('chunk_text')->implode("\n\n"));
-        $sources[] = ['document_id' => $document->id, 'title' => $document->title, 'text' => $reference];
+        $excerpts = $case['evaluation_source_excerpts'][(string) $document->id] ?? null;
+        if (is_array($excerpts)) {
+            foreach ($excerpts as $excerpt) {
+                if (! is_string($excerpt) || $excerpt === '' || ! str_contains($reference, $excerpt)) {
+                    throw new RuntimeException('Evaluation excerpt is not literal acquired source text.');
+                }
+            }
+            $reference = implode("\n\n[... other source rows omitted ...]\n\n", $excerpts);
+        }
+        $sources[] = ['document_id' => $document->id, 'title' => $document->title, 'text' => $reference,
+            'complete_source' => $excerpts === null];
+    }
+    // These frozen API payloads are visible only to the independent evaluator,
+    // never to the chat pipeline or its planner/synthesizer.
+    foreach ($case['evaluation_api_sources'] ?? [] as $apiSource) {
+        $sources[] = $apiSource;
     }
     $conversationId = $case['conversation_id'] ?? null;
     if (isset($options['reopen'])) {
@@ -122,7 +149,11 @@ foreach ($cases['cases'] as $case) {
         'question' => $case['question'], 'expected' => $case['expected'],
         'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
         'interpretation_model' => config('ai.question_preprocessor.model'),
-        'evaluation_source_mode' => 'immutable_imap_original_or_complete_indexed_source_or_verified_lineage',
+        'evaluation_source_mode' => empty($case['evaluation_api_sources'])
+            ? 'immutable_imap_original_or_complete_indexed_source_or_verified_lineage'
+            : (empty($case['evaluation_source_excerpts']) ? 'complete_email_sources_and_frozen_read_only_api_payloads'
+                : 'verified_literal_email_excerpts_and_frozen_read_only_api_payloads'),
+        'expected_api_record_id' => $case['api_record_id'] ?? null,
         'document_ids' => $case['document_ids'], 'conversation_id' => $conversation->id, 'run_id' => $run->run_id,
         'agent_run_id' => $run->id, 'message_id' => $message?->id, 'status' => $run->status, 'error_code' => $run->error_code,
         'elapsed_seconds' => round(microtime(true) - $started, 2), 'answer' => $message?->content,
@@ -143,6 +174,9 @@ foreach ($cases['cases'] as $case) {
             $report['evaluation'] = $decision->toArray();
         } catch (Throwable $exception) {
             $report['evaluation_error'] = $exception::class;
+            if ($exception instanceof App\Decisions\DecisionException) {
+                $report['evaluation_error_reason'] = $exception->getMessage();
+            }
         }
     }
     file_put_contents($resultPath, json_encode($masker->maskArray($report), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
@@ -151,6 +185,7 @@ foreach ($cases['cases'] as $case) {
         'outcome' => data_get($report, 'evaluation.answers.outcome.choice'),
         'confidence' => data_get($report, 'evaluation.answers.outcome.confidence'),
         'seconds' => $report['elapsed_seconds'], 'path' => $resultPath]).PHP_EOL;
+    fclose($caseLock);
     if ($fatalProviderError !== null) {
         echo json_encode(['batch_stopped' => 'provider_unavailable', 'code' => $fatalProviderError['code'],
             'resume' => 'After restoring provider access, use a new round with the same --reopen source.']).PHP_EOL;
