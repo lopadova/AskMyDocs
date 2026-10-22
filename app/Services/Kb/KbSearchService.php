@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb;
 
 use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
 use App\Services\Kb\Retrieval\GraphExpander;
 use App\Services\Kb\Retrieval\QueryLanguageDetector;
 use App\Services\Kb\Retrieval\RejectedApproachInjector;
@@ -921,20 +922,36 @@ class KbSearchService
             ->whereHas('document', fn ($q) => $q->forTenant($tenant)->where('status', '!=', 'archived')
                 ->when($effectiveFilters->projectKeys !== [], fn ($q) => $q->whereIn('project_key', $effectiveFilters->projectKeys))
                 ->when($projectKey !== null, fn ($q) => $q->where('project_key', $projectKey)))
-            ->when($projectKey !== null, fn ($q) => $q->where('knowledge_chunks.project_key', $projectKey))
-            ->where(function ($q) use ($identifiers, $tenant): void {
+            ->when($projectKey !== null, fn ($q) => $q->where('knowledge_chunks.project_key', $projectKey));
+        $this->applyFilters($query, $effectiveFilters);
+        // Keep body and title lookups separate so PostgreSQL can use each
+        // LOWER(...) trigram index. A correlated title EXISTS inside a body
+        // OR forces a scan of the chunk population even for a rare code.
+        $bodyIds = (clone $query)->withoutEagerLoads()->select('knowledge_chunks.id')
+            ->where(function ($q) use ($identifiers): void {
                 foreach ($identifiers as $id) {
                     $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
                     $q->orWhereRaw("LOWER(chunk_text) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
-                    $q->orWhereHas('document', fn ($document) => $document->forTenant($tenant)
-                        ->whereRaw("LOWER(title) LIKE ? ESCAPE '!'", ['%'.$literal.'%']));
                 }
             });
-        $this->applyFilters($query, $effectiveFilters);
+        $titleDocuments = KnowledgeDocument::query()->forTenant($tenant)->select('id')
+            ->where(function ($q) use ($identifiers): void {
+                foreach ($identifiers as $id) {
+                    $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
+                    $q->orWhereRaw("LOWER(title) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+                }
+            });
+        $titleIds = (clone $query)->withoutEagerLoads()->select('knowledge_chunks.id')
+            ->whereIn('knowledge_document_id', $titleDocuments);
+        // IN already removes duplicate membership; UNION ALL avoids an extra
+        // corpus-sized distinct/sort when a code occurs in both body and title.
+        $query->whereIn('knowledge_chunks.id', $bodyIds->unionAll($titleIds));
         $matches = $matchBindings = $frequencySql = $frequencyBindings = [];
-        foreach ($identifiers as $index => $id) {
+        // With one identifier every candidate has the same rank. Do not count
+        // the whole corpus and sort it before applying the candidate limit.
+        foreach (count($identifiers) > 1 ? $identifiers : [] as $index => $id) {
             $literal = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id)).'%';
-            $matches[$index] = "LOWER(chunk_text) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM knowledge_documents AS literal_doc WHERE literal_doc.id = knowledge_chunks.knowledge_document_id AND literal_doc.tenant_id = ? AND LOWER(literal_doc.title) LIKE ? ESCAPE '!')";
+            $matches[$index] = "LOWER(chunk_text) LIKE ? ESCAPE '!' OR knowledge_document_id IN (SELECT literal_doc.id FROM knowledge_documents AS literal_doc WHERE literal_doc.tenant_id = ? AND literal_doc.deleted_at IS NULL AND LOWER(literal_doc.title) LIKE ? ESCAPE '!')";
             $matchBindings[$index] = [$literal, $tenant, $literal];
             $frequencySql[] = "COUNT(DISTINCT CASE WHEN {$matches[$index]} THEN knowledge_document_id END) AS literal_{$index}";
             $frequencyBindings = [...$frequencyBindings, ...$matchBindings[$index]];
@@ -942,18 +959,20 @@ class KbSearchService
         // Rank rare literal subjects above a common company/sender even when
         // the specific source does not repeat that company. Count at document
         // grain so a long document's repeated chunks do not inflate rarity.
-        $frequencies = (clone $query)->toBase()->selectRaw(implode(', ', $frequencySql), $frequencyBindings)->first();
-        $ranks = $bindings = [];
-        foreach ($matches as $index => $match) {
-            $weight = max(1, intdiv(1_000_000, max(1, (int) ($frequencies->{'literal_'.$index} ?? 0))));
-            $ranks[] = "CASE WHEN {$match} THEN ? ELSE 0 END";
-            $bindings = [...$bindings, ...$matchBindings[$index], $weight];
+        if ($matches !== []) {
+            $frequencies = (clone $query)->toBase()->selectRaw(implode(', ', $frequencySql), $frequencyBindings)->first();
+            $ranks = $bindings = [];
+            foreach ($matches as $index => $match) {
+                $weight = max(1, intdiv(1_000_000, max(1, (int) ($frequencies->{'literal_'.$index} ?? 0))));
+                $ranks[] = "CASE WHEN {$match} THEN ? ELSE 0 END";
+                $bindings = [...$bindings, ...$matchBindings[$index], $weight];
+            }
+            $query->orderByRaw('('.implode(' + ', $ranks).') DESC', $bindings);
         }
-        // Bound DB work; an incomplete candidate list must never imply global absence.
+        // Bound returned candidates; an incomplete list must never imply global absence.
         // A common actor cannot exhaust that bound before a more specific
         // person/title/place match. This rank is navigation, never support.
-        $chunks = $this->filterByFolderGlobs($query->orderByRaw('('.implode(' + ', $ranks).') DESC', $bindings)
-            ->orderBy('knowledge_chunks.id')->limit(64)->get(), $effectiveFilters->folderGlobs);
+        $chunks = $this->filterByFolderGlobs($query->orderBy('knowledge_chunks.id')->limit(64)->get(), $effectiveFilters->folderGlobs);
         return $chunks->filter(fn ($chunk) => array_filter($identifiers,
             fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
                 || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)) !== [])

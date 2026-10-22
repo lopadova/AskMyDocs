@@ -12,6 +12,7 @@ use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class ExactIdentifierCandidatesTest extends TestCase
@@ -87,6 +88,27 @@ final class ExactIdentifierCandidatesTest extends TestCase
         $this->assertSame([$match->id], $candidates->pluck('document.id')->all());
         $source = app(KbSourceReader::class)->readCandidate($candidates->first(), 'orders');
         $this->assertStringContainsString('fastener does not stay locked', $source['excerpt']);
+    }
+
+    public function test_a_single_distinct_identifier_does_not_count_or_rank_the_entire_corpus(): void
+    {
+        $body = $this->document('Confirmed shipment for U918031.');
+        $title = $this->document('The customer requested replacement laces.', ['title' => 'Re: U918031']);
+        $this->document('Another case U9180310.');
+        $queries = [];
+        DB::listen(static function ($event) use (&$queries): void {
+            $queries[] = strtolower($event->sql);
+        });
+
+        // The interpreter passes the same code as both target and mention.
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['U918031', 'U918031'], 'orders');
+
+        $this->assertSame([$body->id, $title->id], $candidates->pluck('document.id')->all());
+        $this->assertNotEmpty($queries);
+        foreach ($queries as $sql) {
+            $this->assertStringNotContainsString('count(', $sql, 'A single code needs no corpus-wide rarity aggregate.');
+            $this->assertStringNotContainsString('case when', $sql, 'A constant rank must not force sorting all matches.');
+        }
     }
 
     private function document(string $text, array $attributes = []): KnowledgeDocument
