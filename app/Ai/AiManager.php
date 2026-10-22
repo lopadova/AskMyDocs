@@ -205,6 +205,7 @@ class AiManager
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
+        $options = app(AgentChatModelScope::class)->options($options);
         $response = $this->provider()->chat($systemPrompt, $userMessage, $options);
 
         // FinOps full-coverage metering (R44). Non-blocking + SDK-skipping; see
@@ -238,6 +239,7 @@ class AiManager
      */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
+        $options = app(AgentChatModelScope::class)->options($options);
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
 
         if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
@@ -250,6 +252,7 @@ class AiManager
     /** A separately configured, metered provider for strict structured chat turns. */
     public function chatWithProvider(string $provider, string $systemPrompt, array $messages, array $options = []): AiResponse
     {
+        $options = app(AgentChatModelScope::class)->options($options);
         $response = $this->provider($provider)->chatWithHistory($systemPrompt, $messages, $options);
 
         if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
@@ -268,6 +271,7 @@ class AiManager
      */
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
     {
+        $options = app(AgentChatModelScope::class)->options($options);
         // NOTE: streaming responses are NOT yet metered here — capturing the
         // terminal usage of a Generator without wrapping the live SSE path is a
         // scoped follow-up (FinOps streaming coverage). Sync chat +

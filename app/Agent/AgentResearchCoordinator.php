@@ -130,7 +130,8 @@ class AgentResearchCoordinator
             }
             $run->forceFill(['status' => AgentRun::STATUS_RUNNING, 'started_at' => $run->started_at ?? now()])->save();
             app(AgentResearchProgress::class)->branch($run, 'researching');
-            $outcome = app(AgentLoop::class)->run($run, $context);
+            $outcome = app(\App\Ai\AgentChatModelScope::class)->within($context,
+                fn () => app(AgentLoop::class)->run($run, $context));
             $run->refresh();
             $run->forceFill(['status' => $outcome->decision === 'answer' ? AgentRun::STATUS_COMPLETED : AgentRun::STATUS_PARTIAL,
                 'completed_at' => now(), 'result_json' => [...$run->result_json, 'stop_reason' => $outcome->stopReason,

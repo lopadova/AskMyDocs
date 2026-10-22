@@ -36,7 +36,8 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             return;
         }
         try {
-            $this->handleOwned($run);
+            app(\App\Ai\AgentChatModelScope::class)->within(AgentExecutionContext::fromArray($run->toArray()),
+                fn () => $this->handleOwned($run));
         } finally {
             $lock->release();
         }

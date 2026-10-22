@@ -36,6 +36,22 @@ final class AppSettingRegistry
                 'deployOnly' => false,
                 'enum' => ['openai', 'anthropic', 'gemini', 'openrouter', 'regolo'],
             ],
+            // Optional project-scoped profile: overrides every agent text stage.
+            'ai.chat_model' => [
+                'label' => 'Agent text model for every stage',
+                'type' => 'string',
+                'config' => 'ai.chat_model',
+                'scope' => 'both',
+                'deployOnly' => false,
+            ],
+            'ai.chat_routing' => [
+                'label' => 'Agent provider routing',
+                'type' => 'enum',
+                'config' => 'ai.chat_routing',
+                'scope' => 'both',
+                'deployOnly' => false,
+                'enum' => ['default', 'economy'],
+            ],
             // Connector sync cadence (minutes) — governable per tenant AND
             // per project (a project may legitimately sync at a different rate).
             'connector.sync_cadence_minutes' => [

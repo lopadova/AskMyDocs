@@ -146,11 +146,15 @@ final class OpenRouterProvider implements AiProviderInterface
             'messages' => $apiMessages,
             'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
             'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
+            'usage' => ['include' => true],
         ];
 
         if (array_key_exists('response_format', $options)) {
             $payload['response_format'] = $options['response_format'];
             $payload['provider'] = ['require_parameters' => true];
+        }
+        if (is_array($options['provider'] ?? null)) {
+            $payload['provider'] = [...$options['provider'], ...($payload['provider'] ?? [])];
         }
 
         // `tools` is absent on the MCP final answer turn (tool history, no tools);

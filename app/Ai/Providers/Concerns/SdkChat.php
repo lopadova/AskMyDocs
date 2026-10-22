@@ -140,13 +140,17 @@ trait SdkChat
      */
     protected function makeSdkAgent(string $systemPrompt, iterable $messages, array $options): SdkAnonymousAgent
     {
+        $providerOptions = $this->sdkProviderOptions();
+        if ($this->name() === 'openrouter' && is_array($options['provider'] ?? null)) {
+            $providerOptions['provider'] = $options['provider'];
+        }
         return new SdkAnonymousAgent(
             instructions: $systemPrompt,
             messages: $messages,
             tools: [],
             maxTokens: $this->resolveMaxTokens($options),
             temperature: $this->resolveTemperature($options),
-            providerOptions: $this->sdkProviderOptions(),
+            providerOptions: $providerOptions,
         );
     }
 

@@ -21,6 +21,25 @@ use Tests\TestCase;
  */
 class OpenRouterProviderTest extends TestCase
 {
+    public function test_economical_routing_caps_reach_both_sdk_and_strict_http_requests(): void
+    {
+        $this->setupConfig();
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'economical/model', 'choices' => [['message' => ['role' => 'assistant', 'content' => '{}'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 2, 'completion_tokens' => 1, 'cost' => .000001],
+        ])]);
+        $routing = ['sort' => 'price', 'require_parameters' => true, 'max_price' => ['prompt' => .12, 'completion' => .60]];
+        foreach ([[], ['response_format' => ['type' => 'json_object']]] as $extra) {
+            $this->provider()->chat('Return JSON', 'question', ['model' => 'economical/model', 'provider' => $routing, ...$extra]);
+        }
+        $posts = Http::recorded(fn (Request $request) => $request->method() === 'POST');
+        $this->assertCount(2, $posts);
+        foreach ($posts as [$request]) {
+            $this->assertSame($routing, $request->data()['provider']);
+            $this->assertTrue($request->data()['usage']['include']);
+        }
+    }
+
     private function setupConfig(array $overrides = []): void
     {
         config()->set('ai.providers.openrouter', array_merge([

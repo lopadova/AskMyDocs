@@ -160,7 +160,8 @@ foreach ($cases['cases'] as $case) {
         'answer_model_override' => app(App\Agent\AgentAnswerModel::class)->synthesis($context),
         'repair_model_override' => app(App\Agent\AgentAnswerModel::class)->synthesis($context, true),
         'presentation_model_override' => app(App\Agent\AgentAnswerModel::class)->presentation($context),
-        'interpretation_model' => config('ai.question_preprocessor.model'),
+        'interpretation_model' => app(App\Services\Admin\AppSettingsResolver::class)->effective('ai.chat_model', $context->tenantId, $context->projectKey ?? '*')
+            ?: config('ai.question_preprocessor.model'),
         'evaluation_source_mode' => empty($case['evaluation_api_sources'])
             ? 'immutable_imap_original_or_complete_indexed_source_or_verified_lineage'
             : (empty($case['evaluation_source_excerpts']) ? 'complete_email_sources_and_frozen_read_only_api_payloads'

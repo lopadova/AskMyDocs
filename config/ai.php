@@ -20,6 +20,9 @@ return [
     */
 
     'default' => env('AI_PROVIDER', 'openai'),
+    'chat_model' => null,
+    'chat_routing' => 'default',
+    'economy_max_price' => ['prompt' => 0.12, 'completion' => 0.60], // USD per million tokens, enforced by OpenRouter.
 
     'question_preprocessor' => [
         'provider' => env('CHAT_PREPROCESSOR_PROVIDER', 'openrouter'),
