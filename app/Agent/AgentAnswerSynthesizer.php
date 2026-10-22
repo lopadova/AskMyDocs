@@ -177,9 +177,7 @@ final readonly class AgentAnswerSynthesizer
                     $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
                     $repair['candidate_coverage'] = $repairedCoverage;
                     $repair['candidate_reason'] = $repaired['reason'] ?? null;
-                    $improved = ! $grounding['valid'] || ($repairedCoverage['sufficient'] ?? false)
-                        || (($repairedCoverage['probability_true'] ?? 0) > ($coverage['probability_true'] ?? 1)
-                            && count($repaired['claims']) >= count($grounding['claims']));
+                    $improved = $this->repairImprovesCoverage($grounding, $repaired, $coverage, $repairedCoverage);
                     if ($repaired['valid'] && $improved) {
                         $grounding = $repaired;
                         $payload = $repairedPayload;
@@ -553,6 +551,22 @@ PROMPT;
         }
 
         return $kept;
+    }
+
+    /** Compare covered tasks, not paragraph count, while retaining every previously answered task. */
+    private function repairImprovesCoverage(array $original, array $candidate, array $coverage, ?array $candidateCoverage): bool
+    {
+        if (! $original['valid']) {
+            return true;
+        }
+        $before = array_values(array_unique(array_column($original['claims'], 'subquestion_id')));
+        $after = array_values(array_unique(array_column($candidate['claims'], 'subquestion_id')));
+        if (array_diff($before, $after) !== []) {
+            return false;
+        }
+        return ($candidateCoverage['sufficient'] ?? false)
+            || (($candidateCoverage['probability_true'] ?? 0) > ($coverage['probability_true'] ?? 1)
+                && (count($candidate['claims']) >= count($original['claims']) || array_diff($after, $before) !== []));
     }
 
     /** Each draft sees only its own question and authorized flow evidence; JEV runs later once. */
