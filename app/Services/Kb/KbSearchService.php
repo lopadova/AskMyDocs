@@ -363,10 +363,7 @@ class KbSearchService
         $builder = KnowledgeChunk::query()
             ->forTenant($tenantId)
             ->with('document')
-            ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
-            ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $floor])
-            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
-            ->orderByDesc('vector_score');
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'));
 
         if ($projectKey !== null && $projectKey !== '') {
             $builder->where('knowledge_chunks.project_key', $projectKey);
@@ -380,7 +377,7 @@ class KbSearchService
             $builder->whereNotIn('knowledge_chunks.id', $primaryIds);
         }
 
-        $candidates = $builder->limit($limit)->get();
+        $candidates = $this->pgvectorCandidates($builder, $vectorString, $floor, $limit);
 
         // Copilot iter-1 #L280: `search()` applies `filterByFolderGlobs()`
         // post-fetch (folder globs aren't representable in portable
@@ -664,12 +661,7 @@ class KbSearchService
         }
 
         if (DB::connection()->getDriverName() === 'pgsql') {
-            return $base
-                ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
-                ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
-                ->orderByDesc('vector_score')
-                ->limit($candidateCount)
-                ->get();
+            return $this->pgvectorCandidates($base, $vectorString, $minSimilarity, $candidateCount);
         }
 
         // Non-pgsql: compute cosine in PHP. Bounded prefetch keeps memory
@@ -688,6 +680,33 @@ class KbSearchService
             ->sortByDesc('vector_score')
             ->take($candidateCount)
             ->values();
+    }
+
+    /** Execute only after tenant, document access and retrieval filters are applied. */
+    private function pgvectorCandidates(Builder $query, string $vectorString, float $minSimilarity, int $limit): Collection
+    {
+        $connection = $query->getConnection();
+        $extension = $connection->selectOne('SELECT extversion FROM pg_extension WHERE extname = ?', ['vector']);
+        $query->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString]);
+
+        // HNSW requires the distance operator itself in ascending order. Older
+        // pgvector versions cannot continue scanning after tenant/ACL filtering,
+        // so preserve their exact-search behavior rather than lose candidates.
+        if (! version_compare((string) ($extension?->extversion ?? '0'), '0.8.0', '>=')) {
+            return $query->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
+                ->orderByDesc('vector_score')->limit($limit)->get();
+        }
+
+        $candidates = $connection->transaction(function () use ($connection, $query, $vectorString, $limit): Collection {
+            $connection->statement("SET LOCAL hnsw.iterative_scan = 'strict_order'");
+
+            return $query->orderByRaw('embedding <=> ?::vector ASC', [$vectorString])->limit($limit)->get();
+        });
+
+        // Filtering the ordered top K gives the same accepted candidates without
+        // making an iterative scan traverse the index when all scores are low.
+        return $candidates->filter(fn (KnowledgeChunk $chunk): bool => $chunk->vector_score !== null
+            && (float) $chunk->vector_score >= $minSimilarity)->values();
     }
 
     /**

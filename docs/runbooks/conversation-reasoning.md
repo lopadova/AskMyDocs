@@ -203,6 +203,61 @@ Le chat esistenti iniziano con stato vuoto e recuperano riferimenti storici su r
 sempre dopo riconvalida. Nessuna reinterpretazione o migrazione massiva della cronologia.
 Non fare rollback della migrazione durante il rollback dei flag: il JSON inutilizzato è innocuo.
 
+### Ricerca lenta, timeout del worker e chat in attesa
+
+La correzione del 22 ottobre 2026 aggiunge la migrazione
+`2026_10_22_000002_add_literal_lookup_trigram_indexes.php`: su PostgreSQL crea
+`pg_trgm` e due indici GIN su `LOWER(chunk_text)` e `LOWER(title)`. Gli indici
+FTS esistenti non coprono `LIKE '%identificativo%'`. Il build è concorrente,
+fuori transazione; un indice invalido lasciato da un build interrotto viene
+ricreato al retry. Il rollback rimuove soltanto i due indici. Va inclusa nel
+normale deploy, senza reset o ingest. Non è stata applicata a database remoti.
+
+Il lookup separa corpo e titolo per consentire l'uso degli indici. Con un solo
+identificativo distinto salta il conteggio globale e il ranking di rarità,
+che assegnerebbero lo stesso peso a tutti i risultati. Le ricerche con più
+identificativi conservano il ranking e i vincoli di tenant, progetto e fonte.
+
+Anche la query vettoriale primaria e quella dei candidati esclusi devono ordinare
+direttamente per `embedding <=> query ASC`: `ORDER BY vector_score DESC`, con
+`vector_score = 1 - distanza`, impedisce l'uso dell'indice HNSW esistente.
+Con pgvector >= 0.8 si abilita `hnsw.iterative_scan = strict_order` nella sola
+transazione di ricerca, per continuare oltre i vicini esclusi dai filtri.
+La soglia numerica di similarità si applica ai candidati ordinati; i filtri
+di popolazione restano nel database. HNSW è approssimato e mantiene i limiti
+di scansione dell'estensione. Versioni precedenti conservano la ricerca esatta:
+per beneficiare di questa ottimizzazione occorre aggiornare pgvector.
+Riferimenti: [uso degli indici](https://github.com/pgvector/pgvector#why-isnt-a-query-using-an-index)
+e [scansioni iterative](https://github.com/pgvector/pgvector#iterative-index-scans).
+
+`ExecuteAgentRunJob` usa un tentativo e un timeout configurato da
+`AGENT_JOB_TIMEOUT` (fallback 120 secondi). Il timeout dei processi figli è
+separato: 90 secondi per ramo nella configurazione del dump. Laravel può
+interrompere il worker per timeout e il gestore processi lo riavvia; questo
+non dimostra un OOM. La callback definitiva `failed()` ora finalizza
+atomicamente i run queued/running e pubblica `run.failed`, anche quando il
+fallimento avviene prima di `handle()`. Non sostituisce risultati terminali
+o attese di interazione. Distingue un'eccezione di timeout osservata da un
+semplice esaurimento dei tentativi, senza inferire il primo dal secondo.
+Un SIGKILL/OOM o un database indisponibile possono impedire la callback.
+
+Su Redis/database il lease deve superare il timeout; controllare i valori
+effettivi del worker. Con `QUEUE_CONNECTION=cloud`, `retry_after = null` nel
+debug non significa 90 secondi: [Laravel Cloud](https://laravel.com/cloud/docs/queues#job-processing)
+gestisce la visibilità e la estende durante l'esecuzione. Non modificare
+tentativi, lease o timeout per compensare una query che non usa gli indici.
+
+Nel dump della conversazione 80 il run `6f0f6e56-af32-4ba4-b03b-705f99198d79`
+ha due lookup letterali aperti da circa 58 secondi all'esportazione, prima
+dei timeout configurati; non contiene un evento finale. Lo stack separato
+`TimeoutExceededException` localizza invece l'interruzione nella query
+vettoriale, ma non include timestamp o run ID per attribuirlo allo stesso run.
+Per ricostruire l'ordine server servono gli eventi Cloud del job/pod e il
+payload con UUID, tentativo e timeout, correlati al run; per il dump cercare
+fra le 15:21 e le 15:24 UTC del 22 ottobre (17:21–17:24 Europe/Rome), inclusi
+exit code, motivo del riavvio e metriche memoria. Non dedurre un crash o una
+riconsegna anticipata dal solo messaggio sui tentativi.
+
 ## Debug e valutazione
 
 ### Stile delle risposte per argomento
