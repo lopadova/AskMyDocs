@@ -536,6 +536,7 @@ final readonly class AgentLoop
             return new AgentToolActionResult($body, 0);
         }
 
+        app(\App\Agent\Planning\AgentPlanArgumentConstraints::class)->validateArguments($tool, $arguments);
         return $this->serverTools->execute(
             $tool,
             $arguments,

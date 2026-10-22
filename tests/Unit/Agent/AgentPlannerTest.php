@@ -26,6 +26,24 @@ use Tests\TestCase;
  */
 final class AgentPlannerTest extends TestCase
 {
+    public function test_a_declared_identifier_pattern_triggers_correction_before_selecting_the_wrong_api(): void
+    {
+        $orders = new \App\Agent\Tools\AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
+            inputSchema: ['type' => 'object', 'properties' => ['reference' => ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$']]],
+            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $returns = new \App\Agent\Tools\AgentToolDefinition(name: 'returns', displayName: 'Returns', description: 'Read returns', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $response = fn ($tool) => new AiResponse('', 'fake', 'planner', toolCalls: [['name' => 'submit_agent_plan',
+            'arguments' => ['decision' => 'tools', 'actions' => [['id' => 'step_1', 'tool' => $tool,
+                'arguments' => ['reference' => 'RETURN-42'], 'depends_on' => [], 'purpose' => 'Read the requested return']]]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn($response('orders'), $response('returns'));
+        $planner = new AgentPlanner($ai, app(AgentPlanParser::class), app(AgentEvidenceSummarizer::class), app(AgentLiveSourceCoverage::class));
+        $plan = $planner->decide('Read RETURN-42', $this->context(), ['orders' => $orders, 'returns' => $returns], app(AgentEvidenceFactory::class)->empty());
+        $this->assertSame('returns', $plan->actions[0]->tool);
+        $this->assertSame('RETURN-42', $plan->actions[0]->arguments['reference']);
+    }
+
     public function test_an_unreferenced_reused_action_key_does_not_abort_the_missing_live_read(): void
     {
         $tool = new \App\Agent\Tools\AgentToolDefinition(name: 'get_returns', displayName: 'Returns',

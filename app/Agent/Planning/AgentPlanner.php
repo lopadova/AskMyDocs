@@ -100,6 +100,7 @@ final readonly class AgentPlanner
                     (int) config('agent.planner.max_actions_per_plan', 8),
                     array_values(array_filter(array_column($completedActions, 'id'), 'is_string')),
                 );
+                app(AgentPlanArgumentConstraints::class)->validate($plan, $tools);
                 $this->liveSourceCoverage->validate($question, $plan, $tools, $completedActions);
 
                 return new AgentPlannerAttempt($plan, $latencyMs, $promptTokens, $completionTokens);
