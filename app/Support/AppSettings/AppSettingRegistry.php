@@ -65,6 +65,13 @@ final class AppSettingRegistry
                 'deployOnly' => false,
                 'enum' => ['classic', 'shadow', 'capability'],
             ],
+            'agent.tenant_instructions' => [
+                'label' => 'Tenant assistant operating instructions',
+                'type' => 'string',
+                'config' => 'agent.tenant_instructions',
+                'scope' => 'tenant',
+                'deployOnly' => false,
+            ],
             // Deploy-only security knob — visible but NOT runtime-settable.
             'ai_finops.enabled' => [
                 'label' => 'AI FinOps metering (deploy-managed)',

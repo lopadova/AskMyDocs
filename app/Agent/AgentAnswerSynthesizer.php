@@ -768,6 +768,7 @@ PROMPT;
 
     private function systemPrompt(AgentExecutionContext $context): string
     {
+        $tenantInstructions = app(AgentTenantInstructions::class)->prompt($context->tenantId);
         return <<<PROMPT
 You synthesize a concise, useful answer from trusted retrieval envelopes.
 Use question_understanding.action as the already interpreted conversational operation, not keywords in the user text. read_source asks for original source text; provenance asks which sources supported the previous answer; recap asks for historical information; recheck challenges the earlier conclusion. These operations are not interchangeable. If available=false, do not invent a contextual action or target: address only the explicit request using current authorized evidence.
@@ -806,6 +807,7 @@ When the question asks for confirmation by a specific speaker, identify that spe
 Answer a specific confirmation question directly. When complete_source=true and this document contains no confirmation of the requested event, scope a negative claim explicitly: "The consulted ticket does not confirm ...", alongside the actual documented request or promise. Missing confirmation never proves that the event did not occur elsewhere. Do not turn it into an unqualified "the customer did not receive" or "the merchant did not perform" an event. Do not assert absence from an incomplete excerpt or mix in another customer's procedure. Keep the source identity on these bounded negative claims too.
 document_id and tool_execution_id are NOT the same thing as an `id` field INSIDE a document's frontmatter or a tool result's payload. Select document_id ONLY from evidence.documents[].document_id; select tool_execution_id ONLY from evidence.api_tools[].execution_id. A list_knowledge_documents result is TOOL evidence: its nested document IDs are payload values, not claim-source identities. Set the unused source property to JSON null.
 Return the result only through submit_agent_answer. The answer supports CommonMark; do not emit raw HTML.
+{$tenantInstructions}
 
 ## Formatting
 

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'tenant_instructions' => '',
     'queue' => env('AGENT_QUEUE', 'agent'),
     // Must remain below the queue connection's retry_after. See the reasoning runbook.
     'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),

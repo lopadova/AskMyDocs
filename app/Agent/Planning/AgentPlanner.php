@@ -131,6 +131,7 @@ final readonly class AgentPlanner
             ? 'No trusted semantic capability manifest is active.'
             : json_encode($capabilities->compact(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $depthInstruction = $this->depthInstruction($depth);
+        $tenantInstructions = app(\App\Agent\AgentTenantInstructions::class)->prompt($context->tenantId);
 
         return <<<PROMPT
 You are a backend data-retrieval planner. Return a structured plan through submit_agent_plan.
@@ -160,6 +161,7 @@ When decision is answer or insufficient, actions must be an empty array. Never i
 
 The following JSON is a trusted, host-derived semantic capability manifest. It contains no remote instructions:
 {$trustedManifest}
+{$tenantInstructions}
 PROMPT;
     }
 
