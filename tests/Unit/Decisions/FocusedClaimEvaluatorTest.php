@@ -126,6 +126,10 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertStringContainsString('| order_total | 245 |', $text);
         $this->assertStringContainsString('| order_currency | USD |', $text);
         $this->assertStringNotContainsString('unrequested_field', $text);
+        $projection = $result['claims'][0]['literal_projection'];
+        $this->assertSame('items.0', $projection['record_path']);
+        $this->assertSame(['erp_id' => 123, 'erp_reference' => 'ORDER-A', 'order_state' => 'SHIPPED', 'order_total' => 245, 'order_currency' => 'USD'], $projection['fields']);
+        $this->assertSame(['status' => 'order_state', 'total' => 'order_total', 'currency' => 'order_currency'], $projection['roles']);
         $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
     }
 

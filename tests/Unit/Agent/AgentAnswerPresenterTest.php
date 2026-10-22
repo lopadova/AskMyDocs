@@ -93,6 +93,36 @@ final class AgentAnswerPresenterTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_declared_literal_roles_reach_only_the_linked_presentation_block_and_do_not_bypass_the_threshold(): void
+    {
+        $claims = $this->claims();
+        $projection = ['record_path' => 'items.0', 'fields' => ['state' => 'SHIPPED', 'amount' => '180.00', 'currency' => 'EUR'],
+            'roles' => ['status' => 'state', 'returnTotal' => 'amount', 'currency' => 'currency']];
+        $claims[0]['literal_projection'] = $projection;
+        Http::fake(function ($request) use ($projection) {
+            $blocks = $request['state']['blocks'];
+            $this->assertSame([$projection], $blocks[0]['verified_literal_projections']);
+            $this->assertSame([], $blocks[1]['verified_literal_projections']);
+            return Http::response(['model' => 'jev-test', 'answers' => [
+                'faithful_0' => ['type' => 'noul', 'noul' => .79], 'complete_0' => ['type' => 'noul', 'noul' => .99],
+                'faithful_1' => ['type' => 'noul', 'noul' => .99], 'complete_1' => ['type' => 'noul', 'noul' => .99],
+            ]]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->withArgs(function ($system, $history) use ($projection) {
+            $data = json_decode($history[0]['content'], true);
+            $this->assertSame($projection, $data['verified_facts'][0]['literal_projection']);
+            $this->assertArrayNotHasKey('literal_projection', $data['verified_facts'][1]);
+            return true;
+        })->andReturn($this->response([
+            ['text' => 'Per CASE-A è stato predisposto il cambio.', 'claim_ids' => [0]],
+            ['text' => 'Il cambio di CASE-A è gratuito.', 'claim_ids' => [1]],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Compare CASE-A', $this->context(), $claims);
+        $this->assertNull($result['paragraphs']);
+        $this->assertSame('rejected', $result['trace']['status']);
+    }
+
     public static function invalidParagraphs(): array
     {
         return [

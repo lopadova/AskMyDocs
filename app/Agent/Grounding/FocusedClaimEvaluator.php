@@ -289,6 +289,9 @@ final readonly class FocusedClaimEvaluator
             }
             $rows[] = '| '.str_replace('|', '\\|', $field).' | '.str_replace(["|", "\n"], ['\\|', ' '], (string) $value).' |';
         }
-        return $rows === [] ? null : [...$pair['claim'], 'text' => "| Campo / Field | Valore / Value |\n|---|---|\n".implode("\n", $rows)];
+        $scalars = array_filter($selected, fn ($value) => is_scalar($value) || $value === null);
+        return $rows === [] ? null : [...$pair['claim'], 'text' => "| Campo / Field | Valore / Value |\n|---|---|\n".implode("\n", $rows),
+            'literal_projection' => ['record_path' => $pair['bound']['path'], 'fields' => $scalars,
+                'roles' => array_filter($aliases, fn ($field) => array_key_exists($field, $scalars))]];
     }
 }
