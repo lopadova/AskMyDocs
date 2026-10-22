@@ -44,7 +44,8 @@ final class AnswerCoverageEvaluator
             }
         }
         foreach ($evidence['api_tools'] ?? [] as $tool) {
-            $sources[$tool['evidence_hash']] = ['tool_execution_id' => $tool['execution_id'], 'result' => $tool['result']];
+            $sources[$tool['evidence_hash']] = ['tool_execution_id' => $tool['execution_id'],
+                'observed_at' => $tool['retrieved_at'] ?? null, 'result' => $tool['result']];
         }
         $trace = ['sufficient' => null, 'status' => 'error', 'source_document_ids' => array_values(array_unique($documentIds))];
         try {

@@ -8,6 +8,22 @@ use Tests\TestCase;
 
 class FocusedClaimEvaluatorTest extends TestCase
 {
+    public function test_api_observation_time_comes_from_the_bound_envelope_not_the_model_claim(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $time = '2026-10-22T07:52:08+02:00';
+        $evidence['api_tools'][0]['retrieved_at'] = $time;
+        $claims[0]['observed_at'] = '2099-01-01T00:00:00Z';
+        $claims[0]['text'] = 'TRACK-55 is scheduled, observed at '.$time.'.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Current status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        Http::assertSent(function ($request) use ($time) {
+            return ($request['state']['pairs'][0]['observed_at'] ?? null) === $time
+                && ! str_contains(json_encode($request['state']['sources']), '2099');
+        });
+    }
+
     public function test_declared_custom_fields_render_exact_requested_values_when_decision_is_unavailable(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);

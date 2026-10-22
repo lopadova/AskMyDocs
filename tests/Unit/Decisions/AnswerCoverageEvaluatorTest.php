@@ -8,6 +8,22 @@ use Tests\TestCase;
 
 final class AnswerCoverageEvaluatorTest extends TestCase
 {
+    public function test_coverage_keeps_observation_time_distinct_from_a_record_event_date(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(fn () => Http::response(['model' => 'jev-test',
+            'answers' => ['covered' => ['type' => 'noul', 'noul' => .9]]]));
+        $time = '2026-10-22T07:52:08+02:00';
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('Current status?', ['api_tools' => [[
+            'execution_id' => 42, 'evidence_hash' => 'h', 'retrieved_at' => $time,
+            'result' => ['code' => 'ORDER-A', 'date' => '2025-12-01', 'status' => 'SHIPPED'],
+        ]]], [['text' => 'ORDER-A is SHIPPED, observed at '.$time.'.']]);
+        $this->assertTrue($result['sufficient']);
+        Http::assertSent(fn ($request) => $request['state']['sources']['h']['observed_at'] === $time
+            && $request['state']['sources']['h']['result']['date'] === '2025-12-01');
+    }
+
     public function test_hash_aliases_of_one_snapshot_do_not_overflow_coverage_or_merge_distinct_documents(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);

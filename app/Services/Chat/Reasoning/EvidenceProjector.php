@@ -202,7 +202,8 @@ final class EvidenceProjector
             return ['quote' => json_encode($matches[0]['record'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'record' => $matches[0]['record'], 'path' => $matches[0]['path'],
                 'identity_fields' => $source['presentation']['identity_fields'] ?? [],
-                'field_aliases' => $source['presentation']['field_aliases'] ?? []];
+                'field_aliases' => $source['presentation']['field_aliases'] ?? [],
+                'observed_at' => $source['retrieved_at'] ?? null];
         }
         return ['reason' => 'source_not_in_authorized_evidence'];
     }
