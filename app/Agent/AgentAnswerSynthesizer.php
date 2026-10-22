@@ -386,8 +386,8 @@ final readonly class AgentAnswerSynthesizer
         if ($selective && ! $independent && ($grounding['partial'] ?? false)
             && data_get($grounding, 'coverage_validation.sufficient') !== true) {
             $answer .= "\n\n".(str_starts_with($context->locale, 'it')
-                ? 'Posso confermare solo questi dati; gli altri dettagli richiesti non sono stati verificati.'
-                : 'I can confirm only these details; the remaining requested details could not be verified.');
+                ? 'Potrebbero esserci aspetti della richiesta ancora da verificare.'
+                : 'Some aspects of the request may still need verification.');
         }
 
         $completeness = (string) ($payload['completeness'] ?? 'partial');
@@ -643,8 +643,8 @@ PROMPT;
                 if (data_get($grounding, 'coverage_validation.sufficient') !== true && ($draftPartial
                     || array_filter($checks, fn ($check) => ($check['fallback'] ?? null) !== null
                         || (($check['status'] ?? '') !== 'accepted' && ! in_array($check['reason'] ?? '', ['already_communicated', 'duplicate_fact'], true))))) {
-                    $body .= "\n\n".($italian ? 'Per questa domanda posso confermare solo i dati riportati; gli altri dettagli non sono verificati.'
-                        : 'For this question I can confirm only the reported data; other details are not verified.');
+                    $body .= "\n\n".($italian ? 'Potrebbero esserci aspetti di questa parte della richiesta ancora da verificare.'
+                        : 'Some aspects of this part of the request may still need verification.');
                 }
             } else {
                 $status = $payload['research_drafts'][$index]['status'] ?? 'completed';
@@ -762,6 +762,8 @@ When a selected record's fields disagree with a name or identifier in an earlier
 When a source supplies source_ref, prefer copying that short reference into the claim and set document_id=null, tool_execution_id=null, evidence_hash="". The host resolves it only against the current authorized sources and validates the quote and full hash; never invent a reference. Otherwise copy the selected source's claim_source fields exactly, using separate JSON keys document_id, tool_execution_id and evidence_hash. Never shorten, calculate or repair a hash yourself. For tool records also copy the selected record_path from record_paths.
 For a case history, read the entire supplied conversation and cover the requested problem, customer response and latest documented merchant response, rather than stopping at the opening notice. Include the documented handling plan and conditions governing an unresolved outcome: a later follow-up does not erase an earlier investigation proposal or conditional refund. Keep promises qualified as promises, independently from completed actions. Preserve who performed each action. Never invent a message date from another case or from retrieval time. State recorded observations as historical; a document retrieved now does not establish current availability or an action completed today. A promised refund or shipment is not proof of execution.
 For a combined case-history and API request, reserve space for every explicitly requested live field before optional historical details. A compact table of requested fields from ONE API record is one source-bound claim: include that record's exact identity, status, total and currency when requested, and label its observation time. Keep order and return records separate. Do not spend multiple claims repeating the same currency or total. Keep historical email facts in their own source-bound claims.
+For an email/API financial comparison, explicitly answer EACH requested aspect: email reason, credit note, original amount/currency, the email's refund flag, current return status/total/currency, and the separate order total when requested. State the actual numerical agreement or difference. A refund flag in an email or a confirmed return is not independent evidence of a payment settlement: if the user asks about limits of proof, explicitly distinguish these in a source-bound claim. Do not leave that requested limitation implicit in a generic coverage notice. Keep this requested information before optional dates, products, transport costs or repeated tables.
+Use source completeness only to bound a specific missing-confirmation statement. A retrieval window marked incomplete does not mean the original archived email is incomplete. Never describe the entire original as incomplete on that basis. For a visible report row, say that the comparison concerns that row; do not add a source-completeness warning unless it affects a requested conclusion.
 For EVERY thread-based fact, preserve the speaker of the specific message that establishes it. A customer's deduction or paraphrase of a preceding reply is only that customer's assertion, even when the question does not explicitly ask for merchant confirmation. Embedded quoted messages retain their original speakers. Never merge a merchant statement with a later customer's inference into one authoritative conclusion. Omit an unrequested inference or explicitly attribute it to the customer.
 Preserve explicit negation in every language. Never silently repair an awkward sentence or possible typo by reversing its meaning. If a reason is grammatically ambiguous, omit that unrequested reason or state its ambiguity; retain the clear fact separately. A customer's inability to supply information does not authorize inventing why it is unavailable.
 In a case summary, describe a voucher/gift card's value, validity and whether its code was communicated. Do not reproduce redeemable codes, access credentials or payment tokens unless the user explicitly requests that exact value. Do not include unrequested personal addresses.

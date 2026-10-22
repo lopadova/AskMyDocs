@@ -64,7 +64,8 @@ final class AgentAnswerCoverageNoticeTest extends TestCase
         $answer = app(AgentAnswerSynthesizer::class)->synthesize($question,
             new AgentExecutionContext('test', 'acme', 'demo', 'chat', 'user', '1', 'it', 'Europe/Rome'),
             new AgentLoopOutcome('answer', $evidence, []), understanding: ['action' => 'research', 'focus' => $focus, 'subquestions' => [$focus]]);
-        $this->assertSame($notice, str_contains($answer->answer, 'gli altri dettagli richiesti non sono stati verificati'));
+        $this->assertSame($notice, str_contains($answer->answer, 'Potrebbero esserci aspetti della richiesta ancora da verificare'));
+        $this->assertStringNotContainsString('gli altri dettagli richiesti non sono stati verificati', $answer->answer);
         $this->assertStringContainsString('Non prevede sovrapprezzi.', $answer->answer);
         $this->assertStringNotContainsString('già stato consegnato', $answer->answer);
         $this->assertCount(2, $answer->grounding['claims']);
