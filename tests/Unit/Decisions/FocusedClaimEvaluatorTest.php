@@ -8,6 +8,41 @@ use Tests\TestCase;
 
 class FocusedClaimEvaluatorTest extends TestCase
 {
+    public function test_one_inconsistent_choice_cannot_erase_another_independent_document_claim(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8,
+            'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (isset($request['state']['original_question'])) {
+                return Http::response(['model' => 'jev-test', 'answers' => ['relevance_0' => ['type' => 'noul', 'noul' => .95]]]);
+            }
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                $probabilities = array_fill_keys(array_keys($question['criteria']), 0);
+                $probabilities['supported_relevant'] = $key === 'claim_0' ? .99 : .34;
+                $probabilities['unsupported'] = $key === 'claim_0' ? .01 : .66;
+                $answers[$key] = ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .95, 'probabilities' => $probabilities];
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $source = 'CASE-A: the customer requested a refund. The merchant promised a response.';
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [[
+            'content' => $source, 'evidence_hash' => 'h', 'complete_source' => true,
+        ]]]]];
+        $sub = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'fields' => ['*']];
+        $claims = array_map(fn ($text) => ['text' => $text, 'document_id' => 1, 'evidence_hash' => 'h'],
+            ['The CASE-A customer requested a refund.', 'The CASE-A merchant promised a response.']);
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What happened in CASE-A?', $evidence, $claims,
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
+        $this->assertSame('partial', $result['semantic_validation'][0]['status']);
+        $this->assertArrayHasKey('claim_1', $result['semantic_validation'][0]['answer_errors']);
+        $this->assertSame('inconclusive', $result['semantic_validation'][0]['checks'][1]['status']);
+    }
+
     public function test_rejected_api_prose_is_replaced_only_by_authorized_requested_literal_fields(): void
     {
         $this->fake(['claim_0' => 'unsupported']);
@@ -26,16 +61,21 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertTrue($result['partial']);
     }
 
-    public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(): void
+    public static function literalVetoes(): array
     {
-        foreach (['conflicting', 'supported_off_topic'] as $category) {
-            $this->fake(['claim_0' => $category]);
-            [$evidence, $claims, $u] = $this->fixture();
-            $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
-            $this->assertFalse($result['valid']);
-            $this->assertSame([], $result['claims']);
-            $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
-        }
+        return [['conflicting'], ['supported_off_topic']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('literalVetoes')]
+    public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(string $category): void
+    {
+        $this->fake(['claim_0' => $category]);
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+        $this->assertSame($category, $result['semantic_validation'][0]['checks'][0]['category']);
     }
 
     public function test_rejected_prose_cannot_project_a_record_with_a_bad_source_hash(): void

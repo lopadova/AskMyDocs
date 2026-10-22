@@ -163,10 +163,11 @@ final readonly class FocusedClaimEvaluator
                         'insufficient_context' => 'Question, reference or support is ambiguous.',
                     ]);
                 }
-                $result = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode($state)), fn () => $request->decide(),
+                $result = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode(['independent_answers_v1', $state])), fn () => $request->decideIndependently(),
                     $repairAttempt ? 'focused_decision_repair' : 'focused_decision');
                 $decisions = $result->answers;
-                $meta = [...$meta, 'used' => true, 'status' => 'completed', 'model' => $result->model, 'usage' => $result->usage, 'latency_ms' => $result->latencyMs];
+                $meta = [...$meta, 'used' => true, 'status' => $result->answerErrors === [] ? 'completed' : 'partial',
+                    'answer_errors' => $result->answerErrors, 'model' => $result->model, 'usage' => $result->usage, 'latency_ms' => $result->latencyMs];
             } catch (\Throwable $exception) {
                 $meta = [...$meta, 'status' => 'error', 'reason' => 'provider_or_response_error', 'exception_class' => $exception::class];
                 if ($exception instanceof \App\Decisions\DecisionException) {

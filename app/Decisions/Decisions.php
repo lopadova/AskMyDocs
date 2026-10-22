@@ -102,6 +102,20 @@ final class Decisions
 
     public function decide(): DecisionResult
     {
+        return $this->model->decide($this->validatedState()->data, $this->questions);
+    }
+
+    public function decideIndependently(): DecisionResult
+    {
+        $state = $this->validatedState();
+        if (! $this->model instanceof IndependentDecisionModel) {
+            throw new DecisionException('Decision model does not support independent answers.');
+        }
+        return $this->model->decideIndependently($state->data, $this->questions);
+    }
+
+    private function validatedState(): DecisionState
+    {
         if ($this->questions === [] || $this->state === []) {
             throw new DecisionException('Decision needs state and at least one question.');
         }
@@ -116,7 +130,7 @@ final class Decisions
             throw new DecisionException('Decision questions exceed the request limit.');
         }
 
-        return $this->model->decide($state->data, $this->questions);
+        return $state;
     }
 
     private function assertQuestion(string $key, string $instructions): void

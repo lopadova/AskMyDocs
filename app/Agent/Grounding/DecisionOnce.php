@@ -30,7 +30,7 @@ final class DecisionOnce
             return ['new' => true];
         });
         if (isset($memo['answers']) && ($memo['signature'] ?? '') === $signature) {
-            return new DecisionResult($memo['id'], $memo['model'], $memo['answers'], $memo['usage'], $memo['latency_ms']);
+            return new DecisionResult($memo['id'], $memo['model'], $memo['answers'], $memo['usage'], $memo['latency_ms'], $memo['answer_errors'] ?? []);
         }
         if (! isset($memo['new']) && ! isset($memo['ephemeral'])) {
             throw new \RuntimeException('Semantic decision already dispatched; no automatic replay.');
@@ -42,6 +42,7 @@ final class DecisionOnce
                 $run->forceFill(['result_json' => [...($run->result_json ?? []), $slot => [
                     'signature' => $signature, 'status' => 'completed', 'id' => $result->id, 'model' => $result->model,
                     'answers' => $result->answers, 'usage' => $result->usage, 'latency_ms' => $result->latencyMs,
+                    ...($result->answerErrors === [] ? [] : ['answer_errors' => $result->answerErrors]),
                 ]]])->save();
             });
         }

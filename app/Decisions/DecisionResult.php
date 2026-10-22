@@ -15,6 +15,7 @@ final readonly class DecisionResult implements JsonSerializable
         public array $answers,
         public array $usage,
         public float $latencyMs,
+        public array $answerErrors = [],
     ) {}
 
     /** A confident no is false; an inconclusive answer is never silently false. */
@@ -53,6 +54,7 @@ final readonly class DecisionResult implements JsonSerializable
     public function jsonSerialize(): array
     {
         return ['id' => $this->id, 'model' => $this->model, 'answers' => $this->answers,
-            'usage' => $this->usage, 'latency_ms' => $this->latencyMs];
+            'usage' => $this->usage, 'latency_ms' => $this->latencyMs,
+            ...($this->answerErrors === [] ? [] : ['answer_errors' => $this->answerErrors])];
     }
 }

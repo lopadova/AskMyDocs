@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Decisions\Models;
 
 use App\Decisions\DecisionException;
-use App\Decisions\DecisionModel;
+use App\Decisions\IndependentDecisionModel;
 use App\Decisions\DecisionResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -13,9 +13,19 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-final class JevDecisionModel implements DecisionModel
+final class JevDecisionModel implements IndependentDecisionModel
 {
     public function decide(array $state, array $questions): DecisionResult
+    {
+        return $this->request($state, $questions, false);
+    }
+
+    public function decideIndependently(array $state, array $questions): DecisionResult
+    {
+        return $this->request($state, $questions, true);
+    }
+
+    private function request(array $state, array $questions, bool $independent): DecisionResult
     {
         $key = config('ai.providers.openrouter.key');
         if (! is_string($key) || $key === '') {
@@ -45,21 +55,28 @@ final class JevDecisionModel implements DecisionModel
         $data = $response->json();
         if (! is_array($data) || ! is_array($data['answers'] ?? null)
             || array_diff(array_keys($data['answers']), array_keys($questions)) !== []
-            || array_diff(array_keys($questions), array_keys($data['answers'])) !== []
+            || (! $independent && array_diff(array_keys($questions), array_keys($data['answers'])) !== [])
             || ! is_string($data['model'] ?? null) || $data['model'] === '') {
             throw new DecisionException('Decision provider returned a malformed response.');
         }
-        $answers = [];
+        $answers = $answerErrors = [];
         foreach ($questions as $keyName => $question) {
-            $answer = $data['answers'][$keyName];
-            if (! is_array($answer) || ($answer['type'] ?? null) !== $question['type']) {
-                throw new DecisionException('Decision provider returned an invalid answer type.');
+            try {
+                $answer = $data['answers'][$keyName] ?? null;
+                if (! is_array($answer) || ($answer['type'] ?? null) !== $question['type']) {
+                    throw new DecisionException('Decision provider returned an invalid answer type.');
+                }
+                $answers[$keyName] = match ($question['type']) {
+                    'noul' => $this->noul($answer),
+                    'choice' => $this->choice($answer, $question['criteria']),
+                    'score' => $this->score($answer, $question['criteria']),
+                };
+            } catch (DecisionException $exception) {
+                if (! $independent) {
+                    throw $exception;
+                }
+                $answerErrors[$keyName] = $exception->getMessage();
             }
-            $answers[$keyName] = match ($question['type']) {
-                'noul' => $this->noul($answer),
-                'choice' => $this->choice($answer, $question['criteria']),
-                'score' => $this->score($answer, $question['criteria']),
-            };
         }
         $usage = $data['usage'] ?? [];
         if (! is_array($usage)) {
@@ -77,7 +94,7 @@ final class JevDecisionModel implements DecisionModel
             'cost' => $usage['cost'] ?? null, 'latency_ms' => $latency,
         ]);
 
-        return new DecisionResult((string) ($data['id'] ?? ''), $data['model'], $answers, $usage, $latency);
+        return new DecisionResult((string) ($data['id'] ?? ''), $data['model'], $answers, $usage, $latency, $answerErrors);
     }
 
     /** @param array<string,mixed> $answer @return array<string,mixed> */
@@ -101,7 +118,7 @@ final class JevDecisionModel implements DecisionModel
         foreach ($answer['probabilities'] as $probability) {
             $this->assertProbability($probability);
         }
-        if (abs(array_sum($answer['probabilities']) - 1.0) > 0.01
+        if (round(abs(array_sum($answer['probabilities']) - 1.0), 12) > 0.01
             || $answer['probabilities'][$answer['choice']] < max($answer['probabilities'])) {
             throw new DecisionException('Decision provider returned an inconsistent choice distribution.');
         }
@@ -129,7 +146,7 @@ final class JevDecisionModel implements DecisionModel
         }
         $this->assertProbability($answer['confidence'] ?? null);
 
-        if (abs(array_sum($answer['probabilities']) - 1.0) > 0.01) {
+        if (round(abs(array_sum($answer['probabilities']) - 1.0), 12) > 0.01) {
             throw new DecisionException('Decision provider returned an inconsistent score distribution.');
         }
         return ['type' => 'score', 'score' => (float) $score,
