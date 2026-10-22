@@ -8,6 +8,21 @@ use Tests\TestCase;
 
 final class AnswerCoverageEvaluatorTest extends TestCase
 {
+    public function test_coverage_checks_the_same_declared_source_limit_that_the_answer_will_render(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(fn () => Http::response(['model' => 'jev-test',
+            'answers' => ['covered' => ['type' => 'noul', 'noul' => .79]]]));
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('Status and proof limit?', ['api_tools' => [[
+            'kind' => 'api', 'execution_id' => 42, 'evidence_hash' => 'h', 'result' => ['status' => 'confirmed'],
+            'presentation' => ['evidence_limitations' => [\App\Agent\AgentSourceLimitations::RETURN_NOT_SETTLEMENT]],
+        ]]], [['text' => 'Confirmed.', 'tool_execution_id' => 42, 'evidence_hash' => 'h']], ['language' => 'it']);
+        $this->assertFalse($result['sufficient']); // The source note never bypasses the unchanged .8 gate.
+        Http::assertSent(fn ($request) => count($request['state']['answer']) === 2
+            && str_contains($request['state']['answer'][1], 'non costituiscono una verifica indipendente'));
+    }
+
     public function test_coverage_keeps_observation_time_distinct_from_a_record_event_date(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);

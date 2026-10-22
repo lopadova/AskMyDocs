@@ -169,8 +169,12 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         }
         $aliases = array_diff_key($aliases, $duplicates);
 
+        $limits = $capability?->outputSchema['x-evidence-limitations'] ?? [];
+        $limits = array_values(array_unique(array_filter(is_array($limits) ? $limits : [],
+            \App\Agent\AgentSourceLimitations::supports(...))));
         return ['collection_path' => $path, 'operation' => $operation,
-            'identity_fields' => $capability?->identityFields ?? [], 'field_aliases' => $aliases];
+            'identity_fields' => $capability?->identityFields ?? [], 'field_aliases' => $aliases,
+            ...($limits === [] ? [] : ['evidence_limitations' => $limits])];
     }
 
     /** @param list<mixed> $items @return list<array<string,mixed>> */

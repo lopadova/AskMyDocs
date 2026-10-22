@@ -11,6 +11,20 @@ use Tests\TestCase;
 
 final class AgentEvidenceEnvelopeTest extends TestCase
 {
+    public function test_only_known_contract_limitations_enter_the_evidence_metadata(): void
+    {
+        $tool = new AgentToolDefinition(name: 'returns', displayName: 'Returns', description: 'Return records', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true,
+            physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1,
+            metadata: ['output_schema' => ['type' => 'object', 'x-evidence-limitations' => [
+                \App\Agent\AgentSourceLimitations::RETURN_NOT_SETTLEMENT, 'arbitrary_text', ['nested'],
+            ]]]);
+        $envelope = app(AgentEvidenceFactory::class)->empty();
+        $envelope->addToolResult($tool, [], ['id' => 'RETURN-A'], 42);
+        $this->assertSame([\App\Agent\AgentSourceLimitations::RETURN_NOT_SETTLEMENT],
+            $envelope->apiTools()[0]['presentation']['evidence_limitations']);
+    }
+
     public function test_only_unambiguous_scalar_field_aliases_reach_the_evidence(): void
     {
         $tool = new AgentToolDefinition(name: 'erp', displayName: 'ERP', description: 'Records', kind: 'api',
