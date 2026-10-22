@@ -63,6 +63,7 @@ final readonly class AgentPlanner
         $correction = $validationError;
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
+            $plan = null;
             $started = microtime(true);
             $response = $this->ai->chatWithHistory(
                 $this->systemPrompt($context, $capabilities, $depth),
@@ -106,6 +107,14 @@ final readonly class AgentPlanner
                 return new AgentPlannerAttempt($plan, $latencyMs, $promptTokens, $completionTokens);
             } catch (\UnexpectedValueException $exception) {
                 if ($attempt === 1) {
+                    if ($plan !== null && $exception instanceof AgentPlanValidationException
+                        && $exception->validationCode === 'input_pattern_mismatch') {
+                        $safePlan = app(AgentPlanArgumentConstraints::class)->independentValidBranches($plan, $tools,
+                            array_values(array_filter(array_column($completedActions, 'id'), 'is_string')));
+                        $this->liveSourceCoverage->validate($question, $safePlan, $tools, $completedActions);
+
+                        return new AgentPlannerAttempt($safePlan, $latencyMs, $promptTokens, $completionTokens);
+                    }
                     throw $exception;
                 }
 
@@ -135,6 +144,7 @@ When the user asks for everything that can be found, selected live sources must 
 When structured filters, sort and limit fully express the request, omit an optional query argument. Use query only for discriminating entity text such as an id, reference, person or company name, email, SKU, barcode or product description. Never copy generic intent phrases such as "latest orders", "shipping", "show me" or "in any status" into a literal search argument.
 The current question overrides stale constraints from turn_context. Negations and phrases such as "any status" prohibit carrying forward or inventing the corresponding positive filter. For a request about one entity prefer expect=one; for a requested collection prefer expect=many. Never use expect=best to avoid user disambiguation.
 Plans may contain sequential dependencies. For a value produced by an earlier action use {"\$from":"step_id","path":"a.path.declared.by.the.capability"}. Never assume items.0 or another result path that is not declared; execute the parent step and re-plan when its result shape is unknown.
+Check every literal API argument against its declared type and pattern. Different identifier namespaces identify different entities. Do not send a return code to an orders search. Remove an incompatible action or select the matching tool; keep independent valid actions and never rewrite an identifier to make it fit.
 Action ids are globally unique for the entire run. Never reuse an id present in completed_actions, including after re-planning.
 Action ids are opaque internal graph keys, not translated labels or entity names. Use short neutral ASCII keys such as step_1, step_2, with the schema's lowercase letters, digits, underscores and hyphens only. Put human names and localized descriptions in purpose and arguments instead; preserve exact depends_on and \$from references to these graph keys.
 Use turn_context to resolve follow-up references such as "that customer", "their orders", "the last order" and "its details". Reuse exact identifiers from current_selection or previous structured tool results; do not repeat a broad entity search when the needed ID is already present.

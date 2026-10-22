@@ -9,6 +9,34 @@ use PHPUnit\Framework\TestCase;
 
 class AgentPlanArgumentConstraintsTest extends TestCase
 {
+    public function test_only_invalid_branches_and_their_dependents_are_rejected_without_changing_values(): void
+    {
+        $tool = $this->tool();
+        $action = fn ($id, $value, $dependencies = []) => new \App\Agent\Planning\AgentPlannedAction(
+            $id, 'orders', ['reference' => $value], $dependencies, 'Read the record');
+        $plan = new \App\Agent\Planning\AgentPlan('tools', [
+            $action('valid', 'ORDER-42'), $action('invalid', 'RETURN-42'),
+            $action('dependent', ['$from' => 'invalid', 'path' => 'reference'], ['invalid']),
+            $action('transitive', ['$from' => 'dependent', 'path' => 'reference'], ['dependent']),
+            $action('implicit', ['$from' => 'invalid', 'path' => 'reference']),
+            $action('other', 'ORDER-43'),
+        ], new \App\Agent\AgentProgress);
+        $safe = (new AgentPlanArgumentConstraints)->independentValidBranches($plan, ['orders' => $tool]);
+        $this->assertSame(['valid', 'other'], array_column($safe->actions, 'id'));
+        $this->assertSame(['invalid', 'dependent', 'transitive', 'implicit'], array_column($safe->rejectedActions, 'id'));
+        $this->assertSame('RETURN-42', $safe->rejectedActions[0]->arguments['reference']);
+        $this->assertSame(2, $safe->estimate->physicalLikely);
+        $this->assertSame(['reference' => 'ORDER-42'], $safe->actions[0]->arguments);
+    }
+
+    public function test_no_valid_branch_does_not_become_an_answer_plan(): void
+    {
+        $plan = new \App\Agent\Planning\AgentPlan('tools', [new \App\Agent\Planning\AgentPlannedAction(
+            'invalid', 'orders', ['reference' => 'RETURN-42'], [], 'Read return')], new \App\Agent\AgentProgress);
+        $this->expectException(AgentPlanValidationException::class);
+        (new AgentPlanArgumentConstraints)->independentValidBranches($plan, ['orders' => $this->tool()]);
+    }
+
     private function tool(string $kind = 'api'): AgentToolDefinition
     {
         return new AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: $kind,

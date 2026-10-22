@@ -29,7 +29,7 @@ final class AgentPlanArgumentNormalizer
             );
         }, $plan->actions);
 
-        return new AgentPlan($plan->decision, $actions, $plan->estimate);
+        return new AgentPlan($plan->decision, $actions, $plan->estimate, $plan->rejectedActions);
     }
 
     /**

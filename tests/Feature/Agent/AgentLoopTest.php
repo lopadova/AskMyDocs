@@ -38,6 +38,35 @@ final class AgentLoopTest extends TestCase
         config()->set('kb.investigation.enabled', false);
     }
 
+    public function test_repeated_invalid_entity_branch_never_dispatches_and_valid_read_still_completes(): void
+    {
+        $route = $this->route('lookup_orders', 'http://erp.example.test/orders');
+        $this->parameter($route, 'reference', 'query');
+        $definition = $route->tool_definition;
+        $definition['input_schema']['properties']['reference'] = ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$'];
+        $route->forceFill(['tool_definition' => $definition, 'input_schema' => $definition['input_schema']])->save();
+        Http::fake(['*' => Http::response(['id' => 42, 'reference' => 'ORDER-42', 'status' => 'SHIPPED'])]);
+        $ai = Mockery::mock(AiManager::class);
+        $plan = ['decision' => 'tools', 'actions' => array_map(fn ($id, $reference) => [
+            'id' => $id, 'tool' => 'lookup_orders', 'arguments' => ['reference' => $reference], 'depends_on' => [], 'purpose' => 'Read record',
+        ], ['valid', 'invalid'], ['ORDER-42', 'RETURN-42'])];
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn($this->planResponse($plan), $this->planResponse($plan),
+            $this->planResponse(['decision' => 'answer', 'actions' => []]));
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame(['skipped', 'completed'], array_column($outcome->completedActions, 'status'));
+        $this->assertSame('input_pattern_branch_rejected', $outcome->completedActions[0]['error_code']);
+        $this->assertSame(['reference' => 'ORDER-42'], $outcome->evidence->apiTools()[0]['arguments']);
+        $this->assertSame(1, $run->fresh()->counters_json['physical_calls']);
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'ORDER-42') && ! str_contains($request->url(), 'RETURN-42'));
+    }
+
     public function test_it_chains_customer_lookup_into_orders_and_replans_with_combined_evidence(): void
     {
         $findCustomer = $this->route('find_customer', 'http://erp.example.test/customers');
@@ -385,7 +414,7 @@ final class AgentLoopTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function test_it_retries_a_replan_that_reuses_a_completed_action_id(): void
+    public function test_it_normalizes_a_reused_action_id_and_avoids_a_duplicate_physical_read(): void
     {
         $this->route('get_order', 'http://erp.example.test/orders/DEMO-3007');
         Http::fake(['*' => Http::response([
@@ -396,7 +425,7 @@ final class AgentLoopTest extends TestCase
         $requests = [];
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')
-            ->times(3)
+            ->times(2)
             ->withArgs(function (string $system, array $history) use (&$requests): bool {
                 $requests[] = json_decode(
                     (string) data_get($history, '0.content'),
@@ -427,7 +456,6 @@ final class AgentLoopTest extends TestCase
                         'purpose' => 'Riutilizzo per errore lo stesso identificatore',
                     ]],
                 ]),
-                $this->planResponse(['decision' => 'answer', 'actions' => []]),
             );
         $this->app->instance(AiManager::class, $ai);
         $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
@@ -438,12 +466,10 @@ final class AgentLoopTest extends TestCase
         $outcome = app(AgentLoop::class)->run($run, $this->context($run));
 
         $this->assertSame('answer', $outcome->decision);
-        $this->assertNull($outcome->stopReason);
+        $this->assertSame('duplicate_call_avoided', $outcome->stopReason);
         $this->assertCount(1, $outcome->completedActions);
-        $this->assertStringContainsString(
-            'invalid or duplicated',
-            (string) data_get($requests, '2.validation_error'),
-        );
+        $this->assertNull(data_get($requests, '1.validation_error'));
+        $this->assertSame('step_1', data_get($run->fresh()->plan_json, 'actions.0.id'));
         $this->assertSame(1, $run->toolExecutions()->count());
         Http::assertSentCount(1);
     }

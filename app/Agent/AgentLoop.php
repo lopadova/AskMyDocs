@@ -281,6 +281,15 @@ final readonly class AgentLoop
                 return $this->outcome('partial', $evidence, $completed, 'planner_recovery');
             }
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
+            foreach ($plan->rejectedActions as $rejected) {
+                $tool = $tools[$rejected->tool];
+                $evidence->addWarning('input_pattern_branch_rejected', $tool->name);
+                $completed[] = ['id' => $rejected->id, 'tool' => $tool->name, 'purpose' => $rejected->purpose,
+                    'status' => 'skipped', 'error_code' => 'input_pattern_branch_rejected'];
+                $this->recordSkippedExecution($run, $rejected, $tool, 'input_pattern_branch_rejected');
+                $this->events->publish($run, 'tool.failed', 'tool.failed', ['tool' => $tool->displayName],
+                    ['tool' => $tool->name, 'action_id' => $rejected->id, 'error_code' => 'input_pattern_branch_rejected']);
+            }
             $this->events->publish(
                 $run,
                 'plan.ready',

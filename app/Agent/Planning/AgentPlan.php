@@ -9,8 +9,9 @@ use JsonSerializable;
 
 final readonly class AgentPlan implements JsonSerializable
 {
-    /** @param list<AgentPlannedAction> $actions */
-    public function __construct(public string $decision, public array $actions, public AgentProgress $estimate) {}
+    /** @param list<AgentPlannedAction> $actions @param list<AgentPlannedAction> $rejectedActions */
+    public function __construct(public string $decision, public array $actions, public AgentProgress $estimate,
+        public array $rejectedActions = []) {}
 
     public function shouldCallTools(): bool
     {
@@ -24,6 +25,9 @@ final readonly class AgentPlan implements JsonSerializable
             'decision' => $this->decision,
             'actions' => array_map(static fn (AgentPlannedAction $action): array => $action->jsonSerialize(), $this->actions),
             'estimate' => $this->estimate->jsonSerialize(),
+            ...$this->rejectedActions === [] ? [] : ['rejected_actions' => array_map(
+                static fn (AgentPlannedAction $action): array => $action->jsonSerialize(), $this->rejectedActions,
+            )],
         ];
     }
 }

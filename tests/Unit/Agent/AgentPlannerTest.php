@@ -26,6 +26,24 @@ use Tests\TestCase;
  */
 final class AgentPlannerTest extends TestCase
 {
+    public function test_repeated_wrong_namespace_does_not_discard_an_independent_valid_read(): void
+    {
+        $orders = new \App\Agent\Tools\AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
+            inputSchema: ['type' => 'object', 'properties' => ['reference' => ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$']]],
+            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $ai = Mockery::mock(AiManager::class);
+        $payload = ['decision' => 'tools', 'actions' => array_map(fn ($id, $value) => [
+            'id' => $id, 'tool' => 'orders', 'arguments' => ['reference' => $value], 'depends_on' => [], 'purpose' => 'Read record',
+        ], ['valid', 'invalid'], ['ORDER-42', 'RETURN-42'])];
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(new AiResponse('', 'fake', 'planner',
+            toolCalls: [['name' => 'submit_agent_plan', 'arguments' => $payload]]));
+        $planner = new AgentPlanner($ai, app(AgentPlanParser::class), app(AgentEvidenceSummarizer::class), app(AgentLiveSourceCoverage::class));
+        $plan = $planner->decide('Read ORDER-42 and RETURN-42', $this->context(), ['orders' => $orders], app(AgentEvidenceFactory::class)->empty());
+        $this->assertSame(['valid'], array_column($plan->actions, 'id'));
+        $this->assertSame(['invalid'], array_column($plan->rejectedActions, 'id'));
+        $this->assertSame('RETURN-42', $plan->jsonSerialize()['rejected_actions'][0]['arguments']['reference']);
+    }
+
     public function test_a_declared_identifier_pattern_triggers_correction_before_selecting_the_wrong_api(): void
     {
         $orders = new \App\Agent\Tools\AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
