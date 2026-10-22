@@ -252,11 +252,23 @@ ha due lookup letterali aperti da circa 58 secondi all'esportazione, prima
 dei timeout configurati; non contiene un evento finale. Lo stack separato
 `TimeoutExceededException` localizza invece l'interruzione nella query
 vettoriale, ma non include timestamp o run ID per attribuirlo allo stesso run.
-Per ricostruire l'ordine server servono gli eventi Cloud del job/pod e il
-payload con UUID, tentativo e timeout, correlati al run; per il dump cercare
-fra le 15:21 e le 15:24 UTC del 22 ottobre (17:21–17:24 Europe/Rome), inclusi
-exit code, motivo del riavvio e metriche memoria. Non dedurre un crash o una
-riconsegna anticipata dal solo messaggio sui tentativi.
+Il payload fornito successivamente identifica il job Cloud
+`1ca25ec5-0df4-4f9b-9d8e-9cf508d7bf92`: `agentRunId=186`, lo stesso span
+di attesa coda e `createdAt=1792682471` (15:21:11 UTC) lo collegano esattamente
+al dump. La coda è `default`, `timeout=120`, `maxTries=1`, `retryUntil=null`.
+Questi valori del payload prevalgono sui default del comando worker; cambiare
+la configurazione per i nuovi job non aggiorna questo messaggio già accodato.
+`failOnTimeout=false` non impedisce il fallimento per timeout: sul primo
+tentativo è già esaurito `maxTries=1`. Laravel registra il fallimento e
+interrompe il worker. Il termine atteso, dal ricevimento alle 15:21:12 UTC,
+è circa le 15:23:12 UTC, dopo l'esportazione. Il payload non riporta il
+contatore effettivo delle consegne né prova il numero di riavvii.
+
+Per ricostruire l'ordine server restano necessari gli eventi Cloud di questo
+job/pod, il numero di tentativo e gli orari degli errori: cercare fra le 15:21
+e le 15:24 UTC del 22 ottobre (17:21–17:24 Europe/Rome), inclusi exit code,
+motivo del riavvio e metriche memoria. Non dedurre un crash o una riconsegna
+anticipata dal solo messaggio sui tentativi.
 
 ## Debug e valutazione
 
