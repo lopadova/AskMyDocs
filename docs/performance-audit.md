@@ -64,11 +64,11 @@ One host, two terminals. Lighthouse drives a real Chromium
 install, so you need the built SPA (not the Vite dev server — HMR
 overhead skews the Performance score).
 
-**Terminal 1 — serve the built SPA:**
+**Terminal 1 — build for the existing Herd site:**
 
 ```bash
 npm run build             # writes public/build/manifest.json
-php artisan serve         # binds 127.0.0.1:8000
+# Herd already serves https://askmydocsdev.test (verified 2026-10-22).
 ```
 
 **Terminal 2 — run Lighthouse:**
@@ -83,7 +83,7 @@ lighthouse \
   --preset=desktop \
   --output=html \
   --output-path=./lighthouse-chat.html \
-  http://127.0.0.1:8000/app/chat
+  https://askmydocsdev.test/app/chat
 
 # /app/admin — same shape, different route.
 lighthouse \
@@ -91,7 +91,7 @@ lighthouse \
   --preset=desktop \
   --output=html \
   --output-path=./lighthouse-admin.html \
-  http://127.0.0.1:8000/app/admin
+  https://askmydocsdev.test/app/admin
 ```
 
 Open the produced HTML reports in a browser; the headline

@@ -32,6 +32,11 @@ final class PgvectorCandidatePlanningTest extends TestCase
 
         $this->assertStringContainsString('order by embedding <=> ?::vector ASC limit 24', $query['query']);
         $this->assertStringNotContainsString('order by "vector_score" desc', $query['query']);
+        $this->assertStringNotContainsString('knowledge_chunks.*', $query['query']);
+        $this->assertStringNotContainsString('"knowledge_chunks"."embedding"', $query['query']);
+        foreach (['id', 'knowledge_document_id', 'project_key', 'heading_path', 'chunk_text', 'metadata', 'chunk_hash', 'chunk_order'] as $column) {
+            $this->assertStringContainsString('"knowledge_chunks"."'.$column.'"', $query['query']);
+        }
         $this->assertStringContainsString('"knowledge_chunks"."tenant_id" = ?', $query['query']);
         $this->assertStringContainsString('"knowledge_documents"."tenant_id" = ?', $query['query']);
         $this->assertStringContainsString('"knowledge_chunks"."project_key" = ?', $query['query']);
@@ -52,6 +57,7 @@ final class PgvectorCandidatePlanningTest extends TestCase
 
         $this->assertSame("SET LOCAL hnsw.iterative_scan = 'strict_order'", $capture['queries'][0]['query']);
         $this->assertStringContainsString('order by embedding <=> ?::vector ASC limit 15', $query['query']);
+        $this->assertStringNotContainsString('knowledge_chunks.*', $query['query']);
         $this->assertStringContainsString('"knowledge_chunks"."id" not in (?)', $query['query']);
         $this->assertStringContainsString('"knowledge_chunks"."tenant_id" = ?', $query['query']);
         foreach (['plan-tenant', 'orders', 'archived', 'markdown', 71] as $binding) {
