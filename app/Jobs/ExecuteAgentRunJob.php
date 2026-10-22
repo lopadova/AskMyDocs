@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Agent\AgentExecutionContext;
+use App\Agent\AgentEventPublisher;
 use App\Contracts\AgentRunHandler;
 use App\Models\AgentRun;
 use App\Support\TenantContext;
@@ -15,6 +16,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 
 final class ExecuteAgentRunJob implements ShouldQueue
@@ -84,12 +86,44 @@ final class ExecuteAgentRunJob implements ShouldQueue
     {
         try {
             $run = AgentRun::query()->forTenant($this->tenantId)->find($this->agentRunId);
-            if ($run === null || $exception === null) {
-                return;
-            }
+        } catch (\Throwable) {
+            return;
+        }
+        if ($run === null) {
+            return;
+        }
+
+        try {
             $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
             $span = $diagnostics->begin($run, 'worker.failed', ['error_handled' => false]);
-            $diagnostics->failure($run, $span, $exception);
+            if ($exception !== null) {
+                $diagnostics->failure($run, $span, $exception);
+            } else {
+                $diagnostics->end($run, $span, 'failed', ['operation' => 'queue_failed']);
+            }
+        } catch (\Throwable) {
+            // Missing diagnostics must not prevent durable run finalization.
+        }
+
+        try {
+            DB::transaction(function () use ($exception): void {
+                $run = AgentRun::query()->forTenant($this->tenantId)
+                    ->whereKey($this->agentRunId)->lockForUpdate()->first();
+                // A duplicate delivery may fail after another worker completed
+                // the run or persisted a valid interaction handoff.
+                if ($run === null || ! in_array($run->status, [AgentRun::STATUS_QUEUED, AgentRun::STATUS_RUNNING], true)) {
+                    return;
+                }
+                $errorCode = $exception !== null && preg_match('/timeout|timedout/i', $exception::class) === 1
+                    ? 'worker_timeout' : 'agent_run_failed';
+                $run->forceFill([
+                    'status' => AgentRun::STATUS_FAILED,
+                    'error_code' => $errorCode,
+                    'completed_at' => now(),
+                ])->save();
+                app(AgentEventPublisher::class)->publish($run, 'run.failed', 'run.failed',
+                    data: ['error_code' => $errorCode], canCancel: false);
+            });
         } catch (\Throwable) {
             // Queue failure reporting must not replace the original failure.
         }

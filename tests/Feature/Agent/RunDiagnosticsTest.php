@@ -151,14 +151,122 @@ final class RunDiagnosticsTest extends TestCase
         $this->assertSame('not_probed', $worker->metadata_json['runtime']['worker_liveness']);
     }
 
-    public function test_worker_timeout_hook_records_observed_timeout_without_changing_run_status(): void
+    public function test_worker_timeout_hook_records_timeout_and_publishes_a_terminal_failure(): void
     {
         $run = $this->runRecord();
+        $run->forceFill(['status' => AgentRun::STATUS_RUNNING])->save();
         (new ExecuteAgentRunJob($run->id, $run->tenant_id))->failed(new \Illuminate\Queue\TimeoutExceededException('Authorization: Bearer hidden'));
         $span = AgentDiagnosticSpan::query()->where('phase', 'worker.failed')->sole();
         $this->assertSame('timeout', $span->metadata_json['error_kind']);
-        $this->assertSame('queued', $run->fresh()->status);
+        $this->assertSame(AgentRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertSame('worker_timeout', $run->fresh()->error_code);
+        $this->assertNotNull($run->fresh()->completed_at);
+        $event = $run->events()->sole();
+        $this->assertSame('run.failed', $event->type);
+        $this->assertSame(['error_code' => 'worker_timeout'], $event->payload_json['data']);
+        $this->assertFalse($event->payload_json['can_cancel']);
         $this->assertStringNotContainsString('hidden', $span->toJson());
+        $this->assertStringNotContainsString('hidden', $event->toJson());
+    }
+
+    public function test_exhausted_queue_attempts_finalize_the_run_without_claiming_a_worker_timeout(): void
+    {
+        $run = $this->runRecord();
+        $run->forceFill(['status' => AgentRun::STATUS_RUNNING])->save();
+        $exception = new \Illuminate\Queue\MaxAttemptsExceededException('PRIVATE timeout Authorization: Bearer hidden');
+        $job = new ExecuteAgentRunJob($run->id, $run->tenant_id);
+
+        $job->failed($exception);
+
+        $span = AgentDiagnosticSpan::query()->where('phase', 'worker.failed')->sole();
+        $this->assertSame(\Illuminate\Queue\MaxAttemptsExceededException::class, $span->metadata_json['error_class']);
+        $this->assertSame('exception', $span->metadata_json['error_kind']);
+        $this->assertSame(AgentRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertSame('agent_run_failed', $run->fresh()->error_code);
+        $this->assertNotNull($run->fresh()->completed_at);
+        $event = $run->events()->sole();
+        $this->assertSame('run.failed', $event->type);
+        $this->assertSame(['error_code' => 'agent_run_failed'], $event->payload_json['data']);
+        $this->assertFalse($event->payload_json['can_cancel']);
+
+        $job->failed($exception);
+
+        $this->assertSame($event->id, $run->events()->sole()->id);
+        $this->assertSame(1, $run->fresh()->last_sequence);
+        $this->assertStringNotContainsString('PRIVATE', AgentDiagnosticSpan::query()->get()->toJson());
+        $this->assertStringNotContainsString('hidden', AgentDiagnosticSpan::query()->get()->toJson());
+        $this->assertStringNotContainsString('PRIVATE', $event->toJson());
+        $this->assertStringNotContainsString('hidden', $event->toJson());
+    }
+
+    public function test_worker_failure_finalizes_queued_and_running_runs_even_without_an_exception(): void
+    {
+        foreach ([AgentRun::STATUS_QUEUED, AgentRun::STATUS_RUNNING] as $status) {
+            foreach ([null, new \RuntimeException('PRIVATE worker failure')] as $exception) {
+                $run = $this->runRecord();
+                $run->forceFill(['status' => $status])->save();
+
+                (new ExecuteAgentRunJob($run->id, $run->tenant_id))->failed($exception);
+
+                $this->assertSame(AgentRun::STATUS_FAILED, $run->fresh()->status);
+                $this->assertSame('agent_run_failed', $run->fresh()->error_code);
+                $this->assertNotNull($run->fresh()->completed_at);
+                $event = $run->events()->sole();
+                $this->assertSame('run.failed', $event->type);
+                $this->assertSame(['error_code' => 'agent_run_failed'], $event->payload_json['data']);
+                $this->assertStringNotContainsString('PRIVATE', $event->toJson());
+            }
+        }
+        $this->assertStringNotContainsString('PRIVATE', AgentDiagnosticSpan::query()->get()->toJson());
+    }
+
+    public function test_repeated_worker_failures_preserve_the_first_terminal_result_and_event(): void
+    {
+        $run = $this->runRecord();
+        $job = new ExecuteAgentRunJob($run->id, $run->tenant_id);
+        $job->failed(new \RuntimeException('PRIVATE'));
+        $completedAt = $run->fresh()->completed_at;
+        $eventId = $run->events()->sole()->id;
+
+        $this->travel(10)->seconds();
+        $job->failed(new \Illuminate\Queue\TimeoutExceededException('PRIVATE timeout'));
+
+        $this->assertSame('agent_run_failed', $run->fresh()->error_code);
+        $this->assertTrue($completedAt->equalTo($run->fresh()->completed_at));
+        $this->assertSame($eventId, $run->events()->sole()->id);
+        $this->assertSame(1, $run->fresh()->last_sequence);
+    }
+
+    public function test_worker_failure_preserves_terminal_runs_and_interaction_handoffs(): void
+    {
+        foreach ([AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL, AgentRun::STATUS_FAILED,
+            AgentRun::STATUS_CANCELLED, AgentRun::STATUS_WAITING_CLIENT_TOOL, AgentRun::STATUS_AWAITING_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_CONFIRMATION, AgentRun::STATUS_AWAITING_MCP_INPUT, AgentRun::STATUS_WAITING_MCP_TASK] as $status) {
+            $run = $this->runRecord();
+            $run->forceFill(['status' => $status, 'error_code' => 'existing_result',
+                'result_json' => ['checkpoint' => true], 'completed_at' => now()->subMinute()])->save();
+            $before = $run->fresh()->getAttributes();
+
+            (new ExecuteAgentRunJob($run->id, $run->tenant_id))->failed(new \Illuminate\Queue\TimeoutExceededException('PRIVATE'));
+
+            $this->assertSame($before, $run->fresh()->getAttributes());
+            $this->assertSame(0, $run->events()->count());
+        }
+    }
+
+    public function test_worker_failure_finalizes_without_diagnostics_and_respects_the_job_tenant(): void
+    {
+        $run = $this->runRecord();
+        Schema::drop('agent_diagnostic_spans');
+        (new ExecuteAgentRunJob($run->id, 'another-tenant'))->failed(new \RuntimeException('PRIVATE'));
+        $this->assertSame(AgentRun::STATUS_QUEUED, $run->fresh()->status);
+        $this->assertSame(0, $run->events()->count());
+
+        (new ExecuteAgentRunJob($run->id, $run->tenant_id))->failed(new \RuntimeException('PRIVATE'));
+
+        $this->assertSame(AgentRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertSame('agent_run_failed', $run->fresh()->error_code);
+        $this->assertSame('run.failed', $run->events()->sole()->type);
     }
 
     private function runRecord(string $tenant = 'acme'): AgentRun
