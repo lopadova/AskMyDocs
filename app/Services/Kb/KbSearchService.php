@@ -687,7 +687,15 @@ class KbSearchService
     {
         $connection = $query->getConnection();
         $extension = $connection->selectOne('SELECT extversion FROM pg_extension WHERE extname = ?', ['vector']);
-        $query->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString]);
+        // The database computes distance; mapping/reranking never reads the
+        // stored embedding. Avoid transferring and hydrating that large vector
+        // for each candidate (keep the FK for document eager loading).
+        $query->select([
+            'knowledge_chunks.id', 'knowledge_chunks.knowledge_document_id',
+            'knowledge_chunks.project_key', 'knowledge_chunks.heading_path',
+            'knowledge_chunks.chunk_text', 'knowledge_chunks.metadata',
+            'knowledge_chunks.chunk_hash', 'knowledge_chunks.chunk_order',
+        ])->selectRaw('(1 - (embedding <=> ?::vector)) as vector_score', [$vectorString]);
 
         // HNSW requires the distance operator itself in ascending order. Older
         // pgvector versions cannot continue scanning after tenant/ACL filtering,
