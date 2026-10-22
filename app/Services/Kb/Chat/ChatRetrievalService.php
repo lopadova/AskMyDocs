@@ -33,7 +33,7 @@ class ChatRetrievalService
      * with the standard chat limits, so every channel over-retrieves and
      * reranks identically.
      */
-    public function retrieve(string $query, ?string $projectKey, ?RetrievalFilters $filters = null, bool $includeAuxiliaryContext = true): SearchResult
+    public function retrieve(string $query, ?string $projectKey, ?RetrievalFilters $filters = null, bool $includeAuxiliaryContext = true, ?\Closure $diagnostics = null): SearchResult
     {
         return $this->search->searchWithContext(
             query: $query,
@@ -42,6 +42,7 @@ class ChatRetrievalService
             minSimilarity: (float) config('kb.default_min_similarity', 0.30),
             filters: $filters,
             includeAuxiliaryContext: $includeAuxiliaryContext,
+            diagnostics: $diagnostics,
         );
     }
 

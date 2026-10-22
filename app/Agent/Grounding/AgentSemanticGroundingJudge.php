@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Agent\Grounding;
 
+use App\Agent\Debug\ProviderDiagnostics;
 use App\Decisions\DecisionException;
 use App\Decisions\Decisions;
+use App\Models\AgentRun;
 use App\Services\Widget\WidgetPiiMasker;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -25,7 +27,7 @@ final readonly class AgentSemanticGroundingJudge
      * @param list<array<string,mixed>> $claims
      * @return array{attempted:bool,used:bool,status:string,answer:?bool,probability_true:?float,threshold:?float,model:?string,usage:array<string,mixed>,latency_ms:?float,reason:?string}
      */
-    public function evaluate(string $question, array $claims): array
+    public function evaluate(string $question, array $claims, ?AgentRun $run = null): array
     {
         $trace = [
             'attempted' => false, 'used' => false, 'status' => 'not_used', 'answer' => null,
@@ -61,11 +63,12 @@ final readonly class AgentSemanticGroundingJudge
             }
 
             $trace['attempted'] = true;
-            $result = Decisions::using()->withState($state)
+            $diagnostics = app(ProviderDiagnostics::class);
+            $result = $diagnostics->measure($run, 'provider.decision', fn () => Decisions::using()->withState($state)
                 ->yesNo('supported', 'Do these already source-bound claims answer the question without adding unsupported facts?', [
                     'true' => 'Every material factual assertion is supported by its verified quote and the claims address the question.',
                     'false' => 'A material assertion goes beyond its quote or the claims do not address the question.',
-                ])->decide();
+                ])->decide(), $diagnostics->decisionMetadata('semantic_grounding'));
             $trace['used'] = true;
             $trace['model'] = $result->model;
             $trace['probability_true'] = $result->answers['supported']['probability_true'];

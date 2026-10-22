@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'diagnostics' => [
+        // Explicit immutable deployment label/commit SHA. Never shell out or read .git on requests.
+        'release' => env('APP_RELEASE'),
+    ],
     'tenant_instructions' => '',
     'queue' => env('AGENT_QUEUE', 'agent'),
     // Must remain below the queue connection's retry_after. See the reasoning runbook.

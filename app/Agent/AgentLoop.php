@@ -19,6 +19,7 @@ use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Agent\Tools\AgentToolRegistry;
 use App\Agent\Debug\KbActivityDebugPayload;
+use App\Agent\Debug\RunDiagnostics;
 use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
@@ -49,6 +50,7 @@ final readonly class AgentLoop
         private AgentRetrievalFiltersFactory $retrievalFilters,
         private McpActivityDebugPayload $mcpDebug,
         private KbActivityDebugPayload $kbDebug,
+        private RunDiagnostics $diagnostics,
     ) {}
 
     public function run(
@@ -105,8 +107,10 @@ final readonly class AgentLoop
         if (! $retrieved && $understanding === null) {
             $this->control->ensureActive($run);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $understanding = app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
-                $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot);
+            $understanding = $this->diagnostics->measure($run, 'question.interpretation',
+                fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
+                    $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot),
+                ['wait_reason' => 'provider_response']);
             if ($understanding !== null) {
                 \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $capabilitySnapshot): void {
                     $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
@@ -122,6 +126,7 @@ final readonly class AgentLoop
             }
             $investigationResult = null;
             $researchStarted = $understanding === null || $understanding->needsResearch();
+            $investigationSpan = $this->diagnostics->begin($run, 'kb.investigation', ['wait_reason' => 'knowledge_investigation']);
             try {
                 // The initial agent evidence follows the exact same
                 // profile-guided KB-only investigation as ordinary chat. The
@@ -140,6 +145,7 @@ final readonly class AgentLoop
                     turnRecord: app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runTurn($run),
                     onResearchProgress: app(AgentResearchProgress::class)->observer($run),
                     preparedUnderstanding: $understanding,
+                    diagnostics: $this->diagnostics->observer($run),
                 );
                 $understanding = $investigationResult->intent?->understanding;
                 $recap = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->recapEvidence($run);
@@ -183,7 +189,12 @@ final readonly class AgentLoop
                         ['sources' => count($evidence->documents())],
                     );
                 }
-            } catch (Throwable) {
+                $this->diagnostics->end($run, $investigationSpan, metadata: [
+                    'result_count' => $investigationResult->search->primary->count(),
+                    'operation' => $investigationResult->status,
+                ]);
+            } catch (Throwable $exception) {
+                $this->diagnostics->failure($run, $investigationSpan, $exception, ['error_handled' => true]);
                 $evidence->addWarning('knowledge_retrieval_failed', 'search_knowledge_base');
                 $this->events->publish($run, 'retrieval.failed', 'tool.failed', ['tool' => 'Knowledge base']);
             }
@@ -243,6 +254,10 @@ final readonly class AgentLoop
                 $completed === [] ? 'plan.created' : 'plan.updated',
                 $completed === [] ? 'plan.created' : 'plan.updated',
             );
+            $planningSpan = $this->diagnostics->begin($run, 'planner.decide', [
+                'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                'wait_reason' => 'provider_response',
+            ]);
             try {
                 $plan = $this->planner->decide(
                     $run,
@@ -257,6 +272,7 @@ final readonly class AgentLoop
                     json_encode(['previous_context' => data_get($run->result_json, 'question_understanding.available') === false ? null : $turnContext,
                         'question_understanding' => data_get($run->result_json, 'question_understanding')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 );
+                $this->diagnostics->end($run, $planningSpan);
             } catch (Throwable $exception) {
                 // Initial KB reads are evidence too. A malformed plan must never
                 // dispatch actions, but it need not discard already read sources.
@@ -264,8 +280,10 @@ final readonly class AgentLoop
                     || (! $this->hasSuccessfulAction($completed)
                         && (! $exception instanceof \UnexpectedValueException
                             || $exception instanceof \App\Agent\Planning\AgentPlanValidationException))) {
+                    $this->diagnostics->failure($run, $planningSpan, $exception, ['error_handled' => false]);
                     throw $exception;
                 }
+                $this->diagnostics->failure($run, $planningSpan, $exception, ['error_handled' => true]);
 
                 Log::warning('Agent planning failed after evidence was collected; continuing to synthesis.', [
                     'run_id' => $run->run_id,
@@ -368,6 +386,13 @@ final readonly class AgentLoop
 
                 $execution = $this->startExecution($run, $action, $tool, $resolved, $budget, $plan);
                 $started = microtime(true);
+                $toolSpan = $this->diagnostics->begin($run, 'tool.execute', [
+                    'tool_kind' => $tool->kind,
+                    'tool_name' => $tool->name,
+                    'logical_index' => $execution->logical_index,
+                    'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                    'wait_reason' => $tool->kind === 'knowledge' ? 'knowledge_retrieval' : 'tool_response',
+                ]);
                 try {
                     $result = $this->executeAction(
                         $run,
@@ -381,6 +406,7 @@ final readonly class AgentLoop
                         $filters,
                     );
                     $this->finishExecution($execution, $result, $started);
+                    $this->diagnostics->end($run, $toolSpan, $result->successful() ? 'completed' : 'failed');
                     $results[$action->id] = $result->body;
                     $completed[] = [
                         'id' => $action->id,
@@ -460,8 +486,10 @@ final readonly class AgentLoop
                         return $this->outcome('awaiting_confirmation', $evidence, $completed, $result->stopReason);
                     }
                 } catch (AgentRunCancelledException $exception) {
+                    $this->diagnostics->failure($run, $toolSpan, $exception);
                     throw $exception;
                 } catch (Throwable $exception) {
+                    $this->diagnostics->failure($run, $toolSpan, $exception, ['error_handled' => true]);
                     $this->failExecution($execution, $exception, $started);
                     $budget->recordResult(0, 0, false);
                     $evidence->addWarning($this->errorCode($exception), $tool->name);
@@ -531,7 +559,8 @@ final readonly class AgentLoop
                 throw new \InvalidArgumentException('knowledge_query_required');
             }
             $documentsBefore = count($evidence->documents());
-            $search = $this->retrieval->retrieve($query, $context->projectKey, $filters);
+            $search = $this->retrieval->retrieve($query, $context->projectKey, $filters,
+                diagnostics: $this->diagnostics->observer($run));
             $found = $this->evidenceFactory->fromSearchResult($search);
             $evidence->import($found->jsonSerialize());
             $body = ['documents' => $found->documents()];

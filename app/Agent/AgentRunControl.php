@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
-use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
 use Illuminate\Support\Facades\DB;
 
@@ -129,7 +128,7 @@ final readonly class AgentRunControl
                 'physical_extension' => $physicalExtension,
             ],
         );
-        ExecuteAgentRunJob::dispatch($updated->id, $updated->tenant_id);
+        app(AgentRunDispatcher::class)->enqueue($updated);
 
         return $updated->refresh();
     }

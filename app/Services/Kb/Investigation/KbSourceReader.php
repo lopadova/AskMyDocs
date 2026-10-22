@@ -27,7 +27,7 @@ class KbSourceReader
      * @param array<string, mixed> $candidate
      * @return array<string, mixed>|null
      */
-    public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters = null): ?array
+    public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters = null, ?\Closure $diagnostics = null): ?array
     {
         $documentId = (int) data_get($candidate, 'document.id', 0);
         $chunkId = (int) data_get($candidate, 'chunk_id', 0);
@@ -90,7 +90,9 @@ class KbSourceReader
             && data_get($document->metadata, 'attachment_filename') === null
             && data_get($document->metadata, 'email_triage.evaluation_id')) {
             try {
-                $original = app(\App\Services\EmailTriage\TriageCampaigns::class)->body($document);
+                $readOriginal = fn () => app(\App\Services\EmailTriage\TriageCampaigns::class)->body($document);
+                $original = $diagnostics === null ? $readOriginal() : $diagnostics('kb.original_source_read', $readOriginal,
+                    ['wait_reason' => 'source_store_read', 'error_handled' => true]);
                 if (hash('sha256', $original) !== data_get($document->metadata, 'email_triage.original_hash')) {
                     return null;
                 }

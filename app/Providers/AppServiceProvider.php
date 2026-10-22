@@ -82,6 +82,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
+        $this->app->singleton(\App\Agent\Debug\RunDiagnostics::class);
 
         // Keep the installed provider and its text continuation contract. Its
         // default browser allowlist predates our spoken progress capability.

@@ -10,7 +10,7 @@ use App\Decisions\DecisionState;
 /** A quotation may survive an uncertain paraphrase only after its context is checked. */
 final class DocumentExcerptFallbackEvaluator
 {
-    public function evaluate(string $question, array $pairs, array $decisions, ?string $runId, bool $repair): array
+    public function evaluate(string $question, array $pairs, array $decisions, ?string $runId, bool $repair, ?string $tenantId = null): array
     {
         $threshold = (float) config('reasoning.threshold', .8);
         $sources = $items = [];
@@ -58,7 +58,7 @@ final class DocumentExcerptFallbackEvaluator
                         ]);
                 }
                 $result = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode($batchState, JSON_THROW_ON_ERROR)),
-                    fn () => $request->decideIndependently(), 'document_excerpt_decision'.($repair ? '_repair' : '').'_'.$batchIndex);
+                    fn () => $request->decideIndependently(), 'document_excerpt_decision'.($repair ? '_repair' : '').'_'.$batchIndex, $tenantId);
                 $decisions[] = $result->toArray();
                 foreach ($batch as $key => $item) {
                     if (($result->answers['excerpt_'.$key]['probability_true'] ?? 0) >= $threshold

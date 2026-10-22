@@ -28,13 +28,17 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
     public function handle(AgentRun $run): void
     {
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $lockSpan = $diagnostics->begin($run, 'run.lock');
         // A redelivered parent must not finalize a snapshot while another worker
         // is still collecting its branches. Child locks alone cannot prevent it.
         $lock = \Illuminate\Support\Facades\Cache::lock('agent-run:'.$run->tenant_id.':'.$run->run_id,
             max(120, (int) config('agent.job_timeout_seconds', 120)) + 60);
         if (! $lock->get()) {
+            $diagnostics->end($run, $lockSpan, metadata: ['lock_acquired' => false]);
             return;
         }
+        $diagnostics->end($run, $lockSpan, metadata: ['lock_acquired' => true]);
         try {
             app(\App\Ai\AgentChatModelScope::class)->within(AgentExecutionContext::fromArray($run->toArray()),
                 fn () => $this->handleOwned($run));
@@ -85,10 +89,13 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             $this->events->publish($run, 'run.started', 'run.started');
         }
 
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $executionSpan = $diagnostics->begin($run, 'run.execute', ['runtime' => $diagnostics->runtime()]);
         try {
-            $turnContext = $this->turnContext($run);
+            $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
             $outcome = $this->loop->run($run, $context, $turnContext);
             if ($outcome->requiresInteraction()) {
+                $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
                 return;
             }
 
@@ -108,14 +115,14 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
                 }
             }
-            $answer = $this->synthesizer->synthesize(
+            $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
                 trim((string) data_get($run->input_json, 'question', '')),
                 $context,
                 $outcome,
                 $turnContext,
                 is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
                 durableRunId: $run->run_id,
-            );
+            ));
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL
                 : AgentRun::STATUS_COMPLETED;
@@ -135,9 +142,10 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 return true;
             });
             if (! $saved) {
+                $diagnostics->end($run, $executionSpan, $run->fresh()->status === AgentRun::STATUS_CANCELLED ? 'cancelled' : 'completed', ['operation' => 'terminal_already_recorded']);
                 return;
             }
-            $this->projector->project($run, $answer);
+            $diagnostics->measure($run, 'result.project', fn () => $this->projector->project($run, $answer));
             app(AgentResearchProgress::class)->finished($run, $answer);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
             $owner = $memory->runOwner($run);
@@ -155,9 +163,12 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 data: ['response' => $answer->jsonSerialize()],
                 canCancel: false,
             );
-        } catch (AgentRunCancelledException) {
+            $diagnostics->end($run, $executionSpan);
+        } catch (AgentRunCancelledException $exception) {
+            $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
             // AgentRunControl already persisted and published the cancellation.
         } catch (Throwable $exception) {
+            $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
             $run->refresh();
             if ($run->status === AgentRun::STATUS_CANCELLED) {
                 return;

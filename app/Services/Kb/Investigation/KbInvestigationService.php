@@ -52,12 +52,15 @@ class KbInvestigationService
         ?\Illuminate\Database\Eloquent\Model $turnRecord = null,
         ?QuestionUnderstanding $preparedUnderstanding = null,
         ?\Closure $onResearchProgress = null,
+        ?\Closure $diagnostics = null,
     ): KbInvestigationResult {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
         $prepared = $preparedUnderstanding;
-        $profile = (bool) config('kb.investigation.enabled', true) ? $this->profileFor($projectKey, $filters) : null;
-        $prepared ??= (new \App\Services\Chat\ChatTurnInterpreter($this->preprocessor))->prepare(
-            $question, $projectKey, $filters, $conversationContext, $actor, $memoryOwner, $turnRecord);
+        $profile = (bool) config('kb.investigation.enabled', true)
+            ? $observe('kb.profile', fn () => $this->profileFor($projectKey, $filters), ['wait_reason' => 'local_database']) : null;
+        $prepared ??= $observe('kb.interpretation', fn () => (new \App\Services\Chat\ChatTurnInterpreter($this->preprocessor))->prepare(
+            $question, $projectKey, $filters, $conversationContext, $actor, $memoryOwner, $turnRecord), ['wait_reason' => 'provider_response']);
         if ($prepared !== null && (! $prepared->available || $prepared->needsClarification)) {
             return $this->empty('clarify', $prepared->needsClarification ? 'focus_ambiguous' : 'question_interpretation_unavailable',
                 intent: new KbInvestigationIntent($prepared->intent, [], [], [], [], [], $prepared));
@@ -84,11 +87,12 @@ class KbInvestigationService
                 $tasks[] = ['id' => $index, 'question' => $prepared->forSubquestion($index)->intent];
             }
             $onResearchProgress?->__invoke('research.planned', ['tasks' => $tasks]);
-            return $this->investigateBranches($prepared, $projectKey, $filters, min(5, max(1, $depth)), $previousCitations, $actor, $onResearchProgress);
+            return $this->investigateBranches($prepared, $projectKey, $filters, min(5, max(1, $depth)), $previousCitations, $actor, $onResearchProgress, $diagnostics);
         }
         if ($prepared !== null && ! $prepared->needsResearch()) {
             $intent = new KbInvestigationIntent($prepared->intent, $prepared->mentionTexts(), [], [], [], [], $prepared);
-            $sources = $this->citedSources($previousCitations, $prepared, $projectKey, $filters, $actor);
+            $sources = $observe('kb.context_source_read', fn () => $this->citedSources($previousCitations, $prepared, $projectKey, $filters, $actor, $diagnostics),
+                ['wait_reason' => 'local_source_read']);
             if ($sources === [] && $prepared->effectiveAction() !== \App\Services\Chat\QuestionAction::Recap) {
                 return $this->empty('context_unavailable', 'context_evidence_unavailable', intent: $intent);
             }
@@ -104,7 +108,8 @@ class KbInvestigationService
             return new KbInvestigationResult(
                 'ready',
                 'recursive_retrieval_disabled',
-                $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey, $filters),
+                $observe('kb.retrieval', fn () => $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey, $filters,
+                    ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics])), ['wait_reason' => 'knowledge_retrieval']),
                 intent: $prepared === null ? null : new KbInvestigationIntent($prepared->intent, $prepared->targetIdentifiers(), [], [], [], $prepared->kbQueries, $prepared),
             );
         }
@@ -113,13 +118,13 @@ class KbInvestigationService
         }
 
         $depth = min(5, max(1, $depth));
-        $understanding = $prepared ?? $this->preprocessor->interpret($question, $conversationContext, [
+        $understanding = $prepared ?? $observe('kb.interpretation', fn () => $this->preprocessor->interpret($question, $conversationContext, [
             'context' => $profile->company_context,
             'glossary' => $profile->glossary ?? [],
             'relevant_entities' => $profile->relevant_entities ?? [],
             'expected_facts' => $profile->expected_facts ?? [],
             'preferred_source_types' => $profile->preferred_source_types ?? [],
-        ], $memory->enabled() ? [] : null);
+        ], $memory->enabled() ? [] : null), ['wait_reason' => 'provider_response']);
         if ($understanding->needsClarification) {
             return $this->empty('clarify', 'focus_ambiguous', intent: new KbInvestigationIntent(
                 $understanding->intent, $understanding->targetIdentifiers(), [], [], [], $understanding->kbQueries, $understanding,
@@ -136,7 +141,8 @@ class KbInvestigationService
         $seenQueries = [];
         $selected = [];
         if ($understanding->referencesPreviousTurn && $understanding->available) {
-            $selected = $this->citedSources($previousCitations, $understanding, $projectKey, $filters, $actor);
+            $selected = $observe('kb.context_source_read', fn () => $this->citedSources($previousCitations, $understanding, $projectKey, $filters, $actor, $diagnostics),
+                ['wait_reason' => 'local_source_read']);
         }
         $anchoredToPreviousCitations = $selected !== [];
         $supportedFacts = [];
@@ -147,6 +153,9 @@ class KbInvestigationService
         $attempts = [];
 
         for ($round = 0; $round < $depth && $nextQuery !== null; $round++) {
+            $roundDiagnostics = $diagnostics === null ? null : static fn (string $phase, callable $operation, array $metadata = [])
+                => $diagnostics($phase, $operation, ['iteration' => $round + 1, ...$metadata]);
+            $roundObserve = $roundDiagnostics ?? $observe;
             $normalized = $this->normalizeQuery($nextQuery);
             if ($normalized === null || isset($seenQueries[$normalized])) {
                 $stopReason = 'duplicate_query';
@@ -160,8 +169,9 @@ class KbInvestigationService
             if ($round === 0 && ! $anchoredToPreviousCitations && $understanding->available) {
                 try {
                     $literalIds = $understanding->mentionTexts();
-                    $exact = app(\App\Services\Kb\KbSearchService::class)->exactIdentifierCandidates(
-                        array_merge($understanding->targetIdentifiers(), $literalIds), $projectKey, $filters);
+                    $exact = $roundObserve('kb.exact_lookup', fn () => app(\App\Services\Kb\KbSearchService::class)->exactIdentifierCandidates(
+                        array_merge($understanding->targetIdentifiers(), $literalIds), $projectKey, $filters),
+                        ['wait_reason' => 'local_database', 'error_handled' => true]);
                     $attempt['exact_candidates'] = $exact->count();
                 } catch (Throwable) {
                     $attempt['exact_lookup_error'] = true;
@@ -174,7 +184,9 @@ class KbInvestigationService
                 // the assessor or the final answer prompt in this flow.
                 $search = $round === 0 && $anchoredToPreviousCitations && $understanding->requiresResearch === null
                     ? new SearchResult(collect(), collect(), collect())
-                    : $this->retrieval->retrieve($nextQuery, $projectKey, $filters, includeAuxiliaryContext: false);
+                    : $roundObserve('kb.semantic_lookup', fn () => $this->retrieval->retrieve($nextQuery, $projectKey, $filters,
+                        false, ...($roundDiagnostics === null ? [] : ['diagnostics' => $roundDiagnostics])),
+                        ['wait_reason' => 'knowledge_retrieval', 'error_handled' => true]);
                 $attempt['primary_candidates'] = $search->primary->count();
             } catch (Throwable) {
                 $attempt['semantic_lookup_error'] = true;
@@ -186,7 +198,8 @@ class KbInvestigationService
                 $search = new SearchResult(collect(), collect(), collect());
             }
 
-            $sources = $this->readCandidates($exact->concat($search->primary)->unique('chunk_id'), $projectKey, $actor, $filters);
+            $sources = $roundObserve('kb.source_read', fn () => $this->readCandidates($exact->concat($search->primary)->unique('chunk_id'), $projectKey, $actor, $filters, $roundDiagnostics),
+                ['wait_reason' => 'local_source_read']);
             // Re-read cited sources in the current tenant/project/ACL, never
             // trust the previous assistant answer as evidence.
             if ($round === 0 && $anchoredToPreviousCitations) {
@@ -200,7 +213,8 @@ class KbInvestigationService
                 continue;
             }
 
-            $assessment = $this->assess($intent, $sources);
+            $assessment = $roundObserve('kb.assessment', fn () => $this->assess($intent, $sources, $roundDiagnostics),
+                ['wait_reason' => 'provider_response']);
             if ($assessment === null) {
                 $stopReason = 'assessment_failed';
                 $attempts[] = [...$attempt, 'outcome' => 'assessment_failed'];
@@ -301,8 +315,9 @@ class KbInvestigationService
      * @param array<int, array<string, mixed>> $sources keyed by document id
      * @return array{selected_ids:list<int>,supported_facts:list<string>,missing_facts:list<string>,complete:bool,next_query:?string}|null
      */
-    private function assess(KbInvestigationIntent $intent, array $sources): ?array
+    private function assess(KbInvestigationIntent $intent, array $sources, ?\Closure $diagnostics = null): ?array
     {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $recordIds = array_values(array_filter($intent->entities,
             static fn (string $id): bool => preg_match('/\A(?:[\pL][\pL_-]*)?\d[\pL\d_-]*\z/u', $id) === 1));
         if ($recordIds !== []) {
@@ -335,7 +350,8 @@ PROMPT;
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
-                $response = $this->ai->chat($system, (string) $payload, ['temperature' => 0]);
+                $response = $observe('kb.assessment_provider', fn () => $this->ai->chat($system, (string) $payload, ['temperature' => 0]),
+                    ['operation' => $attempt === 0 ? 'initial' : 'repair', 'wait_reason' => 'provider_response', 'error_handled' => true]);
             } catch (Throwable) {
                 return null;
             }
@@ -377,7 +393,7 @@ PROMPT;
     }
 
     /** @param Collection<int, mixed> $candidates @return array<int, array<string,mixed>> */
-    private function readCandidates(Collection $candidates, ?string $projectKey = null, ?User $actor = null, ?RetrievalFilters $filters = null): array
+    private function readCandidates(Collection $candidates, ?string $projectKey = null, ?User $actor = null, ?RetrievalFilters $filters = null, ?\Closure $diagnostics = null): array
     {
         $sources = [];
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
@@ -389,7 +405,8 @@ PROMPT;
             if ($documentId < 1 || isset($sources[$documentId])) {
                 continue;
             }
-            $source = $this->sourceReader->readCandidate($candidate, $projectKey, $actor, $filters);
+            $source = $this->sourceReader->readCandidate($candidate, $projectKey, $actor, $filters,
+                ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics]));
             if ($source !== null) {
                 $sources[$documentId] = $source;
             }
@@ -402,7 +419,7 @@ PROMPT;
     }
 
     /** @return array<int,array<string,mixed>> */
-    private function citedSources(array $citations, QuestionUnderstanding $understanding, ?string $projectKey, ?RetrievalFilters $filters, ?User $actor): array
+    private function citedSources(array $citations, QuestionUnderstanding $understanding, ?string $projectKey, ?RetrievalFilters $filters, ?User $actor, ?\Closure $diagnostics = null): array
     {
         $sources = [];
         $mentions = $understanding->targetIdentifiers() ?: $understanding->mentionTexts();
@@ -424,7 +441,8 @@ PROMPT;
             if ($chunkId < 1) {
                 continue;
             }
-            $source = $this->sourceReader->readCandidate(['document' => ['id' => $id], 'chunk_id' => $chunkId], $projectKey, $actor, $filters);
+            $source = $this->sourceReader->readCandidate(['document' => ['id' => $id], 'chunk_id' => $chunkId], $projectKey, $actor, $filters,
+                ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics]));
             if ($source === null || ($mentions !== [] && ! array_filter($mentions, static fn (string $term): bool => \App\Services\Chat\Reasoning\EvidenceProjector::contains($source['excerpt'], $term)))) {
                 continue;
             }
@@ -549,13 +567,14 @@ PROMPT;
     }
 
     private function investigateBranches(QuestionUnderstanding $understanding, ?string $projectKey, ?RetrievalFilters $filters,
-        int $depth, array $citations, ?User $actor, ?\Closure $onResearchProgress = null): KbInvestigationResult
+        int $depth, array $citations, ?User $actor, ?\Closure $onResearchProgress = null, ?\Closure $diagnostics = null): KbInvestigationResult
     {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $tasks = [];
         foreach ($understanding->subquestions as $index => $sub) {
             $payload = ['tenant' => $this->tenant->current(), 'project' => $projectKey, 'filters' => $filters,
                 'actor_id' => $actor?->id, 'depth' => $depth, 'citations' => $citations,
-                'understanding' => $understanding->forSubquestion($index)->toArray()];
+                'understanding' => $understanding->forSubquestion($index)->toArray(), 'diagnostics' => $diagnostics, 'research_flow_id' => $index];
             $tasks[$index] = static function () use ($payload, $index, $onResearchProgress) {
                 $onResearchProgress?->__invoke('research.task', ['research_flow_id' => $index, 'task_status' => 'documents']);
                 $result = app(self::class)->runBranch($payload);
@@ -563,7 +582,11 @@ PROMPT;
                 return $result;
             };
         }
-        $branches = app(\App\Services\Chat\Reasoning\ResearchFanout::class)->run($tasks);
+        $branches = $observe('kb.research_fanout', fn () => app(\App\Services\Chat\Reasoning\ResearchFanout::class)->run($tasks,
+            ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics])),
+            ['wait_reason' => 'research_process_results', 'driver' => app()->runningUnitTests() ? 'inline_test' : 'process',
+                'concurrency' => (int) config('reasoning.research_concurrency', 4),
+                'timeout_seconds' => (int) config('reasoning.research_timeout_seconds', 180)]);
         $chunks = collect();
         $sources = $queries = $flows = $supported = $missing = [];
         foreach ($branches as $index => $result) {
@@ -608,8 +631,13 @@ PROMPT;
                 }
             }
             $understanding = QuestionUnderstanding::fromArray($payload['understanding']);
-            return $this->investigate($understanding->intent, $payload['project'], $payload['filters'], $payload['depth'],
-                previousCitations: $payload['citations'], actor: $actor, preparedUnderstanding: $understanding);
+            $diagnostics = $payload['diagnostics'] ?? null;
+            $branchDiagnostics = $diagnostics === null ? null : static fn (string $phase, callable $operation, array $metadata = [])
+                => $diagnostics($phase, $operation, ['research_flow_id' => $payload['research_flow_id'], ...$metadata]);
+            $operation = fn () => $this->investigate($understanding->intent, $payload['project'], $payload['filters'], $payload['depth'],
+                previousCitations: $payload['citations'], actor: $actor, preparedUnderstanding: $understanding, diagnostics: $branchDiagnostics);
+            return $branchDiagnostics === null ? $operation() : $branchDiagnostics('kb.research_branch', $operation,
+                ['wait_reason' => 'knowledge_investigation', 'error_handled' => true]);
         } catch (Throwable) {
             return $this->empty('no_evidence', 'research_branch_failed');
         } finally {

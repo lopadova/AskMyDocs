@@ -115,7 +115,9 @@ class KbSearchService
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
         bool $includeAuxiliaryContext = true,
+        ?\Closure $diagnostics = null,
     ): SearchResult {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
         // Resolve a representative project_key for the legacy meta payload
         // and for the graph expander / rejected injector (which still take
@@ -132,12 +134,15 @@ class KbSearchService
         // v8.7/W1 — embed the synonym-expanded text so jargon queries reach
         // docs that only use the equivalent term. Key the synonym map on
         // the effective project (filters-derived when projectKey is null).
-        $embeddingsResponse = $this->embeddingCache->generate([
+        $embeddingsResponse = $observe('kb.embedding', fn () => $this->embeddingCache->generate([
             $this->embeddingTextFor($query, $this->synonymProject($projectKey, $effectiveFilters)),
-        ]);
+        ]), ['wait_reason' => 'embedding_cache_or_provider']);
         $queryEmbedding = $embeddingsResponse->embeddings[0];
 
-        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding);
+        $primary = $observe('kb.primary_search', fn () => $this->search(
+            $query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding,
+            ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics]),
+        ), ['wait_reason' => 'local_search']);
         // v8.0/W3.1 — Why-not-cited: fetch up to 15 candidates that
         // were considered but did NOT make the primary top-K cut.
         // Each runner-up carries a `reason` field so the FE can
@@ -145,7 +150,7 @@ class KbSearchService
         // badge. NOT fed to the LLM — visible only in the chat UI.
         // Recursive investigations consume primary sources only. Do not make
         // them wait for a second vector query or unused graph/context reads.
-        $runnerUp = $includeAuxiliaryContext ? $this->fetchRunnerUp(
+        $runnerUp = $includeAuxiliaryContext ? $observe('kb.runner_up', fn () => $this->fetchRunnerUp(
             query: $query,
             primary: $primary,
             projectKey: $projectKey,
@@ -153,9 +158,11 @@ class KbSearchService
             filters: $effectiveFilters,
             limit: (int) config('kb.runner_up.limit', 15),
             precomputedEmbedding: $queryEmbedding,
-        ) : collect();
-        $expanded = $includeAuxiliaryContext ? $this->graphExpander->expand($primary, $effectiveProject) : collect();
-        $rejected = $includeAuxiliaryContext ? $this->rejectedInjector->pick($query, $effectiveProject) : collect();
+        ), ['wait_reason' => 'local_search']) : collect();
+        $expanded = $includeAuxiliaryContext ? $observe('kb.graph_context',
+            fn () => $this->graphExpander->expand($primary, $effectiveProject), ['wait_reason' => 'local_search']) : collect();
+        $rejected = $includeAuxiliaryContext ? $observe('kb.rejected_context',
+            fn () => $this->rejectedInjector->pick($query, $effectiveProject), ['wait_reason' => 'local_search_or_embedding']) : collect();
 
         $retrievalMs = (int) ((microtime(true) - $retrievalStart) * 1000);
 
@@ -425,7 +432,9 @@ class KbSearchService
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
         ?array $precomputedEmbedding = null,
+        ?\Closure $diagnostics = null,
     ): Collection {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         // T2.1 — back-compat: legacy callers pass `?string $projectKey`;
         // when no filters DTO is provided, we synthesise one from the
         // legacy parameter so applyFilters() handles BOTH paths uniformly.
@@ -443,9 +452,9 @@ class KbSearchService
         // fallback); the searchWithContext() path already expanded before
         // precomputing, so we never double-expand.
         $queryEmbedding = $precomputedEmbedding
-            ?? $this->embeddingCache->generate([
+            ?? $observe('kb.embedding', fn () => $this->embeddingCache->generate([
                 $this->embeddingTextFor($query, $this->synonymProject($projectKey, $effectiveFilters)),
-            ])->embeddings[0];
+            ]), ['wait_reason' => 'embedding_cache_or_provider'])->embeddings[0];
         $vectorString = '[' . implode(',', $queryEmbedding) . ']';
         $tenantId = app(TenantContext::class)->current();
 
@@ -460,7 +469,7 @@ class KbSearchService
         // driver (SQLite in tests/benchmark) computes cosine similarity in
         // PHP. This lets the FULL RAG pipeline run end-to-end in CI without
         // mocking search() — the gap that let the P0.1 shape bug ship green.
-        $semanticChunks = $this->semanticCandidates(
+        $semanticChunks = $observe('kb.vector_query', fn () => $this->semanticCandidates(
             $tenantId,
             $queryEmbedding,
             $vectorString,
@@ -468,7 +477,7 @@ class KbSearchService
             $minSimilarity,
             $effectiveFilters,
             $candidateCount,
-        );
+        ), ['wait_reason' => 'local_database']);
 
         // ── Hybrid: merge full-text results if enabled ───────────
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
@@ -482,13 +491,13 @@ class KbSearchService
             // on the semantic branch. Folder globs are still applied
             // post-fetch (after the RRF merge) — same path as the
             // semantic results.
-            $ftsChunks = $this->fullTextSearch(
+            $ftsChunks = $observe('kb.full_text_query', fn () => $this->fullTextSearch(
                 $query,
                 $projectKey,
                 $candidateCount,
                 $tenantId,
                 $effectiveFilters,
-            );
+            ), ['wait_reason' => 'local_database']);
 
             // Merge via Reciprocal Rank Fusion (RRF). Cast the config values:
             // env() yields STRINGS ("60", "0.70"), which under strict_types
@@ -544,7 +553,8 @@ class KbSearchService
             ? $effectiveFilters->docIds
             : [];
 
-        return $this->reranker->rerank($query, $chunks, $limit, $boostDocIds);
+        return $observe('kb.rerank', fn () => $this->reranker->rerank($query, $chunks, $limit, $boostDocIds),
+            ['wait_reason' => 'local_computation']);
     }
 
     /**

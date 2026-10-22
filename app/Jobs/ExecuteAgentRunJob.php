@@ -28,6 +28,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
     public function __construct(
         public readonly int $agentRunId,
         public readonly string $tenantId,
+        public readonly ?string $diagnosticQueueSpanId = null,
     ) {
         $this->timeout = max(30, (int) config('agent.job_timeout_seconds', 120));
         $this->onQueue((string) config('agent.queue', 'agent'));
@@ -44,6 +45,13 @@ final class ExecuteAgentRunJob implements ShouldQueue
             ->findOrFail($this->agentRunId);
         $previousLocale = App::currentLocale();
         $previousTimezone = date_default_timezone_get();
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $diagnostics->end($run, $this->diagnosticQueueSpanId ?? null, metadata: ['operation' => 'worker_received']);
+        $span = $diagnostics->begin($run, 'worker.execute', [
+            'runtime' => $diagnostics->runtime(),
+            'attempt' => $this->attempts(),
+            'timeout_seconds' => $this->timeout,
+        ]);
 
         try {
             $tenants->set($this->tenantId);
@@ -56,6 +64,10 @@ final class ExecuteAgentRunJob implements ShouldQueue
             }
 
             $handler->handle($run);
+            $diagnostics->end($run, $span);
+        } catch (\Throwable $exception) {
+            $diagnostics->failure($run, $span, $exception);
+            throw $exception;
         } finally {
             // Queue workers are long-lived. Never leak one run's principal
             // into the next job (especially an anonymous widget run).
@@ -64,6 +76,22 @@ final class ExecuteAgentRunJob implements ShouldQueue
             $packageTenants->reset();
             App::setLocale($previousLocale);
             date_default_timezone_set($previousTimezone);
+        }
+    }
+
+    /** Includes queue-level failures/timeouts which bypass the handler catch. */
+    public function failed(?\Throwable $exception): void
+    {
+        try {
+            $run = AgentRun::query()->forTenant($this->tenantId)->find($this->agentRunId);
+            if ($run === null || $exception === null) {
+                return;
+            }
+            $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+            $span = $diagnostics->begin($run, 'worker.failed', ['error_handled' => false]);
+            $diagnostics->failure($run, $span, $exception);
+        } catch (\Throwable) {
+            // Queue failure reporting must not replace the original failure.
         }
     }
 

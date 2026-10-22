@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Artifacts\AgentTableArtifactFactory;
-use App\Agent\Grounding\AgentClaimGroundingValidator;
+use App\Agent\Debug\ProviderDiagnostics;
 use App\Agent\Grounding\AgentClaimBatchEvaluator;
+use App\Agent\Grounding\AgentClaimGroundingValidator;
 use App\Agent\Grounding\AgentSemanticGroundingJudge;
 use App\Ai\AiManager;
+use App\Models\AgentRun;
 use App\Services\Widget\WidgetPiiMasker;
 use Illuminate\Support\Facades\Log;
 
@@ -32,6 +34,8 @@ final readonly class AgentAnswerSynthesizer
         ?array $understanding = null,
         ?string $durableRunId = null,
     ): AgentAnswer {
+        $diagnostics = app(ProviderDiagnostics::class);
+        $run = $diagnostics->resolve($durableRunId, $context->tenantId);
         if (config('reasoning.selective_validation') && $understanding !== null
             && ! \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->isAssistantConversation()) {
             $understanding['subquestions'] = \App\Services\Chat\Reasoning\FocusContract::activeSubquestions(
@@ -101,7 +105,7 @@ final readonly class AgentAnswerSynthesizer
         if ($independent) {
             [$response, $payload] = $this->researchDrafts($context, $outcome, $understanding, $durableRunId);
         } else {
-            [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext);
+            [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext, run: $run);
         }
         // Table/selection handoffs contain no synthesized factual prose; their
         // records are rendered from the structured tool artifact itself.
@@ -121,31 +125,32 @@ final readonly class AgentAnswerSynthesizer
         $selective = ! $presentationOnly && config('reasoning.selective_validation', true);
         $batchEnabled = $selective || (! $presentationOnly && config('agent.grounding.enabled', true)
             && config('agent.grounding.batch.enabled', true));
-        $grounding = $selective
+        $grounding = $diagnostics->measure($run, 'validation.grounding', fn () => $selective
             ? app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $evidence, $payload['claims'] ?? [],
                 $understanding ?? [], $context->projectKey, $context->tenantId,
                 data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
                 data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])))
             : ($batchEnabled
             ? ($this->batchEvaluator ?? app(AgentClaimBatchEvaluator::class))
-                ->evaluate($question, $evidence, $payload['claims'] ?? null, $mentions, $context->projectKey, $context->tenantId)
+                ->evaluate($question, $evidence, $payload['claims'] ?? null, $mentions, $context->projectKey, $context->tenantId, $run)
             : ($presentationOnly
             ? ['valid' => true, 'reason' => null, 'terms' => [], 'claims' => []]
             : (! config('agent.grounding.enabled', true)
                 ? $this->deterministicSubset($question, $evidence, $payload['claims'] ?? [])
-                : $this->grounding->validate($question, $evidence, $payload['claims'] ?? null, $mentions))));
+                : $this->grounding->validate($question, $evidence, $payload['claims'] ?? null, $mentions)))), ['operation' => $selective ? 'focused_claims' : ($batchEnabled ? 'claim_batch' : 'deterministic')]);
         if (! $batchEnabled) {
-            $grounding = $this->semanticGate($question, $grounding, $presentationOnly);
+            $grounding = $this->semanticGate($question, $grounding, $presentationOnly, run: $run);
         }
         $repair = null;
         if ($selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
             && ($grounding['reason'] ?? null) !== 'no_new_detail') {
-            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? []);
+            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? [], $run);
             $grounding['coverage_validation'] = $coverage;
             $providerFailed = array_filter($grounding['semantic_validation'] ?? [], fn ($stage) => ($stage['status'] ?? null) === 'error');
             if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)) {
                 $repair = ['attempted' => true, 'status' => 'unchanged', 'initial_reason' => $grounding['reason'] ?? null,
                     'initial_semantic_validation' => $grounding['semantic_validation'] ?? [], 'initial_coverage' => $coverage];
+                $repairSpan = $diagnostics->begin($run, 'synthesis.repair', ['operation' => 'selective_repair']);
                 try {
                     $feedback = json_decode($turnContext ?? '{}', true) ?: [];
                     $feedback['validation_feedback'] = ['claims' => $payload['claims'] ?? [],
@@ -160,7 +165,7 @@ final readonly class AgentAnswerSynthesizer
                     $envelope->import($repairEvidence);
                     [$repairedResponse, $repairedPayload] = $this->structuredDraft($question, $context,
                         new AgentLoopOutcome($outcome->decision, $envelope, $outcome->completedActions, $outcome->stopReason),
-                        $understanding, json_encode($feedback, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), repairAttempt: true);
+                        $understanding, json_encode($feedback, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), repairAttempt: true, run: $run);
                     // Repair is factual synthesis, never a new artifact/selection handoff.
                     $repairedPayload['render_table'] = false;
                     $repairedPayload['requires_selection'] = $payload['requires_selection'] ?? false;
@@ -178,7 +183,7 @@ final readonly class AgentAnswerSynthesizer
                     }
                     $repaired['source_excerpts'] = array_values($retainedExcerpts);
                     $repairedCoverage = $repaired['valid']
-                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims'], $understanding ?? [], $repaired['source_excerpts']) : null;
+                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims'], $understanding ?? [], $repaired['source_excerpts'], $run) : null;
                     $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
                     $repair['candidate_coverage'] = $repairedCoverage;
                     $repair['candidate_reason'] = $repaired['reason'] ?? null;
@@ -190,7 +195,9 @@ final readonly class AgentAnswerSynthesizer
                         $repair['status'] = 'accepted';
                         $grounding['coverage_validation'] = $repairedCoverage;
                     }
+                    $diagnostics->end($run, $repairSpan);
                 } catch (\Throwable $exception) {
+                    $diagnostics->failure($run, $repairSpan, $exception, ['error_handled' => true]);
                     $repair['status'] = 'unavailable';
                     $repair['exception_class'] = $exception::class;
                 }
@@ -231,8 +238,9 @@ final readonly class AgentAnswerSynthesizer
                 'rejected_claims' => $this->maskedClaims($payload['claims'] ?? null),
             ];
 
+            $repairSpan = $diagnostics->begin($run, 'synthesis.repair', ['operation' => 'claim_repair']);
             try {
-                $repairResponse = $this->ai->chatWithHistory(
+                $repairResponse = $diagnostics->measure($run, 'provider.synthesis', fn () => $this->ai->chatWithHistory(
                     $this->repairSystemPrompt($context),
                     [[
                         'role' => 'user',
@@ -251,10 +259,10 @@ final readonly class AgentAnswerSynthesizer
                         'tools' => [$this->repairSubmissionTool()],
                         'tool_choice' => ['type' => 'function', 'function' => ['name' => 'repair_agent_claims']],
                     ],
-                );
+                ), ['operation' => 'claim_repair', 'wait_for' => 'provider_response', 'error_handled' => true], $repairSpan);
                 $repairedClaims = $this->repairClaims($repairResponse->toolCalls);
                 $repairedGrounding = $this->grounding->validate($question, $evidence, $repairedClaims, $mentions);
-                $repairedGrounding = $this->semanticGate($question, $repairedGrounding, $presentationOnly, $grounding['semantic_validation'], 'repair');
+                $repairedGrounding = $this->semanticGate($question, $repairedGrounding, $presentationOnly, $grounding['semantic_validation'], 'repair', $run);
                 $repair['repair_model'] = $repairResponse->model;
                 $repair['final_reason'] = $repairedGrounding['reason'];
 
@@ -269,7 +277,7 @@ final readonly class AgentAnswerSynthesizer
                         $salvagedClaims = $this->salvageVerifiedClaims($question, $evidence, $repairedClaims, $mentions);
                         if ($salvagedClaims !== []) {
                             $salvagedGrounding = $this->grounding->validate($question, $evidence, $salvagedClaims, $mentions);
-                            $salvagedGrounding = $this->semanticGate($question, $salvagedGrounding, false, $repairedGrounding['semantic_validation'], 'verified_subset');
+                            $salvagedGrounding = $this->semanticGate($question, $salvagedGrounding, false, $repairedGrounding['semantic_validation'], 'verified_subset', $run);
                             $grounding['semantic_validation'] = $salvagedGrounding['semantic_validation'];
                             if ($salvagedGrounding['valid']) {
                                 $payload['claims'] = $salvagedClaims;
@@ -287,7 +295,9 @@ final readonly class AgentAnswerSynthesizer
                         }
                     }
                 }
+                $diagnostics->end($run, $repairSpan);
             } catch (\Throwable $exception) {
+                $diagnostics->failure($run, $repairSpan, $exception, ['error_handled' => true]);
                 // Recovery is best-effort. A transient failure must preserve
                 // the original safe fallback rather than failing the whole run.
                 $repair['status'] = 'unavailable';
@@ -302,7 +312,7 @@ final readonly class AgentAnswerSynthesizer
         if (! $selective && ! $presentationOnly && config('agent.grounding.enabled', true)
             && ($batchEnabled || config('agent.grounding.semantic.enabled', false))) {
             $grounding = app(\App\Agent\Grounding\OriginalQuestionRelevanceEvaluator::class)->apply(
-                $question, $grounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []), $durableRunId);
+                $question, $grounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []), $durableRunId, tenantId: $context->tenantId);
         }
         if (! $grounding['valid'] && ! $independent) {
             Log::notice('Agent claim grounding blocked an answer.', [
@@ -319,8 +329,9 @@ final readonly class AgentAnswerSynthesizer
             && $this->sameAnswer(implode("\n\n", array_column($grounding['claims'], 'text')), $previousAnswer)) {
             // A follow-up must not replay the preceding answer verbatim. Try
             // once to answer the new focus, retaining the same evidence gate.
+            $focusedSpan = $diagnostics->begin($run, 'synthesis.focus_correction');
             try {
-                $focusedResponse = $this->ai->chatWithHistory(
+                $focusedResponse = $diagnostics->measure($run, 'provider.synthesis', fn () => $this->ai->chatWithHistory(
                     $this->systemPrompt($context),
                     [[
                         'role' => 'user',
@@ -337,10 +348,10 @@ final readonly class AgentAnswerSynthesizer
                         'tools' => [$this->submissionTool()],
                         'tool_choice' => ['type' => 'function', 'function' => ['name' => 'submit_agent_answer']],
                     ],
-                );
+                ), ['operation' => 'focus_correction', 'wait_for' => 'provider_response', 'error_handled' => true], $focusedSpan);
                 $focusedPayload = $this->payload($focusedResponse->toolCalls, $focusedResponse->content);
                 $focusedGrounding = $this->grounding->validate($question, $evidence, $focusedPayload['claims'] ?? null, $mentions);
-                $focusedGrounding = $this->semanticGate($question, $focusedGrounding, false, $grounding['semantic_validation'], 'focused_answer');
+                $focusedGrounding = $this->semanticGate($question, $focusedGrounding, false, $grounding['semantic_validation'], 'focused_answer', $run);
                 if (config('agent.grounding.semantic.enabled', false)) {
                     $focusedGrounding = app(\App\Agent\Grounding\OriginalQuestionRelevanceEvaluator::class)->apply(
                         $question, $focusedGrounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []));
@@ -352,7 +363,9 @@ final readonly class AgentAnswerSynthesizer
                 } else {
                     $grounding['semantic_validation'] = $focusedGrounding['semantic_validation'];
                 }
+                $diagnostics->end($run, $focusedSpan);
             } catch (\Throwable $exception) {
+                $diagnostics->failure($run, $focusedSpan, $exception, ['error_handled' => true]);
                 Log::warning('Agent repeated-answer correction was unavailable.', [
                     'project_key' => $context->projectKey,
                     'exception_class' => $exception::class,
@@ -376,7 +389,8 @@ final readonly class AgentAnswerSynthesizer
         $presentationParagraphs = null;
         if (config('agent.presentation.enabled') && $grounding['valid'] && ! $presentationOnly
             && ! ($payload['render_table'] ?? false) && ! ($payload['requires_selection'] ?? false)) {
-            $presented = app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? []);
+            $presented = $diagnostics->measure($run, 'validation.presentation',
+                fn () => app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? []));
             $presentation = $presented['trace'];
             if ($presented['paragraphs'] !== null) {
                 // Presentation never replaces the original facts used for citations or memory.
@@ -441,7 +455,7 @@ final readonly class AgentAnswerSynthesizer
     }
 
     private function draft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
-        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false, bool $structuredRetry = false): \App\Ai\AiResponse
+        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false, bool $structuredRetry = false, ?AgentRun $run = null, ?string $parentSpanId = null): \App\Ai\AiResponse
     {
         $evidence = $outcome->evidence->jsonSerialize();
         $system = $this->systemPrompt($context);
@@ -495,7 +509,7 @@ PROMPT;
         if ($tableArtifact === null || $repairAttempt || $claimBudget !== null) {
             $submission['function']['parameters']['properties']['render_table']['enum'] = [false];
         }
-        return $this->ai->chatWithHistory(
+        return app(ProviderDiagnostics::class)->measure($run, 'provider.synthesis', fn () => $this->ai->chatWithHistory(
             $system,
             [['role' => 'user', 'content' => json_encode([
                 'question' => $question, 'question_understanding' => $understanding, 'turn_context' => $turnContext,
@@ -507,24 +521,35 @@ PROMPT;
                 ...$structuredRetry ? ['max_tokens' => max(4096, min(16384, (int) config('agent.synthesis.structured_retry_max_tokens', 16384)))] : [],
                 ...is_string($model) && $model !== '' ? ['model' => $model] : [], 'tools' => [$submission],
                 'tool_choice' => ['type' => 'function', 'function' => ['name' => 'submit_agent_answer']]],
-        );
+        ), array_filter(['operation' => $repairAttempt ? 'repair_draft' : 'structured_draft',
+            'attempt' => $structuredRetry ? 2 : 1, 'model' => $model, 'wait_for' => 'provider_response'], static fn ($value) => $value !== null), $parentSpanId);
     }
 
     /** Malformed output or a connection failure gets one retry with the same evidence. */
     private function structuredDraft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
-        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false): array
+        ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false, ?AgentRun $run = null): array
     {
+        $diagnostics = app(ProviderDiagnostics::class);
         for ($attempt = 0; $attempt < 2; $attempt++) {
+            $span = $diagnostics->begin($run, 'synthesis.attempt', [
+                'operation' => $repairAttempt ? 'repair_draft' : 'structured_draft', 'attempt' => $attempt + 1,
+            ]);
             try {
                 $response = $this->draft($question, $context, $outcome, $understanding, $turnContext,
-                    claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1);
-                return [$response, $this->payload($response->toolCalls, $response->content)];
+                    claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1, run: $run, parentSpanId: $span);
+                $payload = $this->payload($response->toolCalls, $response->content);
+                $diagnostics->end($run, $span);
+                return [$response, $payload];
             } catch (\UnexpectedValueException|\Illuminate\Http\Client\ConnectionException $exception) {
+                $diagnostics->failure($run, $span, $exception, ['error_handled' => $attempt === 0]);
                 if ($attempt === 1) {
                     throw $exception;
                 }
                 Log::warning('agent.synthesis.submission_retry', ['run_id' => $context->runId,
                     'reason' => $exception instanceof \UnexpectedValueException ? 'malformed_json' : 'connection_error']);
+            } catch (\Throwable $exception) {
+                $diagnostics->failure($run, $span, $exception);
+                throw $exception;
             }
         }
         throw new \LogicException('Unreachable structured draft state.');
@@ -601,12 +626,16 @@ PROMPT;
             if (is_array($cached) && ($cached['signature'] ?? null) === $signature) {
                 $draft = $cached;
             } else {
+                $diagnostics = app(ProviderDiagnostics::class);
+                $draftSpan = $diagnostics->begin($run, 'synthesis.research_draft', ['logical_index' => $index]);
                 try {
                     [$response, $branchPayload] = $evidence->hasEvidence() ? $this->structuredDraft($branch->intent, $context,
-                        new AgentLoopOutcome($branchIncomplete ? 'partial' : 'answer', $evidence, [], $flow['stop_reason'] ?? null), $branch->toArray(), claimBudget: $budget) : [null, []];
+                        new AgentLoopOutcome($branchIncomplete ? 'partial' : 'answer', $evidence, [], $flow['stop_reason'] ?? null), $branch->toArray(), claimBudget: $budget, run: $run) : [null, []];
                     $draft = ['signature' => $signature, 'status' => $response === null ? ($branchIncomplete ? 'research_failed' : 'no_evidence') : 'completed',
                         'model' => $response?->model, 'payload' => $branchPayload];
-                } catch (\Throwable) {
+                    $diagnostics->end($run, $draftSpan);
+                } catch (\Throwable $exception) {
+                    $diagnostics->failure($run, $draftSpan, $exception, ['error_handled' => true]);
                     $draft = ['signature' => $signature, 'status' => 'draft_failed', 'model' => null, 'payload' => []];
                 }
                 if ($run !== null) {
@@ -979,7 +1008,7 @@ PROMPT;
     }
 
     /** @param array{valid:bool,reason:?string,terms:list<string>,claims:list<array<string,mixed>>} $grounding @param list<array<string,mixed>> $previous */
-    private function semanticGate(string $question, array $grounding, bool $presentationOnly, array $previous = [], string $stage = 'initial_answer'): array
+    private function semanticGate(string $question, array $grounding, bool $presentationOnly, array $previous = [], string $stage = 'initial_answer', ?AgentRun $run = null): array
     {
         if (! $grounding['valid'] || $presentationOnly || ! config('agent.grounding.enabled', true)
             || ! config('agent.grounding.semantic.enabled', false)) {
@@ -993,7 +1022,7 @@ PROMPT;
             return $grounding;
         }
         $decision = ($this->semanticJudge ?? app(AgentSemanticGroundingJudge::class))
-            ->evaluate($question, $grounding['claims']);
+            ->evaluate($question, $grounding['claims'], $run);
         $grounding['semantic_validation'] = [...$previous, ['stage' => $stage, ...$decision]];
 
         return $decision['answer'] === false
