@@ -469,11 +469,7 @@ Order related claims together as short paragraphs within this section. Use a ###
 This branch overrides the separate-artifact handoff instructions: set render_table=false and put factual content in claims. For collections, render a record's requested fields in a compact Markdown table within its own source-bound claim; never mix source records in one claim. Mark completeness=partial if the claim budget cannot cover the requested collection.
 PROMPT;
         }
-        $model = config('agent.synthesis.model');
-        $repairModel = config('agent.synthesis.repair_model');
-        if ($repairAttempt && is_string($repairModel) && $repairModel !== '') {
-            $model = $repairModel;
-        }
+        $model = app(AgentAnswerModel::class)->synthesis($context, $repairAttempt);
         $promptEvidence = config('reasoning.selective_validation')
             ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forPrompt($evidence) : $evidence;
         $sourceRefs = [];

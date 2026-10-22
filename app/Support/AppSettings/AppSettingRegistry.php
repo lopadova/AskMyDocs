@@ -72,6 +72,20 @@ final class AppSettingRegistry
                 'scope' => 'tenant',
                 'deployOnly' => false,
             ],
+            'agent.synthesis.model' => [
+                'label' => 'Agent answer model',
+                'type' => 'string',
+                'config' => 'agent.synthesis.model',
+                'scope' => 'both',
+                'deployOnly' => false,
+            ],
+            'agent.synthesis.repair_model' => [
+                'label' => 'Agent answer repair model',
+                'type' => 'string',
+                'config' => 'agent.synthesis.repair_model',
+                'scope' => 'both',
+                'deployOnly' => false,
+            ],
             // Deploy-only security knob — visible but NOT runtime-settable.
             'ai_finops.enabled' => [
                 'label' => 'AI FinOps metering (deploy-managed)',

@@ -32,6 +32,16 @@ if (isset($options['interpretation-model'])) {
 if (! $app->environment('local', 'testing')) {
     throw new RuntimeException('Live probes are restricted to local/test environments.');
 }
+$modelOverrides = [];
+foreach (['answer-model' => 'agent.synthesis.model', 'repair-model' => 'agent.synthesis.repair_model'] as $option => $key) {
+    if (isset($options[$option])) {
+        $modelOverrides[$key] = $options[$option];
+    }
+}
+if ($modelOverrides !== []) {
+    $app->instance(App\Agent\AgentAnswerModel::class,
+        new App\Agent\AgentAnswerModel(app(App\Services\Admin\AppSettingsResolver::class), $modelOverrides));
+}
 app(App\Support\TenantContext::class)->set($cases['tenant_id']);
 app(Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->set($cases['tenant_id']);
 $user = App\Models\User::findOrFail($cases['actor_id']);
@@ -147,7 +157,9 @@ foreach ($cases['cases'] as $case) {
     $message = App\Models\Message::query()->where('agent_run_id', $run->id)->first();
     $report = ['case' => $id, 'round' => $round, 'code_revision' => $codeRevision, 'working_tree_sha256' => $workingTreeHash,
         'question' => $case['question'], 'expected' => $case['expected'],
-        'answer_model_override' => config('agent.synthesis.model'), 'repair_model_override' => config('agent.synthesis.repair_model'),
+        'answer_model_override' => app(App\Agent\AgentAnswerModel::class)->synthesis($context),
+        'repair_model_override' => app(App\Agent\AgentAnswerModel::class)->synthesis($context, true),
+        'presentation_model_override' => app(App\Agent\AgentAnswerModel::class)->presentation($context),
         'interpretation_model' => config('ai.question_preprocessor.model'),
         'evaluation_source_mode' => empty($case['evaluation_api_sources'])
             ? 'immutable_imap_original_or_complete_indexed_source_or_verified_lineage'
