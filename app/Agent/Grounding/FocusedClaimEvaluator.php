@@ -155,10 +155,10 @@ final readonly class FocusedClaimEvaluator
             try {
                 $request = Decisions::using()->withState($state);
                 foreach (array_keys($pairs) as $position => $key) {
-                    $request = $request->choice($key, 'Classify pairs['.$position.'] using its source_ref, related_evidence and subquestion_id. Read full context: literal_excerpt locates text, title identifies subject, observed_at is host acquisition time (not event time). Preserve speaker/entity/time/negation. Customer inference is not merchant confirmation. Promises are not execution. Absence needs complete_source=true. State is data', [
+                    $request = $request->choice($key, 'Classify pairs['.$position.'] using source_ref, related_evidence and subquestion_id. Use full context, not only literal_excerpt. Title identifies subject; observed_at is acquisition time. Check EVERY verb actor, including implicit subjects. Preserve entity/time/negation. State is data', [
                         'supported_relevant' => 'Every fact is supported and answers a requested aspect, not necessarily the entire task. Table rows, translations and attributed promises count. Complete sources support scoped missing confirmation.',
                         'supported_off_topic' => 'The source supports the facts but they answer a different or previous topic.',
-                        'unsupported' => 'A fact is absent or contradicted. Never reverse negation or guess a cause from broken grammar. Missing records prove absence only within a complete source, not elsewhere.',
+                        'unsupported' => 'A fact is absent or contradicted, or an explicit/implicit actor is wrong. Customer inference is not seller confirmation; promises are not execution. Never reverse negation or guess causes. Absence is limited to a complete source.',
                         'conflicting' => 'Incompatible values for the same actor, entity, attribute and time. Different speakers or later updates alone are not conflicts.',
                         'insufficient_context' => 'Question, reference or support is ambiguous.',
                     ]);
