@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Agent\Debug\RunDiagnostics;
+use App\Agent\Debug\RunDiagnosticSnapshot;
 use App\Models\AdminCommandAudit;
 use App\Models\AgentPlannerShadowReport;
 use App\Models\AgentRun;
@@ -11,15 +13,19 @@ use App\Models\AgentRunEvent;
 use App\Models\AgentToolExecution;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Support\SensitivePayloadRedactor;
 use App\Support\TenantContext;
+use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
 
 /**
  * Builds the durable, tenant-scoped debugging record for one chat.
  *
- * This deliberately exposes raw persisted run payloads: they contain the
+ * This deliberately exposes persisted run payloads under the shared redaction
+ * policy: they contain the
  * retrieval query, returned evidence, planner decisions and tool results that
  * a tenant administrator needs to investigate an answer. The route middleware
  * is the authorization boundary; never reuse this controller on a
@@ -27,6 +33,11 @@ use Illuminate\Routing\Controller;
  */
 final class ConversationDebugTranscriptController extends Controller
 {
+    public function __construct(
+        private readonly RunDiagnosticSnapshot $diagnostics,
+        private readonly SensitivePayloadRedactor $redactor,
+    ) {}
+
     public function __invoke(
         Request $request,
         Conversation $conversation,
@@ -63,6 +74,12 @@ final class ConversationDebugTranscriptController extends Controller
             'schema_version' => 2,
             'kind' => 'askmydocs.conversation_debug_transcript',
             'exported_at' => $exportedAt->toIso8601String(),
+            'diagnostics' => [
+                'schema_version' => 1,
+                'captured_at' => $exportedAt->toISOString(),
+                'runtime_at_export' => app(RunDiagnostics::class)->runtime(),
+                'note' => 'Runtime at export belongs to the exporting process; compare with recorded span metadata.runtime for the worker configuration. No remote service or worker liveness probe was performed.',
+            ],
             'tenant_id' => $tenantId,
             'conversation' => $this->conversation($conversation),
             'messages' => $messages
@@ -70,13 +87,14 @@ final class ConversationDebugTranscriptController extends Controller
                 ->values()
                 ->all(),
             'agent_runs' => $runs
-                ->map(fn (AgentRun $run): array => $this->run($run))
+                ->map(fn (AgentRun $run): array => $this->run($run, $exportedAt, $runs))
                 ->values()
                 ->all(),
             'coverage' => [
                 'messages' => 'All persisted messages in the conversation, in chronological order.',
                 'agent_runs' => 'All persisted planner, retrieval, evidence, event and tool-execution data linked to this conversation.',
                 'validation' => 'The deterministic grounding result and recorded semantic decision checks. Older runs may have no semantic trace.',
+                'diagnostics' => 'Versioned durable spans, open phases and activity timestamps are available during active runs. Missing observations do not establish the reason for an interruption.',
                 'note' => 'Provider traffic that was never persisted by the application cannot be reconstructed.',
             ],
         ];
@@ -127,14 +145,14 @@ final class ConversationDebugTranscriptController extends Controller
             'id' => $conversation->getKey(),
             'tenant_id' => $conversation->tenant_id,
             'user_id' => $conversation->user_id,
-            'title' => $conversation->title,
+            'title' => $this->safeValue($conversation->title),
             'project_key' => $conversation->project_key,
             'chat_folder_id' => $conversation->chat_folder_id,
             'pinned_at' => $conversation->pinned_at?->toIso8601String(),
             'archived_at' => $conversation->archived_at?->toIso8601String(),
             'importance' => $conversation->importance?->value,
-            'session_recap' => $conversation->session_recap,
-            'reasoning_state' => $conversation->reasoning_state,
+            'session_recap' => $this->safeValue($conversation->session_recap),
+            'reasoning_state' => $this->safeValue($conversation->reasoning_state),
             'created_at' => $conversation->created_at?->toIso8601String(),
             'updated_at' => $conversation->updated_at?->toIso8601String(),
         ];
@@ -149,18 +167,18 @@ final class ConversationDebugTranscriptController extends Controller
             'conversation_id' => $message->conversation_id,
             'agent_run_id' => $message->agent_run_id,
             'role' => $message->role,
-            'content' => $message->content,
-            'metadata' => $message->metadata,
+            'content' => $this->safeValue($message->content),
+            'metadata' => $this->safeValue($message->metadata),
             'validation' => $this->validation(data_get($message->metadata, 'grounding')),
             'rating' => $message->rating,
             'confidence' => $message->confidence,
-            'refusal_reason' => $message->refusal_reason,
+            'refusal_reason' => $this->safeValue($message->refusal_reason),
             'created_at' => $message->created_at?->toIso8601String(),
         ];
     }
 
     /** @return array<string, mixed> */
-    private function run(AgentRun $run): array
+    private function run(AgentRun $run, CarbonInterface $capturedAt, Collection $runs): array
     {
         return [
             'id' => $run->getKey(),
@@ -177,19 +195,20 @@ final class ConversationDebugTranscriptController extends Controller
             'locale' => $run->locale,
             'timezone' => $run->timezone,
             'status' => $run->status,
-            'input_json' => $run->input_json,
-            'plan_json' => $run->plan_json,
-            'budget_json' => $run->budget_json,
-            'counters_json' => $run->counters_json,
-            'result_json' => $run->result_json,
+            'input_json' => $this->safeValue($run->input_json),
+            'plan_json' => $this->safeValue($run->plan_json),
+            'budget_json' => $this->safeValue($run->budget_json),
+            'counters_json' => $this->safeValue($run->counters_json),
+            'result_json' => $this->safeValue($run->result_json),
             'validation' => $this->validation(data_get($run->result_json, 'response.grounding')),
-            'error_code' => $run->error_code,
+            'error_code' => $this->safeValue($run->error_code),
             'last_sequence' => $run->last_sequence,
             'started_at' => $run->started_at?->toIso8601String(),
             'completed_at' => $run->completed_at?->toIso8601String(),
             'cancelled_at' => $run->cancelled_at?->toIso8601String(),
             'created_at' => $run->created_at?->toIso8601String(),
             'updated_at' => $run->updated_at?->toIso8601String(),
+            'diagnostics' => $this->diagnostics->build($run, $capturedAt, $runs),
             'events' => $run->events
                 ->map(fn (AgentRunEvent $event): array => $this->event($event))
                 ->values()
@@ -208,7 +227,7 @@ final class ConversationDebugTranscriptController extends Controller
     /** @return array<string,mixed> */
     private function validation(mixed $grounding): array
     {
-        $grounding = is_array($grounding) ? $grounding : [];
+        $grounding = is_array($grounding) ? $this->redactor->redact($grounding) : [];
         $checks = $grounding['semantic_validation'] ?? null;
         $checks = is_array($checks) ? array_values(array_filter($checks, 'is_array')) : [];
         $last = $checks === [] ? null : $checks[array_key_last($checks)];
@@ -247,9 +266,9 @@ final class ConversationDebugTranscriptController extends Controller
             'phase' => $event->phase,
             'locale' => $event->locale,
             'message_key' => $event->message_key,
-            'message_params' => $event->message_params,
-            'message' => $event->message,
-            'payload_json' => $event->payload_json,
+            'message_params' => $this->safeValue($event->message_params),
+            'message' => $this->safeValue($event->message),
+            'payload_json' => $this->safeValue($event->payload_json),
             'created_at' => $event->created_at?->toIso8601String(),
             'updated_at' => $event->updated_at?->toIso8601String(),
         ];
@@ -265,10 +284,10 @@ final class ConversationDebugTranscriptController extends Controller
             'tool_kind' => $execution->tool_kind,
             'api_route_id' => $execution->api_route_id,
             'status' => $execution->status,
-            'depends_on_json' => $execution->depends_on_json,
-            'arguments_json' => $execution->arguments_json,
-            'result_meta_json' => $execution->result_meta_json,
-            'error_code' => $execution->error_code,
+            'depends_on_json' => $this->safeValue($execution->depends_on_json),
+            'arguments_json' => $this->safeValue($execution->arguments_json),
+            'result_meta_json' => $this->safeValue($execution->result_meta_json),
+            'error_code' => $this->safeValue($execution->error_code),
             'physical_request_count' => $execution->physical_request_count,
             'latency_ms' => $execution->latency_ms,
             'started_at' => $execution->started_at?->toIso8601String(),
@@ -291,19 +310,26 @@ final class ConversationDebugTranscriptController extends Controller
             'capability_hash' => $report->capability_hash,
             'capability_count' => $report->capability_count,
             'capability_bytes' => $report->capability_bytes,
-            'candidate_tools_json' => $report->candidate_tools_json,
-            'route_json' => $report->route_json,
-            'classic_plan_json' => $report->classic_plan_json,
-            'capability_plan_json' => $report->capability_plan_json,
-            'comparison_json' => $report->comparison_json,
+            'candidate_tools_json' => $this->safeValue($report->candidate_tools_json),
+            'route_json' => $this->safeValue($report->route_json),
+            'classic_plan_json' => $this->safeValue($report->classic_plan_json),
+            'capability_plan_json' => $this->safeValue($report->capability_plan_json),
+            'comparison_json' => $this->safeValue($report->comparison_json),
             'router_latency_ms' => $report->router_latency_ms,
             'planner_latency_ms' => $report->planner_latency_ms,
             'prompt_tokens' => $report->prompt_tokens,
             'completion_tokens' => $report->completion_tokens,
             'fallback_used' => $report->fallback_used,
-            'error_code' => $report->error_code,
+            'error_code' => $this->safeValue($report->error_code),
             'created_at' => $report->created_at?->toIso8601String(),
             'updated_at' => $report->updated_at?->toIso8601String(),
         ];
+    }
+
+    private function safeValue(mixed $value): mixed
+    {
+        // Preserve the transcript's shape and size contract. Apply the shared
+        // credential/PII policy to content, not to correlation IDs or timestamps.
+        return $this->redactor->redact(['value' => $value])['value'];
     }
 }

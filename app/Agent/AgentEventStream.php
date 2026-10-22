@@ -15,6 +15,33 @@ final readonly class AgentEventStream
     /** @return Generator<int,string> */
     public function frames(AgentRun $run, int $afterSequence): Generator
     {
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $span = $diagnostics->begin($run, 'transport.event_stream', ['wait_for' => 'persisted_events', 'last_sequence' => $afterSequence]);
+        $frames = 0;
+        $cursor = $afterSequence;
+        $operation = 'generator_closed';
+        try {
+            $stream = $this->streamFrames($run, $afterSequence);
+            foreach ($stream as $frame) {
+                if (preg_match('/^id: (\d+)\n/', $frame, $match) === 1) {
+                    $frames++;
+                    $cursor = (int) $match[1];
+                }
+                yield $frame;
+            }
+            $operation = $stream->getReturn();
+        } catch (\Throwable $exception) {
+            $diagnostics->failure($run, $span, $exception);
+            throw $exception;
+        } finally {
+            // This observes server emission only; it is never proof of browser receipt.
+            $diagnostics->end($run, $span, metadata: ['operation' => $operation, 'result_count' => $frames, 'last_sequence' => $cursor]);
+        }
+    }
+
+    /** @return Generator<int,string,mixed,string> */
+    private function streamFrames(AgentRun $run, int $afterSequence): Generator
+    {
         $cursor = max(0, $afterSequence);
         $pollMs = max(10, (int) config('agent.events.poll_ms', 100));
         $deadline = microtime(true) + max(0, (float) config('agent.events.stream_seconds', 25));
@@ -54,7 +81,7 @@ final readonly class AgentEventStream
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
                     yield "id: {$cursor}\nevent: {$type}\ndata: {$data}\n\n";
                 }
-                break;
+                return 'terminal_log_drained';
             }
 
             if ($events->isEmpty()) {
@@ -62,10 +89,12 @@ final readonly class AgentEventStream
             }
 
             if (connection_aborted()) {
-                break;
+                return 'client_disconnected';
             }
 
             usleep($pollMs * 1000);
         } while (microtime(true) < $deadline);
+
+        return 'poll_window_elapsed';
     }
 }

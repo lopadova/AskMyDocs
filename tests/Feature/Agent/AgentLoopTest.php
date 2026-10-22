@@ -131,6 +131,8 @@ final class AgentLoopTest extends TestCase
             'Dammi tutti gli ordini di Tizio',
             'crm',
             Mockery::type(RetrievalFilters::class),
+            true,
+            Mockery::type(\Closure::class),
         )
             ->andReturn(new SearchResult(collect(), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
@@ -515,6 +517,8 @@ final class AgentLoopTest extends TestCase
                 'Cerca tutto quello che riesci a trovare su Giulia Riva e fammi un riassunto',
                 'crm',
                 Mockery::type(RetrievalFilters::class),
+                true,
+                Mockery::type(\Closure::class),
             )
             ->andReturn(new SearchResult(collect(), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);

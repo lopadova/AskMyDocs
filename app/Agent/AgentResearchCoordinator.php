@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Agent\Debug\RunDiagnostics;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Evidence\ResearchEvidence;
@@ -49,14 +50,27 @@ class AgentResearchCoordinator
                 'research_kb_flows' => $locked->result_json['research_kb_flows'] ?? $locked->result_json['research_flows'] ?? []]])->save();
             return $ids;
         });
+        $diagnostics = app(RunDiagnostics::class);
+        $fanoutSpan = $diagnostics->begin($parent, 'research.fanout', [
+            'wait_reason' => 'research_process_results',
+            'driver' => app()->runningUnitTests() ? 'inline_test' : 'process',
+            'concurrency' => (int) config('reasoning.research_concurrency', 4),
+            'timeout_seconds' => (int) config('reasoning.research_timeout_seconds', 180),
+        ]);
+        $waiting = [];
         $tasks = [];
         foreach ($runs as $index => $id) {
+            $waiting[$id] = $diagnostics->begin($parent, 'research.child_wait', [
+                'child_run_id' => $id, 'research_flow_id' => $index, 'wait_reason' => 'research_branch_result',
+            ], $fanoutSpan);
             $tenant = $parent->tenant_id;
             $tasks[$index] = static fn () => app(self::class)->runBranch($id, $tenant);
         }
         try {
-            app(ResearchFanout::class)->run($tasks);
-        } catch (\Throwable) {
+            app(ResearchFanout::class)->run($tasks, diagnostics: $diagnostics->observer($parent));
+            $diagnostics->end($parent, $fanoutSpan);
+        } catch (\Throwable $exception) {
+            $diagnostics->failure($parent, $fanoutSpan, $exception, ['error_handled' => true]);
             // A process timeout must not erase another branch's durable successful checkpoint.
         }
         $combined = app(AgentEvidenceFactory::class)->empty();
@@ -71,6 +85,9 @@ class AgentResearchCoordinator
                     'error_code' => 'research_incomplete'])->save();
                 app(AgentResearchProgress::class)->branch($run, 'partial');
             }
+            $diagnostics->end($parent, $waiting[$id],
+                in_array($run->status, [AgentRun::STATUS_FAILED, AgentRun::STATUS_CANCELLED], true) ? $run->status : 'completed',
+                ['operation' => $run->error_code === 'research_incomplete' ? 'incomplete_after_fanout' : $run->status]);
             $result = $run->result_json ?? [];
             $combined->import(ResearchEvidence::tagged($result['evidence'] ?? [], $index));
             foreach ($result['completed_actions'] ?? [] as $action) {
@@ -109,12 +126,18 @@ class AgentResearchCoordinator
             return; // Another delivery owns this branch; never repeat its live tool calls.
         }
         $run = null;
+        $branchSpan = null;
+        $diagnostics = app(RunDiagnostics::class);
         try {
             app(\App\Support\TenantContext::class)->set($tenant);
             $run = AgentRun::query()->forTenant($tenant)->findOrFail($id);
             if ($run->isTerminal()) {
                 return;
             }
+            $branchSpan = $diagnostics->begin($run, 'research.branch', [
+                'research_flow_id' => data_get($run->input_json, 'research_flow_id'),
+                'wait_reason' => 'agent_loop',
+            ]);
             $parent = AgentRun::query()->forTenant($tenant)->findOrFail(data_get($run->input_json, 'research_parent_id'));
             $flow = data_get($run->input_json, 'research_flow_id');
             if (data_get($parent->result_json, 'research_runs.'.$flow) !== $run->id) {
@@ -136,8 +159,10 @@ class AgentResearchCoordinator
                 'completed_at' => now(), 'result_json' => [...$run->result_json, 'stop_reason' => $outcome->stopReason,
                     'evidence' => $outcome->evidence->jsonSerialize(), 'completed_actions' => $outcome->completedActions]])->save();
             app(AgentResearchProgress::class)->branch($run, $run->status === AgentRun::STATUS_COMPLETED ? 'collected' : 'partial');
+            $diagnostics->end($run, $branchSpan, metadata: ['operation' => $run->status]);
         } catch (\Throwable $exception) {
             if ($run !== null) {
+                $diagnostics->failure($run, $branchSpan, $exception, ['error_handled' => true]);
                 $run->refresh()->forceFill(['status' => $exception instanceof AgentRunCancelledException ? AgentRun::STATUS_CANCELLED : AgentRun::STATUS_FAILED,
                     'completed_at' => now(), 'error_code' => 'research_branch_failed',
                     'result_json' => [...($run->result_json ?? []), 'research_error' => ['exception_class' => $exception::class]]])->save();

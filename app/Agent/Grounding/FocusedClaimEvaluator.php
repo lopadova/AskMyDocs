@@ -165,7 +165,7 @@ final readonly class FocusedClaimEvaluator
                     ]);
                 }
                 $result = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode(['independent_answers_v1', $state])), fn () => $request->decideIndependently(),
-                    $repairAttempt ? 'focused_decision_repair' : 'focused_decision');
+                    $repairAttempt ? 'focused_decision_repair' : 'focused_decision', $tenant);
                 $decisions = $result->answers;
                 $meta = [...$meta, 'used' => true, 'status' => $result->answerErrors === [] ? 'completed' : 'partial',
                     'answer_errors' => $result->answerErrors, 'model' => $result->model, 'usage' => $result->usage, 'latency_ms' => $result->latencyMs];
@@ -178,7 +178,7 @@ final readonly class FocusedClaimEvaluator
                 }
             }
         }
-        $excerpts = app(DocumentExcerptFallbackEvaluator::class)->evaluate($question, $pairs, $decisions, $runId, $repairAttempt);
+        $excerpts = app(DocumentExcerptFallbackEvaluator::class)->evaluate($question, $pairs, $decisions, $runId, $repairAttempt, $tenant);
         $meta['document_excerpt_validation'] = $excerpts['trace'];
         $sourceExcerpts = [];
         foreach ($excerpts['excerpts'] as $key => $excerpt) {
@@ -232,7 +232,7 @@ final readonly class FocusedClaimEvaluator
         $validated = app(OriginalQuestionRelevanceEvaluator::class)->apply($question, ['valid' => $accepted !== [], 'reason' => $accepted === [] ? $reason : null, 'terms' => [],
             'claims' => array_values($accepted), 'semantic_validation' => [$meta], 'subquestions' => $coverage,
             'partial' => count($accepted) < count(array_filter($checks, fn ($c) => ! in_array($c['reason'], ['duplicate_fact', 'already_communicated'], true)))
-                || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId, $repairAttempt);
+                || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId, $repairAttempt, $tenant);
         return [...$validated, 'source_excerpts' => $sourceExcerpts];
     }
 

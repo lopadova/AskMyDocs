@@ -10,7 +10,7 @@ use App\Decisions\DecisionState;
 /** Support in a source cannot authorize answering a different user request. */
 final readonly class OriginalQuestionRelevanceEvaluator
 {
-    public function apply(string $question, array $grounding, array $understanding = [], array $navigation = [], ?string $runId = null, bool $repairAttempt = false): array
+    public function apply(string $question, array $grounding, array $understanding = [], array $navigation = [], ?string $runId = null, bool $repairAttempt = false, ?string $tenantId = null): array
     {
         $claims = array_values($grounding['claims'] ?? []);
         if (! ($grounding['valid'] ?? false) || $claims === []) {
@@ -62,7 +62,7 @@ final readonly class OriginalQuestionRelevanceEvaluator
             $trace['attempted'] = true;
             $signature = hash('sha256', json_encode($payload->data, JSON_THROW_ON_ERROR));
             $result = app(DecisionOnce::class)->run($runId, $signature, fn () => $decision->decide(),
-                $repairAttempt ? 'original_question_relevance_decision_repair' : 'original_question_relevance_decision');
+                $repairAttempt ? 'original_question_relevance_decision_repair' : 'original_question_relevance_decision', $tenantId);
             $answers = $result->answers;
             $trace = [...$trace, 'used' => true, 'status' => 'completed', 'model' => $result->model,
                 'usage' => $result->usage, 'latency_ms' => $result->latencyMs];

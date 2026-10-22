@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Agent\Grounding;
 
+use App\Agent\Debug\ProviderDiagnostics;
 use App\Decisions\DecisionException;
 use App\Decisions\Decisions;
+use App\Models\AgentRun;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -19,7 +21,7 @@ final readonly class AgentClaimBatchEvaluator
      * @param list<string> $mentions
      * @return array{valid:bool,reason:?string,terms:list<string>,claims:list<array<string,mixed>>,semantic_validation:list<array<string,mixed>>,partial:bool}
      */
-    public function evaluate(string $question, array $evidence, mixed $claims, array $mentions = [], string $projectKey = '', string $tenantId = ''): array
+    public function evaluate(string $question, array $evidence, mixed $claims, array $mentions = [], string $projectKey = '', string $tenantId = '', ?AgentRun $run = null): array
     {
         $accepted = [];
         $pairs = [];
@@ -85,7 +87,9 @@ final readonly class AgentClaimBatchEvaluator
                         ]);
                 }
                 $metadata['attempted'] = true;
-                $result = $decision->decide();
+                $diagnostics = app(ProviderDiagnostics::class);
+                $result = $diagnostics->measure($run, 'provider.decision', fn () => $decision->decide(),
+                    $diagnostics->decisionMetadata('claim_batch'));
                 $metadata['used'] = true;
                 $metadata['status'] = 'completed';
                 $metadata['model'] = $result->model;

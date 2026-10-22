@@ -54,6 +54,21 @@ final class AgentRunDispatcher
 
     public function enqueue(AgentRun $run): void
     {
-        ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id);
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $runtime = $diagnostics->runtime();
+        $span = $diagnostics->begin($run, 'queue.wait', [
+            'wait_for' => 'worker_receipt', 'queue_connection' => $runtime['queue_connection'] ?? null,
+            'queue_driver' => $runtime['queue_driver'] ?? null, 'queue_name' => $runtime['queue_name'] ?? null,
+            'runtime' => $runtime,
+        ]);
+        try {
+            // Force PendingDispatch destruction inside this try, so dispatch errors
+            // are observed without changing Laravel's transport/after-commit policy.
+            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span);
+            unset($pending);
+        } catch (\Throwable $exception) {
+            $diagnostics->failure($run, $span, $exception);
+            throw $exception;
+        }
     }
 }
