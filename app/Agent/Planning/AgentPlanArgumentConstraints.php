@@ -12,10 +12,10 @@ final readonly class AgentPlanArgumentConstraints
 {
     public function __construct(private Validator $schema = new Validator) {}
 
-    public function validate(AgentPlan $plan, array $tools): void
+    public function validate(AgentPlan $plan, array $tools, array $identifierSources = []): void
     {
         foreach ($plan->actions as $action) {
-            $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true);
+            $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources);
         }
     }
 
@@ -24,7 +24,7 @@ final readonly class AgentPlanArgumentConstraints
      * Malformed schemas and other plan errors still fail closed. No value is rewritten.
      * @param list<string> $completedActionIds
      */
-    public function independentValidBranches(AgentPlan $plan, array $tools, array $completedActionIds = []): AgentPlan
+    public function independentValidBranches(AgentPlan $plan, array $tools, array $completedActionIds = [], array $identifierSources = []): AgentPlan
     {
         $kept = $rejected = [];
         $rejectedIds = [];
@@ -39,7 +39,7 @@ final readonly class AgentPlanArgumentConstraints
             $blocked = array_intersect($dependencies, $rejectedIds) !== [];
             if (! $blocked) {
                 try {
-                    $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true);
+                    $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources);
                 } catch (AgentPlanValidationException $exception) {
                     if ($exception->validationCode !== 'input_pattern_mismatch') {
                         throw $exception;
@@ -66,7 +66,7 @@ final readonly class AgentPlanArgumentConstraints
         return new AgentPlan($validated->decision, $validated->actions, $validated->estimate, $rejected);
     }
 
-    public function validateArguments(AgentToolDefinition $tool, array $arguments, bool $allowReferences = false): void
+    public function validateArguments(AgentToolDefinition $tool, array $arguments, bool $allowReferences = false, array $identifierSources = []): void
     {
         if ($tool->kind !== 'api') {
             return;
@@ -88,6 +88,11 @@ final readonly class AgentPlanArgumentConstraints
             if (! $valid) {
                 throw new AgentPlanValidationException('input_pattern_mismatch',
                     "Argument [{$field}] for [{$tool->name}] must match its declared pattern [{$definition['pattern']}]. Select the matching tool; never rewrite an entity identifier to fit. The supplied value is ".json_encode($value).'. Remove this incompatible action or select its correct tool, preserving independent valid actions.');
+            }
+            if (($definition['x-require-observed-identifier'] ?? false) === true
+                && ! AgentIdentifierSources::contains($value, $identifierSources)) {
+                throw new AgentPlanValidationException('input_pattern_mismatch',
+                    "Identifier [{$value}] for [{$tool->name}.{$field}] was not observed in the original request or authorized source content. Never derive or rewrite a target identifier. Use an exact observed value or remove this action, preserving independent valid actions.");
             }
         }
     }

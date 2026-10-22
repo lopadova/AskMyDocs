@@ -61,6 +61,8 @@ final readonly class AgentPlanner
         $promptTokens = null;
         $completionTokens = null;
         $correction = $validationError;
+        $identifierGuard = app(AgentIdentifierSources::class);
+        $identifierSources = $identifierGuard->required($tools) ? $identifierGuard->forContext($context, $evidence) : [];
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $plan = null;
@@ -101,7 +103,7 @@ final readonly class AgentPlanner
                     (int) config('agent.planner.max_actions_per_plan', 8),
                     array_values(array_filter(array_column($completedActions, 'id'), 'is_string')),
                 );
-                app(AgentPlanArgumentConstraints::class)->validate($plan, $tools);
+                app(AgentPlanArgumentConstraints::class)->validate($plan, $tools, $identifierSources);
                 $this->liveSourceCoverage->validate($question, $plan, $tools, $completedActions);
 
                 return new AgentPlannerAttempt($plan, $latencyMs, $promptTokens, $completionTokens);
@@ -110,7 +112,7 @@ final readonly class AgentPlanner
                     if ($plan !== null && $exception instanceof AgentPlanValidationException
                         && $exception->validationCode === 'input_pattern_mismatch') {
                         $safePlan = app(AgentPlanArgumentConstraints::class)->independentValidBranches($plan, $tools,
-                            array_values(array_filter(array_column($completedActions, 'id'), 'is_string')));
+                            array_values(array_filter(array_column($completedActions, 'id'), 'is_string')), $identifierSources);
                         $this->liveSourceCoverage->validate($question, $safePlan, $tools, $completedActions);
 
                         return new AgentPlannerAttempt($safePlan, $latencyMs, $promptTokens, $completionTokens);

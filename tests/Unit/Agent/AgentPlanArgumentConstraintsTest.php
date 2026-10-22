@@ -73,4 +73,36 @@ class AgentPlanArgumentConstraintsTest extends TestCase
         (new AgentPlanArgumentConstraints)->validateArguments($this->tool('mcp'), ['reference' => 'RETURN-42']);
         $this->addToAssertionCount(1);
     }
+
+    public function test_a_valid_format_does_not_authorize_a_derived_identifier(): void
+    {
+        $tool = $this->observedTool();
+        $this->expectException(AgentPlanValidationException::class);
+        $this->expectExceptionMessage('was not observed');
+        (new AgentPlanArgumentConstraints)->validateArguments($tool, ['reference' => 'ORDER-43'],
+            identifierSources: ['Read ORDER-42 and RETURN-43.']);
+    }
+
+    public function test_observed_identifiers_are_exact_tokens_and_never_prefixes(): void
+    {
+        $this->assertFalse(\App\Agent\Planning\AgentIdentifierSources::contains('U123', ['RU123 U123_1 U1234 U123-1']));
+        $this->assertTrue(\App\Agent\Planning\AgentIdentifierSources::contains('U123', ['Order `U123`, please.']));
+        (new AgentPlanArgumentConstraints)->validateArguments($this->observedTool(), ['reference' => 'ORDER-42'],
+            identifierSources: ['The selected source says ORDER-42.']);
+    }
+
+    public function test_reference_resolution_still_requires_observed_values(): void
+    {
+        $guard = new AgentPlanArgumentConstraints;
+        $guard->validateArguments($this->observedTool(), ['reference' => ['$from' => 'result', 'path' => 'reference']], allowReferences: true);
+        $this->expectException(AgentPlanValidationException::class);
+        $guard->validateArguments($this->observedTool(), ['reference' => 'ORDER-43'], identifierSources: ['ORDER-42']);
+    }
+
+    private function observedTool(): AgentToolDefinition
+    {
+        return new AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
+            inputSchema: ['type' => 'object', 'properties' => ['reference' => ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$', 'x-require-observed-identifier' => true]]],
+            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+    }
 }

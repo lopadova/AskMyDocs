@@ -545,7 +545,9 @@ final readonly class AgentLoop
             return new AgentToolActionResult($body, 0);
         }
 
-        app(\App\Agent\Planning\AgentPlanArgumentConstraints::class)->validateArguments($tool, $arguments);
+        $identifierGuard = app(\App\Agent\Planning\AgentIdentifierSources::class);
+        app(\App\Agent\Planning\AgentPlanArgumentConstraints::class)->validateArguments($tool, $arguments,
+            identifierSources: $identifierGuard->required([$tool]) ? $identifierGuard->forRun($run, $evidence) : []);
         return $this->serverTools->execute(
             $tool,
             $arguments,

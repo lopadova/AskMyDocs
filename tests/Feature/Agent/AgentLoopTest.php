@@ -38,18 +38,27 @@ final class AgentLoopTest extends TestCase
         config()->set('kb.investigation.enabled', false);
     }
 
-    public function test_repeated_invalid_entity_branch_never_dispatches_and_valid_read_still_completes(): void
+    public static function invalidIdentifierCases(): array
+    {
+        return ['wrong namespace' => ['RETURN-42', false], 'invented but valid format' => ['ORDER-43', true]];
+    }
+
+    #[DataProvider('invalidIdentifierCases')]
+    public function test_repeated_invalid_entity_branch_never_dispatches_and_valid_read_still_completes(string $invalid, bool $observed): void
     {
         $route = $this->route('lookup_orders', 'http://erp.example.test/orders');
         $this->parameter($route, 'reference', 'query');
         $definition = $route->tool_definition;
         $definition['input_schema']['properties']['reference'] = ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$'];
+        if ($observed) {
+            $definition['input_schema']['properties']['reference']['x-require-observed-identifier'] = true;
+        }
         $route->forceFill(['tool_definition' => $definition, 'input_schema' => $definition['input_schema']])->save();
         Http::fake(['*' => Http::response(['id' => 42, 'reference' => 'ORDER-42', 'status' => 'SHIPPED'])]);
         $ai = Mockery::mock(AiManager::class);
         $plan = ['decision' => 'tools', 'actions' => array_map(fn ($id, $reference) => [
             'id' => $id, 'tool' => 'lookup_orders', 'arguments' => ['reference' => $reference], 'depends_on' => [], 'purpose' => 'Read record',
-        ], ['valid', 'invalid'], ['ORDER-42', 'RETURN-42'])];
+        ], ['valid', 'invalid'], ['ORDER-42', $invalid])];
         $ai->shouldReceive('chatWithHistory')->times(3)->andReturn($this->planResponse($plan), $this->planResponse($plan),
             $this->planResponse(['decision' => 'answer', 'actions' => []]));
         $this->app->instance(AiManager::class, $ai);
@@ -57,6 +66,10 @@ final class AgentLoopTest extends TestCase
         $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
         $run = $this->makeRun();
+        $user = \App\Models\User::create(['name' => 'QA user',
+            'email' => 'qa@example.invalid', 'password' => 'unused-test-password']);
+        $run->forceFill(['user_id' => $user->id, 'actor_id' => (string) $user->id,
+            'input_json' => [...$run->input_json, 'question' => 'Read ORDER-42 and RETURN-43.']])->save();
         $outcome = app(AgentLoop::class)->run($run, $this->context($run));
         $this->assertSame('answer', $outcome->decision);
         $this->assertSame(['skipped', 'completed'], array_column($outcome->completedActions, 'status'));
@@ -64,7 +77,7 @@ final class AgentLoopTest extends TestCase
         $this->assertSame(['reference' => 'ORDER-42'], $outcome->evidence->apiTools()[0]['arguments']);
         $this->assertSame(1, $run->fresh()->counters_json['physical_calls']);
         Http::assertSentCount(1);
-        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'ORDER-42') && ! str_contains($request->url(), 'RETURN-42'));
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'ORDER-42') && ! str_contains($request->url(), $invalid));
     }
 
     public function test_it_chains_customer_lookup_into_orders_and_replans_with_combined_evidence(): void
