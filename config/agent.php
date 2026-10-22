@@ -16,6 +16,9 @@ return [
         // Provider-native model ids; null inherits the selected chat model.
         'model' => env('AGENT_ANSWER_MODEL'),
         'repair_model' => env('AGENT_ANSWER_REPAIR_MODEL'),
+        // Reasoning may exhaust the ordinary completion budget before the
+        // structured tool arguments finish. Only the one retry gets more room.
+        'structured_retry_max_tokens' => (int) env('AGENT_STRUCTURED_RETRY_MAX_TOKENS', 16384),
     ],
     'presentation' => [
         'enabled' => (bool) env('AGENT_PRESENTATION_ENABLED', true),

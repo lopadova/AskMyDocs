@@ -21,17 +21,20 @@ final class AgentAnswerSynthesizerTest extends TestCase
 {
     public function test_malformed_submission_is_retried_once_and_valid_claims_are_still_grounded(): void
     {
-        config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false, 'agent.presentation.enabled' => false]);
+        config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false,
+            'agent.presentation.enabled' => false, 'agent.synthesis.structured_retry_max_tokens' => 99999]);
         $content = 'ORDER-A: replacement requested.';
         $hash = hash('sha256', $content);
         $evidence = app(AgentEvidenceFactory::class)->empty();
         $evidence->addDocument(['document_id' => 252, 'title' => 'ORDER-A', 'evidence' => [['content' => $content, 'evidence_hash' => $hash]]]);
         $ai = Mockery::mock(AiManager::class);
         $attempt = 0;
-        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system) use (&$attempt, $content, $hash) {
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system, $messages, $options) use (&$attempt, $content, $hash) {
             if ($attempt++ === 0) {
+                $this->assertArrayNotHasKey('max_tokens', $options);
                 return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => '{"claims":[']]);
             }
+            $this->assertSame(16384, $options['max_tokens']);
             $this->assertStringContainsString('previous attempt did not produce a usable complete structured response', $system);
             return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
                 'completeness' => 'complete', 'claims' => [['text' => $content, 'quote' => $content, 'document_id' => 252,

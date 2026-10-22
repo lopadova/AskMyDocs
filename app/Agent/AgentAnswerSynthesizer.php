@@ -493,7 +493,9 @@ PROMPT;
                 'table_artifact_available' => $tableArtifact !== null && ! $repairAttempt && $claimBudget === null,
                 'evidence' => $promptEvidence,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]],
-            ['temperature' => 0, ...is_string($model) && $model !== '' ? ['model' => $model] : [], 'tools' => [$submission],
+            ['temperature' => 0,
+                ...$structuredRetry ? ['max_tokens' => max(4096, min(16384, (int) config('agent.synthesis.structured_retry_max_tokens', 16384)))] : [],
+                ...is_string($model) && $model !== '' ? ['model' => $model] : [], 'tools' => [$submission],
                 'tool_choice' => ['type' => 'function', 'function' => ['name' => 'submit_agent_answer']]],
         );
     }
