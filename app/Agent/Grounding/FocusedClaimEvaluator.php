@@ -183,7 +183,11 @@ final readonly class FocusedClaimEvaluator
             $confident = is_numeric($probability) && $probability >= (float) config('reasoning.threshold', 0.8);
             $claim = $confident && $category === 'supported_relevant' ? $pair['claim'] : null;
             $fallback = null;
-            if (! $confident) {
+            // Reject the generated prose independently from the record. Exact
+            // requested scalar fields remain readable after identity/hash/scope
+            // checks, even when that prose introduced an unsupported assertion.
+            // Off-topic and conflicting decisions must never take this path.
+            if (! $confident || $category === 'unsupported') {
                 $claim = $this->structuredFallback($pair);
                 $fallback = $claim === null ? null : 'exact_record_fields';
             }
@@ -196,6 +200,7 @@ final readonly class FocusedClaimEvaluator
                 'reason' => $repeated ? 'already_communicated' : ($duplicate ? 'duplicate_fact' : ($category ?? 'decision_unavailable')),
                 'category' => $category, 'probabilities' => $decisions[$key]['probabilities'] ?? [], 'probability' => $probability,
                 'threshold' => (float) config('reasoning.threshold', 0.8), 'fallback' => $fallback, 'record_path' => $pair['bound']['path'],
+                ...($fallback === null ? [] : ['candidate_text' => $pair['check']['text'], 'text' => $claim['text']]),
                 'missing_fields' => $fallback === null ? [] : array_values(array_filter($pair['sub']['fields'] ?? [],
                     fn ($field) => $field !== '*' && ! array_key_exists($pair['bound']['field_aliases'][$field] ?? $field, $pair['bound']['record'])))];
             if ($claim !== null && ! $repeated && ! $duplicate) {

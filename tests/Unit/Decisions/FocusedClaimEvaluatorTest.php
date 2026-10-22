@@ -8,6 +8,47 @@ use Tests\TestCase;
 
 class FocusedClaimEvaluatorTest extends TestCase
 {
+    public function test_rejected_api_prose_is_replaced_only_by_authorized_requested_literal_fields(): void
+    {
+        $this->fake(['claim_0' => 'unsupported']);
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 is delivered and the refund was paid.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('refund was paid', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('ORDER-22', $result['claims'][0]['text']);
+        $check = $result['semantic_validation'][0]['checks'][0];
+        $this->assertSame('unsupported', $check['category']);
+        $this->assertSame('exact_record_fields', $check['fallback']);
+        $this->assertSame($claims[0]['text'], $check['candidate_text']);
+        $this->assertSame($result['claims'][0]['text'], $check['text']);
+        $this->assertTrue($result['partial']);
+    }
+
+    public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(): void
+    {
+        foreach (['conflicting', 'supported_off_topic'] as $category) {
+            $this->fake(['claim_0' => $category]);
+            [$evidence, $claims, $u] = $this->fixture();
+            $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+            $this->assertFalse($result['valid']);
+            $this->assertSame([], $result['claims']);
+            $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+        }
+    }
+
+    public function test_rejected_prose_cannot_project_a_record_with_a_bad_source_hash(): void
+    {
+        $this->fake(['claim_0' => 'unsupported']);
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['evidence_hash'] = 'invented';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertSame('source_hash_mismatch', $result['semantic_validation'][0]['checks'][0]['reason']);
+    }
+
     public function test_api_observation_time_comes_from_the_bound_envelope_not_the_model_claim(): void
     {
         $this->fake();
