@@ -26,6 +26,26 @@ use Tests\TestCase;
  */
 final class AgentPlannerTest extends TestCase
 {
+    public function test_an_unreferenced_reused_action_key_does_not_abort_the_missing_live_read(): void
+    {
+        $tool = new \App\Agent\Tools\AgentToolDefinition(name: 'get_returns', displayName: 'Returns',
+            description: 'Read returns', kind: 'api', inputSchema: ['type' => 'object'], readOnly: true,
+            idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'planner', toolCalls: [[
+            'name' => 'submit_agent_plan', 'arguments' => ['decision' => 'tools', 'actions' => [[
+                'id' => 'step_1', 'tool' => 'get_returns', 'arguments' => ['id' => 'RETURN-A'],
+                'depends_on' => [], 'purpose' => 'Read the requested return',
+            ]]],
+        ]]));
+        $planner = new AgentPlanner($ai, app(AgentPlanParser::class), app(AgentEvidenceSummarizer::class), app(AgentLiveSourceCoverage::class));
+        $plan = $planner->decide('Read RETURN-A', $this->context(), ['get_returns' => $tool],
+            app(AgentEvidenceFactory::class)->empty(), [['id' => 'step_1', 'tool' => 'get_orders', 'status' => 'completed']]);
+        $this->assertSame('step_2', $plan->actions[0]->id);
+        $this->assertSame('get_returns', $plan->actions[0]->tool);
+        $this->assertSame(['id' => 'RETURN-A'], $plan->actions[0]->arguments);
+    }
+
     public function test_default_depth_is_3_balanced(): void
     {
         $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(

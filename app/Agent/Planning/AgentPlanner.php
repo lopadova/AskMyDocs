@@ -92,6 +92,8 @@ final readonly class AgentPlanner
 
             try {
                 $payload = $this->payload($response->toolCalls, $response->content);
+                $payload = (new AgentPlanActionIdNormalizer)->normalize($payload,
+                    array_values(array_filter(array_column($completedActions, 'id'), 'is_string')));
                 $plan = $this->parser->parse(
                     $payload,
                     $tools,
