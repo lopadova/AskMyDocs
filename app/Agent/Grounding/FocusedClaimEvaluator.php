@@ -119,7 +119,7 @@ final readonly class FocusedClaimEvaluator
             $state = $trial;
             $quote = $claim['quote'] ?? null;
             if (isset($claim['document_id']) && is_string($quote) && $quote !== ''
-                && mb_strlen($quote) <= 700 && mb_strlen($quote) < mb_strlen($bound['quote'])) {
+                && mb_strlen($quote) <= 700 && mb_strlen($quote) <= mb_strlen($bound['quote'])) {
                 $anchor = $this->literalExcerpt($bound['quote'], $quote);
                 if ($anchor !== null) {
                     $literalAnchors[$key] = $anchor;
@@ -129,7 +129,8 @@ final readonly class FocusedClaimEvaluator
                 fn ($id) => is_string($id) && mb_strlen($id) <= 120 && EvidenceProjector::contains($bound['quote'], $id) && EvidenceProjector::contains($claim['text'], $id)));
             $pairs[$key] = ['claim' => [...$verified['claims'][0], 'entity_identifiers' => $entities,
                 'source_title' => $bound['source_title'] ?? '', 'complete_source' => $bound['complete_source'] ?? false],
-                'bound' => $bound, 'sub' => $subs[$subIndex], 'check' => $check];
+                'bound' => $bound, 'sub' => $subs[$subIndex], 'check' => $check,
+                'literal_excerpt' => $literalAnchors[$key] ?? null, 'locale' => $understanding['language'] ?? app()->getLocale()];
         }
         // Literal navigation cues cannot replace originals or displace facts.
         // Add them only after all mandatory sources/claims have their budget.
@@ -177,6 +178,12 @@ final readonly class FocusedClaimEvaluator
                 }
             }
         }
+        $excerpts = app(DocumentExcerptFallbackEvaluator::class)->evaluate($question, $pairs, $decisions, $runId, $repairAttempt);
+        $meta['document_excerpt_validation'] = $excerpts['trace'];
+        $sourceExcerpts = [];
+        foreach ($excerpts['excerpts'] as $key => $excerpt) {
+            $sourceExcerpts[] = $this->sourceExcerpt($pairs[$key], $excerpt);
+        }
         $renderedTexts = [];
         foreach ($pairs as $key => $pair) {
             $category = $decisions[$key]['choice'] ?? null;
@@ -202,7 +209,7 @@ final readonly class FocusedClaimEvaluator
                 'category' => $category, 'probabilities' => $decisions[$key]['probabilities'] ?? [], 'probability' => $probability,
                 'threshold' => (float) config('reasoning.threshold', 0.8), 'fallback' => $fallback, 'record_path' => $pair['bound']['path'],
                 ...($fallback === null ? [] : ['candidate_text' => $pair['check']['text'], 'text' => $claim['text']]),
-                'missing_fields' => $fallback === null ? [] : array_values(array_filter($pair['sub']['fields'] ?? [],
+                'missing_fields' => $fallback === null || ! is_array($pair['bound']['record']) ? [] : array_values(array_filter($pair['sub']['fields'] ?? [],
                     fn ($field) => $field !== '*' && ! array_key_exists($pair['bound']['field_aliases'][$field] ?? $field, $pair['bound']['record'])))];
             if ($claim !== null && ! $repeated && ! $duplicate) {
                 $checks[$key]['fact_id'] = $fingerprint;
@@ -222,10 +229,11 @@ final readonly class FocusedClaimEvaluator
         if ($checks !== [] && array_diff(array_column($checks, 'reason'), ['already_communicated', 'duplicate_fact']) === []) {
             $reason = 'no_new_detail';
         }
-        return app(OriginalQuestionRelevanceEvaluator::class)->apply($question, ['valid' => $accepted !== [], 'reason' => $accepted === [] ? $reason : null, 'terms' => [],
+        $validated = app(OriginalQuestionRelevanceEvaluator::class)->apply($question, ['valid' => $accepted !== [], 'reason' => $accepted === [] ? $reason : null, 'terms' => [],
             'claims' => array_values($accepted), 'semantic_validation' => [$meta], 'subquestions' => $coverage,
             'partial' => count($accepted) < count(array_filter($checks, fn ($c) => ! in_array($c['reason'], ['duplicate_fact', 'already_communicated'], true)))
                 || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId, $repairAttempt);
+        return [...$validated, 'source_excerpts' => $sourceExcerpts];
     }
 
     /** Content-addressed storage saves bytes without changing source text or authority. */
@@ -293,5 +301,21 @@ final readonly class FocusedClaimEvaluator
         return $rows === [] ? null : [...$pair['claim'], 'text' => "| Campo / Field | Valore / Value |\n|---|---|\n".implode("\n", $rows),
             'literal_projection' => ['record_path' => $pair['bound']['path'], 'fields' => $scalars,
                 'roles' => array_filter($aliases, fn ($field) => array_key_exists($field, $scalars))]];
+    }
+
+    /** Extracted evidence is never an approved claim and never enters the prose presenter. */
+    private function sourceExcerpt(array $pair, string $excerpt): array
+    {
+        $context = array_values(array_filter($pair['sub']['identifiers'] ?? [], fn ($id) => is_string($id)
+            && preg_match('/^[\pL\pN_-]{1,120}$/u', $id) === 1
+            && EvidenceProjector::contains($pair['bound']['source_title'] ?? '', $id)));
+        $label = str_starts_with($pair['locale'], 'it') ? 'Passaggio originale della fonte' : 'Original source excerpt';
+        if ($context !== []) {
+            $label .= ' ('.implode(', ', $context).')';
+        }
+        return ['kind' => 'source_excerpt', 'business_claim_approved' => false,
+            'document_id' => $pair['claim']['document_id'], 'evidence_hash' => $pair['claim']['evidence_hash'],
+            'subquestion_id' => $pair['check']['subquestion_id'], 'quote' => $excerpt,
+            'text' => $label.":\n\n    ".str_replace("\n", "\n    ", $excerpt)];
     }
 }

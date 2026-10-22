@@ -140,7 +140,7 @@ final readonly class AgentAnswerSynthesizer
         $repair = null;
         if ($selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
             && ($grounding['reason'] ?? null) !== 'no_new_detail') {
-            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims'], $understanding ?? []);
+            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? []);
             $grounding['coverage_validation'] = $coverage;
             $providerFailed = array_filter($grounding['semantic_validation'] ?? [], fn ($stage) => ($stage['status'] ?? null) === 'error');
             if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)) {
@@ -172,8 +172,13 @@ final readonly class AgentAnswerSynthesizer
                         $repairedPayload['claims'] ?? [], $understanding ?? [], $context->projectKey, $context->tenantId,
                         data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
                         data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])), repairAttempt: true);
+                    $retainedExcerpts = [];
+                    foreach ([...($grounding['source_excerpts'] ?? []), ...($repaired['source_excerpts'] ?? [])] as $excerpt) {
+                        $retainedExcerpts[hash('sha256', json_encode([$excerpt['document_id'], $excerpt['evidence_hash'], $excerpt['text']]))] = $excerpt;
+                    }
+                    $repaired['source_excerpts'] = array_values($retainedExcerpts);
                     $repairedCoverage = $repaired['valid']
-                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims'], $understanding ?? []) : null;
+                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims'], $understanding ?? [], $repaired['source_excerpts']) : null;
                     $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
                     $repair['candidate_coverage'] = $repairedCoverage;
                     $repair['candidate_reason'] = $repaired['reason'] ?? null;
@@ -307,7 +312,7 @@ final readonly class AgentAnswerSynthesizer
                 'terms' => $grounding['terms'],
             ]);
 
-            return $this->insufficientAnswer($context, $grounding, $response->model, $repair);
+            return $this->insufficientAnswer($context, $grounding, $response->model, $repair, $evidence);
         }
         $previousAnswer = $this->previousAnswer($turnContext);
         if (! $batchEnabled && ! $presentationOnly && $previousAnswer !== null
@@ -403,12 +408,15 @@ final readonly class AgentAnswerSynthesizer
                 $presentedAnswer .= "\n\n".$note['text'];
             }
         }
+        foreach ($grounding['source_excerpts'] ?? [] as $excerpt) {
+            $presentedAnswer .= "\n\n".$excerpt['text'];
+        }
 
         return new AgentAnswer(
             answer: $this->masker->maskString($presentedAnswer),
             locale: $context->locale,
             completeness: $completeness,
-            citations: $this->selectedDocuments($evidence['documents'], $grounding['claims']),
+            citations: $this->selectedDocuments($evidence['documents'], [...$grounding['claims'], ...($grounding['source_excerpts'] ?? [])]),
             toolSources: $this->selectedTools($evidence['api_tools'], $grounding['claims']),
             limitations: array_map(
                 $this->masker->maskString(...),
@@ -427,6 +435,7 @@ final readonly class AgentAnswerSynthesizer
                 'coverage_validation' => $grounding['coverage_validation'] ?? null,
                 'presentation' => $presentation,
                 'source_limitations' => $sourceLimitations === [] ? null : $sourceLimitations,
+                'source_excerpts' => $grounding['source_excerpts'] ?? [],
             ], static fn (mixed $value): bool => $value !== null),
         );
     }
@@ -786,6 +795,7 @@ When a source supplies source_ref, prefer copying that short reference into the 
 For a case history, read the entire supplied conversation and cover the requested problem, customer response and latest documented merchant response, rather than stopping at the opening notice. Include the documented handling plan and conditions governing an unresolved outcome: a later follow-up does not erase an earlier investigation proposal or conditional refund. Keep promises qualified as promises, independently from completed actions. Preserve who performed each action. Never invent a message date from another case or from retrieval time. State recorded observations as historical; a document retrieved now does not establish current availability or an action completed today. A promised refund or shipment is not proof of execution.
 For a combined case-history and API request, reserve space for every explicitly requested live field before optional historical details. A compact table of requested fields from ONE API record is one source-bound claim: include that record's exact identity, status, total and currency when requested, and label its observation time. Keep order and return records separate. Do not spend multiple claims repeating the same currency or total. Keep historical email facts in their own source-bound claims.
 For an email/API financial comparison, explicitly answer EACH requested aspect: email reason, credit note, original amount/currency, the email's refund flag, current return status/total/currency, and the separate order total when requested. State the actual numerical agreement or difference. A refund flag in an email or a confirmed return is not independent evidence of a payment settlement: if the user asks about limits of proof, explicitly distinguish these in a source-bound claim. Do not leave that requested limitation implicit in a generic coverage notice. Keep this requested information before optional dates, products, transport costs or repeated tables.
+When a service, account label or proper name has unclear spelling in the source, preserve that literal spelling in quotation marks and attribute the observation to the consulted message. Do not silently standardize it into a different known system or assume an identity from the forwarding header.
 Use source completeness only to bound a specific missing-confirmation statement. A retrieval window marked incomplete does not mean the original archived email is incomplete. Never describe the entire original as incomplete on that basis. For a visible report row, say that the comparison concerns that row; do not add a source-completeness warning unless it affects a requested conclusion.
 When asked what an email attests, and its complete content only supplies a record link, explicitly identify it as a reference without an operational confirmation or promise. The link itself proves neither the contents of the target record nor delivery, refund or other execution; derive current operational facts only from the live record actually read.
 For EVERY thread-based fact, preserve the speaker of the specific message that establishes it. A customer's deduction or paraphrase of a preceding reply is only that customer's assertion, even when the question does not explicitly ask for merchant confirmation. Embedded quoted messages retain their original speakers. Never merge a merchant statement with a later customer's inference into one authoritative conclusion. Omit an unrequested inference or explicitly attribute it to the customer.
@@ -1054,7 +1064,8 @@ PROMPT;
                 'snippet' => $chunk['content'] ?? null,
                 'evidence_hash' => $chunk['evidence_hash'] ?? null,
             ], array_filter(is_array($document['evidence'] ?? null) ? $document['evidence'] : [], static fn (array $chunk): bool => isset($hashes[(string) ($chunk['evidence_hash'] ?? '')]))));
-            $document['claims'] = array_map(static fn (array $claim): array => ['text' => $claim['text'], 'quote' => $claim['quote'], 'evidence_hash' => $claim['evidence_hash']], $claims);
+            $document['claims'] = array_map(static fn (array $claim): array => ['text' => $claim['text'], 'quote' => $claim['quote'], 'evidence_hash' => $claim['evidence_hash'],
+                ...(($claim['kind'] ?? null) === 'source_excerpt' ? ['kind' => 'source_excerpt', 'business_claim_approved' => false] : [])], $claims);
             unset($document['evidence']);
             return $document;
         }, array_values(array_filter($documents, static fn (array $document): bool => isset($byDocument[(string) ($document['document_id'] ?? '')])))));
@@ -1084,7 +1095,7 @@ PROMPT;
     }
 
     /** @param array{reason:string,terms:list<string>,claims:list<array<string,mixed>>} $grounding */
-    private function insufficientAnswer(AgentExecutionContext $context, array $grounding, string $model, ?array $repair = null): AgentAnswer
+    private function insufficientAnswer(AgentExecutionContext $context, array $grounding, string $model, ?array $repair = null, array $evidence = []): AgentAnswer
     {
         $term = $grounding['terms'][0] ?? null;
         $italian = str_starts_with(strtolower($context->locale), 'it');
@@ -1114,6 +1125,13 @@ PROMPT;
         } elseif ($grounding['reason'] === 'no_new_detail') {
             $answer = $italian ? 'Le fonti consultate non aggiungono dettagli verificati a quanto già comunicato.'
                 : 'The consulted sources add no verified details beyond what was already shared.';
+        }
+        if (($grounding['source_excerpts'] ?? []) !== [] && $grounding['reason'] !== 'conflicting_evidence') {
+            return new AgentAnswer($this->masker->maskString(implode("\n\n", array_column($grounding['source_excerpts'], 'text'))),
+                $context->locale, 'partial', $this->selectedDocuments($evidence['documents'] ?? [], $grounding['source_excerpts']), [],
+                [$grounding['reason']], null, false, ['status' => 'source_excerpts_only', 'claims' => [],
+                    'source_excerpts' => $grounding['source_excerpts'], 'reason' => $grounding['reason'], 'model' => $model,
+                    'semantic_validation' => $grounding['semantic_validation'] ?? [], 'repair' => $repair]);
         }
         return new AgentAnswer($answer, $context->locale, 'insufficient', [], [], [$grounding['reason']], null, false, array_filter([
             'status' => 'blocked',
