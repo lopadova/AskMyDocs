@@ -30,7 +30,7 @@ final class ToolAccess
             ->whereIn('project_key', $projectKey === '' ? [''] : ['', $projectKey])
             ->where('status', 'active')->whereIn('mode', ['tool','both'])->whereIn('http_method', ['GET','HEAD'])
             ->whereHas('connector', fn ($q) => $q->where('tenant_id', $tenantId)->where('is_active', true)
-                ->whereIn('project_key', $projectKey === '' ? [''] : ['', $projectKey]))
+                ->where(fn ($scope) => $scope->whereNull('project_key')->orWhereIn('project_key', $projectKey === '' ? [''] : ['', $projectKey])))
             ->with(['parameters', 'connector'])->get();
     }
 

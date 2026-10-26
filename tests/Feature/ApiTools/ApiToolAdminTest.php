@@ -63,6 +63,14 @@ final class ApiToolAdminTest extends TestCase
         $this->assertSame('failed',ApiToolVerification::where('api_tool_id',$id)->where('mode','static')->firstOrFail()->status);
     }
 
+    public function test_global_endpoints_with_nullable_connector_scope_are_available_in_each_authorized_project(): void
+    {
+        $connector=ApiConnector::create(['tenant_id'=>app(TenantContext::class)->current(),'project_key'=>null,'name'=>'Global','is_active'=>true]);
+        $route=ApiRoute::create(['tenant_id'=>$connector->tenant_id,'api_connector_id'=>$connector->id,'project_key'=>'','name'=>'Global records','slug'=>'global-records','url'=>'https://api.example.com/global','http_method'=>'GET','mode'=>'tool','status'=>'active']);
+        $this->getJson('/api/admin/api-tools')->assertOk()->assertJsonPath('endpoints.0.id',$route->id);
+        $this->getJson('/api/admin/api-tools?project_key=sales')->assertOk()->assertJsonPath('endpoints.0.id',$route->id);
+    }
+
     public function test_foreign_tenant_records_are_invisible_even_to_administrators(): void
     {
         $id=$this->postJson('/api/admin/api-tools',$this->payload())->assertOk()->json('tool.id');
