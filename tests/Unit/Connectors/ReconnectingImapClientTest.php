@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Connectors;
 
+use App\Connectors\Imap\ImapSyncBudget;
+use App\Connectors\Imap\ImapSyncBudgetExceeded;
 use App\Connectors\Imap\ReconnectingImapClient;
 use App\Connectors\Imap\ReconnectingImapClientFactory;
 use Carbon\Carbon;
@@ -25,6 +27,52 @@ use Tests\TestCase;
  */
 final class ReconnectingImapClientTest extends TestCase
 {
+    public function test_expired_sync_budget_prevents_another_connection_attempt(): void
+    {
+        $budget = new ImapSyncBudget;
+        $budget->start(0);
+        $inner = new ScriptedImapClient([]);
+        $client = new ReconnectingImapClient($inner, 10, 0, $budget);
+        try {
+            $client->listMailboxes();
+            $this->fail('An exhausted job must not reconnect.');
+        } catch (ImapSyncBudgetExceeded) {
+            $this->assertSame(0, $inner->calls);
+        }
+    }
+
+    public function test_wrapped_budget_expiry_is_not_retried_as_a_transport_failure(): void
+    {
+        $inner = new ScriptedImapClient([
+            new ConnectorApiException('connection setup failed', previous: new ImapSyncBudgetExceeded('budget exhausted')),
+        ]);
+        $client = new ReconnectingImapClient($inner, 10, 0);
+        try {
+            $client->listMailboxes();
+            $this->fail('A wrapped deadline must propagate.');
+        } catch (ConnectorApiException $exception) {
+            $this->assertTrue(ImapSyncBudgetExceeded::causedBy($exception));
+            $this->assertSame(1, $inner->calls);
+            $this->assertSame(0, $inner->closeCount);
+        }
+    }
+
+    public function test_retry_backoff_cannot_outlive_the_shared_sync_budget(): void
+    {
+        $budget = new ImapSyncBudget;
+        $budget->start(0.03);
+        $inner = new ScriptedImapClient([new \RuntimeException('connection reset')]);
+        $client = new ReconnectingImapClient($inner, 10, 60_000, $budget);
+        $started = hrtime(true);
+        try {
+            $client->listMailboxes();
+            $this->fail('The reconnect delay must yield when the budget expires.');
+        } catch (ImapSyncBudgetExceeded) {
+            $this->assertSame(1, $inner->calls);
+            $this->assertLessThan(1, (hrtime(true) - $started) / 1e9);
+        }
+    }
+
     public function test_retries_a_transient_drop_and_succeeds_on_reconnect(): void
     {
         // First call drops (broken pipe), the retry succeeds.

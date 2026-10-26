@@ -72,6 +72,35 @@ Existing retry attempts can then use the fix; a campaign already marked failed
 can be resumed through the full-history import action, preserving its checkpoints.
 Verify that discovery completes and the campaign progresses beyond `discovering`.
 
+## Incremental sync times out while searching UIDs
+
+`SerializedConnectorSyncJob` has a 75-second hard worker timeout. A small message
+batch alone cannot bound a stalled SEARCH, repeated network reads or reconnects.
+Incremental SEARCH now sends the confirmed UID checkpoint to the server as an
+unquoted `UID <next>:*` criterion, alongside the existing date filter, instead of
+downloading all matching UIDs and filtering old ones locally. A missing/reset
+checkpoint and deletion reconciliation still search the full UID range.
+
+`CONNECTOR_IMAP_SYNC_MAX_RUNTIME_SECONDS` defaults to 55 seconds and shares one
+monotonic deadline across the job's connections, commands and reconnect delays.
+It is capped at least 10 seconds below the job timeout. Each command also has an
+absolute deadline based on the connection timeout, so untagged status responses
+and literal chunks cannot indefinitely restart the wait. Incomplete/timed-out
+responses close the socket directly, without waiting for LOGOUT on that socket.
+
+When the job budget expires, the host saves only confirmed UID progress, retains
+the previous sync date, leaves the installation active and releases the job for
+another attempt after the configured mailbox requeue delay (60 seconds by
+default). The budget is cleared before the worker handles another job. A folder
+scan interrupted by a transport error also retains the previous sync date, even
+if the search returned no UID list. Authentication and unrelated errors remain
+visible; hard worker failures still mark the account errored.
+
+Deploy the corrected application and cached configuration to the workers, then
+restart them. An account already marked errored by a hard timeout needs the
+existing **Sync now** action to reactivate it and resume its saved checkpoint.
+This correction requires no queue purge, credential change or checkpoint reset.
+
 ## Invalid `INTERNALDATE` during discovery
 
 Webklex 6.2 can truncate the quoted date in a Gmail response shaped like

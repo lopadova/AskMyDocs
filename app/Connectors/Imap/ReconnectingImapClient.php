@@ -79,6 +79,7 @@ final class ReconnectingImapClient implements ImapClientInterface
         private readonly ImapClientInterface $inner,
         private readonly int $maxAttempts,
         private readonly int $retryDelayMs,
+        private readonly ?ImapSyncBudget $budget = null,
     ) {}
 
     /** @return list<string> */
@@ -140,6 +141,7 @@ final class ReconnectingImapClient implements ImapClientInterface
         $attempt = 0;
 
         while (true) {
+            $this->budget?->throwIfExpired();
             $attempt++;
             try {
                 return $operation();
@@ -147,6 +149,9 @@ final class ReconnectingImapClient implements ImapClientInterface
                 // Permanent: rejected credentials never recover on a reconnect.
                 throw $e;
             } catch (\Throwable $e) {
+                if (ImapSyncBudgetExceeded::causedBy($e)) {
+                    throw $e;
+                }
                 $transient = $this->isTransientDrop($e);
                 if ($attempt >= $maxAttempts || ! $transient) {
                     Log::error('[imap-test-fetch-diag] IMAP operation abandoned', [
@@ -186,6 +191,10 @@ final class ReconnectingImapClient implements ImapClientInterface
         // usleep() throws a ValueError on a negative argument in PHP 8+ — a negative
         // delay must degrade to "no pause", never turn a recoverable drop fatal.
         $delayMs = max(0, $this->retryDelayMs);
+        $remaining = $this->budget?->remainingSeconds();
+        if ($remaining !== null) {
+            $delayMs = min($delayMs, (int) ceil($remaining * 1000));
+        }
         if ($delayMs > 0) {
             usleep($delayMs * 1000);
         }

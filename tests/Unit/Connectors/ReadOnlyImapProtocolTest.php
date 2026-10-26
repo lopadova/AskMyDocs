@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Connectors;
 
+use App\Connectors\Imap\ImapSyncBudget;
+use App\Connectors\Imap\ImapSyncBudgetExceeded;
 use App\Connectors\Imap\ReadOnlyImapProtocol;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -12,6 +14,99 @@ use Webklex\PHPIMAP\Connection\Protocols\Response;
 
 final class ReadOnlyImapProtocolTest extends TestCase
 {
+    public function test_health_check_cannot_hide_an_exhausted_sync_as_a_disconnected_client(): void
+    {
+        [$clientStream, $serverStream] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $budget = new ImapSyncBudget;
+        $budget->start(0.03);
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig(), budget: $budget);
+        $protocol->stream = $clientStream;
+        try {
+            $this->expectException(ImapSyncBudgetExceeded::class);
+            $protocol->connected();
+        } finally {
+            $this->assertFalse(is_resource($clientStream));
+            $protocol->stream = false;
+            if (is_resource($clientStream)) {
+                fclose($clientStream);
+            }
+            fclose($serverStream);
+        }
+    }
+
+    public function test_stalled_search_uses_the_shared_deadline_and_closes_without_logout(): void
+    {
+        [$clientStream, $serverStream] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $budget = new ImapSyncBudget;
+        $budget->start(0.03);
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig(), budget: $budget);
+        $protocol->stream = $clientStream;
+        $started = hrtime(true);
+        try {
+            // A partial response must not be accepted as a complete SEARCH line.
+            fwrite($serverStream, '* SEARCH 7');
+            $protocol->search(['ALL']);
+            $this->fail('A stalled SEARCH must yield before the worker timeout.');
+        } catch (ImapSyncBudgetExceeded) {
+            $this->assertLessThan(1, (hrtime(true) - $started) / 1e9);
+            $this->assertFalse(is_resource($clientStream));
+            $this->assertNull($protocol->stream);
+            $this->assertSame("TAG1 UID SEARCH ALL\r\n", stream_get_contents($serverStream));
+        } finally {
+            $protocol->stream = false;
+            if (is_resource($clientStream)) {
+                fclose($clientStream);
+            }
+            fclose($serverStream);
+        }
+    }
+
+    public function test_a_command_deadline_is_not_reset_by_untagged_server_responses(): void
+    {
+        [$clientStream, $serverStream] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig());
+        $protocol->stream = $clientStream;
+        try {
+            $response = $protocol->sendRequest('UID SEARCH', ['ALL']);
+            (new \ReflectionProperty($protocol, 'requestDeadline'))->setValue($protocol, hrtime(true) / 1e9 + 0.03);
+            fwrite($serverStream, "* 20 EXISTS\r\n* SEARCH 7\r\n");
+            $tokens = [];
+            $this->assertFalse($protocol->readLine($response, $tokens, 'TAG1'));
+            $protocol->readResponse($response, 'TAG1');
+            $this->fail('An incomplete command must time out even after untagged responses.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('timed out', $exception->getMessage());
+            $this->assertFalse(is_resource($clientStream));
+        } finally {
+            $protocol->stream = false;
+            if (is_resource($clientStream)) {
+                fclose($clientStream);
+            }
+            fclose($serverStream);
+        }
+    }
+
+    public function test_stalled_literal_uses_the_same_sync_deadline(): void
+    {
+        [$clientStream, $serverStream] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $budget = new ImapSyncBudget;
+        $budget->start(0.03);
+        $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig(), budget: $budget);
+        $protocol->stream = $clientStream;
+        try {
+            fwrite($serverStream, "* 1 FETCH (UID 7 BODY[TEXT] {20}\r\nshort");
+            $this->expectException(ImapSyncBudgetExceeded::class);
+            $protocol->content([7]);
+        } finally {
+            $this->assertFalse(is_resource($clientStream));
+            $protocol->stream = false;
+            if (is_resource($clientStream)) {
+                fclose($clientStream);
+            }
+            fclose($serverStream);
+        }
+    }
+
     public function test_selection_and_body_requests_are_read_only_on_the_wire(): void
     {
         $protocol = new ReadOnlyImapProtocol((new ClientManager)->getConfig());
@@ -179,7 +274,9 @@ final class ReadOnlyImapProtocolTest extends TestCase
             $protocol->readLine(Response::empty(), $tokens);
         } finally {
             $protocol->stream = false;
-            fclose($stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         }
     }
 }

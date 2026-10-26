@@ -232,6 +232,7 @@ class AppServiceProvider extends ServiceProvider
             HostIngestionBridge::class,
         );
         $this->app->singleton(\App\Connectors\Imap\ImapSyncProgressContext::class);
+        $this->app->singleton(\App\Connectors\Imap\ImapSyncBudget::class);
         $this->app->bind(
             \App\Connectors\Imap\Backfill\ImapBackfillClientProviderContract::class,
             \App\Connectors\Imap\Backfill\ImapBackfillClientProvider::class,
@@ -554,11 +555,12 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->extend(
             \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
-            static function ($factory) use ($maxAttempts, $retryDelayMs): \App\Connectors\Imap\ReconnectingImapClientFactory {
+            static function ($factory, $app) use ($maxAttempts, $retryDelayMs): \App\Connectors\Imap\ReconnectingImapClientFactory {
                 return new \App\Connectors\Imap\ReconnectingImapClientFactory(
                     $factory,
                     $maxAttempts,
                     $retryDelayMs,
+                    $app->make(\App\Connectors\Imap\ImapSyncBudget::class),
                 );
             },
         );

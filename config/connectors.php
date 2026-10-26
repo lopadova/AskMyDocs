@@ -208,6 +208,9 @@ return [
         // checkpoint and queues the next short batch after a clean partial run.
         'sync' => [
             'max_messages_per_job' => (int) env('CONNECTOR_IMAP_SYNC_MAX_MESSAGES_PER_JOB', 10),
+            // Shared across network commands/reconnects; always capped below
+            // the job's hard timeout to leave room for durable checkpoints.
+            'max_runtime_seconds' => (int) env('CONNECTOR_IMAP_SYNC_MAX_RUNTIME_SECONDS', 55),
         ],
         'serialize_connections' => (bool) env('CONNECTOR_IMAP_SERIALIZE_CONNECTIONS', true),
         'mailbox_lock' => [

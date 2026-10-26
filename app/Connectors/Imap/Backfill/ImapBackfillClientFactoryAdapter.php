@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Connectors\Imap\Backfill;
 
+use App\Connectors\Imap\ImapSyncBudget;
 use App\Connectors\Imap\MemoryBoundedImapClient;
 use App\Connectors\Imap\ReadOnlyWebklexClient;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactory;
@@ -55,6 +56,6 @@ final class ImapBackfillClientFactoryAdapter implements ImapClientFactoryInterfa
                 : null,
         ]);
 
-        return new ReadOnlyWebklexClient($raw->getConfig());
+        return new ReadOnlyWebklexClient($raw->getConfig(), app(ImapSyncBudget::class));
     }
 }

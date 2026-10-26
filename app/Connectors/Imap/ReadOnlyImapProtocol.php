@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Connectors\Imap;
 
 use RuntimeException;
+use Webklex\PHPIMAP\Config;
 use Webklex\PHPIMAP\Connection\Protocols\ImapProtocol;
 use Webklex\PHPIMAP\Connection\Protocols\Response;
 use Webklex\PHPIMAP\IMAP;
@@ -23,8 +24,22 @@ final class ReadOnlyImapProtocol extends ImapProtocol
 
     private int $literalBytesRemaining = 0;
 
+    private ?float $requestDeadline = null;
+
+    private bool $ioBoundBySyncBudget = false;
+
+    public function __construct(
+        Config $config,
+        bool $cert_validation = true,
+        mixed $encryption = false,
+        private readonly ?ImapSyncBudget $budget = null,
+    ) {
+        parent::__construct($config, $cert_validation, $encryption);
+    }
+
     public function nextLine(Response $response): string
     {
+        $this->prepareIo();
         if ($this->literalBytesRemaining > 0) {
             // A literal is a counted byte string, not a sequence of lines.
             // Webklex otherwise reads MIME payloads one byte at a time and
@@ -33,7 +48,7 @@ final class ReadOnlyImapProtocol extends ImapProtocol
             // data and messages which have no trailing newline.
             $chunk = fread($this->stream, min(64 * 1024, $this->literalBytesRemaining));
             if ($chunk === false || $chunk === '') {
-                throw new RuntimeException('IMAP literal ended before its declared byte count.');
+                $this->readFailed('IMAP literal ended before its declared byte count.');
             }
             $this->literalBytesRemaining -= strlen($chunk);
 
@@ -41,8 +56,8 @@ final class ReadOnlyImapProtocol extends ImapProtocol
         }
 
         $line = fgets($this->stream);
-        if ($line === false) {
-            throw new RuntimeException('empty response');
+        if ($line === false || ! str_ends_with($line, "\n")) {
+            $this->readFailed('empty response');
         }
         $response->addResponse($line);
         if (preg_match('/\{([0-9]+)\+?\}\r?\n\z/', $line, $match)) {
@@ -57,6 +72,10 @@ final class ReadOnlyImapProtocol extends ImapProtocol
 
     public function connected(): bool
     {
+        if ($this->budget?->remainingSeconds() === 0.0) {
+            $this->abortConnection();
+            $this->budget->throwIfExpired();
+        }
         if (! is_resource($this->stream) || feof($this->stream)) {
             return false;
         }
@@ -68,7 +87,12 @@ final class ReadOnlyImapProtocol extends ImapProtocol
             return true;
         }
 
-        return parent::connected();
+        $connected = parent::connected();
+        // The vendor health check catches RuntimeException and returns false.
+        // Keep an exhausted job distinguishable from a failed authentication.
+        $this->budget?->throwIfExpired();
+
+        return $connected;
     }
 
     public function readLine(Response $response, array|string &$tokens = [], string $wantedTag = '*', bool $dontParse = false): bool
@@ -128,7 +152,74 @@ final class ReadOnlyImapProtocol extends ImapProtocol
             $tokens[1] = str_replace('BODY[', 'BODY.PEEK[', $tokens[1]);
         }
 
+        // A per-read timeout restarts on every untagged response/literal chunk.
+        // Bound the entire command too, even if the server keeps trickling data.
+        $this->requestDeadline = hrtime(true) / 1e9 + max(1, $this->getConnectionTimeout());
+
         return parent::sendRequest($command, $tokens, $tag);
+    }
+
+    public function write(Response $response, string $data): void
+    {
+        $this->prepareIo();
+        parent::write($response, $data);
+    }
+
+    private function prepareIo(): void
+    {
+        $remaining = $this->budget?->remainingSeconds();
+        if ($remaining === 0.0) {
+            $this->abortConnection();
+            $this->budget->throwIfExpired();
+        }
+        $commandRemaining = $this->requestDeadline === null
+            ? max(1, $this->getConnectionTimeout())
+            : $this->requestDeadline - hrtime(true) / 1e9;
+        $this->ioBoundBySyncBudget = $remaining !== null && $remaining <= $commandRemaining;
+        $remaining = min($remaining ?? $commandRemaining, $commandRemaining);
+        if ($remaining <= 0) {
+            $this->abortConnection();
+            throw new RuntimeException('IMAP command timed out.');
+        }
+        if (is_resource($this->stream)) {
+            $microseconds = max(1, (int) ceil($remaining * 1_000_000));
+            stream_set_timeout($this->stream, intdiv($microseconds, 1_000_000), $microseconds % 1_000_000);
+        }
+    }
+
+    private function readFailed(string $message): never
+    {
+        $timedOut = is_resource($this->stream) && (stream_get_meta_data($this->stream)['timed_out'] ?? false);
+        $budgetTimedOut = $timedOut && $this->ioBoundBySyncBudget;
+        // No LOGOUT on a socket with an incomplete response: it would wait for
+        // the same stalled command again and consume the worker's cleanup margin.
+        $this->abortConnection();
+        if ($budgetTimedOut) {
+            // PHP's stream timer can fire just before the monotonic deadline
+            // due to platform timer rounding. Preserve the reason for the cap.
+            $this->budget?->exhaust();
+        }
+        $this->budget?->throwIfExpired();
+        throw new RuntimeException($timedOut ? 'IMAP response timed out.' : $message);
+    }
+
+    private function abortConnection(): void
+    {
+        if (is_resource($this->stream)) {
+            fclose($this->stream);
+        }
+        $this->reset();
+    }
+
+    public function reset(): void
+    {
+        parent::reset();
+        $this->lastFlags = [];
+        $this->acknowledgedSeenRestore = null;
+        $this->lastWireActivityAt = 0;
+        $this->literalBytesRemaining = 0;
+        $this->requestDeadline = null;
+        $this->ioBoundBySyncBudget = false;
     }
 
     public function content(int|array $uids, string $rfc = 'RFC822', int|string $uid = IMAP::ST_UID): Response

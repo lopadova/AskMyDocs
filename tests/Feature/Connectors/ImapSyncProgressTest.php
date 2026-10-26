@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\Imap\ImapSyncBudget;
+use App\Connectors\Imap\ImapSyncBudgetExceeded;
 use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Connectors\Imap\ProgressTrackingImapClientFactory;
 use App\Connectors\Imap\ProgressTrackingIngestionBridge;
@@ -17,6 +19,7 @@ use Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault;
 use Padosoft\AskMyDocsConnectorBase\ConnectorInterface;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
+use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorApiException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\SyncResult;
@@ -31,6 +34,115 @@ use Tests\TestCase;
 final class ImapSyncProgressTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_wrapped_budget_expiry_requeues_without_losing_the_checkpoint_or_tenant(): void
+    {
+        config([
+            'connectors.imap.mailbox_lock.requeue_after_seconds' => 7,
+            'connectors.imap.sync.max_runtime_seconds' => 900,
+        ]);
+        $tenant = app(TenantContext::class);
+        $tenant->set('default');
+        $vault = app(OAuthCredentialVault::class);
+        $previous = Carbon::parse('2026-10-01');
+        $installation = $this->installation(maxMessages: 5000, lastSyncAt: $previous);
+        $vault->setCredentials($installation->id, accessToken: 'secret', extra: [
+            'mailboxes_state' => ['INBOX' => ['uidvalidity' => 1, 'last_uid' => 42]],
+        ]);
+        $budget = app(ImapSyncBudget::class);
+        $connector = Mockery::mock(ConnectorInterface::class);
+        $connector->shouldReceive('syncIncremental')->once()->andReturnUsing(function () use ($budget): never {
+            $this->assertGreaterThan(0, $budget->remainingSeconds());
+            $this->assertLessThanOrEqual(65, $budget->remainingSeconds());
+            $budget->start(0);
+            throw new ConnectorApiException('IMAP connect failed', previous: new ImapSyncBudgetExceeded('budget exhausted'));
+        });
+        $registry = Mockery::mock(ConnectorRegistry::class);
+        $registry->shouldReceive('get')->with('imap')->andReturn($connector);
+        $queued = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+        $queued->shouldReceive('release')->once()->with(7);
+        $job = new SerializedConnectorSyncJob($installation->id, 'default');
+        $job->setJob($queued);
+        $tenant->set('prior-tenant');
+
+        $job->handle($registry, $tenant);
+
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->fresh()->status);
+        $this->assertNull($installation->fresh()->error_json);
+        $this->assertTrue($installation->fresh()->last_sync_at->equalTo($previous));
+        $this->assertSame('prior-tenant', $tenant->current());
+        $tenant->set('default');
+        $this->assertSame(42, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
+        $this->assertNull($budget->remainingSeconds(), 'The next job must receive a fresh budget.');
+        $this->assertFalse(app(ImapSyncProgressContext::class)->isActive());
+    }
+
+    public function test_budget_expiry_caught_by_the_package_resumes_after_the_last_confirmed_message(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        $tenant = app(TenantContext::class);
+        $tenant->set('default');
+        $vault = app(OAuthCredentialVault::class);
+        $previous = Carbon::parse('2026-10-01');
+        $installation = $this->installation(maxMessages: 5000, lastSyncAt: $previous);
+        $vault->setCredentials($installation->id, accessToken: 'secret');
+        $budget = app(ImapSyncBudget::class);
+        $progress = app(ImapSyncProgressContext::class);
+        $inner = Mockery::mock(ImapClientInterface::class);
+        $inner->shouldReceive('listMailboxes')->andReturn(['INBOX']);
+        $inner->shouldReceive('selectMailbox')->with('INBOX')->andReturn(new MailboxState(1, 3));
+        $inner->shouldReceive('searchUids')->andReturn([1, 2, 3]);
+        $inner->shouldReceive('fetchMessage')->with('INBOX', 1)->once()->andReturn($this->message(1));
+        $inner->shouldReceive('fetchMessage')->with('INBOX', 2)->once()->andReturnUsing(function () use ($budget): never {
+            $budget->start(0);
+            $budget->throwIfExpired();
+        });
+        $inner->shouldReceive('fetchMessage')->with('INBOX', 3)->once()->andReturnUsing(fn () => $budget->throwIfExpired());
+        $inner->shouldReceive('close')->once();
+        $recording = new RecordingIngestionContract;
+        $connector = $this->connector($inner, $vault, $tenant, $progress, $recording);
+        $registry = Mockery::mock(ConnectorRegistry::class);
+        $registry->shouldReceive('get')->with('imap')->andReturn($connector);
+        $queued = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+        $queued->shouldReceive('release')->once()->with(60);
+        $job = new SerializedConnectorSyncJob($installation->id, 'default');
+        $job->setJob($queued);
+
+        $job->handle($registry, $tenant, $progress);
+
+        $this->assertSame([1], $recording->imapUids);
+        $this->assertSame(1, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->fresh()->status);
+        $this->assertTrue($installation->fresh()->last_sync_at->equalTo($previous));
+        $this->assertNull($budget->remainingSeconds());
+        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+    }
+
+    public function test_interrupted_search_cannot_advance_the_sync_date_even_before_uids_were_observed(): void
+    {
+        $tenant = app(TenantContext::class);
+        $tenant->set('default');
+        $vault = app(OAuthCredentialVault::class);
+        $previous = Carbon::parse('2026-10-01');
+        $installation = $this->installation(maxMessages: 5000, lastSyncAt: $previous);
+        $vault->setCredentials($installation->id, accessToken: 'secret');
+        $progress = app(ImapSyncProgressContext::class);
+        $inner = Mockery::mock(ImapClientInterface::class);
+        $inner->shouldReceive('listMailboxes')->andReturn(['INBOX']);
+        $inner->shouldReceive('selectMailbox')->with('INBOX')->andReturn(new MailboxState(1, 3));
+        $inner->shouldReceive('searchUids')->once()->andThrow(new \RuntimeException('IMAP response timed out.'));
+        $inner->shouldReceive('close')->twice();
+        $connector = $this->connector($inner, $vault, $tenant, $progress, new RecordingIngestionContract);
+        $registry = Mockery::mock(ConnectorRegistry::class);
+        $registry->shouldReceive('get')->with('imap')->andReturn($connector);
+
+        (new SerializedConnectorSyncJob($installation->id, 'default'))->handle($registry, $tenant, $progress);
+
+        $this->assertTrue($installation->fresh()->last_sync_at->equalTo($previous));
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->fresh()->status);
+        $this->assertStringContainsString('scan interrupted', $installation->fresh()->error_json['partial_errors'][0]);
+    }
 
     public function test_worker_timeout_surfaces_on_the_account_and_keeps_its_checkpoint(): void
     {

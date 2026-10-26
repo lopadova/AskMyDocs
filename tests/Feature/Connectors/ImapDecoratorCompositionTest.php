@@ -6,8 +6,11 @@ namespace Tests\Feature\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxClient;
 use App\Connectors\Imap\Backfill\ImapBackfillMessageSizer;
+use App\Connectors\Imap\ImapSyncBudget;
 use App\Connectors\Imap\MemoryBoundedImapClient;
+use App\Connectors\Imap\ReadOnlyWebklexClient;
 use App\Connectors\Imap\ReconnectingImapBackfillClient;
 use App\Connectors\Imap\ReconnectingImapClient;
 use App\Connectors\Imap\SerializingImapBackfillClient;
@@ -57,6 +60,18 @@ final class ImapDecoratorCompositionTest extends TestCase
         );
         $downloads = (new ReflectionProperty(ReconnectingImapClient::class, 'inner'))->getValue($inner);
         $this->assertInstanceOf(MemoryBoundedImapClient::class, $downloads, 'incremental sync must also bound large MIME parsing');
+        $bulk = (new ReflectionProperty(MemoryBoundedImapClient::class, 'downloads'))->getValue($downloads);
+        $raw = (new ReflectionProperty(ImapBackfillMailboxClient::class, 'rawClient'))->getValue($bulk);
+        $this->assertSame(
+            $this->app->make(ImapSyncBudget::class),
+            (new ReflectionProperty(ReadOnlyWebklexClient::class, 'budget'))->getValue($raw),
+            'network reads must share the job deadline',
+        );
+        $this->assertSame(
+            $this->app->make(ImapSyncBudget::class),
+            (new ReflectionProperty(ReconnectingImapClient::class, 'budget'))->getValue($inner),
+            'reconnects must not start a fresh deadline',
+        );
     }
 
     public function test_backfill_bulk_client_uses_the_same_reconnect_and_serialization_chain(): void

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Connectors;
 
+use App\Connectors\Imap\ImapSyncBudget;
+use App\Connectors\Imap\ImapSyncBudgetExceeded;
 use App\Connectors\Imap\ImapSyncProgressContext;
 use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\Imap\MailboxLockKey;
@@ -204,13 +206,17 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         ConnectorRegistry $registry,
         TenantContext $tenantContext,
         ?ImapSyncProgressContext $progress = null,
+        ?ImapSyncBudget $budget = null,
     ): void
     {
         $progress ??= app(ImapSyncProgressContext::class);
+        $budget ??= app(ImapSyncBudget::class);
         $priorTenant = $tenantContext->current();
         $progressStarted = false;
         $priorLastSyncAt = null;
         $completed = false;
+        $budgetStarted = false;
+        $budgetExhausted = false;
 
         try {
             $tenantContext->set($this->tenantId);
@@ -241,22 +247,45 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             if ($tracksImap) {
                 $progress->begin($installation);
                 $progressStarted = true;
+                // Leave time for both checkpoint writes, lock release and queue
+                // release before Laravel's hard alarm terminates the process.
+                $budget->start(max(1, min(
+                    (float) config('connectors.imap.sync.max_runtime_seconds', 55),
+                    $this->timeout - 10,
+                )));
+                $budgetStarted = true;
             }
 
             try {
                 parent::handle($registry, $tenantContext);
                 $completed = true;
+                // The package catches per-message errors, including wrapped
+                // budget exceptions. Resume even when that path returned a
+                // partial SyncResult instead of throwing to this envelope.
+                if ($budgetStarted && $budget->remainingSeconds() === 0.0) {
+                    $budgetExhausted = true;
+                }
             } catch (MailboxBusyException) {
-                $this->recoverFromMailboxBusy();
+                $this->recoverFromTransientFailure(MailboxBusyException::class);
 
                 $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
                 $this->release($delay);
+            } catch (\Throwable $exception) {
+                if (! $budgetStarted || ! ImapSyncBudgetExceeded::causedBy($exception)) {
+                    throw $exception;
+                }
+                $budgetExhausted = true;
+                $this->recoverFromTransientFailure($exception::class);
+                Log::info('[connector-imap] sync time budget exhausted — resuming from checkpoint', [
+                    'installation_id' => $this->installationId,
+                    'tenant_id' => $this->tenantId,
+                ]);
             }
         } finally {
             try {
                 if ($progressStarted) {
-                    $hasUnconfirmedWork = $progress->hasUnconfirmedWork();
-                    $continueBatch = $completed && $progress->canContinueBatch();
+                    $hasUnconfirmedWork = $budgetExhausted || $progress->hasUnconfirmedWork();
+                    $continueBatch = $completed && ! $budgetExhausted && $progress->canContinueBatch();
 
                     try {
                         $progress->finish();
@@ -271,7 +300,11 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                         );
                     }
 
-                    if ($continueBatch) {
+                    if ($budgetExhausted) {
+                        // Publish the retry only after the durable checkpoint
+                        // and date watermark have both been restored.
+                        $this->release(max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60)));
+                    } elseif ($continueBatch) {
                         $installation = ConnectorInstallation::query()
                             ->where('id', $this->installationId)
                             ->where('tenant_id', $this->tenantId)
@@ -286,6 +319,9 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                     }
                 }
             } finally {
+                if ($budgetStarted) {
+                    $budget->stop();
+                }
                 // parent::handle() restores to the tenant it observed on entry.
                 // We set that entry value above so the progress coordinator and
                 // vault share the same tenant, then restore the worker's real
@@ -359,7 +395,8 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         foreach ($errors as $error) {
             if (
                 is_string($error)
-                && str_starts_with($error, 'sync truncated at max_messages_per_sync=')
+                && (str_starts_with($error, 'sync truncated at max_messages_per_sync=')
+                    || str_contains($error, ' scan interrupted ('))
             ) {
                 $incomplete = true;
                 break;
@@ -382,11 +419,11 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
     }
 
     /**
-     * Undo the ERRORED state written by the vendor job for a transient busy
-     * mailbox, so the released job and the scheduler can retry an ACTIVE row.
+     * Undo the ERRORED state written by the vendor job for a deferred sync,
+     * so the released job and the scheduler can retry an ACTIVE row.
      * The guards prevent this path from clearing an unrelated failure.
      */
-    private function recoverFromMailboxBusy(): void
+    private function recoverFromTransientFailure(string $exceptionClass): void
     {
         $installation = ConnectorInstallation::query()
             ->where('id', $this->installationId)
@@ -401,7 +438,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             return;
         }
 
-        if (($installation->error_json['class'] ?? null) !== MailboxBusyException::class) {
+        if (($installation->error_json['class'] ?? null) !== $exceptionClass) {
             return;
         }
 
@@ -411,14 +448,16 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         ])->save();
 
         if (! $saved) {
+            $reason = $exceptionClass === MailboxBusyException::class ? 'busy' : 'deferred';
             throw new \RuntimeException(
-                "Unable to restore busy IMAP installation {$this->installationId} to active.",
+                "Unable to restore {$reason} IMAP installation {$this->installationId} to active.",
             );
         }
 
-        Log::info('[connector-imap] mailbox busy — re-queuing sync instead of failing', [
+        Log::info('[connector-imap] transient sync interruption — re-queuing instead of failing', [
             'installation_id' => $this->installationId,
             'tenant_id' => $this->tenantId,
+            'exception_class' => $exceptionClass,
         ]);
     }
 }

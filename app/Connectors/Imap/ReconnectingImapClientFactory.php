@@ -27,6 +27,7 @@ final class ReconnectingImapClientFactory implements ImapClientFactoryInterface,
         private readonly ImapClientFactoryInterface $inner,
         private readonly int $maxAttempts,
         private readonly int $retryDelayMs,
+        private readonly ?ImapSyncBudget $budget = null,
     ) {}
 
     /**
@@ -38,6 +39,7 @@ final class ReconnectingImapClientFactory implements ImapClientFactoryInterface,
             $this->inner->make($connection, $secret, $authMode),
             $this->maxAttempts,
             $this->retryDelayMs,
+            $this->budget,
         );
     }
 
