@@ -46,6 +46,7 @@ export type SidebarSection =
     | 'pii-redactor'
     | 'connectors'
     | 'api-connectors'
+    | 'api-tools'
     | 'ingestion'
     | 'invitations'
     | 'flows'
@@ -180,6 +181,7 @@ export const NAV_GROUPS: NavGroup[] = [
         items: [
             { id: 'connectors', label: 'Connectors', icon: 'Link', route: '/app/$teamHash/admin/connectors' },
             { id: 'api-connectors', label: 'API Connectors', icon: 'Globe', route: '/app/$teamHash/admin/api-connectors' },
+            { id: 'api-tools', label: 'Tool API', icon: 'Bolt', route: '/app/$teamHash/admin/api-tools' },
             { id: 'ingestion', label: 'Ingestion & Sync', icon: 'Activity', route: '/app/$teamHash/admin/ingestion' },
             { id: 'invitations', label: 'Invitations', icon: 'Users', route: '/app/$teamHash/admin/invitations' },
             { id: 'flows', label: 'Flows', icon: 'Bolt', route: '/app/$teamHash/admin/flows' },

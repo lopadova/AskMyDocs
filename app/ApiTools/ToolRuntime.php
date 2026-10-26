@@ -111,7 +111,7 @@ final class ToolRuntime
                 foreach ($this->validator->dependencies($step) as $dependency) {
                     if (! array_key_exists($dependency,$outputs)) { throw new \DomainException('api_tool_dependency_incomplete'); }
                 }
-                $args = isset($step['iterate']) ? [] : $this->bindings->map($step['bindings'] ?? [],$run->inputs,$outputs);
+                $args = $this->resolvedInputs($step,$run->inputs,$outputs);
                 $stepRecord->forceFill(['inputs'=>['values'=>$args,'origins'=>$step['bindings'] ?? []]])->save();
                 $result = $this->evaluate($step,$run->inputs,$outputs,fn ($call,$mapped) => $this->api($call,$mapped,$run,$context));
             }
@@ -143,13 +143,25 @@ final class ToolRuntime
                     return $fixtures[$call['id']];
                 });
                 $outputs[$id] = $result;
-                $steps[$id] = ['inputs'=>isset($step['iterate']) ? [] : $this->bindings->map($step['bindings'] ?? [],$inputs,$outputs),'output'=>$result];
+                $args = $this->resolvedInputs($step,$inputs,$outputs);
+                $steps[$id] = ['step_id'=>$id,'status'=>is_array($result) && ($result['_partial'] ?? false) ? 'partial':'completed','inputs'=>$args,'output'=>$result,'diagnostics'=>['inputs'=>$this->secrets->mask($args),'origins'=>$step['bindings'] ?? [],'output'=>$this->secrets->mask($result)]];
                 unset($pending[$id]);
                 $progress = true;
             }
             if (! $progress) { throw new \DomainException('api_tool_cycle'); }
         }
-        return ['output'=>$this->bindings->map($definition['output'],$inputs,$outputs),'steps'=>$steps];
+        $publicOutput=$this->bindings->map($definition['output'],$inputs,$outputs);
+        $steps['tool_output']=['step_id'=>'tool_output','status'=>'completed','diagnostics'=>['inputs'=>[],'origins'=>$definition['output'],'output'=>$this->secrets->mask($publicOutput)]];
+        return ['output'=>$publicOutput,'steps'=>$steps];
+    }
+
+    private function resolvedInputs(array $step,array $inputs,array $outputs): array
+    {
+        if (! isset($step['iterate'])) { return $this->bindings->map($step['bindings'] ?? [],$inputs,$outputs); }
+        $items=$this->bindings->resolve($step['iterate']['source'],$inputs,$outputs);
+        if (! is_array($items) || ! array_is_list($items)) { throw new \DomainException('api_tool_iteration_requires_list'); }
+        if (count($items) > $step['iterate']['max_items']) { throw new \DomainException('api_tool_iteration_limit'); }
+        return ['items'=>array_map(fn ($item) => $this->bindings->map($step['bindings'] ?? [],$inputs,$outputs,$item),$items)];
     }
 
     private function evaluate(array $step, array $inputs, array $outputs, callable $api): mixed

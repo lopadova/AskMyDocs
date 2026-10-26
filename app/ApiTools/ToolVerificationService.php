@@ -62,7 +62,7 @@ final class ToolVerificationService
                         $results = $verification->results;
                         foreach ($cases as $i => $case) {
                             $result = app(ToolRuntime::class)->simulate($tool, $case['inputs'] ?? [], $case['fixtures'] ?? [], $context);
-                            $results['cases'][$i] = ['name' => $case['name'] ?? (string) $i, 'passed' => $this->assertions($result['output'] ?? [], $case['assertions'] ?? [])];
+                            $results['cases'][$i] = ['name' => $case['name'] ?? (string) $i, 'passed' => $this->assertions($result['output'] ?? [], $case['assertions'] ?? []), 'steps'=>$result['steps'] ?? [], 'output'=>$result['output'] ?? []];
                         }
                         $verification->results = $results;
                         $verification->save();
