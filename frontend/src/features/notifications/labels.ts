@@ -20,6 +20,7 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
     kb_doc_modified: 'Doc modified',
     kb_canonical_promoted: 'Canonical promoted',
     kb_decision_debt_threshold: 'Decision debt threshold',
+    api_tool_state_changed: 'API tool status',
     collection_new_member: 'Collection new member',
 };
 

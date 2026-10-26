@@ -23,12 +23,16 @@ final class DefinitionValidator
         $ids = [];
         $schemas = [];
         foreach ($steps as $i => $step) {
+            $step += ['name'=>$step['id'] ?? '', 'operation'=>'api', 'bindings'=>[], 'wait_for'=>[], 'collection'=>['mode'=>'single']];
+            $steps[$i] = $step;
+            $definition['steps'][$i] = $step;
             $id = $step['id'] ?? '';
             $this->check(is_string($id) && preg_match('/^[a-z][a-z0-9_]{0,47}$/', $id) === 1 && $id !== 'tool_output' && ! isset($ids[$id]), "steps.$i.id", 'Step identifiers must be unique stable keys.');
             $ids[$id] = $i;
             $op = $step['operation'] ?? 'api';
             $this->check(in_array($op, self::OPERATIONS, true), "steps.$i.operation", 'Unknown operation.');
             if ($op === 'api') {
+                $this->check(is_int($step['route_id'] ?? null) && $step['route_id'] > 0, "steps.$i.route_id", 'Choose an endpoint identifier.');
                 $route = $routes->get($step['route_id'] ?? 0);
                 $this->check($route !== null, "steps.$i.route_id", 'Endpoint is unavailable in this tenant/project or is not read-only.');
                 $schemas[$id] = $route->output_schema ?? [];
@@ -61,17 +65,17 @@ final class DefinitionValidator
             foreach ($bindings as $name => $binding) {
                 $this->check(is_array($binding), "steps.$i.bindings.$name", 'Invalid binding.');
                 if ($route) {
-                    $this->check(isset(($route->input_schema['properties'] ?? [])[$name]) || $parameters?->has($name), "steps.$i.bindings.$name", 'Unknown public endpoint parameter; authentication belongs to the connector.');
+                    $this->check($parameters?->has($name) === true, "steps.$i.bindings.$name", 'Unknown public endpoint parameter; authentication belongs to the connector.');
                     $this->check(! ConnectorSecretGuard::sensitive((string) $name), "steps.$i.bindings.$name", 'Authentication cannot be mapped by a tool.');
                 }
                 $sourceSchema = $this->binding($binding, $definition['input_schema'], $schemas, $ids, $id, "steps.$i.bindings.$name", isset($step['iterate']));
-                $target = $route?->input_schema['properties'][$name] ?? [];
+                $target = $route ? ($this->publicInputSchema($route)['properties'][$name] ?? []) : [];
                 $this->compatible($sourceSchema, $target, "steps.$i.bindings.$name");
                 if (($binding['source'] ?? '') === 'constant' && $target !== []) { $this->assertValue($binding['value'] ?? null, $target, "steps.$i.bindings.$name"); }
                 if (($binding['source'] ?? '') === 'step') { $deps[] = $binding['step']; }
             }
             if ($route) {
-                $required = array_unique([...($route->input_schema['required'] ?? []), ...($parameters?->where('required',true)->keys()->all() ?? [])]);
+                $required = $this->publicInputSchema($route)['required'];
                 foreach ($required as $name) { $this->check(array_key_exists($name, $bindings), "steps.$i.bindings.$name", 'Required endpoint input needs an explicit source.'); }
             }
             if (isset($step['iterate'])) {
@@ -93,7 +97,8 @@ final class DefinitionValidator
         $output = $definition['output'] ?? [];
         $this->check(is_array($output) && $output !== [], 'output', 'Select at least one explicit public output.');
         foreach ($output as $key => $binding) { $this->binding($binding, $definition['input_schema'], $schemas, $ids, null, "output.$key", false); }
-        foreach ($definition['tests'] ?? [] as $i => $test) {
+        $definition['tests'] ??= [];
+        foreach ($definition['tests'] as $i => $test) {
             $this->check(in_array($test['mode'] ?? '', ['simulation','live'], true), "tests.$i.mode", 'Tests must declare simulation or live.');
             $this->assertValue($test['inputs'] ?? [], $definition['input_schema'], "tests.$i.inputs");
             foreach ($test['assertions'] ?? [] as $assertion) {
@@ -108,6 +113,23 @@ final class DefinitionValidator
         $this->bounded($definition['limits']['timeout_seconds'], 600, 'limits.timeout_seconds');
         $this->secrets->assertClean($definition, $routes);
         return $definition;
+    }
+
+    public function publicInputSchema(\Padosoft\AskMyDocsConnectorApi\Models\ApiRoute $route): array
+    {
+        $route->loadMissing('parameters');
+        $schema = is_array($route->input_schema) ? $route->input_schema : ['type'=>'object'];
+        $properties = []; $required = [];
+        foreach ($route->parameters as $parameter) {
+            if ($parameter->source !== \Padosoft\AskMyDocsConnectorApi\Support\ParamSource::Llm) { continue; }
+            $properties[$parameter->name] = array_merge($schema['properties'][$parameter->name] ?? [], ['type'=>$parameter->type->value]);
+            if ($parameter->required) { $required[] = $parameter->name; }
+        }
+        $schema['type'] = 'object';
+        $schema['properties'] = $properties;
+        $schema['required'] = array_values(array_unique([...$required,...array_intersect($schema['required'] ?? [],array_keys($properties))]));
+        $schema['additionalProperties'] = false;
+        return $schema;
     }
 
     public function dependencies(array $step): array

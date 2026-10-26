@@ -31,6 +31,11 @@ final class ContentHasher
             sort($step['wait_for']);
             $definition['steps'][$i] = $step;
         }
+        $definition['input_schema'] = $this->schemaContent($definition['input_schema'] ?? []);
+        foreach ($definition['steps'] ?? [] as $i => $step) {
+            if (isset($step['output_schema'])) { $definition['steps'][$i]['output_schema'] = $this->schemaContent($step['output_schema']); }
+        }
+        foreach ($definition['tests'] ?? [] as $i => $test) { unset($definition['tests'][$i]['name']); }
         return $definition;
     }
 
@@ -51,26 +56,40 @@ final class ContentHasher
     {
         $route->loadMissing(['parameters', 'connector']);
         $profile = $route->effectiveAuthProfile();
+        $publicCredentials = array_intersect_key($profile?->credentials ?? [], array_flip(match ($profile?->type->value) { 'basic'=>['username'], 'oauth2_cc'=>['client_id'], default=>[] }));
+        $secretValues = [];
+        $privateCredentials = array_diff_key($profile?->credentials ?? [], $publicCredentials);
+        array_walk_recursive($privateCredentials,function ($v) use (&$secretValues): void { if (is_string($v) && $v !== '') { $secretValues[]=$v; } });
+        $isSecret = static function ($v) use ($secretValues): bool { return is_string($v) && in_array($v,$secretValues,true); };
         $headers = [];
         foreach ($route->connector?->headers ?? [] as $key => $value) {
-            $headers[strtolower($key)] = ConnectorSecretGuard::sensitive($key) ? '[secret]' : $value;
+            $headers[strtolower($key)] = (ConnectorSecretGuard::sensitive($key) || $isSecret($value)) ? '[secret]' : $value;
         }
-        $parameters = $route->parameters->map(function ($p): array {
+        $parameters = $route->parameters->map(function ($p) use ($isSecret): array {
             $data = $p->only(['name','required','value','secret_ref']);
             $data['location'] = $p->location->value;
             $data['source'] = $p->source->value;
             $data['type'] = $p->type->value;
-            if ($p->source->value === 'secret' || ConnectorSecretGuard::sensitive($p->name)
+            if ($p->source->value === 'secret' || ConnectorSecretGuard::sensitive($p->name) || $isSecret($p->value)
                ) {
                 $data['value'] = '[secret]';
             }
             return $data;
         })->sortBy(fn ($p) => $p['location'].'/'.$p['name'])->values()->all();
+        $routeContent = $route->only(['http_method','url','input_schema','output_schema','output_transform','pagination','endpoint_type','items_path','timeout_ms','cache_ttl_s','rate_limit']);
+        foreach (['input_schema','output_schema'] as $key) { $routeContent[$key] = $this->schemaContent($routeContent[$key] ?? []); }
         return [
-            'route' => $route->only(['http_method','url','input_schema','output_schema','output_transform','pagination','endpoint_type','items_path','timeout_ms','cache_ttl_s','rate_limit']),
+            'route' => $routeContent,
             'parameters' => $parameters,
             'connector' => ['base_url' => $route->connector?->base_url, 'headers' => $headers],
-            'auth' => $profile ? ['type' => $profile->type->value, 'config' => array_intersect_key($profile->config ?? [], array_flip(['in','name','header_name','token_url','scope','auth_style']))] : null,
+            'auth' => $profile ? ['type' => $profile->type->value, 'public_credentials'=>$publicCredentials, 'config' => array_intersect_key($profile->config ?? [], array_flip(['in','name','header_name','token_url','scope','auth_style']))] : null,
         ];
+    }
+    private function schemaContent(array $schema): array
+    {
+        foreach (['description','title','example','examples','$comment'] as $key) { unset($schema[$key]); }
+        foreach ($schema['properties'] ?? [] as $key=>$property) { $schema['properties'][$key]=$this->schemaContent($property); }
+        if (isset($schema['items']) && is_array($schema['items'])) { $schema['items']=$this->schemaContent($schema['items']); }
+        return $schema;
     }
 }

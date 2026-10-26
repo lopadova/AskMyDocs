@@ -66,6 +66,8 @@ class NotificationEvent extends Model
     // `AnalyzeDocumentChangeJob` to project members who opted in.
     public const EVENT_KB_DOC_ANALYSIS_READY = 'kb_doc_analysis_ready';
 
+    public const EVENT_API_TOOL_STATE_CHANGED = 'api_tool_state_changed';
+
     // Intentionally NO `EVENT_WEEKLY_DIGEST` constant: the aggregated
     // weekly digest is persisted in `notification_digests`, not as
     // notification_events rows. The W2 digest dispatcher reads the
@@ -116,6 +118,7 @@ class NotificationEvent extends Model
             self::EVENT_KB_DOC_STALE_REVIEW,
             self::EVENT_KB_DOC_ANALYSIS_READY,
             self::EVENT_COLLECTION_NEW_MEMBER,
+            self::EVENT_API_TOOL_STATE_CHANGED,
         ];
     }
 
