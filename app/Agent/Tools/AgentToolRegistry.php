@@ -40,6 +40,7 @@ final readonly class AgentToolRegistry
             'list_knowledge_documents' => $this->catalogTool(),
         ];
         $this->mergeMcpTools($tools, $context, $user);
+        foreach (app(\App\ApiTools\ToolCatalog::class)->forContext($context) as $name => $tool) { $tools[$name] = $tool; }
         $this->mergeApiTools($tools, $context);
         $this->mergeFreshdeskTools($tools, $context, $user);
 

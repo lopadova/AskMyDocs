@@ -88,6 +88,14 @@ final readonly class AgentServerToolRunner
         if (($tool->metadata['source_runtime'] ?? null) === 'freshdesk') {
             return $this->executeFreshdesk($tool, $arguments, $context, $budget);
         }
+        if (($tool->metadata['source_runtime'] ?? null) === 'api_tool') {
+            $preset = \App\ApiTools\Models\ApiTool::query()->forTenant($context->tenantId)->findOrFail((int) substr((string) $tool->executorReference, 9));
+            $remaining = max(0, (int) $budget->snapshot()['physical_hard'] - (int) $budget->snapshot()['physical_calls']);
+            if ($remaining === 0) { return new AgentToolActionResult(['error'=>'physical_hard_limit'], 0, false, 'physical_hard_limit'); }
+            $pending = app(\App\ApiTools\ToolRuntime::class)->start($preset, $arguments, $context, continuation:['request_limit'=>$remaining]);
+            return new AgentToolActionResult(['_api_tool_pending' => $pending->id], 0, false, stats: ['api_tool_run_id' => $pending->id]);
+        }
+
         $scopes = $context->projectKey === null || $context->projectKey === ''
             ? ['']
             : ['', $context->projectKey];

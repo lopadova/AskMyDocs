@@ -37,6 +37,11 @@ final class AgentCapabilityRanker
             $score = count($overlap) * 12;
             $reasons = $overlap === [] ? [] : ['term_match'];
 
+            if (str_starts_with($capability->tool, 'api_tool_') && count($overlap) > 0) {
+                $score += 16;
+                $reasons[] = 'reusable_tool_matches_intent';
+            }
+
             if ($capability->source !== 'knowledge' && $liveIntent) {
                 $score += 18;
                 $reasons[] = 'live_data_intent';

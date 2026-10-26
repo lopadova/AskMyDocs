@@ -11,7 +11,7 @@ final class ApiToolRun extends Model
     use BelongsToTenant;
     public $incrementing = false;
     protected $keyType = 'string';
-    protected $guarded = [];
+    protected $fillable = ['id','tenant_id','project_key','api_tool_id','api_tool_revision_id','flow_run_id','idempotency_key','status','mode','content_hash','snapshot','context','inputs','outputs','continuation','physical_requests','request_limit','error_code','deadline_at','completed_at','cancelled_at','resumed_at'];
     protected $hidden = ['snapshot', 'context', 'inputs', 'outputs', 'continuation'];
     protected function casts(): array
     {

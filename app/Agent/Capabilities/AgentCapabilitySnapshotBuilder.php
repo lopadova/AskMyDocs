@@ -182,8 +182,10 @@ final readonly class AgentCapabilitySnapshotBuilder
     /** @return list<string> */
     private function intentTags(AgentToolDefinition $tool, string $entity, string $operation): array
     {
-        $tokens = preg_split('/[^a-z0-9]+/', strtolower($tool->name.' '.$entity.' '.$operation)) ?: [];
+        $text = $tool->name.' '.$entity.' '.$operation;
+        if (($tool->metadata['source_runtime'] ?? null) === 'api_tool') { $text .= ' '.$tool->displayName.' '.$tool->description.' composite_api_tool'; }
+        $tokens = preg_split('/[^a-z0-9]+/', strtolower($text)) ?: [];
 
-        return array_values(array_slice(array_unique(array_filter($tokens)), 0, 12));
+        return array_values(array_slice(array_unique(array_filter($tokens)), 0, 32));
     }
 }

@@ -38,7 +38,7 @@ return new class extends Migration
             $t->longText('definition'); // encrypted:array, immutable
             $t->string('definition_hash', 64);
             $t->timestamp('created_at');
-            $t->unique(['api_tool_id', 'number']);
+            $t->unique(['tenant_id', 'api_tool_id', 'number']);
         });
         Schema::create('api_tool_runs', function (Blueprint $t): void {
             $t->uuid('id')->primary();
@@ -47,6 +47,8 @@ return new class extends Migration
             $t->foreignId('api_tool_id')->constrained('api_tools');
             $t->foreignId('api_tool_revision_id')->constrained('api_tool_revisions');
             $t->uuid('flow_run_id')->nullable()->unique();
+            $t->string('idempotency_key', 64)->nullable();
+            $t->unique(['tenant_id', 'idempotency_key']);
             $t->string('status')->default('queued');
             $t->string('mode')->default('production');
             $t->string('content_hash', 64);
@@ -77,7 +79,7 @@ return new class extends Migration
             $t->longText('diagnostics')->nullable();
             $t->timestamp('started_at')->nullable();
             $t->timestamp('completed_at')->nullable();
-            $t->unique(['api_tool_run_id', 'step_id']);
+            $t->unique(['tenant_id', 'api_tool_run_id', 'step_id']);
         });
         Schema::create('api_tool_verifications', function (Blueprint $t): void {
             $t->id();

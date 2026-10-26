@@ -33,6 +33,7 @@ final class ToolPackageService
             unset($definition['steps'][$index]['route_id']);
             $definition['steps'][$index]['route_ref'] = $ref;
         }
+        $definition['input_schema'] = SchemaWire::normalize($definition['input_schema']);
         $package = [
             '_meta' => ['format' => self::FORMAT, 'version' => self::VERSION],
             'tool' => ['name' => $tool->name, 'description' => $tool->description, 'failure_threshold' => $tool->failure_threshold, 'definition' => $definition],

@@ -107,6 +107,7 @@ final class ApiToolCollector
 
             $tasks = [];
             $indices = [];
+            $requestQuota = max(1,intdiv($this->remaining($budget),count($batch)));
             foreach ($batch as $index => $item) {
                 if (! is_array($item)) {
                     $errors[] = ['index' => $index, 'error' => 'relation_item_must_be_an_object'];
@@ -121,10 +122,11 @@ final class ApiToolCollector
                 }
 
                 $indices[] = $index;
-                $tasks[] = static fn (): array => app(self::class)->executeRequest(
+                $tasks[] = static fn (): array => app(self::class)->executeMeasuredRequest(
                     $detailRoute,
                     $mapped,
                     $context,
+                    limit: $requestQuota,
                 );
             }
 
@@ -134,10 +136,11 @@ final class ApiToolCollector
             );
 
             foreach ($results as $position => $result) {
-                $physical++;
-                $valid = is_array($result) ? $result : ['error' => 'invalid_tool_response'];
+                $count = (int) ($result['physical_requests'] ?? 0);
+                $physical += $count;
+                $valid = is_array($result['body'] ?? null) ? $result['body'] : ['error' => 'invalid_tool_response'];
                 $success = ! isset($valid['error']);
-                $budget->recordResult(1, $this->bytes($valid), $success);
+                $budget->recordResult($count, $this->bytes($valid), $success);
                 if ($success) {
                     $details[] = [
                         'source_index' => $indices[$position] ?? $position,
@@ -235,6 +238,17 @@ final class ApiToolCollector
         );
     }
 
+    public function executeMeasuredRequest(ApiRoute $route, array $arguments, AgentExecutionContext $context, array $query = [], ?string $url = null, int $limit = PHP_INT_MAX): array
+    {
+        return app(\App\ApiTools\ToolHttpBudget::class)->measure(fn () => $this->executeRequest($route,$arguments,$context,$query,$url), $limit);
+    }
+
+    private function remaining(AgentBudgetTracker $budget): int
+    {
+        $state = $budget->snapshot();
+        return max(0,(int) $state['physical_hard']-(int) $state['physical_calls']);
+    }
+
     /** @param null|callable(array<string,mixed>):void $progress */
     private function collectOnce(
         ApiRoute $route,
@@ -248,13 +262,14 @@ final class ApiToolCollector
             return $this->failure($capacity->reason);
         }
 
-        $body = $this->executeRequest($route, $arguments, $context);
-        $budget->recordResult(1, $this->bytes($body), ! isset($body['error']));
+        $measured = $this->executeMeasuredRequest($route,$arguments,$context,limit:$this->remaining($budget));
+        $body = $measured['body'];
+        $budget->recordResult($measured['physical_requests'], $this->bytes($body), ! isset($body['error']));
         if ($progress !== null) {
             $progress(['phase' => 'request', 'completed' => 1, 'estimated_total' => 1, 'remaining' => 0]);
         }
 
-        return new ApiToolExecutionResult($body, 1, true, null, ['mode' => 'single']);
+        return new ApiToolExecutionResult($body, $measured['physical_requests'], true, null, ['mode' => 'single']);
     }
 
     /**
@@ -283,17 +298,20 @@ final class ApiToolCollector
         $complete = false;
         $stopReason = 'pagination_page_limit';
 
-        while ($physical < $maximum) {
+        $pages = 0;
+        while ($pages < $maximum) {
             $capacity = $budget->canIssuePhysical();
             if (! $capacity->allowed()) {
                 $stopReason = $capacity->reason;
                 break;
             }
 
-            $body = $this->executeRequest($route, $arguments, $context, [$pageParam => $page]);
-            $physical++;
+            $measured = $this->executeMeasuredRequest($route,$arguments,$context,[$pageParam=>$page],limit:$this->remaining($budget));
+            $body = $measured['body'];
+            $physical += $measured['physical_requests'];
+            $pages++;
             $success = ! isset($body['error']);
-            $budget->recordResult(1, $this->bytes($body), $success);
+            $budget->recordResult($measured['physical_requests'], $this->bytes($body), $success);
             if (! $success) {
                 $stopReason = 'tool_error';
                 break;
@@ -323,7 +341,7 @@ final class ApiToolCollector
             physicalRequests: $physical,
             complete: $complete,
             stopReason: $stopReason,
-            stats: ['mode' => 'page', 'pages' => $physical, 'items' => count($all)],
+            stats: ['mode' => 'page', 'pages' => $pages, 'items' => count($all)],
         );
     }
 
@@ -357,7 +375,8 @@ final class ApiToolCollector
         $complete = false;
         $stopReason = 'pagination_page_limit';
 
-        while ($physical < $maximum) {
+        $pages = 0;
+        while ($pages < $maximum) {
             $capacity = $budget->canIssuePhysical();
             if (! $capacity->allowed()) {
                 $stopReason = $capacity->reason;
@@ -365,10 +384,12 @@ final class ApiToolCollector
             }
 
             $query = $cursor === null || $cursorParam === '' ? [] : [$cursorParam => $cursor];
-            $body = $this->executeRequest($route, $arguments, $context, $query, $nextUrl);
-            $physical++;
+            $measured = $this->executeMeasuredRequest($route,$arguments,$context,$query,$nextUrl,$this->remaining($budget));
+            $body = $measured['body'];
+            $physical += $measured['physical_requests'];
+            $pages++;
             $success = ! isset($body['error']);
-            $budget->recordResult(1, $this->bytes($body), $success);
+            $budget->recordResult($measured['physical_requests'], $this->bytes($body), $success);
             if (! $success) {
                 $stopReason = 'tool_error';
                 break;
@@ -418,7 +439,7 @@ final class ApiToolCollector
             physicalRequests: $physical,
             complete: $complete,
             stopReason: $stopReason,
-            stats: ['mode' => 'cursor', 'pages' => $physical, 'items' => count($all)],
+            stats: ['mode' => 'cursor', 'pages' => $pages, 'items' => count($all)],
         );
     }
 

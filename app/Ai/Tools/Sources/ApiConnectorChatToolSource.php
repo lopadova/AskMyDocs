@@ -32,7 +32,13 @@ final readonly class ApiConnectorChatToolSource implements ChatToolSourceContrac
             return [];
         }
 
-        return array_map(static function (array $tool): array {
+        $context = $this->presetContext($user, $projectKey);
+        $presets = array_map(static fn ($tool) => [
+            'name'=>$tool->name, 'description'=>$tool->description, 'inputSchema'=>$tool->inputSchema,
+            'source_runtime'=>'api_tool', 'preset_id'=>(int) substr((string) $tool->executorReference,9),
+            'provenance'=>['source'=>'api_tool','tool_remote_name'=>$tool->name],
+        ], array_values(app(\App\ApiTools\ToolCatalog::class)->forContext($context)));
+        return [...$presets, ...array_map(static function (array $tool): array {
             $definition = is_array($tool['definition'] ?? null) ? $tool['definition'] : [];
 
             return [
@@ -46,23 +52,28 @@ final readonly class ApiConnectorChatToolSource implements ChatToolSourceContrac
                     'tool_remote_name' => $tool['name'] ?? null,
                 ],
             ];
-        }, $this->registry->activeToolsForTenant($this->tenants->current(), $projectKey));
+        }, $this->registry->activeToolsForTenant($this->tenants->current(), $projectKey))];
     }
 
     public function invoke(array $tool, array $arguments, User $user, array $context = []): ChatToolInvocationResult
     {
         $name = is_string($tool['name'] ?? null) ? $tool['name'] : '';
         $projectKey = is_string($context['project_key'] ?? null) ? $context['project_key'] : null;
+        if (($tool['source_runtime'] ?? null) === 'api_tool') {
+            $ctx=$this->presetContext($user,$projectKey);
+            $preset=\App\ApiTools\Models\ApiTool::query()->forTenant($ctx->tenantId)->findOrFail($tool['preset_id'] ?? 0);
+            $pending=app(\App\ApiTools\ToolRuntime::class)->start($preset,$arguments,$ctx,continuation:['_idempotency_key'=>$context['_api_tool_idempotency_key'] ?? null,'conversation_id'=>$context['conversation_id'] ?? null,'request_limit'=>max(0,(int) ($context['_api_tool_chat_budget']['physical_limit'] ?? config('api-tools.max_physical_requests',100))-(int) ($context['_api_tool_chat_budget']['physical_used'] ?? 0))]);
+            return new ChatToolInvocationResult(status:'task_accepted',payload:['run_id'=>$pending->id],metadata:['source'=>'api_tool','run_id'=>$pending->id]);
+        }
         $route = $this->registry->routeForTool($this->tenants->current(), $name, $projectKey);
         if ($route === null) {
             throw new \RuntimeException('API connector tool is no longer available.');
         }
         $prepared = $this->requestContext->apply($route, $arguments, $context);
-        $payload = $this->executor->execute(
-            $prepared['route'],
-            $prepared['arguments'],
-            $prepared['context'],
-        );
+        $measured = app(\App\ApiTools\ToolHttpBudget::class)->measure(fn () => $this->executor->execute(
+            $prepared['route'], $prepared['arguments'], $prepared['context'],
+        ), max(0,(int) ($context['_api_tool_chat_budget']['physical_limit'] ?? PHP_INT_MAX)-(int) ($context['_api_tool_chat_budget']['physical_used'] ?? 0)));
+        $payload = $measured['body'];
         $error = is_string($payload['error'] ?? null) ? $payload['error'] : null;
 
         return new ChatToolInvocationResult(
@@ -70,10 +81,15 @@ final readonly class ApiConnectorChatToolSource implements ChatToolSourceContrac
             payload: $payload,
             metadata: [
                 'source' => $this->key(),
+                'physical_request_count' => $measured['physical_requests'],
                 'route_id' => $route->id,
                 'tool_remote_name' => $name,
             ],
             error: $error,
         );
+    }
+    private function presetContext(User $user, ?string $projectKey): \App\Agent\AgentExecutionContext
+    {
+        return new \App\Agent\AgentExecutionContext((string) \Illuminate\Support\Str::uuid(),$this->tenants->current(),$projectKey,'chat','user',(string) $user->id,\App\Support\SupportedLocale::normalize($user->locale ?? null),(string) config('app.timezone','UTC'));
     }
 }

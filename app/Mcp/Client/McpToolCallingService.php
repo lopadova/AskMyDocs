@@ -14,6 +14,7 @@ use App\Support\SupportedLocale;
 final class McpToolCallingService
 {
     private const string SELF_REFUSAL_SENTINEL = '__NO_GROUNDED_ANSWER__';
+    private const string CHAT_BUDGET = '_api_tool_chat_budget';
 
     /**
      * Provider names that can execute OpenAI-style function/tool calling with
@@ -54,8 +55,12 @@ final class McpToolCallingService
         ?User $user = null,
         array $context = [],
     ): AiResponse {
+        $context[self::CHAT_BUDGET] = $this->chatBudget($context);
+        if ($context[self::CHAT_BUDGET]['iterations_used'] >= $context[self::CHAT_BUDGET]['iterations_limit']) {
+            return $this->budgetResponse([], 'chat_iteration_limit');
+        }
         if (! $this->meetsToolCallingPrerequisites($user)) {
-            return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
+            return $this->providerTurn($systemPrompt, $messages, $options, $context);
         }
 
         // ADR 0028 phase 3 - externally-authored grounding may be QUOTED but
@@ -78,10 +83,11 @@ final class McpToolCallingService
         );
 
         if (! $verdict->toolsAllowed) {
-            return $this->ai->chatWithHistory(
+            return $this->providerTurn(
                 $systemPrompt,
                 $messages,
                 $this->withoutToolOptions($options),
+                $context,
             );
         }
 
@@ -96,17 +102,17 @@ final class McpToolCallingService
 
         $toolIndex = $this->buildToolIndex($user, $projectKey);
         if ($toolIndex === []) {
-            return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
+            return $this->providerTurn($systemPrompt, $messages, $options, $context);
         }
 
+        $context['_api_tool_chat_turn_key'] ??= $this->chatTurnKey($messages, $user, $context);
         $chatHistory = $messages;
-        $maxIterations = max((int) config('mcp.tool_calling.max_iterations', 3), 1);
         $toolCallsSummary = [];
         $groundingFallback = null;
 
-        for ($iteration = 0; $iteration < $maxIterations; $iteration++) {
+        while ($context[self::CHAT_BUDGET]['iterations_used'] < $context[self::CHAT_BUDGET]['iterations_limit']) {
             $turnOptions = $this->toolTurnOptions($options, $toolIndex);
-            $llmResponse = $this->ai->chatWithHistory($systemPrompt, $chatHistory, $turnOptions);
+            $llmResponse = $this->providerTurn($systemPrompt, $chatHistory, $turnOptions, $context);
             $toolCalls = $this->normalizeProviderToolCalls($llmResponse->toolCalls);
 
             if ($toolCalls === []) {
@@ -122,7 +128,7 @@ final class McpToolCallingService
                 'tool_calls' => $this->toProviderToolCalls($toolCalls),
             ];
 
-            foreach ($toolCalls as $toolCall) {
+            foreach ($toolCalls as $toolCallOrdinal => $toolCall) {
                 $toolCallSummaryIndex = count($toolCallsSummary);
                 $toolCallsSummary[] = $this->normalizeToolCallResultShape($toolCall);
 
@@ -149,13 +155,22 @@ final class McpToolCallingService
                 );
                 $toolCall = $toolCallsSummary[$toolCallSummaryIndex];
 
+                $context['_api_tool_idempotency_key'] = isset($context['_api_tool_continuation_run_id'])
+                    ? hash('sha256', 'api-tool-child:'.$context['_api_tool_continuation_run_id']."\0".$toolCall['id'])
+                    : hash('sha256', $context['_api_tool_chat_turn_key']."\0".$toolCall['id']);
+                $this->checkpointChatPending($context, $chatHistory, array_slice($toolCallsSummary, 0, -1), array_slice($toolCalls, $toolCallOrdinal));
+                $charged = false;
                 try {
-                    $outcome = $toolDefinition['source']->invoke(
+                    $outcome = $this->physicalRemaining($context) === 0
+                        ? new \App\Ai\Tools\ChatToolInvocationResult('error', ['error' => 'chat_physical_limit'], error: 'chat_physical_limit')
+                        : $toolDefinition['source']->invoke(
                         tool: $toolDefinition['source_tool'],
                         arguments: $toolCall['arguments'],
                         user: $user,
                         context: $context + ['project_key' => $projectKey],
                     );
+                    $charged = true;
+                    $this->chargePhysical($context, $outcome);
                     $toolCallsSummary[$toolCallSummaryIndex] = $this->attachToolResultMetadata(
                         $toolCall,
                         $outcome->payload,
@@ -164,6 +179,14 @@ final class McpToolCallingService
                         $outcome->metadata,
                     );
                     if ($outcome->requiresInteraction()) {
+                        if ($outcome->status === 'task_accepted' && ($outcome->metadata['source'] ?? null) === 'api_tool') {
+                            $this->attachChatHandoff((string) $outcome->metadata['run_id'], $user, [
+                                'system_prompt' => $systemPrompt, 'history' => $chatHistory, 'options' => $options,
+                                'context' => $context + ['project_key' => $projectKey], 'tool_call' => $toolCall,
+                                'summary' => $toolCallsSummary,
+                                'remaining' => array_slice($toolCalls, $toolCallOrdinal + 1),
+                            ]);
+                        }
                         return $this->interactionResponse($llmResponse, $toolCallsSummary, $outcome->metadata);
                     }
                     if ($outcome->status === 'completed' && $outcome->error === null) {
@@ -171,6 +194,7 @@ final class McpToolCallingService
                     }
                     $chatHistory[] = $this->toolResultMessage($toolCall, $outcome->payload);
                 } catch (\Throwable $exception) {
+                    if (! $charged) { $context[self::CHAT_BUDGET]['physical_used']++; }
                     $chatHistory[] = $this->toolErrorMessage(
                         id: $toolCall['id'],
                         toolName: $toolName,
@@ -185,17 +209,163 @@ final class McpToolCallingService
                 }
             }
 
-            if ($iteration === $maxIterations - 1) {
-                break;
-            }
         }
 
-        $finalTurn = $this->ai->chatWithHistory($systemPrompt, $chatHistory, $options);
+        return $this->budgetResponse($toolCallsSummary, 'chat_iteration_limit');
+    }
 
-        return $this->injectToolCalls(
-            $this->withGroundingFallback($finalTurn, $groundingFallback),
-            array_merge($toolCallsSummary, $this->normalizeProviderToolCalls($finalTurn->toolCalls)),
-        );
+    /** Resume the original provider tool-call protocol with the terminal API result. */
+    public function resumeApiTool(\App\ApiTools\Models\ApiToolRun $run, User $user): AiResponse
+    {
+        $handoff = (array) $run->continuation;
+        if (is_string(data_get($handoff, 'child_handoff.run_id'))) {
+            $child = \App\ApiTools\Models\ApiToolRun::query()->forTenant($run->tenant_id)->findOrFail($handoff['child_handoff']['run_id']);
+            \App\ApiTools\ToolContinuation::dispatchIfReady($child);
+            return $this->interactionResponse(new AiResponse('', '', ''), $handoff['delegated_summary'] ?? [], ['source' => 'api_tool', 'run_id' => $child->id]);
+        }
+        $history = $handoff['history'];
+        $summary = $handoff['summary'];
+        $toolCall = $handoff['tool_call'];
+        $context = $handoff['context'];
+        $context['_api_tool_continuation_run_id'] = $run->id;
+        $context[self::CHAT_BUDGET] = $this->chatBudget($context);
+        if (! ($handoff['result_appended'] ?? false)) {
+            $context[self::CHAT_BUDGET]['physical_used'] += max(0, (int) $run->physical_requests);
+            $body = app(\App\ApiTools\ToolContinuation::class)->body($run);
+            $history[] = $this->toolResultMessage($toolCall, $body);
+            $last = count($summary) - 1;
+            $summary[$last] = $this->attachToolResultMetadata($toolCall, $body,
+                isset($body['error']) ? 'error' : 'completed', $body['error'] ?? null,
+                ['source' => 'api_tool', 'run_id' => $run->id]);
+        }
+        $remaining = $handoff['remaining'];
+        $handoff = array_merge($handoff, ['context' => $context, 'history' => $history, 'summary' => $summary, 'result_appended' => true]);
+        $run->forceFill(['continuation' => $handoff])->save();
+        $index = $this->buildToolIndex($user, $context['project_key'] ?? null);
+        foreach ($remaining as $ordinal => $call) {
+            $context['_api_tool_idempotency_key'] = hash('sha256', 'api-tool-child:'.$run->id."\0".$call['id']);
+            $handoff = array_merge($handoff, ['context' => $context, 'pending_call' => ['id' => $call['id'], 'idempotency_key' => $context['_api_tool_idempotency_key']]]);
+            $run->forceFill(['continuation' => $handoff])->save();
+            $definition = $index[$call['name']] ?? null;
+            try {
+                $outcome = $this->physicalRemaining($context) === 0
+                ? new \App\Ai\Tools\ChatToolInvocationResult('error', ['error' => 'chat_physical_limit'], error: 'chat_physical_limit')
+                : ($definition === null
+                ? new \App\Ai\Tools\ChatToolInvocationResult('error', ['error' => 'tool_no_longer_available'], error: 'tool_no_longer_available')
+                : $definition['source']->invoke($definition['source_tool'], $call['arguments'], $user, $context));
+            } catch (\Throwable) {
+                $outcome = new \App\Ai\Tools\ChatToolInvocationResult('error', ['error' => 'chat_tool_failed'], error: 'chat_tool_failed');
+            }
+            $this->chargePhysical($context, $outcome);
+            $summary[] = $this->attachToolResultMetadata($call, $outcome->payload, $outcome->status, $outcome->error, $outcome->metadata);
+            if ($outcome->requiresInteraction()) {
+                if ($outcome->status === 'task_accepted' && ($outcome->metadata['source'] ?? null) === 'api_tool') {
+                    $this->attachChatHandoff((string) $outcome->metadata['run_id'], $user, [
+                        'system_prompt' => $handoff['system_prompt'], 'history' => $history, 'options' => $handoff['options'],
+                        'context' => $context, 'tool_call' => $call, 'summary' => $summary,
+                        'remaining' => array_slice($remaining, $ordinal + 1),
+                    ]);
+                }
+                return $this->interactionResponse(new AiResponse('', '', ''), $summary, $outcome->metadata);
+            }
+            $history[] = $this->toolResultMessage($call, $outcome->payload);
+            // Persist each consumed sibling so a later provider failure cannot replay it.
+            $handoff = array_merge($handoff, ['context' => $context, 'history' => $history, 'summary' => $summary,
+                'result_appended' => true, 'remaining' => array_slice($remaining, $ordinal + 1)]);
+            $run->forceFill(['continuation' => $handoff])->save();
+        }
+        $response = $this->chatWithTools($handoff['system_prompt'], $history, $handoff['options'], $user, $context);
+        return new AiResponse($response->content, $response->provider, $response->model, $response->promptTokens,
+            $response->completionTokens, $response->totalTokens, $response->finishReason, array_merge($summary, $response->toolCalls));
+    }
+
+    private function chatTurnKey(array $messages, User $user, array $context): string
+    {
+        $messageId = $context['user_message_id'] ?? null;
+        if ($messageId === null && $user->exists && isset($context['conversation_id'])) {
+            $messageId = \App\Models\Message::query()->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->where('conversation_id', $context['conversation_id'])->where('role', 'user')
+                ->whereHas('conversation', fn ($query) => $query->where('user_id', $user->id))->max('id');
+        }
+        return hash('sha256', json_encode([$user->id, $context['conversation_id'] ?? null, $messageId ?? $messages], JSON_THROW_ON_ERROR));
+    }
+
+    private function checkpointChatPending(array $context, array $history, array $summary, array $remaining): void
+    {
+        if (! is_string($context['_api_tool_continuation_run_id'] ?? null)) { return; }
+        $parent = \App\ApiTools\Models\ApiToolRun::query()->forTenant(app(\App\Support\TenantContext::class)->current())
+            ->findOrFail($context['_api_tool_continuation_run_id']);
+        $calls = [];
+        foreach (array_merge($parent->continuation['summary'] ?? [], $summary) as $call) { $calls[$call['id']] = $call; }
+        $parent->forceFill(['continuation' => array_merge((array) $parent->continuation, [
+            'context' => $context, 'history' => $history, 'summary' => array_values($calls),
+            'remaining' => $remaining, 'result_appended' => true,
+            'pending_call' => ['id' => $remaining[0]['id'], 'idempotency_key' => $context['_api_tool_idempotency_key']],
+        ])])->save();
+    }
+
+    private function attachChatHandoff(string $childId, User $user, array $payload): void
+    {
+        $parentId = $payload['context']['_api_tool_continuation_run_id'] ?? null;
+        if (is_string($parentId) && $parentId !== $childId) {
+            $parent = \App\ApiTools\Models\ApiToolRun::query()->forTenant(app(\App\Support\TenantContext::class)->current())->findOrFail($parentId);
+            $calls = [];
+            foreach (array_merge($parent->continuation['summary'] ?? [], $payload['summary']) as $call) { $calls[$call['id']] = $call; }
+            $payload['summary'] = array_values($calls);
+            app(\App\ApiTools\ToolContinuation::class)->delegateChat($parent, $childId, $user, $payload);
+            return;
+        }
+        app(\App\ApiTools\ToolContinuation::class)->attachChat($childId, $user, $payload);
+    }
+
+    /** Limits belong to the original user turn, including every asynchronous handoff. */
+    private function chatBudget(array $context): array
+    {
+        $stored = is_array($context[self::CHAT_BUDGET] ?? null) ? $context[self::CHAT_BUDGET] : [];
+        $iterations = max(1, (int) config('mcp.tool_calling.max_iterations', 3));
+        $physical = max(1, (int) config('api-tools.chat_physical_requests', config('api-tools.max_physical_requests', 100)));
+        return [
+            'iterations_limit' => min($iterations, max(1, (int) ($stored['iterations_limit'] ?? $iterations))),
+            'iterations_used' => max(0, (int) ($stored['iterations_used'] ?? 0)),
+            'physical_limit' => min($physical, max(1, (int) ($stored['physical_limit'] ?? $physical))),
+            'physical_used' => max(0, (int) ($stored['physical_used'] ?? 0)),
+        ];
+    }
+
+    private function physicalRemaining(array $context): int
+    {
+        $budget = $this->chatBudget($context);
+        return max(0, $budget['physical_limit'] - $budget['physical_used']);
+    }
+
+    private function chargePhysical(array &$context, \App\Ai\Tools\ChatToolInvocationResult $outcome): void
+    {
+        // Queued work is charged exactly once from its durable wire counter on resume.
+        $requests = ($outcome->status === 'task_accepted' && ($outcome->metadata['source'] ?? null) === 'api_tool') || $outcome->status === 'confirmation_required'
+            || $outcome->error === 'chat_physical_limit' ? 0 : max(0, (int) ($outcome->metadata['physical_request_count'] ?? 1));
+        $context[self::CHAT_BUDGET]['physical_used'] += $requests;
+    }
+
+    private function providerTurn(string $system, array $history, array $options, array &$context): AiResponse
+    {
+        $context[self::CHAT_BUDGET] = $this->chatBudget($context);
+        if ($context[self::CHAT_BUDGET]['iterations_used'] >= $context[self::CHAT_BUDGET]['iterations_limit']) {
+            return $this->budgetResponse([], 'chat_iteration_limit');
+        }
+        $context[self::CHAT_BUDGET]['iterations_used']++;
+        // Debit before the external call so retries cannot reset the allowance.
+        if (is_string($context['_api_tool_continuation_run_id'] ?? null)) {
+            $run = \App\ApiTools\Models\ApiToolRun::query()->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($context['_api_tool_continuation_run_id']);
+            $run->forceFill(['continuation' => array_merge((array) $run->continuation, ['context' => $context])])->save();
+        }
+        return $this->ai->chatWithHistory($system, $history, $options);
+    }
+
+    private function budgetResponse(array $summary, string $reason): AiResponse
+    {
+        return new AiResponse(__('The tool execution limit for this message was reached.'), 'server', 'tool-runtime',
+            finishReason: $reason, toolCalls: $summary);
     }
 
     private function meetsToolCallingPrerequisites(?User $user): bool
@@ -457,6 +627,7 @@ final class McpToolCallingService
         $toolCall['pending_interaction_id'] = $metadata['pending_interaction_id'] ?? null;
         $toolCall['prompt'] = is_array($metadata['prompt'] ?? null) ? $metadata['prompt'] : null;
         $toolCall['task_id'] = $metadata['task_id'] ?? null;
+        $toolCall['run_id'] = $metadata['run_id'] ?? null;
         $toolCall['task'] = is_array($metadata['task'] ?? null) ? $metadata['task'] : null;
         $toolCall['app'] = is_array($metadata['app'] ?? null) ? $metadata['app'] : null;
         $toolCall['provenance'] = array_filter(array_merge(
@@ -473,7 +644,9 @@ final class McpToolCallingService
      */
     private function interactionResponse(AiResponse $response, array $toolCallsSummary, array $metadata): AiResponse
     {
-        $message = data_get($metadata, 'prompt.message');
+        $message = ($metadata['source'] ?? null) === 'api_tool'
+            ? __('The tool is running. The answer will appear automatically.')
+            : data_get($metadata, 'prompt.message');
         if (! is_string($message) || $message === '') {
             $message = $response->content !== ''
                 ? $response->content

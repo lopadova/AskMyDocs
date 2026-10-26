@@ -33,6 +33,12 @@ final readonly class AgentRunControl
             return $locked;
         });
 
+        $pendingTool = data_get($updated->result_json, 'pending_api_tool.run_id');
+        if (is_string($pendingTool)) {
+            $toolRun = \App\ApiTools\Models\ApiToolRun::query()->forTenant($updated->tenant_id)->find($pendingTool);
+            if ($toolRun !== null) { app(\App\ApiTools\ToolRuntime::class)->cancel($toolRun); }
+        }
+
         $this->events->publish($updated, 'run.cancelled', 'run.cancelled', canCancel: false);
 
         return $updated->refresh();

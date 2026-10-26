@@ -61,7 +61,8 @@ final class ApiToolChatLoopTest extends TestCase
         $this->seedOrdersRoute();
 
         Http::fake([
-            'openrouter.ai/*' => Http::sequence()
+            'openrouter.ai/api/v1/models/*/endpoints' => Http::response(['data'=>['endpoints'=>[['supported_parameters'=>['tools','tool_choice','temperature','max_tokens','response_format']]]]]),
+            'openrouter.ai/api/v1/chat/completions' => Http::sequence()
                 ->push($this->toolCallTurn(), 200)
                 ->push($this->finalAnswerTurn('Order 10293 is shipped.'), 200),
             'api.example.test/*' => Http::response(
@@ -109,7 +110,8 @@ final class ApiToolChatLoopTest extends TestCase
         // With the flag OFF and no MCP servers, there are no tools — the loop
         // falls back to a plain chat turn (no tool_calls in the response).
         Http::fake([
-            'openrouter.ai/*' => Http::response($this->finalAnswerTurn('I cannot fetch live orders.'), 200),
+            'openrouter.ai/api/v1/models/*/endpoints' => Http::response(['data'=>['endpoints'=>[['supported_parameters'=>['tools','tool_choice','temperature','max_tokens','response_format']]]]]),
+            'openrouter.ai/api/v1/chat/completions' => Http::response($this->finalAnswerTurn('I cannot fetch live orders.'), 200),
             'api.example.test/*' => Http::response(['orders' => []], 200),
         ]);
 
@@ -137,7 +139,8 @@ final class ApiToolChatLoopTest extends TestCase
         $this->seedCustomerOrderRoutes();
 
         Http::fake([
-            'openrouter.ai/*' => Http::sequence()
+            'openrouter.ai/api/v1/models/*/endpoints' => Http::response(['data'=>['endpoints'=>[['supported_parameters'=>['tools','tool_choice','temperature','max_tokens','response_format']]]]]),
+            'openrouter.ai/api/v1/chat/completions' => Http::sequence()
                 ->push($this->namedToolCallTurn('call_customer', 'find_customer', ['name' => 'Tizio']), 200)
                 ->push($this->namedToolCallTurn('call_orders', 'get_customer_orders', ['customer_id' => 'cust-7']), 200)
                 ->push($this->finalAnswerTurn('Tizio has two open orders.'), 200),
