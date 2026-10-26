@@ -47,6 +47,11 @@ final class TenantIdMandatoryTest extends TestCase
      * `tenant_id` (R30).
      */
     private const TENANT_AWARE_MODELS = [
+        \App\ApiTools\Models\ApiTool::class,
+        \App\ApiTools\Models\ApiToolRevision::class,
+        \App\ApiTools\Models\ApiToolRun::class,
+        \App\ApiTools\Models\ApiToolStep::class,
+        \App\ApiTools\Models\ApiToolVerification::class,
         \App\Models\KnowledgeDocument::class,
         \App\Models\KnowledgeChunk::class,
         // EmbeddingCache is intentionally NOT tenant-aware — the cache is
