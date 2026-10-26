@@ -46,7 +46,7 @@
         "webklex/php-imap": "^6.0"
     },
     "require-dev": {
-        "laravel/mcp": "^0.9",
+        "laravel/mcp": "^1.1",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^11.0",
         "padosoft/eval-harness-ui": "^1.0",
