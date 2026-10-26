@@ -24,6 +24,8 @@ final class AgentChatModelScope
         }
     }
 
+    public function context(): ?AgentExecutionContext { return $this->context; }
+
     public function options(array $options): array
     {
         if ($this->context === null) {
