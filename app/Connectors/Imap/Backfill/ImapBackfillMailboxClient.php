@@ -117,6 +117,19 @@ final class ImapBackfillMailboxClient implements ImapBackfillClient, ImapBackfil
         return $this->client->fetchMessage($mailbox, $uid);
     }
 
+    /** Apply the incremental checkpoint on the server, before returning any UIDs. */
+    public function incrementalUids(string $mailbox, ?Carbon $since, ?int $sinceUid): array
+    {
+        if (! $this->client->ping()) {
+            throw new RuntimeException('IMAP connection unavailable while searching incremental UIDs.');
+        }
+        if ($sinceUid !== null && $sinceUid >= 4294967295) {
+            return [];
+        }
+
+        return $this->uids($mailbox, $since, null, max(0, $sinceUid ?? 0));
+    }
+
     public function messageSizes(string $mailbox, array $uids): ?array
     {
         if ($uids === []) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxClient;
+use App\Connectors\Imap\MemoryBoundedImapClient;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -22,6 +23,39 @@ use Webklex\PHPIMAP\Query\WhereQuery;
 
 final class ImapUidSearchSyntaxTest extends TestCase
 {
+    public function test_incremental_sync_sends_the_checkpoint_to_the_server_without_fetching_metadata(): void
+    {
+        $inner = $this->createMock(ImapClientInterface::class);
+        $inner->expects($this->once())->method('ping')->willReturn(true);
+        $inner->expects($this->never())->method('searchUids');
+        $inner->expects($this->never())->method('fetchMessage');
+        [$downloads, $protocol] = $this->client([72, 8, 71], $inner);
+        $client = new MemoryBoundedImapClient($inner, $downloads);
+
+        $this->assertSame([71, 72], $client->searchUids('INBOX', Carbon::parse('2026-10-01'), 70));
+        $this->assertSame(['UID SEARCH SINCE "01-Oct-2026" UID 71:*'], $protocol->commands);
+    }
+
+    public function test_incremental_sync_without_a_checkpoint_and_reconcile_keep_the_full_uid_range(): void
+    {
+        $inner = $this->createStub(ImapClientInterface::class);
+        $inner->method('ping')->willReturn(true);
+        [$client, $protocol] = $this->client([72, 8, 71], $inner);
+
+        $this->assertSame([8, 71, 72], $client->incrementalUids('INBOX', null, null));
+        $this->assertSame(['UID SEARCH ALL UID 1:*'], $protocol->commands);
+    }
+
+    public function test_incremental_sync_at_the_largest_uid_cannot_wrap_the_server_range(): void
+    {
+        $inner = $this->createStub(ImapClientInterface::class);
+        $inner->method('ping')->willReturn(true);
+        [$client, $protocol] = $this->client([4294967295], $inner);
+
+        $this->assertSame([], $client->incrementalUids('INBOX', null, 4294967295));
+        $this->assertSame([], $protocol->commands);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
