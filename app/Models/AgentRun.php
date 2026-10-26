@@ -20,6 +20,7 @@ final class AgentRun extends Model
     public const STATUS_AWAITING_MCP_CONFIRMATION = 'awaiting_mcp_confirmation';
     public const STATUS_AWAITING_MCP_INPUT = 'awaiting_mcp_input';
     public const STATUS_WAITING_MCP_TASK = 'waiting_mcp_task';
+    public const STATUS_WAITING_API_TOOL = 'waiting_api_tool';
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_PARTIAL = 'partial';
     public const STATUS_FAILED = 'failed';

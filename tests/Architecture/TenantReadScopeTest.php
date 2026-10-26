@@ -31,7 +31,8 @@ final class TenantReadScopeTest extends TestCase
      * this guard (Copilot caught ChatLogProvenance + 16 others missing).
      */
     private const TENANT_AWARE_MODELS = [
-        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentRun',
+        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentDiagnosticSpan', 'AgentRun',
+        'ApiTool', 'ApiToolRevision', 'ApiToolRun', 'ApiToolStep', 'ApiToolVerification',
         'EmailDatasetOperationNonce',
         'EmailTriageProfile', 'EmailTriageMessage', 'EmailTriageEvaluation', 'EmailTriageCampaign', 'EmailTriageCampaignItem',
         'ChatFilterPreset', 'ChatFolder', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
@@ -112,6 +113,7 @@ final class TenantReadScopeTest extends TestCase
         $roots = [
             dirname(__DIR__, 2).'/app/Http/Controllers',
             dirname(__DIR__, 2).'/app/Services',
+            dirname(__DIR__, 2).'/app/ApiTools',
             // Audit#3 — these were NOT scanned originally and harboured the
             // MCP-tool / insights-command / provenance cross-tenant leaks.
             dirname(__DIR__, 2).'/app/Mcp',
@@ -186,7 +188,7 @@ final class TenantReadScopeTest extends TestCase
         // missing ChatLogProvenance + 16 others).
         $modelsDir = dirname(__DIR__, 2).'/app/Models';
         $actual = [];
-        foreach (glob($modelsDir.'/*.php') ?: [] as $file) {
+        foreach ([...(glob($modelsDir.'/*.php') ?: []), ...(glob(dirname(__DIR__, 2).'/app/ApiTools/Models/*.php') ?: [])] as $file) {
             $code = (string) file_get_contents($file);
             if (preg_match('/^\s*use [\w\\\\]*BelongsToTenant;/m', $code) === 1) {
                 $actual[] = basename($file, '.php');

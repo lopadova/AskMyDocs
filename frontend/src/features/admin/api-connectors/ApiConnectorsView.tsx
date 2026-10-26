@@ -117,6 +117,8 @@ export function ApiConnectorsView() {
     // Relation editor: full routes fetched on select to power the field pickers.
     const [relationListRoute, setRelationListRoute] = useState<ApiRoute | null>(null);
     const [relationDetailRoute, setRelationDetailRoute] = useState<ApiRoute | null>(null);
+    const [relationRouteErrors, setRelationRouteErrors] = useState<{ list: string | null; detail: string | null }>({ list: null, detail: null });
+    const relationRouteRequests = useRef({ list: 0, detail: 0 });
     const [drillResult, setDrillResult] = useState<DrillResult | null>(null);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
@@ -342,6 +344,9 @@ export function ApiConnectorsView() {
     // --- relations (List → Detail) ---
 
     function openRelationEditor(connector: ApiConnector, relation: ApiRouteRelation | null) {
+        relationRouteRequests.current.list += 1;
+        relationRouteRequests.current.detail += 1;
+        setRelationRouteErrors({ list: null, detail: null });
         setRelationListRoute(null);
         setRelationDetailRoute(null);
         if (relation) {
@@ -355,19 +360,19 @@ export function ApiConnectorsView() {
     }
 
     async function selectRelationRoute(side: 'list' | 'detail', routeId: number | null) {
-        if (routeId === null) {
-            if (side === 'list') setRelationListRoute(null);
-            else setRelationDetailRoute(null);
-            return;
-        }
+        const request = ++relationRouteRequests.current[side];
+        setRelationRouteErrors((previous) => ({ ...previous, [side]: null }));
+        if (side === 'list') setRelationListRoute(null);
+        else setRelationDetailRoute(null);
+        if (routeId === null) return;
         try {
             const route = await apiConnectorsApi.showRoute(routeId);
+            if (request !== relationRouteRequests.current[side]) return;
             if (side === 'list') setRelationListRoute(route);
             else setRelationDetailRoute(route);
-        } catch {
-            // Suggestions are a nice-to-have; a fetch failure just means no datalist.
-            if (side === 'list') setRelationListRoute(null);
-            else setRelationDetailRoute(null);
+        } catch (error) {
+            if (request !== relationRouteRequests.current[side]) return;
+            setRelationRouteErrors((previous) => ({ ...previous, [side]: toAdminError(error).message }));
         }
     }
 
@@ -618,6 +623,8 @@ export function ApiConnectorsView() {
                     relation={modal.kind === 'relation-edit' ? modal.relation : null}
                     listRouteFull={relationListRoute}
                     detailRouteFull={relationDetailRoute}
+                    listRouteError={relationRouteErrors.list}
+                    detailRouteError={relationRouteErrors.detail}
                     onSelectListRoute={(id) => void selectRelationRoute('list', id)}
                     onSelectDetailRoute={(id) => void selectRelationRoute('detail', id)}
                     onSubmit={handleRelationSubmit}

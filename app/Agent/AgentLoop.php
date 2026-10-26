@@ -405,6 +405,20 @@ final readonly class AgentLoop
                         $plan,
                         $filters,
                     );
+                    if (is_string($result->body['_api_tool_pending'] ?? null)) {
+                        // An accepted asynchronous call is not a completed observation.
+                        $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+                        app(\App\ApiTools\ToolContinuation::class)->attachAgent($result->body['_api_tool_pending'], $run, [
+                            'action_id' => $action->id, 'purpose' => $action->purpose,
+                            'execution_id' => $execution->id, 'arguments' => $resolved,
+                            'tool' => [
+                                'name' => $tool->name, 'display_name' => $tool->displayName, 'kind' => $tool->kind,
+                                'executor_reference' => $tool->executorReference, 'metadata' => $tool->metadata,
+                            ],
+                        ]);
+                        $this->diagnostics->end($run, $toolSpan, metadata: ['operation' => 'api_tool_handoff']);
+                        return $this->outcome('waiting_api_tool', $evidence, $completed, 'api_tool_pending');
+                    }
                     $this->finishExecution($execution, $result, $started);
                     $this->diagnostics->end($run, $toolSpan, $result->successful() ? 'completed' : 'failed');
                     $results[$action->id] = $result->body;
@@ -748,7 +762,7 @@ final readonly class AgentLoop
                 return;
             }
             // A stale worker must never erase a concurrently persisted JEV dispatch marker.
-            $run->forceFill(['result_json' => array_merge(array_intersect_key((array) $locked->result_json, ['question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true]), [
+            $run->forceFill(['result_json' => array_merge(array_intersect_key((array) $locked->result_json, ['question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true, 'pending_api_tool' => true, 'api_tool_resumptions' => true]), [
                 'phase' => 'collection',
                 'retrieval_completed' => $retrieved,
                 'evidence' => $evidence->jsonSerialize(),

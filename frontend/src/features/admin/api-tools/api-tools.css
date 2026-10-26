@@ -1,0 +1,77 @@
+.api-tools { max-width: 1500px; margin: 0 auto; font-size: 14px; }
+.api-tools h1 { font-size: 28px; margin: 4px 0 8px; }
+.api-tools h2 { font-size: 17px; margin: 0 0 6px; }
+.api-tools p { line-height: 1.55; }
+.api-tools label, .api-tool-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; }
+.api-tools input:not([type=checkbox]), .api-tools textarea, .api-tools select { width: 100%; box-sizing: border-box; border: 1px solid var(--border, #80808055); border-radius: 6px; padding: 9px 10px; color: var(--fg-1); background: var(--bg-0); font: inherit; min-width: 0; }
+.api-tools input:focus-visible, .api-tools textarea:focus-visible, .api-tools select:focus-visible, .api-tools summary:focus-visible { outline: 2px solid var(--accent, #4f7dff); outline-offset: 2px; }
+.api-tools textarea { resize: vertical; }
+.api-tools small, .api-tool-muted, .api-tool-section-heading p { color: var(--fg-3, var(--fg-2)); font-size: 12px; overflow-wrap: anywhere; }
+.api-tool-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--fg-3, var(--fg-2)); margin-bottom: 0; }
+.api-tool-page-heading, .api-tool-section-heading, .api-tool-actions, .api-tool-step-heading, .api-tool-binding-heading, .api-tool-save-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.api-tool-actions { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+.api-tool-workspace { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 24px; margin-top: 26px; align-items: start; }
+.api-tool-catalog { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; }
+.api-tool-catalog-item.ui-button { width: 100%; height: auto; justify-content: flex-start; text-align: left; }
+.api-tool-catalog-item .ui-button-label { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; overflow-wrap: anywhere; white-space: normal; }
+.api-tool-catalog-item[aria-pressed=true] { background: var(--bg-2); }
+.api-tool-editor { min-width: 0; }
+.api-tool-section { border: 1px solid var(--border, #80808033); border-radius: 10px; padding: 20px; margin-bottom: 18px; background: var(--bg-1, var(--bg-0)); }
+.api-tool-section > label, .api-tool-section > details, .api-tool-step-body > *, .api-tool-test > * { margin-top: 14px; }
+.api-tool-section-heading { margin-bottom: 18px; align-items: flex-start; flex-wrap: wrap; }
+.api-tool-section-heading p { margin: 3px 0 0; }
+.api-tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.api-tool-step { border: 1px solid var(--border, #80808033); border-radius: 8px; margin-top: 10px; }
+.api-tool-step-heading { padding: 8px; }
+.api-tool-step-toggle.ui-button { flex: 1; height: auto; min-width: 0; justify-content: flex-start; text-align: left; }
+.api-tool-step-toggle .ui-button-label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; white-space: normal; }
+.api-tool-step-number { font-variant-numeric: tabular-nums; opacity: .6; }
+.api-tool-step-body { border-top: 1px solid var(--border, #80808033); padding: 0 16px 18px; }
+.api-tool-mapping { border-bottom: 1px solid var(--border, #80808033); padding-bottom: 16px; }
+.api-tool-mapping > div:first-child { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.api-tool-binding { min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.api-tool-binding-heading strong { font-weight: 500; font-size: 12px; }
+.api-tool-binding-heading { min-height: 24px; }
+.api-tool-picker { position: relative; min-width: 0; }
+.api-tool-picker > .ui-button { width: 100%; justify-content: space-between; text-align: left; }
+.api-tool-picker > .ui-button .ui-button-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.api-tool-picker-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; background: var(--bg-1, var(--bg-0)); border: 1px solid var(--border, #80808066); border-radius: 8px; padding: 8px; box-shadow: 0 12px 30px #0003; min-width: min(300px, 80vw); }
+.api-tool-picker-search { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.api-tool-picker-menu [role=listbox] { max-height: 270px; overflow: auto; }
+.api-tool-picker-menu [role=option] { display: flex; width: 100%; height: auto; text-align: left; justify-content: flex-start; }
+.api-tool-picker-menu [role=option] .ui-button-label { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
+.api-tool-picker-menu .is-active-option { background: var(--bg-2); }
+.api-tools details > summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--fg-2); }
+.api-tool-checkbox { flex-direction: row !important; align-items: center; gap: 8px !important; line-height: 1.5; }
+.api-tools fieldset { border: 1px solid var(--border, #80808033); border-radius: 6px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.api-tool-input-row { display: grid; grid-template-columns: 1fr 100px 1.5fr auto auto; gap: 10px; align-items: end; padding: 12px 0; }
+.api-tool-output-row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 16px; padding: 14px 0; }
+.api-tool-save-bar { position: sticky; bottom: 0; background: var(--bg-1, var(--bg-0)); border: 1px solid var(--border, #80808033); border-radius: 8px; padding: 12px; margin-bottom: 18px; z-index: 5; flex-wrap: wrap; font-size: 12px; }
+.api-tool-empty { padding: 36px 20px; text-align: center; color: var(--fg-2); }
+.api-tool-error { border: 1px solid var(--danger, #bf4444); padding: 12px; border-radius: 8px; }
+.api-tool-status { font-size: 12px; color: var(--fg-2); }
+.api-tool-json, .api-tools pre { font-family: ui-monospace, monospace; font-size: 12px; }
+.api-tools pre { overflow: auto; max-height: 450px; background: var(--bg-0); padding: 12px; border-radius: 6px; }
+.api-tool-diagnostic { border-bottom: 1px solid var(--border, #80808033); padding: 10px 0; }
+.api-tool-diagnostic > span { margin-left: 10px; }
+.api-tool-download { color: var(--accent, var(--fg-1)); }
+@media (max-width: 1000px) { .api-tool-workspace { grid-template-columns: 190px minmax(0, 1fr); gap: 16px; } .api-tool-input-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .api-tool-workspace { display: flex; flex-direction: column; } .api-tool-catalog { width: 100%; position: static; max-height: 250px; overflow: auto; } .api-tool-editor { width: 100%; } .api-tool-page-heading { align-items: flex-start; flex-direction: column; } .api-tool-grid, .api-tool-output-row { grid-template-columns: 1fr; } .api-tool-section { padding: 14px; } .api-tool-step-heading { flex-wrap: wrap; } .api-tool-step-heading > .api-tool-actions { margin-left: auto; } }
+.api-tools fieldset.api-tool-form-fields { display: block; margin: 0; padding: 0; border: 0; }
+.api-tool-call-result { border: 1px solid var(--border, #80808033); background: var(--bg-0); border-radius: 7px; padding: 14px; margin-bottom: 14px; }
+.api-tool-call-result h3, .api-tool-call-result h4 { font-size: 13px; margin: 0; }
+.api-tool-call-result .api-tool-section-heading { margin-bottom: 10px; }
+.api-tool-call-result details { margin-top: 10px; }
+.api-tool-effective-inputs { overflow-x: auto; }
+.api-tool-effective-inputs table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.api-tool-effective-inputs th, .api-tool-effective-inputs td { padding: 8px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--border, #80808033); }
+.api-tool-effective-inputs thead th { color: var(--fg-2); font-weight: 500; }
+.api-tool-call-output, .api-tool-call-error { margin-top: 12px; }
+.api-tool-call-error { border-left: 2px solid var(--err, #bf4444); padding-left: 10px; }
+.api-tool-call-error strong { display: block; margin-bottom: 6px; font-size: 12px; }
+.api-tool-value, .api-tool-origin { overflow-wrap: anywhere; font-size: 12px; }
+.api-tool-value ol { margin: 5px 0; padding-left: 20px; }
+.api-tool-value-object { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 7px 0; }
+.api-tool-value-object > div { display: flex; gap: 6px; align-items: baseline; }
+.api-tool-value-object dt { color: var(--fg-2); font-size: 12px; }
+.api-tool-value-object dd { margin: 0; font-size: 12px; }

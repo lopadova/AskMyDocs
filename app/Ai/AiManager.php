@@ -206,6 +206,7 @@ class AiManager
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
         $options = app(AgentChatModelScope::class)->options($options);
+        $measurementStart = microtime(true);
         $response = $this->provider()->chat($systemPrompt, $userMessage, $options);
 
         // FinOps full-coverage metering (R44). Non-blocking + SDK-skipping; see
@@ -217,6 +218,8 @@ class AiManager
         if ($this->bridgeShouldMeterChat($response->provider, [], $options)) {
             app(AiCallMeter::class)->meterChat($response, $userMessage);
         }
+
+        app(\App\ApiTools\ToolMeasurements::class)->record($response, (int) round((microtime(true)-$measurementStart)*1000));
 
         return $response;
     }
@@ -240,11 +243,14 @@ class AiManager
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         $options = app(AgentChatModelScope::class)->options($options);
+        $measurementStart = microtime(true);
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
 
         if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
             app(AiCallMeter::class)->meterChat($response, $messages);
         }
+
+        app(\App\ApiTools\ToolMeasurements::class)->record($response, (int) round((microtime(true)-$measurementStart)*1000));
 
         return $response;
     }
@@ -253,11 +259,14 @@ class AiManager
     public function chatWithProvider(string $provider, string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         $options = app(AgentChatModelScope::class)->options($options);
+        $measurementStart = microtime(true);
         $response = $this->provider($provider)->chatWithHistory($systemPrompt, $messages, $options);
 
         if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
             app(AiCallMeter::class)->meterChat($response, $messages);
         }
+
+        app(\App\ApiTools\ToolMeasurements::class)->record($response, (int) round((microtime(true)-$measurementStart)*1000));
 
         return $response;
     }

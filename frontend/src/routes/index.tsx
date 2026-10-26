@@ -49,6 +49,7 @@ import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView'
 import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/EvidenceRiskReviewView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { ApiToolsView } from '../features/admin/api-tools/ApiToolsView';
 import { ApiConnectorsView } from '../features/admin/api-connectors/ApiConnectorsView';
 import { IngestionView } from '../features/admin/ingestion/IngestionView';
 import { AppSettingsView } from '../features/admin/app-settings/AppSettingsView';
@@ -1255,6 +1256,12 @@ const adminApiConnectorsRoute = createRoute({
     component: AdminApiConnectorsRoute,
 });
 
+const adminApiToolsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/api-tools',
+    component: () => <RequireRole roles={['admin', 'super-admin']}><ApiToolsView /></RequireRole>,
+});
+
 // v8.21 (Ciclo 2) — Ingestion & Sync observability. Same admin+super-admin gate
 // as connectors (the BE `manageConnectors` Gate is authoritative).
 function AdminIngestionRoute() {
@@ -1617,6 +1624,7 @@ const teamChildren = [
     adminConnectorsRoute,
     adminConnectorCallbackRoute,
     adminApiConnectorsRoute,
+    adminApiToolsRoute,
     adminIngestionRoute,
     adminInvitationsRoute,
     adminAppSettingsRoute,

@@ -299,6 +299,7 @@ abstract class TestCase extends OrchestraTestCase
         // tenant_id stamping hook. Registered after AppServiceProvider
         // because it depends on the TenantContext singleton it binds.
         $app->register(\App\Providers\FlowServiceProvider::class);
+        $app->register(\App\Providers\ApiToolServiceProvider::class);
         // Sanctum powers the JSON auth endpoints exercised by
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.

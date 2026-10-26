@@ -27,6 +27,7 @@ final readonly class AgentLoopOutcome
             'awaiting_mcp_confirmation',
             'awaiting_mcp_input',
             'waiting_mcp_task',
+            'waiting_api_tool',
         ], true);
     }
 }

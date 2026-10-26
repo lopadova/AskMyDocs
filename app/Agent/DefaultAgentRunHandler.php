@@ -44,6 +44,13 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 fn () => $this->handleOwned($run));
         } finally {
             $lock->release();
+            // A fast graph can finish while this worker still owns the parent
+            // lock. Its queued continuation may already have been acknowledged
+            // by a competing worker; re-drive after releasing our own lock.
+            $current = $run->fresh();
+            if ($current?->status === AgentRun::STATUS_QUEUED && data_get($current->result_json, 'api_tool_resumptions', []) !== []) {
+                app(AgentRunDispatcher::class)->enqueue($current);
+            }
         }
     }
 
@@ -55,6 +62,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
             AgentRun::STATUS_AWAITING_MCP_INPUT,
             AgentRun::STATUS_WAITING_MCP_TASK,
+            AgentRun::STATUS_WAITING_API_TOOL,
         ], true)) {
             return;
         }
