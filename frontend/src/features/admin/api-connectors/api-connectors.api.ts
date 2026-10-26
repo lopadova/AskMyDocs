@@ -61,7 +61,7 @@ export interface ApiRouteSummary {
     mode: RouteMode;
     endpoint_type: EndpointType;
     http_method: HttpMethod;
-    last_test_status: number | null;
+    last_test_status: number | string | null;
 }
 
 /** Secret-hidden auth profile (ApiAuthProfileResource) — credentials are write-only. */
@@ -190,8 +190,8 @@ export interface ApiRoute {
     output_transform: Record<string, unknown> | null;
     pagination: PaginationConfig | null;
     last_test_at: string | null;
-    last_test_status: number | null;
-    last_test_payload: Record<string, unknown> | null;
+    last_test_status: number | string | null;
+    last_test_payload: Record<string, unknown> | unknown[] | null;
     parameters?: ApiRouteParameter[];
     /** The canonical config JSON — the FE modal's form model. Present when the
      *  parameters relation is loaded (show/store/update/test responses). */
