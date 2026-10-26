@@ -41,3 +41,8 @@ it('reflects iteration outputs and always wraps partial results in the stable en
 it('does not reuse a deleted step identity still referenced by public output', () => {
     expect(newStep([], ['step_1']).id).toBe('step_2');
 });
+
+it('preserves orphaned iteration references instead of reassigning their identity', () => {
+    const step = { ...newStep([]), id: 'step_4', iterate: { source: { source: 'step' as const, step: 'step_2' }, max_items: 3, allow_partial: false } };
+    expect(newStep([step]).id).toBe('step_3');
+});

@@ -30,7 +30,7 @@ export function fieldBinding(source: 'input' | 'step', field: FieldPath, step?: 
 export const blankDefinition = (): ToolDefinition => ({ version: 1, input_schema: { type: 'object', properties: {}, required: [] }, steps: [], output: {}, tests: [], limits: { physical_requests: 30, timeout_seconds: 120 } });
 export const blankTool = (): ToolPayload => ({ name: '', description: '', project_key: '', failure_threshold: 3, definition: blankDefinition() });
 export const newStep = (steps: ToolStep[], reservedIds: string[] = []): ToolStep => {
-    const occupied = new Set([...steps.map((step) => step.id), ...reservedIds, ...steps.flatMap((step) => [...step.wait_for, ...Object.values(step.bindings).flatMap((binding) => binding.source === 'step' && binding.step ? [binding.step] : [])])]);
+    const occupied = new Set([...steps.map((step) => step.id), ...reservedIds, ...steps.flatMap((step) => [...step.wait_for, ...(step.iterate?.source.source === 'step' && step.iterate.source.step ? [step.iterate.source.step] : []), ...Object.values(step.bindings).flatMap((binding) => binding.source === 'step' && binding.step ? [binding.step] : [])])]);
     let suffix = steps.length + 1;
     while (occupied.has(`step_${suffix}`)) suffix++;
     return { id: `step_${suffix}`, name: `Chiamata ${suffix}`, operation: 'api', bindings: {}, wait_for: [], collection: { mode: 'single' } };
@@ -96,5 +96,5 @@ export function compatibleFieldBinding(source: 'input' | 'step' | 'item', field:
 }
 
 export function stepDependencies(step: ToolStep): string[] {
-    return [...new Set([...step.wait_for, ...Object.values(step.bindings).filter((binding) => binding.source === 'step').map((binding) => binding.step), ...(step.iterate?.source.source === 'step' ? [step.iterate.source.step] : [])].filter((id): id is string => !!id))];
+    return [...new Set([...step.wait_for, ...(step.iterate?.source.source === 'step' && step.iterate.source.step ? [step.iterate.source.step] : []), ...Object.values(step.bindings).filter((binding) => binding.source === 'step').map((binding) => binding.step), ...(step.iterate?.source.source === 'step' ? [step.iterate.source.step] : [])].filter((id): id is string => !!id))];
 }
