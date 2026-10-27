@@ -1,3 +1,5 @@
+import { Button } from "../components/Button";
+import { Icon } from "../components/Icon";
 import { useState } from "react";
 import { TenantLogo } from "../components/TenantLogo";
 import type { AuthUser, Team } from "../lib/types";
@@ -56,14 +58,14 @@ export function WorkspaceScreen({
           <span className="muted" title={user.email}>
             {user.name}
           </span>
-          <button
+          <Button
             type="button"
-            className="btn ghost"
+            variant="quiet"
             onClick={onLogout}
             data-testid="workspace-logout"
           >
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -134,7 +136,7 @@ export function WorkspaceScreen({
                         </span>
                       </span>
                       <span className="workspace-option-arrow" aria-hidden="true">
-                        →
+                        <Icon name="arrow" />
                       </span>
                     </button>
                   ))}
@@ -142,15 +144,15 @@ export function WorkspaceScreen({
               )}
 
               <div className="workspace-actions">
-                <button
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={!selectedTeam}
                   onClick={continueToProjects}
                   data-testid="workspace-tenant-continue"
                 >
                   Continue
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -207,14 +209,14 @@ export function WorkspaceScreen({
                         className="workspace-option-mark project"
                         aria-hidden="true"
                       >
-                        #
+                        <Icon name="folder" />
                       </span>
                       <span className="workspace-option-copy">
                         <strong>{project.project_key}</strong>
                         <span className="muted small">Role: {project.role}</span>
                       </span>
                       <span className="workspace-option-arrow" aria-hidden="true">
-                        →
+                        <Icon name="arrow" />
                       </span>
                     </button>
                   ))}
@@ -222,9 +224,9 @@ export function WorkspaceScreen({
               )}
 
               <div className="workspace-actions split">
-                <button
+                <Button
                   type="button"
-                  className="btn ghost"
+                  variant="quiet"
                   onClick={() => {
                     setProjectKey("");
                     setStep("tenant");
@@ -232,16 +234,16 @@ export function WorkspaceScreen({
                   data-testid="workspace-project-back"
                 >
                   Back
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={!selectedProject}
                   onClick={openProject}
                   data-testid="workspace-project-open"
                 >
                   Open project
-                </button>
+                </Button>
               </div>
             </>
           )}

@@ -1,3 +1,4 @@
+import { Button } from "../components/Button";
 import { FormEvent, useState } from "react";
 import { ApiError, API_BASE, requestToken } from "../lib/api";
 import { saveSession, type Session } from "../lib/store";
@@ -44,7 +45,7 @@ export function LoginScreen({ onSuccess, onNavigateRegister }: Props) {
         aria-busy={state === "loading"}
       >
         <h1 className="auth-title">AskMyDocs</h1>
-        <p className="auth-subtitle">Desktop demo</p>
+        <p className="auth-subtitle">Your knowledge, within reach.</p>
 
         <label className="field">
           <span>Email</span>
@@ -79,25 +80,25 @@ export function LoginScreen({ onSuccess, onNavigateRegister }: Props) {
           </p>
         )}
 
-        <button
+        <Button
           type="submit"
-          className="btn primary"
-          disabled={state === "loading"}
+          variant="primary"
+          busy={state === "loading"}
           data-testid="login-submit"
         >
           {state === "loading" ? "Signing in…" : "Sign in"}
-        </button>
+        </Button>
 
         <p className="auth-footer">
           Have an invite code?{" "}
-          <button
+          <Button
             type="button"
-            className="link"
+            variant="quiet" className="link"
             onClick={onNavigateRegister}
             data-testid="login-navigate-register"
           >
             Create an account
-          </button>
+          </Button>
         </p>
       </form>
     </div>

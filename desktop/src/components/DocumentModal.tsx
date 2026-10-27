@@ -1,3 +1,5 @@
+import { Button } from "./Button";
+import { Icon } from "./Icon";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, fetchDocumentPreview } from "../lib/api";
 import type { DocumentPreview } from "../lib/types";
@@ -32,7 +34,9 @@ export function DocumentModal({
   const [doc, setDoc] = useState<DocumentPreview | null>(null);
   const [state, setState] = useState<State>("loading");
   const [error, setError] = useState("");
-  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Fetch the full content for this document id. Re-runs if the target changes
   // (e.g. the user opens a different citation without closing first).
@@ -65,21 +69,33 @@ export function DocumentModal({
     };
   }, [token, tenantId, projectKey, target.documentId]);
 
-  // Close on Escape; move focus into the dialog on open and restore it on close.
   useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const nativeModal = typeof dialog.showModal === "function";
+    if (nativeModal) dialog.showModal();
+    else dialog.setAttribute("open", "");
+    dialog.querySelector<HTMLButtonElement>("button")?.focus();
+    // Older supported iOS WebViews lack showModal; preserve focus containment.
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
+      if (nativeModal || !dialog) return;
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); }
+      if (event.key === "Tab") {
+        const controls = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input, textarea, select, [tabindex="0"]')];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       }
     }
-    window.addEventListener("keydown", onKey);
+    dialog.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("keydown", onKey);
-      previouslyFocused?.focus?.();
+      dialog.removeEventListener("keydown", onKey);
+      if (nativeModal) dialog.close();
+      else dialog.removeAttribute("open");
+      previousFocus?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   const title = doc?.title ?? target.title ?? "Document";
   const sourcePath = doc?.source_path ?? target.sourcePath ?? null;
@@ -96,7 +112,9 @@ export function DocumentModal({
         }
       }}
     >
-      <div
+      <dialog
+        ref={dialogRef}
+        onCancel={(event) => { event.preventDefault(); onClose(); }}
         className="doc-modal"
         role="dialog"
         aria-modal="true"
@@ -127,16 +145,15 @@ export function DocumentModal({
               <div className="doc-modal-path muted small">{sourcePath}</div>
             )}
           </div>
-          <button
+          <Button
             type="button"
-            ref={closeRef}
-            className="btn ghost doc-modal-close"
+            variant="quiet" className="doc-modal-close"
             onClick={onClose}
             aria-label="Close document"
             data-testid="doc-modal-close"
           >
-            ✕
-          </button>
+            <Icon name="close" />
+          </Button>
         </header>
 
         <div className="doc-modal-body" data-testid="doc-modal-body">
@@ -163,7 +180,7 @@ export function DocumentModal({
             <Markdown content={doc.content} testId="doc-modal-markdown" />
           )}
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

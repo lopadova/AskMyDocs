@@ -1,7 +1,22 @@
-# AskMyDocs Desktop (demo)
+# AskMyDocs Desktop
 
-A small **Tauri v2 + React** desktop client for AskMyDocs. It demonstrates what
-a non-browser client needs against the Laravel backend:
+A **Tauri v2 + React** client for AskMyDocs, with the same warm editorial
+palette and action components as the web application. Light/dark appearance
+follows the system initially and can be changed in the workspace toolbar.
+
+The current desktop workspace includes:
+
+- **Sessions on this device** — search conversation titles, rename sessions,
+  pin important ones, archive/restore them, and copy an answer. Existing local
+  histories remain compatible. These controls do not sync with web sessions.
+- **Knowledge** — browse project folders and canonical documents using
+  `GET /api/kb/tree?project=…&mode=all`, then open their source text. An older
+  server without this endpoint shows a compatibility message; Search remains
+  available. Tenant, project and Bearer scope accompany every request.
+- **Accessible reading** — a native HTML dialog contains keyboard focus and
+  closes with Escape, alongside mobile safe areas and reduced-motion support.
+
+Authentication and retrieval use the Laravel backend:
 
 - **Login** — `POST /api/auth/token` issues a Sanctum **Bearer token** (no
   cookie/CSRF dance). The token is stored locally and survives restarts.
@@ -31,8 +46,9 @@ All backend calls go through the **Tauri HTTP plugin** (Rust side), so the
 webview never performs a cross-origin request and the backend needs **no CORS
 change**.
 
-> This app lives inside the AskMyDocs repo but is a self-contained project with
-> its own `package.json` and Rust crate. It is not wired into the Laravel CI.
+> The client has its own `package.json` and Rust crate. Its canonical Button
+> and button CSS are shared from `../frontend/src`, so build from this checkout.
+> Desktop tests use the repository's existing Vitest dependencies.
 
 ---
 
@@ -45,7 +61,7 @@ change**.
    **production deployment** at **`https://askmydocs.surfacesrl.com`**, so it
    works out of the box — you just need a user to log in with. To develop
    against a local backend instead (served by Valet/Herd at
-   `https://askmydocs.test`, the repo's `APP_URL`), override `VITE_API_BASE`
+   `https://askmydocsdev.test`, the repo's `APP_URL`), override `VITE_API_BASE`
    (see below). The backend must run a branch that includes the desktop auth
    endpoints (`feature/desktop-demo` or merged) and have the
    `personal_access_tokens` table migrated:
@@ -131,34 +147,16 @@ npm run ios:init
 > (`bundle.iOS.developmentTeam`). Build under a different team by overriding
 > the `APPLE_DEVELOPMENT_TEAM` env var.
 
-**Reach the backend from the device.** On a physical iPhone, `askmydocs.test`
-and `localhost` resolve to the *phone*, not your Mac — point `API_BASE` at your
-Mac's LAN IP at build time, and serve Laravel on the LAN:
+**Reach the backend from the device.** Use the configured production backend
+on a physical iPhone, or an existing authorized Herd share. For local simulator
+work, inspect the Herd site for this checkout and use its scheme with
+`askmydocsdev.test`. Keep the HTTP capability allowlist in step with the
+selected backend. Do not replace Herd with `php artisan serve`.
 
-```bash
-# 1. serve the backend so the phone can reach it (from the repo root)
-php artisan serve --host 0.0.0.0 --port 8000
-
-# 2. find your Mac's LAN IP, e.g. 192.168.1.50
-ipconfig getifaddr en0
-
-# 3. run on a connected device / simulator
-VITE_API_BASE=http://192.168.1.50:8000 npm run ios:dev
-```
-
-The HTTP capability scope already allows the `192.168.*.*` and `10.*.*` ranges
-(http + https). If your LAN uses `172.16–31.*`, add a matching line to
-[`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json).
-
-> The **iOS Simulator** shares the Mac's network, so there you can use
-> `VITE_API_BASE=http://localhost:8000` (or the default `.test` host if Valet/Herd
-> is running) without the LAN IP.
-
-**Build an `.ipa`:**
-
-```bash
-VITE_API_BASE=http://<mac-lan-ip>:8000 npm run ios:build
-```
+Before any iOS/Android distribution build, complete the native mobile view
+check (small and large devices, keyboard, safe areas, gestures and text size).
+The no-zoom viewport contract and 16px mobile fields alone do not certify a
+native mobile release. See [UI verification](UI-VERIFICATION.md).
 
 ---
 
@@ -194,3 +192,18 @@ desktop/
   Cargo feature). A real `https://` API_BASE keeps full verification. After
   changing the Cargo feature or `api.ts`, **restart `npm run tauri dev`** so the
   Rust shell recompiles.
+
+## Verification
+
+From the repository root, after installing its dependencies:
+
+```bash
+./node_modules/.bin/vitest run --config desktop/vitest.config.ts
+./node_modules/.bin/vitest run frontend/src/components/Button.test.tsx
+npm run build --prefix desktop
+npm run tauri --prefix desktop -- build --bundles app
+```
+
+A local macOS bundle is created under
+`desktop/src-tauri/target/release/bundle/macos/AskMyDocs Desktop.app`.
+This is a local build, without distribution signing or notarization.

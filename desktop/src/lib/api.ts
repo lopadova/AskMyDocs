@@ -7,6 +7,7 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import type {
   ChatResponse,
+  KbTreeResponse,
   DocSearchResult,
   DocumentPreview,
   MePayload,
@@ -266,4 +267,15 @@ export async function logout(token: string): Promise<void> {
   } catch {
     // ignore — local logout still proceeds
   }
+}
+
+/** Reader tree: same scoped endpoint as the web Browse KB surface. */
+export async function fetchKnowledgeTree(token: string, tenantId: string, projectKey: string): Promise<KbTreeResponse> {
+  const params = new URLSearchParams({ project: projectKey, mode: "all" });
+  const res = await http(`${API_BASE}/api/kb/tree?${params}`, {
+    headers: authHeaders(token, tenantId, projectKey),
+  });
+  const body = await parseBody(res);
+  if (!res.ok) throw new ApiError(res.status, errorMessage(body, "Could not load knowledge base"), body);
+  return body as KbTreeResponse;
 }

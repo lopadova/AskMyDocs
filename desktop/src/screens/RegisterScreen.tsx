@@ -1,3 +1,4 @@
+import { Button } from "../components/Button";
 import { FormEvent, useState } from "react";
 import { ApiError, API_BASE, registerWithToken } from "../lib/api";
 import { saveSession, type Session } from "../lib/store";
@@ -144,25 +145,25 @@ export function RegisterScreen({ onSuccess, onNavigateLogin }: Props) {
           </p>
         )}
 
-        <button
+        <Button
           type="submit"
-          className="btn primary"
-          disabled={state === "loading"}
+          variant="primary"
+          busy={state === "loading"}
           data-testid="register-submit"
         >
           {state === "loading" ? "Creating account…" : "Create account"}
-        </button>
+        </Button>
 
         <p className="auth-footer">
           Already have an account?{" "}
-          <button
+          <Button
             type="button"
-            className="link"
+            variant="quiet" className="link"
             onClick={onNavigateLogin}
             data-testid="register-navigate-login"
           >
             Sign in
-          </button>
+          </Button>
         </p>
       </form>
     </div>

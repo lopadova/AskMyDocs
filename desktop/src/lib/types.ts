@@ -150,5 +150,17 @@ export interface Thread {
   id: string;
   title: string;
   createdAt: number;
+  pinned?: boolean;
+  archived?: boolean;
+  importance?: "normal" | "high" | "critical";
   messages: LocalMessage[];
+}
+
+export type KbTreeNode =
+  | { type: "folder"; name: string; path: string; children: KbTreeNode[] }
+  | { type: "doc"; name: string; path: string; meta: { id: number; project_key: string; is_canonical: boolean; canonical_type: string | null } };
+export interface KbTreeResponse {
+  tree: KbTreeNode[];
+  counts: { docs: number; canonical: number; trashed: number };
+  generated_at: string;
 }
