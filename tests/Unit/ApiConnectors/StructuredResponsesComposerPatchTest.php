@@ -18,6 +18,13 @@ final class StructuredResponsesComposerPatchTest extends TestCase
         file_put_contents($this->packagePath.'/src/Services/ApiToolExecutor.php', <<<'PHP'
             $decoded = json_decode($response->body(), true);
             $isJson = json_last_error() === JSON_ERROR_NONE && is_array($decoded);
+
+            if (! $isJson) {
+                $error = 'Endpoint returned a non-JSON response (unsupported in Fase 1).';
+                $this->log($route, $context, $plan, $response->status(), null, $latencyMs, $error);
+
+                return ['error' => $error, 'status' => $response->status()];
+            }
 PHP);
         file_put_contents($this->packagePath.'/src/Services/ApiRouteTester.php', <<<'PHP'
         return $this->execute($plan, $material, $timeoutMs);
@@ -39,8 +46,11 @@ PHP);
         $first = file_get_contents($this->packagePath.'/src/Services/ApiRouteTester.php');
         $this->assertStringContainsString('StructuredApiResponseDecoder::class', $first);
         $this->assertStringContainsString('$timeoutMs, $route->output_transform', $first);
+        $executor = file_get_contents($this->packagePath.'/src/Services/ApiToolExecutor.php');
+        $this->assertStringContainsString('ApiResponseDiagnostics::class', $executor);
         $this->process()->mustRun();
         $this->assertSame($first, file_get_contents($this->packagePath.'/src/Services/ApiRouteTester.php'));
+        $this->assertSame($executor, file_get_contents($this->packagePath.'/src/Services/ApiToolExecutor.php'));
         $manifest = json_decode(file_get_contents(dirname(__DIR__,3).'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
         foreach (['post-install-cmd', 'post-update-cmd'] as $event) $this->assertContains('@php scripts/composer/patch-api-connector-structured-responses.php', $manifest['scripts'][$event]);
     }

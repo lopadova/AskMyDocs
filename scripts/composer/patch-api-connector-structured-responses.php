@@ -15,6 +15,24 @@ BEFORE
             $decoded = app(\App\ApiConnectors\StructuredApiResponseDecoder::class)->decode($response->body(), $route->output_transform);
             $isJson = is_array($decoded);
 AFTER,
+        <<<'BEFORE'
+            if (! $isJson) {
+                $error = 'Endpoint returned a non-JSON response (unsupported in Fase 1).';
+                $this->log($route, $context, $plan, $response->status(), null, $latencyMs, $error);
+
+                return ['error' => $error, 'status' => $response->status()];
+            }
+BEFORE
+        => <<<'AFTER'
+            if (! $isJson) {
+                $failure = app(\App\ApiConnectors\ApiResponseDiagnostics::class)->formatMismatch(
+                    $response->status(), $response->body(), $response->header('Content-Type'), $route->output_transform,
+                );
+                $this->log($route, $context, $plan, $response->status(), $failure, $latencyMs, $failure['error']);
+
+                return $failure;
+            }
+AFTER,
     ],
     'src/Services/ApiRouteTester.php' => [
         'return $this->execute($plan, $material, $timeoutMs);' => 'return $this->execute($plan, $material, $timeoutMs, $route->output_transform);',
