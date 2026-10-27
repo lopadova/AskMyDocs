@@ -1,3 +1,4 @@
+import { Button } from '../../../components/Button';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, useEffect } from 'react';
 import type { McpServerEntry } from './mcp-tools.api';
@@ -72,7 +73,7 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                 style={{
                     padding: '14px 16px',
                     borderRadius: 12,
-                    border: '1px dashed var(--border-2)',
+                    border: '1px dashed var(--panel-border)',
                     background: 'var(--bg-2)',
                     color: 'var(--fg-2)',
                     fontSize: 13,
@@ -94,7 +95,7 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                 gap: 10,
                 padding: 14,
                 borderRadius: 12,
-                border: '1px solid var(--border-1)',
+                border: '1px solid var(--panel-border)',
                 background: 'var(--bg-2)',
             }}
         >
@@ -115,7 +116,7 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                     disabled={busy}
                     onChange={(event) => setAllowAll(event.target.checked)}
                 />
-                Allow all discovered tools (*)
+                {translateInterface("Allow all discovered tools (*)")}
             </label>
             <ul
                 style={{
@@ -138,7 +139,7 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                                     gap: 10,
                                     padding: '8px 10px',
                                     borderRadius: 8,
-                                    border: '1px solid var(--border-2)',
+                                    border: '1px solid var(--panel-border)',
                                     background: 'var(--bg-1)',
                                     fontSize: 12.5,
                                     color: 'var(--fg-1)',
@@ -174,23 +175,21 @@ export function ToolMatrix({ server, onSave, busy }: ToolMatrixProps) {
                 })}
             </ul>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button
+                <Button variant="secondary" size="sm"
                     type="button"
                     data-testid={`admin-mcp-server-${server.id}-tool-matrix-reset`}
                     onClick={reset}
                     disabled={!dirty || busy}
-                    style={baseBtnStyle}
                 >
-                    {translateInterface("Reset")}</button>
-                <button
+                    {translateInterface("Reset")}</Button>
+                <Button variant="primary" size="sm" busy={busy}
                     type="button"
                     data-testid={`admin-mcp-server-${server.id}-tool-matrix-save`}
                     onClick={save}
                     disabled={!dirty || busy}
-                    style={primaryBtnStyle(!dirty || busy)}
                 >
-                    {busy ? 'Saving…' : translateInterface("Save changes")}
-                </button>
+                    {translateInterface("Save changes")}
+                </Button>
             </div>
         </div>
     );
@@ -204,28 +203,4 @@ function arraysEqual(a: string[], b: string[]): boolean {
         if (sortedA[i] !== sortedB[i]) return false;
     }
     return true;
-}
-
-const baseBtnStyle: React.CSSProperties = {
-    padding: '6px 12px',
-    borderRadius: 8,
-    border: '1px solid var(--border-2)',
-    background: 'var(--bg-1)',
-    color: 'var(--fg-1)',
-    cursor: 'pointer',
-    fontSize: 12.5,
-    fontWeight: 600,
-};
-
-function primaryBtnStyle(disabled: boolean): React.CSSProperties {
-    return {
-        padding: '6px 12px',
-        borderRadius: 8,
-        border: '1px solid transparent',
-        background: disabled ? 'var(--bg-2)' : 'var(--accent-bg)',
-        color: disabled ? 'var(--fg-2)' : 'var(--accent-fg)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: 12.5,
-        fontWeight: 600,
-    };
 }

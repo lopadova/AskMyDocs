@@ -10,6 +10,7 @@ test.describe('MCP connector — super-admin', () => {
         await page.getByTestId('connector-mcp-add-connection').click();
         const form = page.getByTestId('mcp-connection-form-shared');
         await form.getByLabel('Name').fill('E2E MCP fixture');
+        await form.getByText('Advanced settings').click();
         await form.getByLabel('Label').fill(label);
         await form.getByLabel('MCP endpoint', { exact: true }).fill('http://127.0.0.1:3536/mcp');
         await form.getByRole('radio', { name: /^No authentication/ }).check();
@@ -38,20 +39,21 @@ test.describe('MCP connector — super-admin', () => {
 
     test('connects a protected MCP server through OAuth without exposing a token', async ({ page }) => {
         const label = `Protected live fixture ${Date.now()}`;
-        await page.goto('/app/admin/connectors');
+        await page.goto('/app/admin/mcp-tools');
         const panel = page.getByTestId('mcp-connections-shared');
         await expect(panel).toBeVisible({ timeout: 15_000 });
 
-        await page.getByTestId('connector-mcp-add-connection').click();
+        await page.getByTestId('admin-mcp-tools-register').click();
         const form = page.getByTestId('mcp-connection-form-shared');
         await form.getByLabel('Name').fill('OAuth E2E MCP');
+        await form.getByText('Advanced settings').click();
         await form.getByLabel('Label').fill(label);
         await form.getByLabel('MCP endpoint', { exact: true }).fill('http://127.0.0.1:3536/oauth/mcp');
         await form.getByRole('button', { name: 'Continue with OAuth' }).click();
 
         await expect(page.getByTestId('mcp-oauth-result')).toContainText('OAuth connection completed', { timeout: 15_000 });
         const card = panel.locator('article').filter({ hasText: label });
-        await expect(card).toContainText('active');
+        await expect(card).toContainText(/active/i);
         await card.getByRole('button', { name: `Expand ${label}` }).click();
         await expect(card).toContainText('Search documents');
         await expect(page).not.toHaveURL(/access_token|refresh_token|authorization-code/);

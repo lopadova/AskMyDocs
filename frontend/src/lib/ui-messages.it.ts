@@ -1,3 +1,4 @@
+import { MCP_TOOLS_MESSAGES_IT } from '../features/admin/mcp-tools/mcp-tools-messages.it';
 import operational from './ui-messages-operational.it.json';
 import { SETTINGS_MESSAGES_IT } from '../features/admin/app-settings/settings-messages.it';
 import { MCP_TOKENS_MESSAGES_IT } from '../features/admin/mcp-tokens/mcp-tokens-messages.it';
@@ -5,6 +6,7 @@ import { MCP_TOKENS_MESSAGES_IT } from '../features/admin/mcp-tokens/mcp-tokens-
 export const IT_MESSAGES: Record<string, string> = {
     ...SETTINGS_MESSAGES_IT,
     ...MCP_TOKENS_MESSAGES_IT,
+    ...MCP_TOOLS_MESSAGES_IT,
     'Open API call': 'Apri chiamata API',
     'Close API call': 'Chiudi chiamata API',
     'Answer source': 'Fonte della risposta',

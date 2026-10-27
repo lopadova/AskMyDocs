@@ -1,355 +1,84 @@
-import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Building2, ChevronDown, Info, Network, Pause, Plus, Terminal, Trash2 } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../../components/ui/dialog';
+import { useUiTranslation } from '../../../lib/ui-locale';
+import { useTeamStore } from '../../../lib/team-store';
+import { parseLaravelError } from '../../../lib/laravel-errors';
+import { McpConnectionsPanel } from '../../mcp-connections/McpConnectionsPanel';
 import { AdminShell } from '../shell/AdminShell';
-import {
-    useDeleteMcpServer,
-    useDisableMcpServer,
-    useHandshakeMcpServer,
-    useMcpServers,
-    useUpdateMcpServerTools,
-} from './mcp-tools-hooks';
+import { adminProjectsApi } from '../projects/admin-projects.api';
+import { useDeleteMcpServer, useDisableMcpServer, useHandshakeMcpServer, useMcpCapabilities, useMcpServers, useUpdateMcpServerTools } from './mcp-tools-hooks';
 import { HandshakeStatus } from './HandshakeStatus';
 import { ToolMatrix } from './ToolMatrix';
 import { RegisterServerDialog } from './RegisterServerDialog';
 import { McpToolCallAuditView } from './McpToolCallAuditView';
 import type { McpServerEntry } from './mcp-tools.api';
+import './mcp-tools.css';
 
-/*
- * v5.0/W2 — MCP tools admin landing. Two tabs:
- *   1. "Servers" — registered MCP servers, handshake CTA, tool matrix
- *   2. "Audit log" — paginated tool call audit with filters
- *
- * The page lives at /app/admin/mcp-tools and is reachable from the
- * AdminShell rail when `manageMcpTools` is granted.
- */
 export function McpToolsView() {
-    const { t: translateInterface } = useUiTranslation();
+    const tenant = useTeamStore((state) => state.currentTeam);
+    return <TenantMcpTools key={tenant ?? 'none'} />;
+}
+function TenantMcpTools() {
+    const { t } = useUiTranslation();
+    const tenant = useTeamStore((state) => state.currentTeam);
+    const team = useTeamStore((state) => state.teams.find((item) => item.tenant_id === state.currentTeam));
     const [tab, setTab] = useState<'servers' | 'audit'>('servers');
+    const [createRequest, setCreateRequest] = useState(0);
     const [showRegister, setShowRegister] = useState(false);
+    const [showLegacy, setShowLegacy] = useState(false);
     const [highlightId, setHighlightId] = useState<number | null>(null);
-
-    return (
-        <AdminShell section="mcp-tools">
-            <section
-                data-testid="admin-mcp-tools"
-                data-state="ready"
-                aria-labelledby="admin-mcp-tools-title"
-                style={{
-                    flex: 1,
-                    padding: '24px 24px 48px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 18,
-                    minWidth: 0,
-                }}
-            >
-                <header style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <h1
-                        id="admin-mcp-tools-title"
-                        data-testid="admin-mcp-tools-title"
-                        style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em' }}
-                    >
-                        {translateInterface("MCP tools")}</h1>
-                    <nav
-                        role="tablist"
-                        aria-label={translateInterface("MCP tools sections")}
-                        style={{ display: 'flex', gap: 8 }}
-                    >
-                        <TabButton id="servers" current={tab} onSelect={setTab}>
-                            {translateInterface("Servers")}</TabButton>
-                        <TabButton id="audit" current={tab} onSelect={setTab}>
-                            {translateInterface("Audit log")}</TabButton>
-                    </nav>
-                    <div style={{ flex: 1 }} />
-                    {tab === 'servers' ? (
-                        <button
-                            type="button"
-                            data-testid="admin-mcp-tools-register"
-                            onClick={() => setShowRegister(true)}
-                            style={primaryCta}
-                        >
-                            {translateInterface("+ Register server")}</button>
-                    ) : null}
-                </header>
-
-                {tab === 'servers' ? (
-                    <ServersTab highlightId={highlightId} />
-                ) : (
-                    <McpToolCallAuditView />
-                )}
-
-                <RegisterServerDialog
-                    open={showRegister}
-                    onClose={() => setShowRegister(false)}
-                    onCreated={(id) => {
-                        setHighlightId(id);
-                        setTab('servers');
-                    }}
-                />
-            </section>
-        </AdminShell>
-    );
+    const capabilities = useMcpCapabilities();
+    const projects = useQuery({ queryKey: ['mcp-admin-projects', tenant], queryFn: () => adminProjectsApi.list(tenant), retry: false });
+    return <AdminShell section="mcp-tools"><section className="mcp-tools-page" data-testid="admin-mcp-tools" data-state={capabilities.isLoading ? 'loading' : 'ready'}>
+        <header className="mcp-tools-heading"><div><span className="mcp-tools-eyebrow"><Network size={14} aria-hidden />{t('External capabilities')}</span><h1 id="admin-mcp-tools-title" data-testid="admin-mcp-tools-title">{t('MCP tools')}</h1><p>{t('Connect external services and choose the tools available to your agent.')}</p></div>
+            {tab === 'servers' && <div className="mcp-tools-actions"><Button variant="quiet" size="md" leadingIcon={<Terminal size={15} aria-hidden />} onClick={() => setShowRegister(true)} data-testid="admin-mcp-tools-manual">{t('Manual registration')}</Button><Button variant="primary" size="md" leadingIcon={<Plus size={15} aria-hidden />} disabled={!capabilities.data?.connector_enabled} data-testid="admin-mcp-tools-register" onClick={() => setCreateRequest((request) => request + 1)}>{t('Connect server')}</Button></div>}
+        </header>
+        <div className="mcp-tools-context"><Building2 size={21} aria-hidden /><div><small>{t('Organization')}</small><strong>{team?.name ?? t('Current organization')}</strong></div><span><Info size={14} aria-hidden />{t('Shared connections for this organization')}</span></div>
+        <nav className="mcp-tools-tabs" aria-label={t('MCP tools sections')}><div className="ui-button-group">{(['servers', 'audit'] as const).map((id) => <Button key={id} variant="quiet" size="sm" aria-pressed={tab === id} data-testid={`admin-mcp-tools-tab-${id}`} onClick={() => setTab(id)}>{t(id === 'servers' ? 'Servers' : 'Audit log')}</Button>)}</div></nav>
+        {tab === 'audit' ? <McpToolCallAuditView /> : <>
+            {capabilities.isLoading && <div className="mcp-tools-state" role="status">{t('Loading MCP configuration…')}</div>}
+            {capabilities.isError && <div className="mcp-tools-alert" role="alert">{t('Could not load MCP configuration.')} <Button variant="secondary" size="sm" onClick={() => void capabilities.refetch()}>{t('Retry')}</Button></div>}
+            {capabilities.data && !capabilities.data.connector_enabled && <div className="mcp-tools-alert" role="status">{t('Remote connections are disabled for this installation. Enable the MCP connector to use OAuth and remote discovery.')}</div>}
+            {capabilities.data?.connector_enabled && <>
+                {capabilities.data.runtime_mode !== 'active' && <div className="mcp-tools-alert" role="status">{t('Connections can be configured, but their tools will be used only when the MCP runtime is active in Configuration.')}</div>}
+                <section className="mcp-tools-remote"><div className="mcp-tools-section-heading"><div><h2>{t('Remote servers')}</h2><p>{t('OAuth, Bearer token, or public access. Discovery retrieves the server’s actual capabilities.')}</p></div><span className="mcp-tools-auth-badge">{capabilities.data.oauth_enabled ? t('OAuth available') : t('OAuth disabled')}</span></div>
+                    <McpConnectionsPanel scope="shared" embedded excludeLegacy oauthEnabled={capabilities.data.oauth_enabled} createRequest={createRequest} projects={projects.data} projectsLoading={projects.isLoading} projectsError={projects.isError} />
+                </section>
+            </>}
+            <details className="mcp-tools-legacy" open={showLegacy} onToggle={(event) => setShowLegacy(event.currentTarget.open)}><summary><Terminal size={18} aria-hidden /><span><strong>{t('Manual and local servers')}</strong><small>{t('Existing registrations, stdio commands, and custom authentication.')}</small></span><ChevronDown size={16} aria-hidden /></summary><ServersTab highlightId={highlightId} /></details>
+        </>}
+        {showRegister && <RegisterServerDialog open onClose={() => setShowRegister(false)} onCreated={(id) => { setHighlightId(id); setShowLegacy(true); setTab('servers'); }} />}
+    </section></AdminShell>;
 }
 
-interface ServersTabProps {
-    highlightId: number | null;
-}
-
-function ServersTab({ highlightId }: ServersTabProps) {
-    const { t: translateInterface } = useUiTranslation();
+function ServersTab({ highlightId }: { highlightId: number | null }) {
+    const { t } = useUiTranslation();
     const servers = useMcpServers();
     const handshake = useHandshakeMcpServer();
     const updateTools = useUpdateMcpServerTools();
     const disable = useDisableMcpServer();
     const remove = useDeleteMcpServer();
-
-    const dataState = servers.isLoading
-        ? 'loading'
-        : servers.isError
-            ? 'error'
-            : (servers.data?.length ?? 0) === 0
-                ? 'empty'
-                : 'ready';
-
-    return (
-        <div
-            data-testid="admin-mcp-servers"
-            data-state={dataState}
-            aria-busy={servers.isLoading}
-            style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-        >
-            {dataState === 'loading' ? (
-                <Placeholder>{translateInterface("Loading servers…")}</Placeholder>
-            ) : null}
-
-            {dataState === 'error' ? (
-                <Placeholder data-testid="admin-mcp-servers-error" role="alert" tone="error">
-                    {servers.error?.message ?? 'Failed to load MCP servers'}
-                </Placeholder>
-            ) : null}
-
-            {dataState === 'empty' ? (
-                <Placeholder data-testid="admin-mcp-servers-empty">
-                    <p style={{ margin: 0 }}>{translateInterface("No MCP servers registered yet.")}</p>
-                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-2)' }}>
-                        {translateInterface("Use \"Register server\" to add a stdio/SSE/HTTP MCP endpoint for this tenant.")}</p>
-                </Placeholder>
-            ) : null}
-
-            {servers.data?.map((server) => (
-                <ServerCard
-                    key={server.id}
-                    server={server}
-                    highlighted={highlightId === server.id}
-                    onHandshake={() => handshake.mutate(server.id)}
-                    onSaveTools={(enabled) =>
-                        updateTools.mutate({ id: server.id, enabledTools: enabled })
-                    }
-                    onDisable={() => disable.mutate(server.id)}
-                    onDelete={() => {
-                        if (
-                            window.confirm(
-                                `Delete MCP server "${server.name}"? This cannot be undone.`,
-                            )
-                        ) {
-                            remove.mutate(server.id);
-                        }
-                    }}
-                    handshakeBusy={handshake.isPending && handshake.variables === server.id}
-                    saveToolsBusy={
-                        updateTools.isPending && updateTools.variables?.id === server.id
-                    }
-                    disableBusy={disable.isPending && disable.variables === server.id}
-                    deleteBusy={remove.isPending && remove.variables === server.id}
-                />
-            ))}
-        </div>
-    );
+    const [target, setTarget] = useState<McpServerEntry | null>(null);
+    const dataState = servers.isLoading ? 'loading' : servers.isError ? 'error' : !servers.data?.length ? 'empty' : 'ready';
+    const mutationError = [handshake, updateTools, disable].find((mutation) => mutation.isError)?.error;
+    return <div className="mcp-tools-manual-list" data-testid="admin-mcp-servers" data-state={dataState} aria-busy={servers.isLoading}>
+        {servers.isLoading && <p role="status">{t('Loading servers…')}</p>}
+        {servers.isError && <div role="alert" data-testid="admin-mcp-servers-error">{t('Failed to load MCP servers')} <Button variant="secondary" size="sm" onClick={() => void servers.refetch()}>{t('Retry')}</Button></div>}
+        {dataState === 'empty' && <p className="mcp-tools-state" data-testid="admin-mcp-servers-empty">{t('No manually registered servers.')}</p>}
+        {mutationError && <p role="alert" className="mcp-tools-error">{parseLaravelError(mutationError).message}</p>}
+        {servers.data?.map((server) => <article key={server.id} className="mcp-tools-server" data-testid={`admin-mcp-server-${server.id}`} data-highlighted={highlightId === server.id}>
+            <header><span className="mcp-tools-server-icon"><Terminal size={20} aria-hidden /></span><div><h3>{server.name}</h3><code>{server.transport} · {server.endpoint}</code></div><div className="mcp-tools-actions">
+                <Button variant="quiet" size="sm" leadingIcon={<Pause size={14} aria-hidden />} disabled={server.status === 'disabled'} busy={disable.isPending && disable.variables === server.id} onClick={() => disable.mutate(server.id)} data-testid={`admin-mcp-server-${server.id}-disable`}>{t(server.status === 'disabled' ? 'Disabled' : 'Disable')}</Button>
+                <Button variant="quiet" size="sm" className="mcp-tools-delete" leadingIcon={<Trash2 size={14} aria-hidden />} data-testid={`admin-mcp-server-${server.id}-delete`} onClick={() => { remove.reset(); setTarget(server); }}>{t('Delete')}</Button>
+            </div></header>
+            <HandshakeStatus server={server} onRetry={() => handshake.mutate(server.id)} busy={handshake.isPending && handshake.variables === server.id} />
+            <ToolMatrix server={server} onSave={(enabledTools) => updateTools.mutate({ id: server.id, enabledTools })} busy={updateTools.isPending && updateTools.variables?.id === server.id} />
+        </article>)}
+        {target && <Dialog open><DialogContent className="mcp-tools-delete-dialog" showCloseButton={false}><DialogHeader><DialogTitle>{t('Delete this MCP server?')}</DialogTitle><DialogDescription>{t('The registration will be removed. To use the server again, you will need to register it again.')}</DialogDescription></DialogHeader><strong>{target.name}</strong>
+            {remove.isError && <p role="alert">{parseLaravelError(remove.error).message}</p>}<div className="mcp-tools-actions"><Button variant="secondary" size="md" disabled={remove.isPending} onClick={() => setTarget(null)} autoFocus>{t('Cancel')}</Button><Button variant="danger" size="md" busy={remove.isPending} onClick={() => remove.mutate(target.id, { onSuccess: () => setTarget(null) })}>{t('Delete server')}</Button></div>
+        </DialogContent></Dialog>}
+    </div>;
 }
-
-interface ServerCardProps {
-    server: McpServerEntry;
-    highlighted: boolean;
-    onHandshake: () => void;
-    onSaveTools: (enabledTools: string[]) => void;
-    onDisable: () => void;
-    onDelete: () => void;
-    handshakeBusy: boolean;
-    saveToolsBusy: boolean;
-    disableBusy: boolean;
-    deleteBusy: boolean;
-}
-
-function ServerCard({
-    server,
-    highlighted,
-    onHandshake,
-    onSaveTools,
-    onDisable,
-    onDelete,
-    handshakeBusy,
-    saveToolsBusy,
-    disableBusy,
-    deleteBusy,
-}: ServerCardProps) {
-    const { t: translateInterface } = useUiTranslation();
-    return (
-        <article
-            data-testid={`admin-mcp-server-${server.id}`}
-            data-highlighted={highlighted ? 'true' : 'false'}
-            style={{
-                border: `1px solid ${highlighted ? 'var(--accent-bg)' : 'var(--border-1)'}`,
-                borderRadius: 14,
-                padding: 18,
-                background: 'var(--bg-1)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 12,
-                boxShadow: highlighted ? '0 0 0 2px var(--accent-bg, rgba(59,130,246,0.4))' : 'none',
-            }}
-        >
-            <header
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 12,
-                }}
-            >
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{server.name}</h3>
-                <code
-                    style={{
-                        fontFamily: 'var(--font-mono, ui-monospace)',
-                        fontSize: 11.5,
-                        color: 'var(--fg-2)',
-                        background: 'var(--bg-2)',
-                        padding: '2px 8px',
-                        borderRadius: 6,
-                    }}
-                >
-                    {server.transport} · {server.endpoint}
-                </code>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                    <button
-                        type="button"
-                        data-testid={`admin-mcp-server-${server.id}-disable`}
-                        onClick={onDisable}
-                        disabled={disableBusy || server.status === 'disabled'}
-                        style={secondaryCta}
-                    >
-                        {server.status === 'disabled' ? 'Disabled' : translateInterface("Disable")}
-                    </button>
-                    <button
-                        type="button"
-                        data-testid={`admin-mcp-server-${server.id}-delete`}
-                        onClick={onDelete}
-                        disabled={deleteBusy}
-                        style={dangerCta}
-                    >
-                        {translateInterface("Delete")}</button>
-                </div>
-            </header>
-
-            <HandshakeStatus server={server} onRetry={onHandshake} busy={handshakeBusy} />
-
-            <ToolMatrix server={server} onSave={onSaveTools} busy={saveToolsBusy} />
-        </article>
-    );
-}
-
-interface TabButtonProps {
-    id: 'servers' | 'audit';
-    current: 'servers' | 'audit';
-    onSelect: (id: 'servers' | 'audit') => void;
-    children: React.ReactNode;
-}
-
-function TabButton({ id, current, onSelect, children }: TabButtonProps) {
-    const isCurrent = current === id;
-    return (
-        <button
-            type="button"
-            role="tab"
-            aria-selected={isCurrent}
-            data-testid={`admin-mcp-tools-tab-${id}`}
-            onClick={() => onSelect(id)}
-            style={{
-                padding: '6px 14px',
-                borderRadius: 8,
-                border: isCurrent ? '1px solid var(--accent-bg)' : '1px solid var(--border-2)',
-                background: isCurrent ? 'var(--accent-bg)' : 'transparent',
-                color: isCurrent ? 'var(--accent-fg)' : 'var(--fg-1)',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 600,
-            }}
-        >
-            {children}
-        </button>
-    );
-}
-
-interface PlaceholderProps {
-    children: React.ReactNode;
-    tone?: 'normal' | 'error';
-    [key: `data-${string}`]: string | undefined;
-    role?: string;
-}
-
-function Placeholder({ children, tone = 'normal', role, ...dataProps }: PlaceholderProps) {
-    return (
-        <div
-            role={role}
-            {...dataProps}
-            style={{
-                padding: 28,
-                textAlign: 'center',
-                color: tone === 'error' ? 'var(--danger-fg)' : 'var(--fg-2)',
-                background: tone === 'error' ? 'rgba(239,68,68,0.08)' : 'var(--bg-2)',
-                border:
-                    tone === 'error'
-                        ? '1px solid rgba(239,68,68,0.3)'
-                        : '1px dashed var(--border-2)',
-                borderRadius: 14,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-            }}
-        >
-            {children}
-        </div>
-    );
-}
-
-const primaryCta: React.CSSProperties = {
-    padding: '8px 14px',
-    borderRadius: 8,
-    border: '1px solid transparent',
-    background: 'var(--accent-bg)',
-    color: 'var(--accent-fg)',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 600,
-};
-
-const secondaryCta: React.CSSProperties = {
-    padding: '6px 12px',
-    borderRadius: 8,
-    border: '1px solid var(--border-2)',
-    background: 'var(--bg-2)',
-    color: 'var(--fg-1)',
-    cursor: 'pointer',
-    fontSize: 12.5,
-    fontWeight: 600,
-};
-
-const dangerCta: React.CSSProperties = {
-    padding: '6px 12px',
-    borderRadius: 8,
-    border: '1px solid rgba(239,68,68,0.3)',
-    background: 'rgba(239,68,68,0.08)',
-    color: 'var(--danger-fg)',
-    cursor: 'pointer',
-    fontSize: 12.5,
-    fontWeight: 600,
-};

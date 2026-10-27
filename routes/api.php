@@ -1285,6 +1285,7 @@ Route::middleware([
 ])
     ->prefix('admin/mcp-servers')
     ->group(function () {
+        Route::get('/capabilities', [McpServersAdminController::class, 'capabilities']);
         Route::get('/', [McpServersAdminController::class, 'index'])
             ->name('api.admin.mcp-servers.index');
         Route::post('/', [McpServersAdminController::class, 'store'])

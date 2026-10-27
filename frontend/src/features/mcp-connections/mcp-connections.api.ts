@@ -39,6 +39,7 @@ export interface McpServerDto {
     negotiated_era: 'modern' | 'legacy' | null;
     negotiated_version: string | null;
     status: McpConnectionStatus;
+    legacy_reference?: string | null;
 }
 
 export interface McpConnectionDto {
@@ -77,49 +78,68 @@ export interface CreateMcpConnectionResult {
     };
 }
 
+function tenantOptions(tenant?: string | null): [] | [{ headers: { 'X-Tenant-Id': string } }] {
+    return tenant ? [{ headers: { 'X-Tenant-Id': tenant } }] : [];
+}
+function post<T>(url: string, body: unknown, tenant?: string | null) {
+    return tenant ? api.post<T>(url, body, ...tenantOptions(tenant))
+        : body === undefined ? api.post<T>(url) : api.post<T>(url, body);
+}
+
 function base(scope: McpConnectionScope): string {
     return scope === 'shared' ? '/api/admin/connectors/mcp' : '/api/me/connected-apps/mcp';
 }
 
 export const mcpConnectionsApi = {
-    async list(scope: McpConnectionScope): Promise<McpConnectionDto[]> {
-        const { data } = await api.get<McpConnectionDto[]>(base(scope));
+    async list(scope: McpConnectionScope, tenant?: string | null): Promise<McpConnectionDto[]> {
+        const { data } = await api.get<McpConnectionDto[]>(base(scope), ...tenantOptions(tenant));
         return data;
     },
 
-    async create(scope: McpConnectionScope, payload: CreateMcpConnectionPayload): Promise<CreateMcpConnectionResult> {
-        const { data } = await api.post<CreateMcpConnectionResult>(base(scope), payload);
+    async create(scope: McpConnectionScope, payload: CreateMcpConnectionPayload, tenant?: string | null): Promise<CreateMcpConnectionResult> {
+        const { data } = await post<CreateMcpConnectionResult>(base(scope), payload, tenant);
         return data;
     },
 
-    async discover(scope: McpConnectionScope, connectionId: string): Promise<void> {
-        await api.post(`${base(scope)}/${connectionId}/discover`);
+    async discover(scope: McpConnectionScope, connectionId: string, tenant?: string | null): Promise<void> {
+        await post(`${base(scope)}/${connectionId}/discover`, undefined, tenant);
     },
 
-    async disconnect(scope: McpConnectionScope, connectionId: string): Promise<void> {
-        await api.post(`${base(scope)}/${connectionId}/disconnect`);
+    async disconnect(scope: McpConnectionScope, connectionId: string, tenant?: string | null): Promise<void> {
+        await post(`${base(scope)}/${connectionId}/disconnect`, undefined, tenant);
     },
 
-    async remove(scope: McpConnectionScope, connectionId: string): Promise<void> {
-        await api.delete(`${base(scope)}/${connectionId}`);
+    async remove(scope: McpConnectionScope, connectionId: string, tenant?: string | null): Promise<void> {
+        await api.delete(`${base(scope)}/${connectionId}`, ...tenantOptions(tenant));
     },
 
-    async setTool(scope: McpConnectionScope, connectionId: string, toolId: number, enabled: boolean): Promise<void> {
-        await api.put(`${base(scope)}/${connectionId}/tools/${toolId}`, { enabled });
+    async setTool(scope: McpConnectionScope, connectionId: string, toolId: number, enabled: boolean, tenant?: string | null): Promise<void> {
+        await api.put(`${base(scope)}/${connectionId}/tools/${toolId}`, { enabled }, ...tenantOptions(tenant));
     },
 
-    async setResource(connectionId: string, resourceId: number, enabled: boolean): Promise<void> {
-        await api.put(`/api/admin/connectors/mcp/${connectionId}/resources/${resourceId}`, { enabled });
+    async setResource(connectionId: string, resourceId: number, enabled: boolean, tenant?: string | null): Promise<void> {
+        await api.put(`/api/admin/connectors/mcp/${connectionId}/resources/${resourceId}`, { enabled }, ...tenantOptions(tenant));
     },
 
-    async syncResources(connectionId: string): Promise<void> {
-        await api.post(`/api/admin/connectors/mcp/${connectionId}/resources/sync`);
+    async syncResources(connectionId: string, tenant?: string | null): Promise<void> {
+        await post(`/api/admin/connectors/mcp/${connectionId}/resources/sync`, undefined, tenant);
     },
 
-    async beginOAuth(scope: McpConnectionScope, connectionId: string): Promise<string> {
-        const { data } = await api.post<{ authorization_url: string }>(`${base(scope)}/${connectionId}/oauth`, {
+    async beginOAuth(scope: McpConnectionScope, connectionId: string, tenant?: string | null): Promise<string> {
+        const { data } = await post<{ authorization_url: string }>(`${base(scope)}/${connectionId}/oauth`, {
             ui_destination: window.location.pathname,
-        });
+        }, tenant);
         return data.authorization_url;
+    },
+};
+
+/** Browser navigation is kept separate so OAuth dispatch can be exercised without leaving a test page. */
+export const mcpOAuthNavigation = {
+    redirect(url: string): void {
+        const destination = new URL(url);
+        if (!['https:', 'http:'].includes(destination.protocol) || destination.username || destination.password) {
+            throw new Error('Invalid OAuth authorization URL.');
+        }
+        window.location.assign(destination.href);
     },
 };

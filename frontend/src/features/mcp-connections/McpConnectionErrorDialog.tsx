@@ -1,5 +1,7 @@
 import { useUiTranslation } from "../../lib/ui-locale";
-import { useEffect, useRef, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 import { Button } from '../../components/Button';
 import type { AdminApiError } from '../admin/shared/errors';
 import { modalBackdropStyle, modalPanelStyle } from '../admin/api-connectors/styles';
@@ -11,42 +13,35 @@ export interface McpConnectionErrorDialogProps {
 
 export function McpConnectionErrorDialog({ error, onClose }: McpConnectionErrorDialogProps) {
     const { t: translateInterface } = useUiTranslation();
-    const closeRef = useRef<HTMLButtonElement>(null);
     const backend = error.details.backend_diagnostic;
 
-    useEffect(() => {
-        closeRef.current?.focus();
-    }, []);
-
     return (
-        <div
-            data-testid="mcp-connection-error-backdrop"
-            style={{ ...modalBackdropStyle(), zIndex: 120 }}
-        >
-            <div
+        <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}><Dialog.Portal>
+            <Dialog.Overlay data-testid="mcp-connection-error-backdrop" style={{ ...modalBackdropStyle(), zIndex: 120 }} />
+            <Dialog.Content
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="mcp-connection-error-title"
                 data-testid="mcp-connection-error-dialog"
-                style={{ ...modalPanelStyle(680), padding: 0, gap: 0, overflow: 'hidden' }}
+                style={{ ...modalPanelStyle(680), position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 121, minWidth: 0, width: 'calc(100vw - 32px)', padding: 0, gap: 0, overflow: 'hidden' }}
+                onEscapeKeyDown={(event) => event.preventDefault()} onInteractOutside={(event) => event.preventDefault()}
             >
                 <div style={headerStyle}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <h2 id="mcp-connection-error-title" style={titleStyle}>Connection error details</h2>
-                        <p style={subtitleStyle}>
-                            Backend diagnostics for this exact connection attempt.
-                        </p>
+                        <Dialog.Title asChild><h2 id="mcp-connection-error-title" style={titleStyle}>{translateInterface("Connection error details")}</h2></Dialog.Title>
+                        <Dialog.Description asChild><p style={subtitleStyle}>
+                            {translateInterface("Backend diagnostics for this exact connection attempt.")}
+                        </p></Dialog.Description>
                     </div>
                     <Button
-                        ref={closeRef}
                         variant="quiet"
                         size="sm"
                         iconOnly
-                        aria-label="Close error details"
+                        aria-label={translateInterface("Close error details")}
                         title={translateInterface("Close")}
                         onClick={onClose}
                     >
-                        ×
+                        <X size={16} aria-hidden />
                     </Button>
                 </div>
 
@@ -68,8 +63,8 @@ export function McpConnectionErrorDialog({ error, onClose }: McpConnectionErrorD
                 <div style={footerStyle}>
                     <Button variant="secondary" onClick={onClose}>{translateInterface("Close")}</Button>
                 </div>
-            </div>
-        </div>
+            </Dialog.Content>
+        </Dialog.Portal></Dialog.Root>
     );
 }
 

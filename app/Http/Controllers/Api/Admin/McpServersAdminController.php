@@ -49,6 +49,15 @@ final class McpServersAdminController extends Controller
         ]);
     }
 
+    public function capabilities(\App\Mcp\Runtime\McpRuntimeGate $runtime): JsonResponse
+    {
+        return response()->json([
+            'connector_enabled' => (bool) config('connector-mcp.enabled', false),
+            'oauth_enabled' => (bool) config('connector-mcp.oauth.enabled', true),
+            'runtime_mode' => $runtime->mode($this->tenantContext->current()),
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function store(Request $request): JsonResponse
     {
         $tenantId = $this->tenantContext->current();

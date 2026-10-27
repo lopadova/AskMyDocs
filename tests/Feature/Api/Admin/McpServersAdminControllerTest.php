@@ -65,6 +65,15 @@ final class McpServersAdminControllerTest extends TestCase
         $this->assertSame(['a-server', 'b-server'], $names);
     }
 
+    public function test_capabilities_report_the_actual_connector_oauth_and_tenant_runtime_flags(): void
+    {
+        config(['connector-mcp.enabled' => true, 'connector-mcp.oauth.enabled' => false, 'connector-mcp.runtime_mode' => 'active']);
+        $this->actingAs($this->makeSuperAdmin())->getJson('/api/admin/mcp-servers/capabilities')
+            ->assertOk()->assertExactJson(['connector_enabled' => true, 'oauth_enabled' => false, 'runtime_mode' => 'active']);
+        config(['connector-mcp.enabled' => false]);
+        $this->getJson('/api/admin/mcp-servers/capabilities')->assertOk()->assertJsonPath('runtime_mode', 'off');
+    }
+
     public function test_store_encrypts_auth_config_and_defaults_enabled_tools(): void
     {
         $admin = $this->makeSuperAdmin();
@@ -280,6 +289,7 @@ final class McpServersAdminControllerTest extends TestCase
         $server = $this->createServer($admin);
 
         $this->actingAs($admin)->getJson('/api/admin/mcp-servers')->assertStatus(403);
+        $this->getJson('/api/admin/mcp-servers/capabilities')->assertStatus(403);
         $this->actingAs($admin)->postJson('/api/admin/mcp-servers', [
             'name' => 'guest',
             'transport' => 'http',
@@ -296,6 +306,7 @@ final class McpServersAdminControllerTest extends TestCase
     public function test_guest_gets_401(): void
     {
         $this->getJson('/api/admin/mcp-servers')->assertStatus(401);
+        $this->getJson('/api/admin/mcp-servers/capabilities')->assertStatus(401);
         $this->postJson('/api/admin/mcp-servers')->assertStatus(401);
     }
 

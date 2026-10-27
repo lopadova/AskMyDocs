@@ -60,7 +60,8 @@ describe('HandshakeStatus', () => {
         render(<HandshakeStatus server={makeServer()} onRetry={() => {}} busy={true} />);
         const button = screen.getByTestId('admin-mcp-server-7-handshake-retry');
         expect(button).toBeDisabled();
-        expect(button).toHaveTextContent(/Handshaking…/i);
+        expect(button).toHaveAttribute('aria-busy', 'true');
+        expect(button).toHaveTextContent(/Run handshake/i);
     });
 
     it('invokes onRetry when the retry button is clicked', () => {

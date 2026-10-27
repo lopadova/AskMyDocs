@@ -1,3 +1,5 @@
+import { Button } from '../../../components/Button';
+import { useUiTranslation } from '../../../lib/ui-locale';
 import type { McpServerEntry } from './mcp-tools.api';
 
 interface HandshakeStatusProps {
@@ -14,7 +16,8 @@ interface HandshakeStatusProps {
  *   - errored — red pill + error message + retry CTA
  */
 export function HandshakeStatus({ server, onRetry, busy }: HandshakeStatusProps) {
-    const stateLabel = useStateLabel(server);
+    const { t } = useUiTranslation();
+    const stateLabel = t(useStateLabel(server));
     const stateColor = useStateColor(server.status);
     const ariaState = busy ? 'busy' : 'ready';
 
@@ -29,7 +32,7 @@ export function HandshakeStatus({ server, onRetry, busy }: HandshakeStatusProps)
                 gap: 8,
                 padding: '12px 14px',
                 borderRadius: 12,
-                border: '1px solid var(--border-1)',
+                border: '1px solid var(--panel-border)',
                 background: 'var(--bg-2)',
             }}
         >
@@ -54,25 +57,7 @@ export function HandshakeStatus({ server, onRetry, busy }: HandshakeStatusProps)
                         ? `Last handshake ${formatRelative(server.last_handshake_at)}`
                         : 'Not yet contacted'}
                 </span>
-                <button
-                    type="button"
-                    data-testid={`admin-mcp-server-${server.id}-handshake-retry`}
-                    onClick={onRetry}
-                    disabled={busy}
-                    style={{
-                        marginLeft: 'auto',
-                        padding: '4px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border-2)',
-                        background: busy ? 'var(--bg-2)' : 'var(--accent-bg)',
-                        color: busy ? 'var(--fg-2)' : 'var(--accent-fg)',
-                        cursor: busy ? 'wait' : 'pointer',
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                    }}
-                >
-                    {busy ? 'Handshaking…' : 'Run handshake'}
-                </button>
+                <Button variant="secondary" size="sm" data-testid={`admin-mcp-server-${server.id}-handshake-retry`} onClick={onRetry} busy={busy} style={{ marginLeft: 'auto' }}>{t('Run handshake')}</Button>
             </div>
             {renderResponseSummary(server)}
         </div>
@@ -136,14 +121,14 @@ function useStateLabel(server: McpServerEntry): string {
 function useStateColor(status: McpServerEntry['status']): { background: string; color: string } {
     switch (status) {
         case 'active':
-            return { background: 'rgba(34,197,94,0.18)', color: '#86efac' };
+            return { background: 'rgba(34,197,94,0.18)', color: 'var(--accent-a)' };
         case 'disabled':
-            return { background: 'rgba(148,163,184,0.18)', color: '#cbd5e1' };
+            return { background: 'rgba(148,163,184,0.18)', color: 'var(--fg-2)' };
         case 'errored':
-            return { background: 'rgba(239,68,68,0.18)', color: '#fca5a5' };
+            return { background: 'rgba(239,68,68,0.18)', color: 'var(--err)' };
         case 'pending':
         default:
-            return { background: 'rgba(59,130,246,0.18)', color: '#93c5fd' };
+            return { background: 'rgba(59,130,246,0.18)', color: 'var(--fg-2)' };
     }
 }
 

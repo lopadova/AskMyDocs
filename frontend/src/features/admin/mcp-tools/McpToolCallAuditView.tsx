@@ -1,3 +1,5 @@
+import { Button } from '../../../components/Button';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, useMemo } from 'react';
@@ -236,9 +238,9 @@ function StatusPill({ status }: { status: McpAuditStatus }) {
     const palette = useMemo(() => {
         switch (status) {
             case 'ok':
-                return { background: 'rgba(34,197,94,0.18)', color: '#86efac' };
+                return { background: 'rgba(34,197,94,0.18)', color: 'var(--accent-a)' };
             case 'error':
-                return { background: 'rgba(239,68,68,0.18)', color: '#fca5a5' };
+                return { background: 'rgba(239,68,68,0.18)', color: 'var(--err)' };
             case 'timeout':
                 return { background: 'rgba(245,158,11,0.18)', color: '#fde68a' };
             case 'denied':
@@ -330,25 +332,23 @@ function Pagination({ currentPage, totalPages, onChange }: PaginationProps) {
             data-testid="admin-mcp-audit-pagination"
             style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}
         >
-            <button
+            <Button variant="secondary" size="sm" leadingIcon={<ArrowLeft size={14} aria-hidden />}
                 type="button"
                 disabled={currentPage <= 1}
                 onClick={() => onChange(currentPage - 1)}
                 data-testid="admin-mcp-audit-prev"
-                style={pageBtn(currentPage <= 1)}
             >
-                {translateInterface("← Previous")}</button>
+                {translateInterface("Previous")}</Button>
             <span style={{ fontSize: 12.5, color: 'var(--fg-2)', alignSelf: 'center' }}>
                 {translateInterface("Page") + " "}{currentPage} / {totalPages}
             </span>
-            <button
+            <Button variant="secondary" size="sm" trailingIcon={<ArrowRight size={14} aria-hidden />}
                 type="button"
                 disabled={currentPage >= totalPages}
                 onClick={() => onChange(currentPage + 1)}
                 data-testid="admin-mcp-audit-next"
-                style={pageBtn(currentPage >= totalPages)}
             >
-                {translateInterface("Next →")}</button>
+                {translateInterface("Next")}</Button>
         </div>
     );
 }
@@ -375,16 +375,3 @@ const inputStyle: React.CSSProperties = {
     color: 'var(--fg-1)',
     fontSize: 13,
 };
-
-function pageBtn(disabled: boolean): React.CSSProperties {
-    return {
-        padding: '4px 10px',
-        borderRadius: 8,
-        border: '1px solid var(--border-2)',
-        background: 'var(--bg-2)',
-        color: disabled ? 'var(--fg-3, #555)' : 'var(--fg-1)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: 12.5,
-        fontWeight: 600,
-    };
-}
