@@ -76,7 +76,10 @@ export function AppShell({ children, tenantScoped = true }: { children?: ReactNo
         if (first) onHub(first);
     };
     const item = NAV_ITEMS.find((candidate) => candidate.id === section);
-    const crumbs: BreadcrumbItem[] = [{ label: t(NAV_AREAS.find((candidate) => candidate.id === area)!.label), onClick: () => onAreaChange(area) }];
+    const areaLabel = t(NAV_AREAS.find((candidate) => candidate.id === area)!.label);
+    // A hub named like its area already represents that level of navigation.
+    const crumbs: BreadcrumbItem[] = hub && t(hub.label) === areaLabel
+        ? [] : [{ label: areaLabel, onClick: () => onAreaChange(area) }];
     if (hub) crumbs.push({ label: t(hub.label), onClick: () => onHub(hub) });
     if (item && !hubRoute) crumbs.push({ label: t(navLabel(item)) });
     const sidebarProps = { active: section, onNav, user: sidebarUser, projectCount: activeTeam?.projects.length ?? 0,
