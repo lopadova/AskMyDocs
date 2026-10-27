@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "ios:init": "tauri ios init",
-    "ios:dev": "tauri ios dev",
-    "ios:build": "tauri ios build"
+    "ios:dev": "node scripts/ios.mjs dev",
+    "ios:build": "node scripts/ios.mjs build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
