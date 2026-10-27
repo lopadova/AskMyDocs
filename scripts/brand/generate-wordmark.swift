@@ -10,7 +10,7 @@ try FileManager.default.createDirectory(at: output, withIntermediateDirectories:
 let markData = try Data(contentsOf: input)
 let masterData = try Data(contentsOf: root.appendingPathComponent("desktop/src-tauri/icons/icon-master.png"))
 let mark = NSImage(data: masterData)!.cgImage(forProposedRect: nil, context: nil, hints: nil)!
-let text = "AskMyDOcs"
+let text = "AskMyDocs"
 let font = CTFontCreateWithName("Georgia" as CFString, 76, nil)
 let attributes: [NSAttributedString.Key: Any] = [
     NSAttributedString.Key(kCTFontAttributeName as String): font,

@@ -29,7 +29,7 @@
   <body class="landing-page">
     <a class="skip-link" href="#main" data-i18n="skip">Vai al contenuto</a>
     <header class="header">
-      <a class="brand" href="#top" aria-label="AskMyDOcs"><span class="brand-wordmark" data-tone="auto" role="img" aria-label="AskMyDOcs"><img class="brand-wordmark-light" src="/brand/askmydocs-wordmark-light.svg" width="568" height="160" alt="" aria-hidden="true"><img class="brand-wordmark-dark" src="/brand/askmydocs-wordmark-dark.svg" width="568" height="160" alt="" aria-hidden="true"></span></a>
+      <a class="brand" href="#top" aria-label="AskMyDocs"><span class="brand-wordmark" data-tone="auto" role="img" aria-label="AskMyDocs"><img class="brand-wordmark-light" src="/brand/askmydocs-wordmark-light.svg" width="552" height="160" alt="" aria-hidden="true"><img class="brand-wordmark-dark" src="/brand/askmydocs-wordmark-dark.svg" width="552" height="160" alt="" aria-hidden="true"></span></a>
       <nav class="desktop-nav" aria-label="Navigazione principale" data-i18n-aria="navigation">
         <a href="#vision" data-i18n="nav.vision">La visione</a>
         <a href="#experience" data-i18n="nav.experience">L’esperienza</a>
@@ -258,7 +258,7 @@
     </main>
     <footer class="footer section-shell">
       <div class="footer-top">
-        <a class="brand" href="#top" aria-label="AskMyDOcs"><span class="brand-wordmark" data-tone="auto" role="img" aria-label="AskMyDOcs"><img class="brand-wordmark-light" src="/brand/askmydocs-wordmark-light.svg" width="568" height="160" alt="" aria-hidden="true"><img class="brand-wordmark-dark" src="/brand/askmydocs-wordmark-dark.svg" width="568" height="160" alt="" aria-hidden="true"></span></a>
+        <a class="brand" href="#top" aria-label="AskMyDocs"><span class="brand-wordmark" data-tone="auto" role="img" aria-label="AskMyDocs"><img class="brand-wordmark-light" src="/brand/askmydocs-wordmark-light.svg" width="552" height="160" alt="" aria-hidden="true"><img class="brand-wordmark-dark" src="/brand/askmydocs-wordmark-dark.svg" width="552" height="160" alt="" aria-hidden="true"></span></a>
         <p data-i18n="footer.tagline">Il vostro sapere. Una nuova possibilità.</p>
         <div>
           <a href="https://padosoft.mintlify.app/" target="_blank" rel="noopener noreferrer" data-i18n="footer.docs">Documentazione <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
