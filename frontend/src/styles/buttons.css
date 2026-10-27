@@ -1,0 +1,222 @@
+/* AskMyDocs button system -------------------------------------------------
+   Two restrained border layers, a soft light response and a compressed
+   active shadow create definition without glossy skeuomorphism. `.btn` is
+   the compatibility surface; new work should use <Button />. */
+.btn,
+.ui-button {
+  --button-height: 40px;
+  --button-radius: 8px;
+  --button-padding: 17px;
+  --button-gap: 8px;
+  --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--bg-3) 88%, white 1.5%), var(--bg-3));
+  --button-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--bg-4) 94%, white 3%), var(--bg-4));
+  --button-border: var(--panel-border-strong);
+  --button-inner: color-mix(in srgb, var(--fg-0) 7%, transparent);
+  --button-glow: color-mix(in srgb, var(--fg-0) 13%, transparent);
+  --button-color: var(--fg-0);
+  --button-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--fg-0) 4%, transparent),
+    0 1px 2px -1px rgba(5, 5, 14, .34),
+    0 5px 12px -11px rgba(5, 5, 14, .58);
+  position: relative;
+  isolation: isolate;
+  height: var(--button-height);
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--button-gap);
+  padding: 0 var(--button-padding);
+  color: var(--button-color);
+  border: 1px solid var(--button-border);
+  border-radius: var(--button-radius);
+  appearance: none;
+  background: var(--button-bg);
+  box-shadow: var(--button-shadow);
+  font: 610 13px/1 var(--font-sans);
+  letter-spacing: -.004em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    box-shadow .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    background .16s ease,
+    opacity .16s ease;
+}
+
+.btn::before,
+.ui-button::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 1px;
+  pointer-events: none;
+  border: 1px solid var(--button-inner);
+  border-bottom-color: transparent;
+  border-radius: calc(var(--button-radius) - 2px);
+  opacity: .92;
+}
+
+.btn:hover:not(:disabled),
+.ui-button:hover:not(:disabled),
+.ui-button[data-demo-state="hover"] {
+  background: var(--button-bg-hover);
+  border-color: color-mix(in srgb, var(--button-border) 76%, var(--fg-2));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 9%, transparent),
+    0 0 0 1px var(--button-glow),
+    0 0 18px -9px var(--button-glow),
+    0 4px 10px -9px rgba(5, 5, 14, .56);
+}
+
+.btn:active:not(:disabled),
+.ui-button:active:not(:disabled),
+.ui-button[data-demo-state="pressed"] {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 2px rgba(5, 5, 14, .2),
+    0 1px 1px rgba(5, 5, 14, .16);
+  transition-duration: .06s;
+}
+
+.btn:focus-visible,
+.ui-button:focus-visible,
+.ui-button[data-demo-state="focus"] {
+  outline: 0;
+  border-color: color-mix(in srgb, var(--accent-a) 62%, var(--button-border));
+  box-shadow:
+    0 0 0 2px var(--bg-1),
+    0 0 0 4px color-mix(in srgb, var(--accent-a) 58%, transparent),
+    0 8px 20px -14px color-mix(in srgb, var(--accent-a) 60%, transparent);
+}
+
+.btn:disabled,
+.ui-button:disabled {
+  cursor: not-allowed;
+  opacity: .47;
+  filter: saturate(.55);
+  box-shadow: none;
+  transform: none;
+}
+
+.btn.primary,
+.ui-button[data-variant="primary"] {
+  --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--accent-a) 88%, white), var(--accent-a));
+  --button-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--accent-a) 78%, white), color-mix(in srgb, var(--accent-a) 92%, white));
+  --button-border: color-mix(in srgb, var(--accent-a) 76%, var(--bg-0));
+  --button-inner: rgba(255, 255, 255, .19);
+  --button-glow: color-mix(in srgb, var(--accent-a) 35%, transparent);
+  --button-color: var(--primary-foreground, var(--bg-0));
+  --button-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .11),
+    0 1px 1px rgba(5, 12, 8, .2),
+    0 5px 12px -9px color-mix(in srgb, var(--accent-a) 30%, transparent);
+}
+
+.btn.ghost,
+.ui-button[data-variant="quiet"] {
+  --button-bg: transparent;
+  --button-bg-hover: color-mix(in srgb, var(--bg-3) 78%, transparent);
+  --button-border: transparent;
+  --button-inner: transparent;
+  --button-glow: color-mix(in srgb, var(--accent-a) 20%, transparent);
+  --button-color: var(--fg-2);
+  --button-shadow: none;
+}
+
+.ui-button[data-variant="danger"] {
+  --button-bg: linear-gradient(180deg, #dc4b54 0%, #b93242 100%);
+  --button-bg-hover: linear-gradient(180deg, #e35860 0%, #c23a49 100%);
+  --button-border: #9f2837;
+  --button-inner: rgba(255, 255, 255, .18);
+  --button-glow: rgba(220, 75, 84, .4);
+  --button-color: #fff;
+  --button-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .1),
+    0 1px 1px rgba(87, 17, 27, .5),
+    0 5px 12px -10px rgba(185, 50, 66, .64);
+}
+
+.btn.sm,
+.ui-button[data-size="sm"] {
+  --button-height: 32px;
+  --button-radius: 7px;
+  --button-padding: 12px;
+  --button-gap: 7px;
+  font-size: 11.5px;
+}
+
+.ui-button[data-size="lg"] {
+  --button-height: 46px;
+  --button-radius: 9px;
+  --button-padding: 22px;
+  --button-gap: 9px;
+  font-size: 14px;
+}
+
+.btn.icon,
+.ui-button.is-icon-only {
+  width: var(--button-height);
+  flex: 0 0 var(--button-height);
+  padding: 0;
+}
+.btn.icon.sm { width: 32px; }
+
+.ui-button.is-caps {
+  font-size: 10.5px;
+  font-weight: 680;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+}
+
+.ui-button-icon,
+.ui-button-icon > svg,
+.ui-button.is-icon-only > svg {
+  display: block;
+  flex: 0 0 auto;
+}
+.ui-button-icon > svg,
+.ui-button.is-icon-only > svg { width: 15px; height: 15px; }
+.ui-button[data-size="sm"] .ui-button-icon > svg,
+.ui-button[data-size="sm"].is-icon-only > svg { width: 14px; height: 14px; }
+.ui-button[data-size="lg"] .ui-button-icon > svg,
+.ui-button[data-size="lg"].is-icon-only > svg { width: 17px; height: 17px; }
+.ui-button-icon { color: currentColor; opacity: .88; }
+.ui-button-label { overflow: hidden; text-overflow: ellipsis; }
+
+@keyframes ui-button-spin { to { transform: rotate(360deg); } }
+.ui-button-spinner {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: ui-button-spin .7s linear infinite;
+}
+
+.ui-button-group {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--panel-border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-2) 82%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fg-0) 4%, transparent);
+}
+.ui-button-group .ui-button {
+  border-radius: 8px;
+  box-shadow: none;
+}
+.ui-button-group .ui-button::before { display: none; }
+.ui-button-group .ui-button[aria-pressed="true"] {
+  color: var(--fg-0);
+  border-color: var(--panel-border-strong);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+}
+
