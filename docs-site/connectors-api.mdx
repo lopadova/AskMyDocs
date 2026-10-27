@@ -50,6 +50,24 @@ the parameters marked `llm`. The URL, the headers, the fixed params, the secrets
 and the auth are all resolved **server-side** at call time. The model cannot
 exfiltrate a key it never receives.
 
+### Record identity in response settings
+
+In an endpoint's **Risposta** tab, set **Campi identificativi** to the exact
+field names that identify each returned record, separated by commas. For
+example, GESCAT orders use `ord_codiceweb`; `ord_ID` can also be declared.
+Names are case-sensitive and refer to fields on the record itself, rather than
+nested customer or shipment fields. Up to twelve fields are supported.
+
+The setting is available for list and detail responses in every endpoint mode
+(`tool`, `ingest`, and `both`). It persists across connection tests, automatic
+configuration, and connector import/export. Leave it empty to use automatic
+identity detection. For API clients, write an array to
+`config.response.identity_fields` or to the flat `identity_fields` field.
+
+When an endpoint is used as a live tool, grounding matches the requested
+identifier against these record fields before validating generated claims.
+The setting does not add parameters to the outbound API request.
+
 ### The two parameter axes
 
 Every route parameter has two independent axes — this is the heart of the model:

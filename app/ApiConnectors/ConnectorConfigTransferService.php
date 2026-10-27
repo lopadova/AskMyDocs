@@ -38,7 +38,7 @@ final class ConnectorConfigTransferService
 
     private const ROUTE_FIELDS = [
         'name', 'slug', 'description', 'http_method', 'url', 'mode', 'status',
-        'endpoint_type', 'endpoint_type_locked', 'items_path', 'timeout_ms',
+        'endpoint_type', 'endpoint_type_locked', 'items_path', 'identity_fields', 'timeout_ms',
         'cache_ttl_s', 'rate_limit', 'input_schema', 'output_schema', 'param_mapping',
         'tool_definition', 'output_transform', 'pagination',
     ];
@@ -99,6 +99,7 @@ final class ConnectorConfigTransferService
         }
         foreach ($connector->routes as $route) {
             $row = Arr::only($route->attributesToArray(), self::ROUTE_FIELDS);
+            $row['identity_fields'] = $route->identity_fields ?? [];
             $row['ref'] = 'route-'.$route->id;
             $row['auth_profile_ref'] = $this->profileRef($route->auth_profile_id);
             $row['parameters'] = $route->parameters->map(function ($parameter) use (&$secrets): array {

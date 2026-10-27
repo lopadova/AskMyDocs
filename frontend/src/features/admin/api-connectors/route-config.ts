@@ -27,7 +27,7 @@ export function emptyConfig(connector: ApiConnector): RouteConfig {
             auth_profile_id: connector.default_auth_profile_id,
             params: [],
         },
-        response: { endpoint_type: 'auto', items_path: null, transform: null, pagination: null },
+        response: { endpoint_type: 'auto', items_path: null, identity_fields: [], transform: null, pagination: null },
         options: { timeout_ms: null, cache_ttl_s: null, rate_limit: null },
     };
 }
@@ -72,6 +72,7 @@ export function routeToConfig(route: ApiRoute): RouteConfig {
         response: {
             endpoint_type: route.endpoint_type_locked && route.endpoint_type !== 'unknown' ? route.endpoint_type : 'auto',
             items_path: route.items_path,
+            identity_fields: route.identity_fields ?? [],
             transform: route.output_transform as RouteConfig['response']['transform'],
             pagination: route.pagination,
         },
@@ -115,6 +116,10 @@ export function diffGroups(a: RouteConfig, b: RouteConfig): (keyof RouteConfig)[
 export function mapConfigErrors(fieldErrors: Record<string, string>): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [key, msg] of Object.entries(fieldErrors)) {
+        if (/^config\.response\.identity_fields(?:\.\d+)?$/.test(key)) {
+            out.identity_fields ??= msg;
+            continue;
+        }
         const param = key.match(/^config\.request\.params\.(\d+)\.(\w+)$/);
         if (param) {
             out[`param-${param[1]}-${param[2]}`] = msg;

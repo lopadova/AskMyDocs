@@ -76,7 +76,7 @@ final class ContentHasher
             }
             return $data;
         })->sortBy(fn ($p) => $p['location'].'/'.$p['name'])->values()->all();
-        $routeContent = $route->only(['http_method','url','input_schema','output_schema','output_transform','pagination','endpoint_type','items_path','timeout_ms','cache_ttl_s','rate_limit']);
+        $routeContent = $route->only(['http_method','url','input_schema','output_schema','output_transform','pagination','endpoint_type','items_path','identity_fields','timeout_ms','cache_ttl_s','rate_limit']);
         foreach (['input_schema','output_schema'] as $key) { $routeContent[$key] = $this->schemaContent($routeContent[$key] ?? []); }
         return [
             'route' => $routeContent,

@@ -31,6 +31,7 @@ describe('route-config helpers', () => {
             name: 'Users', slug: 'users', description: 'd', mode: 'tool', http_method: 'GET',
             url: 'https://x/users', auth_profile_id: null,
             endpoint_type: 'list', endpoint_type_locked: false, items_path: 'data',
+            identity_fields: ['ord_codiceweb', 'ord_ID'],
             output_transform: null, pagination: null, timeout_ms: null, cache_ttl_s: null, rate_limit: null,
             parameters: [{ name: 'q', location: 'query', source: 'llm', type: 'string', required: false, value: null, secret_ref: null, description: null, sort_order: 0 }],
         } as unknown as ApiRoute;
@@ -38,6 +39,7 @@ describe('route-config helpers', () => {
         const c = routeToConfig(route);
         // Unlocked detector-set list → 'auto'.
         expect(c.response.endpoint_type).toBe('auto');
+        expect(c.response.identity_fields).toEqual(['ord_codiceweb', 'ord_ID']);
         expect(c.request.params[0].name).toBe('q');
     });
 

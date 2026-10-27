@@ -200,6 +200,7 @@ final readonly class AgentToolRegistry
                     'source_project_key' => $route->connector?->project_key,
                     'endpoint_type' => $route->endpoint_type->value,
                     'items_path' => $route->items_path,
+                    'identity_fields' => $route->identity_fields ?? [],
                     'output_schema' => is_array($route->output_schema) ? $route->output_schema : null,
                     'pagination' => $pagination,
                     'relations' => $outboundRelations,

@@ -42,4 +42,18 @@ final class EvidenceProjectorIdentityTest extends TestCase
         $claim['evidence_hash'] = 'hash';
         $this->assertSame('source_scope_mismatch', $projector->bind($this->evidence(), $claim, ['ORDER-A'], 'other', 'orders')['reason']);
     }
+
+    public function test_declared_identity_supports_a_root_array_without_authorizing_query_echoes(): void
+    {
+        $evidence = ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'hash',
+            'presentation' => ['identity_fields' => ['ord_codiceweb']],
+            'arguments' => ['ord_codiceweb' => 'ORDER-A'],
+            'result' => [['ord_codiceweb' => 'ORDER-B'], ['ord_codiceweb' => 'ORDER-A']],
+        ]]];
+        $projector = new EvidenceProjector;
+        $claim = ['tool_execution_id' => 42, 'evidence_hash' => 'hash'];
+        $this->assertSame('$.1', $projector->bind($evidence, $claim, ['ORDER-A'], 'acme', 'orders')['path']);
+        $claim['record_path'] = '$.0';
+        $this->assertSame('entity_mismatch', $projector->bind($evidence, $claim, ['ORDER-A'], 'acme', 'orders')['reason']);
+    }
 }

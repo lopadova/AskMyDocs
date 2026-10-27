@@ -36,7 +36,9 @@ final readonly class AgentCapabilitySnapshotBuilder
             ? $tool->metadata['output_schema']
             : null;
         $collectionPath = $hint['collection_path'] ?? $this->collectionPath($tool, $outputSchema);
-        $identityFields = $hint['identity_fields'] ?? $this->identityFields($outputSchema, $collectionPath);
+        $configuredIdentityFields = \App\ApiConnectors\EndpointIdentityFields::normalize($tool->metadata['identity_fields'] ?? null);
+        $identityFields = $configuredIdentityFields !== [] ? $configuredIdentityFields
+            : ($hint['identity_fields'] ?? $this->identityFields($outputSchema, $collectionPath));
         $nextTools = isset($hint['next_tools'])
             ? array_values(array_filter($hint['next_tools'], static fn (string $name): bool => isset($tools[$name])))
             : $this->relations($tool, $tools);

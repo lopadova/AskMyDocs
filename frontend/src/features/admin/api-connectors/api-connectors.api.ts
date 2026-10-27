@@ -180,6 +180,7 @@ export interface ApiRoute {
     endpoint_type: EndpointType;
     endpoint_type_locked: boolean;
     items_path: string | null;
+    identity_fields?: string[];
     timeout_ms: number | null;
     cache_ttl_s: number | null;
     rate_limit: number | null;
@@ -237,6 +238,7 @@ export interface RouteConfig {
     response: {
         endpoint_type: EndpointTypeChoice;
         items_path: string | null;
+        identity_fields?: string[];
         transform: { include: string[]; exclude: string[] } | null;
         pagination: PaginationConfig | null;
     };

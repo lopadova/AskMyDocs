@@ -77,11 +77,13 @@
     "scripts": {
         "post-install-cmd": [
             "@php scripts/composer/patch-api-connector-headers.php",
-            "@php scripts/composer/patch-api-connector-structured-responses.php"
+            "@php scripts/composer/patch-api-connector-structured-responses.php",
+            "@php scripts/composer/patch-api-connector-identity-fields.php"
         ],
         "post-update-cmd": [
             "@php scripts/composer/patch-api-connector-headers.php",
-            "@php scripts/composer/patch-api-connector-structured-responses.php"
+            "@php scripts/composer/patch-api-connector-structured-responses.php",
+            "@php scripts/composer/patch-api-connector-identity-fields.php"
         ]
     },
     "config": {

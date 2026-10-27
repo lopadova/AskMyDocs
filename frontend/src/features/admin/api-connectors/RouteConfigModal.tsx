@@ -43,6 +43,7 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
     const [savedRoute, setSavedRoute] = useState(route);
     const isEdit = !!savedRoute;
     const [config, setConfig] = useState<RouteConfig>(() => route ? routeToConfig(route) : emptyConfig(connector));
+    const [identityFieldsInput, setIdentityFieldsInput] = useState(() => (config.response.identity_fields ?? []).join(', '));
     const [dirty, setDirty] = useState(false);
     const [tab, setTab] = useState<EditorTab>('request');
     const [applied, setApplied] = useState<Record<string, boolean>>({});
@@ -126,6 +127,7 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
                 if (res.config) {
                     flash(diffGroups(config, res.config));
                     setConfig(res.config);
+                    setIdentityFieldsInput((res.config.response.identity_fields ?? []).join(', '));
                     setDirty(true);
                     setSaveNotice(null);
                     toast.success('Configurazione generata. Verifica i campi prima di salvare.', 'toast-api-route-ai-configured');
@@ -147,7 +149,8 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
             const fields = mapConfigErrors(error.fieldErrors);
             setSubmitError(error.message);
             setFieldErrors(fields);
-            setTab(Object.keys(fields).some(k => k.startsWith('param-')) ? 'params' : 'request');
+            setTab(Object.keys(fields).some(k => k.startsWith('param-')) ? 'params'
+                : Object.keys(fields).some(k => ['identity_fields', 'endpoint_type', 'items_path', 'transform', 'pagination'].includes(k)) ? 'response' : 'request');
         };
         const created = !savedRoute;
         const afterSave = (saved: ApiRoute) => {
@@ -290,6 +293,12 @@ export function RouteConfigModal({ connector, route, onClose, onSaved }: RouteCo
                                         </div>
                                         <p className="route-editor-hint">{ENDPOINT_TYPES.find(o => o.value === config.response.endpoint_type)?.hint}</p>
                                     </div>
+                                    <Field label="Campi identificativi" note="Nomi dei campi del singolo elemento, separati da virgole. Esempio: ord_codiceweb, ord_ID. Fino a 12 campi; lascia vuoto per il riconoscimento automatico." error={fieldErrors.identity_fields} errorId="api-route-form-identity_fields-error" flash={applied.response}>
+                                        <input className="route-editor-control is-mono" data-testid="api-route-form-identity_fields" value={identityFieldsInput} placeholder="ord_codiceweb" spellCheck={false} aria-invalid={!!fieldErrors.identity_fields} aria-describedby={fieldErrors.identity_fields ? 'api-route-form-identity_fields-error' : undefined} onChange={e => {
+                                            setIdentityFieldsInput(e.target.value);
+                                            patchResponse({ identity_fields: e.target.value.split(',').map(field => field.trim()).filter(Boolean) });
+                                        }} />
+                                    </Field>
                                     {config.response.endpoint_type !== 'detail' && <>
                                         <Field label="Percorso degli elementi" note="Usa un percorso come data.items. Lascia vuoto se la risposta è già un array." flash={applied.response}>
                                             <input className="route-editor-control is-mono" data-testid="api-route-form-items_path" value={config.response.items_path ?? ''} onChange={e => patchResponse({ items_path: e.target.value })} placeholder="data" />
@@ -337,7 +346,7 @@ function Section({ title, note, children }: { title: string; note?: string; chil
     return <section className="route-editor-section"><h3 className="route-editor-section-title">{title}</h3>{note && <p className="route-editor-section-note">{note}</p>}{children}</section>;
 }
 function Field({ label, required, note, error, errorId, flash, children }: { label: string; required?: boolean; note?: string; error?: string; errorId?: string; flash?: boolean; children: ReactNode }) {
-    return <div className={`route-editor-field ${flash ? 'route-editor-flash' : ''}`}><label><span className="route-editor-label">{label}{required && <span className="route-editor-required"> *</span>}</span>{children}</label>{note && <span className="route-editor-hint">{note}</span>}{error && <span data-testid={errorId} role="alert" className="route-editor-error">{error}</span>}</div>;
+    return <div className={`route-editor-field ${flash ? 'route-editor-flash' : ''}`}><label><span className="route-editor-label">{label}{required && <span className="route-editor-required"> *</span>}</span>{children}</label>{note && <span className="route-editor-hint">{note}</span>}{error && <span id={errorId} data-testid={errorId} role="alert" className="route-editor-error">{error}</span>}</div>;
 }
 function Select({ testid, ariaLabel, value, onChange, options, labels }: { testid: string; ariaLabel?: string; value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string> }) {
     return <div className="route-editor-select"><SelectField className="route-editor-control" aria-label={ariaLabel} data-testid={testid} value={value} onValueChange={(selectedValue) => onChange(selectedValue)}>{options.map(o => <SelectOption key={o} value={o}>{labels?.[o] ?? o}</SelectOption>)}</SelectField></div>;

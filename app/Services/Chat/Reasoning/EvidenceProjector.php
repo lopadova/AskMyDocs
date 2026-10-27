@@ -132,7 +132,12 @@ final class EvidenceProjector
     {
         $result = $tool['result'] ?? [];
         $path = data_get($tool, 'presentation.collection_path');
-        foreach (array_filter([$path, 'records', 'artifact.structuredContent.records', 'data.records', 'items', 'documents', 'orders', 'shipments', 'customers', 'products', 'data']) as $candidate) {
+        $declaredFields = $tool['presentation']['identity_fields'] ?? [];
+        if (empty($path) && is_array($result) && $declaredFields !== []
+            && self::identities($result, $declaredFields) !== []) {
+            return [['record' => $result, 'path' => '$']];
+        }
+        foreach (array_filter([$path, 'records', 'artifact.structuredContent.records', 'data.records', 'items', 'documents', 'orders', 'shipments', 'customers', 'products', 'data', '$']) as $candidate) {
             $rows = $candidate === '$' ? $result : data_get($result, $candidate);
             if (is_array($rows) && array_is_list($rows) && $rows !== [] && ! array_filter($rows, fn ($r) => ! is_array($r))) {
                 return array_map(fn ($row, $i) => ['record' => $row, 'path' => $candidate.'.'.$i], $rows, array_keys($rows));

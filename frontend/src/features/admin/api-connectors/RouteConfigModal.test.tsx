@@ -108,6 +108,45 @@ describe('RouteConfigModal', () => {
         expect(vars.config.identity.description).toBe('Edited.');
     });
 
+    it.each(['tool', 'ingest', 'both'] as const)('saves identity fields in response settings for %s endpoints', async mode => {
+        const user = userEvent.setup();
+        const route = { id: 5, config: config({ identity: { name: 'Orders', slug: 'orders', description: null, mode } }) } as ApiRoute;
+        render(<RouteConfigModal connector={connector} route={route} onClose={vi.fn()} />);
+        await user.click(screen.getByRole('tab', { name: 'Risposta' }));
+        const input = screen.getByRole('textbox', { name: 'Campi identificativi' });
+        await user.type(input, 'ord_codiceweb, ord_ID');
+        expect(input).toHaveValue('ord_codiceweb, ord_ID');
+        await user.click(screen.getByTestId('api-route-form-test'));
+        expect(testMutate.mock.calls[0][0].config.response.identity_fields).toEqual(['ord_codiceweb', 'ord_ID']);
+        await user.click(screen.getByTestId('api-route-form-submit'));
+        expect(updateMutate.mock.calls[0][0].config.response.identity_fields).toEqual(['ord_codiceweb', 'ord_ID']);
+        expect(updateMutate.mock.calls[0][0].config.identity.mode).toBe(mode);
+    });
+
+    it('reopens and clears identity fields on detail endpoints', async () => {
+        const user = userEvent.setup();
+        const route = { id: 5, config: config({ response: { endpoint_type: 'detail', items_path: null, identity_fields: ['ord_codiceweb', 'ord_ID'], transform: null, pagination: null } }) } as ApiRoute;
+        render(<RouteConfigModal connector={connector} route={route} onClose={vi.fn()} />);
+        await user.click(screen.getByRole('tab', { name: 'Risposta' }));
+        const input = screen.getByRole('textbox', { name: 'Campi identificativi' });
+        expect(input).toHaveValue('ord_codiceweb, ord_ID');
+        await user.clear(input);
+        await user.click(screen.getByTestId('api-route-form-submit'));
+        expect(updateMutate.mock.calls[0][0].config.response.identity_fields).toEqual([]);
+    });
+
+    it('shows identity validation failures on the response tab', () => {
+        const route = { id: 5, config: config() } as ApiRoute;
+        updateMutate.mockImplementation((_vars, options) => options.onError({ response: { status: 422, data: {
+            message: 'Invalid identity fields.', errors: { 'config.response.identity_fields.0': ['Use a field name.'] },
+        } } }));
+        render(<RouteConfigModal connector={connector} route={route} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+        expect(screen.getByRole('tab', { name: 'Risposta' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('api-route-form-identity_fields-error')).toHaveTextContent('Use a field name.');
+        expect(screen.getByRole('textbox', { name: 'Campi identificativi' })).toHaveAttribute('aria-invalid', 'true');
+    });
+
     it('param source toggles the conditional value / secret_ref field', async () => {
         render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
