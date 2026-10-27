@@ -47,7 +47,6 @@
 .chat-conversation-search:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent-a) 12%,transparent); border-color: var(--accent-a); }
 .chat-header-shell { padding-inline: 24px; background: var(--bg-1); }
 .chat-header-shell > .editorial-surface-art { left: 45%; opacity: .1; }
-.chat-sessions-kb-entry { padding-left: 14px; }
 .conv-row { padding-left: 12px; }
 .conv-row-copy { min-width: 0; }
 .conv-row-title { font-size: 12px; }

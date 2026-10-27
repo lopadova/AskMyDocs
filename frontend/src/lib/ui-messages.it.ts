@@ -7,6 +7,8 @@ export const IT_MESSAGES: Record<string, string> = {
     ...SETTINGS_MESSAGES_IT,
     ...MCP_TOKENS_MESSAGES_IT,
     ...MCP_TOOLS_MESSAGES_IT,
+    'Resize chat list': 'Ridimensiona elenco chat',
+    'Drag to resize. Use arrow keys, Home or End; double-click to reset.': 'Trascina per ridimensionare. Usa le frecce, Home o Fine; doppio clic per ripristinare.',
     'Open API call': 'Apri chiamata API',
     'Close API call': 'Chiudi chiamata API',
     'Answer source': 'Fonte della risposta',

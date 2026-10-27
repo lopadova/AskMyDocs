@@ -3441,35 +3441,33 @@ textarea:focus-visible {
   padding: 14px 12px;
   overflow-y: auto;
 }
-
-/* The KB entry reads as a destination, not as a session: accent-tinted
-   and separated by a rule from the list below it. */
-.chat-sessions-kb-entry {
+.chat-sessions-sidebar > * { flex-shrink: 0; }
+.chat-sessions-history-dialog { flex-direction: column; }
+.chat-sessions-drawer-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.chat-sessions-drawer-header h2 { margin: 0; color: var(--fg-0); font: 600 14px/1.3 var(--font-sans); }
+
+/* Keep both destination labels visible using the shared button geometry. */
+.chat-sessions-kb-entry.ui-button {
   width: 100%;
-  padding: 10px 11px;
-  color: var(--fg-0);
+  height: auto;
+  min-height: var(--button-height);
+  justify-content: space-between;
   text-align: left;
-  background: color-mix(in srgb, var(--accent-a) 7%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-a) 16%, var(--panel-border));
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-
-.chat-sessions-kb-entry:hover {
-  background: color-mix(in srgb, var(--accent-a) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent-a) 26%, var(--panel-border));
+.chat-sessions-kb-entry .ui-button-label {
+  padding-block: 6px;
+  white-space: normal;
+  overflow: visible;
+  text-align: left;
 }
-
-.chat-sessions-kb-entry:focus-visible {
-  outline: 2px solid var(--accent-a);
-  outline-offset: 2px;
-}
-
-.chat-sessions-kb-icon { display: grid; place-items: center; color: var(--accent-a); }
 .chat-sessions-kb-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
 .chat-sessions-kb-title { font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
 .chat-sessions-kb-hint { color: var(--fg-3); font-size: 11px; }
@@ -3488,8 +3486,8 @@ textarea:focus-visible {
   letter-spacing: .06em;
 }
 
-.chat-sessions-actions { display: flex; gap: 6px; }
-.chat-sessions-actions .ui-button { flex: 1; }
+.chat-sessions-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-sessions-actions .ui-button { flex: 1 1 112px; }
 
 .chat-sessions-search input {
   width: 100%;

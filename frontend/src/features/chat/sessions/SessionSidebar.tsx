@@ -3,7 +3,6 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../../components/Icons';
 import { Button } from '../../../components/Button';
-import { EditorialArtwork } from '../../../components/editorial/EditorialArtwork';
 import { ProjectSelector } from '../ProjectSelector';
 import {
     chatApi,
@@ -191,19 +190,19 @@ export function SessionSidebar({
         >
             {/* Knowledge base sits ABOVE the sessions: it is the shared
                 material every session draws on, not one of them. */}
-            <button
-                type="button"
-                className="chat-sessions-kb-entry editorial-surface"
+            <Button
+                variant="secondary"
+                size="lg"
+                className="chat-sessions-kb-entry"
                 data-testid="chat-sessions-kb-entry"
                 onClick={onOpenKnowledgeBase}
+                trailingIcon={<Icon.Chevron size={14} />}
             >
-                <EditorialArtwork artwork="archive" className="editorial-surface-art" resolution="small" />
                 <span className="chat-sessions-kb-copy">
                     <span className="chat-sessions-kb-title">{translateInterface("Knowledge base")}</span>
                     <span className="chat-sessions-kb-hint">{translateInterface("Browse documents")}</span>
                 </span>
-                <Icon.Chevron size={11} />
-            </button>
+            </Button>
 
             <div className="chat-sessions-scope">
                 {/* A decorative caption, not a <label>: ProjectSelector's

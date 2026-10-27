@@ -11,6 +11,7 @@ import {
     DialogTrigger,
 } from '../../../components/ui/dialog';
 import { SessionSidebar, type SessionSidebarProps } from './SessionSidebar';
+import { ResizableChatHistory } from '../ResizableChatHistory';
 
 /**
  * Keep the session list beside the thread on desktop and in a
@@ -33,9 +34,9 @@ export function SessionNavigation({
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <div className="chat-history-desktop">
+            <ResizableChatHistory>
                 <SessionSidebar {...props} />
-            </div>
+            </ResizableChatHistory>
             {children(
                 <DialogTrigger asChild>
                     <Button
@@ -51,22 +52,23 @@ export function SessionNavigation({
                     </Button>
                 </DialogTrigger>,
             )}
-            <DialogContent className="chat-history-dialog" showCloseButton={false}>
-                <DialogTitle className="sr-only">{translateInterface("Sessions")}</DialogTitle>
+            <DialogContent className="chat-history-dialog chat-sessions-history-dialog" showCloseButton={false}>
+                <header className="chat-sessions-drawer-header">
+                    <DialogTitle>{translateInterface("Sessions")}</DialogTitle>
+                    <DialogClose asChild>
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
+                            aria-label={translateInterface("Close sessions")}
+                            title={translateInterface("Close sessions")}
+                        >
+                            <Icon.Close size={15} />
+                        </Button>
+                    </DialogClose>
+                </header>
                 <DialogDescription className="sr-only">
                     {translateInterface("Browse the knowledge base, search your sessions or start a new one.")}</DialogDescription>
-                <DialogClose asChild>
-                    <Button
-                        variant="quiet"
-                        size="sm"
-                        iconOnly
-                        className="chat-history-close"
-                        aria-label={translateInterface("Close sessions")}
-                        title={translateInterface("Close sessions")}
-                    >
-                        <Icon.Close size={15} />
-                    </Button>
-                </DialogClose>
                 <SessionSidebar
                     {...props}
                     // Picking a session or opening the KB must dismiss the
