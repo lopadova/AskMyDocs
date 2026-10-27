@@ -31,12 +31,20 @@ PHP);
     private function execute(RequestPlan $plan, AuthMaterial $material, int $timeoutMs): TestResult
             $decoded = json_decode($raw, true);
             $isJson = json_last_error() === JSON_ERROR_NONE && is_array($decoded);
+
+            return new TestResult(
+                error: $response->successful() ? null : "Endpoint returned HTTP {$response->status()}.",
+            );
+PHP);
+        file_put_contents($this->packagePath.'/src/Services/ConnectorAdminService.php', <<<'PHP'
+        $inputSchema = $this->schemaInferrer->inferInput($route->parameters);
+        $outputSchema = $this->schemaInferrer->inferOutput($result->body);
 PHP);
     }
 
     protected function tearDown(): void
     {
-        foreach (['ApiToolExecutor', 'ApiRouteTester'] as $name) unlink($this->packagePath.'/src/Services/'.$name.'.php');
+        foreach (['ApiToolExecutor', 'ApiRouteTester', 'ConnectorAdminService'] as $name) unlink($this->packagePath.'/src/Services/'.$name.'.php');
         rmdir($this->packagePath.'/src/Services');rmdir($this->packagePath.'/src');rmdir($this->packagePath);
     }
 
@@ -46,6 +54,8 @@ PHP);
         $first = file_get_contents($this->packagePath.'/src/Services/ApiRouteTester.php');
         $this->assertStringContainsString('StructuredApiResponseDecoder::class', $first);
         $this->assertStringContainsString('$timeoutMs, $route->output_transform', $first);
+        $this->assertStringContainsString('ApiResponseDiagnostics::class', $first);
+        $this->assertStringContainsString('ApiInputSchemaConstraints::class', file_get_contents($this->packagePath.'/src/Services/ConnectorAdminService.php'));
         $executor = file_get_contents($this->packagePath.'/src/Services/ApiToolExecutor.php');
         $this->assertStringContainsString('ApiResponseDiagnostics::class', $executor);
         $this->process()->mustRun();

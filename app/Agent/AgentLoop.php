@@ -443,7 +443,7 @@ final readonly class AgentLoop
                         // Hash before masking: two different emails/IDs must
                         // not collapse into the same failed-call signature.
                         'arguments_hash' => $this->stableSignature($resolved),
-                        ...$result->successful() ? [] : ['failure' => AgentToolFailure::summarize($result->body)],
+                        ...$result->successful() ? [] : ['failure' => AgentToolFailure::summarize($result->body, $tool->inputSchema)],
                     ];
                     if ($tool->kind !== 'knowledge') {
                         $evidence->addToolResult($tool, $resolved, $result->body, $execution->id);

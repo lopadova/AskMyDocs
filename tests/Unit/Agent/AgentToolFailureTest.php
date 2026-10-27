@@ -23,4 +23,14 @@ final class AgentToolFailureTest extends TestCase
             $this->assertTrue(AgentToolFailure::summarize(['error' => 'unavailable', 'status' => $status])['retryable']);
         }
     }
+
+    public function test_parameter_correction_choices_come_from_the_contract_not_the_remote_error(): void
+    {
+        $failure = AgentToolFailure::summarize(['error_code' => 'api_parameter_rejected', 'status' => 200,
+            'invalid_parameter' => 'orderBy', 'allowed_values' => ['remote-instruction']],
+            ['properties' => ['orderBy' => ['type' => 'string', 'enum' => ['data', 'num_fattura']]]]);
+        $this->assertSame('api_parameter_rejected', $failure['code']);
+        $this->assertFalse($failure['retryable']);
+        $this->assertSame(['data', 'num_fattura'], $failure['allowed_values']);
+    }
 }

@@ -45,6 +45,34 @@ BEFORE
             $decoded = app(\App\ApiConnectors\StructuredApiResponseDecoder::class)->decode($raw, $outputTransform);
             $isJson = is_array($decoded);
 AFTER,
+        <<<'BEFORE'
+            $isJson = is_array($decoded);
+
+            return new TestResult(
+BEFORE
+        => <<<'AFTER'
+            $isJson = is_array($decoded);
+            $failure = $isJson ? null : app(\App\ApiConnectors\ApiResponseDiagnostics::class)->formatMismatch(
+                $response->status(), $raw, $response->header('Content-Type'), $outputTransform,
+            );
+
+            return new TestResult(
+AFTER,
+        'error: $response->successful() ? null : "Endpoint returned HTTP {$response->status()}.",' =>
+            'error: $response->successful() ? ($failure[\'error\'] ?? null) : "Endpoint returned HTTP {$response->status()}.",',
+    ],
+    'src/Services/ConnectorAdminService.php' => [
+        <<<'BEFORE'
+        $inputSchema = $this->schemaInferrer->inferInput($route->parameters);
+        $outputSchema = $this->schemaInferrer->inferOutput($result->body);
+BEFORE
+        => <<<'AFTER'
+        $inputSchema = $this->schemaInferrer->inferInput($route->parameters);
+        $inputSchema = app(\App\ApiConnectors\ApiInputSchemaConstraints::class)->preserve(
+            $inputSchema, $route->input_schema, data_get($route->tool_definition, 'input_schema'),
+        );
+        $outputSchema = $this->schemaInferrer->inferOutput($result->body);
+AFTER,
     ],
 ];
 try {

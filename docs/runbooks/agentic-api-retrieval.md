@@ -339,12 +339,53 @@ il problema della sorgente esterna anziché nasconderlo dietro un rifiuto
 generico sulla pertinenza. Gli errori non diventano fatti o citazioni.
 
 Per la chat 96 (`Dammi gli ultimi 10 ordini`, 27 ottobre 2026) il debug storico
-registra tre errori non JSON con HTTP 200 e non conserva il corpo: non dimostra
-quale formato o errore applicativo abbia restituito GESCAT. Prima di modificare
-il contratto della route, controllare l'endpoint dalla scheda di test. Se il
-servizio documenta JSON, verificare il parametro fisso di formato; abilitare XML
-solo dopo aver verificato root e percorsi reali. Email storiche su singoli ordini
-non dimostrano quali siano gli ultimi dieci ordini nel gestionale.
+registra tre errori non JSON con HTTP 200 senza conservare il corpo. La verifica
+live successiva del servizio Autry ha riprodotto la causa con le stesse opzioni:
+`orderBy=created_at desc` restituisce `text/xml` e questo errore applicativo:
+
+```xml
+<result>
+  <ack>KO</ack>
+  <error_message><![CDATA[Il parametro "orderBy" impone l'Ordinamento dati. Valori accettati: "num_fattura" (ordina per numero doc ASC), se lasciato vuoto ordina per Data DESC]]></error_message>
+</result>
+```
+
+Con le credenziali e i filtri fissi già configurati, gli argomenti corretti sono:
+
+```json
+{"limit": 10, "orderBy": "data"}
+```
+
+La GET a `https://www.autry-usa.com/api/admin/ws/ws_orders`, con `type=json`,
+ha restituito HTTP 200, `application/json; charset=utf-8`, una collezione
+`order` con esattamente 10 record e `ord_datetime` in ordine decrescente.
+`data` è la chiave del servizio per la creazione decrescente; `num_fattura`
+ordina per progressivo crescente. Il nome fisico della colonna SQL non è un
+argomento valido. La risposta corretta resta JSON: non occorre abilitare XML
+come formato dei dati. Non sono stati modificati ordini sul servizio remoto.
+
+La migration `2026_10_27_150000_fix_gescat_orders_sort_contract` corregge soltanto
+la GET `gescat_cerca_ordini` sul servizio Autry verificato: aggiunge enum,
+pattern, default `data` e descrizione coerente negli schemi della route e del
+tool. Non modifica stato di attivazione, credenziali, proiezione o altri filtri.
+Gli indici negativi dell'ordinamento dei campi vengono rinumerati mantenendo
+l'ordine relativo: il vecchio `type=json` a posizione `-1` bloccava la validazione
+del pulsante «Testa chiamata», che accetta indici non negativi.
+L'esecuzione locale è stata verificata; in altri ambienti la correzione si applica
+con le normali migration del deploy. È una riparazione dati che il rollback non
+annulla automaticamente. Il test connessione conserva i vincoli scalari dei
+parametri ancora presenti e dello stesso tipo, evitando di perdere enum e
+pattern quando rigenera il tool.
+
+Un envelope XML `result/ack=KO/error_message` già rifiutato dal decoder è ora
+classificato come `api_application_error`; il messaggio di validazione osservato
+per `orderBy` diventa `api_parameter_rejected`. La diagnostica e il planner
+ricevono solo codici host, nome del parametro e valori ammessi dal contratto.
+Il testo remoto non diventa un'istruzione o una prova e non è copiato nei log
+runtime; il test amministrativo conserva la risposta per l'ispezione autorizzata.
+DTD, entity, XML malformati o envelope diversi non passano come errori riconosciuti.
+Email storiche su singoli ordini non dimostrano quali siano gli ultimi dieci
+ordini nel gestionale.
 
 ## Rilettura delle email con scheda di triage
 

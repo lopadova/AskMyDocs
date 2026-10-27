@@ -1190,6 +1190,10 @@ PROMPT;
                     : 'I could not retrieve current data: the API call'.($http === null ? '' : " returned HTTP {$http}, but")
                     .' returned content that does not match the configured format.')
                 : ($italian ? 'Non ho potuto completare la chiamata alla sorgente esterna.' : 'I could not complete the call to the external source.');
+            if (array_filter($failures, fn ($failure) => $failure['code'] === 'api_parameter_rejected')) {
+                $answer = $italian ? 'La sorgente esterna ha rifiutato un parametro della richiesta. Non ho potuto recuperare i dati richiesti.'
+                    : 'The external source rejected a request parameter. I could not retrieve the requested data.';
+            }
             $answer .= $italian ? ' Le altre fonti consultate non bastano per rispondere a questa richiesta.'
                 : 'The other consulted sources are insufficient to answer this request.';
         }

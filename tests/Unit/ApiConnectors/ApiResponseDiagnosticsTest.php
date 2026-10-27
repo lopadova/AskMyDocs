@@ -29,4 +29,30 @@ final class ApiResponseDiagnosticsTest extends TestCase
         $this->assertSame('xml', $result['response_diagnostics']['expected_format']);
         $this->assertNull($result['response_diagnostics']['content_type']);
     }
+
+    public function test_gescat_xml_validation_error_is_not_reported_as_a_json_format_problem(): void
+    {
+        $body = '<result><ack>KO</ack><error_message><![CDATA[Il parametro "orderBy" impone l\'Ordinamento dati. Valori accettati: "num_fattura"]]></error_message></result>';
+        $result = (new ApiResponseDiagnostics)->formatMismatch(200, $body, 'text/xml; charset=utf-8', null);
+        $this->assertSame('api_parameter_rejected', $result['error_code']);
+        $this->assertSame('orderBy', $result['invalid_parameter']);
+        $this->assertSame('KO', $result['response_diagnostics']['application_status']);
+        $this->assertFalse($result['retryable']);
+        $this->assertStringContainsString('parameter [orderBy]', $result['error']);
+        $this->assertStringNotContainsString('Ordinamento dati', json_encode($result));
+    }
+
+    public function test_other_application_errors_do_not_retain_remote_prose_and_unsafe_xml_is_rejected(): void
+    {
+        $diagnostics = new ApiResponseDiagnostics;
+        $body = '<result><ack>KO</ack><error_message>SQL failure secret-value customer@example.invalid</error_message></result>';
+        $result = $diagnostics->formatMismatch(200, $body, 'text/xml', null);
+        $this->assertSame('api_application_error', $result['error_code']);
+        $this->assertStringNotContainsString('secret-value', json_encode($result));
+        foreach (['<result><ack>OK</ack><error_message>Success</error_message></result>',
+            '<result><ack>KO</ack><error_message>Bad</error_message><order/></result>',
+            '<!DOCTYPE result [<!ENTITY x SYSTEM "file:///etc/passwd">]><result><ack>KO</ack><error_message>&x;</error_message></result>'] as $xml) {
+            $this->assertSame('api_response_format_mismatch', $diagnostics->formatMismatch(200, $xml, 'text/xml', null)['error_code']);
+        }
+    }
 }

@@ -20,8 +20,11 @@ export function RouteTestResult({ result }: { result: RouteTestOutcome }) {
         header(test, 'cf-mitigated')?.toLowerCase() === 'challenge' ||
         /cf-chl-|\/cdn-cgi\/challenge-platform\/|challenges\.cloudflare\.com|Attention Required!.*Cloudflare/is.test(body ?? '')
     );
+    const rejectedParameter = !test.ok && /^Endpoint rejected parameter \[([a-zA-Z0-9_]+)\]\./.exec(test.error ?? '');
+    const applicationError = !test.ok && (rejectedParameter || test.error === 'Endpoint returned an application error (ack=KO).');
     const Icon = test.ok ? CheckCircle2 : challenge ? ShieldAlert : TriangleAlert;
     const title = test.ok ? 'Chiamata riuscita' : challenge ? 'Cloudflare ha bloccato la chiamata' :
+        rejectedParameter ? 'Parametro non accettato dall’API' : applicationError ? 'Errore applicativo della sorgente' :
         test.status === 401 ? 'Autenticazione rifiutata' :
             test.status === 403 ? 'Accesso negato' :
                 test.status == null ? 'Connessione non riuscita' :
@@ -29,6 +32,8 @@ export function RouteTestResult({ result }: { result: RouteTestOutcome }) {
     const explanation = challenge
         ? "Il servizio remoto ha restituito una pagina HTML di verifica invece dei dati dell’API. Chi gestisce Cloudflare deve verificare la regola che blocca le richieste dal server AskMyDocs e consentire l’accesso autorizzato alle rotte API. Questo risultato non permette di verificare le credenziali."
         : test.ok ? 'L’endpoint ha restituito dati JSON validi.'
+            : rejectedParameter ? `Il servizio ha rifiutato il parametro ${rejectedParameter[1]}. Verifica i valori ammessi nella configurazione della richiesta.`
+                : applicationError ? 'Il servizio ha restituito un risultato negativo (ack=KO). Controlla i parametri della richiesta e il corpo della risposta.'
             : test.status === 401 ? 'Verifica il profilo di autenticazione e le credenziali richieste dall’endpoint.'
                 : test.status === 403 ? 'L’endpoint ha rifiutato la richiesta. Verifica i permessi del profilo e le regole di accesso dell’API.'
                     : test.status != null && test.status >= 200 && test.status < 300 && !test.is_json ? 'L’endpoint ha risposto, ma il connettore richiede dati JSON. Controlla URL e formato della risposta.'
@@ -59,7 +64,7 @@ export function RouteTestResult({ result }: { result: RouteTestOutcome }) {
                 {ray && <span>Cloudflare Ray ID: <code>{ray}</code></span>}
             </div>
             <details className="route-editor-disclosure" open={test.ok}>
-                <summary>Corpo della risposta <span>{test.is_json ? 'JSON' : 'Testo / HTML'}</span></summary>
+                <summary>Corpo della risposta <span>{test.is_json ? 'JSON' : /xml/i.test(contentType ?? '') ? 'XML' : 'Testo / HTML'}</span></summary>
                 <pre className="amd-scroll route-test-body" data-testid="api-route-form-response">{body ?? 'Nessun contenuto.'}</pre>
             </details>
         </div>

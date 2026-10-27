@@ -50,6 +50,23 @@ final class ApiConnectorStructuredResponsesTest extends TestCase
         $this->assertSame(200, $result['status']);
     }
 
+    public function test_gescat_parameter_error_has_the_same_explanation_in_endpoint_tests_and_runtime(): void
+    {
+        $xml = '<result><ack>KO</ack><error_message><![CDATA[Il parametro "orderBy" impone l\'Ordinamento dati.]]></error_message></result>';
+        Http::fake(['api.example.com/*' => Http::response($xml, 200, ['Content-Type' => 'text/xml'])]);
+        $route = $this->route();
+        $route->update(['output_transform' => null]); // Successful responses require JSON; errors may be XML.
+        $test = app(ApiRouteTester::class)->dryRun($route);
+        $runtime = app(ApiToolExecutor::class)->execute($route, []);
+        $this->assertFalse($test->ok);
+        $this->assertSame($runtime['error'], $test->error);
+        $this->assertSame('api_parameter_rejected', $runtime['error_code']);
+        $this->assertSame('orderBy', $runtime['invalid_parameter']);
+        $this->assertNull($route->fresh()->last_test_at);
+        $this->assertSame(200, $runtime['status']);
+        $this->assertStringNotContainsString('Ordinamento dati', json_encode($runtime));
+    }
+
     public function test_xml_remains_unsupported_on_routes_without_explicit_opt_in(): void
     {
         Http::fake(['api.example.com/*' => Http::response('<resi/>', 200)]);
