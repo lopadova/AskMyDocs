@@ -53,3 +53,15 @@ store keys. Web conversation/folder synchronization, agent sessions and voice
 are not part of this desktop refresh. Each chat question still uses the
 existing stateless Bearer endpoint independently. Tokens retain the existing
 plugin-store persistence behavior.
+
+
+## Icon / Apple follow-up — 27 October 2026
+
+Neutral icon resources and the macOS app bundle were rebuilt. Native iOS
+login rendering is now verified on iPhone 17 (1206×2622) and iPhone 17 Pro Max
+(1320×2868), iOS 26.5; screenshots are in `app-store/screenshots/`. The initial
+CoreSimulator access issue was resolved by using the approved execution context.
+The iOS development compile also required iOS 15 minimum and a project-scoped
+SwiftPM native-engine workaround. Full gesture, keyboard, authenticated flow
+and accessibility QA is still BLOCKED; no distribution upload was performed.
+See `app-store/STATUS.md` for actual remote changes and remaining Apple inputs.

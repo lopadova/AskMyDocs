@@ -112,7 +112,7 @@ npm run icons
 ```
 
 The master is an opaque full-square App Store icon; Android launcher assets
-include adaptive and round variants with the navy background declared by the
+include adaptive and round variants with the graphite background declared by the
 manifest.
 
 ---
@@ -207,3 +207,16 @@ npm run tauri --prefix desktop -- build --bundles app
 A local macOS bundle is created under
 `desktop/src-tauri/target/release/bundle/macos/AskMyDocs Desktop.app`.
 This is a local build, without distribution signing or notarization.
+
+### Current Apple toolchain
+
+The iOS deployment target is 15.0, matching the minimum supported by the
+installed Xcode SDK. `ios:dev` and `ios:build` use a project-local Swift shim
+that selects `--build-system native` for Swift package builds. This preserves
+swift-rs cross-compilation with Swift 6.4, whose default build engine appends
+host SDK flags in this toolchain. System Swift and Cargo dependencies are
+unchanged. See [SwiftPM default engine change](https://forums.swift.org/t/swiftpm-development-update-default-build-system-change/85548).
+
+Apple metadata and the neutral app-icon design are maintained under
+[`app-store/`](app-store/). Store screenshots must come from the real app;
+`iphone-6.9-login.png` is a native iPhone 17 Pro Max simulator capture.
