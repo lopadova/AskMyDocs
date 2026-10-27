@@ -108,6 +108,14 @@ all'operazione richiesta. Un esito negativo o incerto permette una sola
 riformulazione; un guasto del provider non autorizza il piano copiato. Il normale
 riuso della stessa domanda per una ripetizione o verifica resta consentito.
 
+Negli approfondimenti (`action=refine`), un aspetto descrittivo come «azioni
+necessarie» non deve aggirare il contratto operativo. Una classificazione
+semantica circoscritta al compito attuale normalizza richieste di consiglio e
+valutazione in `next_steps`, con `fields=[]`, prima di sintesi e validazione.
+I dettagli fattuali restano tali; identificativi, modalità di ricerca e permessi
+non sono modificati. Un esito incerto permette la riparazione già prevista,
+mentre un errore del provider non autorizza una classificazione arbitraria.
+
 La sintesi deve distinguere una segnalazione ancora aperta da una successiva
 correzione, nominare autore e data dell'aggiornamento e limitare la conclusione
 al problema documentato. La disponibilità di un barcode non conferma ricezione,

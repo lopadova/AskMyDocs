@@ -88,6 +88,7 @@ Parent context_mode must equal the common subquestion mode, or mixed when subque
 If validation_error is supplied, your previous interpretation violated the server contract. Correct that contract error using the SAME original message and authorized context. Do not invent identifiers, relations or another user request to make validation pass.
 invalid_shortcut_operation means the current message does not require the chosen greeting/capabilities/source-text/attribution/clarification operation. Reinterpret the original requested facts. Prior assistant offers do not override an explicit question or turn its repetition into acceptance. A clear question about a named subject's recorded reply requires source discovery, not asking the user to paste that reply. Clarification resolves an ambiguous user target or operation, not missing evidence for a clear question.
 invalid_current_task means a previous standalone question was copied instead of interpreting the CURRENT operation. Keep only the established subject/reference and rebuild intent, aspect, fields and every standalone task from the current user message. Reusing a search query cannot replace a changed operation.
+invalid_task_purpose means the requested operation is still ambiguous. Distinguish a request for advice or pending actions (aspect=next_steps, fields=[]) from a factual request to report what a source says. Keep the same current message, subject and information route.
 opaque_reference values are exact literal references protected by the host. Copy them verbatim when they identify the requested entity; do not translate, expand or replace them with a generic redaction marker.
 Resolve references and the real goal BEFORE choosing searches. If the target, required identifier or requested operation cannot be resolved from the current message and registered dialogue, use action=clarify, requires_research=false and a short clarification. Do not invent a broad business objective to replace a vague conversational turn. Knowing what the user asks but not yet knowing the answer is different: that is research, not clarification.
 For a comparison or enumeration of distinct cases/records, create one standalone research subquestion per case for the requested attributes. Set focus to the primary case's actual subquestion, not a synthetic overall comparison carrying every case identifier. The parent intent retains the comparison. Names, products and codes belonging to ONE case stay together; do not split identifiers mechanically. Never require an individual case's source to contain the identifiers of the other compared cases.
@@ -326,6 +327,15 @@ FOCUS;
                         throw new \UnexpectedValueException('Copied conversation task does not match the current request.');
                     }
                 }
+            }
+            if (config('reasoning.selective_validation') && $action === QuestionAction::Refine && $focus !== []) {
+                $failureStage = 'provider_unavailable';
+                $normalized = app(\App\Services\Chat\Reasoning\OperationalTaskNormalizer::class)->normalize($question, $focus, $reasoningContext ?? []);
+                $failureStage = 'invalid_task_purpose';
+                if ($normalized === null) {
+                    throw new \UnexpectedValueException('Uncertain operational task purpose.');
+                }
+                $focus = $normalized;
             }
             if ($queries === [] && ($data['requires_research'] ?? true) && ! in_array($action, [QuestionAction::Greeting, QuestionAction::Capabilities], true)) {
                 // Searching for an already validated exact target needs no second model call.

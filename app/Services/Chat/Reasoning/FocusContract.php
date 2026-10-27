@@ -15,7 +15,7 @@ final class FocusContract
         $focus = ['type' => 'object', 'additionalProperties' => false,
             'required' => ['topic', 'identifiers', 'aspect', 'fields'], 'properties' => [
                 'topic' => ['type' => 'string'], 'identifiers' => $strings,
-                'aspect' => ['type' => 'string'], 'fields' => $strings + ['description' => 'Use ["*"] for general information/all details. For a specific attribute use canonical machine keys such as status, trackingCode, name; do not translate keys or invent extra attributes. Use [] when no structured attribute is requested.'],
+                'aspect' => ['type' => 'string', 'description' => 'Use the exact machine key next_steps for an operational assessment, advice or recommendation about what to do. Never translate this reserved key. Other aspects describe the requested facts.'], 'fields' => $strings + ['description' => 'Use ["*"] for general information/all details. For a specific attribute use canonical machine keys such as status, trackingCode, name; do not translate keys or invent extra attributes. Use [] for next_steps and when no structured attribute is requested.'],
             ]];
         $subquestion = $focus;
         $subquestion['required'] = [...$focus['required'], 'question', 'kb_queries', 'context_mode', 'requires_research'];
