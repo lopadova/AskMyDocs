@@ -319,6 +319,33 @@ Composer applicano `scripts/composer/patch-api-connector-structured-responses.ph
 Con installazioni `--no-scripts`, eseguire il patcher esplicitamente. Il patcher
 è idempotente e rifiuta sorgenti inattese prima di modificarli.
 
+### Risposta HTTP 200 non utilizzabile
+
+HTTP 200 da solo non rende valida una risposta. Se il corpo non rispetta il
+formato strutturato configurato, il risultato riporta
+`error_code=api_response_format_mismatch`, `retryable=false` e
+`response_diagnostics`: formato atteso, forma rilevata (`xml`, `html`,
+`invalid_json`, `text` o `empty`), media type e dimensione in byte. La forma
+rilevata è un indizio diagnostico; non certifica un documento XML valido.
+Il corpo remoto e i parametri degli header non vengono conservati in questa
+diagnostica. Questi metadati sono disponibili anche nel log della chiamata API.
+
+Il planner conserva l'errore operativo anche dopo la rivalidazione delle prove.
+Non può ripetere la stessa chiamata non ritentabile con gli stessi argomenti;
+può correggere parametri documentati o usare un'altra fonte autorizzata.
+I fallimenti transitori restano soggetti ai tentativi limitati dal budget.
+Se le fonti valide non consentono una risposta, il messaggio finale segnala
+il problema della sorgente esterna anziché nasconderlo dietro un rifiuto
+generico sulla pertinenza. Gli errori non diventano fatti o citazioni.
+
+Per la chat 96 (`Dammi gli ultimi 10 ordini`, 27 ottobre 2026) il debug storico
+registra tre errori non JSON con HTTP 200 e non conserva il corpo: non dimostra
+quale formato o errore applicativo abbia restituito GESCAT. Prima di modificare
+il contratto della route, controllare l'endpoint dalla scheda di test. Se il
+servizio documenta JSON, verificare il parametro fisso di formato; abilitare XML
+solo dopo aver verificato root e percorsi reali. Email storiche su singoli ordini
+non dimostrano quali siano gli ultimi dieci ordini nel gestionale.
+
 ## Rilettura delle email con scheda di triage
 
 Il lettore verifica l'hash dell'originale immutabile prima di esporlo come

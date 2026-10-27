@@ -322,7 +322,7 @@ final readonly class AgentAnswerSynthesizer
                 'terms' => $grounding['terms'],
             ]);
 
-            return $this->insufficientAnswer($context, $grounding, $response->model, $repair, $evidence);
+            return $this->insufficientAnswer($context, $grounding, $response->model, $repair, $evidence, $outcome->completedActions);
         }
         $previousAnswer = $this->previousAnswer($turnContext);
         if (! $batchEnabled && ! $presentationOnly && $previousAnswer !== null
@@ -1127,7 +1127,7 @@ PROMPT;
     }
 
     /** @param array{reason:string,terms:list<string>,claims:list<array<string,mixed>>} $grounding */
-    private function insufficientAnswer(AgentExecutionContext $context, array $grounding, string $model, ?array $repair = null, array $evidence = []): AgentAnswer
+    private function insufficientAnswer(AgentExecutionContext $context, array $grounding, string $model, ?array $repair = null, array $evidence = [], array $completedActions = []): AgentAnswer
     {
         $term = $grounding['terms'][0] ?? null;
         $italian = str_starts_with(strtolower($context->locale), 'it');
@@ -1165,7 +1165,37 @@ PROMPT;
                     'source_excerpts' => $grounding['source_excerpts'], 'reason' => $grounding['reason'], 'model' => $model,
                     'semantic_validation' => $grounding['semantic_validation'] ?? [], 'repair' => $repair]);
         }
-        return new AgentAnswer($answer, $context->locale, 'insufficient', [], [], [$grounding['reason']], null, false, array_filter([
+        $failures = [];
+        foreach ($completedActions as $action) {
+            if (($action['status'] ?? null) !== 'failed' || ! in_array($action['kind'] ?? null, ['api', 'mcp'], true)
+                || ! is_array($action['failure'] ?? null)) {
+                continue;
+            }
+            // A later successful observation from this tool supersedes its error.
+            if (array_filter($completedActions, fn ($later) => ($later['tool'] ?? null) === ($action['tool'] ?? null)
+                && ($later['status'] ?? null) === 'completed'
+                && isset($action['arguments_hash']) && ($later['arguments_hash'] ?? null) === $action['arguments_hash']
+                && ($later['execution_id'] ?? 0) > ($action['execution_id'] ?? 0))) {
+                continue;
+            }
+            $failures[] = ['tool' => $action['tool'], 'execution_id' => $action['execution_id'] ?? null,
+                ...$action['failure']];
+        }
+        if ($failures !== []) {
+            $mismatch = array_values(array_filter($failures, fn ($failure) => $failure['code'] === 'api_response_format_mismatch'));
+            $http = $mismatch[0]['http_status'] ?? null;
+            $answer = $mismatch !== []
+                ? ($italian ? 'Non ho potuto recuperare i dati aggiornati: la chiamata API'.($http === null ? '' : " ha risposto HTTP {$http}, ma")
+                    .' ha restituito un contenuto non compatibile con il formato configurato.'
+                    : 'I could not retrieve current data: the API call'.($http === null ? '' : " returned HTTP {$http}, but")
+                    .' returned content that does not match the configured format.')
+                : ($italian ? 'Non ho potuto completare la chiamata alla sorgente esterna.' : 'I could not complete the call to the external source.');
+            $answer .= $italian ? ' Le altre fonti consultate non bastano per rispondere a questa richiesta.'
+                : 'The other consulted sources are insufficient to answer this request.';
+        }
+        return new AgentAnswer($answer, $context->locale, 'insufficient', [], [], array_values(array_unique([
+            $grounding['reason'], ...$failures === [] ? [] : ['live_tool_failed'],
+        ])), null, false, array_filter([
             'status' => 'blocked',
             'model' => $model,
             'reason' => $grounding['reason'],
@@ -1174,6 +1204,7 @@ PROMPT;
             'semantic_validation' => $grounding['semantic_validation'] ?? [],
             'coverage_validation' => $grounding['coverage_validation'] ?? null,
             'subquestions' => $grounding['subquestions'] ?? [],
+            'tool_failures' => $failures,
         ], static fn (mixed $value): bool => $value !== null));
     }
 

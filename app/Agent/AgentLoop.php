@@ -17,6 +17,7 @@ use App\Agent\Tools\AgentLiveSourceSelection;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
+use App\Agent\Tools\AgentToolFailure;
 use App\Agent\Tools\AgentToolRegistry;
 use App\Agent\Debug\KbActivityDebugPayload;
 use App\Agent\Debug\RunDiagnostics;
@@ -320,6 +321,8 @@ final readonly class AgentLoop
                 return $this->outcome($plan->decision, $evidence, $completed);
             }
 
+            $terminalFailureAvoided = false;
+            $issuedAction = false;
             foreach ($plan->actions as $action) {
                 $this->control->ensureActive($run);
                 $tool = $tools[$action->tool];
@@ -357,6 +360,12 @@ final readonly class AgentLoop
 
                     return $this->outcome('answer', $evidence, $completed, 'duplicate_call_avoided');
                 }
+                if ($this->hasTerminalFailure($completed, $tool->name, $resolved)) {
+                    $evidence->addWarning('non_retryable_tool_failure', $tool->name);
+                    $terminalFailureAvoided = true;
+
+                    continue;
+                }
                 $selection = data_get($run->input_json, 'selection');
                 if ($this->ambiguousSelection->blocks(
                     $evidence->apiTools(),
@@ -384,6 +393,7 @@ final readonly class AgentLoop
                     $this->events->publish($run, 'budget.extended', 'budget.extended');
                 }
 
+                $issuedAction = true;
                 $execution = $this->startExecution($run, $action, $tool, $resolved, $budget, $plan);
                 $started = microtime(true);
                 $toolSpan = $this->diagnostics->begin($run, 'tool.execute', [
@@ -426,9 +436,14 @@ final readonly class AgentLoop
                         'id' => $action->id,
                         'execution_id' => $execution->id,
                         'tool' => $tool->name,
+                        'kind' => $tool->kind,
                         'purpose' => $action->purpose,
                         'status' => $result->successful() ? 'completed' : 'failed',
                         'result' => $this->masker->maskArray($result->body) ?? [],
+                        // Hash before masking: two different emails/IDs must
+                        // not collapse into the same failed-call signature.
+                        'arguments_hash' => $this->stableSignature($resolved),
+                        ...$result->successful() ? [] : ['failure' => AgentToolFailure::summarize($result->body)],
                     ];
                     if ($tool->kind !== 'knowledge') {
                         $evidence->addToolResult($tool, $resolved, $result->body, $execution->id);
@@ -552,6 +567,11 @@ final readonly class AgentLoop
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                 }
+            }
+            if ($terminalFailureAvoided && ! $issuedAction) {
+                $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                return $this->outcome('partial', $evidence, $completed, 'non_retryable_tool_failure');
             }
         }
     }
@@ -810,7 +830,23 @@ final readonly class AgentLoop
                 ? array_slice(array_keys($action['result']), 0, 20)
                 : [],
             'error_code' => $action['error_code'] ?? null,
+            'failure' => $action['failure'] ?? null,
         ], array_slice($completed, -20));
+    }
+
+    /** Failed calls remain operational observations after factual evidence is reauthorized. */
+    private function hasTerminalFailure(array $completed, string $toolName, array $arguments): bool
+    {
+        $signature = $this->stableSignature($arguments);
+        foreach ($completed as $action) {
+            if (($action['status'] ?? null) === 'failed' && ($action['tool'] ?? null) === $toolName
+                && ($action['failure']['retryable'] ?? null) === false
+                && ($action['arguments_hash'] ?? null) === $signature) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param list<array<string,mixed>> $completed */

@@ -20,6 +20,47 @@ use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_failed_live_call_is_explained_instead_of_a_generic_relevance_refusal(): void
+    {
+        config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false]);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument(['document_id' => 252, 'title' => 'Historical order email',
+            'evidence' => [['content' => 'A customer asked about ORDER-A last year.', 'evidence_hash' => 'historical-email']]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'fake-agent', toolCalls: [[
+            'name' => 'submit_agent_answer', 'arguments' => ['claims' => [], 'completeness' => 'insufficient',
+                'render_table' => false, 'requires_selection' => false, 'limitations' => []],
+        ]]));
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        $failure = ['id' => 'step_1', 'execution_id' => 332, 'kind' => 'api', 'tool' => 'get_orders',
+            'status' => 'failed', 'failure' => ['code' => 'api_response_format_mismatch', 'http_status' => 200, 'retryable' => false]];
+        $answer = $synthesizer->synthesize('Dammi gli ultimi 10 ordini.', $this->context(),
+            new AgentLoopOutcome('partial', $evidence, [$failure], 'non_retryable_tool_failure'));
+        $this->assertStringContainsString('HTTP 200', $answer->answer);
+        $this->assertStringContainsString('formato configurato', $answer->answer);
+        $this->assertStringContainsString('altre fonti consultate non bastano', $answer->answer);
+        $this->assertSame('insufficient', $answer->completeness);
+        $this->assertContains('live_tool_failed', $answer->limitations);
+        $this->assertSame(332, $answer->grounding['tool_failures'][0]['execution_id']);
+        $this->assertSame([], $answer->citations);
+        $this->assertSame([], $answer->toolSources);
+    }
+
+    public function test_recovered_calls_do_not_keep_a_stale_failure_notice(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class),
+            app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        $action = ['execution_id' => 1, 'kind' => 'api', 'tool' => 'get_orders', 'status' => 'failed',
+            'arguments_hash' => 'same-request', 'failure' => ['code' => 'tool_request_failed', 'http_status' => 503, 'retryable' => true]];
+        $recovered = [...$action, 'execution_id' => 2, 'status' => 'completed'];
+        $answer = (new \ReflectionMethod($synthesizer, 'insufficientAnswer'))->invoke($synthesizer, $this->context(),
+            ['reason' => 'original_question_unverified', 'terms' => []], 'fake', null, [], [$action, $recovered]);
+        $this->assertNotContains('live_tool_failed', $answer->limitations);
+        $this->assertSame([], $answer->grounding['tool_failures']);
+    }
+
     public function test_a_pending_actions_followup_uses_the_later_correction_and_keeps_the_conclusion_scoped(): void
     {
         config(['reasoning.selective_validation' => true, 'reasoning.selective_repair' => false,

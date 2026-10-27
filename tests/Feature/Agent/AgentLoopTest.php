@@ -43,6 +43,118 @@ final class AgentLoopTest extends TestCase
         return ['wrong namespace' => ['RETURN-42', false], 'invented but valid format' => ['ORDER-43', true]];
     }
 
+    public function test_format_failure_survives_reauthorization_and_resume_without_repeating_the_request(): void
+    {
+        config(['reasoning.enabled' => true]);
+        $this->route('get_orders', 'http://erp.example.test/orders');
+        Http::fake(['*' => Http::response('<html>Login secret-value</html>', 200, ['Content-Type' => 'text/html'])]);
+        $run = $this->makeRun();
+        $user = \App\Models\User::create(['name' => 'QA user', 'email' => 'qa@example.invalid', 'password' => 'unused-test-password']);
+        $run->forceFill(['user_id' => $user->id, 'actor_id' => (string) $user->id,
+            'result_json' => ['retrieval_completed' => true, 'evidence' => ['documents' => [], 'api_tools' => [], 'warnings' => []]]])->save();
+        $plan = $this->planResponse(['decision' => 'tools', 'actions' => [[
+            'id' => 'step_1', 'tool' => 'get_orders', 'arguments' => [], 'depends_on' => [], 'purpose' => 'Read orders',
+        ]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $calls = 0;
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturnUsing(function ($system, $messages) use (&$calls, $plan) {
+            $input = json_decode($messages[0]['content'], true);
+            if ($calls++ > 0) {
+                $this->assertSame(['code' => 'api_response_format_mismatch', 'http_status' => 200, 'retryable' => false],
+                    $input['completed_actions'][0]['failure']);
+                $this->assertSame([], $input['evidence_summary']['tool_results']);
+                $this->assertStringNotContainsString('secret-value', $messages[0]['content']);
+            }
+            return $plan;
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('non_retryable_tool_failure', $outcome->stopReason);
+        $this->assertSame([], $outcome->evidence->apiTools());
+        $resumed = app(AgentLoop::class)->run($run->fresh(), $this->context($run));
+        $this->assertSame('non_retryable_tool_failure', $resumed->stopReason);
+        $this->assertSame(1, $run->fresh()->counters_json['physical_calls']);
+        $this->assertSame(1, $run->toolExecutions()->count());
+        Http::assertSentCount(1);
+    }
+
+    public function test_corrected_arguments_can_still_be_used_after_a_format_failure(): void
+    {
+        config(['connector-api.defaults.retry_times' => 0]);
+        $route = $this->route('get_orders', 'http://erp.example.test/orders');
+        $this->parameter($route, 'reference', 'query');
+        Http::fake(['*' => Http::sequence()->push('<html>Bad request</html>')->push(['order' => [['id' => 2]]])]);
+        $responses = [];
+        foreach (['first@example.invalid', 'second@example.invalid'] as $reference) {
+            $responses[] = $this->planResponse(['decision' => 'tools', 'actions' => [[
+                'id' => 'step_1', 'tool' => 'get_orders', 'arguments' => ['reference' => $reference],
+                'depends_on' => [], 'purpose' => 'Read orders',
+            ]]]);
+        }
+        $responses[] = $this->planResponse(['decision' => 'answer', 'actions' => []]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn(...$responses);
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertSame(['failed', 'completed'], array_column($outcome->completedActions, 'status'));
+        $this->assertNotSame($outcome->completedActions[0]['arguments_hash'], $outcome->completedActions[1]['arguments_hash']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_transient_failure_still_allows_the_same_request_to_recover(): void
+    {
+        config(['connector-api.defaults.retry_times' => 0]);
+        $this->route('get_orders', 'http://erp.example.test/orders');
+        Http::fake(['*' => Http::sequence()->push(['error' => 'Temporary outage'], 503)->push(['order' => [['id' => 2]]])]);
+        $plan = $this->planResponse(['decision' => 'tools', 'actions' => [[
+            'id' => 'step_1', 'tool' => 'get_orders', 'arguments' => [], 'depends_on' => [], 'purpose' => 'Read orders',
+        ]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn($plan, $plan,
+            $this->planResponse(['decision' => 'answer', 'actions' => []]));
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertTrue($outcome->completedActions[0]['failure']['retryable']);
+        $this->assertSame(['failed', 'completed'], array_column($outcome->completedActions, 'status'));
+        Http::assertSentCount(2);
+    }
+
+    public function test_blocked_duplicate_does_not_discard_an_independent_valid_action(): void
+    {
+        $this->route('get_orders', 'http://erp.example.test/orders');
+        $this->route('get_customers', 'http://erp.example.test/customers');
+        Http::fake(['erp.example.test/orders' => Http::response('<html>Unavailable</html>'),
+            'erp.example.test/customers' => Http::response(['items' => [['id' => 2]]])]);
+        $action = ['id' => 'orders', 'tool' => 'get_orders', 'arguments' => [], 'depends_on' => [], 'purpose' => 'Read orders'];
+        $independent = [...$action, 'id' => 'customers', 'tool' => 'get_customers', 'purpose' => 'Read customers'];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn(
+            $this->planResponse(['decision' => 'tools', 'actions' => [$action]]),
+            $this->planResponse(['decision' => 'tools', 'actions' => [$action, $independent]]),
+            $this->planResponse(['decision' => 'answer', 'actions' => []]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = $this->makeRun();
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame(['get_orders', 'get_customers'], array_column($outcome->completedActions, 'tool'));
+        $this->assertSame(['failed', 'completed'], array_column($outcome->completedActions, 'status'));
+        $this->assertSame('answer', $outcome->decision);
+        Http::assertSentCount(2);
+    }
+
     #[DataProvider('invalidIdentifierCases')]
     public function test_repeated_invalid_entity_branch_never_dispatches_and_valid_read_still_completes(string $invalid, bool $observed): void
     {
