@@ -44,6 +44,7 @@ export function LoginScreen({ onSuccess, onNavigateRegister }: Props) {
         data-state={state}
         aria-busy={state === "loading"}
       >
+        <img className="auth-brand-mark" src="/brand-icon.png" alt="" width="64" height="64" />
         <h1 className="auth-title">AskMyDocs</h1>
         <p className="auth-subtitle">Your knowledge, within reach.</p>
 

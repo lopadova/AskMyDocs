@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "icons": "tauri icon src-tauri/icons/icon-manifest.json",
+    "icons": "tauri icon src-tauri/icons/icon-manifest.json && node scripts/finalize-icons.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "ios:init": "tauri ios init",

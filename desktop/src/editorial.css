@@ -166,3 +166,6 @@ button.result { height: 100%; background: var(--bg-2); padding: 22px; }
 
 .workspace-panel { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .workspace-panel[hidden] { display: none; }
+
+.auth-brand-mark { display: block; width: 64px; height: 64px; border-radius: 14px; margin-bottom: 22px; }
+.brand-mark { border-radius: 7px; flex-shrink: 0; }

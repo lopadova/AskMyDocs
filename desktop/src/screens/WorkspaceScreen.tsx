@@ -53,7 +53,7 @@ export function WorkspaceScreen({
   return (
     <div className="workspace-screen" data-testid="workspace-screen">
       <header className="workspace-header">
-        <div className="brand">AskMyDocs</div>
+        <div className="brand"><img className="brand-mark" src="/brand-icon.png" alt="" width="32" height="32" />AskMyDocs</div>
         <div className="workspace-user">
           <span className="muted" title={user.email}>
             {user.name}
