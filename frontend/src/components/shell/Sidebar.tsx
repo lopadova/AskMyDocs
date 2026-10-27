@@ -1,3 +1,4 @@
+import { BrandWordmark } from '../BrandWordmark';
 import { SelectField, SelectOption } from '@/components/ui/select-field';
 import type { MouseEvent } from 'react';
 import { Icon } from '../Icons';
@@ -36,7 +37,7 @@ export function Sidebar({ active, onNav, user, projectCount, features = {}, hasT
     const workspace = WORKSPACE_ITEMS.map(navItem).filter((item) => canAccessNav(item, access));
 
     return <aside aria-label={t('Primary navigation')} data-testid="sidebar-nav" className="editorial-sidebar">
-        <div className="editorial-brand"><Icon.Logo size={27} /><span>AskMyDocs<span className="editorial-brand-dot">.</span></span>
+        <div className="editorial-brand"><BrandWordmark />
             {onClose && <Button variant="quiet" size="sm" iconOnly aria-label={t('Close navigation')} className="sidebar-mobile-close" onClick={onClose}><Icon.Close size={18} /></Button>}
         </div>
         <div className="sidebar-area-label editorial-surface">

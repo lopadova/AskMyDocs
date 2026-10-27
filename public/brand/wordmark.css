@@ -1,0 +1,20 @@
+/* One neutral wordmark for the public website and authenticated product. */
+.brand-wordmark { display: inline-flex; align-items: center; width: 200px; max-width: 100%; min-width: 0; flex-shrink: 1; vertical-align: middle; }
+.brand-wordmark img { position: static; inset: auto; width: 100%; height: auto; object-fit: contain; }
+.brand-wordmark .brand-wordmark-light { display: none; }
+.brand-wordmark .brand-wordmark-dark { display: block; }
+:root[data-theme='light'] .brand-wordmark .brand-wordmark-light { display: block; }
+:root[data-theme='light'] .brand-wordmark .brand-wordmark-dark { display: none; }
+:root .brand-wordmark[data-tone='light'] .brand-wordmark-light { display: block; }
+:root .brand-wordmark[data-tone='light'] .brand-wordmark-dark { display: none; }
+:root .brand-wordmark[data-tone='dark'] .brand-wordmark-light { display: none; }
+:root .brand-wordmark[data-tone='dark'] .brand-wordmark-dark { display: block; }
+.editorial-brand > .brand-wordmark { width: 190px; flex: 1; }
+.editorial-auth-story .brand-wordmark { flex: 0 1 220px; }
+.editorial-auth-story .brand-wordmark img { position: static; inset: auto; height: auto; width: 100%; object-fit: contain; }
+.editorial-auth-tools > a { min-width: 0; }
+.editorial-auth-tools .brand-wordmark { width: 156px; }
+.landing-page .brand { min-height: 48px; }
+.landing-page .brand > .brand-wordmark { width: 208px; }
+@media(max-width:760px) { .landing-page .brand > .brand-wordmark { width: 156px; } }
+@media(max-width:360px) { .landing-page .brand > .brand-wordmark { width: min(136px, calc(100vw - 208px)); } .editorial-auth-tools .brand-wordmark { width: 132px; } }

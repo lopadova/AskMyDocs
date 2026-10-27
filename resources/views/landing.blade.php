@@ -14,7 +14,8 @@
     <meta property="og:description" content="La piattaforma AI che connette documenti, persone e conoscenza. Risposte con fonti, controllo dei dati e un nuovo vantaggio per il vostro team.">
     <meta property="og:type" content="website">
     <meta property="og:image" content="{{ $editorialBase }}/knowledge-night.webp" data-editorial-og="knowledge">
-    <link rel="icon" href="/landing/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/brand/favicon.png" type="image/png">
+    <link rel="stylesheet" href="/brand/wordmark.css">
     <link rel="preload" href="{{ $editorialBase }}/knowledge-night.webp" as="image" imagesrcset="{{ $editorialBase }}/knowledge-night-small.webp 640w, {{ $editorialBase }}/knowledge-night.webp 1280w" imagesizes="100vw" fetchpriority="high" data-editorial-preload="knowledge">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
@@ -28,7 +29,7 @@
   <body class="landing-page">
     <a class="skip-link" href="#main" data-i18n="skip">Vai al contenuto</a>
     <header class="header">
-      <a class="brand" href="#top" aria-label="AskMyDocs"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M4 25 16 5l12 20H4ZM10 25l6-10 6 10M16 5v10"></path></svg><span>AskMyDocs<span class="brand-period">.</span></span></a>
+      <a class="brand" href="#top" aria-label="AskMyDOcs"><span class="brand-wordmark" data-tone="auto" role="img" aria-label="AskMyDOcs"><img class="brand-wordmark-light" src="/brand/askmydocs-wordmark-light.svg" width="568" height="160" alt="" aria-hidden="true"><img class="brand-wordmark-dark" src="/brand/askmydocs-wordmark-dark.svg" width="568" height="160" alt="" aria-hidden="true"></span></a>
       <nav class="desktop-nav" aria-label="Navigazione principale" data-i18n-aria="navigation">
         <a href="#vision" data-i18n="nav.vision">La visione</a>
         <a href="#experience" data-i18n="nav.experience">L’esperienza</a>
@@ -257,7 +258,7 @@
     </main>
     <footer class="footer section-shell">
       <div class="footer-top">
-        <a class="brand" href="#top">AskMyDocs<span class="brand-period">.</span></a>
+        <a class="brand" href="#top" aria-label="AskMyDOcs"><span class="brand-wordmark" data-tone="auto" role="img" aria-label="AskMyDOcs"><img class="brand-wordmark-light" src="/brand/askmydocs-wordmark-light.svg" width="568" height="160" alt="" aria-hidden="true"><img class="brand-wordmark-dark" src="/brand/askmydocs-wordmark-dark.svg" width="568" height="160" alt="" aria-hidden="true"></span></a>
         <p data-i18n="footer.tagline">Il vostro sapere. Una nuova possibilità.</p>
         <div>
           <a href="https://padosoft.mintlify.app/" target="_blank" rel="noopener noreferrer" data-i18n="footer.docs">Documentazione <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>

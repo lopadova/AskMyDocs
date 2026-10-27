@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { BrandWordmark } from '../../components/BrandWordmark';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
 import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
@@ -15,11 +16,11 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
     return <div className="editorial-auth">
         <aside className="editorial-auth-story">
             <EditorialArtwork artwork="knowledge" sizes="(max-width: 800px) 100vw, 50vw" />
-            <a className="editorial-brand" href="/landing"><Icon.Logo size={30} /><span>AskMyDocs.</span></a>
+            <a className="editorial-brand" href="/landing"><BrandWordmark tone="dark" /></a>
             <div className="editorial-auth-caption"><p className="editorial-eyebrow">{t('Knowledge, with its sources.')}</p><h2>{t('A question opens a world.')}</h2><p>{t('Bring your knowledge into focus.')}</p></div>
         </aside>
         <main className="editorial-auth-main">
-            <div className="editorial-auth-tools"><a href="/landing">AskMyDocs.</a><div className="editorial-auth-preferences"><LanguagePicker /><Button variant="quiet" size="sm" iconOnly className="auth-theme-toggle" aria-label={t('Toggle theme')} title={t(theme === 'dark' ? 'Light mode' : 'Dark mode')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Icon.Sun size={16} /> : <Icon.Moon size={16} />}</Button></div></div>
+            <div className="editorial-auth-tools"><a href="/landing"><BrandWordmark /></a><div className="editorial-auth-preferences"><LanguagePicker /><Button variant="quiet" size="sm" iconOnly className="auth-theme-toggle" aria-label={t('Toggle theme')} title={t(theme === 'dark' ? 'Light mode' : 'Dark mode')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Icon.Sun size={16} /> : <Icon.Moon size={16} />}</Button></div></div>
             <section className="editorial-auth-form">
                 <p className="editorial-eyebrow">AskMyDocs</p><h1>{t(title)}</h1>
                 {subtitle && <p className="editorial-auth-subtitle">{t(subtitle)}</p>}
