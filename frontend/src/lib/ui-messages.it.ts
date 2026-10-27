@@ -1,6 +1,8 @@
 import operational from './ui-messages-operational.it.json';
+import { SETTINGS_MESSAGES_IT } from '../features/admin/app-settings/settings-messages.it';
 
 export const IT_MESSAGES: Record<string, string> = {
+    ...SETTINGS_MESSAGES_IT,
     'Open API call': 'Apri chiamata API',
     'Close API call': 'Chiudi chiamata API',
     'Answer source': 'Fonte della risposta',

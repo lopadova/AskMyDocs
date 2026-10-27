@@ -1,339 +1,110 @@
-import { SelectField, SelectOption } from '@/components/ui/select-field';
-import { useUiTranslation } from "../../../lib/ui-locale";
-import { useEffect, useState } from 'react';
-import { AdminShell } from '../shell/AdminShell';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Building2, Check, Info, RefreshCw, Save, Settings2, Sparkles } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { SelectField, SelectOption } from '../../../components/ui/select-field';
+import { useUiTranslation } from '../../../lib/ui-locale';
+import { useTeamStore } from '../../../lib/team-store';
 import { flattenLaravelError, parseLaravelError } from '../../../lib/laravel-errors';
-import { useAppSettings, useSetAppSetting } from './app-settings-hooks';
-import { WILDCARD, type AppSettingDto } from './app-settings.api';
+import { adminProjectsApi } from '../projects/admin-projects.api';
+import { AdminShell } from '../shell/AdminShell';
+import { useAiModelCatalog, useAppSettings, useSetAppSettings } from './app-settings-hooks';
+import { WILDCARD, type AppSettingDto, type SettingsDraft, type SettingValue } from './app-settings.api';
+import { GROUPS, MODEL_KEYS, PROVIDER_NAMES, SettingField } from './settings-fields';
+import { SettingsAssistantModal } from './SettingsAssistantModal';
+import './app-settings.css';
 
-/*
- * v8.22 (Ciclo 3) — "Configuration" admin screen (super-admin).
- *
- * Edits the curated runtime-governable settings (AppSettingRegistry) per
- * (tenant, project) without a deploy, over the AppSettingsResolver HTTP
- * surface. One row per key: enum→select, int→number, bool→select; deploy-only
- * keys are read-only; a tenant-scoped key is read-only while a project scope
- * is active (it can only vary tenant-wide).
- *
- * R11 testid/ARIA/state contract, R14 explicit empty/loading/error + inline
- * 422, R15 labelled controls.
- */
-
-function sourceBadge(source: string): { bg: string; border: string; fg: string; text: string } {
-    switch (source) {
-        case 'project':
-            return { bg: 'rgba(99,102,241,0.16)', border: 'rgba(99,102,241,0.45)', fg: '#a5b4fc', text: 'project override' };
-        case 'tenant':
-            return { bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.45)', fg: '#34d399', text: 'tenant override' };
-        default:
-            return { bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.30)', fg: '#94a3b8', text: 'config default' };
-    }
-}
-
-function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKey: string }) {
-    const { t: translateInterface } = useUiTranslation();
-    const mutation = useSetAppSetting(projectKey);
-    const [draft, setDraft] = useState<string>(setting.value === null ? '' : String(setting.value));
-
-    // Re-sync the draft to the server value whenever it changes (after a
-    // save/refetch) OR when the scope/key changes (R17 — sync cached state).
-    // projectKey is in the deps so switching scope always resets an unsaved
-    // draft to the new scope's value, even if the two values happen to match —
-    // otherwise a stale edit could be saved against the wrong scope.
-    useEffect(() => {
-        setDraft(setting.value === null ? '' : String(setting.value));
-    }, [setting.value, setting.key, projectKey]);
-
-    const scopedToProject = projectKey !== WILDCARD;
-    // A tenant-scoped key cannot be overridden per project — read-only there.
-    const readOnly = setting.deploy_only || (scopedToProject && setting.scope !== 'both');
-    const dirty = draft !== (setting.value === null ? '' : String(setting.value));
-    const badge = sourceBadge(setting.source);
-    // Reset clears the override AT THE CURRENT SCOPE only. A 'tenant' source seen
-    // while a project scope is active is INHERITED (lives at '*'), so Reset here
-    // could not clear it — don't offer an action that wouldn't work.
-    const overrideAtScope = scopedToProject ? setting.source === 'project' : setting.source === 'tenant';
-
-    const submit = () => {
-        // For int, send the trimmed STRING (not Number(draft)) — an intermediate
-        // value like "-" or "1e" would become NaN, which JSON-serializes to null
-        // and would silently CLEAR the override. Sending the string lets the BE
-        // int validator reject it with a 422 instead. Empty → null = clear.
-        const trimmed = draft.trim();
-        const raw: string | number | boolean | null =
-            trimmed === ''
-                ? null // empty = "unset" → clear the override (every type)
-                : setting.type === 'bool'
-                  ? trimmed === 'true'
-                  : trimmed; // int + enum + string: send the string; BE validates
-        mutation.mutate({ key: setting.key, value: raw });
-    };
-
-    const clearOverride = () => mutation.mutate({ key: setting.key, value: null });
-
-    const error = mutation.isError ? flattenLaravelError(parseLaravelError(mutation.error)) : null;
-
-    return (
-        <tr data-testid={`app-setting-row-${setting.key}`} data-source={setting.source}>
-            <td style={tdStyle}>
-                <div style={{ fontSize: 13, color: 'var(--fg-0)' }}>{setting.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{setting.key}</div>
-                {readOnly && setting.deploy_only && (
-                    <span data-testid={`app-setting-${setting.key}-deploy-only`} style={pillStyle('rgba(148,163,184,0.12)', 'rgba(148,163,184,0.30)', '#94a3b8')}>
-                        {translateInterface("deploy-managed")}</span>
-                )}
-                {readOnly && !setting.deploy_only && (
-                    <span data-testid={`app-setting-${setting.key}-tenant-only`} style={pillStyle('rgba(148,163,184,0.12)', 'rgba(148,163,184,0.30)', '#94a3b8')}>
-                        {translateInterface("tenant-wide only")}</span>
-                )}
-            </td>
-
-            <td style={tdStyle}>
-                <span data-testid={`app-setting-${setting.key}-source`} style={pillStyle(badge.bg, badge.border, badge.fg)}>
-                    {badge.text}
-                </span>
-            </td>
-
-            <td style={tdStyle}>
-                {readOnly ? (
-                    <span data-testid={`app-setting-${setting.key}-value`} style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--fg-1)' }}>
-                        {setting.value === null ? '—' : String(setting.value)}
-                    </span>
-                ) : setting.type === 'enum' ? (
-                    <SelectField
-                        aria-label={`${setting.label} value`}
-                        data-testid={`app-setting-${setting.key}-input`}
-                        value={draft}
-                        onValueChange={(nextValue) => setDraft(nextValue)}
-                        style={inputStyle}
-                    >
-                        {/* Explicit empty option so a null value renders
-                            deterministically (no React controlled-value warning)
-                            and can be cleared by selecting "unset". */}
-                        <SelectOption value="">{translateInterface("— (unset)")}</SelectOption>
-                        {(setting.enum ?? []).map((opt) => (
-                            <SelectOption key={opt} value={opt}>
-                                {opt}
-                            </SelectOption>
-                        ))}
-                    </SelectField>
-                ) : setting.type === 'bool' ? (
-                    <SelectField
-                        aria-label={`${setting.label} value`}
-                        data-testid={`app-setting-${setting.key}-input`}
-                        // Reflect draft directly; a null value shows "unset" rather
-                        // than masquerading as false.
-                        value={draft === 'true' || draft === 'false' ? draft : ''}
-                        onValueChange={(nextValue) => setDraft(nextValue)}
-                        style={inputStyle}
-                    >
-                        <SelectOption value="">{translateInterface("— (unset)")}</SelectOption>
-                        <SelectOption value="true">{translateInterface("true")}</SelectOption>
-                        <SelectOption value="false">{translateInterface("false")}</SelectOption>
-                    </SelectField>
-                ) : (
-                    <input
-                        type={setting.type === 'int' ? 'number' : 'text'}
-                        aria-label={`${setting.label} value`}
-                        data-testid={`app-setting-${setting.key}-input`}
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        style={{ ...inputStyle, width: 120 }}
-                    />
-                )}
-            </td>
-
-            <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                {!readOnly && (
-                    <>
-                        <button
-                            type="button"
-                            data-testid={`app-setting-${setting.key}-save`}
-                            className="focus-ring"
-                            disabled={!dirty || mutation.isPending}
-                            onClick={submit}
-                            style={saveStyle(!dirty || mutation.isPending)}
-                        >
-                            {mutation.isPending ? 'Saving…' : translateInterface("Save")}
-                        </button>
-                        {overrideAtScope && (
-                            <button
-                                type="button"
-                                data-testid={`app-setting-${setting.key}-clear`}
-                                className="focus-ring"
-                                disabled={mutation.isPending}
-                                onClick={clearOverride}
-                                style={clearStyle}
-                            >
-                                {translateInterface("Reset")}</button>
-                        )}
-                    </>
-                )}
-                {error && (
-                    <div data-testid={`app-setting-${setting.key}-error`} role="alert" style={{ color: '#fca5a5', fontSize: 11.5, marginTop: 4 }}>
-                        {error}
-                    </div>
-                )}
-            </td>
-        </tr>
-    );
-}
+const normalized = (value: SettingValue): SettingValue => typeof value === 'string' ? value.trim() || null : value;
 
 export function AppSettingsView() {
-    const { t: translateInterface } = useUiTranslation();
-    const [scopeInput, setScopeInput] = useState<string>('');
-    const projectKey = scopeInput.trim() === '' ? WILDCARD : scopeInput.trim();
-    const query = useAppSettings(projectKey);
+    const tenant = useTeamStore((state) => state.currentTeam);
+    return <OrganizationSettingsView key={tenant ?? 'none'} />;
+}
 
-    // Observable-state contract (R11) — this view's reachable states:
-    // loading|ready|empty|error (no idle: the query starts fetching on mount).
-    const state: 'loading' | 'ready' | 'empty' | 'error' = query.isLoading
-        ? 'loading'
-        : query.isError
-          ? 'error'
-          : (query.data ?? []).length === 0
-            ? 'empty'
-            : 'ready';
-
-    return (
-        <AdminShell section="app-settings">
-            <div
-                data-testid="admin-app-settings"
-                data-state={state}
-                aria-busy={state === 'loading'}
-                style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-            >
-                <div>
-                    <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', letterSpacing: '-0.02em', color: 'var(--fg-0)' }}>
-                        {translateInterface("Configuration")}</h1>
-                    <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        {translateInterface("Governable runtime settings (AI provider, connector sync cadence). Changes take effect without a deploy. Deploy-managed knobs are read-only.")}</p>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <label htmlFor="app-settings-scope" style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-                        {translateInterface("Project scope")}</label>
-                    <input
-                        id="app-settings-scope"
-                        data-testid="app-settings-scope"
-                        value={scopeInput}
-                        placeholder={translateInterface("* (tenant-wide)")}
-                        onChange={(e) => setScopeInput(e.target.value)}
-                        style={{ ...inputStyle, width: 220 }}
-                    />
-                    <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                        {translateInterface("Leave blank for the tenant-wide default; enter a project key to scope per-project keys.")}</span>
-                </div>
-
-                {state === 'loading' && (
-                    <div data-testid="admin-app-settings-loading" role="status" aria-busy="true" style={panelStyle}>
-                        {translateInterface("Loading settings…")}</div>
-                )}
-                {state === 'error' && (
-                    <div data-testid="admin-app-settings-error" role="alert" style={errorStyle}>
-                        {translateInterface("Could not load settings.")}{' '}
-                        <button type="button" data-testid="admin-app-settings-retry" className="focus-ring" onClick={() => query.refetch()} style={retryStyle}>
-                            {translateInterface("Retry")}</button>
-                    </div>
-                )}
-                {state === 'empty' && (
-                    <div data-testid="admin-app-settings-empty" role="status" style={panelStyle}>
-                        {translateInterface("No governable settings are registered.")}</div>
-                )}
-                {state === 'ready' && (query.data ?? []).length > 0 && (
-                    <table data-testid="admin-app-settings-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                        <thead>
-                            <tr style={{ textAlign: 'left', color: 'var(--fg-3)' }}>
-                                <th style={thStyle}>{translateInterface("Setting")}</th>
-                                <th style={thStyle}>{translateInterface("Source")}</th>
-                                <th style={thStyle}>{translateInterface("Value")}</th>
-                                <th style={thStyle}>{translateInterface("Actions")}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(query.data ?? []).map((s) => (
-                                <SettingRow key={s.key} setting={s} projectKey={projectKey} />
-                            ))}
-                        </tbody>
-                    </table>
-                )}
+function OrganizationSettingsView() {
+    const { t } = useUiTranslation();
+    const tenant = useTeamStore((state) => state.currentTeam);
+    const team = useTeamStore((state) => state.teams.find((item) => item.tenant_id === state.currentTeam));
+    const [scope, setScope] = useState(WILDCARD);
+    const [saving, setSaving] = useState(false);
+    const query = useAppSettings(scope);
+    const projects = useQuery({ queryKey: ['settings-projects', tenant], queryFn: () => adminProjectsApi.list(tenant), staleTime: 60_000, retry: false });
+    const state = query.isLoading ? 'loading' : query.isError ? 'error' : (query.data?.length ?? 0) === 0 ? 'empty' : 'ready';
+    return <AdminShell section="app-settings"><div className="app-settings-page" data-testid="admin-app-settings" data-state={state} aria-busy={query.isLoading}>
+        <div className="settings-page-heading"><span className="settings-eyebrow"><Settings2 size={14} aria-hidden />{t('System settings')}</span><h1>{t('Configuration')}</h1>
+            <p>{t('Shape your agent’s behavior, choose its models, and keep integrations running smoothly.')}</p></div>
+        <section className="settings-scope-panel" aria-label={t('Configuration scope')}>
+            <div className="settings-organization"><span><Building2 size={22} aria-hidden /></span><div><small>{t('Organization')}</small><strong>{team?.name ?? t('Current organization')}</strong></div></div>
+            <div className="settings-scope-field"><label htmlFor="app-settings-scope">{t('Apply settings to')}</label>
+                <SelectField id="app-settings-scope" data-testid="app-settings-scope" value={scope} onValueChange={setScope} disabled={saving}>
+                    <SelectOption value={WILDCARD}>{t('Entire organization')}</SelectOption>
+                    {(projects.data ?? []).map((project) => <SelectOption key={project.project_key} value={project.project_key}>{project.name}</SelectOption>)}
+                </SelectField><p>{t(scope === WILDCARD ? 'Projects inherit these values unless they have an override.' : 'Only this project changes. Organization-wide fields remain read-only.')}</p>
+                {projects.isError && <p role="status">{t('Project choices could not be loaded.')} <Button variant="quiet" size="sm" onClick={() => void projects.refetch()}>{t('Retry')}</Button></p>}
             </div>
-        </AdminShell>
-    );
+        </section>
+        {state === 'loading' && <div className="settings-state" role="status" data-testid="admin-app-settings-loading">{t('Loading settings…')}</div>}
+        {state === 'error' && <div className="settings-alert" role="alert" data-testid="admin-app-settings-error">{t('Could not load settings.')} <Button variant="secondary" size="sm" data-testid="admin-app-settings-retry" onClick={() => void query.refetch()}>{t('Retry')}</Button></div>}
+        {state === 'empty' && <div className="settings-state" data-testid="admin-app-settings-empty">{t('No governable settings are registered.')}</div>}
+        {state === 'ready' && <SettingsForm key={`${tenant}:${scope}`} tenant={tenant} scope={scope} settings={query.data ?? []} onSaving={setSaving} />}
+    </div></AdminShell>;
 }
 
-function pillStyle(bg: string, border: string, fg: string): React.CSSProperties {
-    return {
-        display: 'inline-block',
-        marginTop: 4,
-        padding: '2px 8px',
-        borderRadius: 99,
-        fontSize: 11,
-        background: bg,
-        border: `1px solid ${border}`,
-        color: fg,
+function SettingsForm({ tenant, scope, settings, onSaving }: { tenant: string | null; scope: string; settings: AppSettingDto[]; onSaving: (value: boolean) => void }) {
+    const { t } = useUiTranslation();
+    const [draft, setDraft] = useState<SettingsDraft>({});
+    const [assistant, setAssistant] = useState<'configuration' | 'agent.tenant_instructions' | null>(null);
+    const [notice, setNotice] = useState('');
+    const mutation = useSetAppSettings(scope);
+    const byKey = Object.fromEntries(settings.map((setting) => [setting.key, setting]));
+    const value = (key: string): SettingValue => Object.prototype.hasOwnProperty.call(draft, key) ? draft[key] : byKey[key]?.value ?? null;
+    const provider = String(value('ai.provider') ?? byKey['ai.provider']?.inherited_value ?? 'openai');
+    const catalog = useAiModelCatalog(provider);
+    const changes = Object.fromEntries(Object.entries(draft).filter(([key, next]) => normalized(next) !== normalized(byKey[key]?.value ?? null)).map(([key, next]) => [key, normalized(next)]));
+    const dirty = Object.keys(changes).length > 0;
+    const invalidModel = MODEL_KEYS.some((key) => typeof changes[key] === 'string' && changes[key] !== '' && (!catalog.data || catalog.data.stale || !catalog.data.models.some((model) => model.id === changes[key] && model.selectable)));
+    const error = mutation.isError ? flattenLaravelError(parseLaravelError(mutation.error)) : null;
+    const update = (key: string, next: SettingValue) => {
+        mutation.reset(); setNotice('');
+        setDraft((current) => {
+            const updated = { ...current, [key]: next };
+            if (key === 'ai.provider' && next !== value('ai.provider')) {
+                for (const modelKey of MODEL_KEYS) if (byKey[modelKey]) updated[modelKey] = null;
+                if (byKey['ai.chat_routing']) updated['ai.chat_routing'] = 'default';
+            }
+            return updated;
+        });
     };
-}
-
-const panelStyle: React.CSSProperties = {
-    padding: 24,
-    textAlign: 'center',
-    color: 'var(--fg-3)',
-    border: '1px dashed var(--hairline)',
-    borderRadius: 10,
-};
-
-const errorStyle: React.CSSProperties = {
-    padding: 16,
-    background: 'rgba(239, 68, 68, 0.08)',
-    border: '1px solid rgba(239, 68, 68, 0.30)',
-    borderRadius: 10,
-    color: '#fca5a5',
-    fontSize: 13,
-};
-
-const retryStyle: React.CSSProperties = {
-    marginLeft: 8,
-    padding: '4px 10px',
-    fontSize: 12,
-    background: 'transparent',
-    color: '#fca5a5',
-    border: '1px solid rgba(239, 68, 68, 0.45)',
-    borderRadius: 6,
-    cursor: 'pointer',
-};
-
-const inputStyle: React.CSSProperties = {
-    padding: '5px 8px',
-    borderRadius: 6,
-    border: '1px solid var(--hairline)',
-    background: 'var(--bg-2)',
-    color: 'var(--fg-0)',
-    fontSize: 12.5,
-};
-
-function saveStyle(disabled: boolean): React.CSSProperties {
-    return {
-        padding: '4px 12px',
-        fontSize: 12,
-        background: disabled ? 'var(--bg-2)' : 'var(--accent, #6366f1)',
-        color: disabled ? 'var(--fg-3)' : '#fff',
-        border: '1px solid var(--hairline)',
-        borderRadius: 6,
-        cursor: disabled ? 'not-allowed' : 'pointer',
+    const save = async () => {
+        onSaving(true);
+        try { await mutation.mutateAsync(changes); setDraft({}); setNotice('Configuration saved.'); }
+        finally { onSaving(false); }
     };
+    return <>
+        <div className="settings-workbar"><div><strong>{t(dirty ? 'Changes ready to save' : 'Your current configuration')}</strong><span>{dirty ? Object.keys(changes).length === 1 ? t('One modified field') : t('{count} modified fields', { count: Object.keys(changes).length }) : t('Changes take effect after you save.')}</span></div>
+            <div className="settings-actions">{dirty && <Button variant="quiet" size="sm" disabled={mutation.isPending} onClick={() => { setDraft({}); mutation.reset(); setNotice(''); }}>{t('Discard changes')}</Button>}
+                <Button variant="secondary" size="md" leadingIcon={<Sparkles size={15} aria-hidden />} disabled={mutation.isPending} onClick={() => setAssistant('configuration')}>{t('Configure with the agent')}</Button>
+                <Button variant="primary" size="md" leadingIcon={<Save size={15} aria-hidden />} disabled={!dirty || invalidModel} busy={mutation.isPending} data-testid="app-settings-save" onClick={() => void save().catch(() => undefined)}>{t('Save changes')}</Button></div>
+        </div>
+        {notice && <div role="status" className="settings-notice"><Check size={16} aria-hidden />{t(notice)}</div>}
+        {error && <div role="alert" className="settings-alert">{error}</div>}
+        <div data-testid="admin-app-settings-form" className="settings-sections">{GROUPS.map((group) => {
+            const rows = group.keys.map((key) => byKey[key]).filter(Boolean);
+            if (!rows.length) return null;
+            const GroupIcon = group.icon;
+            return <section key={group.id} className="settings-section" id={`settings-${group.id}`} aria-labelledby={`settings-${group.id}-title`}>
+                <header className="settings-section-header"><span className="settings-section-icon"><GroupIcon size={21} aria-hidden /></span><div><h2 id={`settings-${group.id}-title`}>{t(group.title)}</h2><p>{t(group.description)}</p></div>
+                    {group.id === 'models' && <Button variant="quiet" size="sm" leadingIcon={<RefreshCw size={14} aria-hidden />} busy={catalog.refresh.isPending} onClick={() => catalog.refresh.mutate()}>{t('Refresh catalog')}</Button>}</header>
+                {group.id === 'models' && <div className="settings-catalog-status" role="status"><Info size={15} aria-hidden /><div><strong>{PROVIDER_NAMES[provider] ?? provider}</strong>{' · '}
+                    {catalog.isLoading ? t('Loading available models and prices…') : catalog.data?.error === 'missing_credentials' ? t('Configure this provider’s credentials to load its available models.') : catalog.data?.error === 'credentials_rejected' ? t('The provider rejected its configured credentials. Update the API key in the installation settings.') : catalog.isError || catalog.data?.stale || catalog.refresh.isError ? t('The catalog could not be refreshed. Previous data may be outdated.') : t('{count} available models', { count: catalog.data?.models.length ?? 0 })}
+                    {catalog.data?.updated_at && <small>{t('Catalog checked')}: {new Date(catalog.data.updated_at).toLocaleString()} · {t('Prices per million tokens; source and currency are shown for each model.')}</small>}
+                    {catalog.data && !catalog.data.configured && catalog.data.error !== 'missing_credentials' && <small>{t('The public catalog is available, but API credentials are not configured for this provider.')}</small>}</div></div>}
+                {rows.map((setting) => <SettingField key={setting.key} setting={setting} scope={scope} provider={provider} value={value(setting.key)}
+                    sharedModel={!!value('ai.chat_model')} catalog={catalog.data} loading={catalog.isFetching} busy={mutation.isPending}
+                    onChange={(next) => update(setting.key, next)} onAssist={() => setAssistant('agent.tenant_instructions')} />)}
+            </section>;
+        })}</div>
+        {assistant && <SettingsAssistantModal target={assistant} tenant={tenant} scope={scope} provider={provider} settings={settings} draft={Object.fromEntries(settings.map((setting) => [setting.key, value(setting.key)]))}
+            onClose={() => setAssistant(null)} onApply={(values) => { setDraft((current) => ({ ...current, ...values })); setAssistant(null); mutation.reset(); setNotice('Proposal filled in. Review the values and save when ready.'); }} />}
+    </>;
 }
-
-const clearStyle: React.CSSProperties = {
-    marginLeft: 6,
-    padding: '4px 10px',
-    fontSize: 12,
-    background: 'transparent',
-    color: 'var(--fg-2)',
-    border: '1px solid var(--hairline)',
-    borderRadius: 6,
-    cursor: 'pointer',
-};
-
-const thStyle: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid var(--hairline)', fontWeight: 500 };
-const tdStyle: React.CSSProperties = { padding: '8px 8px', borderBottom: '1px solid var(--hairline)', color: 'var(--fg-1)', verticalAlign: 'top' };

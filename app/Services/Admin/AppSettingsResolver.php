@@ -127,6 +127,8 @@ class AppSettingsResolver
             $wildcardRaw = $deployOnly ? null : ($byKey[$key][AppSetting::WILDCARD] ?? null);
 
             [$value, $source] = $this->resolveLayered($projectRaw, $wildcardRaw, config((string) $d['config']), $d);
+            [$inheritedValue, $inheritedSource] = $this->resolveLayered(null,
+                $projectKey === AppSetting::WILDCARD ? null : $wildcardRaw, config((string) $d['config']), $d);
 
             $out[] = [
                 'key' => $key,
@@ -137,6 +139,10 @@ class AppSettingsResolver
                 'enum' => $d['enum'] ?? null,
                 'value' => $value,
                 'source' => $source,
+                'inherited_value' => $inheritedValue,
+                'inherited_source' => $inheritedSource,
+                'min' => $d['min'] ?? null,
+                'max' => $d['max'] ?? null,
             ];
         }
 
@@ -149,6 +155,21 @@ class AppSettingsResolver
      * ValidationException (→ 422) otherwise.
      */
     public function set(string $key, mixed $value, string $tenantId, string $projectKey = AppSetting::WILDCARD): void
+    {
+        $projectKey = AppSetting::normalizeProjectKey($projectKey);
+        $coerced = $this->validateDraft($key, $value, $projectKey);
+        if ($coerced === null) {
+            AppSetting::query()->where('tenant_id', $tenantId)->where('project_key', $projectKey)->where('setting_key', $key)->delete();
+        } else {
+            AppSetting::query()->updateOrCreate(
+                ['tenant_id' => $tenantId, 'project_key' => $projectKey, 'setting_key' => $key], ['value_json' => $coerced],
+            );
+        }
+        $this->memo = [];
+    }
+
+    /** Validate an agent proposal without writing configuration. */
+    public function validateDraft(string $key, mixed $value, string $projectKey = AppSetting::WILDCARD): mixed
     {
         // Normalise at the core — this service is callable directly, so an
         // empty/whitespace project_key must mean tenant-wide ('*'), not be
@@ -183,21 +204,22 @@ class AppSettingsResolver
         }
 
         if ($value === null) {
-            AppSetting::query()
-                ->where('tenant_id', $tenantId)->where('project_key', $projectKey)
-                ->where('setting_key', $key)->delete();
-            $this->memo = [];
-
-            return;
+            return null;
         }
+        return $this->validateValue($value, $descriptor);
+    }
 
-        $coerced = $this->validateValue($value, $descriptor);
-
-        AppSetting::query()->updateOrCreate(
-            ['tenant_id' => $tenantId, 'project_key' => $projectKey, 'setting_key' => $key],
-            ['value_json' => $coerced],
-        );
-        $this->memo = [];
+    /** Provider and model drafts are applied together, never partially. */
+    public function setMany(array $values, string $tenantId, string $projectKey = AppSetting::WILDCARD): void
+    {
+        foreach ($values as $key => $value) {
+            $this->validateDraft($key, $value, $projectKey);
+        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($values, $tenantId, $projectKey): void {
+            foreach ($values as $key => $value) {
+                $this->set($key, $value, $tenantId, $projectKey);
+            }
+        });
     }
 
     /**

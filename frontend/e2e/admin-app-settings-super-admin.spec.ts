@@ -35,14 +35,14 @@ baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
     baseTest.beforeEach(async ({ page }) => clearCadence(page));
     baseTest.afterEach(async ({ page }) => clearCadence(page));
 
-    baseTest('lands on /app/admin/app-settings with the governable settings table', async ({ page }) => {
+    baseTest('lands on /app/admin/app-settings with the guided configuration form', async ({ page }) => {
         await page.goto('/app/admin/app-settings');
 
         const view = page.getByTestId('admin-app-settings');
         await expect(view).toBeVisible({ timeout: 15_000 });
         await expect(view).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
 
-        await expect(page.getByTestId('admin-app-settings-table')).toBeVisible();
+        await expect(page.getByTestId('admin-app-settings-form')).toBeVisible();
         await expect(page.getByTestId(`app-setting-row-${CADENCE_KEY}`)).toBeVisible();
         // The deploy-managed FinOps switch is visible but read-only.
         await expect(page.getByTestId('app-setting-ai_finops.enabled-deploy-only')).toBeVisible();
@@ -59,7 +59,7 @@ baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
         const input = page.getByTestId(`app-setting-${CADENCE_KEY}-input`);
         await input.fill('30');
 
-        const save = page.getByTestId(`app-setting-${CADENCE_KEY}-save`);
+        const save = page.getByTestId('app-settings-save');
         await expect(save).toBeEnabled();
 
         const respPromise = page.waitForResponse(

@@ -1260,6 +1260,10 @@ Route::middleware([
             ->name('api.admin.app-settings.index');
         Route::put('/', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'update'])
             ->name('api.admin.app-settings.update');
+        Route::put('/batch', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'updateMany']);
+        Route::get('/models', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'models']);
+        Route::post('/models/refresh', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'models'])->middleware('throttle:10,1');
+        Route::post('/assist', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'assist'])->middleware('throttle:10,1');
     });
 
 /*
