@@ -70,6 +70,34 @@ Le lingue abilitate sono definite da `AGENT_SUPPORTED_LOCALES`; il fallback è
 `APP_LOCALE`. Aggiungere una lingua richiede anche il catalogo
 `lang/<lingua>/agent.php`.
 
+## Follow-up operativi e istruzioni dell'agente
+
+Le istruzioni dell'organizzazione si configurano da **Sistema / Configurazione**,
+con l'organizzazione interessata attiva e **Project scope** vuoto. La riga
+**Tenant assistant operating instructions** (`agent.tenant_instructions`) si
+salva a livello di tenant e viene letta da interpretazione, planner e sintesi.
+La pagina richiede il ruolo super-admin.
+
+Un follow-up può mantenere l'entità cambiando operazione: dopo la ricerca delle
+email di un ordine, «Dobbiamo fare qualcosa?» richiede di valutare le azioni
+pendenti. L'interpretazione usa `aspect=next_steps` e `fields=[]`; quando basta
+analizzare le fonti già individuate, queste vengono rilette con i permessi
+correnti senza ripetere una ricerca globale. La verifica dello stato attuale o
+di procedure ancora mancanti richiede invece nuove evidenze.
+
+I vecchi grafi di domande restano nella memoria persistente, ma vengono esclusi
+dai prompt del turno attuale. Se l'interprete copia una precedente domanda
+autonoma in un follow-up, il controllo semantico verifica che corrisponda ancora
+all'operazione richiesta. Un esito negativo o incerto permette una sola
+riformulazione; un guasto del provider non autorizza il piano copiato. Il normale
+riuso della stessa domanda per una ripetizione o verifica resta consentito.
+
+La sintesi deve distinguere una segnalazione ancora aperta da una successiva
+correzione, nominare autore e data dell'aggiornamento e limitare la conclusione
+al problema documentato. La disponibilità di un barcode non conferma ricezione,
+rimborso o chiusura di un reso. Restano attivi i controlli su fonti, hash, entità,
+pertinenza e supporto delle singole affermazioni.
+
 ## Budget adattivi e grandi collezioni
 
 I limiti predefiniti distinguono chiamate logiche ai tool da richieste HTTP

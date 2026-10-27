@@ -78,6 +78,49 @@ class ConversationReasoningTest extends TestCase
         $this->assertSame(['TRACK-55'], $conversation->fresh()->reasoning_state['focus']['identifiers']);
     }
 
+    public function test_order_then_email_then_pending_actions_updates_the_task_and_caches_only_the_repaired_turn(): void
+    {
+        config(['reasoning.selective_validation' => true, 'ai.providers.openrouter.key' => 'test']);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response([
+            'model' => 'jev-test', 'answers' => ['matches' => ['type' => 'noul', 'noul' => .02]],
+        ])]);
+        $interpretation = static function (string $aspect, string $question, bool $context, bool $research): array {
+            $focus = ['topic' => 'ordine', 'identifiers' => ['U532638'], 'aspect' => $aspect, 'fields' => $aspect === 'next_steps' ? [] : ['*']];
+            $queries = $research ? ['U532638 '.$aspect] : [];
+            return ['language' => 'it', 'intent' => $question, 'action' => $aspect === 'next_steps' ? 'refine' : 'research',
+                'kb_queries' => $queries, 'mentions' => $context ? [] : [['text' => 'U532638', 'type' => 'identifier']],
+                'references_previous_turn' => $context, 'context_mode' => $context ? 'conversation' : 'new', 'requires_research' => $research,
+                'transition' => $context ? 'continue' : 'new', 'focus' => $focus,
+                'subquestions' => [[...$focus, 'question' => $question, 'kb_queries' => $queries,
+                    'context_mode' => $context ? 'conversation' : 'new', 'requires_research' => $research]],
+                'resolved_references' => $context ? ['U532638'] : [], 'needs_clarification' => false, 'clarification' => ''];
+        };
+        $order = $interpretation('dettagli', 'Cerca informazioni su ORDINE U532638', false, true);
+        $emails = $interpretation('email', "Qualche email a riguardo per l'ordine U532638?", true, true);
+        $nextSteps = $interpretation('next_steps', 'Valutare quali azioni restano da fare per U532638 secondo le email consultate', true, false);
+        $this->ai($order, $emails, $emails, $nextSteps);
+        $conversation = $this->conversation();
+        $memory = app(ConversationReasoning::class);
+        foreach (['Cerca informazioni su ORDINE U532638', 'qualche email a riguardo?'] as $question) {
+            $turn = $conversation->messages()->create(['role' => 'user', 'content' => $question]);
+            $understanding = $memory->prepare($conversation, $turn, $question);
+            $answer = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Previous answer is not evidence.']);
+            $memory->finish($conversation, $turn, $answer, [], [], array_map(fn ($sub) => [...$sub, 'status' => 'answered'], $understanding->subquestions));
+        }
+        $turn = $conversation->messages()->create(['role' => 'user', 'content' => 'Dobbiamo fare qualcosa?']);
+        $result = $memory->prepare($conversation, $turn, $turn->content);
+        $this->assertTrue($result->available);
+        $this->assertSame('next_steps', $conversation->fresh()->reasoning_state['focus']['aspect']);
+        $this->assertSame(['U532638'], $result->targetIdentifiers());
+        $this->assertSame([], $result->kbQueries);
+        $this->assertFalse($result->needsResearch());
+        $this->assertSame($nextSteps['intent'], $conversation->fresh()->reasoning_state['objective']);
+        $reopened = $memory->prepare($conversation->fresh(), $turn->fresh(), $turn->content);
+        $this->assertSame($result->toArray(), $reopened->toArray());
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     public function test_source_action_and_server_offers_survive_reopening_without_reinterpreting_or_copying_answer_text(): void
     {
         $conversation = $this->conversation();
@@ -219,7 +262,8 @@ class ConversationReasoningTest extends TestCase
         $ai->shouldReceive('chatWithProvider')->twice()->andReturnUsing(function ($provider, $system, $messages) use (&$calls, $initial, $followup) {
             if ($calls++ === 1) {
                 $ctx = json_decode($messages[0]['content'], true)['reasoning_context'];
-                $this->assertSame('Stato della spedizione TRACK-55', $ctx['objective']);
+                $this->assertSame('Stato della spedizione TRACK-55', $ctx['previous_objective']);
+                $this->assertArrayNotHasKey('objective', $ctx);
                 $this->assertSame(['user', 'assistant'], array_column($ctx['dialogue'], 'role'));
                 $this->assertSame('spedizone TRACK-55 detagli', $ctx['dialogue'][0]['text']);
                 $this->assertStringNotContainsString('FUTURE-SECRET', json_encode($ctx));

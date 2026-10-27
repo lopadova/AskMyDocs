@@ -154,7 +154,7 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
             $state = $request['state'];
             $this->assertSame([$source], array_values($state['sources']));
             $this->assertSame($references, $state['conversation_for_reference_resolution_only']['references']);
-            $this->assertSame('Find RECORD-A', $state['conversation_for_reference_resolution_only']['dialogue'][0]['interpreted_goal']);
+            $this->assertArrayNotHasKey('interpreted_goal', $state['conversation_for_reference_resolution_only']['dialogue'][0]);
             $this->assertArrayNotHasKey('questions', $state['conversation_for_reference_resolution_only']['dialogue'][0]);
             $this->assertArrayNotHasKey('answered_questions', $state['conversation_for_reference_resolution_only']['dialogue'][1]);
             return true;

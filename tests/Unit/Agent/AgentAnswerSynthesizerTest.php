@@ -14,11 +14,67 @@ use App\Agent\Tools\AgentToolDefinition;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
 
 final class AgentAnswerSynthesizerTest extends TestCase
 {
+    public function test_a_pending_actions_followup_uses_the_later_correction_and_keeps_the_conclusion_scoped(): void
+    {
+        config(['reasoning.selective_validation' => true, 'reasoning.selective_repair' => false,
+            'agent.presentation.enabled' => false, 'ai.providers.openrouter.key' => 'test']);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                if ($question['type'] === 'noul') {
+                    $answers[$key] = ['type' => 'noul', 'noul' => .99];
+                } else {
+                    $probabilities = array_fill_keys(array_keys($question['criteria']), 0);
+                    $probabilities['supported_relevant'] = 1;
+                    $answers[$key] = ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => 1, 'probabilities' => $probabilities];
+                }
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $earlier = 'ORDER-A, 2025-07-03 13:52. Customer: the return barcode is missing.';
+        $later = 'ORDER-A, 2025-07-03 15:38. Customer: sorry, the barcode is present.';
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        foreach ([1 => $earlier, 2 => $later] as $id => $text) {
+            $evidence->addDocument(['document_id' => $id, 'title' => 'ORDER-A return label', 'evidence' => [[
+                'content' => $text, 'evidence_hash' => hash('sha256', $text), 'complete_source' => true,
+            ]]]);
+        }
+        $assessment = 'Per la segnalazione ORDER-A del 3 luglio 2025 non emerge la necessità di reinviare il barcode: alle 15:38 il cliente conferma che è presente.';
+        $limitation = 'Queste email su ORDER-A non confermano che il reso sia stato ricevuto o rimborsato.';
+        $claims = array_map(fn ($text) => ['text' => $text, 'quote' => $later, 'document_id' => 2,
+            'tool_execution_id' => null, 'evidence_hash' => hash('sha256', $later), 'subquestion_id' => 0], [$assessment, $limitation]);
+        $focus = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'next_steps', 'fields' => []];
+        $understanding = ['language' => 'it', 'intent' => 'Valutare se restano azioni per ORDER-A', 'action' => 'refine',
+            'available' => true, 'focus' => $focus, 'subquestions' => [$focus], 'context_mode' => 'conversation', 'requires_research' => false];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $history) use ($claims) {
+            $this->assertStringContainsString('A later correction or resolution can supersede an earlier request', $system);
+            $this->assertStringContainsString('does not prove that a return was received, refunded or closed', $system);
+            $input = json_decode($history[0]['content'], true);
+            $this->assertSame('Dobbiamo fare qualcosa?', $input['question']);
+            $this->assertSame('next_steps', $input['question_understanding']['focus']['aspect']);
+            return new AiResponse('', 'fake', 'fake-agent', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
+                'locale' => 'it', 'completeness' => 'complete', 'claims' => $claims, 'citations' => [], 'tool_execution_ids' => [],
+                'limitations' => [], 'render_table' => false, 'requires_selection' => false,
+            ]]]);
+        });
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        $answer = $synthesizer->synthesize('Dobbiamo fare qualcosa?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), understanding: $understanding);
+        $this->assertSame('grounded', $answer->grounding['status']);
+        $this->assertStringContainsString($assessment, $answer->answer);
+        $this->assertStringContainsString($limitation, $answer->answer);
+        $this->assertStringNotContainsString('non riesco a verificarne la pertinenza', $answer->answer);
+        $this->assertNull($answer->artifact);
+        Http::assertSentCount(2);
+    }
+
     public function test_malformed_submission_is_retried_once_and_valid_claims_are_still_grounded(): void
     {
         config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false,
