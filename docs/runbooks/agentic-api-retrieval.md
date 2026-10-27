@@ -70,6 +70,22 @@ Le lingue abilitate sono definite da `AGENT_SUPPORTED_LOCALES`; il fallback è
 `APP_LOCALE`. Aggiungere una lingua richiede anche il catalogo
 `lang/<lingua>/agent.php`.
 
+## Referenze API nelle risposte
+
+Le referenze delle risposte chat comprendono anche le esecuzioni API/MCP citate
+e le altre chiamate effettivamente eseguite durante la ricerca del turno,
+distinguendo quelle usate nella risposta. L'elenco è ricostruito anche per i
+messaggi precedenti, senza modificare la cronologia persistente.
+Il chip apre una modale con argomenti e risultato registrato, senza richiamare
+il servizio esterno. Le nuove esecuzioni di endpoint API conservano anche una
+fotografia della richiesta iniziale (metodo, URL, query e body); credenziali e
+header di autenticazione sono esclusi. Le chiamate storiche senza questa
+fotografia mostrano esplicitamente i soli argomenti registrati. Il risultato
+è quello restituito all'agente, con filtri e limiti dell'endpoint applicati.
+La lettura richiede proprietà della conversazione, tenant ed esecuzione coerenti,
+citazione nel messaggio o appartenenza alla sua ricerca e accesso attuale al progetto; la risposta HTTP usa
+`Cache-Control: private, no-store`.
+
 ## Follow-up operativi e istruzioni dell'agente
 
 Le istruzioni dell'organizzazione si configurano da **Sistema / Configurazione**,

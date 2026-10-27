@@ -236,6 +236,8 @@ export interface MessageMetadata {
     // open shape (LLM-providers diverge on field naming), so `unknown`
     // forces every reader through the normaliser.
     tool_calls?: unknown[];
+    tool_sources?: ToolSource[];
+    tool_references?: ToolSource[];
     retrieval_runner_up?: RunnerUpChunk[];
     runner_up_count?: number;
     counterfactual?: CounterfactualPanel[];
@@ -253,6 +255,26 @@ export interface MessageMetadata {
      * (legacy sync/stream) messages.
      */
     search_stats?: { kb_searches: number; tool_calls: number } | null;
+}
+
+export interface ToolSource {
+    execution_id: number;
+    tool: string;
+    display_name?: string | null;
+    kind?: string | null;
+    retrieved_at?: string | null;
+}
+
+export interface ToolSourceDetail extends ToolSource {
+    status: string;
+    used_in_answer?: boolean;
+    arguments: Record<string, unknown>;
+    request: { method: string; url: string; query: Record<string, unknown>; headers: Record<string, unknown>; body: unknown } | null;
+    response: unknown;
+    complete: boolean | null;
+    stop_reason: string | null;
+    physical_requests: number;
+    latency_ms: number | null;
 }
 
 export interface AgentSelectionDisplayField {
@@ -485,6 +507,14 @@ export const chatApi = {
 
     async listMessages(conversationId: number, tenantId?: string): Promise<Message[]> {
         const { data } = await api.get<Message[]>(`/conversations/${conversationId}/messages`, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
+        return data;
+    },
+
+    async fetchToolSource(conversationId: number, messageId: number, executionId: number, tenantId?: string | null): Promise<ToolSourceDetail> {
+        const { data } = await api.get<ToolSourceDetail>(
+            `/conversations/${conversationId}/messages/${messageId}/tool-sources/${executionId}`,
+            tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined,
+        );
         return data;
     },
 

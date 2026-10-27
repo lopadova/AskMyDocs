@@ -1,0 +1,49 @@
+.tool-source-dialog[data-slot='dialog-content'] {
+    width: calc(100vw - 64px);
+    max-width: 1260px;
+    height: min(90dvh, 980px);
+    max-height: 90dvh;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bg-1);
+    color: var(--fg-1);
+    border-color: var(--panel-border);
+}
+.tool-source-header[data-slot='dialog-header'] { display: flex; flex-direction: row; align-items: flex-start; gap: 18px; padding: 28px; border-bottom: 1px solid var(--panel-border); text-align: left; }
+.tool-source-icon { display: grid; place-items: center; flex-shrink: 0; width: 52px; height: 52px; border-radius: 12px; background: color-mix(in srgb, var(--accent-a) 9%, transparent); color: var(--accent-a); }
+.tool-source-heading { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tool-source-heading [data-slot='dialog-title'] { margin: 8px 0 10px; font-size: 23px; line-height: 1.3; }
+.tool-source-heading [data-slot='dialog-description'] { color: var(--fg-2); line-height: 1.6; }
+.tool-source-eyebrow { color: var(--fg-3); font-size: 12px; }
+.tool-source-body { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; }
+.tool-source-body[data-state='loading'], .tool-source-body[data-state='error'] { display: block; overflow-y: auto; padding: 28px; }
+.tool-source-pane { min-width: 0; overflow-y: auto; padding: 24px 28px; }
+.tool-source-pane + .tool-source-pane { border-left: 1px solid var(--panel-border); background: color-mix(in srgb, var(--accent-a) 3%, var(--bg-1)); }
+.tool-source-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.tool-source-section-heading h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.tool-source-dialog pre { margin: 0; padding: 16px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--bg-0, var(--bg-1)); font: 12px/1.75 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.tool-source-dialog pre:focus-visible, .tool-source-invocation summary:focus-visible { outline: 2px solid var(--accent-a); outline-offset: 3px; }
+.tool-source-http { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 16px; font: 12px/1.7 var(--font-mono); overflow-wrap: anywhere; }
+.tool-source-http strong { color: var(--accent-a); }
+.tool-source-invocation { margin-top: 22px; font-size: 12px; }
+.tool-source-invocation summary { cursor: pointer; margin-bottom: 12px; color: var(--fg-2); }
+.tool-source-note { color: var(--fg-3); font-size: 12px; line-height: 1.7; margin: 18px 0 0; }
+.tool-source-footer { padding: 16px 28px; border-top: 1px solid var(--panel-border); color: var(--fg-3); font-size: 11px; line-height: 1.6; }
+.tool-source-footer p { margin: 0; }
+.tool-source-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 8px; }
+.tool-source-copy { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.tool-source-copy [role='status'] { max-width: 220px; font-size: 11px; color: var(--fg-2); }
+.chat-tool-source-kind { font: 10px var(--font-mono); color: var(--fg-3); }
+@media (max-width: 760px) {
+    .tool-source-dialog[data-slot='dialog-content'] { width: calc(100vw - 24px); height: 92dvh; max-height: 92dvh; }
+    .tool-source-header[data-slot='dialog-header'] { padding: 18px; gap: 12px; }
+    .tool-source-icon { width: 36px; height: 36px; }
+    .tool-source-icon svg { width: 22px; height: 22px; }
+    .tool-source-heading [data-slot='dialog-title'] { font-size: 19px; }
+    .tool-source-body { display: block; overflow-y: auto; }
+    .tool-source-pane { overflow: visible; padding: 20px; }
+    .tool-source-pane + .tool-source-pane { border-left: 0; border-top: 1px solid var(--panel-border); }
+    .tool-source-footer { padding: 14px 20px; }
+}

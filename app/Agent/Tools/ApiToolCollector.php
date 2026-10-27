@@ -94,6 +94,7 @@ final class ApiToolCollector
         $details = [];
         $errors = [];
         $physical = 0;
+        $initialRequest = null;
         $complete = count($selected) === count($items);
         $stopReason = $complete ? null : 'fanout_item_limit';
 
@@ -136,6 +137,7 @@ final class ApiToolCollector
             );
 
             foreach ($results as $position => $result) {
+                $initialRequest ??= $result['request'] ?? null;
                 $count = (int) ($result['physical_requests'] ?? 0);
                 $physical += $count;
                 $valid = is_array($result['body'] ?? null) ? $result['body'] : ['error' => 'invalid_tool_response'];
@@ -179,6 +181,7 @@ final class ApiToolCollector
             stopReason: $stopReason,
             stats: [
                 'mode' => 'fanout',
+                'initial_request' => $initialRequest,
                 'requested_items' => count($items),
                 'selected_items' => count($selected),
                 'successful_items' => count($details),
@@ -204,6 +207,13 @@ final class ApiToolCollector
         array $fixedQuery = [],
         ?string $url = null,
     ): array {
+        $prepared = $this->prepareRequest($route, $arguments, $context, $fixedQuery, $url);
+
+        return $this->executor->execute($prepared['route'], $prepared['arguments'], $prepared['context']);
+    }
+
+    private function prepareRequest(ApiRoute $route, array $arguments, AgentExecutionContext $context, array $fixedQuery = [], ?string $url = null): array
+    {
         $requestRoute = clone $route;
         $requestRoute->url = $url ?? $route->url;
         $requestRoute->loadMissing('parameters');
@@ -229,18 +239,17 @@ final class ApiToolCollector
         }
         $requestRoute->setRelation('parameters', $parameters->values());
 
-        $prepared = $this->requestContext->apply($requestRoute, $arguments, $context->jsonSerialize());
-
-        return $this->executor->execute(
-            $prepared['route'],
-            $prepared['arguments'],
-            $prepared['context'],
-        );
+        return $this->requestContext->apply($requestRoute, $arguments, $context->jsonSerialize());
     }
 
     public function executeMeasuredRequest(ApiRoute $route, array $arguments, AgentExecutionContext $context, array $query = [], ?string $url = null, int $limit = PHP_INT_MAX): array
     {
-        return app(\App\ApiTools\ToolHttpBudget::class)->measure(fn () => $this->executeRequest($route,$arguments,$context,$query,$url), $limit);
+        $prepared = $this->prepareRequest($route, $arguments, $context, $query, $url);
+        $request = app(ApiSourceRequest::class)->snapshot($prepared['route'], $prepared['arguments']);
+        $measured = app(\App\ApiTools\ToolHttpBudget::class)->measure(
+            fn () => $this->executor->execute($prepared['route'], $prepared['arguments'], $prepared['context']), $limit,
+        );
+        return [...$measured, 'request' => $request];
     }
 
     private function remaining(AgentBudgetTracker $budget): int
@@ -269,7 +278,7 @@ final class ApiToolCollector
             $progress(['phase' => 'request', 'completed' => 1, 'estimated_total' => 1, 'remaining' => 0]);
         }
 
-        return new ApiToolExecutionResult($body, $measured['physical_requests'], true, null, ['mode' => 'single']);
+        return new ApiToolExecutionResult($body, $measured['physical_requests'], true, null, ['mode' => 'single', 'initial_request' => $measured['request']]);
     }
 
     /**
@@ -299,6 +308,7 @@ final class ApiToolCollector
         $stopReason = 'pagination_page_limit';
 
         $pages = 0;
+        $initialRequest = null;
         while ($pages < $maximum) {
             $capacity = $budget->canIssuePhysical();
             if (! $capacity->allowed()) {
@@ -307,6 +317,7 @@ final class ApiToolCollector
             }
 
             $measured = $this->executeMeasuredRequest($route,$arguments,$context,[$pageParam=>$page],limit:$this->remaining($budget));
+            $initialRequest ??= $measured['request'];
             $body = $measured['body'];
             $physical += $measured['physical_requests'];
             $pages++;
@@ -341,7 +352,7 @@ final class ApiToolCollector
             physicalRequests: $physical,
             complete: $complete,
             stopReason: $stopReason,
-            stats: ['mode' => 'page', 'pages' => $pages, 'items' => count($all)],
+            stats: ['mode' => 'page', 'pages' => $pages, 'items' => count($all), 'initial_request' => $initialRequest],
         );
     }
 
@@ -376,6 +387,7 @@ final class ApiToolCollector
         $stopReason = 'pagination_page_limit';
 
         $pages = 0;
+        $initialRequest = null;
         while ($pages < $maximum) {
             $capacity = $budget->canIssuePhysical();
             if (! $capacity->allowed()) {
@@ -385,6 +397,7 @@ final class ApiToolCollector
 
             $query = $cursor === null || $cursorParam === '' ? [] : [$cursorParam => $cursor];
             $measured = $this->executeMeasuredRequest($route,$arguments,$context,$query,$nextUrl,$this->remaining($budget));
+            $initialRequest ??= $measured['request'];
             $body = $measured['body'];
             $physical += $measured['physical_requests'];
             $pages++;
@@ -439,7 +452,7 @@ final class ApiToolCollector
             physicalRequests: $physical,
             complete: $complete,
             stopReason: $stopReason,
-            stats: ['mode' => 'cursor', 'pages' => $pages, 'items' => count($all)],
+            stats: ['mode' => 'cursor', 'pages' => $pages, 'items' => count($all), 'initial_request' => $initialRequest],
         );
     }
 

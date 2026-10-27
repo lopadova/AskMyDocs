@@ -7,6 +7,7 @@ import type {
     Message as AppMessage,
     MessageCitation,
     RunnerUpChunk,
+    ToolSource,
 } from './chat.api';
 
 /**
@@ -44,6 +45,21 @@ import type {
  */
 
 export type RenderableMessage = AppMessage | UIMessage;
+
+/** Cited sources and recorded external calls, independently of activity badges. */
+export function getToolSources(message: RenderableMessage): ToolSource[] {
+    const metadata = message.metadata && typeof message.metadata === 'object' ? message.metadata as Record<string, unknown> : {};
+    const sources = [...(Array.isArray(metadata.tool_sources) ? metadata.tool_sources : []),
+        ...(Array.isArray(metadata.tool_references) ? metadata.tool_references : [])];
+    const seen = new Set<number>();
+    return sources.filter((source): source is ToolSource => {
+        if (!source || typeof source !== 'object' || !Number.isSafeInteger(source.execution_id)
+            || source.execution_id <= 0 || typeof source.tool !== 'string'
+            || !['api', 'mcp'].includes(source.kind) || seen.has(source.execution_id)) return false;
+        seen.add(source.execution_id);
+        return true;
+    });
+}
 
 /**
  * Discriminator. The SDK's `UIMessage` mandates `parts`; the legacy

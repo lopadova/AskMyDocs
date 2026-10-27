@@ -655,10 +655,11 @@ final readonly class AgentLoop
         $execution->forceFill([
             'status' => $result->successful() ? 'completed' : 'failed',
             'result_meta_json' => [
+                'request' => $result->stats['initial_request'] ?? null,
                 'result' => $this->masker->maskArray($result->body) ?? [],
                 'complete' => $result->complete,
                 'stop_reason' => $result->stopReason,
-                'stats' => $result->stats,
+                'stats' => array_diff_key($result->stats, ['initial_request' => true]),
             ],
             'error_code' => $result->successful() ? null : ($result->stopReason ?? 'tool_error'),
             'physical_request_count' => $result->physicalRequests,

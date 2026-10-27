@@ -117,6 +117,8 @@ Route::middleware('auth')->group(function () {
         Route::patch('/{conversation}', [ConversationController::class, 'update']);
         Route::delete('/{conversation}', [ConversationController::class, 'destroy']);
         Route::get('/{conversation}/messages', [MessageController::class, 'index']);
+        Route::get('/{conversation}/messages/{message}/tool-sources/{execution}', \App\Http\Controllers\Api\ChatToolSourceController::class)
+            ->whereNumber(['message', 'execution']);
         Route::post('/{conversation}/messages', [MessageController::class, 'store'])
             ->middleware($chatPostMiddleware);
         Route::post('/{conversation}/messages/agent', [AgentMessageController::class, 'store'])

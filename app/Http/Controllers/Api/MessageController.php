@@ -60,6 +60,7 @@ class MessageController extends Controller
             ->get(['id', 'agent_run_id', 'role', 'content', 'metadata', 'rating', 'created_at']);
 
         $runIds = $messages->pluck('agent_run_id')->filter()->unique()->values();
+        $toolReferences = app(\App\Agent\AgentToolReferences::class)->forConversation($conversation, $runIds->all());
         $activityByRun = $runIds->isEmpty()
             ? collect()
             : AgentRunEvent::query()
@@ -74,7 +75,7 @@ class MessageController extends Controller
                     ->values()
                     ->all());
 
-        $messages->each(function (Message $message) use ($activityByRun): void {
+        $messages->each(function (Message $message) use ($activityByRun, $toolReferences): void {
             $activity = $message->agent_run_id === null
                 ? []
                 : ($activityByRun->get($message->agent_run_id) ?? []);
@@ -83,6 +84,10 @@ class MessageController extends Controller
                     is_array($message->metadata) ? $message->metadata : [],
                     ['agent_activity' => $activity],
                 ));
+            }
+            if ($message->role === 'assistant' && isset($toolReferences[$message->agent_run_id])) {
+                $message->setAttribute('metadata', [...($message->metadata ?? []),
+                    'tool_references' => $toolReferences[$message->agent_run_id]]);
             }
             $message->makeHidden('agent_run_id');
         });

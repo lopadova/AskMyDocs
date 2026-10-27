@@ -3,6 +3,8 @@ import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
+import { ToolSourceModal } from './ToolSourceModal';
+import type { ToolSource } from './chat.api';
 import { RelatedPanel } from './RelatedPanel';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { SearchStatsBadge } from './SearchStatsBadge';
@@ -28,6 +30,7 @@ import {
     getRunnerUp,
     getTextContent,
     getToolCalls,
+    getToolSources,
     isUiMessage,
     type RenderableMessage,
 } from './message-shape-adapters';
@@ -118,6 +121,7 @@ export function MessageBubble({
         ? message.metadata.locale
         : 'en';
     const [editing, setEditing] = useState(false);
+    const [openToolSource, setOpenToolSource] = useState<ToolSource | null>(null);
 
     if (isUser) {
         if (editing && onEditSubmit) {
@@ -183,6 +187,7 @@ export function MessageBubble({
     // refetches the legacy shape.
     const meta = isUiMessage(message) ? {} : (message.metadata ?? {});
     const citations = getCitations(message);
+    const toolSources = typeof messageId === 'number' ? getToolSources(message) : [];
 
     // T3.5 — confidence + refusal_reason live at BOTH the top level
     // and in metadata for AppMessage; getRefusalReason / getConfidence
@@ -261,8 +266,13 @@ export function MessageBubble({
                   * guarding here protects against a future regression
                   * that surfaces stale citations under a refusal body.
                   */}
-                {!streaming && !isRefusal && citations.length > 0 && (
-                    <CitationsPopover citations={citations} onOpenSource={onOpenSource} />
+                {!streaming && !isRefusal && (citations.length > 0 || toolSources.length > 0) && (
+                    <CitationsPopover citations={citations} onOpenSource={onOpenSource}
+                        toolSources={toolSources} onOpenToolSource={setOpenToolSource} />
+                )}
+                {openToolSource && typeof messageId === 'number' && (
+                    <ToolSourceModal source={openToolSource} conversationId={conversationId} messageId={messageId}
+                        onClose={() => setOpenToolSource(null)} />
                 )}
                 {/* v8.8/W6 — Related graph panel for the cited CANONICAL docs.
                     Derives slugs + project from the citations themselves; the

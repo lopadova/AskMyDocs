@@ -1,10 +1,13 @@
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { MessageCitation } from './chat.api';
+import type { MessageCitation, ToolSource } from './chat.api';
 import { Button } from '../../components/Button';
+import { Braces } from 'lucide-react';
 
 export interface CitationsPopoverProps {
     citations: MessageCitation[];
+    toolSources?: ToolSource[];
+    onOpenToolSource?: (source: ToolSource) => void;
     /**
      * Click handler for a citation chip — wired by ChatView to open the cited
      * document in an in-chat modal ({@link CitationDocumentModal}) for EVERY
@@ -82,13 +85,15 @@ function lastHeadingSegment(headings?: string[]): string | null {
  * R15: the popover is reachable by keyboard (focus/blur) and Escape
  * closes it.
  */
-export function CitationsPopover({ citations, onOpenSource }: CitationsPopoverProps): ReactNode {
+export function CitationsPopover({ citations, onOpenSource, toolSources = [], onOpenToolSource }: CitationsPopoverProps): ReactNode {
     const [openIdx, setOpenIdx] = useState<number | null>(null);
+    const { t } = useUiTranslation();
+    const count = citations.length + toolSources.length;
 
     return (
-        <div data-testid="chat-citations" data-count={citations.length} className="chat-source-strip">
+        <div data-testid="chat-citations" data-count={count} className="chat-source-strip">
             <div className="chat-source-strip-label">
-                Sources · {citations.length}
+                Sources · {count}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {citations.map((c, i) => (
@@ -100,6 +105,16 @@ export function CitationsPopover({ citations, onOpenSource }: CitationsPopoverPr
                         onOpenChange={(open) => setOpenIdx(open ? i : null)}
                         onOpenSource={onOpenSource}
                     />
+                ))}
+                {toolSources.map((source) => (
+                    <Button key={source.execution_id} variant="secondary" size="sm" className="chat-source-chip"
+                        data-testid={`chat-tool-source-${source.execution_id}`} data-openable={onOpenToolSource !== undefined}
+                        aria-label={`${t('Open API call')}: ${source.display_name ?? source.tool}`}
+                        aria-haspopup="dialog" title={source.tool} onClick={() => onOpenToolSource?.(source)}>
+                        <Braces size={14} aria-hidden />
+                        <span className="chat-tool-source-kind">{source.kind === 'mcp' ? 'MCP' : 'API'}</span>
+                        <span className="chat-source-filename" style={ELLIPSIS}>{source.display_name ?? source.tool}</span>
+                    </Button>
                 ))}
             </div>
         </div>
