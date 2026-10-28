@@ -19,7 +19,7 @@ final readonly class ChatTurnInterpreter
 
     public function prepare(string $question, ?string $projectKey, ?RetrievalFilters $filters = null,
         ?string $conversationContext = null, ?User $actor = null, ?Model $owner = null, ?Model $turn = null,
-        ?AgentCapabilitySnapshot $capabilities = null): ?QuestionUnderstanding
+        ?AgentCapabilitySnapshot $capabilities = null, ?array $initialPlanning = null): ?QuestionUnderstanding
     {
         if (! config('reasoning.enabled') && ! config('kb.investigation.enabled', true)) {
             return null; // Explicit rollback keeps legacy transports operational.
@@ -35,8 +35,8 @@ final readonly class ChatTurnInterpreter
             'preferred_source_types' => $profile->preferred_source_types ?? []];
         $memory = app(ConversationReasoning::class);
         if ($memory->enabled() && $owner !== null && $turn !== null && $owner->project_key === $projectKey) {
-            return $memory->prepare($owner, $turn, $question, $data, $actor, $filters, $capabilities);
+            return $memory->prepare($owner, $turn, $question, $data, $actor, $filters, $capabilities, $initialPlanning);
         }
-        return $this->preprocessor->interpret($question, $conversationContext, $data, $memory->enabled() ? [] : null, $capabilities);
+        return $this->preprocessor->interpret($question, $conversationContext, $data, $memory->enabled() ? [] : null, $capabilities, $initialPlanning);
     }
 }

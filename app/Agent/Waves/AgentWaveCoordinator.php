@@ -87,14 +87,17 @@ final class AgentWaveCoordinator
                 $results['current_selection'] = $results['selected_row'] = $selected;
             }
             $this->checkpoint($run, $evidence, $completed, $results);
-            $iteration = $budget->beginIteration(max((float) config('agent.planner.time_reserve_seconds', 30),
+            $initialPlan = data_get($run->result_json, 'initial_plan.status') === 'pending'
+                ? $this->diagnostics->measure($run, 'planner.initial_plan', fn () => app(\App\Agent\Planning\AgentInitialPlanning::class)
+                    ->consume($run, $context, $tools, $snapshot, $evidence), ['operation' => 'validate_combined_plan']) : null;
+            $iteration = $budget->beginIteration($initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
                 (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000));
             if (! $iteration->allowed()) return new AgentLoopOutcome('partial', $evidence, $completed, $iteration->reason);
 
             $this->events->publish($run, $completed === [] ? 'plan.created' : 'plan.updated', $completed === [] ? 'plan.created' : 'plan.updated');
             $start = microtime(true);
             try {
-                $plan = $this->diagnostics->measure($run, 'planner.decide', fn () => $this->planner->decide(
+                $plan = $initialPlan ?? $this->diagnostics->measure($run, 'planner.decide', fn () => $this->planner->decide(
                     $run, (int) $budget->snapshot()['iterations'], $question, $context, $tools, $snapshot, $evidence,
                     $this->history($completed), $results, json_encode([
                         'previous_context' => $turnContext,

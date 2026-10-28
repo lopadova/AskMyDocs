@@ -1,8 +1,13 @@
 # Agent research waves
 
 Research turns use one planner across documents, API routes and MCP connections.
-The interpreter resolves the request first; the planner then schedules all relevant
-independent actions whose inputs are available. No recursive document investigation
+With the classic planner, interpretation and the first-wave proposal share one AI
+response. The host validates the interpretation before validating the proposal
+against the current authorized tools, identifier constraints and live-source
+coverage. A valid proposal starts the first wave without another planning call;
+a missing or rejected proposal, or a host-corrected focus, uses the ordinary
+planner with the validated interpretation. The planner schedules all relevant independent actions whose
+inputs are available. No recursive document investigation
 runs before the first plan, and multi-subquestion research does not spawn autonomous
 planner branches.
 
@@ -30,6 +35,15 @@ retain their existing handling.
 collection path. `AGENT_WAVE_CONCURRENCY` defaults to 10. If a wave contains more
 ready actions, execution uses bounded batches and still performs only one common
 evaluation after all batches. `AGENT_MAX_ACTIONS_PER_PLAN` defaults to 20.
+
+`AGENT_COMBINED_INITIAL_PLANNING` defaults to `true` for classic planning.
+Capability and shadow modes retain their router and independent plan checks.
+The combined proposal is consumed once, before any completed action or wave;
+it is kept outside the semantic conversation cache and is discarded when the
+authorized capability snapshot changes. Source grounding, semantic checks and
+post-wave common planning remain in place. Combined calls appear as
+`question.initial_plan` in diagnostics; `planner.initial_plan` measures local
+validation rather than another provider call.
 
 `AGENT_WAVE_TIMEOUT_SECONDS` defaults to 45 and limits the entire wave, including
 all batches. The parent further caps this against the worker deadline and answer
@@ -69,6 +83,7 @@ Run:
 
 ```sh
 php artisan test tests/Feature/Agent/AgentWaveCoordinatorTest.php tests/Feature/Agent/AgentWaveParallelProcessTest.php tests/Unit/Agent/AgentWaveExecutorTest.php tests/Feature/ApiTools/ApiToolContinuationTest.php
+php artisan test tests/Feature/Agent/CombinedInitialPlanningTest.php tests/Unit/Chat/CombinedQuestionPreprocessorTest.php
 ```
 
 The executor tests use real Artisan subprocesses and verify overlapping PIDs,

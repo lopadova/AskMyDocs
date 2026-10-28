@@ -127,13 +127,32 @@ final readonly class AgentPlanner
         throw new \LogicException('Planner correction loop terminated unexpectedly.');
     }
 
-    private function systemPrompt(AgentExecutionContext $context, ?AgentCapabilitySnapshot $capabilities, int $depth = 3): string
+    /** The same planning policy, embedded in the interpretation response for a fresh first wave. */
+    public function initialPlanningContract(AgentExecutionContext $context, array $tools, AgentCapabilitySnapshot $snapshot, int $depth): array
+    {
+        $schema = $this->submissionTool()['function']['parameters'];
+        $action = &$schema['properties']['actions']['items'];
+        unset($action['properties']['arguments']);
+        // Strict response schemas cannot express arbitrary tool argument maps.
+        // Decode this string before applying the ordinary plan validators.
+        $action['properties']['arguments_json'] = ['type' => 'string', 'description' => 'A JSON object containing the exact tool arguments; use {} for no arguments.'];
+        $action['required'] = ['id', 'tool', 'arguments_json', 'depends_on', 'purpose'];
+        $instructions = str_replace('Return a structured plan through submit_agent_plan.',
+            'Return the first-wave plan in initial_plan of the interpretation JSON; encode tool arguments in arguments_json. Do not invoke submit_agent_plan.',
+            $this->systemPrompt($context, $snapshot, $depth, false));
+        $instructions .= "\nFor a validated interpretation that does not require research, propose decision=answer with actions=[]. Plan tool calls only for research; never override the interpretation to justify a tool.";
+
+        return ['schema' => $schema, 'instructions' => $instructions,
+            'tools' => array_values(array_map(static fn (AgentToolDefinition $tool): array => $tool->plannerPayload(), $tools))];
+    }
+
+    private function systemPrompt(AgentExecutionContext $context, ?AgentCapabilitySnapshot $capabilities, int $depth = 3, bool $includeTenantInstructions = true): string
     {
         $trustedManifest = $capabilities === null
             ? 'No trusted semantic capability manifest is active.'
             : json_encode($capabilities->compact(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $depthInstruction = $this->depthInstruction($depth);
-        $tenantInstructions = app(\App\Agent\AgentTenantInstructions::class)->prompt($context->tenantId);
+        $tenantInstructions = $includeTenantInstructions ? app(\App\Agent\AgentTenantInstructions::class)->prompt($context->tenantId) : '';
         $collectionInstructions = config('agent.waves.enabled', true)
             ? 'You coordinate the ENTIRE investigation in synchronous waves. No initial document retrieval has run. In each plan schedule ALL independent, relevant searches whose inputs are already available, including document queries and selected live API/MCP sources together. Several known document queries may be independent even for a single subject. Use the interpreted kb_queries as discovery seeds when documents contribute. Workers only return observations: they never decide their next step. Before deciding the next wave or answering, compare ALL observations from the preceding wave for relevance, consistency, contradictions and missing facts. Preserve conflicts and partial/failed sources explicitly. Plan only actions ready from prior observations; dependencies produced inside this submitted plan are deferred until a common re-evaluation. Do not serialize independent sources by scheduling just one at a time. Use the same common plan for every subquestion; do not spawn autonomous investigations.'
             : 'Initial knowledge retrieval already ran before this plan: do not repeat the same broad search when evidence_summary already contains documents; call search_knowledge_base only for a narrower follow-up query that can add missing evidence.';

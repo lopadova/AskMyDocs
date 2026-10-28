@@ -54,14 +54,14 @@ final readonly class ConversationReasoning
         ];
     }
 
-    public function prepare(Model $owner, Model $turn, string $question, ?array $profile = null, ?User $actor = null, ?RetrievalFilters $filters = null, ?\App\Agent\Capabilities\AgentCapabilitySnapshot $capabilities = null): QuestionUnderstanding
+    public function prepare(Model $owner, Model $turn, string $question, ?array $profile = null, ?User $actor = null, ?RetrievalFilters $filters = null, ?\App\Agent\Capabilities\AgentCapabilitySnapshot $capabilities = null, ?array $initialPlanning = null): QuestionUnderstanding
     {
         $this->assertOwner($owner, $turn);
         if (! $this->enabled()) {
-            return $this->preprocessor->interpret($question, null, $profile, capabilities: $capabilities);
+            return $this->preprocessor->interpret($question, null, $profile, capabilities: $capabilities, initialPlanning: $initialPlanning);
         }
         // Only retries for the SAME turn share a lock. Never hold a DB transaction during an LLM call.
-        return Cache::lock('reasoning:'.$turn->getTable().':'.$turn->getKey(), 120)->block(10, function () use ($owner, $turn, $question, $profile, $actor, $filters, $capabilities) {
+        return Cache::lock('reasoning:'.$turn->getTable().':'.$turn->getKey(), 120)->block(10, function () use ($owner, $turn, $question, $profile, $actor, $filters, $capabilities, $initialPlanning) {
             $column = $this->metadataColumn($turn);
             $turn->refresh();
             $cached = data_get($turn->{$column}, 'reasoning.understanding');
@@ -74,7 +74,7 @@ final readonly class ConversationReasoning
                 // An older in-flight message must not resolve pronouns using a later user's focus.
                 $before = ['focus' => [], 'known_identifiers' => [], 'verified_relations' => [], 'references' => []];
             }
-            $understanding = $this->preprocessor->interpret($question, null, $profile, $before, $capabilities);
+            $understanding = $this->preprocessor->interpret($question, null, $profile, $before, $capabilities, $initialPlanning);
             DB::transaction(function () use ($owner, $turn, $column, $before, $understanding): void {
                 $locked = $owner->newQuery()->whereKey($owner->getKey())->lockForUpdate()->firstOrFail();
                 $state = $this->state($locked);

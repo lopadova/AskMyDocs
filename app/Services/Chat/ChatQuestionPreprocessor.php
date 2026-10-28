@@ -15,11 +15,11 @@ final readonly class ChatQuestionPreprocessor
 {
     public function __construct(private AiManager $ai) {}
 
-    public function interpret(string $question, ?string $conversationContext = null, ?array $profile = null, ?array $reasoningContext = null, ?AgentCapabilitySnapshot $capabilities = null): QuestionUnderstanding
+    public function interpret(string $question, ?string $conversationContext = null, ?array $profile = null, ?array $reasoningContext = null, ?AgentCapabilitySnapshot $capabilities = null, ?array $initialPlanning = null): QuestionUnderstanding
     {
         $correction = null;
         for ($attempt = 0; $attempt < 2; $attempt++) {
-            $result = $this->attempt($question, $conversationContext, $profile, $reasoningContext, $capabilities, $correction);
+            $result = $this->attempt($question, $conversationContext, $profile, $reasoningContext, $capabilities, $correction, $initialPlanning);
             if ($result->available || $result->failureReason === 'provider_unavailable') {
                 return $result;
             }
@@ -30,7 +30,7 @@ final readonly class ChatQuestionPreprocessor
     }
 
     private function attempt(string $question, ?string $conversationContext, ?array $profile, ?array $reasoningContext,
-        ?AgentCapabilitySnapshot $capabilities, ?string $correction): QuestionUnderstanding
+        ?AgentCapabilitySnapshot $capabilities, ?string $correction, ?array $initialPlanning): QuestionUnderstanding
     {
         $fallback = new QuestionUnderstanding(null, trim($question), [mb_substr(trim($question), 0, 500)], [], false, false);
         // These are field labels, not intrinsic code prefixes. Restore only a
@@ -141,6 +141,11 @@ Use transition="provenance" when the entire current request asks WHERE the previ
 Exact generic attribution example, even with ORDER-A in previous_focus: "dove hai trovato questi dati?" → intent="Mostrare le fonti della risposta precedente", context_mode="conversation", requires_research=false, kb_queries=[], mentions=[], references_previous_turn=true, transition="provenance", focus={"topic":"answer sources","identifiers":[],"aspect":"source_provenance","fields":[]}, subquestions=[{"topic":"answer sources","identifiers":[],"aspect":"source_provenance","fields":[],"question":"Quali fonti sostengono la risposta precedente?","context_mode":"conversation","requires_research":false,"kb_queries":[]}], resolved_references=[], needs_clarification=false, clarification="". Do not copy ORDER-A into that subquestion or its queries: the user asks for all sources of the previous answer, not just the old primary entity. For a genuinely narrowed attribution, focus and its single subquestion must use the SAME identifiers and include nonliteral IDs in resolved_references.
 FOCUS;
         }
+        if ($initialPlanning !== null) {
+            $schema['properties']['initial_plan'] = $initialPlanning['schema'];
+            $schema['required'][] = 'initial_plan';
+            $system .= "\n".$initialPlanning['instructions'];
+        }
         // Historical plans are not active requests. Keep navigation anchors and
         // actual user dialogue without replaying old output-shaped task graphs.
         $modelContext = $reasoningContext;
@@ -159,6 +164,7 @@ FOCUS;
                     'company_profile' => $profile,
                     'reasoning_context' => $modelContext,
                     'available_capabilities' => $capabilities?->compact(),
+                    ...$initialPlanning === null ? [] : ['available_tools' => $initialPlanning['tools']],
                     ...$correction === null ? [] : ['validation_error' => $correction],
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]],
                 [
@@ -169,9 +175,15 @@ FOCUS;
             );
             $failureStage = 'invalid_json';
             $data = json_decode(strtr(trim($response->content), $references), true, 512, JSON_THROW_ON_ERROR);
+            $initialPlan = null;
+            if ($initialPlanning !== null && is_array($data)) {
+                $initialPlan = is_array($data['initial_plan'] ?? null) ? $data['initial_plan'] : null;
+                unset($data['initial_plan']);
+            }
+            $interpretationRequired = array_diff($schema['required'], ['initial_plan']);
             if (! is_array($data)
-                || array_diff(array_diff($schema['required'], ['context_mode', 'requires_research']), array_keys($data)) !== []
-                || array_diff(array_keys($data), $schema['required']) !== []
+                || array_diff(array_diff($interpretationRequired, ['context_mode', 'requires_research']), array_keys($data)) !== []
+                || array_diff(array_keys($data), $interpretationRequired) !== []
                 || (array_key_exists('context_mode', $data) !== array_key_exists('requires_research', $data))
                 || (array_key_exists('context_mode', $data) && (! is_string($data['context_mode']) || QuestionContextMode::tryFrom($data['context_mode']) === null))
                 || (array_key_exists('requires_research', $data) && ! is_bool($data['requires_research']))
@@ -284,6 +296,7 @@ FOCUS;
             // Only the explicit question survives as a search; no rejected model query is reused.
             $failureStage = 'invalid_focus_contract';
 
+            $proposedFocus = $reasoningContext === null ? [] : array_intersect_key($data, \App\Services\Chat\Reasoning\FocusContract::schema());
             $focus = $reasoningContext === null ? [] : \App\Services\Chat\Reasoning\FocusContract::validate(
                 $data, $reasoningContext['known_identifiers'] ?? [], array_column($mentions, 'text'),
             );
@@ -346,12 +359,24 @@ FOCUS;
                 && ($queries !== [] || $mentions !== [] || $data['references_previous_turn'])) {
                 throw new \UnexpectedValueException('Invalid assistant conversation contract.');
             }
-            return new QuestionUnderstanding($language, $intent, $queries, $mentions, $data['references_previous_turn'], true,
+            $understanding = new QuestionUnderstanding($language, $intent, $queries, $mentions, $data['references_previous_turn'], true,
                 $focus['focus'] ?? [], $focus['subquestions'] ?? [], $focus['resolved_references'] ?? [],
                 $focus['transition'] ?? 'new', $focus['needs_clarification'] ?? ($action === QuestionAction::Clarify),
                 $focus['clarification'] ?? ($action === QuestionAction::Clarify ? $intent : ''), action: $action,
                 contextMode: isset($data['context_mode']) ? QuestionContextMode::from($data['context_mode']) : null,
                 requiresResearch: $data['requires_research'] ?? null);
+            if ($reasoningContext !== null && $proposedFocus != $focus) {
+                $initialPlan = null;
+            }
+            if ($initialPlan === null || ! $understanding->needsResearch()) {
+                return $understanding;
+            }
+            return new QuestionUnderstanding($understanding->language, $understanding->intent, $understanding->kbQueries,
+                $understanding->mentions, $understanding->referencesPreviousTurn, $understanding->available,
+                $understanding->focus, $understanding->subquestions, $understanding->resolvedReferences,
+                $understanding->transition, $understanding->needsClarification, $understanding->clarification,
+                $understanding->failureReason, $understanding->action, $understanding->contextMode,
+                $understanding->requiresResearch, $initialPlan);
         } catch (Throwable $exception) {
             Log::warning('Chat question preprocessing was unavailable.', ['exception' => $exception::class, 'reason' => $failureStage]);
             return QuestionUnderstanding::fromArray([...$fallback->toArray(), 'failure_reason' => $failureStage]);

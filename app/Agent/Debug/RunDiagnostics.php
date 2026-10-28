@@ -171,6 +171,7 @@ final class RunDiagnostics
             'database_driver' => config('database.connections.'.config('database.default').'.driver', 'unknown'),
             'planner_mode' => config('agent.planner.mode', 'classic'),
             'waves_enabled' => (bool) config('agent.waves.enabled', true),
+            'combined_initial_planning' => (bool) config('agent.waves.combined_initial_planning', true),
             'wave_concurrency' => config('agent.waves.concurrency', 10),
             'wave_timeout_seconds' => config('agent.waves.timeout_seconds', 45),
             'fanout_driver' => config('agent.tools.fanout_driver'),

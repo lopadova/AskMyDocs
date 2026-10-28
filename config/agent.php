@@ -10,6 +10,7 @@ return [
     'tenant_instructions' => '',
     'waves' => [
         'enabled' => (bool) env('AGENT_WAVES_ENABLED', true),
+        'combined_initial_planning' => (bool) env('AGENT_COMBINED_INITIAL_PLANNING', true),
         'concurrency' => max(1, (int) env('AGENT_WAVE_CONCURRENCY', 10)),
         'timeout_seconds' => max(1, (int) env('AGENT_WAVE_TIMEOUT_SECONDS', 45)),
     ],

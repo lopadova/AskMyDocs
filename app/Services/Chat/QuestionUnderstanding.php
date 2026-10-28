@@ -24,6 +24,8 @@ final readonly class QuestionUnderstanding
         public ?QuestionAction $action = null,
         public ?QuestionContextMode $contextMode = null,
         public ?bool $requiresResearch = null,
+        // Ephemeral proposal: deliberately excluded from conversation serialization.
+        public ?array $initialPlan = null,
     ) {}
 
     /** @return list<string> */

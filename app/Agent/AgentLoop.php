@@ -108,15 +108,19 @@ final readonly class AgentLoop
         if (! $retrieved && $understanding === null) {
             $this->control->ensureActive($run);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $understanding = $this->diagnostics->measure($run, 'question.interpretation',
+            $initialPlanning = app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
+            $understanding = $this->diagnostics->measure($run, $initialPlanning === null ? 'question.interpretation' : 'question.initial_plan',
                 fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
-                    $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot),
+                    $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot,
+                    initialPlanning: $initialPlanning),
                 ['wait_reason' => 'provider_response']);
             if ($understanding !== null) {
                 \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $capabilitySnapshot): void {
                     $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
                     $run->forceFill(['result_json' => [...($locked->result_json ?? []), 'question_understanding' => $understanding->toArray(),
-                        'capability_manifest' => ['hash' => $capabilitySnapshot->hash, 'capabilities' => $capabilitySnapshot->compact()]]])->save();
+                        'capability_manifest' => ['hash' => $capabilitySnapshot->hash, 'capabilities' => $capabilitySnapshot->compact()],
+                        ...$understanding->initialPlan === null ? [] : ['initial_plan' => ['proposal' => $understanding->initialPlan,
+                            'capability_hash' => $capabilitySnapshot->hash, 'status' => 'pending']]]])->save();
                 });
             }
         }
