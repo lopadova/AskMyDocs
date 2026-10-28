@@ -597,20 +597,34 @@ final readonly class AgentLoop
             if ($query === '') {
                 throw new \InvalidArgumentException('knowledge_query_required');
             }
-            $documentsBefore = count($evidence->documents());
-            $search = $this->retrieval->retrieve($query, $context->projectKey, $filters,
-                diagnostics: $this->diagnostics->observer($run));
+            $evidenceBefore = $this->knowledgeEvidenceSignatures($evidence);
+            $investigation = null;
+            if (config('kb.investigation.enabled', true)) {
+                $investigation = $this->investigation->followUp(
+                    query: $query,
+                    understanding: \App\Services\Chat\QuestionUnderstanding::fromArray(
+                        (array) data_get($run->result_json, 'question_understanding', [])),
+                    projectKey: $context->projectKey,
+                    filters: $filters,
+                    actor: $run->user instanceof User ? $run->user : null,
+                    diagnostics: $this->diagnostics->observer($run),
+                );
+                $search = $investigation->search;
+            } else {
+                // Preserve the explicit incident-rollback path used by initial research.
+                $search = $this->retrieval->retrieve($query, $context->projectKey, $filters,
+                    diagnostics: $this->diagnostics->observer($run));
+            }
             $found = $this->evidenceFactory->fromSearchResult($search);
             $evidence->import($found->jsonSerialize());
             $body = ['documents' => $found->documents()];
             $budget->recordResult(0, strlen((string) json_encode($body)), true);
-            // Compared against the ACCUMULATED envelope, not $found alone —
-            // a search that only re-surfaces documents an earlier search in
-            // this same run already added is exactly as unproductive as one
-            // that returns nothing.
-            $budget->recordKnowledgeSearchResult(count($evidence->documents()) > $documentsBefore);
+            // Only new, selected source content is progress. A new unrelated
+            // document is not evidence; another excerpt of a known source can be.
+            $budget->recordKnowledgeSearchResult(array_diff($this->knowledgeEvidenceSignatures($evidence), $evidenceBefore) !== []);
 
-            return new AgentToolActionResult($body, 0);
+            return new AgentToolActionResult($body, 0,
+                stats: $investigation === null ? [] : ['investigation' => $investigation->trace()]);
         }
 
         $identifierGuard = app(\App\Agent\Planning\AgentIdentifierSources::class);
@@ -638,6 +652,20 @@ final readonly class AgentLoop
                 $this->control->ensureActive($run);
             },
         );
+    }
+
+    /** @return list<string> */
+    private function knowledgeEvidenceSignatures(AgentEvidenceEnvelope $evidence): array
+    {
+        $signatures = [];
+        foreach ($evidence->documents() as $document) {
+            foreach ($document['evidence'] ?? [] as $chunk) {
+                $signatures[] = ($document['document_id'] ?? $document['source_path'] ?? '').':'
+                    .hash('sha256', (string) ($chunk['content'] ?? ''));
+            }
+        }
+
+        return array_values(array_unique($signatures));
     }
 
     private function startExecution(

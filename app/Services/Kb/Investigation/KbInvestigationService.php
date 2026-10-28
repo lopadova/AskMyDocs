@@ -132,7 +132,7 @@ class KbInvestigationService
         }
         $intent = new KbInvestigationIntent(
             $understanding->intent,
-            $understanding->mentionTexts(),
+            array_values(array_unique(array_merge($understanding->targetIdentifiers(), $understanding->mentionTexts()))),
             [], [], [], $understanding->kbQueries,
             $understanding,
         );
@@ -291,6 +291,38 @@ class KbInvestigationService
             intent: $intent,
             factMap: $this->factMap($supportedFacts, $missingFacts),
             attempts: $attempts,
+        );
+    }
+
+    /** One planner query, with the original objective and the same source-selection gates as initial research. */
+    public function followUp(
+        string $query,
+        QuestionUnderstanding $understanding,
+        ?string $projectKey,
+        ?RetrievalFilters $filters = null,
+        ?User $actor = null,
+        ?\Closure $diagnostics = null,
+    ): KbInvestigationResult {
+        $task = $understanding->toArray();
+        $task['kb_queries'] = [$query];
+        $task['focus']['identifiers'] = $understanding->targetIdentifiers();
+        // This is a bounded search inside the existing task, not another
+        // conversation interpretation or another fan-out of its subquestions.
+        $task['subquestions'] = [];
+        $task['references_previous_turn'] = false;
+        $task['action'] = 'research';
+        $task['requires_research'] = true;
+        $task['context_mode'] = 'new';
+        $task['transition'] = 'new';
+
+        return $this->investigate(
+            question: $understanding->intent,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: 1,
+            actor: $actor,
+            preparedUnderstanding: QuestionUnderstanding::fromArray($task),
+            diagnostics: $diagnostics,
         );
     }
 

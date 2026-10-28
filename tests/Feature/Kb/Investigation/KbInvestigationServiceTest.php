@@ -36,6 +36,76 @@ final class KbInvestigationServiceTest extends TestCase
         ]);
     }
 
+    public function test_follow_up_keeps_the_original_person_objective_and_only_returns_selected_read_sources(): void
+    {
+        $query = 'Michael Friedenberger altri messaggi sul reso';
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider');
+        $ai->shouldReceive('chat')->once()->andReturnUsing(function ($system, $payload) {
+            $input = json_decode($payload, true);
+            $this->assertSame('Tutte le informazioni su Michael Friedenberger', $input['intent']['objective']);
+            $this->assertSame(['Michael Friedenberger'], $input['intent']['entities']);
+            $this->assertSame([11, 12], $input['allowed_document_ids']);
+            return $this->response(['selected_document_ids' => [11], 'supported_facts' => ['Il barcode è presente.'],
+                'complete' => false, 'next_query' => 'Non eseguire questo secondo giro']);
+        });
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $candidates = $this->search([11, 12]);
+        $retrieval->shouldReceive('retrieve')->once()->with($query, 'orders', null, false)
+            ->andReturn(new SearchResult($candidates->primary, $this->search([13])->primary, collect()));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->twice()->andReturnUsing(fn ($candidate) => $candidate['document']['id'] === 11
+            ? $this->source(11, 'Michael Friedenberger: il barcode è presente.', true)
+            : $this->source(12, 'Un altro cliente chiede un rimborso.', true));
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Tutte le informazioni su Michael Friedenberger',
+            ['ricerca iniziale'], [], false, focus: ['topic' => 'person', 'identifiers' => ['Michael Friedenberger']]);
+
+        $result = $this->service($ai, $retrieval, $reader)->followUp($query, $understanding, 'orders');
+
+        $this->assertSame([$query], $result->queries);
+        $this->assertSame([11], array_column($result->selectedSources, 'document_id'));
+        $this->assertSame('Michael Friedenberger: il barcode è presente.', $result->search->primary->sole()['chunk_text']);
+        $this->assertTrue($result->search->expanded->isEmpty());
+    }
+
+    public function test_follow_up_cannot_select_another_record_when_only_the_focus_carries_the_requested_id(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider');
+        $ai->shouldReceive('chat')->twice()->andReturn($this->response([
+            'selected_document_ids' => [11], 'supported_facts' => ['Consegnato'], 'complete' => true,
+        ]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([11]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'U999999: consegnato.', true));
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Dettagli ordine U532638', ['U532638'], [], false,
+            focus: ['topic' => 'record', 'identifiers' => ['U532638']]);
+
+        $result = $this->service($ai, $retrieval, $reader)->followUp('stato spedizione', $understanding, 'orders');
+
+        $this->assertTrue($result->search->isEmpty());
+        $this->assertSame('assessment_failed', $result->stopReason);
+    }
+
+    public function test_follow_up_does_not_import_raw_candidates_when_the_assessor_is_unavailable(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithProvider');
+        $ai->shouldReceive('chat')->once()->andThrow(new \RuntimeException('Unavailable'));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([11]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->once()->andReturn($this->source(11, 'Michael Friedenberger: email.', true));
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Informazioni su Michael Friedenberger',
+            ['Michael Friedenberger'], [], false, focus: ['identifiers' => ['Michael Friedenberger']]);
+
+        $result = $this->service($ai, $retrieval, $reader)->followUp('altre email', $understanding, 'orders');
+
+        $this->assertTrue($result->search->isEmpty());
+        $this->assertSame('assessment_failed', $result->stopReason);
+    }
+
     public function test_reassesses_a_copied_example_id_using_only_authorized_document_ids(): void
     {
         $ai = Mockery::mock(AiManager::class);

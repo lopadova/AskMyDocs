@@ -200,6 +200,17 @@ dell'ultimo piano. Quando manca questo margine si passa alla sintesi parziale
 con le fonti già raccolte. La riserva non è un timeout delle singole chiamate
 AI: una chiamata più lenta del previsto può comunque consumarla.
 
+Anche le query `search_knowledge_base` proposte dal planner attraversano una
+singola iterazione dell'indagine KB: mantengono obiettivo e identificativi del
+turno, includono i candidati da ricerca letterale, leggono le fonti autorizzate
+e importano soltanto quelle selezionate dal valutatore. Non importano contesto
+ausiliario o candidati grezzi quando la valutazione fallisce. Il risultato dello
+strumento conserva la traccia in `stats.investigation`. Il contatore delle
+ricerche improduttive si azzera soltanto se cambia il contenuto delle evidenze
+selezionate, anche se il documento era già noto. Il rollback esplicito
+`KB_RECURSIVE_RETRIEVAL_ENABLED=false` mantiene il percorso storico anche per
+le query successive.
+
 Il timeout per processo di ricerca è distinto: 90 secondi per ramo, con al massimo
 quattro processi contemporanei. Cambiare concorrenza o numero di task richiede di
 ricontrollare il budget complessivo. I lock impediscono a una riconsegna concorrente
