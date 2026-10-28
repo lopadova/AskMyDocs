@@ -43,6 +43,12 @@ Events include `wave.started`, `wave.completed` and per-tool outcomes. Durable
 `result_json.waves` records wave membership and deferred actions. Debug exports
 include whether waves are enabled, concurrency and timeout configuration.
 
+Subprocess results travel through private temporary files using an atomic,
+versioned envelope with Base64-encoded serialized data. Console output is disabled
+and never parsed as a result: bootstrap/log output and binary return values must
+not turn a completed tool into a failed observation. Files are size-bounded and
+removed after child processes have stopped.
+
 ## Asynchronous API tools and interrupted workers
 
 Composed API tools register ownership transactionally before dispatching their

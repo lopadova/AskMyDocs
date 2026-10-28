@@ -34,6 +34,34 @@ class AgentWaveExecutorTest extends TestCase
         $this->assertInstanceOf(ResearchFailure::class, $results[2]);
     }
 
+    public function test_process_results_ignore_output_and_preserve_binary_values(): void
+    {
+        config(['agent.waves.concurrency' => 3, 'agent.waves.timeout_seconds' => 15]);
+        $tasks = [];
+        foreach (['documents', 'api'] as $kind) {
+            $tasks[] = static function () use ($kind) {
+                echo "bootstrap\x1b[31m noisy output\n";
+                $start = microtime(true);
+                usleep(700000);
+                $value = new \App\Agent\Tools\AgentToolActionResult(
+                    ['kind' => $kind, 'data' => "binary\0\xff", 'pid' => getmypid(), 'start' => $start, 'end' => microtime(true)], 1
+                );
+                echo "trailing output\n";
+                return $value;
+            };
+        }
+        $tasks[] = static fn () => null;
+        $results = app(AgentWaveExecutor::class)->run($tasks, forceProcess: true);
+        $this->assertInstanceOf(\App\Agent\Tools\AgentToolActionResult::class, $results[0]);
+        $this->assertInstanceOf(\App\Agent\Tools\AgentToolActionResult::class, $results[1]);
+        $this->assertSame("binary\0\xff", $results[0]->body['data']);
+        $this->assertSame('documents', $results[0]->body['kind']);
+        $this->assertSame('api', $results[1]->body['kind']);
+        $this->assertNotSame($results[0]->body['pid'], $results[1]->body['pid']);
+        $this->assertLessThan(min($results[0]->body['end'], $results[1]->body['end']), max($results[0]->body['start'], $results[1]->body['start']));
+        $this->assertNull($results[2]);
+    }
+
     public function test_timeout_does_not_discard_the_completed_sibling(): void
     {
         config(['agent.waves.concurrency' => 2, 'agent.waves.timeout_seconds' => 1]);
