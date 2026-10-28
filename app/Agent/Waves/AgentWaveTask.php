@@ -19,7 +19,6 @@ use App\Agent\Tools\AgentToolDefinition;
 use App\Agent\Tools\AgentToolRegistry;
 use App\Models\AgentRun;
 use App\Support\TenantContext;
-use App\Services\Kb\Chat\ChatRetrievalService;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Auth;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
@@ -79,10 +78,7 @@ final class AgentWaveTask
                         || ! \App\Models\KbRetrievalProfile::query()->forTenant($context->tenantId)->where('project_key', $project)->exists())) {
                         return new AgentToolActionResult(['error' => 'retrieval_profile_required'], 0, false, 'retrieval_profile_required');
                     }
-                    $search = app(ChatRetrievalService::class)->retrieve($query, $context->projectKey,
-                        $filters,
-                        diagnostics: app(\App\Agent\Debug\RunDiagnostics::class)->observer($run));
-                    $result = new AgentToolActionResult(['documents' => $factory->fromSearchResult($search)->documents()], 0);
+                    $result = app(AgentWaveKnowledgeSearch::class)->search($query, $run, $context, $filters);
                 } else {
                     $worker = clone $run;
                     $budget = (array) $worker->budget_json;

@@ -22,8 +22,19 @@ Each wave follows this barrier:
    facts, then answer or schedule the next wave. Dependencies on results from the
    submitted plan are deferred until that evaluation.
 
-Document workers perform one authorized retrieval, without an assessor or local
-replanning loop. The configured retrieval-profile requirement remains enforced
+Document workers combine literal lookup for the validated subject identifiers
+with semantic retrieval, without an assessor or local replanning loop. Exact
+candidates take precedence over the semantic top results. Each candidate is
+opened through `KbSourceReader` before it becomes evidence, preserving verified
+email originals, ACLs and distinct windows of long documents. Conceptual search
+seeds inherit their understood subquestion's subject; a query with one explicit
+subject does not import unrelated identifiers from other subquestions. Partial
+lookup failures preserve successful sources and return a warning to the parent.
+Semantic sources remain candidates for the common planner even when they do not
+repeat an identifier, so general policies can still inform a specific request.
+Unchanged evidence already collected by earlier waves does not consume the next
+search's source limit; the parent retains it while new passages can be added.
+The configured retrieval-profile requirement remains enforced
 for document search; a missing profile does not prevent sibling live-source calls.
 Evidence is reauthorized before each common decision and final synthesis retains
 the existing grounding checks. Context-only, provenance and clarification turns
@@ -84,6 +95,7 @@ Run:
 ```sh
 php artisan test tests/Feature/Agent/AgentWaveCoordinatorTest.php tests/Feature/Agent/AgentWaveParallelProcessTest.php tests/Unit/Agent/AgentWaveExecutorTest.php tests/Feature/ApiTools/ApiToolContinuationTest.php
 php artisan test tests/Feature/Agent/CombinedInitialPlanningTest.php tests/Unit/Chat/CombinedQuestionPreprocessorTest.php
+php artisan test tests/Feature/Agent/AgentWaveKnowledgeSearchTest.php tests/Feature/Agent/ExactKnowledgeWaveIntegrationTest.php
 ```
 
 The executor tests use real Artisan subprocesses and verify overlapping PIDs,
@@ -93,3 +105,8 @@ in distinct forked processes with a shared SQLite WAL database. A rendezvous ins
 both retrieval and HTTP fixtures makes sequential execution fail; the following
 planner invocation and dependent action must occur after both finish. All network
 responses are fixtures; these tests do not contact production connectors.
+The exact-lookup integration regression simulates eight unrelated semantic hits
+and four matching documents outside that list. It verifies that both document
+searches reach the next common plan with all four authorized sources, deduplicated
+and verified against the requested identifier, without additional AI calls in
+the workers.
