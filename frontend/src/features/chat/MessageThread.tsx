@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, type ReactNode } from 'react';
 import { useUiTranslation } from '../../lib/ui-locale';
 import { MessageBubble } from './MessageBubble';
 import { AgentActivityBar } from './AgentActivityBar';
+import { ProgressiveAnswer } from './ProgressiveAnswer';
 import { Icon } from '../../components/Icons';
 import { Button } from '../../components/Button';
 import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
@@ -143,8 +144,16 @@ export function MessageThread({
     );
 
     const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';
+    const followBottom = useRef(true);
+    const previousMessageCount = useRef(messages.length);
+    const previousConversation = useRef(conversationId);
 
     useEffect(() => {
+        if (previousConversation.current !== conversationId) followBottom.current = true;
+        previousConversation.current = conversationId;
+        if (messages.length > previousMessageCount.current && messages.at(-1)?.role === 'user') followBottom.current = true;
+        previousMessageCount.current = messages.length;
+        if (!followBottom.current) return;
         // Scroll behavior matches the user's expectation in each
         // phase: during streaming, the assistant body grows
         // token-by-token and EVERY delta would queue a fresh smooth
@@ -156,9 +165,10 @@ export function MessageThread({
         // status='ready' / new turn arrival.
         threadRef.current?.scrollTo({
             top: threadRef.current.scrollHeight,
-            behavior: isStreaming ? 'auto' : 'smooth',
+            behavior: isStreaming || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
         });
     }, [
+        conversationId,
         messages.length,
         sdkStatus,
         totalTextLength,
@@ -178,6 +188,10 @@ export function MessageThread({
     return (
         <section
             ref={threadRef}
+            onScroll={(event) => {
+                const node = event.currentTarget;
+                followBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+            }}
             data-testid="chat-thread"
             data-state={state}
             aria-label={t('Conversation messages')}
@@ -231,7 +245,7 @@ export function MessageThread({
                         }
                     }
                     const activeRunHasPersistedActivity = activeAgentRunId !== null && messages.some((message) => (
-                        getAgentRunId(message) === activeAgentRunId && getAgentActivity(message).length > 0
+                        message.role === 'assistant' && getAgentRunId(message) === activeAgentRunId && getAgentActivity(message).length > 0
                     ));
 
                     return messages.map((m, i) => {
@@ -261,6 +275,11 @@ export function MessageThread({
                                 : undefined;
                         const persistedActivity = m.role === 'assistant' ? getAgentActivity(m) : [];
                         const messageRunId = getAgentRunId(m);
+                        const hasFinalAnswer = messageRunId !== null && messages.some((message) => message.role === 'assistant'
+                            && getAgentRunId(message) === messageRunId);
+                        const findingEvents = m.role !== 'user' || messageRunId === null ? [] : [...new Map([
+                            ...getAgentActivity(m), ...agentEvents.filter((event) => event.run_id === messageRunId),
+                        ].map((event) => [event.sequence, event])).values()].sort((a, b) => a.sequence - b.sequence);
                         const showLiveActivityAfterMessage = m.role === 'user'
                             && activeAgentRunId !== null
                             && messageRunId === activeAgentRunId
@@ -299,6 +318,9 @@ export function MessageThread({
                                         {renderMessage}
                                     </AgentActivityBar>
                                 ) : renderMessage()}
+                                {m.role === 'user' && !hasFinalAnswer && <ProgressiveAnswer events={findingEvents}
+                                    active={isStreaming && activeAgentRunId === messageRunId}
+                                    paused={awaitingAgentConfirmation && activeAgentRunId === messageRunId} onOpenSource={onOpenSource} />}
                                 {showLiveActivityAfterMessage && (
                                     <AgentActivityBar
                                         events={agentEvents}

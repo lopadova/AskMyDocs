@@ -239,7 +239,16 @@ export class AgentChatSession {
             if (state.events.some((item) => item.sequence === event.sequence)) return state;
             const next = [...state.events, event];
             const details = new Set(next.filter((item) => !item.type.startsWith('research.')).slice(-50).map((item) => item.sequence));
-            return { events: next.filter((item) => item.type.startsWith('research.') || details.has(item.sequence)) };
+            const events = next.filter((item) => item.type.startsWith('research.') || details.has(item.sequence));
+            // Keep interrupted findings attached to their turn when a new turn
+            // clears the live event buffer. The server log is durable on reload.
+            if (events.some((item) => item.type === 'research.findings')
+                && (event.type === 'research.findings' || event.type.startsWith('run.'))) {
+                return { events, messages: state.messages.map((message) => message.role === 'user'
+                    && message.metadata?.agent_run_id === event.run_id
+                    ? { ...message, metadata: { ...message.metadata, agent_activity: events } } : message) };
+            }
+            return { events };
         });
     };
 

@@ -5,6 +5,7 @@ import { chatApi, type Message } from './chat.api';
 import { useAgentChat } from './use-agent-chat';
 import { clearAgentChatSessions, getAgentChatSession } from './agent-chat-session';
 import { useTeamStore } from '../../lib/team-store';
+import { findingEvent } from './progressive-answer.test-fixtures';
 
 beforeEach(() => {
     clearAgentChatSessions();
@@ -61,6 +62,18 @@ function eventResponse(event: AgentRunEvent): Response {
 }
 
 describe('useAgentChat', () => {
+    it('keeps failed findings attached to the user turn when a later turn clears live progress', async () => {
+        const user = { ...userMessage, metadata: { agent_run_id: 'run-1' } };
+        const failure = { ...completedEvent(), type: 'run.failed', data: {}, message: 'Timeout' };
+        const wire = [findingEvent, failure].map((event) => `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(wire, { headers: { 'Content-Type': 'text/event-stream' } })));
+        const session = getAgentChatSession(7, null, null);
+        await expect(session.adoptExternalRun({ run_id: 'run-1', status: 'running', locale: 'it', events_url: '/events',
+            cancel_url: '/cancel', continue_url: '/continue', user_message: user }, { filters: {} })).rejects.toThrow('Timeout');
+        expect(session.store.getState().messages[0].metadata?.agent_activity).toHaveLength(2);
+        session.store.setState({ events: [], activeRun: null });
+        expect(session.store.getState().messages[0].metadata?.agent_activity?.[0].type).toBe('research.findings');
+    });
     it('restores confirmation after navigation and resumes the same run after a recoverable continuation error', async () => {
         const run = { run_id: 'run-1', status: 'queued', locale: 'it', events_url: '/events',
             cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage };

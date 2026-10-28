@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
 import type { Message } from './chat.api';
 import { MessageThread } from './MessageThread';
+import { findingEvent } from './progressive-answer.test-fixtures';
 
 const completedEvent: AgentRunEvent = {
     run_id: 'run-1',
@@ -55,6 +56,40 @@ describe('MessageThread agent activity', () => {
             configurable: true,
             value: vi.fn(),
         });
+    });
+
+    it('restores interrupted findings from history and replaces them with the consolidated answer', () => {
+        const user = message(10, 'user', 'Informazioni sul reso', { agent_run_id: 'run-1', agent_activity: [findingEvent,
+            { ...completedEvent, type: 'run.failed' }] });
+        const { rerender } = renderThread(<MessageThread conversationId={1} messages={[user]} sdkStatus="ready" />);
+        expect(screen.getByTestId('agent-progressive-answer')).toHaveAttribute('data-state', 'interrupted');
+        const assistant = message(11, 'assistant', 'Il cliente ha poi trovato il barcode.', { agent_run_id: 'run-1' });
+        rerender(<QueryClientProvider client={new QueryClient()}><MessageThread conversationId={1} messages={[user, assistant]} sdkStatus="ready" /></QueryClientProvider>);
+        expect(screen.queryByTestId('agent-progressive-answer')).not.toBeInTheDocument();
+        expect(screen.getByText('Il cliente ha poi trovato il barcode.')).toBeInTheDocument();
+    });
+
+    it('merges persisted and live finding events without duplicating results', () => {
+        const user = message(10, 'user', 'Informazioni sul reso', { agent_run_id: 'run-1', agent_activity: [findingEvent] });
+        renderThread(<MessageThread conversationId={1} messages={[user]} sdkStatus="streaming" activeAgentRunId="run-1"
+            agentEvents={[findingEvent]} />);
+        expect(screen.getAllByText('Il cliente segnala il barcode mancante il 3 luglio.')).toHaveLength(1);
+        expect(screen.getByTestId('agent-activity-bar')).toBeInTheDocument();
+    });
+
+    it('does not force-scroll new findings while the user is reading earlier results', () => {
+        const user = message(10, 'user', 'Informazioni sul reso', { agent_run_id: 'run-1' });
+        const client = new QueryClient();
+        const { container, rerender } = render(<QueryClientProvider client={client}><MessageThread conversationId={1}
+            messages={[user]} sdkStatus="streaming" activeAgentRunId="run-1" agentEvents={[findingEvent]} /></QueryClientProvider>);
+        const thread = container.querySelector<HTMLElement>('[data-testid="chat-thread"]')!;
+        Object.defineProperties(thread, { scrollHeight: { configurable: true, value: 2000 }, clientHeight: { configurable: true, value: 600 } });
+        thread.scrollTop = 50;
+        fireEvent.scroll(thread);
+        vi.mocked(thread.scrollTo).mockClear();
+        rerender(<QueryClientProvider client={client}><MessageThread conversationId={1} messages={[user]} sdkStatus="streaming"
+            activeAgentRunId="run-1" agentEvents={[findingEvent, { ...findingEvent, sequence: 2 }]} /></QueryClientProvider>);
+        expect(thread.scrollTo).not.toHaveBeenCalled();
     });
 
     it('keeps the empty chat illustration in sync with the rendered theme', async () => {

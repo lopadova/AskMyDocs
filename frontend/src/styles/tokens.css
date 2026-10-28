@@ -1722,6 +1722,22 @@ textarea:focus-visible {
   margin: 2px 0 18px;
   border-radius: 14px;
 }
+.agent-progressive-answer { margin: 12px 0 16px; padding: 16px; border: 1px solid var(--panel-border); border-radius: 12px; background: var(--panel-solid); color: var(--fg-1); overflow-wrap: anywhere; min-width: 0; }
+.agent-progressive-answer header { display: grid; gap: 7px; }
+.agent-progressive-status, .agent-progressive-source-label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--fg-2); }
+.agent-progressive-status svg, .agent-progressive-source-label svg { flex-shrink: 0; }
+.agent-progressive-note { margin: 10px 0 14px; color: var(--fg-2); font-size: 12px; line-height: 1.6; }
+.agent-progressive-answer ol { display: grid; gap: 14px; padding: 0; margin: 0; list-style: none; }
+.agent-progressive-answer li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 9px; }
+.agent-progressive-check { margin-top: 4px; color: var(--ok); }
+.agent-progressive-content { min-width: 0; }
+.agent-progressive-content > p { margin: 0 0 7px; line-height: 1.65; white-space: pre-wrap; }
+.agent-progressive-source { max-width: 100%; height: auto; min-height: 48px; text-align: start; }
+.agent-progressive-source .ui-button-label { white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
+.agent-progressive-content summary { display: list-item; cursor: pointer; color: var(--fg-2); font-size: 12px; padding-block: 12px; min-height: 48px; }
+.agent-progressive-content summary:focus-visible { outline: 2px solid var(--accent-a); outline-offset: 2px; }
+.agent-progressive-content blockquote { margin: 0; padding: 8px 12px; border-inline-start: 2px solid var(--panel-border); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+@media (max-width: 600px) { .agent-progressive-answer { padding: 12px; } }
 .agent-research-tasks {
   padding: 16px 18px;
   border-bottom: 1px solid var(--panel-border-strong);
@@ -2905,6 +2921,8 @@ textarea:focus-visible {
   .agent-activity-cancel > span { display: none; }
   .agent-activity-details-toggle,
   .agent-activity-cancel { width: var(--button-height); padding-inline: 0; }
+  .agent-activity-card .agent-activity-details-toggle,
+  .agent-activity-card .agent-activity-cancel { min-width: 48px; min-height: 48px; }
   .agent-mcp-debug-body,
   .agent-mcp-debug-meta { grid-template-columns: 1fr; }
   .agent-mcp-debug-entry { grid-template-columns: 1fr; gap: 3px; }

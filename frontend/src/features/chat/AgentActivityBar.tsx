@@ -542,6 +542,10 @@ function activityStage(
             detail: event?.message ?? '',
         };
     }
+    if (event?.type === 'research.findings') {
+        return { kind: 'documents', title: locale === 'it' ? 'Risultati verificati' : 'Verified findings',
+            detail: locale === 'it' ? 'La ricerca continua sulle altre fonti.' : 'Research continues across the remaining sources.' };
+    }
     if (event?.type.startsWith('research.')) {
         const copy = researchTaskCopy(locale);
         const status = event.data.task_status;

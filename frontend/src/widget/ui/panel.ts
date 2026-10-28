@@ -15,6 +15,7 @@ import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, mergeThemeLayers } from 
 import { UiArtifactRenderer } from './UiArtifactRenderer';
 import { SourceViewer } from './source-viewer';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
+import { progressiveCopy, progressiveFindings } from '../../features/agent/progressive-findings';
 
 const DEFAULT_TITLE = 'Assistente';
 const DEFAULT_LAUNCHER_LABEL = 'Chiedi all’assistente';
@@ -41,6 +42,8 @@ export class WidgetPanel {
     private readonly activityMeta: HTMLElement;
     private readonly activityProgress: HTMLElement;
     private readonly activityActions: HTMLElement;
+    private progressive: HTMLElement | null = null;
+    private progressiveEvents: AgentRunEvent[] = [];
     private readonly input: HTMLTextAreaElement;
     private readonly send: HTMLButtonElement;
     /** <style> del tema, dentro `root` (scope shadow) — aggiornabile. */
@@ -274,7 +277,15 @@ export class WidgetPanel {
             onAsk: (question, options) => this.appendAsk(question, options),
             onDone: (summary) => this.appendSystem(`✓ ${summary}`, 'system'),
             onBlocked: (reason) => this.appendSystem(`⚠ ${reason}`, 'system'),
-            onError: (message) => this.appendSystem(message, 'error'),
+            onError: (message) => {
+                const latest = this.progressiveEvents.at(-1);
+                if (this.progressive && latest && !['run.failed', 'run.cancelled'].includes(latest.type)) {
+                    this.progressive.dataset.state = 'disconnected';
+                    const status = this.progressive.querySelector('[role="status"]');
+                    if (status) status.textContent = progressiveCopy(latest.locale, 'disconnected').status;
+                }
+                this.appendSystem(message, 'error');
+            },
             onConfirm: (toolCall, accept, reject) => this.showConfirm(toolCall, accept, reject),
             onArtifact: (artifact, hasResults, interactionMode) => this.renderArtifact(artifact, hasResults, interactionMode),
             onPointAt: (target) => this.overlay.pointAt(target),
@@ -286,6 +297,14 @@ export class WidgetPanel {
     }
 
     private renderAgentEvent(event: AgentRunEvent): void {
+        if (this.progressiveEvents.at(-1)?.run_id !== event.run_id) {
+            this.progressiveEvents = [];
+            // An interrupted turn retains its findings in the transcript.
+            this.progressive = null;
+        }
+        // Preserve finding deltas, plus the latest state; ordinary progress can be chatty.
+        this.progressiveEvents = [...this.progressiveEvents.filter((item) => item.type === 'research.findings'), event];
+        this.renderProgressiveFindings(event);
         const italian = event.locale.toLowerCase().startsWith('it');
         this.activity.hidden = false;
         this.activity.dataset.state = event.type === 'run.awaiting_confirmation'
@@ -321,6 +340,50 @@ export class WidgetPanel {
         }
     }
 
+    private renderProgressiveFindings(event: AgentRunEvent): void {
+        const findings = progressiveFindings(this.progressiveEvents);
+        if (findings.length === 0) return;
+        const state = ['run.failed', 'run.cancelled'].includes(event.type) ? 'interrupted'
+            : event.type === 'run.awaiting_confirmation' ? 'paused'
+                : ['synthesis.started', 'run.completed', 'run.partial'].includes(event.type) ? 'consolidating' : 'researching';
+        const copy = progressiveCopy(event.locale, state);
+        if (this.progressive === null) {
+            this.progressive = this.el('section', 'amd-progressive', { 'data-testid': 'askmydocs-widget-progressive', 'aria-label': copy.title });
+            this.messages.append(this.progressive);
+        }
+        this.progressive.dataset.state = state;
+        let status = this.progressive.querySelector<HTMLElement>('[role="status"]');
+        if (!status) {
+            const heading = this.el('strong', '');
+            heading.textContent = copy.title;
+            status = this.el('p', 'amd-progressive-status', { role: 'status' });
+            const note = this.el('p', 'amd-progressive-note');
+            note.textContent = copy.note;
+            this.progressive.append(heading, status, note);
+        }
+        status.textContent = copy.status;
+        for (const finding of findings) {
+            if (this.progressive.querySelector(`[data-finding-id="${CSS.escape(finding.id)}"]`)) continue;
+            const item = this.el('article', 'amd-progressive-item', { 'data-finding-id': finding.id });
+            const text = this.el('p', '');
+            text.textContent = finding.text;
+            const source = this.el('button', 'amd-btn', { type: 'button', 'aria-label': `${copy.source}: ${finding.citation.title}` });
+            source.textContent = finding.citation.title;
+            source.addEventListener('click', () => this.sourceViewer.open([{
+                document_id: finding.citation.document_id, title: finding.citation.title, source_path: finding.citation.source_path,
+                chunks: finding.citation.chunks?.map((chunk) => ({ ...chunk, snippet: chunk.snippet ?? undefined })),
+            }], finding.citation.document_id, source));
+            const details = this.el('details', '');
+            const summary = this.el('summary', '');
+            summary.textContent = copy.quote;
+            const quote = this.el('blockquote', '');
+            quote.textContent = finding.quote;
+            details.append(summary, quote);
+            item.append(text, source, details);
+            this.progressive.append(item);
+        }
+    }
+
     private renderAgentConfirmation(event: AgentRunEvent, accept: () => void, reject: () => void): void {
         this.renderAgentEvent(event);
         const italian = event.locale.toLowerCase().startsWith('it');
@@ -345,6 +408,8 @@ export class WidgetPanel {
     }
 
     private renderAgentCancelled(italian: boolean): void {
+        const latest = this.progressiveEvents.at(-1);
+        if (latest) this.renderAgentEvent({ ...latest, type: 'run.cancelled', can_cancel: false });
         this.activity.dataset.state = 'settled';
         this.activity.setAttribute('aria-busy', 'false');
         this.activityMessage.textContent = italian ? 'La ricerca è stata annullata.' : 'The search was cancelled.';
@@ -383,6 +448,9 @@ export class WidgetPanel {
     }
 
     private appendAssistant(text: string, citations: Citation[]): void {
+        this.progressive?.remove();
+        this.progressive = null;
+        this.progressiveEvents = [];
         const msg = this.appendMessage(text, 'assistant');
         if (citations.length > 0) {
             const wrap = this.el('div', 'amd-citations');
