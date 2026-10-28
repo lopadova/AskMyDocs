@@ -8,6 +8,11 @@ return [
         'release' => env('APP_RELEASE'),
     ],
     'tenant_instructions' => '',
+    'waves' => [
+        'enabled' => (bool) env('AGENT_WAVES_ENABLED', true),
+        'concurrency' => max(1, (int) env('AGENT_WAVE_CONCURRENCY', 10)),
+        'timeout_seconds' => max(1, (int) env('AGENT_WAVE_TIMEOUT_SECONDS', 45)),
+    ],
     'progressive' => ['enabled' => (bool) env('AGENT_PROGRESSIVE_ANSWERS_ENABLED', true)],
     'finalization' => ['safety_seconds' => 5, 'repair_min_seconds' => 45, 'presentation_min_seconds' => 45],
     'queue' => env('AGENT_QUEUE', 'agent'),
@@ -17,7 +22,7 @@ return [
         'mode' => env('AGENT_PLANNER_MODE', 'classic'),
         // Avoid starting another planning round without enough collection time.
         'time_reserve_seconds' => (int) env('AGENT_PLANNER_TIME_RESERVE_SECONDS', 30),
-        'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 8),
+        'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 20),
         'router_catalog_limit' => (int) env('AGENT_ROUTER_CATALOG_LIMIT', 40),
         'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
     ],

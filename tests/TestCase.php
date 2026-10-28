@@ -70,6 +70,10 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function getEnvironmentSetUp($app): void
     {
+        // Testbench does not load the application's agent.php config. Existing
+        // serial-contract fixtures explicitly exercise the rollback path; wave
+        // integration tests enable the new coordinator themselves.
+        $app['config']->set('agent.waves.enabled', false);
         // Manual registration (instead of getPackageProviders) avoids
         // ProviderRepository's is_writable() check that fails on Windows
         // for paths containing spaces.

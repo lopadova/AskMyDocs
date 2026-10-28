@@ -33,8 +33,10 @@ final readonly class AgentRunControl
             return $locked;
         });
 
-        $pendingTool = data_get($updated->result_json, 'pending_api_tool.run_id');
-        if (is_string($pendingTool)) {
+        $pendingTools = array_keys((array) data_get($updated->result_json, 'pending_api_tools', []));
+        $legacyPending = data_get($updated->result_json, 'pending_api_tool.run_id');
+        if (is_string($legacyPending)) { $pendingTools[] = $legacyPending; }
+        foreach (array_unique($pendingTools) as $pendingTool) {
             $toolRun = \App\ApiTools\Models\ApiToolRun::query()->forTenant($updated->tenant_id)->find($pendingTool);
             if ($toolRun !== null) { app(\App\ApiTools\ToolRuntime::class)->cancel($toolRun); }
         }

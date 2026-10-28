@@ -38,15 +38,40 @@ final readonly class ToolContinuation
             }
             if (data_get($tool->continuation, 'type') === 'agent' && $tool->resumed_at !== null) { return $tool; }
             $tool->forceFill(['resumed_at' => null, 'continuation' => array_merge((array) $tool->continuation, ['type' => 'agent', 'agent_run_id' => $owner->id], $payload)])->save();
+            $checkpoint = (array) $owner->result_json;
+            if (isset($payload['wave_id'])) {
+                $checkpoint['pending_api_tools'][$tool->id] = true;
+            } else {
+                $checkpoint['pending_api_tool'] = ['run_id' => $tool->id];
+            }
             $owner->forceFill([
                 'status' => AgentRun::STATUS_WAITING_API_TOOL,
-                'result_json' => array_merge((array) $owner->result_json, ['pending_api_tool' => ['run_id' => $tool->id]]),
+                'result_json' => $checkpoint,
             ])->save();
             return $tool;
         });
         $agent->refresh();
         app(AgentEventPublisher::class)->publish($agent, 'run.tool_pending', data: ['tool_run_id' => $toolRunId]);
         self::dispatchIfReady($tool);
+    }
+
+    /** Close registration only after every sibling handoff is durable. */
+    public function finishAgentWave(AgentRun $agent): void
+    {
+        $ready = DB::transaction(function () use ($agent): ?AgentRun {
+            $owner = AgentRun::query()->forTenant($agent->tenant_id)->whereKey($agent->id)->lockForUpdate()->firstOrFail();
+            $checkpoint = (array) $owner->result_json;
+            if ($owner->isTerminal() || ! ($checkpoint['wave_dispatching'] ?? false)) { return null; }
+            $checkpoint['wave_dispatching'] = false;
+            $waiting = (array) ($checkpoint['pending_api_tools'] ?? []) !== [];
+            $finishedWaves = $waiting ? [] : $this->completeWaves($checkpoint);
+            $owner->forceFill(['status' => $waiting ? AgentRun::STATUS_WAITING_API_TOOL : AgentRun::STATUS_QUEUED,
+                'result_json' => $checkpoint])->save();
+            foreach ($finishedWaves as $wave) { app(AgentEventPublisher::class)->publish($owner, 'wave.completed', data: $wave); }
+            return $waiting ? null : $owner;
+        });
+        $agent->refresh();
+        if ($ready !== null) { DB::afterCommit(fn () => app(AgentRunDispatcher::class)->enqueue($ready)); }
     }
 
     public function attachChat(string $toolRunId, User $user, array $payload): void
@@ -88,7 +113,8 @@ final readonly class ToolContinuation
     /** The run row is the outbox; a sweeper can re-dispatch any unconsumed terminal handoff. */
     public static function dispatchIfReady(ApiToolRun $run): void
     {
-        if ($run->terminal() && $run->resumed_at === null && in_array(data_get($run->continuation, 'type'), ['agent', 'chat'], true)) {
+        if ($run->terminal() && $run->resumed_at === null && ! data_get($run->continuation, 'defer_dispatch', false)
+            && in_array(data_get($run->continuation, 'type'), ['agent', 'chat'], true)) {
             ResumeApiTool::dispatch($run->id, $run->tenant_id)->afterCommit();
         }
     }
@@ -101,6 +127,16 @@ final readonly class ToolContinuation
             ->whereNotNull('continuation')->chunkById(100, function ($runs) use (&$dispatched, $limit): bool {
                 foreach ($runs as $run) {
                     if (in_array(data_get($run->continuation, 'type'), ['agent', 'chat'], true)) {
+                        if (data_get($run->continuation, 'defer_dispatch', false)) {
+                            $agent = AgentRun::query()->forTenant($run->tenant_id)->find(data_get($run->continuation, 'agent_run_id'));
+                            if ($agent === null || $agent->isTerminal() || ! data_get($agent->result_json, 'wave_dispatching', false)
+                                || data_get($agent->result_json, 'pending_api_tools.'.$run->id) !== true) { continue; }
+                            // The handler's existing parent lock prevents this recovery
+                            // delivery from interrupting an actively collecting wave.
+                            app(AgentRunDispatcher::class)->enqueue($agent);
+                            if (++$dispatched >= max(1, $limit)) { return false; }
+                            continue;
+                        }
                         self::dispatchIfReady($run);
                         if (++$dispatched >= max(1, $limit)) { return false; }
                     }
@@ -113,7 +149,7 @@ final readonly class ToolContinuation
     public function resume(ApiToolRun $tool): void
     {
         $tool->refresh();
-        if (! $tool->terminal() || $tool->resumed_at !== null) { return; }
+        if (! $tool->terminal() || $tool->resumed_at !== null || data_get($tool->continuation, 'defer_dispatch', false)) { return; }
         if (data_get($tool->continuation, 'type') === 'agent') { $this->resumeAgent($tool); }
         elseif (data_get($tool->continuation, 'type') === 'chat') { $this->resumeChat($tool); }
     }
@@ -122,7 +158,7 @@ final readonly class ToolContinuation
     {
         $agent = DB::transaction(function () use ($tool): ?AgentRun {
             $locked = ApiToolRun::query()->forTenant($tool->tenant_id)->whereKey($tool->id)->lockForUpdate()->firstOrFail();
-            if ($locked->resumed_at !== null) { return null; }
+            if ($locked->resumed_at !== null || data_get($locked->continuation, 'defer_dispatch', false)) { return null; }
             $handoff = (array) $locked->continuation;
             $agent = AgentRun::query()->forTenant($tool->tenant_id)->whereKey($handoff['agent_run_id'])->lockForUpdate()->first();
             if ($agent === null || $agent->isTerminal()) {
@@ -131,9 +167,20 @@ final readonly class ToolContinuation
             }
             AgentExecutionContext::fromArray($locked->context)->assertMatches($agent);
             $checkpoint = (array) $agent->result_json;
+            $wave = isset($handoff['wave_id']);
             // A queue dispatch can fail after the merge committed. Re-drive only the dispatch.
-            if (data_get($checkpoint, 'api_tool_resumptions.'.$tool->id) === true) { return $agent; }
-            if ($agent->status !== AgentRun::STATUS_WAITING_API_TOOL || data_get($checkpoint, 'pending_api_tool.run_id') !== $tool->id) {
+            if (data_get($checkpoint, 'api_tool_resumptions.'.$tool->id) === true) {
+                if (! $wave || ($agent->status === AgentRun::STATUS_QUEUED && ! ($checkpoint['wave_dispatching'] ?? false)
+                    && (array) ($checkpoint['pending_api_tools'] ?? []) === [])) { return $agent; }
+                $locked->forceFill(['resumed_at' => now()])->save();
+                return null;
+            }
+            $pending = $wave
+                ? (($checkpoint['pending_api_tools'][$tool->id] ?? false) === true
+                    && ($agent->status === AgentRun::STATUS_WAITING_API_TOOL
+                        || ($agent->status === AgentRun::STATUS_RUNNING && ($checkpoint['wave_dispatching'] ?? false))))
+                : ($agent->status === AgentRun::STATUS_WAITING_API_TOOL && data_get($checkpoint, 'pending_api_tool.run_id') === $tool->id);
+            if (! $pending) {
                 throw new \DomainException('api_tool_continuation_not_pending');
             }
             $definition = $handoff['tool'];
@@ -148,10 +195,11 @@ final readonly class ToolContinuation
             $evidence = new AgentEvidenceEnvelope($masker);
             $evidence->import((array) ($checkpoint['evidence'] ?? []));
             $execution = $agent->toolExecutions()->whereKey($handoff['execution_id'])->firstOrFail();
+            $executionMeta = (array) $execution->result_meta_json;
             $success = ! isset($body['error']);
             $execution->forceFill([
                 'status' => $success ? 'completed' : 'failed',
-                'result_meta_json' => ['result' => $safe, 'complete' => $locked->status === 'completed', 'api_tool_run_id' => $locked->id],
+                'result_meta_json' => [...$executionMeta, 'result' => $safe, 'complete' => $locked->status === 'completed', 'api_tool_run_id' => $locked->id],
                 'error_code' => $success ? null : ($locked->error_code ?? 'api_tool_failed'),
                 'physical_request_count' => $locked->physical_requests,
                 'latency_ms' => (int) min(2147483647, max(0, now()->getTimestamp() - $locked->created_at->getTimestamp()) * 1000),
@@ -162,24 +210,47 @@ final readonly class ToolContinuation
             $completed = (array) ($checkpoint['completed_actions'] ?? []);
             $completed[] = [
                 'id' => $handoff['action_id'], 'execution_id' => $execution->id, 'tool' => $toolDefinition->name,
-                'purpose' => $handoff['purpose'], 'status' => $success ? 'completed' : 'failed', 'result' => $safe,
+                'kind' => $toolDefinition->kind, 'purpose' => $handoff['purpose'], 'status' => $success ? 'completed' : 'failed', 'result' => $safe,
+                ...isset($executionMeta['arguments_hash']) ? ['arguments_hash' => $executionMeta['arguments_hash']] : [],
             ];
             $results = (array) ($checkpoint['action_results'] ?? []);
             $results[$handoff['action_id']] = $safe;
-            unset($checkpoint['pending_api_tool']);
+            if ($wave) { unset($checkpoint['pending_api_tools'][$tool->id]); }
+            else { unset($checkpoint['pending_api_tool']); }
             $checkpoint['api_tool_resumptions'][$tool->id] = true;
-            $agent->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => array_merge($checkpoint, [
+            $ready = ! $wave || (! ($checkpoint['wave_dispatching'] ?? false)
+                && (array) ($checkpoint['pending_api_tools'] ?? []) === []);
+            $finishedWaves = $wave && $ready ? $this->completeWaves($checkpoint, $handoff['wave_id']) : [];
+            $agent->forceFill(['status' => $ready ? AgentRun::STATUS_QUEUED : AgentRun::STATUS_WAITING_API_TOOL, 'result_json' => array_merge($checkpoint, [
                 'evidence' => $evidence->jsonSerialize(), 'completed_actions' => $completed, 'action_results' => $results,
             ])])->save();
             (new AgentBudgetTracker($agent))->recordResult((int) $locked->physical_requests, strlen(json_encode($safe, JSON_THROW_ON_ERROR)), $success);
             app(AgentEventPublisher::class)->publish($agent, $success ? 'tool.completed' : 'tool.failed', $success ? 'tool.completed' : 'tool.failed',
                 ['tool' => $toolDefinition->displayName], ['tool' => $toolDefinition->name, 'action_id' => $handoff['action_id'], 'tool_run_id' => $tool->id]);
+            foreach ($finishedWaves as $finishedWave) { app(AgentEventPublisher::class)->publish($agent, 'wave.completed', data: $finishedWave); }
+            if (! $ready) {
+                $locked->forceFill(['resumed_at' => now()])->save();
+                return null;
+            }
             return $agent;
         });
         if ($agent !== null) {
             app(AgentRunDispatcher::class)->enqueue($agent);
             $tool->forceFill(['resumed_at' => now()])->save();
         }
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function completeWaves(array &$checkpoint, ?string $waveId = null): array
+    {
+        $completed = [];
+        foreach ((array) ($checkpoint['waves'] ?? []) as $id => $wave) {
+            if (($waveId !== null && $id !== $waveId) || ! is_array($wave)
+                || ! in_array($wave['status'] ?? null, ['running', 'waiting'], true)) { continue; }
+            $checkpoint['waves'][$id]['status'] = 'completed';
+            $completed[] = ['id' => $id, ...$checkpoint['waves'][$id]];
+        }
+        return $completed;
     }
 
     private function resumeChat(ApiToolRun $tool): void

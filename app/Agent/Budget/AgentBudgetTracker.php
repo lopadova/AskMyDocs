@@ -28,7 +28,7 @@ final class AgentBudgetTracker
     /** @var array<string,mixed> */
     private array $state;
 
-    public function __construct(private readonly AgentRun $run)
+    public function __construct(private readonly AgentRun $run, private readonly bool $persist = true)
     {
         $this->state = array_merge([
             'iterations' => 0,
@@ -264,6 +264,9 @@ final class AgentBudgetTracker
 
     private function persist(): void
     {
-        $this->run->forceFill(['counters_json' => $this->state])->save();
+        $this->run->forceFill(['counters_json' => $this->state]);
+        if ($this->persist) {
+            $this->run->save();
+        }
     }
 }

@@ -142,6 +142,87 @@ final class ApiToolContinuationTest extends TestCase
         $this->assertNotNull($tool->fresh()->resumed_at);
     }
 
+    public function test_real_wave_loop_starts_both_composed_tools_and_joins_their_durable_continuations(): void
+    {
+        config(['agent.waves.enabled' => true, 'api-tools.enabled' => true, 'reasoning.enabled' => true]);
+        [$user, $conversation, $context] = $this->chatOwner();
+        $context->activate();
+        $question = 'Calculate both sales totals';
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('en', $question, [], [], false, requiresResearch: true);
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['user_id' => $user->id, 'conversation_id' => $conversation->id,
+            'status' => 'running', 'input_json' => ['question' => $question], 'started_at' => now(),
+            'result_json' => ['question_understanding' => $understanding->toArray()]]));
+        $actions = [];
+        foreach (['first' => 42, 'second' => 24] as $id => $total) {
+            $preset = app(\App\ApiTools\ToolLifecycle::class)->saveDraft(null, ['name' => 'Sales '.$id, 'definition' => [
+                'version' => 1, 'input_schema' => ['type' => 'object'],
+                'steps' => [['id' => 'total', 'operation' => 'compose', 'bindings' => ['value' => ['source' => 'constant', 'value' => $total]]]],
+                'output' => ['total' => ['source' => 'step', 'step' => 'total', 'path' => 'value']],
+            ]], $context);
+            $preset->update(['status' => 'active', 'publication_intent' => true]);
+            $actions[] = ['id' => $id, 'tool' => 'api_tool_'.$preset->id, 'arguments' => [], 'depends_on' => [], 'purpose' => 'Calculate '.$id.' total'];
+        }
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse(json_encode([
+            'decision' => 'tools', 'actions' => $actions,
+        ], JSON_THROW_ON_ERROR), 'openai', 'test-model'));
+        $this->app->instance(AiManager::class, $ai);
+        $retrieval = Mockery::mock(\App\Services\Kb\Chat\ChatRetrievalService::class);
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(\App\Services\Kb\Chat\ChatRetrievalService::class, $retrieval);
+
+        // Use the actual executor and task closures; test mode executes each worker
+        // inline while retaining the same registration and continuation contracts.
+        $outcome = app(\App\Agent\AgentLoop::class)->run($agent, $context);
+        $fresh = $agent->fresh();
+        $this->assertSame('waiting_api_tool', $outcome->decision, (string) $outcome->stopReason);
+        $this->assertSame('waiting_api_tool', $fresh->status);
+        $this->assertCount(2, $fresh->result_json['pending_api_tools']);
+        $this->assertFalse($fresh->result_json['wave_dispatching']);
+        $this->assertSame([], $fresh->result_json['completed_actions']);
+        $this->assertSame(2, $fresh->counters_json['logical_calls']);
+        $this->assertSame(0, $fresh->counters_json['physical_calls']);
+        $this->assertSame(['running', 'running'], $agent->toolExecutions()->orderBy('logical_index')->pluck('status')->all());
+        $runs = ApiToolRun::query()->get()->keyBy(fn ($run) => $run->continuation['action_id']);
+        $this->assertCount(2, $runs);
+        foreach ($runs as $toolRun) {
+            $this->assertNotNull($toolRun->flow_run_id);
+            $this->assertFalse($toolRun->continuation['defer_dispatch']);
+            $this->assertSame($agent->id, $toolRun->continuation['agent_run_id']);
+        }
+        $waveId = $runs['first']->continuation['wave_id'];
+        $this->assertSame('waiting', $fresh->result_json['waves'][$waveId]['status']);
+        Queue::assertPushed(CoordinatorJob::class, 2);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+
+        $runs['first']->update(['status' => 'completed', 'outputs' => ['total' => 42], 'physical_requests' => 1]);
+        (new ResumeApiTool($runs['first']->id, 'acme'))->handle(app(ToolContinuation::class));
+        $this->assertSame('waiting_api_tool', $agent->fresh()->status);
+        $this->assertCount(1, $agent->fresh()->result_json['pending_api_tools']);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+
+        $runs['second']->update(['status' => 'failed', 'error_code' => 'upstream_failed', 'physical_requests' => 1]);
+        $job = new ResumeApiTool($runs['second']->id, 'acme');
+        $job->handle(app(ToolContinuation::class));
+        $job->handle(app(ToolContinuation::class));
+        $fresh = $agent->fresh();
+        $this->assertSame('queued', $fresh->status);
+        $this->assertSame([], $fresh->result_json['pending_api_tools']);
+        $this->assertCount(2, $fresh->result_json['completed_actions']);
+        $this->assertSame(['total' => 42], $fresh->result_json['action_results']['first']);
+        $this->assertSame(['error' => 'upstream_failed'], $fresh->result_json['action_results']['second']);
+        $this->assertSame(2, $fresh->counters_json['logical_calls']);
+        $this->assertSame(2, $fresh->counters_json['physical_calls']);
+        $this->assertSame('completed', $fresh->result_json['waves'][$waveId]['status']);
+        $this->assertSame(1, $agent->events()->where('type', 'wave.completed')->count());
+        $execution = $agent->toolExecutions()->orderBy('logical_index')->first();
+        $this->assertSame('first', $execution->result_meta_json['action_id']);
+        $this->assertSame($waveId, $execution->result_meta_json['wave_id']);
+        $this->assertGreaterThan(0, $execution->result_meta_json['physical_quota']);
+        $this->assertSame($execution->result_meta_json['arguments_hash'], $fresh->result_json['completed_actions'][0]['arguments_hash']);
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+    }
+
     public function test_a_terminal_run_swept_before_attachment_still_resumes_and_keeps_lifecycle_guard(): void
     {
         $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
@@ -169,6 +250,214 @@ final class ApiToolContinuationTest extends TestCase
         $this->assertSame([], $agent->fresh()->result_json);
         Queue::assertNotPushed(ExecuteAgentRunJob::class);
         $this->assertNotNull($tool->fresh()->resumed_at);
+    }
+
+    public function test_wave_waits_for_all_siblings_even_when_first_completes_during_registration(): void
+    {
+        $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['status' => 'running',
+            'result_json' => ['wave_dispatching' => true, 'completed_actions' => [], 'action_results' => []]]));
+        $continuations = app(ToolContinuation::class);
+        $first = $this->attachWaveTool($agent, $context, 'first');
+        $first->update(['status' => 'completed', 'outputs' => ['total' => 42], 'physical_requests' => 2]);
+        $job = new ResumeApiTool($first->id, 'acme');
+        $job->handle($continuations);
+        $job->handle($continuations);
+        $this->assertSame('waiting_api_tool', $agent->fresh()->status);
+        $this->assertNotNull($first->fresh()->resumed_at);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+
+        $second = $this->attachWaveTool($agent, $context, 'second');
+        $continuations->finishAgentWave($agent);
+        $this->assertSame([$second->id => true], $agent->fresh()->result_json['pending_api_tools']);
+        $this->assertFalse($agent->fresh()->result_json['wave_dispatching']);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+
+        $second->update(['status' => 'failed', 'error_code' => 'upstream_failed', 'physical_requests' => 1]);
+        $job = new ResumeApiTool($second->id, 'acme');
+        $job->handle($continuations);
+        $job->handle($continuations);
+        $continuations->finishAgentWave($agent);
+        $fresh = $agent->fresh();
+        $this->assertSame('queued', $fresh->status);
+        $this->assertSame([], $fresh->result_json['pending_api_tools']);
+        $this->assertSame(['total' => 42], $fresh->result_json['action_results']['first']);
+        $this->assertSame(['error' => 'upstream_failed'], $fresh->result_json['action_results']['second']);
+        $this->assertCount(2, $fresh->result_json['completed_actions']);
+        $this->assertSame(3, $fresh->counters_json['physical_calls']);
+        $this->assertSame(['completed', 'failed'], $agent->toolExecutions()->orderBy('logical_index')->pluck('status')->all());
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+    }
+
+    public function test_wave_finishing_after_all_early_completions_queues_once(): void
+    {
+        $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['status' => 'running', 'result_json' => [
+            'wave_dispatching' => true, 'waves' => ['wave-1' => ['id' => 'wave-1', 'status' => 'waiting']],
+        ]]));
+        $continuations = app(ToolContinuation::class);
+        foreach (['first', 'second'] as $action) {
+            $tool = $this->attachWaveTool($agent, $context, $action);
+            $tool->update(['status' => 'completed', 'outputs' => ['total' => 42], 'physical_requests' => 1]);
+            (new ResumeApiTool($tool->id, 'acme'))->handle($continuations);
+        }
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+        $this->assertSame('waiting_api_tool', $agent->fresh()->status);
+        $continuations->finishAgentWave($agent);
+        $continuations->finishAgentWave($agent);
+        $this->assertSame('queued', $agent->fresh()->status);
+        $this->assertCount(2, $agent->fresh()->result_json['completed_actions']);
+        $this->assertSame('completed', $agent->fresh()->result_json['waves']['wave-1']['status']);
+        $this->assertSame(1, $agent->events()->where('type', 'wave.completed')->count());
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+    }
+
+    public function test_cancelling_wave_cancels_every_pending_tool(): void
+    {
+        $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['status' => 'running', 'result_json' => ['wave_dispatching' => true]]));
+        $first = $this->attachWaveTool($agent, $context, 'first');
+        $second = $this->attachWaveTool($agent, $context, 'second');
+        app(\App\Agent\AgentRunControl::class)->cancel($agent);
+        $this->assertSame('cancelled', $agent->fresh()->status);
+        $this->assertSame('cancelled', $first->fresh()->status);
+        $this->assertSame('cancelled', $second->fresh()->status);
+        app(ToolContinuation::class)->finishAgentWave($agent);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+    }
+
+    public function test_last_wave_completion_retries_failed_dispatch_without_merging_twice(): void
+    {
+        $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['status' => 'running', 'result_json' => ['wave_dispatching' => true]]));
+        $tool = $this->attachWaveTool($agent, $context, 'total');
+        $continuations = app(ToolContinuation::class);
+        $continuations->finishAgentWave($agent);
+        $tool->update(['status' => 'completed', 'outputs' => ['total' => 42], 'physical_requests' => 2]);
+        $dispatcher = Mockery::mock(new \App\Agent\AgentRunDispatcher);
+        $dispatcher->shouldReceive('enqueue')->once()->ordered()->andThrow(new \RuntimeException('queue unavailable'));
+        $dispatcher->shouldReceive('enqueue')->once()->ordered()->andReturnNull();
+        $this->app->instance(\App\Agent\AgentRunDispatcher::class, $dispatcher);
+        $job = new ResumeApiTool($tool->id, 'acme');
+        try {
+            $job->handle($continuations);
+            $this->fail('Expected dispatch failure.');
+        } catch (\RuntimeException $exception) { $this->assertSame('queue unavailable', $exception->getMessage()); }
+        $this->assertNull($tool->fresh()->resumed_at);
+        $this->assertSame('queued', $agent->fresh()->status);
+        $job->handle($continuations);
+        $job->handle($continuations);
+        $this->assertNotNull($tool->fresh()->resumed_at);
+        $this->assertSame(2, $agent->fresh()->counters_json['physical_calls']);
+        $this->assertCount(1, $agent->fresh()->result_json['completed_actions']);
+        $this->assertCount(1, $agent->fresh()->result_json['evidence']['api_tools']);
+    }
+
+    public function test_deferred_wave_registration_cannot_resume_until_parent_activates_it(): void
+    {
+        $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['status' => 'running', 'result_json' => ['wave_dispatching' => true]]));
+        $tool = $this->attachWaveTool($agent, $context, 'total', defer: true);
+        $tool->update(['status' => 'completed', 'outputs' => ['total' => 42], 'physical_requests' => 2]);
+        $continuations = app(ToolContinuation::class);
+        ToolContinuation::dispatchIfReady($tool->fresh());
+        (new ResumeApiTool($tool->id, 'acme'))->handle($continuations);
+        Queue::assertNotPushed(ResumeApiTool::class);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+        $this->assertNull($tool->fresh()->resumed_at);
+        $this->assertArrayNotHasKey('completed_actions', $agent->fresh()->result_json);
+
+        DB::transaction(function () use ($tool, $agent, $continuations): void {
+            $handoff = $tool->fresh()->continuation;
+            $continuations->attachAgent($tool->id, $agent, [...$handoff, 'defer_dispatch' => false]);
+            $continuations->finishAgentWave($agent);
+        });
+        Queue::assertPushed(ResumeApiTool::class, 1);
+        (new ResumeApiTool($tool->id, 'acme'))->handle($continuations);
+        $this->assertSame('queued', $agent->fresh()->status);
+        $this->assertSame(['total' => 42], $agent->fresh()->result_json['action_results']['total']);
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+    }
+
+    public function test_runtime_registers_wave_owner_before_graph_dispatch_and_cancellation_stops_launch(): void
+    {
+        config(['api-tools.enabled' => true]);
+        [$user, $conversation, $context] = $this->chatOwner();
+        $context->activate();
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['user_id' => $user->id, 'status' => 'running',
+            'result_json' => ['wave_dispatching' => true]]));
+        $execution = $agent->toolExecutions()->create(['logical_index' => 1, 'tool_name' => 'total', 'tool_kind' => 'api', 'status' => 'running']);
+        $preset = app(\App\ApiTools\ToolLifecycle::class)->saveDraft(null, ['name' => 'Deferred sum', 'definition' => [
+            'version' => 1, 'input_schema' => ['type' => 'object'],
+            'steps' => [['id' => 'sum', 'operation' => 'compose', 'bindings' => ['total' => ['source' => 'constant', 'value' => 42]]]],
+            'output' => ['total' => ['source' => 'step', 'step' => 'sum', 'path' => 'total']],
+        ]], $context);
+        $preset->update(['status' => 'active', 'publication_intent' => true]);
+        \App\Models\AgentRunEvent::created(function ($event) use ($agent): void {
+            if ($event->type !== 'run.tool_pending') { return; }
+            $pending = ApiToolRun::query()->sole();
+            $this->assertTrue($agent->fresh()->result_json['pending_api_tools'][$pending->id]);
+            $this->assertTrue($pending->continuation['defer_dispatch']);
+            $this->assertNull($pending->flow_run_id);
+            app(\App\Agent\AgentRunControl::class)->cancel($agent);
+        });
+        $tool = app(\App\ApiTools\ToolRuntime::class)->start($preset, [], $context, continuation: ['agent_wave_handoff' => [
+            'agent_run_id' => $agent->id, 'wave_id' => 'wave-1', 'action_id' => 'total', 'execution_id' => $execution->id,
+            'purpose' => 'Calculate total', 'arguments' => [], 'tool' => ['name' => 'total', 'display_name' => 'Total', 'kind' => 'api'],
+        ]]);
+        $this->assertSame('cancelled', $agent->fresh()->status);
+        $this->assertSame('cancelled', $tool->fresh()->status);
+        $this->assertNull($tool->flow_run_id);
+        Queue::assertNotPushed(CoordinatorJob::class);
+    }
+
+    public function test_runtime_rolls_back_a_wave_start_if_parent_was_already_cancelled(): void
+    {
+        config(['api-tools.enabled' => true]);
+        [$user, $conversation, $context] = $this->chatOwner();
+        $context->activate();
+        $preset = $this->replayPreset($context);
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['user_id' => $user->id, 'status' => 'cancelled',
+            'result_json' => ['wave_dispatching' => true]]));
+        $execution = $agent->toolExecutions()->create(['logical_index' => 1, 'tool_name' => 'total', 'tool_kind' => 'api', 'status' => 'running']);
+        try {
+            app(\App\ApiTools\ToolRuntime::class)->start($preset, [], $context, continuation: ['agent_wave_handoff' => [
+                'agent_run_id' => $agent->id, 'wave_id' => 'wave-1', 'action_id' => 'total', 'execution_id' => $execution->id,
+                'purpose' => 'Calculate total', 'arguments' => [], 'tool' => ['name' => 'total', 'display_name' => 'Total', 'kind' => 'api'],
+            ]]);
+            $this->fail('Expected cancelled owner rejection.');
+        } catch (\DomainException $exception) { $this->assertSame('api_tool_continuation_scope_mismatch', $exception->getMessage()); }
+        $this->assertDatabaseCount('api_tool_runs', 0);
+        $this->assertDatabaseCount('api_tool_steps', 0);
+        $this->assertDatabaseCount('flow_runs', 0);
+        Queue::assertNotPushed(CoordinatorJob::class);
+    }
+
+    public function test_recovery_of_deferred_terminal_tool_wakes_parent_without_consuming_observation(): void
+    {
+        $context = new AgentExecutionContext((string) Str::uuid(), 'acme', 'sales', 'widget', 'anonymous_widget', null, 'en', 'UTC');
+        $agent = AgentRun::create(array_merge($context->jsonSerialize(), ['status' => 'running', 'result_json' => ['wave_dispatching' => true]]));
+        $tool = $this->attachWaveTool($agent, $context, 'total', defer: true);
+        $tool->update(['status' => 'completed', 'outputs' => ['total' => 42], 'physical_requests' => 2]);
+        $this->assertSame(1, app(ToolContinuation::class)->recoverReady('acme'));
+        Queue::assertPushed(ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $agent->id);
+        Queue::assertNotPushed(ResumeApiTool::class);
+        $this->assertNull($tool->fresh()->resumed_at);
+        $this->assertArrayNotHasKey('completed_actions', $agent->fresh()->result_json);
+        app(\App\Agent\AgentRunControl::class)->cancel($agent);
+        $this->assertSame(0, app(ToolContinuation::class)->recoverReady('acme'));
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+    }
+
+    private function attachWaveTool(AgentRun $agent, AgentExecutionContext $context, string $action, bool $defer = false): ApiToolRun
+    {
+        $execution = $agent->toolExecutions()->create(['logical_index' => (int) $agent->toolExecutions()->max('logical_index') + 1,
+            'tool_name' => $action, 'tool_kind' => 'api', 'status' => 'running', 'started_at' => now()]);
+        $tool = $this->fixtureRun($context);
+        app(ToolContinuation::class)->attachAgent($tool->id, $agent, ['wave_id' => 'wave-1', 'action_id' => $action, 'defer_dispatch' => $defer,
+            'purpose' => 'Calculate total', 'execution_id' => $execution->id, 'arguments' => [],
+            'tool' => ['name' => $action, 'display_name' => $action, 'kind' => 'api']]);
+        return $tool;
     }
 
     public function test_direct_chat_automatically_finishes_original_tool_calls_without_reinvoking_pending_tool(): void

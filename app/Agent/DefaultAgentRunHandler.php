@@ -62,8 +62,8 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
             AgentRun::STATUS_AWAITING_MCP_INPUT,
             AgentRun::STATUS_WAITING_MCP_TASK,
-            AgentRun::STATUS_WAITING_API_TOOL,
-        ], true)) {
+        ], true) || ($run->status === AgentRun::STATUS_WAITING_API_TOOL
+            && ! data_get($run->result_json, 'wave_dispatching', false))) {
             return;
         }
 

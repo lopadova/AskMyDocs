@@ -73,6 +73,14 @@ final class ToolRuntime
             foreach ([...array_column($definition['steps'],'id'),'tool_output'] as $stepId) {
                 ApiToolStep::query()->create(['api_tool_run_id'=>$id,'tenant_id'=>$context->tenantId,'step_id'=>$stepId]);
             }
+            if (is_array($handoff = $continuation['agent_wave_handoff'] ?? null)) {
+                $agent = \App\Models\AgentRun::query()->forTenant($context->tenantId)->findOrFail($handoff['agent_run_id']);
+                // Ownership and cancellation visibility are durable before any graph
+                // work starts. A cancelled owner rejects this transaction entirely.
+                app(ToolContinuation::class)->attachAgent($run->id, $agent, [...$handoff, 'defer_dispatch' => true]);
+                $run->refresh();
+                if ($run->terminal()) { return $run; }
+            }
             $graph = app(ToolGraphCompiler::class)->compile($definition,$id);
             // QueueGraphCoordinator is the same engine used by FlowEngine::dispatchGraph.
             // Calling its scoped entry point avoids enabling persistence for unrelated host flows.

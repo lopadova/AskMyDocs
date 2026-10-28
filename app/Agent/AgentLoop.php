@@ -120,6 +120,10 @@ final readonly class AgentLoop
                 });
             }
         }
+        if (config('agent.waves.enabled', true) && $understanding?->available && $understanding->needsResearch()
+            && ! $understanding->needsClarification) {
+            return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
+        }
         if (! $retrieved) {
             $this->control->ensureActive($run);
             if ($understanding === null || $understanding->needsResearch()) {
@@ -820,7 +824,7 @@ final readonly class AgentLoop
             $persisted = (array) $locked->result_json;
             $progressive = array_filter($persisted, static fn ($key) => is_string($key)
                 && preg_match('/\Aprogressive_decision_[a-f0-9]{64}\z/', $key) === 1, ARRAY_FILTER_USE_KEY);
-            $run->forceFill(['result_json' => array_merge($progressive, array_intersect_key($persisted, ['question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true, 'pending_api_tool' => true, 'api_tool_resumptions' => true, 'progressive_audit' => true]), [
+            $run->forceFill(['result_json' => array_merge($progressive, array_intersect_key($persisted, ['question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true, 'pending_api_tool' => true, 'pending_api_tools' => true, 'wave_dispatching' => true, 'waves' => true, 'api_tool_resumptions' => true, 'progressive_audit' => true]), [
                 'phase' => 'collection',
                 'retrieval_completed' => $retrieved,
                 'evidence' => $evidence->jsonSerialize(),
