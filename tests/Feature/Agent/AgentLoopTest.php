@@ -38,6 +38,28 @@ final class AgentLoopTest extends TestCase
         config()->set('kb.investigation.enabled', false);
     }
 
+    public function test_collected_sources_survive_when_another_planning_round_would_consume_answer_time(): void
+    {
+        $this->freezeTime();
+        $run = $this->makeRun();
+        $run->forceFill(['result_json' => ['retrieval_completed' => true, 'evidence' => ['documents' => [[
+            'document_id' => 11, 'title' => 'Reply', 'origin' => 'primary',
+            'evidence' => [['chunk_id' => 101, 'content' => 'The barcode was found.']],
+        ]]]]])->save();
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithHistory');
+        $this->app->instance(AiManager::class, $ai);
+        $this->travel(42)->seconds();
+
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('time_limit', $outcome->stopReason);
+        $this->assertSame('The barcode was found.', $outcome->evidence->documents()[0]['evidence'][0]['content']);
+        $this->assertSame(0, $run->toolExecutions()->count());
+        $this->travelBack();
+    }
+
     public static function invalidIdentifierCases(): array
     {
         return ['wrong namespace' => ['RETURN-42', false], 'invented but valid format' => ['ORDER-43', true]];

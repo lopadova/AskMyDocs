@@ -245,7 +245,10 @@ final readonly class AgentLoop
                 }
                 unset($action);
             }
-            $iteration = $budget->beginIteration();
+            $iteration = $budget->beginIteration(max(
+                (float) config('agent.planner.time_reserve_seconds', 30),
+                (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000,
+            ));
             if (! $iteration->allowed()) {
                 return $this->outcome('partial', $evidence, $completed, $iteration->reason);
             }
@@ -259,6 +262,7 @@ final readonly class AgentLoop
                 'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
                 'wait_reason' => 'provider_response',
             ]);
+            $planningStarted = microtime(true);
             try {
                 $plan = $this->planner->decide(
                     $run,
@@ -274,6 +278,7 @@ final readonly class AgentLoop
                         'question_understanding' => data_get($run->result_json, 'question_understanding')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 );
                 $this->diagnostics->end($run, $planningSpan);
+                $budget->recordPlanningDuration((int) round((microtime(true) - $planningStarted) * 1000));
             } catch (Throwable $exception) {
                 // Initial KB reads are evidence too. A malformed plan must never
                 // dispatch actions, but it need not discard already read sources.

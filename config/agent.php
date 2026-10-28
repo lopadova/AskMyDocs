@@ -13,11 +13,14 @@ return [
     'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),
     'planner' => [
         'mode' => env('AGENT_PLANNER_MODE', 'classic'),
+        // Avoid starting another planning round without enough collection time.
+        'time_reserve_seconds' => (int) env('AGENT_PLANNER_TIME_RESERVE_SECONDS', 30),
         'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 8),
         'router_catalog_limit' => (int) env('AGENT_ROUTER_CATALOG_LIMIT', 40),
         'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
     ],
     'synthesis' => [
+        'time_reserve_seconds' => (int) env('AGENT_SYNTHESIS_TIME_RESERVE_SECONDS', 60),
         // Provider-native model ids; null inherits the selected chat model.
         'model' => env('AGENT_ANSWER_MODEL'),
         'repair_model' => env('AGENT_ANSWER_REPAIR_MODEL'),

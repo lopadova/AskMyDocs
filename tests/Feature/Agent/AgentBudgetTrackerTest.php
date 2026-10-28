@@ -14,6 +14,45 @@ final class AgentBudgetTrackerTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_elapsed_time_stops_both_planning_and_tools(): void
+    {
+        $this->freezeTime();
+        $run = $this->makeRun();
+        $this->travel(61)->seconds();
+        $tracker = new AgentBudgetTracker($run);
+
+        $this->assertSame('time_limit', $tracker->beginIteration()->reason);
+        $this->assertSame('time_limit', $tracker->reserve($this->tool(), [])->reason);
+        $this->assertSame(0, $run->fresh()->counters_json['iterations'] ?? 0);
+        $this->travelBack();
+    }
+
+    public function test_deep_bulk_collection_still_leaves_time_for_synthesis_before_worker_timeout(): void
+    {
+        config(['agent.job_timeout_seconds' => 120, 'agent.synthesis.time_reserve_seconds' => 60,
+            'agent.depth.multipliers' => [5 => 3.0]]);
+        $this->freezeTime();
+        $run = $this->makeRun(['physical_calls' => 2], depth: 5);
+        $this->travel(61)->seconds();
+        $tracker = new AgentBudgetTracker($run);
+
+        $this->assertSame(60, $tracker->snapshot()['time_limit_seconds']);
+        $this->assertSame('time_limit', $tracker->beginIteration()->reason);
+        $this->travelBack();
+    }
+
+    public function test_a_planning_round_is_not_started_when_its_expected_duration_exhausts_collection_time(): void
+    {
+        $this->freezeTime();
+        $run = $this->makeRun();
+        $this->travel(42)->seconds();
+        $tracker = new AgentBudgetTracker($run);
+
+        $this->assertSame('time_limit', $tracker->beginIteration(26)->reason);
+        $this->assertTrue($tracker->reserve($this->tool(), [])->allowed());
+        $this->travelBack();
+    }
+
     public function test_safe_read_only_calls_extend_automatically_after_the_soft_limit(): void
     {
         $run = $this->makeRun(['logical_calls' => 12]);

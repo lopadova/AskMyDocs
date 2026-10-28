@@ -191,6 +191,15 @@ DB_QUEUE_RETRY_AFTER=4200
 Il timeout del job deve essere inferiore al `retry_after` della connessione. La
 configurazione storica locale aveva retry dopo 90 secondi: troppo presto per un turno
 con più indagini. Senza `AGENT_JOB_TIMEOUT` rimane il timeout storico di 120 secondi.
+La raccolta delle evidenze rispetta anche il tempo del worker: il suo limite è
+il minore tra il budget di ricerca (scalato per profondità) e
+`AGENT_JOB_TIMEOUT - AGENT_SYNTHESIS_TIME_RESERVE_SECONDS` (riserva predefinita:
+60 secondi). Prima di ogni piano si richiede inoltre tempo per il planner:
+il maggiore tra `AGENT_PLANNER_TIME_RESERVE_SECONDS` (30 secondi) e la durata
+dell'ultimo piano. Quando manca questo margine si passa alla sintesi parziale
+con le fonti già raccolte. La riserva non è un timeout delle singole chiamate
+AI: una chiamata più lenta del previsto può comunque consumarla.
+
 Il timeout per processo di ricerca è distinto: 90 secondi per ramo, con al massimo
 quattro processi contemporanei. Cambiare concorrenza o numero di task richiede di
 ricontrollare il budget complessivo. I lock impediscono a una riconsegna concorrente

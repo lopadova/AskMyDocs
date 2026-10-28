@@ -42,12 +42,12 @@ final class AgentBudgetTracker
         ], is_array($run->counters_json) ? $run->counters_json : []);
     }
 
-    public function beginIteration(): AgentBudgetDecision
+    public function beginIteration(float $expectedPlanningSeconds = 0): AgentBudgetDecision
     {
         if ((int) $this->state['iterations'] >= $this->limit('iterations', 8)) {
             return AgentBudgetDecision::stop('iteration_limit');
         }
-        if ($this->elapsedSeconds() >= $this->timeLimit()) {
+        if ($this->elapsedSeconds() + max(0, $expectedPlanningSeconds) >= $this->timeLimit()) {
             return AgentBudgetDecision::stop('time_limit');
         }
 
@@ -148,6 +148,12 @@ final class AgentBudgetTracker
         $this->persist();
     }
 
+    public function recordPlanningDuration(int $milliseconds): void
+    {
+        $this->state['last_planning_ms'] = max(0, $milliseconds);
+        $this->persist();
+    }
+
     /** @return array<string,mixed> */
     public function snapshot(): array
     {
@@ -173,16 +179,24 @@ final class AgentBudgetTracker
 
     private function timeLimit(): int
     {
-        return (int) $this->state['physical_calls'] > 1
+        $collectionLimit = (int) $this->state['physical_calls'] > 1
             ? $this->limit('bulk_time_seconds', 90)
             : $this->limit('interactive_time_seconds', 60);
+
+        // Depth may expand collection, but cannot expand the queue worker's
+        // hard timeout. Leave room for drafting, validation and presentation.
+        $workerLimit = max(30, (int) config('agent.job_timeout_seconds', 120));
+        $answerReserve = max(0, (int) config('agent.synthesis.time_reserve_seconds', 60));
+
+        return min($collectionLimit, max(1, $workerLimit - $answerReserve));
     }
 
     private function elapsedSeconds(): float
     {
         $start = $this->run->started_at ?? $this->run->created_at ?? now();
 
-        return max(0, now()->floatDiffInSeconds($start));
+        // Carbon 3 returns a signed difference: now -> past is negative.
+        return max(0, $start->floatDiffInSeconds(now()));
     }
 
     private function limit(string $key, int $default): int
