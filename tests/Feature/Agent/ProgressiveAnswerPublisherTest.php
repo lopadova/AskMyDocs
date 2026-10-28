@@ -136,6 +136,18 @@ final class ProgressiveAnswerPublisherTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_a_mismatched_worker_tenant_cannot_publish_foreign_sources_into_the_run(): void
+    {
+        [$run, $sources, $finding] = $this->fixture();
+        KnowledgeDocument::whereKey($finding['document_id'])->update(['tenant_id' => 'another-tenant']);
+        KnowledgeChunk::where('knowledge_document_id', $finding['document_id'])->update(['tenant_id' => 'another-tenant']);
+        app(TenantContext::class)->set('another-tenant');
+        Http::preventStrayRequests();
+        app(ProgressiveAnswerPublisher::class)->publish($run, $sources, [$finding]);
+        Http::assertNothingSent();
+        $this->assertSame(0, $run->events()->count());
+    }
+
     private function fixture(): array
     {
         config(['agent.progressive.enabled' => true, 'ai.providers.openrouter.key' => 'test']);

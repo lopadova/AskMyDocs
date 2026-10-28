@@ -16,11 +16,12 @@ use Illuminate\Support\Facades\DB;
 final readonly class ProgressiveAnswerPublisher
 {
     public function __construct(private KbSourceReader $reader, private AgentRetrievalFiltersFactory $filters,
-        private WidgetPiiMasker $masker, private AgentEventPublisher $events) {}
+        private WidgetPiiMasker $masker, private AgentEventPublisher $events, private \App\Support\TenantContext $tenant) {}
 
     public function publish(AgentRun $run, array $sources, array $findings): void
     {
-        if (! config('agent.progressive.enabled', true) || $findings === [] || $run->isTerminal()) {
+        if (! config('agent.progressive.enabled', true) || $findings === [] || $run->isTerminal()
+            || $this->tenant->current() !== $run->tenant_id) {
             return;
         }
         $owner = $this->owner($run);
