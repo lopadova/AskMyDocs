@@ -213,7 +213,8 @@ class KbInvestigationService
                 continue;
             }
 
-            $assessment = $roundObserve('kb.assessment', fn () => $this->assess($intent, $sources, $roundDiagnostics),
+            $assessment = $roundObserve('kb.assessment', fn () => $this->assess($intent, $sources, $roundDiagnostics,
+                $onResearchProgress !== null && config('agent.progressive.enabled', true)),
                 ['wait_reason' => 'provider_response']);
             if ($assessment === null) {
                 $stopReason = 'assessment_failed';
@@ -232,6 +233,12 @@ class KbInvestigationService
                     $selectedThisRound++;
                 }
                 $selected[$documentId] = $sources[$documentId];
+            }
+            if (($assessment['findings'] ?? []) !== []) {
+                $onResearchProgress?->__invoke('research.candidates', [
+                    'sources' => array_intersect_key($sources, array_flip($assessment['selected_ids'])),
+                    'findings' => $assessment['findings'],
+                ]);
             }
             foreach ($assessment['supported_facts'] as $fact) {
                 $supportedFacts[$fact] = $fact;
@@ -302,6 +309,7 @@ class KbInvestigationService
         ?RetrievalFilters $filters = null,
         ?User $actor = null,
         ?\Closure $diagnostics = null,
+        ?\Closure $onResearchProgress = null,
     ): KbInvestigationResult {
         $task = $understanding->toArray();
         $task['kb_queries'] = [$query];
@@ -323,6 +331,7 @@ class KbInvestigationService
             actor: $actor,
             preparedUnderstanding: QuestionUnderstanding::fromArray($task),
             diagnostics: $diagnostics,
+            onResearchProgress: $onResearchProgress,
         );
     }
 
@@ -347,7 +356,7 @@ class KbInvestigationService
      * @param array<int, array<string, mixed>> $sources keyed by document id
      * @return array{selected_ids:list<int>,supported_facts:list<string>,missing_facts:list<string>,complete:bool,next_query:?string}|null
      */
-    private function assess(KbInvestigationIntent $intent, array $sources, ?\Closure $diagnostics = null): ?array
+    private function assess(KbInvestigationIntent $intent, array $sources, ?\Closure $diagnostics = null, bool $progressive = false): ?array
     {
         $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $recordIds = array_values(array_filter($intent->entities,
@@ -368,8 +377,15 @@ Select only source IDs that directly support the objective. Copy selected_docume
 When an explicit record identifier is requested, a similarly titled source without that identifier cannot establish its facts or its absence. Use the source containing that record and read the surrounding row. Empty reports establish absence only within their own source and stated scope. Respect requested source dates and times; a different message with the same title does not answer the request.
 Schema: {"selected_document_ids":[],"supported_facts":[],"missing_facts":[],"complete":false,"next_query":null}.
 PROMPT;
+        if ($progressive) {
+            $system .= "\nAlso return findings: an array of objects with document_id (integer copied from an actual selected source), text (concise factual statement in the requested language, plain text without Markdown), and quote (exact verbatim supporting passage). "
+                .'Provide at most one finding per selected source, five total. Each text must be under 800 characters and each literal quote under 1200. '
+                .'Attribute email statements to their speaker and source date/time; do not present an earlier report as current truth. '
+                .'Do not infer outcomes across sources: final synthesis will compare them. Unknown facts are omitted. These findings require independent verification before display.';
+        }
         $payload = json_encode([
             'intent' => $intent->jsonSerialize(),
+            'language' => $intent->understanding?->language,
             'allowed_document_ids' => array_keys($sources),
             'sources' => array_values(array_map(static fn (array $source): array => [
                 'document_id' => $source['document_id'],
@@ -382,7 +398,10 @@ PROMPT;
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
-                $response = $observe('kb.assessment_provider', fn () => $this->ai->chat($system, (string) $payload, ['temperature' => 0]),
+                // A bounded group of source-bound findings needs more output
+                // room than the legacy ID/fact list; avoid truncating its JSON.
+                $response = $observe('kb.assessment_provider', fn () => $this->ai->chat($system, (string) $payload,
+                    ['temperature' => 0, ...($progressive ? ['max_tokens' => 4096] : [])]),
                     ['operation' => $attempt === 0 ? 'initial' : 'repair', 'wait_reason' => 'provider_response', 'error_handled' => true]);
             } catch (Throwable) {
                 return null;
@@ -414,6 +433,7 @@ PROMPT;
                     'missing_facts' => $this->stringList($decoded['missing_facts'] ?? null),
                     'complete' => (bool) ($decoded['complete'] ?? false),
                     'next_query' => $this->boundedString($decoded['next_query'] ?? null, self::MAX_QUERY_LENGTH),
+                    'findings' => $progressive && is_array($decoded['findings'] ?? null) ? array_slice($decoded['findings'], 0, 5) : [],
                 ];
             }
             // One bounded repair uses the same authorized sources. Unknown IDs
@@ -609,7 +629,7 @@ PROMPT;
                 'understanding' => $understanding->forSubquestion($index)->toArray(), 'diagnostics' => $diagnostics, 'research_flow_id' => $index];
             $tasks[$index] = static function () use ($payload, $index, $onResearchProgress) {
                 $onResearchProgress?->__invoke('research.task', ['research_flow_id' => $index, 'task_status' => 'documents']);
-                $result = app(self::class)->runBranch($payload);
+                $result = app(self::class)->runBranch($payload, $onResearchProgress);
                 $onResearchProgress?->__invoke('research.task', ['research_flow_id' => $index, 'task_status' => 'awaiting_tools']);
                 return $result;
             };
@@ -646,7 +666,7 @@ PROMPT;
     }
 
     /** Process boundary restores scope and principal; no additional preprocessing or memory write. */
-    public function runBranch(array $payload): KbInvestigationResult
+    public function runBranch(array $payload, ?\Closure $onResearchProgress = null): KbInvestigationResult
     {
         $tenant = $this->tenant->current();
         $previousUser = auth()->user();
@@ -667,7 +687,8 @@ PROMPT;
             $branchDiagnostics = $diagnostics === null ? null : static fn (string $phase, callable $operation, array $metadata = [])
                 => $diagnostics($phase, $operation, ['research_flow_id' => $payload['research_flow_id'], ...$metadata]);
             $operation = fn () => $this->investigate($understanding->intent, $payload['project'], $payload['filters'], $payload['depth'],
-                previousCitations: $payload['citations'], actor: $actor, preparedUnderstanding: $understanding, diagnostics: $branchDiagnostics);
+                previousCitations: $payload['citations'], actor: $actor, preparedUnderstanding: $understanding, diagnostics: $branchDiagnostics,
+                onResearchProgress: $onResearchProgress);
             return $branchDiagnostics === null ? $operation() : $branchDiagnostics('kb.research_branch', $operation,
                 ['wait_reason' => 'knowledge_investigation', 'error_handled' => true]);
         } catch (Throwable) {

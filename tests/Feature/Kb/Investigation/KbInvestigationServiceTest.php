@@ -68,6 +68,29 @@ final class KbInvestigationServiceTest extends TestCase
         $this->assertTrue($result->search->expanded->isEmpty());
     }
 
+    public function test_research_publishes_candidates_for_independent_verification_after_source_selection(): void
+    {
+        $finding = ['document_id' => 11, 'text' => 'Il 3 luglio il cliente conferma il barcode.', 'quote' => 'Barcode ist da.'];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chat')->once()->withArgs(fn ($system, $payload, $options) => str_contains($system, 'Also return findings')
+            && $options['max_tokens'] === 4096)
+            ->andReturn($this->response(['selected_document_ids' => [11], 'supported_facts' => ['Barcode presente'],
+                'complete' => true, 'findings' => [$finding]]));
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($this->search([11, 12]));
+        $reader = Mockery::mock(KbSourceReader::class);
+        $reader->shouldReceive('readCandidate')->twice()->andReturnUsing(fn ($candidate) => $this->source($candidate['document']['id'],
+            $candidate['document']['id'] === 11 ? 'Michael Friedenberger: Barcode ist da.' : 'Unrelated customer.', true));
+        $understanding = new \App\Services\Chat\QuestionUnderstanding('it', 'Informazioni su Michael Friedenberger',
+            ['Michael Friedenberger'], [], false, focus: ['identifiers' => ['Michael Friedenberger']]);
+        $events = [];
+        $this->service($ai, $retrieval, $reader)->followUp('altri messaggi', $understanding, 'orders',
+            onResearchProgress: static function ($type, $data) use (&$events) { $events[] = [$type, $data]; });
+        $this->assertSame('research.candidates', $events[0][0]);
+        $this->assertSame([11], array_keys($events[0][1]['sources']));
+        $this->assertSame([$finding], $events[0][1]['findings']);
+    }
+
     public function test_follow_up_cannot_select_another_record_when_only_the_focus_carries_the_requested_id(): void
     {
         $ai = Mockery::mock(AiManager::class);

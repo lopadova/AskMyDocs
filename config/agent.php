@@ -8,6 +8,7 @@ return [
         'release' => env('APP_RELEASE'),
     ],
     'tenant_instructions' => '',
+    'progressive' => ['enabled' => (bool) env('AGENT_PROGRESSIVE_ANSWERS_ENABLED', true)],
     'queue' => env('AGENT_QUEUE', 'agent'),
     // Must remain below the queue connection's retry_after. See the reasoning runbook.
     'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),

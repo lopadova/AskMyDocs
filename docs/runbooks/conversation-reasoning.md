@@ -223,6 +223,37 @@ Le chat esistenti iniziano con stato vuoto e recuperano riferimenti storici su r
 sempre dopo riconvalida. Nessuna reinterpretazione o migrazione massiva della cronologia.
 Non fare rollback della migrazione durante il rollback dei flag: il JSON inutilizzato è innocuo.
 
+### Risultati progressivi verificati
+
+Con `AGENT_PROGRESSIVE_ANSWERS_ENABLED=true` (predefinito), ogni iterazione KB
+può proporre fino a cinque affermazioni brevi, ciascuna con documento e citazione
+letterale. Prima di pubblicarle il server rilegge la fonte nel tenant, progetto,
+filtri e permessi correnti, verifica identità e citazione, poi chiede a Jev una
+decisione indipendente per affermazione, rispetto al testo completo e alla
+domanda originale. Si applica la soglia `reasoning.threshold` già configurata;
+incertezza, errori e contesto troppo grande non rilasciano testo. L'accesso e
+il contenuto vengono ricontrollati dopo la decisione. Questa verifica non
+certifica un evento commerciale: le affermazioni devono conservare autore,
+data e condizioni della fonte.
+
+Gli eventi durevoli `research.findings` contengono soltanto blocchi approvati
+e citazioni, fino a 24 per turno. I candidati grezzi non entrano nel canale
+pubblico. Le decisioni hanno slot idempotenti e diagnostica del provider;
+riconnessioni e riprese non duplicano i blocchi. Anche i rami registrati possono
+pubblicare nel turno padre. La stessa raccolta completa di evidenze alimenta
+la sintesi finale: i blocchi intermedi non diventano memoria o nuove prove.
+
+Chat e widget mostrano i risultati durante ricerca e consolidamento; la risposta
+finale li sostituisce quando arriva. Nella chat, i risultati di un turno fallito
+o annullato sono recuperabili anche dalla cronologia dopo una ricarica. Il widget
+li conserva nella vista del turno interrotto; il ripristino della cronologia del
+widget continua a usare i suoi messaggi finali. Le anteprime progressive riguardano
+le fonti documentali KB; i risultati strutturati API/MCP continuano a essere
+consolidati e validati nella risposta finale. Il passaggio aggiunge una decisione
+Jev per gruppo di nuovi candidati, senza rigenerare tutta la risposta a ogni fonte.
+Il rilascio include la normale build frontend e il riavvio dei worker; non servono
+migrazioni. Per un rollback disabilitare il flag e riavviare i worker.
+
 ### Ricerca lenta, timeout del worker e chat in attesa
 
 La correzione del 22 ottobre 2026 aggiunge la migrazione

@@ -8,7 +8,7 @@ use App\Models\AgentRun;
 use App\Services\Chat\QuestionUnderstanding;
 use Closure;
 
-/** Public task progress contains questions and states, never model reasoning or source payloads. */
+/** Public progress contains task states and verified findings, never raw candidates or model reasoning. */
 final class AgentResearchProgress
 {
     public function observer(AgentRun $run): Closure
@@ -19,6 +19,14 @@ final class AgentResearchProgress
 
         return static function (string $type, array $data) use ($id, $tenant): void {
             $current = AgentRun::query()->forTenant($tenant)->findOrFail($id);
+            if ($type === 'research.candidates') {
+                try {
+                    app(ProgressiveAnswerPublisher::class)->publish($current, $data['sources'] ?? [], $data['findings'] ?? []);
+                } catch (\Throwable $exception) {
+                    \Illuminate\Support\Facades\Log::warning('Progressive findings unavailable.', ['exception_class' => $exception::class]);
+                }
+                return;
+            }
             app(AgentEventPublisher::class)->publish($current, $type, data: $data);
         };
     }

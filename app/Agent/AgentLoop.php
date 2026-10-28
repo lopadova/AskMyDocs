@@ -608,6 +608,7 @@ final readonly class AgentLoop
                     filters: $filters,
                     actor: $run->user instanceof User ? $run->user : null,
                     diagnostics: $this->diagnostics->observer($run),
+                    onResearchProgress: app(AgentResearchProgress::class)->observer($run),
                 );
                 $search = $investigation->search;
             } else {

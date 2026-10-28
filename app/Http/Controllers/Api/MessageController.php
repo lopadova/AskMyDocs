@@ -44,6 +44,7 @@ class MessageController extends Controller
         'tool', 'tool_kind', 'tool_display_name', 'mcp_server_name',
         'mcp_tool_name', 'mcp_debug', 'kb_debug', 'action_id', 'error_code',
         'tasks', 'research_flow_id', 'task_status',
+        'findings', 'validation',
     ];
 
     public function index(

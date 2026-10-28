@@ -349,4 +349,23 @@ final class MessageControllerTest extends TestCase
             $this->assertSame($data, $activity[$index]['data']);
         }
     }
+
+    public function test_failed_turn_history_keeps_verified_findings_on_the_user_message(): void
+    {
+        $run = AgentRun::create(['run_id' => (string) Str::uuid(), 'tenant_id' => 'default', 'project_key' => 'hr-portal',
+            'user_id' => $this->user->id, 'conversation_id' => $this->conversation->id,
+            'channel' => 'chat', 'actor_type' => 'user', 'actor_id' => (string) $this->user->id,
+            'locale' => 'it', 'timezone' => 'UTC', 'status' => AgentRun::STATUS_FAILED]);
+        $finding = ['id' => 'finding-1', 'text' => 'Il cliente conferma il barcode.', 'quote' => 'Barcode ist da.',
+            'citation' => ['document_id' => 11, 'title' => 'Email', 'source_path' => null]];
+        $run->events()->create(['sequence' => 1, 'type' => 'research.findings', 'phase' => 'research', 'locale' => 'it',
+            'payload_json' => ['data' => ['findings' => [$finding], 'validation' => ['status' => 'accepted', 'model' => 'jev'],
+                'raw_candidates' => 'never expose']]]);
+        Message::create(['conversation_id' => $this->conversation->id, 'agent_run_id' => $run->id, 'role' => 'user',
+            'content' => 'Che cosa sappiamo sul cliente?', 'metadata' => ['agent_run_id' => $run->run_id]]);
+        $message = $this->actingAs($this->user)->getJson('/conversations/'.$this->conversation->id.'/messages')->assertOk()->json('0');
+        $this->assertSame([$finding], data_get($message, 'metadata.agent_activity.0.data.findings'));
+        $this->assertSame('accepted', data_get($message, 'metadata.agent_activity.0.data.validation.status'));
+        $this->assertArrayNotHasKey('raw_candidates', data_get($message, 'metadata.agent_activity.0.data'));
+    }
 }
