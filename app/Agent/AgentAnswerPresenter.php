@@ -25,6 +25,9 @@ final readonly class AgentAnswerPresenter
         }
         $diagnostics = app(ProviderDiagnostics::class);
         $run = $diagnostics->resolve($runId, $context->tenantId);
+        if (app(AgentRunDeadline::class)->skip($run, 'answer_presentation', (float) config('agent.finalization.presentation_min_seconds', 45))) {
+            return ['paragraphs' => null, 'trace' => [...$trace, 'status' => 'skipped', 'reason' => 'deadline']];
+        }
         $span = $diagnostics->begin($run, 'presentation.attempt');
         try {
             $threshold = (float) config('reasoning.threshold', .8);
@@ -78,6 +81,9 @@ final readonly class AgentAnswerPresenter
                 $this->save($runId, $context, $memo);
             }
             $trace['model'] = $memo['model'];
+            if (app(AgentRunDeadline::class)->skip($run, 'presentation_verification', 5)) {
+                return ['paragraphs' => null, 'trace' => [...$trace, 'status' => 'skipped', 'reason' => 'deadline']];
+            }
             $paragraphs = $this->validate($memo['paragraphs'], $claims, array_column($facts, 'presentation_group', 'id'));
             $extracted = $this->extractCausalLinks($paragraphs, $context, $runId);
             foreach ($extracted['causal_links'] as $link) {

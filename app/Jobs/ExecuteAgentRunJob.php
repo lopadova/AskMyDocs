@@ -42,6 +42,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
         PackageTenantContext $packageTenants,
     ): void
     {
+        $workerStartedAt = now();
         $run = AgentRun::query()
             ->forTenant($this->tenantId)
             ->findOrFail($this->agentRunId);
@@ -65,7 +66,8 @@ final class ExecuteAgentRunJob implements ShouldQueue
                 Auth::setUser($run->user);
             }
 
-            $handler->handle($run);
+            app(\App\Agent\AgentRunDeadline::class)->within($run, $workerStartedAt, $this->timeout,
+                fn () => $handler->handle($run));
             $diagnostics->end($run, $span);
         } catch (\Throwable $exception) {
             $diagnostics->failure($run, $span, $exception);
@@ -103,6 +105,11 @@ final class ExecuteAgentRunJob implements ShouldQueue
             }
         } catch (\Throwable) {
             // Missing diagnostics must not prevent durable run finalization.
+        }
+
+        if (app(\App\Agent\VerifiedAnswerCheckpoint::class)->recover($run,
+            $exception instanceof \Illuminate\Queue\TimeoutExceededException ? 'worker_timeout' : 'agent_run_failed')) {
+            return;
         }
 
         try {

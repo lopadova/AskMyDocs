@@ -190,7 +190,8 @@ final class RunDiagnostics
         $keys = ['tool_kind', 'tool_name', 'logical_index', 'iteration', 'operation', 'provider', 'model', 'result_count',
             'wait_reason', 'wait_for', 'child_run_id', 'research_flow_id', 'driver', 'concurrency', 'timeout_seconds',
             'error_class', 'error_kind', 'error_handled', 'attempt', 'job_id', 'queue_connection', 'queue_name',
-            'queue_driver', 'retry_after_seconds', 'dispatch_recorded', 'lock_acquired', 'observed_status'];
+            'queue_driver', 'retry_after_seconds', 'dispatch_recorded', 'lock_acquired', 'observed_status',
+            'reason', 'remaining_seconds', 'required_seconds'];
         $keys[] = 'last_sequence';
         $safe = $this->technicalValues(array_intersect_key($metadata, array_flip($keys)));
         if (isset($metadata['runtime']) && is_array($metadata['runtime'])) {
@@ -223,6 +224,8 @@ final class RunDiagnostics
                 $value = preg_match('/^[a-zA-Z0-9_.:\/\\\\-]{1,160}$/D', $value) === 1 ? $value : '[omitted]';
                 $safe[$key] = $value;
             } elseif (is_bool($value) || is_int($value) || $value === null) {
+                $safe[$key] = $value;
+            } elseif (in_array($key, ['remaining_seconds', 'required_seconds'], true) && is_float($value) && is_finite($value)) {
                 $safe[$key] = $value;
             }
         }

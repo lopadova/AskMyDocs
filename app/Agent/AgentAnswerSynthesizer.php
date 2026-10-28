@@ -141,13 +141,17 @@ final readonly class AgentAnswerSynthesizer
         if (! $batchEnabled) {
             $grounding = $this->semanticGate($question, $grounding, $presentationOnly, run: $run);
         }
+        if ($selective) {
+            $this->checkpoint($run, $context, $evidence, $grounding);
+        }
         $repair = null;
         if ($selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
             && ($grounding['reason'] ?? null) !== 'no_new_detail') {
-            $coverage = app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? [], $run);
+            $coverage = $this->evaluateCoverage($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? [], $run);
             $grounding['coverage_validation'] = $coverage;
             $providerFailed = array_filter($grounding['semantic_validation'] ?? [], fn ($stage) => ($stage['status'] ?? null) === 'error');
-            if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)) {
+            if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)
+                && ! app(AgentRunDeadline::class)->skip($run, 'selective_repair', (float) config('agent.finalization.repair_min_seconds', 45))) {
                 $repair = ['attempted' => true, 'status' => 'unchanged', 'initial_reason' => $grounding['reason'] ?? null,
                     'initial_semantic_validation' => $grounding['semantic_validation'] ?? [], 'initial_coverage' => $coverage];
                 $repairSpan = $diagnostics->begin($run, 'synthesis.repair', ['operation' => 'selective_repair']);
@@ -183,7 +187,7 @@ final readonly class AgentAnswerSynthesizer
                     }
                     $repaired['source_excerpts'] = array_values($retainedExcerpts);
                     $repairedCoverage = $repaired['valid']
-                        ? app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $repairEvidence, $repaired['claims'], $understanding ?? [], $repaired['source_excerpts'], $run) : null;
+                        ? $this->evaluateCoverage($question, $repairEvidence, $repaired['claims'], $understanding ?? [], $repaired['source_excerpts'], $run) : null;
                     $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
                     $repair['candidate_coverage'] = $repairedCoverage;
                     $repair['candidate_reason'] = $repaired['reason'] ?? null;
@@ -202,7 +206,8 @@ final readonly class AgentAnswerSynthesizer
                     $repair['exception_class'] = $exception::class;
                 }
             }
-            if (($grounding['coverage_validation']['sufficient'] ?? null) === false) {
+            if (($grounding['coverage_validation']['sufficient'] ?? null) === false
+                || ($grounding['coverage_validation']['reason'] ?? null) === 'deadline') {
                 $grounding['partial'] = true;
             }
         }
@@ -229,7 +234,8 @@ final readonly class AgentAnswerSynthesizer
         // quote. Re-submit only its claims against a compact, explicit source
         // manifest. This never repeats retrieval or a live API/MCP call, and
         // the repaired claims still pass the exact same validator below.
-        if (! $batchEnabled && ! $grounding['valid'] && $this->canRepair($grounding['reason'])) {
+        if (! $batchEnabled && ! $grounding['valid'] && $this->canRepair($grounding['reason'])
+            && ! app(AgentRunDeadline::class)->skip($run, 'claim_repair', (float) config('agent.finalization.repair_min_seconds', 45))) {
             $repair = [
                 'attempted' => true,
                 'status' => 'rejected',
@@ -331,6 +337,9 @@ final readonly class AgentAnswerSynthesizer
             // once to answer the new focus, retaining the same evidence gate.
             $focusedSpan = $diagnostics->begin($run, 'synthesis.focus_correction');
             try {
+                if (app(AgentRunDeadline::class)->skip($run, 'focus_correction', (float) config('agent.finalization.repair_min_seconds', 45))) {
+                    throw new \RuntimeException('finalization_deadline');
+                }
                 $focusedResponse = $diagnostics->measure($run, 'provider.synthesis', fn () => $this->ai->chatWithHistory(
                     $this->systemPrompt($context),
                     [[
@@ -384,6 +393,7 @@ final readonly class AgentAnswerSynthesizer
                 );
             }
         }
+        $this->checkpoint($run, $context, $evidence, $grounding);
         $displayGrounding = $grounding;
         $presentation = null;
         $presentationParagraphs = null;
@@ -452,6 +462,26 @@ final readonly class AgentAnswerSynthesizer
                 'source_excerpts' => $grounding['source_excerpts'] ?? [],
             ], static fn (mixed $value): bool => $value !== null),
         );
+    }
+
+    private function evaluateCoverage(string $question, array $evidence, array $claims, array $understanding, array $excerpts, ?AgentRun $run): array
+    {
+        if (app(AgentRunDeadline::class)->skip($run, 'answer_coverage', 5)) {
+            return ['status' => 'skipped', 'reason' => 'deadline', 'sufficient' => null, 'source_document_ids' => []];
+        }
+
+        return app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $claims, $understanding, $excerpts, $run);
+    }
+
+    private function checkpoint(?AgentRun $run, AgentExecutionContext $context, array $evidence, array $grounding): void
+    {
+        if ($run === null || ! ($grounding['valid'] ?? false) || ($grounding['claims'] ?? []) === []) return;
+        $claims = $grounding['claims'];
+        $notes = app(AgentSourceLimitations::class)->forClaims($evidence['api_tools'], $claims, $context->locale);
+        $answer = new AgentAnswer(implode("\n\n", [...array_column($claims, 'text'), ...array_column($notes, 'text')]),
+            $context->locale, 'partial', $this->selectedDocuments($evidence['documents'], $claims),
+            $this->selectedTools($evidence['api_tools'], $claims), grounding: [...$grounding, 'status' => 'grounded']);
+        app(VerifiedAnswerCheckpoint::class)->save($run, $answer, $evidence);
     }
 
     private function draft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
@@ -535,6 +565,9 @@ PROMPT;
     {
         $diagnostics = app(ProviderDiagnostics::class);
         for ($attempt = 0; $attempt < 2; $attempt++) {
+            if ($attempt > 0 && app(AgentRunDeadline::class)->skip($run, 'structured_draft_retry', (float) config('agent.finalization.repair_min_seconds', 45))) {
+                throw new \UnexpectedValueException('Structured draft retry skipped at worker deadline.');
+            }
             $span = $diagnostics->begin($run, 'synthesis.attempt', [
                 'operation' => $repairAttempt ? 'repair_draft' : 'structured_draft', 'attempt' => $attempt + 1,
             ]);

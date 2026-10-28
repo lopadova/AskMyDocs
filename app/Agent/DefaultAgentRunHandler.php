@@ -134,43 +134,25 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL
                 : AgentRun::STATUS_COMPLETED;
-            $saved = \Illuminate\Support\Facades\DB::transaction(function () use ($run, $status, $outcome, $answer): bool {
-                $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
-                if ($locked->isTerminal()) {
-                    return false;
-                }
-                $run->forceFill([
-                    'status' => $status,
-                    'result_json' => array_merge((array) $locked->result_json, [
-                        'phase' => 'final', 'decision' => $outcome->decision,
-                        'stop_reason' => $outcome->stopReason, 'response' => $answer->jsonSerialize(),
-                    ]),
-                    'completed_at' => now(), 'error_code' => null,
-                ])->save();
-                return true;
-            });
+            $saved = $this->finalize($run, $status, $outcome, $answer);
             if (! $saved) {
                 $diagnostics->end($run, $executionSpan, $run->fresh()->status === AgentRun::STATUS_CANCELLED ? 'cancelled' : 'completed', ['operation' => 'terminal_already_recorded']);
                 return;
             }
-            $diagnostics->measure($run, 'result.project', fn () => $this->projector->project($run, $answer));
-            app(AgentResearchProgress::class)->finished($run, $answer);
-            $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $owner = $memory->runOwner($run);
-            $turn = $memory->runTurn($run);
-            $savedAnswer = $run->channel === 'widget'
-                ? \App\Models\WidgetSessionStep::query()->where('agent_run_id', $run->id)->first()
-                : \App\Models\Message::query()->where('agent_run_id', $run->id)->first();
-            if ($owner !== null && $turn !== null && $savedAnswer !== null) {
-                $memory->finish($owner, $turn, $savedAnswer, $outcome->evidence->jsonSerialize(), $answer->grounding['claims'] ?? [], $answer->grounding['subquestions'] ?? []);
+            $run->refresh();
+            try {
+                $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+                $owner = $memory->runOwner($run);
+                $turn = $memory->runTurn($run);
+                $savedAnswer = $run->channel === 'widget'
+                    ? \App\Models\WidgetSessionStep::query()->where('agent_run_id', $run->id)->first()
+                    : \App\Models\Message::query()->where('agent_run_id', $run->id)->first();
+                if ($owner !== null && $turn !== null && $savedAnswer !== null) {
+                    $memory->finish($owner, $turn, $savedAnswer, $outcome->evidence->jsonSerialize(), $answer->grounding['claims'] ?? [], $answer->grounding['subquestions'] ?? []);
+                }
+            } catch (Throwable $exception) {
+                Log::warning('Agent post-finalization bookkeeping failed.', ['run_id' => $run->run_id, 'exception_class' => $exception::class]);
             }
-            $this->events->publish(
-                $run,
-                $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',
-                $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',
-                data: ['response' => $answer->jsonSerialize()],
-                canCancel: false,
-            );
             $diagnostics->end($run, $executionSpan);
         } catch (AgentRunCancelledException $exception) {
             $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
@@ -178,9 +160,10 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         } catch (Throwable $exception) {
             $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
             $run->refresh();
-            if ($run->status === AgentRun::STATUS_CANCELLED) {
+            if ($run->isTerminal()) {
                 return;
             }
+            if (app(VerifiedAnswerCheckpoint::class)->recover($run, 'agent_run_failed')) return;
             Log::error('Agent run failed.', [
                 'run_id' => $run->run_id,
                 'tenant_id' => $run->tenant_id,
@@ -190,19 +173,49 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
                 'exception_trace' => $exception->getTraceAsString(),
             ]);
-            $run->forceFill([
-                'status' => AgentRun::STATUS_FAILED,
-                'error_code' => $this->errorCode($exception),
-                'completed_at' => now(),
+            \Illuminate\Support\Facades\DB::transaction(function () use ($run, $exception): void {
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                if ($locked->isTerminal()) {
+                    return;
+                }
+                $locked->forceFill([
+                    'status' => AgentRun::STATUS_FAILED,
+                    'error_code' => $this->errorCode($exception),
+                    'completed_at' => now(),
+                ])->save();
+                $this->events->publish($locked, 'run.failed', 'run.failed',
+                    data: ['error_code' => $locked->error_code], canCancel: false);
+            });
+        }
+    }
+
+    private function finalize(AgentRun $run, string $status, AgentLoopOutcome $outcome, AgentAnswer $answer): bool
+    {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($run, $status, $outcome, $answer): bool {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+            if ($locked->isTerminal()) {
+                return false;
+            }
+            $locked->forceFill([
+                'status' => $status,
+                'result_json' => array_merge((array) $locked->result_json, [
+                    'phase' => 'final', 'decision' => $outcome->decision,
+                    'stop_reason' => $outcome->stopReason, 'response' => $answer->jsonSerialize(),
+                ]),
+                'completed_at' => now(), 'error_code' => null,
             ])->save();
+            $this->projector->project($locked, $answer);
+            app(AgentResearchProgress::class)->finished($locked, $answer);
             $this->events->publish(
-                $run,
-                'run.failed',
-                'run.failed',
-                data: ['error_code' => $run->error_code],
+                $locked,
+                $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',
+                $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',
+                data: ['response' => $answer->jsonSerialize()],
                 canCancel: false,
             );
-        }
+
+            return true;
+        });
     }
 
     private function turnContext(AgentRun $run): ?string

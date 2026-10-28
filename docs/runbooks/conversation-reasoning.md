@@ -200,6 +200,29 @@ dell'ultimo piano. Quando manca questo margine si passa alla sintesi parziale
 con le fonti già raccolte. La riserva non è un timeout delle singole chiamate
 AI: una chiamata più lenta del previsto può comunque consumarla.
 
+Anche la finalizzazione usa il tempo residuo del tentativo corrente, vincolato
+all'ingresso del job e al suo timeout; una consegna duplicata non rinnova il
+tempo del worker già in esecuzione. In assenza di un job attivo usa lo span
+`worker.execute` più recente come riferimento diagnostico. Con
+meno di 45 secondi disponibili salta riparazione e riscrittura di presentazione;
+mantiene un margine di sicurezza di 5 secondi. I valori sono in
+`agent.finalization`; gli span `finalization.skipped` riportano operazione,
+tempo disponibile e tempo richiesto. Le verifiche necessarie per approvare un
+fatto restano obbligatorie. Con meno di 5 secondi disponibili salta anche la
+valutazione facoltativa della copertura e marca la risposta come parziale.
+
+Dopo l'approvazione dei claim, prima delle rifiniture, salva un
+`verified_answer_checkpoint` durevole. Se una rifinitura fallisce o scade il
+worker, il recupero rilegge le fonti con i permessi correnti, controlla contesto,
+domanda e contenuto e pubblica soltanto i claim ancora validi come risposta
+`partial`. Il recupero non chiama modelli e non ripete strumenti esterni.
+Fonti cambiate o revocate vengono escluse anche dalle citazioni e dai metadati;
+senza claim recuperabili resta il
+normale fallimento. Un risultato terminale o un annullamento non viene sostituito.
+La finalizzazione normale salva stato, messaggio del canale ed evento terminale
+nella stessa transazione, così un errore di proiezione può ancora recuperare
+il checkpoint invece di lasciare un run completato senza risposta.
+
 Anche le query `search_knowledge_base` proposte dal planner attraversano una
 singola iterazione dell'indagine KB: mantengono obiettivo e identificativi del
 turno, includono i candidati da ricerca letterale, leggono le fonti autorizzate
@@ -242,6 +265,11 @@ pubblico. Le decisioni hanno slot idempotenti e diagnostica del provider;
 riconnessioni e riprese non duplicano i blocchi. Anche i rami registrati possono
 pubblicare nel turno padre. La stessa raccolta completa di evidenze alimenta
 la sintesi finale: i blocchi intermedi non diventano memoria o nuove prove.
+I checkpoint della raccolta conservano gli slot `progressive_decision_<sha256>`.
+`progressive_audit` conserva gli ultimi 50 esiti dei candidati, con soli hash e
+stati tecnici, per distinguere rifiuto, incertezza, fonte modificata, errore di
+decisione o pubblicazione. Il conteggio delle risposte del provider non indica
+quanti candidati siano stati approvati.
 
 Chat e widget mostrano i risultati durante ricerca e consolidamento; la risposta
 finale li sostituisce quando arriva. Nella chat, i risultati di un turno fallito
@@ -285,8 +313,10 @@ e [scansioni iterative](https://github.com/pgvector/pgvector#iterative-index-sca
 `AGENT_JOB_TIMEOUT` (fallback 120 secondi). Il timeout dei processi figli è
 separato: 90 secondi per ramo nella configurazione del dump. Laravel può
 interrompere il worker per timeout e il gestore processi lo riavvia; questo
-non dimostra un OOM. La callback definitiva `failed()` ora finalizza
-atomicamente i run queued/running e pubblica `run.failed`, anche quando il
+non dimostra un OOM. La callback definitiva `failed()` tenta prima il recupero
+del checkpoint verificato e pubblica `run.partial` se ci sono claim ancora
+validi. Altrimenti finalizza atomicamente i run queued/running e pubblica
+`run.failed`, anche quando il
 fallimento avviene prima di `handle()`. Non sostituisce risultati terminali
 o attese di interazione. Distingue un'eccezione di timeout osservata da un
 semplice esaurimento dei tentativi, senza inferire il primo dal secondo.
