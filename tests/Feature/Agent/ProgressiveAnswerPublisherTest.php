@@ -37,6 +37,7 @@ final class ProgressiveAnswerPublisherTest extends TestCase
         $this->assertSame($finding['document_id'], data_get($event->payload_json, 'data.findings.0.citation.document_id'));
         $this->assertArrayNotHasKey('sources', $event->payload_json['data']);
         Http::assertSentCount(1);
+        $this->assertSame('published', data_get($run->fresh()->result_json, 'progressive_audit.0.status'));
     }
 
     public static function rejectedCases(): array
@@ -52,6 +53,9 @@ final class ProgressiveAnswerPublisherTest extends TestCase
             'answers' => $probability === null ? [] : ['finding_0' => ['type' => 'noul', 'noul' => $probability]]])]);
         app(ProgressiveAnswerPublisher::class)->publish($run, $sources, [$finding]);
         $this->assertSame(0, $run->events()->count());
+        $expected = $probability === .01 ? 'rejected' : 'uncertain_or_malformed';
+        $this->assertSame($expected, data_get($run->fresh()->result_json, 'progressive_audit.0.status'));
+        $this->assertStringNotContainsString($finding['quote'], json_encode($run->fresh()->result_json['progressive_audit']));
     }
 
     public function test_unavailable_provider_never_publishes_unchecked_text(): void
@@ -104,6 +108,7 @@ final class ProgressiveAnswerPublisherTest extends TestCase
         });
         app(ProgressiveAnswerPublisher::class)->publish($run, $sources, [$finding]);
         $this->assertSame(0, $run->events()->count());
+        $this->assertSame('source_changed_or_revoked', data_get($run->fresh()->result_json, 'progressive_audit.0.status'));
     }
 
     public function test_oversized_context_and_mismatched_source_identity_do_not_trigger_a_decision(): void

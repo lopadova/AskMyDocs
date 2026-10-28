@@ -71,9 +71,12 @@ final class AgentLoopTest extends TestCase
         $this->route('get_orders', 'http://erp.example.test/orders');
         Http::fake(['*' => Http::response('<html>Login secret-value</html>', 200, ['Content-Type' => 'text/html'])]);
         $run = $this->makeRun();
+        $slot = 'progressive_decision_'.str_repeat('a', 64);
         $user = \App\Models\User::create(['name' => 'QA user', 'email' => 'qa@example.invalid', 'password' => 'unused-test-password']);
         $run->forceFill(['user_id' => $user->id, 'actor_id' => (string) $user->id,
-            'result_json' => ['retrieval_completed' => true, 'evidence' => ['documents' => [], 'api_tools' => [], 'warnings' => []]]])->save();
+            'result_json' => ['retrieval_completed' => true, 'evidence' => ['documents' => [], 'api_tools' => [], 'warnings' => []],
+                $slot => ['status' => 'completed'], 'progressive_audit' => [['status' => 'published']],
+                'progressive_decision_untrusted' => ['secret' => 'discard']]])->save();
         $plan = $this->planResponse(['decision' => 'tools', 'actions' => [[
             'id' => 'step_1', 'tool' => 'get_orders', 'arguments' => [], 'depends_on' => [], 'purpose' => 'Read orders',
         ]]]);
@@ -92,6 +95,9 @@ final class AgentLoopTest extends TestCase
         $this->app->instance(AiManager::class, $ai);
         $outcome = app(AgentLoop::class)->run($run, $this->context($run));
         $this->assertSame('non_retryable_tool_failure', $outcome->stopReason);
+        $this->assertSame(['status' => 'completed'], $run->fresh()->result_json[$slot]);
+        $this->assertSame([['status' => 'published']], $run->fresh()->result_json['progressive_audit']);
+        $this->assertArrayNotHasKey('progressive_decision_untrusted', $run->fresh()->result_json);
         $this->assertSame([], $outcome->evidence->apiTools());
         $resumed = app(AgentLoop::class)->run($run->fresh(), $this->context($run));
         $this->assertSame('non_retryable_tool_failure', $resumed->stopReason);

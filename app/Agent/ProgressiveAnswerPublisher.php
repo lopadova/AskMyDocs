@@ -37,11 +37,13 @@ final readonly class ProgressiveAnswerPublisher
         $question = $this->masker->maskString((string) data_get($owner->input_json, 'question', ''));
         $state = ['question' => $question, 'candidates' => []];
         $items = [];
+        $audit = [];
         $read = [];
         $recordIds = array_values(array_filter(\App\Services\Chat\QuestionUnderstanding::fromArray(
             (array) data_get($run->result_json, 'question_understanding', []))->targetIdentifiers(),
             static fn ($id) => is_string($id) && preg_match('/\A(?:[\pL][\pL_-]*)?\d[\pL\d_-]*\z/u', $id) === 1));
-        foreach (array_slice($findings, 0, 5) as $finding) {
+        foreach (array_slice($findings, 0, 5) as $candidateIndex => $finding) {
+            $audit[$candidateIndex] = ['candidate' => $candidateIndex, 'status' => 'invalid_candidate'];
             if (! is_array($finding) || ! is_int($finding['document_id'] ?? null)
                 || ! is_string($finding['text'] ?? null) || ! is_string($finding['quote'] ?? null)) {
                 continue;
@@ -49,6 +51,7 @@ final readonly class ProgressiveAnswerPublisher
             $id = $finding['document_id'];
             $selected = $sources[$id] ?? null;
             if (! is_array($selected) || ! is_array($selected['candidate'] ?? null)) {
+                $audit[$candidateIndex]['status'] = 'source_unavailable';
                 continue;
             }
             // Re-read through tenant/project/actor/filter gates. Selection by an
@@ -57,11 +60,13 @@ final readonly class ProgressiveAnswerPublisher
                 $read[$id] = $this->reader->readCandidate($selected['candidate'], $context->projectKey, $run->user, $filters);
             }
             $current = $read[$id];
-            if ($current === null || $current['document_id'] !== $id || $current['excerpt'] !== $selected['excerpt']) {
+            if ($current === null || $current['document_id'] !== $id || $current['excerpt'] !== ($selected['excerpt'] ?? null)) {
+                $audit[$candidateIndex]['status'] = 'source_changed_or_revoked';
                 continue;
             }
             if ($recordIds !== [] && ! array_filter($recordIds, static fn ($recordId) =>
                 \App\Services\Chat\Reasoning\EvidenceProjector::contains($current['title']."\n".$current['excerpt'], $recordId))) {
+                $audit[$candidateIndex]['status'] = 'identifier_mismatch';
                 continue;
             }
             $source = $this->masker->maskString($current['excerpt']);
@@ -69,19 +74,23 @@ final readonly class ProgressiveAnswerPublisher
             $quote = trim($this->masker->maskString($finding['quote']));
             if ($text === '' || $quote === '' || mb_strlen($text) > 800 || mb_strlen($quote) > 1200
                 || ! str_contains($source, $quote)) {
+                $audit[$candidateIndex]['status'] = 'invalid_text_or_quote';
                 continue;
             }
             $hash = hash('sha256', $source);
             $key = hash('sha256', $id."\0".$hash."\0".$text);
             if (isset($known[$key]) || isset($items[$key]) || count($known) + count($items) >= 24) {
+                $audit[$candidateIndex]['status'] = 'duplicate_or_limit';
                 continue;
             }
             $candidate = ['text' => $text, 'quote' => $quote, 'source' => $source,
                 'source_title' => $this->masker->maskString($current['title'])];
             $next = [...$state, 'candidates' => [...$state['candidates'], $key => $candidate]];
             if (DecisionState::fromArray($next)->exceedsLimit()) {
+                $audit[$candidateIndex]['status'] = 'context_limit';
                 continue; // Never truncate context to make a claim look supported.
             }
+            $audit[$candidateIndex] = ['candidate' => $candidateIndex, 'id' => $key, 'status' => 'pending'];
             $state = $next;
             $items[$key] = ['id' => $key, 'text' => $text, 'quote' => $quote, 'citation' => [
                 'document_id' => $id, 'title' => $candidate['source_title'], 'source_path' => null,
@@ -90,6 +99,7 @@ final readonly class ProgressiveAnswerPublisher
             ]];
         }
         if ($items === []) {
+            $this->audit($run, $audit);
             return;
         }
         try {
@@ -106,32 +116,72 @@ final readonly class ProgressiveAnswerPublisher
                 'progressive_decision_'.$signature, $run->tenant_id);
             $approved = [];
             foreach (array_values($items) as $index => $item) {
+                $auditIndex = array_search($item['id'], array_column($audit, 'id', 'candidate'), true);
                 try {
                     if ($result->toBool('finding_'.$index, (float) config('reasoning.threshold', .8))) {
                         $id = $item['citation']['document_id'];
                         $current = $this->reader->readCandidate($sources[$id]['candidate'], $context->projectKey, $run->user, $filters);
                         if ($current !== null && $current['excerpt'] === $sources[$id]['excerpt']) {
                             $approved[] = $item;
+                            $audit[$auditIndex]['status'] = 'approved';
+                        } else {
+                            $audit[$auditIndex]['status'] = 'source_changed_or_revoked';
                         }
+                    } else {
+                        $audit[$auditIndex]['status'] = 'rejected';
                     }
                 } catch (\Throwable) {
+                    $audit[$auditIndex]['status'] = 'uncertain_or_malformed';
                     // Missing, malformed or uncertain answers never release prose.
                 }
             }
             if ($approved !== []) {
-                DB::transaction(function () use ($owner, $approved, $result): void {
+                $published = DB::transaction(function () use ($owner, $approved, $result): array {
                     $locked = AgentRun::query()->forTenant($owner->tenant_id)->whereKey($owner->id)->lockForUpdate()->firstOrFail();
                     $known = $this->known($locked);
                     $fresh = array_slice(array_values(array_filter($approved, fn ($item) => ! isset($known[$item['id']]))), 0, max(0, 24 - count($known)));
                     if (! $locked->isTerminal() && $fresh !== []) {
                         $this->events->publish($locked, 'research.findings', data: ['findings' => $fresh,
                             'validation' => ['status' => 'accepted', 'model' => $result->model]], canCancel: true);
+                        return array_column($fresh, 'id');
                     }
+                    return [];
                 });
+                foreach ($audit as &$entry) {
+                    if ($entry['status'] === 'approved') {
+                        $entry['status'] = in_array($entry['id'], $published, true) ? 'published' : 'duplicate_or_terminal';
+                    }
+                }
+                unset($entry);
             }
         } catch (\Throwable) {
+            foreach ($audit as &$entry) {
+                if (in_array($entry['status'], ['pending', 'approved'], true)) {
+                    $entry['status'] = $entry['status'] === 'approved' ? 'publication_failure' : 'decision_failure';
+                }
+            }
+            unset($entry);
             // Progressive display is optional. Retrieval and final grounding continue.
+        } finally {
+            $this->audit($run, $audit);
         }
+    }
+
+    private function audit(AgentRun $run, array $entries): void
+    {
+        if ($entries === []) {
+            return;
+        }
+        DB::transaction(function () use ($run, $entries): void {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->first();
+            if ($locked === null) {
+                return;
+            }
+            $result = (array) $locked->result_json;
+            $previous = is_array($result['progressive_audit'] ?? null) ? $result['progressive_audit'] : [];
+            $result['progressive_audit'] = array_slice([...$previous, ...array_values($entries)], -50);
+            $locked->forceFill(['result_json' => $result])->save();
+        });
     }
 
     private function owner(AgentRun $run): ?AgentRun
