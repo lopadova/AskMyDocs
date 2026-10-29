@@ -1,0 +1,4 @@
+interface:
+  display_name: "Presentazione editoriale di prodotto"
+  short_description: "PDF di prodotto con struttura editoriale e brand del sito"
+  default_prompt: "Usa $product-editorial-pdf per creare una presentazione PDF completa di questo prodotto, con il marchio e lo stile della sua landing."

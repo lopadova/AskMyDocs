@@ -1,0 +1,108 @@
+{
+  "document": {
+    "title": "Una presentazione editoriale",
+    "brand_name": "Meridiana",
+    "author": "Progetto sintetico di esempio",
+    "subject": "Fixture dimostrativa: sostituire tutti i contenuti con evidenze del proprio prodotto",
+    "edition": "EDIZIONE DIMOSTRATIVA",
+    "header": "MERIDIANA / PRESENTAZIONE DEL PRODOTTO",
+    "footer_note": "Contenuti sintetici di esempio. Le condizioni operative vanno verificate nel progetto reale.",
+    "source_ids": ["SRC-DEMO"],
+    "feature_ids": []
+  },
+  "theme": {
+    "palette_source": "Esempio neutro: sostituire con i token verificati della landing del progetto.",
+    "palette": {
+      "paper": "#FAF8F3", "cream": "#F1EDE3", "ink": "#243238",
+      "primary": "#345B68", "accent": "#9A6243", "muted": "#637178",
+      "line": "#D5DAD9", "pale": "#E5ECEC"
+    },
+    "fonts": {
+      "heading": {"fallback": "Times-Roman"},
+      "body": {"fallback": "Helvetica"}
+    },
+    "logo": null,
+    "images": {"jpeg_quality": 88, "max_dpi": 220},
+    "folio_format": "{page:02d} / {total:02d}"
+  },
+  "pages": [
+    {
+      "id": "cover", "layout": "cover", "section": "La visione",
+      "kicker": "PRESENTAZIONE DEL PRODOTTO", "display_name": "Meridiana.",
+      "title": "Una visione chiara.\nUn percorso comune.",
+      "deck": "Un prodotto sintetico per esplorare il modello editoriale.\nTesti, immagini e prove appartengono al progetto che lo adotta.",
+      "image": null,
+      "band_title": "PRODOTTO, PERSONE E PROSPETTIVE",
+      "band_subtitle": "VISIONE / PERCORSI / CONDIZIONI",
+      "source_ids": ["SRC-DEMO"], "feature_ids": []
+    },
+    {
+      "id": "article", "layout": "article", "section": "Il valore",
+      "kicker": "LA VISIONE / DUE PROSPETTIVE", "title": "Dare forma\na un lavoro condiviso.",
+      "deck": "Questo testo mostra la gerarchia di una pagina editoriale. Non descrive capacità di un prodotto reale.",
+      "columns": [
+        [{"heading": "Una domanda concreta", "text": "Il racconto parte dal compito delle persone. Un bisogno riconoscibile rende comprensibile la proposta e prepara il lettore alle sezioni successive."}, {"heading": "Un perimetro chiaro", "text": "Ogni affermazione deve restare collegata alle proprie evidenze. Il contenuto finale va scritto dopo aver verificato il prodotto e il pubblico."}],
+        [{"heading": "Un percorso leggibile", "text": "Le due colonne separano argomenti paralleli. Titoli brevi e paragrafi completi aiutano a passare dalla visione ai dettagli."}, {"heading": "Una promessa misurata", "text": "L'esempio non contiene prezzi, percentuali di risparmio o risultati di clienti. Questi elementi richiedono fonti verificabili."}]
+      ],
+      "callout": "Una buona pagina rende visibile il nesso tra il bisogno, il comportamento del prodotto e la prova.",
+      "source_ids": ["SRC-DEMO"], "feature_ids": ["CAP-DEMO"]
+    },
+    {
+      "id": "journey", "layout": "journey", "section": "Il percorso",
+      "kicker": "COME SI LEGGE / QUATTRO PASSAGGI", "title": "Dal contesto\na una scelta informata.",
+      "deck": "Una sequenza generica mostra come il lettore può seguire un processo.",
+      "steps": [
+        {"heading": "Definire il contesto", "text": "Individuare il compito e le persone coinvolte."},
+        {"heading": "Raccogliere le evidenze", "text": "Preparare le informazioni che sostengono il racconto."},
+        {"heading": "Valutare il percorso", "text": "Mostrare i passaggi e dichiarare ciò che dipende dalla configurazione."},
+        {"heading": "Scegliere il prossimo passo", "text": "Concordare una prova con criteri osservabili."}
+      ],
+      "callout": "La sequenza deve descrivere comportamenti verificati, con responsabilità riconoscibili.",
+      "source_ids": ["SRC-DEMO"], "feature_ids": ["CAP-DEMO"]
+    },
+    {
+      "id": "case", "layout": "case", "section": "Scenario illustrativo",
+      "kicker": "CASO / SCENARIO DIMOSTRATIVO", "title": "Una squadra ritrova\nil filo del lavoro.",
+      "deck": "La domanda: come condividere il contesto di una pratica? Lo scenario è interamente sintetico.",
+      "image": null,
+      "columns": [
+        [{"heading": "Il contesto", "text": "Un gruppo deve raccogliere informazioni distribuite prima di decidere il passaggio successivo. L'esempio serve a mostrare la struttura narrativa del caso."}, {"heading": "Il percorso da dimostrare", "text": "La versione di progetto dovrà spiegare quali operazioni compie il prodotto e quali fonti permettono di verificarle."}],
+        [{"heading": "Il valore da osservare", "text": "Il lettore deve capire quale compito diventa più chiaro. L'esito va espresso senza inventare numeri o testimonianze."}, {"heading": "Le condizioni", "text": "Accessi, dati e strumenti necessari devono essere disponibili. La prova del progetto reale deve verificare i passaggi prima della pubblicazione."}]
+      ],
+      "source_ids": ["SRC-DEMO"], "feature_ids": ["CAP-DEMO"]
+    },
+    {
+      "id": "divider", "layout": "divider", "section": "Le funzionalità",
+      "kicker": "SECONDA PARTE", "title": "Le funzionalità.\nUna sezione alla volta.",
+      "deck": "Dalla visione alle capacità del prodotto. Ogni tema richiede un comportamento descritto con precisione.",
+      "image": null, "quote": "Lo spazio illustrato può ospitare un'immagine del progetto, con un tema coerente e un taglio proporzionato.",
+      "source_ids": [], "feature_ids": []
+    },
+    {
+      "id": "conditions", "layout": "table", "section": "Disponibilità e condizioni",
+      "kicker": "DAL RACCONTO ALLA PROVA", "title": "Ogni capacità,\nle sue condizioni.",
+      "deck": "Questa tabella è sintetica. Sostituire le righe con condizioni verificate nel progetto destinatario.",
+      "headers": ["CAPACITÀ", "CONDIZIONI DA VERIFICARE"],
+      "column_weights": [1, 2.3],
+      "rows": [["Percorso principale", "Dati di prova curati e persone responsabili della verifica."], ["Integrazione facoltativa", "Connessione compatibile, credenziali autorizzate e copertura dimostrata."], ["Collaborazione del team", "Ruoli, inviti e accessi definiti nell'ambiente di destinazione."]],
+      "note": "Le condizioni spiegano il contesto di utilizzo. Non costituiscono una promessa di disponibilità universale.",
+      "source_ids": ["SRC-DEMO"], "feature_ids": ["CAP-DEMO"]
+    },
+    {
+      "id": "references", "layout": "references", "section": "Fonti e metodo",
+      "kicker": "EVIDENZE / REGISTRO", "title": "Una base\nche si può controllare.",
+      "deck": "Il registro distingue fonti del progetto, scenari e materiali visivi.",
+      "intro": "I riferimenti seguenti sono etichette di esempio. La versione reale deve indicare file, revisioni o pagine che sostengono le affermazioni.",
+      "items": [{"id": "SRC-DEMO", "title": "Specifiche del progetto", "detail": "Percorso e revisione da inserire dopo la verifica."}, {"title": "Direzione visiva", "detail": "Token, logo e fotografie del progetto destinatario."}, {"title": "Scenari dimostrativi", "detail": "Esempi dichiarati come tali, distinti dalle testimonianze."}, {"title": "Esiti delle prove", "detail": "Criteri e risultati osservati da riportare con la fonte."}],
+      "callout": "Prima della consegna, controllare tutte le pagine renderizzate e rileggere le affermazioni insieme alle fonti.",
+      "source_ids": ["SRC-DEMO"], "feature_ids": []
+    },
+    {
+      "id": "closing", "layout": "closing", "section": "Il prossimo passo",
+      "kicker": "DAL RACCONTO ALL'AZIONE", "title": "Scegliamo una prova\nche abbia un senso.",
+      "deck": "Un compito circoscritto. Persone responsabili. Informazioni adatte. Un percorso che permetta di valutare il risultato.",
+      "image": null, "quote": "La chiusura indica un passo concreto e coerente con ciò che il prodotto può dimostrare.",
+      "source_ids": ["SRC-DEMO"], "feature_ids": ["CAP-DEMO"]
+    }
+  ]
+}
