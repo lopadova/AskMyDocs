@@ -125,7 +125,7 @@ FRONT = [
 ]
 
 CASE_TITLES = ["Dal campione\nalla scheda valida.","Il difetto ritorna.\nRitrovare il precedente.","Dal capitolato\nalla commessa.","Una voce coerente\nsul prodotto.","Rispondere sulla commessa\ncon il dato giusto.","Il sapere di reparto\nsi può ritrovare."]
-CASE_IMAGES = ["marketing/immagini/guida-commerciale/cartografia-tessile.png","public/editorial/themes/cartographic/archive-day.webp","marketing/immagini/guida-commerciale/cartografia-pelletteria.png","public/editorial/themes/cartographic/knowledge-day.webp","public/editorial/themes/cartographic/community-day.webp","public/editorial/themes/cartographic/archive-day.webp"]
+CASE_IMAGES = ["marketing/immagini/guida-commerciale/atelier-tessile.png","marketing/immagini/guida-commerciale/archivio-bozzetti.png","marketing/immagini/guida-commerciale/atelier-pelletteria.png","marketing/immagini/guida-commerciale/tavolo-stilista.png","marketing/immagini/guida-commerciale/atelier-confronto-giorno.png","marketing/immagini/guida-commerciale/archivio-bozzetti.png"]
 CASE_COPY = [
     [b("Il contesto ipotetico", "Un ufficio prodotto deve rispondere su un articolo già campionato. Schede di revisione diversa e chiarimenti sono conservati in più documenti. Il responsabile sa quale versione è stata approvata, ma ricostruirla richiede più passaggi."),
      b("Il percorso da mostrare", "Nel progetto demo cerca il codice TESS-DEMO-014, confronta due revisioni e la nota di approvazione. Apri i passaggi che sostengono la risposta. Collega il rapporto disponibile allo stesso articolo e chiedi anche un'informazione volutamente assente: il sistema deve renderne visibile il limite.")],

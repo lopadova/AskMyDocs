@@ -1,10 +1,11 @@
-"""Build the cartographic sales field guide from reviewed editorial content.
+"""Build the fashion-atelier sales field guide from reviewed editorial content.
 
 Run with the bundled Python runtime. All source paths are repository-relative.
 The generated PDF, page maps and QA files remain local delivery artifacts.
 """
 from pathlib import Path
 from html import escape
+from io import BytesIO
 import hashlib
 import json
 import re
@@ -86,13 +87,16 @@ def image_cover(c, rel, x, y, width, height, focus=.5, yfocus=.5):
     """Crop images proportionally; never stretch pixels."""
     im = Image.open(ROOT / rel).convert("RGB")
     iw, ih = im.size
+    encoded = BytesIO()
+    im.save(encoded, format="JPEG", quality=92)
+    encoded.seek(0)
     scale = max(width / iw, height / ih)
     dw, dh = iw * scale, ih * scale
     c.saveState()
     p = c.beginPath()
     p.rect(x, y, width, height)
     c.clipPath(p, stroke=0)
-    c.drawImage(ImageReader(im), x + (width-dw)*focus, y + (height-dh)*yfocus,
+    c.drawImage(ImageReader(encoded), x + (width-dw)*focus, y + (height-dh)*yfocus,
                 width=dw, height=dh, mask="auto")
     c.restoreState()
 
@@ -200,7 +204,7 @@ def cover(c):
          M, H-260, 450, 15.2, 21.5, "Display", WHITE)
     para(c, "Approcci, domande, casi applicativi e prove da costruire con il cliente.",
          M, H-323, 430, 11.1, 16.4, color=HexColor("#d6dee1"))
-    image_cover(c, "marketing/immagini/guida-commerciale/cartografia-tessile.png",
+    image_cover(c, "marketing/immagini/guida-commerciale/atelier-tessile.png",
                 M, 119, CW, 327)
     para(c, "Una mappa per la conversazione, con i piedi nel lavoro dell'impresa.",
          M, 97, CW, 10, 14, "DisplayI")
@@ -303,7 +307,7 @@ def closing(c):
     para(c,"Portare\nuna domanda vera.",M,H-106,CW,35,42,"Display")
     para(c,"Una fonte riconoscibile. Una persona che la conosce.\nUna prova da valutare insieme.",
          M,H-216,CW,14,20,"DisplayI",MUTED)
-    image_cover(c,"public/editorial/themes/cartographic/community-night.webp",M,211,CW,300)
+    image_cover(c,"marketing/immagini/guida-commerciale/atelier-confronto-sera.png",M,211,CW,300)
     para(c,"01 / Ricostruire l'episodio",M,185,CW,12,16,"DisplayB")
     para(c,"02 / Scegliere le fonti ammesse",M,155,CW,12,16,"DisplayB")
     para(c,"03 / Concordare il criterio della prova",M,125,CW,12,16,"DisplayB")

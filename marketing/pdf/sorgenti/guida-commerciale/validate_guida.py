@@ -3,6 +3,7 @@
 Run after build_guida.py and pdftoppm. This checks source copy and synthetic
 fixtures; it deliberately does not claim to test a running AskMyDocs instance.
 """
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -21,7 +22,7 @@ def norm(s):
     return re.sub(r'\s+',' ',s.replace('\u2011','-').replace('\u2013','-').replace('\u2014','-').replace('<br/>',' ')).strip()
 
 
-def check():
+def check(skip_kit_archive=False):
     reader=PdfReader(PDF)
     assert len(reader.pages)==32
     assert not reader.is_encrypted
@@ -72,9 +73,10 @@ def check():
                 obj=obj[key]
             assert obj==anchor['expected_value']
     archive=ROOT/'marketing/pdf/askmydocs-kit-demo-commerciale.zip'
-    with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
-        for file in sorted(KIT.iterdir()):
-            if file.is_file():z.write(file,'kit-demo/'+file.name)
+    if not skip_kit_archive:
+        with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
+            for file in sorted(KIT.iterdir()):
+                if file.is_file():z.write(file,'kit-demo/'+file.name)
     report={'status':'pass','file':str(PDF),'sha256':hashlib.sha256(PDF.read_bytes()).hexdigest(),
             'page_count':32,'source_links':len(links),'paragraph_collisions':0,
             'source_copy_complete':True,'case_questions_complete':True,
@@ -86,4 +88,8 @@ def check():
 
 
 if __name__=='__main__':
-    check()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--skip-kit-archive',action='store_true',
+                        help='Validate the demo kit without rewriting its separate ZIP output.')
+    args=parser.parse_args()
+    check(skip_kit_archive=args.skip_kit_archive)

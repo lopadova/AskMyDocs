@@ -1,9 +1,9 @@
 {
-  "id": "askmydocs-quaderno-commerciale-cartografico",
+  "id": "askmydocs-quaderno-commerciale-atelier-moda",
   "user_request": "Distinguere il PDF dedicato ai commerciali con un altro tema già presente nel prodotto; mantenere il PowerPoint nello stile umanistico approvato.",
-  "theme": "cartographic",
-  "theme_origin": "public/editorial/themes/cartographic/",
-  "role": "Taccuino di lavoro: le mappe simboleggiano orientamento fra fonti e interlocutori. Non rappresentano la geografia reale del distretto.",
+  "theme": "fashion-atelier",
+  "theme_origin": "Linguaggio pittorico del tema cartographic AskMyDocs, adattato all’atelier di moda: nessuna cartografia nelle tavole attive.",
+  "role": "Taccuino di lavoro di un atelier: bozzetti di abiti, borse e cappelli, cartamodelli e campioni materici. Stile, luce, palette e composizione originali preservati; tutte le mappe geografiche rimosse.",
   "palette": {
     "paper": "#f6f1e7",
     "ink": "#20384a",
@@ -24,10 +24,11 @@
     "main_column_pt": 320,
     "gutter_pt": 24,
     "sidebar": "Appunti sul campo, domande e prossimi passi",
-    "cover": "Fascia blu profonda, titolo avorio e tavolo cartografico con campioni tessili",
+    "cover": "Fascia blu profonda, titolo avorio e tavolo di stilista con bozzetti e campioni tessili",
     "cases": "Illustrazione panoramica, domanda concreta evidenziata, contesto e percorso dimostrativo, cinque domande discovery"
   },
-  "image_policy": "Illustrazioni simboliche. Le persone non rappresentano clienti; nessuna schermata di prodotto è inventata.",
+  "image_policy": "Illustrazioni simboliche di moda e pelletteria. Le persone non rappresentano clienti; nessuna schermata di prodotto inventata. Niente mappe, globi geografici, coste, meridiani o rose dei venti: carta e tavole mostrano studi di accessori e abiti.",
   "source": "marketing/pdf/sorgenti/guida-commerciale/build_guida.py",
-  "asset_register": "marketing/immagini/guida-commerciale/registro.json"
+  "asset_register": "marketing/immagini/guida-commerciale/registro.json",
+  "user_revision": "Eliminare le mappe geografiche e sostituirle con bozzetti di uno stilista, borse o cappelli, conservando la qualità delle immagini."
 }
