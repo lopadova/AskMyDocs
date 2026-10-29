@@ -1,0 +1,33 @@
+{
+  "id": "askmydocs-quaderno-commerciale-cartografico",
+  "user_request": "Distinguere il PDF dedicato ai commerciali con un altro tema già presente nel prodotto; mantenere il PowerPoint nello stile umanistico approvato.",
+  "theme": "cartographic",
+  "theme_origin": "public/editorial/themes/cartographic/",
+  "role": "Taccuino di lavoro: le mappe simboleggiano orientamento fra fonti e interlocutori. Non rappresentano la geografia reale del distretto.",
+  "palette": {
+    "paper": "#f6f1e7",
+    "ink": "#20384a",
+    "terracotta": "#a95032",
+    "helper_background": "#e4eaf0",
+    "muted": "#54636a",
+    "white": "#fffdf7"
+  },
+  "typography": {
+    "headings": "Georgia, 28 pt / 34 pt",
+    "body": "Arial, 10.4 pt / 15.7 pt",
+    "helpers": "Arial, 9.3 pt / 13.5 pt",
+    "quotes": "Georgia Italic"
+  },
+  "grid": {
+    "format": "A4 verticale",
+    "margins_pt": 44,
+    "main_column_pt": 320,
+    "gutter_pt": 24,
+    "sidebar": "Appunti sul campo, domande e prossimi passi",
+    "cover": "Fascia blu profonda, titolo avorio e tavolo cartografico con campioni tessili",
+    "cases": "Illustrazione panoramica, domanda concreta evidenziata, contesto e percorso dimostrativo, cinque domande discovery"
+  },
+  "image_policy": "Illustrazioni simboliche. Le persone non rappresentano clienti; nessuna schermata di prodotto è inventata.",
+  "source": "marketing/pdf/sorgenti/guida-commerciale/build_guida.py",
+  "asset_register": "marketing/immagini/guida-commerciale/registro.json"
+}

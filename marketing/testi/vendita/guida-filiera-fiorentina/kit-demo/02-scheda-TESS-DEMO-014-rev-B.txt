@@ -1,0 +1,29 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+SCHEDA ARTICOLO FITTIZIA / CASO CF-01
+Documento: SCHEDA-DEMO-014-B
+Articolo: TESS-DEMO-014
+Revisione: B
+Stato nello scenario: APPROVATA.
+Data fittizia della revisione: 2026-10-15.
+
+Dati descrittivi inventati:
+- Denominazione campione: Tessuto campione DEMO 014.
+- Variante descrittiva: Avorio DEMO.
+- Composizione fittizia: 55% cotone, 45% poliestere.
+- Destinazione del documento: confronto documentale dimostrativo.
+
+STORIA DOCUMENTALE
+La revisione B sostituisce la revisione A nello scenario CF-01.
+L'approvazione documentale simulata è identificata dalla nota APP-DEMO-014-B.
+Il rapporto RD-DEMO-014-B riguarda questa stessa revisione B.
+
+DIFFERENZE DICHIARATE
+Rispetto ad A cambiano la variante descrittiva, da Sabbia DEMO ad Avorio DEMO,
+e la composizione fittizia, da 60% cotone / 40% poliestere a
+55% cotone / 45% poliestere. Il codice TESS-DEMO-014 rimane invariato.
+
+COPERTURA INTENZIONALMENTE INCOMPLETA
+Istruzioni di lavaggio: NON DOCUMENTATE nei file del kit.
+Dichiarazioni certificative: NON PRESENTI nei file del kit.
+Questa approvazione inventata non è un'approvazione tecnica reale e non autorizza
+produzione, etichettatura, vendita o certificazione.

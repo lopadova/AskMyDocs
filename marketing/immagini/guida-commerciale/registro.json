@@ -1,0 +1,116 @@
+{
+  "id": "askmydocs-guida-commerciale-assets",
+  "checked_at": "2026-10-29",
+  "assets": [
+    {
+      "id": "cartografia-tessile",
+      "file": "marketing/immagini/guida-commerciale/cartografia-tessile.png",
+      "sha256": "b4026aadc9b45bc24b0d48cbc89fc332a4fa810e1db5d32c41b871928889bf6f",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "pages": [
+        1,
+        13
+      ],
+      "kind": "AI editorial illustration",
+      "origin": "image_gen, 2026-10-29",
+      "prompt_file": "marketing/immagini/guida-commerciale/prompt-generazione.json",
+      "rights_note": "Generata per questo incarico; nessun marchio di terzi richiesto.",
+      "claim_boundary": "Immagine simbolica, non prova di prodotto o testimonianza cliente. Le mappe non sono cartografia reale del distretto.",
+      "visually_inspected": true
+    },
+    {
+      "id": "cartografia-pelletteria",
+      "file": "marketing/immagini/guida-commerciale/cartografia-pelletteria.png",
+      "sha256": "b246b9a55ca78506622bed7aeffa2bd59348366eaaa2ca4f30151c377612501f",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "pages": [
+        15
+      ],
+      "kind": "AI editorial illustration",
+      "origin": "image_gen, 2026-10-29",
+      "prompt_file": "marketing/immagini/guida-commerciale/prompt-generazione.json",
+      "rights_note": "Generata per questo incarico; nessun marchio di terzi richiesto.",
+      "claim_boundary": "Immagine simbolica, non prova di prodotto o testimonianza cliente. Le mappe non sono cartografia reale del distretto.",
+      "visually_inspected": true
+    },
+    {
+      "id": "archive-day",
+      "file": "public/editorial/themes/cartographic/archive-day.webp",
+      "sha256": "92df1651087ecfbc4cb0fb03a0276c1bf4a353a02d45a2f3825ec8cb1e526541",
+      "dimensions": [
+        1280,
+        853
+      ],
+      "pages": [
+        14,
+        18
+      ],
+      "kind": "existing project editorial illustration",
+      "origin": "existing AskMyDocs cartographic theme",
+      "prompt_file": null,
+      "rights_note": "Asset già presente nella repository; riuso interno ai materiali dello stesso prodotto. Nessuna licenza di terzi aggiuntiva dedotta.",
+      "claim_boundary": "Immagine simbolica, non prova di prodotto o testimonianza cliente. Le mappe non sono cartografia reale del distretto.",
+      "visually_inspected": true
+    },
+    {
+      "id": "knowledge-day",
+      "file": "public/editorial/themes/cartographic/knowledge-day.webp",
+      "sha256": "004bb0e9ae6330b3032c88572e1981912f64dc5490b78fce89376bca7de6a448",
+      "dimensions": [
+        1280,
+        853
+      ],
+      "pages": [
+        16
+      ],
+      "kind": "existing project editorial illustration",
+      "origin": "existing AskMyDocs cartographic theme",
+      "prompt_file": null,
+      "rights_note": "Asset già presente nella repository; riuso interno ai materiali dello stesso prodotto. Nessuna licenza di terzi aggiuntiva dedotta.",
+      "claim_boundary": "Immagine simbolica, non prova di prodotto o testimonianza cliente. Le mappe non sono cartografia reale del distretto.",
+      "visually_inspected": true
+    },
+    {
+      "id": "community-day",
+      "file": "public/editorial/themes/cartographic/community-day.webp",
+      "sha256": "1233792f605c3d3c4e5ec0c0ee2d2c37695fb221025c14dbe1129e02878db43b",
+      "dimensions": [
+        1280,
+        853
+      ],
+      "pages": [
+        17
+      ],
+      "kind": "existing project editorial illustration",
+      "origin": "existing AskMyDocs cartographic theme",
+      "prompt_file": null,
+      "rights_note": "Asset già presente nella repository; riuso interno ai materiali dello stesso prodotto. Nessuna licenza di terzi aggiuntiva dedotta.",
+      "claim_boundary": "Immagine simbolica, non prova di prodotto o testimonianza cliente. Le mappe non sono cartografia reale del distretto.",
+      "visually_inspected": true
+    },
+    {
+      "id": "community-night",
+      "file": "public/editorial/themes/cartographic/community-night.webp",
+      "sha256": "2b3c08073f3be96066d000eb4f45c742fd2d2c36d933509cc2a75352e2629dca",
+      "dimensions": [
+        1280,
+        853
+      ],
+      "pages": [
+        32
+      ],
+      "kind": "existing project editorial illustration",
+      "origin": "existing AskMyDocs cartographic theme",
+      "prompt_file": null,
+      "rights_note": "Asset già presente nella repository; riuso interno ai materiali dello stesso prodotto. Nessuna licenza di terzi aggiuntiva dedotta.",
+      "claim_boundary": "Immagine simbolica, non prova di prodotto o testimonianza cliente. Le mappe non sono cartografia reale del distretto.",
+      "visually_inspected": true
+    }
+  ]
+}

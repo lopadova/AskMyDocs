@@ -1,0 +1,120 @@
+ASKMYDOCS / GUIDA COMMERCIALE PER LA FILIERA FIORENTINA
+Ricerca territoriale e ipotesi di approccio
+Verifica fonti: 29 ottobre 2026.
+Snapshot di prodotto: 8003ca793c0218ec13451b449fa02a874de762a0.
+
+PUNTO CENTRALE
+Il commerciale deve riconoscere un flusso informativo, non limitarsi al settore
+o all'indirizzo dell'impresa. Un lanificio che organizza il prodotto, una
+rifinizione conto terzi, una modelleria di pelletteria e un grossista hanno
+interlocutori, fonti e prove differenti. Tutte le proposte di acquisto qui
+formulate sono ipotesi da qualificare, non domanda di mercato già osservata.
+
+GEOGRAFIA DA RACCONTARE CORRETTAMENTE
+Campi Bisenzio e Calenzano fanno parte del perimetro tessile-moda pratese
+descritto dalle fonti Regione Toscana e Confindustria Toscana Nord. Il
+distretto supera i confini della provincia di Prato: il raccordo con la piana
+fiorentina è già parte del sistema produttivo descritto, non un collegamento
+commerciale inventato. La nota CTN è del 30 aprile 2024: usare perimetro e
+glossario senza ripubblicare le cifre come se descrivessero il 2026.
+Fonti T-01, T-02.
+
+Per Scandicci e Lastra a Signa esiste un'indagine CNA pubblicata il 14 febbraio
+2023 sulla pelletteria, che descrive anche produzione conto terzi. Va citata
+come fotografia storica. Signa è un comune distinto: una fonte aziendale
+primaria ne documenta una presenza produttiva di pelletteria, ma questo non
+estende automaticamente il perimetro o i dati dell'indagine CNA. Nel documento
+commerciale è più preciso parlare di filiera o polo fiorentino e qualificare
+le singole imprese. Fonti T-05, T-06.
+
+Sesto Fiorentino/Osmannoro è rappresentato qui dal commercio di abbigliamento,
+tessuti e accessori attestato dall'elenco ufficiale Ingromarket. Non lo si
+aggiunge automaticamente al perimetro CTN del distretto pratese. È utile per
+un approccio a grossisti, distributori, showroom e funzioni commerciali.
+Fonte T-07.
+
+La pelletteria fiorentina non va confusa con il distretto conciario di Santa
+Croce sull'Arno. Le pagine istituzionali usano denominazioni distinte.
+Fonte T-13.
+
+SEI APPROCCI, SEI PROVE
+1. Lanificio o impresa finale: parlare con prodotto/campionatura, insieme a
+   commerciale e qualità. La prova è ritrovare la scheda approvata di un
+   articolo e le differenze documentate fra revisioni. Non mostrare CAD,
+   riconoscimento di un campione o proprietà inventate.
+2. Tintoria/rifinizione: partire da produzione o qualità. La prova è
+   ricostruire due precedenti scritti e distinguere interventi ed esiti.
+   Non promettere rilevamento visivo, diagnosi o parametri macchina.
+3. Pelletteria conto terzi: partire da qualità, industrializzazione o titolare,
+   coinvolgere commessa, modelleria e responsabile delle autorizzazioni. La
+   prova è collegare capitolato e chiarimenti alla commessa giusta, mantenendo
+   separati i committenti. Non certificare la conformità del manufatto.
+4. Brand, grossista o showroom: parlare con commerciale/prodotto e assistenza.
+   La prova è rispondere su materiali e cura con le schede autorizzate. Prezzi
+   e disponibilità non derivano dal catalogo documentale.
+5. Back office: portare fin dall'inizio chi conosce il gestionale. La prova
+   abbina una comunicazione a un riscontro di un endpoint di lettura già
+   preparato. Senza interfaccia, restringere la prova alla documentazione.
+6. Impresa con trasferimento del sapere: incontrare titolare/responsabile
+   insieme all'esperto di reparto. La prova ricostruisce procedura e motivo
+   di una scelta da documenti curati. Il mestiere pratico richiede affiancamento.
+
+LE FONTI PUBBLICHE CHE ANCORANO QUESTO VOCABOLARIO
+Confindustria Toscana Nord descrive specializzazione delle lavorazioni e
+differenza fra impresa terzista e impresa finale (T-03, T-04). Le descrizioni
+ufficiali Dreampell e Prada a Scandicci mostrano fasi distinte di campionatura,
+materiali, modello, produzione e controllo (T-08, T-09). I corsi MITA 2026
+comprendono ruoli tecnici e commerciali legati a prodotto e pelletteria
+(T-10, T-11). Un laboratorio di Prato descrive servizi di analisi su filati,
+tessuti e capi finiti (T-12). Queste fonti ancorano i processi; non dimostrano
+che tali organizzazioni abbiano bisogno o siano clienti di AskMyDocs.
+
+COME APRIRE IL PRIMO INCONTRO
+«Prendiamo una domanda che vi obbliga a cercare in più posti. Mi mostrate
+quale documento o sistema contiene la risposta e chi sa dire se è corretta?»
+
+Il seguito deve chiarire: identità dell'articolo o commessa, fonte valida,
+ruolo della revisione, accesso del committente, distinzione fra storico e
+stato corrente, persona che approva la risposta e informazione che manca.
+La decisione sull'eventuale prova viene dopo questa ricostruzione.
+
+UN PERCORSO COMMERCIALE SOSTENIBILE
+- Primo colloquio: un processo ricorrente e una persona che lo possiede.
+- Discovery con il referente: fonti, revisioni, confini, sistemi e controesempi.
+- Preparazione: corpus sintetico e risposta attesa, autorizzazioni del progetto,
+  eventuale endpoint di test separato, criteri di verifica concordati.
+- Demo: domanda, risposta, apertura della fonte; errore o informazione mancante
+  resi visibili. Una fixture è chiamata fixture.
+- Valutazione: il referente giudica pertinenza, citazione, revisione e copertura.
+- Passo successivo: piccolo perimetro autorizzato di documenti reali oppure
+  verifica tecnica di un solo endpoint. Nessun pilot universale promesso.
+
+COME CAMBIA LA CONVERSAZIONE PER DIMENSIONE
+Nel laboratorio piccolo i ruoli possono coincidere nel titolare: scegliere
+un'esigenza e includere chi cura davvero il documento. Nell'impresa strutturata
+distinguere sponsor di funzione, proprietario del contenuto, IT e autorizzazioni
+del committente. Nei rapporti conto terzi chiarire prima che cosa si può leggere
+e trattare, senza raccogliere documenti tecnici riservati nella demo commerciale.
+
+SEGNALI PER FERMARSI O RIFORMULARE
+Nessun corpus leggibile; nessuno autorizzato a curarlo; bisogno di CAD/MES/PLM
+o pianificazione macchine; identificazione visiva dei difetti; stock corrente
+senza API; necessità di attestazioni tecniche o legali automatiche. In questi
+casi descrivere il confine e cercare un diverso compito documentale, senza
+riempire la promessa di funzioni future.
+
+COME MISURARE LA PROVA SENZA INVENTARE UN ROI
+Usare domande concordate, fonte attesa, revisione corretta, citazione apribile,
+attribuzione precisa, accesso appropriato e riconoscimento del dato mancante.
+Se il cliente vuole misurare il tempo di un'attività, deve prima definire un
+confronto osservabile sul proprio processo. Nessuna percentuale o risparmio
+predefinito viene dedotto dalla demo o dal territorio.
+
+STATO DELLA CONSEGNA
+fonti-territorio.json contiene 13 fonti primarie con URL, data di verifica,
+ambito e limiti. segmenti-casi.json contiene 6 profili d'impresa e 6 casi
+ipotetici: segnale, referente e coinvolti, 5 domande discovery, corpus demo
+sintetico, domanda, flusso/prova, valore qualitativo, limite e prossimo passo.
+Le capacità sono collegate al catalogo prodotto già presente in marketing.
+Nessun contatto, raccolta di recapiti, commit, modifica del prodotto o demo
+live è stato eseguito per questa ricerca.

@@ -1,0 +1,22 @@
+[
+  {
+    "key": "sales_textile_art",
+    "args": {
+      "prompt": "Use case: stylized-concept. Asset type: editorial illustration for an Italian sales training field guide about knowledge software used in textile, fashion and leather supply chains near Florence and Prato. The attached picture is a STYLE AND PALETTE REFERENCE ONLY, not an edit target. Create a NEW coherent 3:2 landscape scene in the same cartographic atelier theme: refined hand-painted watercolor and ink on textured cotton paper, muted parchment, sea-blue ink, terracotta, aged dark wood and small brass accents. Subject: MAPPING TEXTILE KNOWLEDGE. Overhead oblique view of two people's hands aligning a bound fabric swatch book, a current technical source sheet and an older archived sheet on a cartographer's large worktable. Wool fabric swatches in sober sage, charcoal and stone colors; spools of thread, magnifying lens and drafting tools; an abstract unlettered map partially visible beneath the documents to suggest tracing a route through knowledge. The documents and swatches are the focus. Modest sunlit artisan workshop, quiet precise human work, elegant painterly texture, natural soft daylight and readable midtones, not a futuristic office. Main details in the central and right two-thirds, generous calm area on the left for a possible editorial crop. Every document and map contains only abstract brush marks: NO readable words, letters, numbers, logos, signs, UI, screens, watermark, arrows or infographic. One scene only, no collage. The map is symbolic, not a factual depiction of Tuscany or any real place. This is an illustration of a hypothetical use case, not a customer photo.",
+      "referenced_image_paths": [
+        "/Users/marco/www/AskMyDocsDev/public/editorial/themes/cartographic/knowledge-day.webp"
+      ],
+      "transparent_background": false
+    }
+  },
+  {
+    "key": "sales_leather_art",
+    "args": {
+      "prompt": "Use case: stylized-concept. Asset type: editorial illustration for an Italian sales training field guide about knowledge software used in textile, fashion and leather supply chains near Florence. The attached picture is a STYLE AND PALETTE REFERENCE ONLY, not an edit target. Create a NEW coherent 3:2 landscape scene in the same cartographic atelier theme: refined hand-painted watercolor and ink on textured cotton paper, muted parchment, sea-blue ink, terracotta, aged dark wood and discreet brass. Subject: TRACING A LEATHER GOODS SPECIFICATION TO ITS SOURCE. A small leather goods workshop arranged like an archival mapmaker's atelier. A craftsperson and a quality colleague at a worn drafting table compare two plain leather samples in muted cognac and dark umber, a bound approved specification folio and an archived folder; another narrow paper drawer holds orderly unbranded sample cards. Include a subtle abstract map sheet and a simple brass magnifier to connect the cartographic theme, but put leather texture and source comparison first. Sunlight enters a high workshop window, calm capable people with natural coherent poses, no luxury branding, no recognizable bag design. Keep the composition spacious with the main interaction central/right, precise tactile painterly detail and balanced daylight. No readable writing, letters, numbers, logos, signs, UI, computer monitors, watermark, arrows, charts, collage or pseudo-technical diagrams. The map is symbolic, not a real location. One scene. Narrative illustration of a hypothetical use case, never a real customer testimonial.",
+      "referenced_image_paths": [
+        "/Users/marco/www/AskMyDocsDev/public/editorial/themes/cartographic/community-day.webp"
+      ],
+      "transparent_background": false
+    }
+  }
+]

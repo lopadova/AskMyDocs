@@ -1,0 +1,24 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+SCHEDA ARTICOLO FITTIZIA / CASO CF-01
+Documento: SCHEDA-DEMO-014-A
+Articolo: TESS-DEMO-014
+Revisione: A
+Stato nello scenario: SUPERATA.
+Data fittizia della revisione: 2026-09-03.
+
+Dati descrittivi inventati:
+- Denominazione campione: Tessuto campione DEMO 014.
+- Variante descrittiva: Sabbia DEMO.
+- Composizione fittizia: 60% cotone, 40% poliestere.
+- Destinazione del documento: confronto documentale dimostrativo.
+
+STORIA DOCUMENTALE
+Questa revisione A è una fonte storica nello scenario.
+La revisione A è superata dalla revisione B di TESS-DEMO-014.
+Per identificare l'approvazione dello scenario consultare la nota
+APP-DEMO-014-B e la scheda SCHEDA-DEMO-014-B.
+
+COPERTURA
+Non sono presenti istruzioni di lavaggio, dichiarazioni certificative o
+parametri di lavorazione. Questi valori inventati non possono essere usati
+per produrre, vendere, etichettare o certificare un articolo.
