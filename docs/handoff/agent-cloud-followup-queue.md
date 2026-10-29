@@ -65,21 +65,41 @@ context, tenant/auth/locale/timezone/model-scope cleanup, released run locks and
 empty job/failure tables. External providers and retrieval use fixtures. These
 tests cover the application lifecycle; the live probes cover Cloud delivery.
 
-## Operational correction
+## Operational correction applied
 
-Keep at least one worker available for the interactive `default` queue to remove
-its dependency on allocating a first worker after idle periods. Preserve the
-existing 512 MiB size and maximum of 25; no increase to downstream concurrency
-limits is required. Leave the ingestion/connector queues' settings separate.
+Marco explicitly authorized the continuously billed minimum of **$8.84/month**.
+The Cloud preview for the resulting configuration was **$8.84–$220.92 per month**;
+the existing maximum was unchanged.
 
-The unsaved Cloud preview for this exact configuration shows **$8.84–$220.92 per
-month**, replacing the previous maximum-only estimate of $220.92. The minimum is
-new; the existing maximum is unchanged. Confirm user authorization for the
-continuously billed minimum before saving. At the time of this note, no Cloud
-resource or autoscaling setting has been changed. Once authorized,
-save the minimum of one, verify the persisted range, then repeat three sequential
-delivery probes. Do not purge jobs, replay cancelled conversations, or retry the
-historic failed-job backlog.
+The interactive `default` queue now has a minimum of **one** worker, retaining
+Flex **512 MiB** and a maximum of **25**. This removes its dependency on allocating
+the first worker after an idle period. Ingestion and connector queues were not
+changed. No jobs were purged and no cancelled conversations or historic failed
+jobs were replayed.
+
+Cloud requires a deployment to activate this setting. Before deployment, the
+review showed exactly one pending change: `default` autoscaling **0–25 → 1–25**.
+The remote `develop` branch still pointed to the already deployed `e4c4a2610`.
+[Deployment 165](https://cloud.laravel.com/surface/ask-my-docs/develop/deployments/165/e4c4a26)
+completed successfully in 1m43s on that same revision, and its deployed-change
+record confirmed the autoscaling change. No Git push was performed.
+
+### Verification after deployment
+
+Three more conversation-free diagnostic runs used the same terminal-only probe
+procedure. Probe group: `810bcdaf-8105-4ad4-848f-231e379e198b`, at approximately
+29 October 07:42:16–07:42:18 UTC.
+
+| Diagnostic run | Queue wait | Worker duration | Result |
+| --- | --- | --- | --- |
+| 244 | 439 ms | 392 ms | Completed worker span |
+| 245 | 66 ms | 93 ms | Completed worker span |
+| 246 | 60 ms | 94 ms | Completed worker span |
+
+All three consecutive deliveries passed, with zero AI or tool requests. The
+application regression suite also passed: **471 tests, 2,644 assertions**,
+including the three long-lived-worker cases. This suite was completed before
+the infrastructure-only deployment; no application source changed afterward.
 
 Cloud's [managed queue documentation](https://laravel.com/cloud/docs/queues)
 describes independent worker pools, autoscaling floors and worker-time billing.
