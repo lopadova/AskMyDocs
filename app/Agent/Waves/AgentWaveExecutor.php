@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Agent\Waves;
 
 use App\Services\Chat\Reasoning\ResearchFailure;
-use Illuminate\Console\Application;
 use Illuminate\Support\Facades\Process;
 use Laravel\SerializableClosure\SerializableClosure;
+
+use function Illuminate\Support\artisan_binary;
+use function Illuminate\Support\php_binary;
 
 /** Separate PHP processes, not shared mutable tenant/DB state or extra queue workers. */
 class AgentWaveExecutor
@@ -62,7 +64,9 @@ class AgentWaveExecutor
                             ->quietly()
                             // Laravel accepts integer seconds; the monotonic deadline below enforces fractions.
                             ->timeout(max(1, (int) ceil($remaining)))
-                            ->start(Application::formatCommandString('invoke-serialized-closure')),
+                            // Direct argv makes the managed PID the PHP task on every
+                            // platform; stopping a shell can leave its child running.
+                            ->start([php_binary(), artisan_binary(), 'invoke-serialized-closure']),
                             ['research_flow_id' => $key, 'driver' => 'process', 'wait_reason' => 'process_start', 'error_handled' => true,
                                 'timeout_seconds' => $remaining]);
                         $paths[$key] = $resultPath;

@@ -58,7 +58,14 @@ validation rather than another provider call.
 
 `AGENT_WAVE_TIMEOUT_SECONDS` defaults to 45 and limits the entire wave, including
 all batches. The parent further caps this against the worker deadline and answer
-reserve. Successful siblings survive another task's failure or timeout. A task
+reserve and the remaining collection budget. `AGENT_WAVE_MINIMUM_DISPATCH_SECONDS`
+defaults to 5 (capped at the configured wave timeout). A common planning call must
+leave that useful dispatch window after its estimated duration. The host checks
+again after planning, before reserving calls or creating executions, because a
+provider may exceed its estimate. A refused round keeps all collected evidence,
+returns `partial` / `time_limit` for synthesis, and records `research.skipped`
+with the remaining and required seconds. Successful siblings survive another
+task's failure or timeout. A task
 whose physical outcome cannot be observed is charged its allocated quota
 conservatively. Logical and physical limits remain shared; workers use detached
 counters and disjoint physical allowances. Budget confirmation is exposed after
@@ -73,6 +80,30 @@ versioned envelope with Base64-encoded serialized data. Console output is disabl
 and never parsed as a result: bootstrap/log output and binary return values must
 not turn a completed tool into a failed observation. Files are size-bounded and
 removed after child processes have stopped.
+The executor passes a PHP/Artisan argument array directly to the process API,
+so the managed PID belongs to the PHP task rather than an intermediate shell.
+The timeout therefore stops the task before the wave returns and removes its
+transport files.
+
+### Debug 113 follow-up (29 October 2026)
+
+Run 247 confirms the Cloud queue improvement: delivery took 260 ms. The combined
+initial call took 17.345 s; the first concurrent KB/API wave took 3.402 s and
+collected five documents (including the four exact matches from the recall
+regression). The next common plan took 29.890 s. Its three actions received only
+1.863 s before the answer reserve, all timed out, and child tool spans continued
+after the parent's wave end. The API failure's 99 physical requests represent
+the conservatively charged allowance, not 99 observed network calls.
+
+The export was captured before completion. A later read of the live run found
+`partial` / `time_limit`, with `worker.execute` completed in 118.373 s and
+`provider.synthesis` completed in 60.042 s. There was no queue stall in this run.
+A bounded, no-AI process probe on that Linux environment confirmed different
+managed/task PIDs for a shell command and identical PIDs for direct argv.
+The new admission guard avoids spending another planning call when its next wave
+cannot fit, and rechecks before dispatch if planning takes longer than estimated.
+Model selection and evidence grounding are unchanged. These local changes need
+deployment before their effect on live response times can be measured.
 
 ## Asynchronous API tools and interrupted workers
 
@@ -99,7 +130,11 @@ php artisan test tests/Feature/Agent/AgentWaveKnowledgeSearchTest.php tests/Feat
 ```
 
 The executor tests use real Artisan subprocesses and verify overlapping PIDs,
-error/timeout isolation, the cross-wave barrier and the cumulative deadline.
+error/timeout isolation, the cross-wave barrier, the cumulative deadline, the
+managed/task PID identity and the absence of late writes from timed-out tasks.
+Coordinator regressions reproduce a slow planner leaving less than two seconds
+for research and a next plan whose estimate would consume the useful dispatch
+window; both preserve prior evidence without dispatching or charging new calls.
 The mixed integration test runs the actual coordinator and KB/API task handlers
 in distinct forked processes with a shared SQLite WAL database. A rendezvous inside
 both retrieval and HTTP fixtures makes sequential execution fail; the following

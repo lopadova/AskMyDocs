@@ -72,6 +72,54 @@ class AgentWaveExecutorTest extends TestCase
         $this->assertInstanceOf(ResearchFailure::class, $results[0]);
         $this->assertSame('finished', $results[1]);
     }
+
+    public function test_the_managed_process_is_the_task_process(): void
+    {
+        config(['agent.waves.timeout_seconds' => 15]);
+        $managedPid = null;
+        $results = app(AgentWaveExecutor::class)->run([
+            static fn () => getmypid(),
+        ], forceProcess: true, diagnostics: static function (string $phase, callable $operation) use (&$managedPid) {
+            $result = $operation();
+            if ($phase === 'research.process_dispatch') $managedPid = $result->id();
+            return $result;
+        });
+
+        $this->assertIsInt($results[0]);
+        $this->assertSame($managedPid, $results[0], 'Stopping the managed process must stop the actual research task.');
+    }
+
+    public function test_a_timed_out_task_cannot_continue_writing_after_the_wave_returns(): void
+    {
+        config(['agent.waves.timeout_seconds' => 15]);
+        $marker = sys_get_temp_dir().'/wave-stopped-'.uniqid('', true);
+        try {
+            $results = app(AgentWaveExecutor::class)->run([
+                static function () use ($marker) {
+                    file_put_contents($marker, 'started');
+                    usleep(1600000);
+                    file_put_contents($marker, 'continued');
+                    return 'late';
+                },
+            ], forceProcess: true, timeoutSeconds: 1, diagnostics: static function (string $phase, callable $operation) use ($marker) {
+                $result = $operation();
+                if ($phase === 'research.process_dispatch') {
+                    // Make the regression exercise an entered task even when
+                    // bootstrap takes longer on a busy CI worker.
+                    $until = hrtime(true) + 10_000_000_000;
+                    while (! is_file($marker) && $result->running() && hrtime(true) < $until) usleep(10000);
+                }
+                return $result;
+            });
+            $this->assertInstanceOf(ResearchFailure::class, $results[0]);
+            $this->assertFileExists($marker, 'The task must have started before its timeout.');
+            usleep(1800000);
+            $this->assertSame('started', file_get_contents($marker), 'A timed-out child must not outlive the common barrier.');
+        } finally {
+            if (is_file($marker)) unlink($marker);
+        }
+    }
+
     public function test_next_wave_starts_only_after_all_previous_tasks_finish(): void
     {
         config(['agent.waves.concurrency' => 2, 'agent.waves.timeout_seconds' => 15]);
