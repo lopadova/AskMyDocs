@@ -8,6 +8,7 @@ use App\Agent\AgentEventPublisher;
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentLoopOutcome;
 use App\Agent\AgentRunControl;
+use App\Agent\AgentRunDeadline;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Capabilities\AgentCapabilitySnapshot;
 use App\Agent\Debug\RunDiagnostics;
@@ -90,8 +91,14 @@ final class AgentWaveCoordinator
             $initialPlan = data_get($run->result_json, 'initial_plan.status') === 'pending'
                 ? $this->diagnostics->measure($run, 'planner.initial_plan', fn () => app(\App\Agent\Planning\AgentInitialPlanning::class)
                     ->consume($run, $context, $tools, $snapshot, $evidence), ['operation' => 'validate_combined_plan']) : null;
-            $iteration = $budget->beginIteration($initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
-                (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000));
+            $minimumWaveSeconds = min((float) config('agent.waves.timeout_seconds', 45),
+                max(1, (float) config('agent.waves.minimum_dispatch_seconds', 5)));
+            $planningSeconds = $initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
+                (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000);
+            if ($this->insufficientResearchTime($run, $budget, $planningSeconds + $minimumWaveSeconds, 'research_planning')) {
+                return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
+            }
+            $iteration = $budget->beginIteration($planningSeconds + $minimumWaveSeconds);
             if (! $iteration->allowed()) return new AgentLoopOutcome('partial', $evidence, $completed, $iteration->reason);
 
             $this->events->publish($run, $completed === [] ? 'plan.created' : 'plan.updated', $completed === [] ? 'plan.created' : 'plan.updated');
@@ -114,6 +121,12 @@ final class AgentWaveCoordinator
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
             $this->events->publish($run, 'plan.ready', data: ['decision' => $plan->decision, 'actions' => count($plan->actions)]);
             if (! $plan->shouldCallTools()) return new AgentLoopOutcome($plan->decision, $evidence, $completed);
+
+            // Planning can exceed its estimate. Check again before reserving calls
+            // or creating executions, keeping the collected evidence for synthesis.
+            if ($this->insufficientResearchTime($run, $budget, $minimumWaveSeconds, 'research_wave')) {
+                return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
+            }
 
             $waveId = (string) Str::uuid();
             $ready = $deferred = [];
@@ -213,8 +226,7 @@ final class AgentWaveCoordinator
             });
             $this->events->publish($run, 'wave.started', data: $wave);
             $started = microtime(true);
-            $waveTimeout = max(0.1, min((float) config('agent.waves.timeout_seconds', 45),
-                app(\App\Agent\AgentRunDeadline::class)->remaining($run) - (float) config('agent.synthesis.time_reserve_seconds', 60)));
+            $waveTimeout = min((float) config('agent.waves.timeout_seconds', 45), $this->researchTimeRemaining($run, $budget));
             $observations = $this->diagnostics->measure($run, 'wave.execute', fn () => $this->executor->run($tasks,
                 diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout), ['operation' => 'parallel_wave', 'concurrency' => (int) config('agent.waves.concurrency', 10)]);
             $this->control->ensureActive($run);
@@ -309,6 +321,26 @@ final class AgentWaveCoordinator
             // This is the only back-edge. No worker or dependent action can
             // advance until all wave observations have crossed the common barrier.
         }
+    }
+
+    private function researchTimeRemaining(AgentRun $run, AgentBudgetTracker $budget): float
+    {
+        return max(0, min($budget->remainingCollectionSeconds(), app(AgentRunDeadline::class)->remaining($run)
+            - max(0, (float) config('agent.synthesis.time_reserve_seconds', 60))));
+    }
+
+    private function insufficientResearchTime(AgentRun $run, AgentBudgetTracker $budget, float $requiredSeconds, string $operation): bool
+    {
+        $remaining = $this->researchTimeRemaining($run, $budget);
+        if ($remaining >= $requiredSeconds) return false;
+
+        $span = $this->diagnostics->begin($run, 'research.skipped', [
+            'operation' => $operation, 'reason' => 'deadline',
+            'remaining_seconds' => $remaining, 'required_seconds' => $requiredSeconds,
+        ]);
+        $this->diagnostics->end($run, $span);
+
+        return true;
     }
 
     /** Redelivery after an interrupted parent never blindly repeats in-flight calls. */

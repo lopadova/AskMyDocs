@@ -154,6 +154,11 @@ final class AgentBudgetTracker
         $this->persist();
     }
 
+    public function remainingCollectionSeconds(): float
+    {
+        return max(0, $this->timeLimit() - $this->elapsedSeconds());
+    }
+
     /** @return array<string,mixed> */
     public function snapshot(): array
     {

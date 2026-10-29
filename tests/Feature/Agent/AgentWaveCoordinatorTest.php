@@ -209,6 +209,58 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertFalse($run->fresh()->result_json['wave_dispatching']);
     }
 
+    public function test_a_slow_plan_cannot_dispatch_a_wave_without_time_to_collect_it(): void
+    {
+        $this->freezeTime();
+        $this->route('get_orders');
+        $run = $this->makeRun();
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldNotReceive('run');
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function () {
+            $this->travel(53)->seconds();
+            return $this->plan(['decision' => 'tools', 'actions' => [$this->action('orders', 'get_orders')]]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('time_limit', $outcome->stopReason);
+        $this->assertSame(0, $run->toolExecutions()->count());
+        $this->assertSame(0, $run->fresh()->counters_json['logical_calls']);
+        $this->assertSame(0, $run->fresh()->counters_json['physical_calls']);
+        $this->assertEmpty(data_get($run->fresh()->result_json, 'waves', []));
+    }
+
+    public function test_collection_stops_before_a_plan_that_cannot_leave_a_useful_next_wave(): void
+    {
+        $this->freezeTime();
+        $this->route('get_orders');
+        $run = $this->makeRun();
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->once()->andReturnUsing(function (array $tasks) {
+            $this->travel(23)->seconds();
+            return [array_key_first($tasks) => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)];
+        });
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->plan([
+            'decision' => 'tools', 'actions' => [$this->action('orders', 'get_orders')],
+        ]));
+        $this->app->instance(AiManager::class, $ai);
+
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('time_limit', $outcome->stopReason);
+        $this->assertSame('ORDER-42', data_get($outcome->evidence->apiTools(), '0.result.order.id'));
+        $this->assertSame(1, $run->toolExecutions()->count());
+        $this->assertSame(1, $run->fresh()->counters_json['logical_calls']);
+        $this->assertSame(1, $run->fresh()->counters_json['physical_calls']);
+    }
+
     private function action(string $id, string $tool, array $dependsOn = []): array
     {
         return ['id' => $id, 'tool' => $tool, 'arguments' => [], 'depends_on' => $dependsOn, 'purpose' => 'Read source'];
