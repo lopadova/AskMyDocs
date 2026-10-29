@@ -1,0 +1,91 @@
+ASKMYDOCS / BASE FATTUALE PER LA PRESENTAZIONE DI PRODOTTO
+Revisione prodotto: 8003ca793c0218ec13451b449fa02a874de762a0, 29 ottobre 2026.
+Analisi del codice e dei documenti; nessun ambiente, mailbox o provider è stato usato.
+La modifica preesistente al test AgentChatModelScopeTest.php è stata esclusa.
+
+TESI EDITORIALE CONSIGLIATA
+AskMyDocs collega le fonti dell'organizzazione al lavoro quotidiano: permette di
+fare domande, aprire le prove, confrontare documenti e consultare i sistemi live.
+La conoscenza può essere curata da persone, organizzata in un grafo e mantenuta
+con processi e segnali di attenzione. Non limitare il racconto a una chat sui PDF.
+
+PRIMA PARTE DEL DOCUMENTO
+1. Che cos'è: un punto d'accesso alla conoscenza e ai dati autorizzati dell'azienda.
+2. Per chi: lettori e operatori che cercano risposte; curatori che mantengono le
+   fonti; responsabili che amministrano accessi, consumi e qualità.
+3. Il percorso: collegare fonti -> organizzare e curare -> fare domande e aprire
+   prove -> usare confronti e dati live -> osservare lacune e manutenzione.
+4. Mostrare 4-5 casi d'uso dimostrativi: assistenza; ordini/operazioni; onboarding
+   e procedure; decisioni tecniche; lettura trasversale di documenti.
+5. Chiarire la differenza tra una risposta, il suo documento originale e una
+   decisione o sintesi generata automaticamente.
+
+APPENDICE PER SEZIONI DELL'APP
+La mappa sezioni-app.json comprende tutte le 47 voci di nav-config.ts:
+- Workspace: 6
+- Amministrazione sistema: 3
+- Amministrazione tenant: 7
+- Knowledge: 14
+- Compliance: 4
+- Operations: 13
+Sono incluse a parte le superfici FinOps, Guardrails, notifiche/preferenze,
+Time Machine, tag, KB Health, revisione OCR, voce e client desktop.
+I nomi inglesi possono essere tradotti editorialmente affiancando il nome menu.
+Il controllo definitivo è il mapping feature_ids di ciascuna sezione.
+
+INVENTARIO
+60 schede con ID F-001...F-060: 58 capacità implementate, alcune opzionali e
+spente nel default, più 2 capacità NON operative nello snapshot consumer.
+"active" indica presenza dell'implementazione verificata, non attivazione di
+produzione né successo di una demo. Usare activation, prerequisites e limits.
+Ogni evidence è ancorata al commit; tutti i percorsi sono verificati con Git.
+Il registro fonti contiene 167 percorsi collegati agli ID delle funzionalità.
+I numeri delle schede e delle sezioni sono controlli editoriali, non KPI commerciali.
+
+DISTINZIONI IMPORTANTI
+- Ricerca ibrida FTS: capability presente, default OFF. Non dichiarare che ogni
+  domanda usa contemporaneamente full-text e vettori.
+- Tenant: il confine dell'organizzazione è distinto dal progetto. La project
+  isolation per membership è default OFF e richiede configurazione esplicita.
+- OCR e Digitization Review: default OFF. Revisione per pagina e approvazione
+  sono implementate; non promettere una heat-map visuale completa.
+- Canonico/Auto-Wiki: l'AI propone e arricchisce; promozione e approvazioni
+  umane restano distinte. "Human reviewed" non cancella provenienza esterna.
+- PII: master e touch-point host default OFF. Tokenizzare non equivale ad
+  anonimizzare o a rendere automaticamente il servizio conforme.
+- Guardrails: controlli chat integrati e configurabili; pannello dedicato OFF
+  per default. Nessun sistema garantisce assenza di ogni attacco o errore.
+- FinOps: metering ON, enforcement hard-budget OFF e pannello opt-in. Non
+  promettere risparmi numerici né blocco preventivo di ogni percorso legacy.
+- Evidence & Risk: superficie admin e passaggio AI semantico default OFF.
+- Tool API composti: nucleo presente ma API_TOOLS_ENABLED=false, migrazioni e
+  code dedicate richieste. Primo rilascio read-only. La configurazione avanzata
+  dei tool dalla chat sta su un ramo diverso: non presentarla come già disponibile.
+- Email triage: opt-in per account; le campagne analizzano lo storico, non
+  inviano campagne email commerciali. I tag macchina non sono parole del mittente.
+- Freshdesk: base 1.0.0 nel lockfile; prima di promettere le estensioni avanzate
+  verificare la revisione del pacchetto effettivamente installata.
+- Zendesk: sviluppo locale autonomo, assente dal lockfile: escluderlo dalla
+  galleria dei connettori già integrati (F-060 è planned per l'host).
+- PACT: su develop auth predisposta, trasporto indisponibile. Il simulatore
+  knowledge è su ramo separato (F-059 è planned per il servizio nel consumer).
+- Desktop: client implementato con storie locali. Non equipararlo alle sessioni
+  web agentiche/vocali. Non promettere nuova beta iOS pronta: il registro Apple
+  segnala requisiti e QA ancora aperti.
+
+CLAIM DA NON RIUTILIZZARE DAL README
+Il README contiene confronti storici con concorrenti, prezzi e assoluti come
+"no public competitor", "GDPR-grade" e promesse di sicurezza/conformità. Non
+sono prove utilizzabili in questa presentazione e non sono stati verificati.
+Il documento non richiede un confronto di mercato: nessuna ricerca competitor
+è stata eseguita. Nessun risparmio, testimonianza cliente o risultato misurato
+può essere inventato. I casi sono scenari dimostrativi, salvo prove di un caso
+reale fornite separatamente.
+
+VERIFICA E CONSEGNA
+Riletti README, nav-config, route frontend, documentazione di prodotto,
+controller e servizi principali, configurazioni e contratti. Tutti i path
+citati esistono nel commit indicato; 47/47 sezioni hanno almeno un feature ID.
+Non sono stati eseguiti test applicativi, demo di browser o chiamate live.
+Nessun codice prodotto, ambiente, stato marketing comune o commit è stato
+modificato da questo sottoincarico. Tutti gli output sono nel subtree assegnato.

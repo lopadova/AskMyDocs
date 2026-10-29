@@ -1,0 +1,79 @@
+{
+  "id": "askmydocs-product-presentation-art",
+  "style_reference": "marketing/immagini/linea-editoriale-askmydocs.json",
+  "generated_assets": [
+    {
+      "id": "product-support-memory",
+      "path": "marketing/immagini/presentazione-prodotto/assistenza-memoria.png",
+      "generated_source": "/Users/marco/.codex/generated_images/01a18757-2a51-7531-a7e1-773dabd0dc1d/exec-07fc61bc-fa84-4dbb-9e45-e8df938ad6ef.png",
+      "reference": "public/editorial/knowledge-day.webp",
+      "use": "Caso 1 / assistenza e memoria dei casi",
+      "prompt": "Use case: stylized-concept. Asset type: original editorial illustration for a polished Italian product presentation of AskMyDocs. The attached image is STYLE AND PALETTE REFERENCE ONLY, not an edit target. Create a NEW coherent landscape scene with the exact same humanistic hand-painted gouache character, tactile fine paper grain, warm ivory limestone, quiet sage and forest greens, small brass accents, believable soft sculptural Mediterranean light. The visual should belong to the same series as the reference: an elegant Italian architectural library and the human work of knowledge, not a generic modern office. Subject: CUSTOMER SUPPORT AS SHARED MEMORY. In a sunlit arched archive room overlooking cypress trees and a lake, two small colleagues at a broad stone-and-wood reading table compare an open historical case folder with a new folio; a third colleague retrieves a matching folder from sculptural library shelves. Two nearby brass bookstands hold original documents; a shallow tray neatly groups sealed correspondence and index cards. The scene expresses tracing a present question to past evidence, with natural restrained human interaction. Keep papers and objects physically coherent, no floating objects. Full landscape 3:2 composition, medium-wide viewpoint, main activity in central and right two-thirds, quiet left margin suitable for editorial crops. Refined painterly detail, sophisticated restrained color. No readable writing, letters, numbers, logos, text, watermark, interface, computer screens, charts, pictograms, arrows, diagram or collage. One scene only. This is a narrative illustration, not a testimonial or a screenshot.",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "sha256": "3b0d02c0a5fd3ce71c1bb79903f7d6a929cb6705f15836ce32d149eafb39d065",
+      "tool": "built-in image_gen",
+      "transparent_background": false,
+      "created_at": "2026-10-29",
+      "validation": "Immagine ispezionata e controllata anche nel rendering PDF; scena narrativa, nessun testo leggibile o UI."
+    },
+    {
+      "id": "product-knowledge-operations",
+      "path": "marketing/immagini/presentazione-prodotto/conoscenza-operazioni.png",
+      "generated_source": "/Users/marco/.codex/generated_images/01a18757-2a51-7531-a7e1-773dabd0dc1d/exec-e323a659-e648-4cfd-a10f-261a2de90c62.png",
+      "reference": "public/editorial/community-day.webp",
+      "use": "Caso 2 / procedure e dati correnti",
+      "prompt": "Use case: stylized-concept. Asset type: original editorial illustration for a polished Italian product presentation of AskMyDocs. The attached image is STYLE AND PALETTE REFERENCE ONLY, not an edit target. Create a NEW coherent landscape scene belonging to the same refined humanistic gouache series: warm ivory limestone architecture, tactile painted paper grain, sage and forest green, discreet brass, charcoal ink, softly luminous afternoon Mediterranean daylight. Subject: CONNECTING DOCUMENTED KNOWLEDGE TO CURRENT OPERATIONS. A beautiful Italian loggia opens onto a small orderly workshop and dispatch area. In the foreground a knowledgeable colleague and an operations colleague compare an open bound procedural handbook, an order folio and a small physical product sample on a broad marble table; in the middle ground another colleague prepares two neutral unbranded parcels on wooden shelving. Human-centered, intellectual and practical, calm real work rather than futuristic technology. Tall arched openings reveal a Tuscan garden with cypress and olive trees, rich but restrained perspective. Full landscape 3:2 composition, main human activity central/right, balanced negative space to the left, natural coherent poses and objects. Paper documents show only faint abstract brush marks, never readable writing. No text, numbers, labels, brands, logos, signage, watermark, UI, computer monitors, neon, floating interface, arrows, chart or collage. One coherent illustration only. It illustrates a use case and must not resemble a real customer photograph.",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "sha256": "13f9065c008975c56e2bedba66cc82501560475a9dbc9ea037b792d87ee363e7",
+      "tool": "built-in image_gen",
+      "transparent_background": false,
+      "created_at": "2026-10-29",
+      "validation": "Immagine ispezionata e controllata anche nel rendering PDF; scena narrativa, nessun testo leggibile o UI."
+    }
+  ],
+  "reused_assets": [
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    },
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    },
+    {
+      "path": "public/editorial/processes-day.webp",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    },
+    {
+      "path": "public/editorial/archive-day.webp",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    },
+    {
+      "path": "public/editorial/connections-day.webp",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    },
+    {
+      "path": "public/editorial/connections-night.webp",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "origin": "Asset versionato del prodotto; manifest editoriale e registro brand esistenti."
+    }
+  ],
+  "usage": "Illustrazioni decorative e di scenario; nessuna testimonianza o schermata simulata. Gli asset originali del prodotto non sono stati modificati.",
+  "rights_note": "Le nuove scene sono generate per il documento tramite il tool integrato. Il riuso degli asset esistenti è interno al progetto; non è stata verificata una licenza autonoma per distribuire a terzi la libreria di artwork."
+}

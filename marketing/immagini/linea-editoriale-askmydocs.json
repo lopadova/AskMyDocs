@@ -1,0 +1,42 @@
+{
+  "id": "askmydocs-editoriale-umanistica",
+  "approved_reference": "marketing/pdf/askmydocs-ottobre-2026.pdf",
+  "reference_source_commit": "380c8dbd0b405206f31052ccd5a218d08eb0b448",
+  "user_preference": "L'utente ha approvato il report di ottobre e richiesto la stessa identica struttura grafica per la presentazione del prodotto.",
+  "palette": {
+    "paper": "#fbf8f1",
+    "warm_paper": "#f4f0e7",
+    "ink": "#23312d",
+    "forest": "#224c40",
+    "rust": "#a35539",
+    "pale_green": "#e5ebdf",
+    "rules": "#d4d8ca"
+  },
+  "typography": {
+    "headings": "Georgia, peso normale, 31.5 pt / 37 pt per le pagine interne",
+    "cover": "Titolo serif ampio, sottotitolo su due righe, marchio originale",
+    "body": "Arial 10.3 pt / 15 pt, titoli di blocco Georgia 14.8 pt / 19 pt",
+    "quotes": "Georgia Italic su riquadro verde pallido con filetto verde bosco"
+  },
+  "page": {
+    "format": "A4 verticale",
+    "margins_pt": 45,
+    "column_width_pt": 238.638,
+    "gutter_pt": 28,
+    "structure": "Testatina e filetto, occhiello ruggine, titolo serif, sommario, due colonne, richiamo finale e folio",
+    "cover": "Carta calda nella parte alta, immagine a tutta larghezza nella parte bassa, fascia verde conclusiva"
+  },
+  "art_direction": {
+    "theme": "Umanistico AskMyDocs: biblioteche, logge italiane, archivi, persone e paesaggi mediterranei",
+    "style": "Gouache editoriale, grana della carta, pietra avorio, salvia e verde profondo, ottone discreto",
+    "role": "Immagini narrative e simboliche, dichiarate illustrative",
+    "avoid": "UI inventate, testi leggibili nei dipinti, neon, simboli tech generici, fotografie presentate come clienti reali",
+    "existing_assets": "public/editorial/manifest.json",
+    "new_asset_register": "marketing/immagini/presentazione-prodotto/registro.json"
+  },
+  "reuse": {
+    "rendering_primitives": "marketing/pdf/sorgenti/ottobre-2026/build_report.py",
+    "product_document": "marketing/pdf/sorgenti/presentazione-prodotto/build_presentazione.py",
+    "writing": "Aprire con problema e valore, proseguire con scenari dimostrativi e rimandare il catalogo funzionale alla seconda parte. Evitare claim assoluti o risparmi non misurati."
+  }
+}

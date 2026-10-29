@@ -1,0 +1,473 @@
+{
+  "artifact_id": "askmydocs-product-use-cases-2026-10-29",
+  "language": "it",
+  "status": "validated",
+  "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+  "validation_scope": "Scenari progettati da codice e documentazione versionata; nessuna demo, chiamata AI, mailbox o API reale eseguita per questa consegna.",
+  "global_label": "Scenari dimostrativi: descrivono usi possibili del prodotto, non testimonianze o risultati di clienti.",
+  "cases": [
+    {
+      "id": "UC-01",
+      "title": "Il ticket di oggi incontra l'esperienza di ieri.",
+      "subtitle": "Assistenza clienti e memoria dei casi",
+      "audience": "Responsabile customer care e operatori di assistenza",
+      "context": "Un operatore riceve una segnalazione già incontrata da altri colleghi. Le informazioni sono distribuite fra ticket precedenti, conversazioni e procedura interna; lo stato del caso corrente continua a cambiare.",
+      "question": "Abbiamo già affrontato un problema simile? Quale intervento risulta documentato e che cosa sappiamo del ticket attuale?",
+      "sources_needed": [
+        "Ticket e conversazioni Freshdesk accessibili all'installazione",
+        "Procedure approvate importate nel progetto",
+        "Eventuali schede dei casi validate e compatibili con la versione del pacchetto"
+      ],
+      "preconditions": [
+        "Connessione Freshdesk e progetto autorizzati",
+        "Importazione dello storico completata per il perimetro desiderato",
+        "Tool live abilitati per la connessione",
+        "Per le schede automatiche: revisione compatibile del pacchetto, generatore host e flag necessari"
+      ],
+      "observable_sequence": [
+        "L'operatore sceglie il progetto e descrive il problema.",
+        "La ricerca individua i casi storici pertinenti e le procedure ammesse.",
+        "Gli strumenti live leggono i dettagli del ticket corrente quando servono dati aggiornati.",
+        "La risposta distingue esperienza precedente, indicazioni della procedura e stato osservato ora.",
+        "L'operatore apre le citazioni e le conversazioni originali prima di decidere il seguito."
+      ],
+      "example_output": {
+        "label": "Struttura di risposta attesa, non una run osservata",
+        "text": "Problema documentato; interventi citati nei casi precedenti; esito documentato, assente o conflittuale; situazione corrente del ticket con fonte; aspetti che richiedono ancora una verifica."
+      },
+      "practical_value": "Ritrovare l'esperienza già raccolta senza trasformare ogni nuovo ticket in una ricerca da ricostruire fra colleghi.",
+      "limit": "Un ticket chiuso non dimostra da solo che la soluzione abbia funzionato. La risposta non invia messaggi al cliente e non aggiorna automaticamente il ticket.",
+      "editorial": {
+        "opening": "La domanda arriva al banco dell'assistenza. Qualcuno l'ha già vista, ma il collega che ricorda il caso oggi non c'è.",
+        "mechanism": "AskMyDocs può mettere in relazione lo storico importato, le procedure del progetto e i dettagli correnti letti da Freshdesk. La risposta mantiene distinti il precedente e il caso di oggi, con riferimenti da aprire e controllare.",
+        "payoff": "Il valore è rendere consultabile il lavoro già svolto. Quando si usano le schede automatiche dei casi, problema, causa, intervento ed esito restano collegati alle evidenze originali. Le condizioni della versione installata e le opzioni del connettore determinano quali passaggi sono disponibili."
+      },
+      "source_ids": [
+        "UC-S01",
+        "UC-S02",
+        "UC-S03",
+        "UC-S04"
+      ],
+      "illustration_brief": "Un banco di assistenza in una biblioteca umanistica contemporanea; una persona confronta una cartella appena arrivata con un volume consultato da una collega. Tavolo in legno, verde bosco e carta calda, nessun testo leggibile e nessuna UI inventata."
+    },
+    {
+      "id": "UC-02",
+      "title": "La procedura incontra il dato di adesso.",
+      "subtitle": "Ordini, spedizioni e API del gestionale",
+      "audience": "Ufficio ordini, operations e servizio clienti",
+      "context": "Il team deve rispondere su un ordine. Il manuale descrive come gestire le eccezioni, mentre lo stato corrente appartiene al gestionale. Copiare il manuale nella chat non aggiorna il dato operativo.",
+      "question": "Verifica lo stato di questo ordine e indicami quale passaggio della nostra procedura si applica alle informazioni disponibili.",
+      "sources_needed": [
+        "Procedura aziendale importata e pertinente al progetto",
+        "Endpoint di lettura del gestionale configurati con schema e parametri",
+        "Identificativo dell'ordine autorizzato o risolvibile da una fonte ammessa"
+      ],
+      "preconditions": [
+        "API del gestionale raggiungibili con credenziali server-side",
+        "Route e tool attivi per il progetto",
+        "Mapping e identità dei record verificati",
+        "Per i tool API composti: migrazioni, worker, revisioni pubblicate e attivazione esplicita"
+      ],
+      "observable_sequence": [
+        "L'utente specifica un ordine o fornisce elementi per cercarlo.",
+        "Il sistema risolve gli identificativi tramite le fonti ammesse.",
+        "I tool interrogano gli endpoint di lettura configurati, rispettando dipendenze e limiti.",
+        "La ricerca recupera la procedura documentale pertinente.",
+        "La risposta distingue il riscontro live dalla regola aziendale e permette di ispezionare la chiamata API."
+      ],
+      "example_output": {
+        "label": "Struttura di risposta attesa, senza dati ordine inventati",
+        "text": "Stato restituito dal gestionale e momento dell'osservazione; passaggi della procedura citati; differenze o dati non disponibili; verifiche da svolgere prima dell'azione operativa."
+      },
+      "practical_value": "Riunire nella stessa conversazione la regola da applicare e il riscontro corrente del sistema che conserva l'ordine.",
+      "limit": "La freschezza e la completezza dipendono dagli endpoint resi disponibili. La prima consegna dei tool composti è di sola lettura e disattivata per default. La configurazione GESCAT documentata è una prova tecnica locale, non una referenza cliente o un collegamento già attivo per ogni installazione.",
+      "editorial": {
+        "opening": "Il manuale spiega come trattare un'eccezione. Il gestionale racconta dove si trova l'ordine in questo momento. Per rispondere servono entrambi.",
+        "mechanism": "Una domanda può portare AskMyDocs a consultare le procedure indicizzate e gli endpoint di lettura preparati per il progetto. Gli identificativi vengono ricavati dalle fonti ammesse; le chiamate rispettano i mapping e le dipendenze configurate.",
+        "payoff": "La risposta separa il dato corrente dalla regola aziendale, espone i limiti incontrati e apre il riferimento alla chiamata eseguita. Il collegamento al gestionale, GESCAT compreso, richiede una configurazione specifica: lo scenario non implica un connettore universale già pronto."
+      },
+      "source_ids": [
+        "UC-S05",
+        "UC-S06",
+        "UC-S07",
+        "UC-S08"
+      ],
+      "illustration_brief": "Un tavolo di consultazione con un manuale aperto e un piccolo modello di magazzino organizzato in vassoi di legno; due persone confrontano la regola e una scheda corrente. Stile pittorico umanistico del prodotto, niente testo o grafici con numeri inventati."
+    },
+    {
+      "id": "UC-03",
+      "title": "Una conversazione dispersa torna leggibile.",
+      "subtitle": "Archivio email e triage",
+      "audience": "Servizio clienti, commerciale e back office",
+      "context": "Una pratica attraversa messaggi, risposte e allegati. Le persone usano parole diverse per descrivere lo stesso bisogno; un'etichetta automatica aiuta a ritrovare il caso, ma non dimostra ciò che il cliente ha dichiarato.",
+      "question": "Ricostruisci le richieste e le risposte documentate su questa pratica, distinguendo gli aspetti ancora da chiarire.",
+      "sources_needed": [
+        "Messaggi importati da IMAP, Gmail API o Microsoft Mail",
+        "Allegati accettati dalle policy di importazione",
+        "Eventuali categorie e tag prodotti da un profilo di triage attivato"
+      ],
+      "preconditions": [
+        "Mailbox autorizzata, cartelle o etichette selezionate e import eseguito",
+        "Ambito di lettura ammesso all'utente",
+        "Per il triage: regole salvate, account attivato, provider e worker pronti",
+        "Per campagne retrospettive: fonti originali ancora disponibili o snapshot verificati"
+      ],
+      "observable_sequence": [
+        "L'amministratore decide quali account e cartelle importare.",
+        "Se utile, prepara una bozza delle regole di triage da un prompt, la rivede e salva separatamente dall'attivazione.",
+        "La classificazione assegnata ai messaggi rende ricercabili le caratteristiche configurate.",
+        "L'utente cerca la pratica e chiede di ricostruire la conversazione.",
+        "Il lettore riapre gli originali verificati; la risposta cita messaggi e passaggi senza attribuire al mittente le schede generate."
+      ],
+      "example_output": {
+        "label": "Struttura di risposta attesa, non trascrizione di messaggi reali",
+        "text": "Cronologia delle richieste e dei riscontri disponibili, con attribuzione ai mittenti e citazioni; allegati disponibili o esclusi; punti non documentati o da confermare. Le categorie del triage sono presentate come classificazioni automatiche."
+      },
+      "practical_value": "Ricostruire il contesto della pratica e ritrovare messaggi simili anche quando il testo usa formulazioni diverse.",
+      "limit": "Il triage è opt-in e inizialmente disattivato. Una classificazione incerta può restare non determinabile. La disponibilità degli allegati e la copertura dello storico sono esplicite; nessuna risposta viene inviata automaticamente dalla funzione descritta.",
+      "editorial": {
+        "opening": "La pratica esiste già, ma è sparsa in più messaggi. Una persona ha chiesto un chiarimento, un'altra ha risposto e un allegato contiene il dettaglio che serve.",
+        "mechanism": "AskMyDocs importa le fonti selezionate e può applicare un triage configurato dal team. Le categorie aiutano a cercare richieste espresse con parole diverse. Per motivare la risposta, il sistema torna all'originale verificato e mantiene attribuzioni e cronologia.",
+        "payoff": "Il gruppo ritrova il filo della conversazione, distinguendo quanto è scritto dai segnali automatici che hanno aiutato a individuarlo. Salvataggio delle regole, attivazione e campagne sullo storico restano scelte esplicite; un tag non diventa una dichiarazione del cliente."
+      },
+      "source_ids": [
+        "UC-S09",
+        "UC-S10",
+        "UC-S11"
+      ],
+      "illustration_brief": "Una tavola d'archivio con lettere e cartelle unite da sottili segnalibri verdi; una persona segue il filo fra tre documenti mentre un'altra consulta un allegato. Nessuna busta con dati personali o testo leggibile; carta e luce calda, stile umanistico."
+    },
+    {
+      "id": "UC-04",
+      "title": "Il nuovo collega trova anche il perché.",
+      "subtitle": "Onboarding, procedure e memoria delle decisioni",
+      "audience": "Responsabili di funzione, team tecnici e persone appena entrate",
+      "context": "Un nuovo collega può leggere la procedura, ma spesso gli manca la ragione di una scelta. Decisioni superate, incidenti e opzioni già scartate vivono in documenti diversi e nella memoria delle persone.",
+      "question": "Qual è la procedura vigente per questo lavoro e quali decisioni spiegano perché è stata scelta?",
+      "sources_needed": [
+        "Runbook e procedure approvati",
+        "Decisioni, incidenti e approcci scartati modellati come documenti canonici",
+        "Relazioni dichiarate fra i documenti",
+        "Eventuali pagine AutoWiki generate dalle fonti del progetto"
+      ],
+      "preconditions": [
+        "Documenti e stato di approvazione curati",
+        "Permessi di progetto e fonti applicati",
+        "Per memoria e relazioni: livello canonico popolato e componenti configurati",
+        "Per AutoWiki: fasi abilitate, modelli e worker predisposti, revisione umana quando si promuovono pagine"
+      ],
+      "observable_sequence": [
+        "Il team carica la procedura e i documenti decisionali con stato e relazioni.",
+        "La persona sceglie il progetto e pone una domanda sul lavoro da svolgere.",
+        "La ricerca recupera il documento pertinente e il contesto correlato autorizzato.",
+        "Quando abilitati e pertinenti, gli approcci scartati vengono esposti come memoria della decisione.",
+        "Il lettore apre le fonti; gli editor curano o promuovono le pagine derivate dopo averle verificate."
+      ],
+      "example_output": {
+        "label": "Struttura di risposta attesa",
+        "text": "Procedura vigente citata; decisione che la sostiene; collegamenti ai documenti correlati; alternative già scartate quando presenti e pertinenti; punti per cui il corpus non offre una motivazione verificabile."
+      },
+      "practical_value": "Trasferire sia il modo di lavorare sia il contesto delle scelte, mantenendo consultabile la memoria del team.",
+      "limit": "La memoria dipende dai documenti e dalle relazioni effettivamente curate. Le pagine automatiche non diventano autorevoli senza revisione e promozione; la priorità data ai contenuti umani approvati non sostituisce una verifica della loro attualità.",
+      "editorial": {
+        "opening": "Una procedura racconta come si lavora. Per chi arriva oggi, il passo successivo è capire perché il team ha scelto proprio quella strada.",
+        "mechanism": "AskMyDocs collega runbook, decisioni, incidenti e alternative scartate attraverso una base documentale con tipi, stati e relazioni. Le funzioni AutoWiki abilitate possono costruire indici e pagine derivate per orientarsi nel corpus, lasciando distinguibili le fonti approvate e il materiale generato.",
+        "payoff": "La consultazione diventa un percorso nella conoscenza del progetto. Il nuovo collega può aprire la fonte, seguire una decisione e ritrovare il contesto che di solito viene spiegato a voce. Il team resta responsabile di mantenere le procedure aggiornate e di confermare ciò che acquista autorità."
+      },
+      "source_ids": [
+        "UC-S12",
+        "UC-S13",
+        "UC-S14",
+        "UC-S15",
+        "UC-S16"
+      ],
+      "illustration_brief": "Due colleghi a un grande tavolo di biblioteca, uno mostra una mappa di scaffali e documenti all'altra; piccoli percorsi collegano un manuale presente e volumi storici, senza scritte. Gesto umano di trasmissione del sapere; luce diurna, carta calda e verde bosco."
+    },
+    {
+      "id": "UC-05",
+      "title": "Il progetto segue il team nei suoi strumenti AI.",
+      "subtitle": "Conoscenza autorizzata via MCP",
+      "audience": "Team tecnici, consulenti e persone che lavorano con client AI compatibili",
+      "context": "Una persona lavora in Codex, Claude o Cursor e ha bisogno della documentazione aziendale del progetto. Copiare ogni volta interi documenti crea un contesto provvisorio e rende più difficile controllare quali fonti vengano usate.",
+      "question": "Cerca nelle fonti autorizzate di questo progetto la decisione e la procedura pertinenti al lavoro che sto preparando.",
+      "sources_needed": [
+        "Documenti indicizzati nel progetto autorizzato",
+        "Connessione MCP dedicata a quell'azienda e a quel progetto",
+        "Per aggiunte al corpus: file esplicitamente selezionati dall'utente"
+      ],
+      "preconditions": [
+        "Client compatibile con HTTP MCP e OAuth previsti dall'installazione",
+        "Login e consenso con membership valida nel progetto",
+        "Origine HTTPS raggiungibile dal client, pubblica quando il client usa infrastruttura cloud",
+        "Per importazione: scope, ruolo e membership di ingestione e conferma browser"
+      ],
+      "observable_sequence": [
+        "L'utente prepara la connessione e sceglie azienda e progetto nel consenso AskMyDocs.",
+        "Il client usa il server del progetto per ricerca e lettura delle fonti ammesse.",
+        "L'utente può chiedere l'importazione di specifici file, se possiede le facoltà richieste.",
+        "I documenti vengono preparati in staging e il browser mostra destinazione, file e anteprime.",
+        "Solo dopo l'approvazione l'ingestione procede; il client consulta lo stato finché i documenti risultano pronti."
+      ],
+      "example_output": {
+        "label": "Struttura di interazione attesa, non una sessione live certificata",
+        "text": "Ricerca con identificativi e passaggi delle fonti del progetto; apertura dei documenti autorizzati; per nuovi file, collegamento alla revisione dell'import e stato dei singoli documenti dopo l'approvazione."
+      },
+      "practical_value": "Rendere riutilizzabile la conoscenza del progetto nel punto in cui la persona sta già lavorando, mantenendo accesso e importazione governati da AskMyDocs.",
+      "limit": "Una connessione autorizza un solo progetto. Il client deve supportare il flusso previsto ed essere in grado di raggiungere l'installazione. L'output finale del client resta responsabilità del suo percorso di generazione; i test server non certificano un login reale per tutti i client. Il plugin locale non è una pubblicazione in directory.",
+      "editorial": {
+        "opening": "Il documento aziendale serve mentre si prepara un intervento, una proposta o una modifica. Il lavoro può essere già aperto in un altro strumento AI.",
+        "mechanism": "Una connessione MCP autorizzata porta ricerca e lettura del progetto in client compatibili come Codex, Claude e Cursor. Azienda, progetto e permessi vengono scelti nel consenso AskMyDocs. Quando si devono aggiungere file, una revisione nel browser mostra ciò che entrerà nel corpus prima dell'indicizzazione.",
+        "payoff": "Le fonti diventano una risorsa riusabile nel flusso di lavoro, senza confondere la connessione con un accesso indistinto a tutta l'organizzazione. La raggiungibilità dell'installazione, le funzioni del client e la configurazione OAuth restano condizioni concrete da verificare."
+      },
+      "source_ids": [
+        "UC-S17",
+        "UC-S18",
+        "UC-S19",
+        "UC-S20"
+      ],
+      "illustration_brief": "Una biblioteca centrale aperta su tre piccoli studi di lavoro collegati da ponti, persone che consultano gli stessi volumi in ambienti diversi; dettagli umanistici simili alla copertina di ottobre. Nessun marchio di client, nessuna interfaccia o stringa tecnica inventata."
+    }
+  ],
+  "sources": [
+    {
+      "id": "UC-S01",
+      "path": "docs/connectors/FRESHDESK.md",
+      "supports": [
+        "Importazione e consultazione Freshdesk"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/connectors/FRESHDESK.md",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S02",
+      "path": "app/Ai/Tools/Sources/FreshdeskChatToolSource.php",
+      "supports": [
+        "Tool live autorizzati per il contesto di progetto"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Ai/Tools/Sources/FreshdeskChatToolSource.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S03",
+      "path": "app/Connectors/Freshdesk/FreshdeskCaseStudyLineage.php",
+      "supports": [
+        "Validazione della provenienza delle schede e lettura delle evidenze originali"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Connectors/Freshdesk/FreshdeskCaseStudyLineage.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S04",
+      "path": "docs/presentations/nencini-sport/contenuti-keynote-v3.json",
+      "supports": [
+        "Perimetro della demo documentata, distinzione fra collegamenti e scenari successivi"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/presentations/nencini-sport/contenuti-keynote-v3.json",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S05",
+      "path": "docs-site/connectors-api.mdx",
+      "supports": [
+        "Endpoint configurati come strumenti live"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/connectors-api.mdx",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S06",
+      "path": "docs/handoff/composed-api-tools.md",
+      "supports": [
+        "Prerequisiti tool composti, controlli read-only GESCAT e limiti della verifica"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/handoff/composed-api-tools.md",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S07",
+      "path": "app/Agent/Tools/ApiSourceRequest.php",
+      "supports": [
+        "Snapshot ispezionabile della richiesta, senza risolvere credenziali"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/Tools/ApiSourceRequest.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S08",
+      "path": "frontend/src/features/chat/ToolSourceModal.tsx",
+      "supports": [
+        "Ispezione dei riferimenti alle chiamate API dalla chat"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/chat/ToolSourceModal.tsx",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S09",
+      "path": "docs/email-triage.md",
+      "supports": [
+        "Triage opt-in, regole, campagne, snapshot e separazione delle classificazioni"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/email-triage.md",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S10",
+      "path": "docs/connectors/EMAIL-API.md",
+      "supports": [
+        "Contratto comune di Gmail e Microsoft Mail verso l'host"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/connectors/EMAIL-API.md",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S11",
+      "path": "app/Services/Kb/Investigation/KbSourceReader.php",
+      "supports": [
+        "Lettura autorizzata delle fonti e originali email"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Investigation/KbSourceReader.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S12",
+      "path": "docs-site/institutional-memory.mdx",
+      "supports": [
+        "Memoria di decisioni e approcci scartati"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/institutional-memory.mdx",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S13",
+      "path": "docs-site/auto-wiki.mdx",
+      "supports": [
+        "Pagine derivate, indici, revisione e promozione"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/auto-wiki.mdx",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S14",
+      "path": "app/Services/Kb/Retrieval/GraphExpander.php",
+      "supports": [
+        "Recupero del contesto attraverso relazioni canoniche"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Retrieval/GraphExpander.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S15",
+      "path": "app/Services/Kb/Retrieval/RejectedApproachInjector.php",
+      "supports": [
+        "Esposizione degli approcci scartati pertinenti"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Retrieval/RejectedApproachInjector.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S16",
+      "path": "app/Services/Kb/AutoWiki/WikiNavigator.php",
+      "supports": [
+        "Navigazione delle relazioni wiki"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/WikiNavigator.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S17",
+      "path": "docs-site/codex-project-connection.mdx",
+      "supports": [
+        "Connessione ai client e importazione con approvazione"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/codex-project-connection.mdx",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S18",
+      "path": "app/Services/Mcp/ConnectedProjectWorkspace.php",
+      "supports": [
+        "Ricerca e lettura del solo progetto autorizzato"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Mcp/ConnectedProjectWorkspace.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S19",
+      "path": "app/Services/Mcp/McpDocumentImportService.php",
+      "supports": [
+        "Staging, revisione, conferma e stato dell'importazione"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Mcp/McpDocumentImportService.php",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    },
+    {
+      "id": "UC-S20",
+      "path": "docs/security/mcp-project-oauth-boundaries.md",
+      "supports": [
+        "Ruoli, scope, membership e separazione dell'approvazione browser"
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/security/mcp-project-oauth-boundaries.md",
+      "checked_at": "2026-10-29",
+      "kind": "product",
+      "limits": "Lettura di codice o documentazione; nessuna esecuzione live in questa consegna."
+    }
+  ]
+}
