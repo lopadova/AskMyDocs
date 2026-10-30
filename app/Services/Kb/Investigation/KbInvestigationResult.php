@@ -24,6 +24,7 @@ final readonly class KbInvestigationResult
         public array $factMap = ['supported_facts' => [], 'missing_facts' => []],
         public array $researchFlows = [],
         public array $attempts = [],
+        public ?\App\Agent\AgentAnswer $memoryAnswer = null,
     ) {
     }
 

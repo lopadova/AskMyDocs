@@ -101,7 +101,7 @@ final class VerifiedAnswerCheckpoint
                 $this->toolSources($safe['api_tools'], $claims),
                 [$notice], grounding: ['status' => 'grounded', 'claims' => $claims,
                     'source_excerpts' => [], 'recovery' => ['reason' => in_array($reason, ['worker_timeout', 'agent_run_failed'], true) ? $reason : 'agent_run_failed']]);
-            return DB::transaction(function () use ($run, $answer, $snapshot, $checkedInput, $checkedResult): bool {
+            return DB::transaction(function () use ($run, $answer, $snapshot, $checkedInput, $checkedResult, $safe): bool {
                 $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
                 if (! in_array($locked->status, [AgentRun::STATUS_RUNNING, AgentRun::STATUS_QUEUED], true)
                     || $locked->input_json !== $checkedInput || $locked->result_json !== $checkedResult
@@ -113,6 +113,7 @@ final class VerifiedAnswerCheckpoint
                     'result_json' => [...($locked->result_json ?? []), 'phase' => 'final', 'decision' => 'partial',
                         'stop_reason' => 'verified_answer_recovered', 'response' => $answer->jsonSerialize()]])->save();
                 app(AgentResultProjector::class)->project($locked, $answer);
+                app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finishRun($locked, $safe, $answer);
                 app(AgentEventPublisher::class)->publish($locked, 'run.partial', 'run.partial', data: ['response' => $answer->jsonSerialize()], canCancel: false);
                 return true;
             });

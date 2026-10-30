@@ -28,6 +28,11 @@ final readonly class AgentEvidenceAccess
         $identifiers = \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding', []))->targetIdentifiers();
         $safe = ['documents' => [], 'api_tools' => [], 'warnings' => $evidence['warnings'] ?? []];
         foreach ($evidence['documents'] ?? [] as $document) {
+            if (isset($document['session_memory_observation_id'])
+                && ! app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->allowsDocument($run, $document)) {
+                $safe['warnings'][] = ['code' => 'session_memory_expired_or_unavailable', 'source' => 'document'];
+                continue;
+            }
             $chunks = [];
             foreach ($document['evidence'] ?? [] as $chunk) {
                 $source = $this->reader->readCandidate(['document' => ['id' => $document['document_id'] ?? 0],
@@ -87,13 +92,15 @@ final readonly class AgentEvidenceAccess
                 && in_array($sourceRun->id, data_get($run->result_json, 'research_runs', []), true)
                 && data_get($sourceRun->input_json, 'research_parent_id') === $run->id
                 && $sourceRun->actor_type === $run->actor_type && $sourceRun->actor_id === $run->actor_id;
+            $memoryReuse = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->allowsTool($run, $tool);
             if ($definition !== null && $execution !== null && $execution->status === 'completed'
+                && (! isset($tool['session_memory_observation_id']) || $memoryReuse)
                 && $execution->tool_name === $tool['tool'] && $sameConversation
-                && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $this->contextTaskAllows($run, $tool))
+                && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $memoryReuse || $this->contextTaskAllows($run, $tool))
                 && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool))
                 && ($tool['executor_reference'] ?? null) === $definition->executorReference
                 && hash_equals((string) ($tool['evidence_hash'] ?? ''), hash('sha256', (string) json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE)))) {
-                $safe['api_tools'][] = $sourceRun->id !== $run->id && ! $researchChild
+                $safe['api_tools'][] = $sourceRun->id !== $run->id && ! $researchChild && ! $memoryReuse
                     ? [...$tool, 'historical_context' => true] : $tool;
             } else {
                 $safe['warnings'][] = ['code' => 'live_source_unavailable', 'source' => $tool['tool'] ?? null];

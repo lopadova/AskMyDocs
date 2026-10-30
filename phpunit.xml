@@ -30,6 +30,8 @@
         <env name="APP_ENV" value="testing"/>
         <!-- Legacy transport fixtures opt out; dedicated reasoning tests explicitly enable these. -->
         <env name="CHAT_REASONING_ENABLED" value="false"/>
+        <!-- Legacy fixtures retain the old policy; verified memory tests opt in. -->
+        <env name="CHAT_VERIFIED_SESSION_MEMORY_ENABLED" value="false"/>
         <env name="AGENT_SELECTIVE_VALIDATION_ENABLED" value="false"/>
         <env name="AGENT_SELECTIVE_REPAIR_ENABLED" value="false"/>
         <!-- Dedicated presentation tests enable the extra generation and verification stage. -->

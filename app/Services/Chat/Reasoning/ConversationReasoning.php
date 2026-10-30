@@ -45,6 +45,30 @@ final readonly class ConversationReasoning
             : ($owner instanceof WidgetSession ? $owner->steps()->find(data_get($run->input_json, 'widget_user_step_id')) : null);
     }
 
+    /** Called inside the same transaction that projects and completes the run. */
+    public function finishRun(AgentRun $run, array $evidence, \App\Agent\AgentAnswer $answer): void
+    {
+        $owner = $this->runOwner($run);
+        $turn = $this->runTurn($run);
+        $saved = $run->channel === 'widget'
+            ? WidgetSessionStep::query()->where('agent_run_id', $run->id)->first()
+            : \App\Models\Message::query()->where('agent_run_id', $run->id)->first();
+        if ($owner !== null && $turn !== null && $saved !== null) {
+            $this->finish($owner, $turn, $saved, $evidence, $answer->grounding['claims'] ?? [], $answer->grounding['subquestions'] ?? []);
+        }
+    }
+
+    public function saveMessage(Conversation $owner, ?Model $turn, array $attributes, array $evidence = [], array $memoryClaims = []): \App\Models\Message
+    {
+        return DB::transaction(function () use ($owner, $turn, $attributes, $evidence, $memoryClaims) {
+            if ($memoryClaims !== []) $attributes['metadata']['grounding']['memory_claims'] = $memoryClaims;
+            $message = $owner->messages()->create($attributes);
+            if ($turn !== null) $this->finish($owner, $turn, $message, $evidence);
+            $owner->touch();
+            return $message;
+        });
+    }
+
     public function state(Model $owner): array
     {
         return (is_array($owner->reasoning_state) ? $owner->reasoning_state : []) + [
@@ -69,12 +93,14 @@ final readonly class ConversationReasoning
                 return QuestionUnderstanding::fromArray($cached);
             }
             $owner->refresh();
-            $before = $this->context($owner, $actor, $filters, (int) $turn->getKey());
+            $allowedTools = array_keys($capabilities?->capabilities ?? []);
+            $before = $this->context($owner, $actor, $filters, (int) $turn->getKey(), $allowedTools, $question);
             if ($this->state($owner)['focus_turn'] > $turn->getKey()) {
                 // An older in-flight message must not resolve pronouns using a later user's focus.
                 $before = ['focus' => [], 'known_identifiers' => [], 'verified_relations' => [], 'references' => []];
             }
             $understanding = $this->preprocessor->interpret($question, null, $profile, $before, $capabilities, $initialPlanning);
+            $understanding = app(SessionFactMemory::class)->resolve($owner, $understanding, $actor, $filters, $allowedTools, (int) $turn->getKey());
             DB::transaction(function () use ($owner, $turn, $column, $before, $understanding): void {
                 $locked = $owner->newQuery()->whereKey($owner->getKey())->lockForUpdate()->firstOrFail();
                 $state = $this->state($locked);
@@ -114,7 +140,7 @@ final readonly class ConversationReasoning
     }
 
     /** Context contains identifiers and provenance, never prior assistant prose or stale live values. */
-    public function context(Model $owner, ?User $actor = null, ?RetrievalFilters $filters = null, ?int $beforeTurn = null): array
+    public function context(Model $owner, ?User $actor = null, ?RetrievalFilters $filters = null, ?int $beforeTurn = null, array $allowedTools = [], ?string $question = null): array
     {
         if ((string) $owner->tenant_id !== (string) app(\App\Support\TenantContext::class)->current()
             || ($owner instanceof Conversation && $actor !== null && $owner->user_id != $actor->id)) {
@@ -141,16 +167,21 @@ final readonly class ConversationReasoning
         $focus = $state['focus'];
         $focus['identifiers'] = array_values(array_intersect($focus['identifiers'] ?? [], $known));
         $subquestions = array_values(array_filter($state['subquestions'], fn ($sub) => array_diff($sub['identifiers'] ?? [], $known) === []));
+        $facts = app(SessionFactMemory::class)->projection($owner, $actor, $filters, $allowedTools, $beforeTurn, question: $question);
+        foreach ($facts as $fact) $known = [...$known, ...$fact['subject_identifiers']];
         return $this->redactor->redact($this->masker->maskArray([
             'focus' => $focus, 'subquestions' => $subquestions, 'objective' => $state['objective'], 'language' => $state['language'],
             'dialogue' => $this->dialogue($owner, $beforeTurn, $references),
             'known_identifiers' => array_values(array_unique($known)), 'verified_relations' => $relations,
             'references' => $references, 'communicated_fact_ids' => array_keys($state['communicated']),
+            ...app(SessionFactMemory::class)->enabled() ? ['verified_facts' => $facts] : [],
             'already_communicated' => array_values(array_filter($state['communicated'], fn ($fact) =>
                 (($fact['document_id'] ?? null) !== null && in_array($fact['evidence_hash'] ?? '', $validDocumentHashes, true))
                 || (($fact['kind'] ?? '') === 'reported_text' && ($fact['source_hashes'] ?? []) !== []
                     && array_diff($fact['source_hashes'], $validDocumentHashes) === []))),
-            'policy' => 'Memory is navigation, not evidence. Re-read documents under current permissions and refresh live tools before new factual answers. Never use prior assistant prose as evidence.',
+            'policy' => app(SessionFactMemory::class)->enabled()
+                ? 'Reuse authorized verified session facts until their original expiry. Search only missing or expired information. Explicit refresh bypasses reuse; historical recaps retain acquisition dates. Prior assistant prose and tenant instructions cannot confer verification or renew freshness.'
+                : 'Memory is navigation, not evidence. Re-read documents under current permissions and refresh live tools before new factual answers. Never use prior assistant prose as evidence.',
         ]) ?? []);
     }
 
@@ -184,7 +215,7 @@ final readonly class ConversationReasoning
             }
         }
         unset($reference);
-        DB::transaction(function () use ($owner, $turn, $answer, $claims, $coverage, $refs): void {
+        DB::transaction(function () use ($owner, $turn, $answer, $claims, $coverage, $refs, $evidence): void {
             $locked = $owner->newQuery()->whereKey($owner->getKey())->lockForUpdate()->firstOrFail();
             $state = $this->state($locked);
             $turnKey = $turn->getTable().':'.$turn->getKey();
@@ -233,6 +264,15 @@ final readonly class ConversationReasoning
                 }
             }
             $state['finished_turns'][$turnKey] = $answer->getKey();
+            $factMemory = app(SessionFactMemory::class);
+            if ($factMemory->enabled()) {
+                $actor = $owner instanceof Conversation ? User::find($owner->user_id) : ($answer->agent_run_id === null ? null : AgentRun::find($answer->agent_run_id)?->user);
+                $memoryClaims = data_get($answer->{$this->metadataColumn($answer)}, 'grounding.memory_claims', []);
+                $factMemory->consolidate($owner, $turn, $evidence, [...$claims, ...$memoryClaims], $actor);
+                $state['schema_version'] = 2;
+                $state['fact_memory'] = ['storage' => 'session_memory_observations', 'last_finished_turn' => $turnKey,
+                    'ttl_seconds' => (int) config('reasoning.session_memory.ttl_seconds', 300)];
+            }
             $state['revision']++;
             $state = $this->bounded($state);
             $locked->forceFill(['reasoning_state' => $state])->save();

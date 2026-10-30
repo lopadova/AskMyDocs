@@ -153,6 +153,7 @@ final class ConversationDebugTranscriptController extends Controller
             'importance' => $conversation->importance?->value,
             'session_recap' => $this->safeValue($conversation->session_recap),
             'reasoning_state' => $this->safeValue($conversation->reasoning_state),
+            'verified_session_memory' => $this->safeValue(app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->snapshot($conversation)),
             'created_at' => $conversation->created_at?->toIso8601String(),
             'updated_at' => $conversation->updated_at?->toIso8601String(),
         ];

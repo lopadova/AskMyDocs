@@ -2,6 +2,12 @@
 
 return [
     'enabled' => (bool) env('CHAT_REASONING_ENABLED', true),
+    'session_memory' => [
+        'enabled' => (bool) env('CHAT_VERIFIED_SESSION_MEMORY_ENABLED', true),
+        'ttl_seconds' => max(1, (int) env('CHAT_VERIFIED_SESSION_MEMORY_TTL_SECONDS', 300)),
+        'max_prompt_facts' => 100,
+        'max_prompt_bytes' => 32768,
+    ],
     'selective_validation' => (bool) env('AGENT_SELECTIVE_VALIDATION_ENABLED', true),
     'selective_repair' => (bool) env('AGENT_SELECTIVE_REPAIR_ENABLED', true),
     'threshold' => (float) env('AGENT_SELECTIVE_VALIDATION_THRESHOLD', 0.8),

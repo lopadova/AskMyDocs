@@ -190,6 +190,12 @@ class MessageStreamController extends Controller
             turnRecord: $userMessage,
         );
         $result = $investigationResult->search;
+        $memoryEvidence = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled()
+            ? app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult($result)->jsonSerialize() : [];
+        if ($investigationResult->memoryAnswer !== null) {
+            return $this->serverAnswerResponse($request, $conversation, $userMessage, $investigationResult->memoryAnswer,
+                $chatLog, $startTime, true, 'verified-session-memory');
+        }
         if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
             return $this->assistantConversationResponse($request, $conversation, $userMessage,
                 $investigationResult->intent->understanding, $chatLog, $startTime, stream: true);
@@ -311,6 +317,7 @@ class MessageStreamController extends Controller
             clientIp: $clientIp,
             userAgent: $userAgent,
             aiResponse: $toolResponse,
+            memoryEvidence: $memoryEvidence,
         );
     }
 
@@ -488,11 +495,12 @@ class MessageStreamController extends Controller
         ?string $userAgent,
         ?AiResponse $aiResponse = null,
         ?string $traceId = null,
+        array $memoryEvidence = [],
     ): StreamedResponse {
         return $this->streamingResponse($request, function () use (
             $ai, $confidence, $conversation, $chatLog, $systemPrompt, $history,
             $chunks, $citations, $investigationTrace, $question, $projectKey, $userId, $startTime,
-            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse, $traceId
+            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse, $traceId, $memoryEvidence
         ): void {
             // SDK v6 envelope opener — every UIMessage stream MUST
             // begin with a `start` chunk before any text/data parts.
@@ -682,7 +690,11 @@ class MessageStreamController extends Controller
                 traceId: $traceId,
             );
 
-            $assistantMessage = $conversation->messages()->create([
+            $reasoningTurn = $conversation->messages()->find($investigationTrace['reasoning_user_message_id'] ?? 0);
+            $understanding = $reasoningTurn === null ? null : \App\Services\Chat\QuestionUnderstanding::fromArray((array) data_get($reasoningTurn->metadata, 'reasoning.understanding', []));
+            $memoryClaims = $isSelfRefusal ? [] : app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->extract(
+                $memoryEvidence, $understanding, (string) $conversation->tenant_id, $projectKey);
+            $assistantMessage = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->saveMessage($conversation, $reasoningTurn, [
                 'role' => 'assistant',
                 'content' => $persistedContent,
                 'confidence' => $confidenceScore,
@@ -708,16 +720,7 @@ class MessageStreamController extends Controller
                     'refusal_reason' => $refusalReason,
                     'streamed' => true,
                 ],
-            ]);
-
-            $conversation->touch();
-
-            $reasoningTurn = $conversation->messages()->find($investigationTrace['reasoning_user_message_id'] ?? 0);
-            if ($reasoningTurn !== null) {
-                app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
-                    $conversation, $reasoningTurn, $assistantMessage, ['documents' => $isSelfRefusal ? [] : $citations],
-                );
-            }
+            ], $isSelfRefusal ? [] : ($memoryEvidence !== [] ? $memoryEvidence : ['documents' => $citations]), $memoryClaims);
 
             // Async, incremental session-recap update — off the request
             // path (streaming has already flushed the response). Skipped on

@@ -65,6 +65,11 @@ class KbInvestigationService
             return $this->empty('clarify', $prepared->needsClarification ? 'focus_ambiguous' : 'question_interpretation_unavailable',
                 intent: new KbInvestigationIntent($prepared->intent, [], [], [], [], [], $prepared));
         }
+        if ($prepared !== null && $memoryOwner !== null && $memoryOwner->project_key === $projectKey) {
+            $answer = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->answer($memoryOwner, $prepared, $actor, $filters);
+            if ($answer !== null) return new KbInvestigationResult('ready', 'session_memory', new SearchResult(collect(), collect(), collect()),
+                intent: new KbInvestigationIntent($prepared->intent, $prepared->targetIdentifiers(), [], [], [], [], $prepared), memoryAnswer: $answer);
+        }
         if ($prepared !== null && $memory->enabled() && $memoryOwner !== null && $memoryOwner->project_key === $projectKey
             && $prepared->referencesPreviousTurn && ! $prepared->asksForProvenance()) {
             $previousCitations = array_merge($previousCitations, $memory->citations($memoryOwner, $actor, $filters));
@@ -508,6 +513,7 @@ PROMPT;
     private function contextChunk(array $source): array
     {
         $candidate = is_array($source['candidate'] ?? null) ? $source['candidate'] : [];
+        $candidate['retrieved_at'] = $source['retrieved_at'] ?? now()->toIso8601String();
         $candidate['chunk_text'] = $source['excerpt'];
         $candidate['chunk_hash'] = hash('sha256', (string) $source['excerpt']);
         $candidate['document'] = array_merge(

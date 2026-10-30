@@ -165,6 +165,7 @@ final class WidgetOrchestratorService
         // avere l'informazione in KB.
         $result = null;
         $understanding = null;
+        $memoryEvidence = [];
         if (is_string($userMessage) && $userMessage !== '') {
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
             $understanding = $memory->enabled() && $turn !== null
@@ -184,12 +185,21 @@ final class WidgetOrchestratorService
                     provider: 'server', model: 'focus-clarification',
                 ), null, [], microtime(true), $userMessage, $turn);
             }
+            $remembered = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->answer($session, $understanding);
+            if ($remembered !== null) {
+                return $this->finishWithAnswer($session, $snapshot, new AiResponse(content: $remembered->answer,
+                    provider: 'server', model: 'verified-session-memory'), null, $remembered->citations, microtime(true), $userMessage, $turn,
+                    ['grounding' => $remembered->grounding, 'tool_sources' => $remembered->toolSources]);
+            }
             $query = $understanding->kbQueries[0] ?? $userMessage;
             $retrieved = $this->retrieval->retrieve($query, (string) $session->project_key, null);
             if ($understanding->available && $understanding->referencesPreviousTurn) {
                 $retrieved = $this->withPreviouslyCitedSources($session, $retrieved, $understanding);
             }
             $result = $this->retrieval->shouldRefuse($retrieved) ? null : $retrieved;
+        }
+        if ($result !== null && app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled()) {
+            $memoryEvidence = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult($result)->jsonSerialize();
         }
         $citations = $result !== null
             ? $this->retrieval->buildCitations($result)
@@ -236,7 +246,7 @@ final class WidgetOrchestratorService
             $response = $this->ai->chatWithHistory($systemPrompt, array_merge($baseMessages, $extra), $options);
 
             if ($response->toolCalls === []) {
-                return $this->finishWithAnswer($session, $snapshot, $response, $result, $citations, $start, $userMessage, $turn);
+                return $this->finishWithAnswer($session, $snapshot, $response, $result, $citations, $start, $userMessage, $turn, memoryEvidence: $memoryEvidence);
             }
 
             $call = $response->toolCalls[0];
@@ -291,6 +301,7 @@ final class WidgetOrchestratorService
         ?string $userMessage = null,
         ?WidgetSessionStep $turn = null,
         array $attributionMetadata = [],
+        array $memoryEvidence = [],
     ): array
     {
         $latency = (int) ((microtime(true) - $start) * 1000);
@@ -303,26 +314,32 @@ final class WidgetOrchestratorService
             )
             : 0;
 
-        $answer = $this->addStep(
-            $session,
-            WidgetSessionStep::KIND_BOT_MESSAGE,
-            args: [
-                'content' => $response->content,
-                'citations' => $this->compactCitations($citations),
-                ...$attributionMetadata,
-            ],
-            snapshotIn: $snapshot,
-            tokensIn: $response->promptTokens,
-            tokensOut: $response->completionTokens,
-            latency: $latency,
-        );
-        if ($turn !== null && config('reasoning.enabled')) {
-            // Only the final saved answer finishes a turn. A tool-call preamble is not a completed fact.
-            app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
-                $session, $turn, $answer, $attributionMetadata !== [] ? [] : ['documents' => $citations],
+        $understanding = $turn === null ? null : \App\Services\Chat\QuestionUnderstanding::fromArray((array) data_get($turn->args_json, 'reasoning.understanding', []));
+        $memoryClaims = $attributionMetadata === [] ? app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->extract(
+            $memoryEvidence, $understanding, (string) $session->tenant_id, $session->project_key) : [];
+        if ($memoryClaims !== []) $attributionMetadata['grounding']['memory_claims'] = $memoryClaims;
+        \Illuminate\Support\Facades\DB::transaction(function () use ($session, $snapshot, $response, $citations, $latency, $attributionMetadata, $memoryEvidence, $turn): void {
+            $answer = $this->addStep(
+                $session,
+                WidgetSessionStep::KIND_BOT_MESSAGE,
+                args: [
+                    'content' => $response->content,
+                    'citations' => $this->compactCitations($citations),
+                    ...$attributionMetadata,
+                ],
+                snapshotIn: $snapshot,
+                tokensIn: $response->promptTokens,
+                tokensOut: $response->completionTokens,
+                latency: $latency,
             );
-        }
-        $this->resetErrors($session, WidgetSession::STATUS_ACTIVE);
+            if ($turn !== null && config('reasoning.enabled')) {
+                // Only the final saved answer finishes a turn. A tool-call preamble is not a completed fact.
+                app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
+                    $session, $turn, $answer, $memoryEvidence !== [] ? $memoryEvidence : ($attributionMetadata !== [] ? [] : ['documents' => $citations]),
+                );
+            }
+            $this->resetErrors($session, WidgetSession::STATUS_ACTIVE);
+        });
 
         // #30 — logga il turno Q&A su chat_logs come ogni altra channel (web,
         // API, MCP): senza, tab admin Chat Logs / AdminMetrics / AiInsights /

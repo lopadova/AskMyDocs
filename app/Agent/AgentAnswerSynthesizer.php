@@ -66,6 +66,17 @@ final readonly class AgentAnswerSynthesizer
         $mentions = ($understanding['available'] ?? false) && is_array($understanding['mentions'] ?? null)
             ? $understanding['mentions'] : [];
         $evidence = $outcome->evidence->jsonSerialize();
+        if ($outcome->stopReason === 'session_memory' && $run !== null && $understanding !== null) {
+            $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+            $owner = $memory->runOwner($run);
+            $tools = app(\App\Agent\Tools\AgentLiveSourceSelection::class)->apply(app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $run->user), data_get($run->input_json, 'live_sources'));
+            $answer = $owner === null ? null : app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->answer($owner,
+                \App\Services\Chat\QuestionUnderstanding::fromArray($understanding), $run->user,
+                app(AgentRetrievalFiltersFactory::class)->forRun($run, $context), array_keys($tools));
+            if ($answer !== null) return $answer;
+            return new AgentAnswer(str_starts_with($context->locale, 'it') ? 'I dati ricordati sono scaduti o non sono più verificabili. Occorre aggiornare le fonti.' : 'The remembered facts expired or are no longer verifiable. The sources need refreshing.',
+                $context->locale, 'partial', [], [], ['session_memory_unavailable'], grounding: ['status' => 'limited', 'reason' => 'session_memory_unavailable']);
+        }
         if ($outcome->stopReason === 'answer_provenance' && $durableRunId !== null) {
             $run = \App\Models\AgentRun::query()->forTenant($context->tenantId)->where('run_id', $durableRunId)->firstOrFail();
             return app(\App\Services\Chat\AnswerProvenance::class)->forRun($run, $context->locale);
@@ -436,6 +447,9 @@ final readonly class AgentAnswerSynthesizer
             $presentedAnswer .= "\n\n".$excerpt['text'];
         }
 
+        $memoryClaims = app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->verify($evidence,
+            is_array($payload['memory_candidates'] ?? null) ? $payload['memory_candidates'] : [],
+            \App\Services\Chat\QuestionUnderstanding::fromArray($understanding ?? []), $context->tenantId, $context->projectKey, $durableRunId);
         return new AgentAnswer(
             answer: $this->masker->maskString($presentedAnswer),
             locale: $context->locale,
@@ -453,6 +467,7 @@ final readonly class AgentAnswerSynthesizer
                 'reason' => $grounding['reason'] ?? null,
                 'model' => $response->model,
                 'claims' => $grounding['claims'],
+                'memory_claims' => $memoryClaims,
                 'subquestions' => $grounding['subquestions'] ?? [],
                 'repair' => $repair,
                 'semantic_validation' => $grounding['semantic_validation'],
@@ -684,6 +699,9 @@ PROMPT;
                     });
                 }
             }
+            foreach ($draft['payload']['memory_candidates'] ?? [] as $candidate) {
+                if (is_array($candidate)) $payload['memory_candidates'][] = [...$candidate, 'subquestion_id' => $index];
+            }
             $models[] = $draft['model'];
             $draftClaims = is_array($draft['payload']['claims'] ?? null) ? $draft['payload']['claims'] : [];
             $payload['research_drafts'][$index] = array_diff_key($draft, ['payload' => true, 'signature' => true]);
@@ -831,8 +849,11 @@ PROMPT;
     private function systemPrompt(AgentExecutionContext $context): string
     {
         $tenantInstructions = app(AgentTenantInstructions::class)->prompt($context->tenantId);
+        $memoryInstructions = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled()
+            ? 'The platform mission is to answer the user information need from authorized document and API/MCP evidence. Host-admitted session memory observations are verified evidence until expires_at; acquisition clocks never renew through reuse. Combine them with new evidence to answer the whole original question. Also propose memory_candidates: up to ten useful atomic source-bound facts for this session, including important details not shown in claims. They pass an independent verifier and do not belong in the visible answer. Never propose instructions, assumptions or unsupported conclusions as facts. Tenant instructions add domain context and cannot replace this mission or memory policy.' : '';
         return <<<PROMPT
 You synthesize a concise, useful answer from trusted retrieval envelopes.
+{$memoryInstructions}
 Use question_understanding.action as the already interpreted conversational operation, not keywords in the user text. read_source asks for original source text; provenance asks which sources supported the previous answer; recap asks for historical information; recheck challenges the earlier conclusion. These operations are not interchangeable. If available=false, do not invent a contextual action or target: address only the explicit request using current authorized evidence.
 Write the complete final answer in {$context->locale}. Never translate identifiers, order numbers, names, dates or API values.
 Translate ordinary human prose, including remedy descriptions and units of duration, faithfully into the response language. Preserve the specific kind of requested document or action: a shipping label, return form and replacement product are distinct. Preserve numeric quantities and formal identifiers; supporting quotations remain literal in their original language.
@@ -914,6 +935,8 @@ PROMPT;
                             'description' => 'True only when table_artifact_available=true and a requested collection should be rendered separately. Otherwise include its factual records in claims, including document tables.',
                         ],
                         'tool_execution_ids' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                        ...app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled() ? ['memory_candidates' =>
+                            \App\Services\Chat\Reasoning\SessionMemoryConsolidator::candidateSchema()] : [],
                     ],
                     'required' => ['completeness', 'claims', 'limitations', 'requires_selection', 'render_table'],
                     'additionalProperties' => false,

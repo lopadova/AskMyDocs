@@ -13,7 +13,7 @@ final readonly class FocusedClaimEvaluator
 {
     public function __construct(private AgentClaimGroundingValidator $validator, private EvidenceProjector $projector) {}
 
-    public function evaluate(string $question, array $evidence, mixed $claims, array $understanding, ?string $project = '', string $tenant = '', array $communicated = [], ?string $runId = null, array $navigation = [], bool $repairAttempt = false): array
+    public function evaluate(string $question, array $evidence, mixed $claims, array $understanding, ?string $project = '', string $tenant = '', array $communicated = [], ?string $runId = null, array $navigation = [], bool $repairAttempt = false, string $decisionSlot = 'focused_decision'): array
     {
         $project ??= '';
         $threshold = (float) config('reasoning.threshold', 0.8);
@@ -175,7 +175,7 @@ final readonly class FocusedClaimEvaluator
                     ]);
                 }
                 $result = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode(['independent_answers_v1', $state])), fn () => $request->decideIndependently(),
-                    $repairAttempt ? 'focused_decision_repair' : 'focused_decision', $tenant);
+                    $repairAttempt ? 'focused_decision_repair' : $decisionSlot, $tenant);
                 $decisions = $result->answers;
                 foreach ($assessments as $key) {
                     $probability = $decisions[$key]['probability_true'] ?? null;
@@ -198,7 +198,9 @@ final readonly class FocusedClaimEvaluator
                 }
             }
         }
-        $excerpts = app(DocumentExcerptFallbackEvaluator::class)->evaluate($question, $pairs, $decisions, $runId, $repairAttempt, $tenant);
+        $excerpts = $decisionSlot === 'focused_decision'
+            ? app(DocumentExcerptFallbackEvaluator::class)->evaluate($question, $pairs, $decisions, $runId, $repairAttempt, $tenant)
+            : ['excerpts' => [], 'trace' => []];
         $meta['document_excerpt_validation'] = $excerpts['trace'];
         $sourceExcerpts = [];
         foreach ($excerpts['excerpts'] as $key => $excerpt) {
@@ -252,7 +254,8 @@ final readonly class FocusedClaimEvaluator
         $validated = app(OriginalQuestionRelevanceEvaluator::class)->apply($question, ['valid' => $accepted !== [], 'reason' => $accepted === [] ? $reason : null, 'terms' => [],
             'claims' => array_values($accepted), 'semantic_validation' => [$meta], 'subquestions' => $coverage,
             'partial' => count($accepted) < count(array_filter($checks, fn ($c) => ! in_array($c['reason'], ['duplicate_fact', 'already_communicated'], true)))
-                || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId, $repairAttempt, $tenant);
+                || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId, $repairAttempt, $tenant,
+            $decisionSlot === 'focused_decision' ? 'original_question_relevance_decision' : $decisionSlot.'_relevance');
         return [...$validated, 'source_excerpts' => $sourceExcerpts];
     }
 

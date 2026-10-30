@@ -124,6 +124,27 @@ final readonly class AgentLoop
                 });
             }
         }
+        $factMemory = app(\App\Services\Chat\Reasoning\SessionFactMemory::class);
+        $memoryOwner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
+        if ($factMemory->enabled() && $memoryOwner !== null && $understanding !== null) {
+            // A retry keeps the interpretation but rechecks the original acquisition clocks.
+            $turn = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runTurn($run);
+            $understanding = $factMemory->resolve($memoryOwner, $understanding, $run->user, $filters, array_keys($tools), $turn?->getKey());
+            $evidence->import($factMemory->evidence($memoryOwner, $understanding, $run->user, $filters, array_keys($tools)));
+            \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $evidence): void {
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                $state = (array) $locked->result_json;
+                $state['question_understanding'] = $understanding->toArray();
+                $state['session_memory'] = $understanding->memoryResolution;
+                if (($understanding->memoryResolution['fact_ids'] ?? []) !== [] && isset($state['initial_plan'])) $state['initial_plan']['status'] = 'discarded';
+                $state['evidence'] = $evidence->jsonSerialize();
+                $run->forceFill(['result_json' => $state])->save();
+            });
+            if (($understanding->memoryResolution['complete'] ?? false)
+                && $factMemory->answer($memoryOwner, $understanding, $run->user, $filters, array_keys($tools)) !== null) {
+                return $this->outcome('answer', $evidence, [], 'session_memory');
+            }
+        }
         if (config('agent.waves.enabled', true) && $understanding?->available && $understanding->needsResearch()
             && ! $understanding->needsClarification) {
             return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
@@ -828,7 +849,7 @@ final readonly class AgentLoop
             $persisted = (array) $locked->result_json;
             $progressive = array_filter($persisted, static fn ($key) => is_string($key)
                 && preg_match('/\Aprogressive_decision_[a-f0-9]{64}\z/', $key) === 1, ARRAY_FILTER_USE_KEY);
-            $run->forceFill(['result_json' => array_merge($progressive, array_intersect_key($persisted, ['question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true, 'pending_api_tool' => true, 'pending_api_tools' => true, 'wave_dispatching' => true, 'waves' => true, 'api_tool_resumptions' => true, 'progressive_audit' => true]), [
+            $run->forceFill(['result_json' => array_merge($progressive, array_intersect_key($persisted, ['session_memory' => true, 'session_memory_decision' => true, 'session_memory_decision_relevance' => true, 'session_memory_validation' => true, 'question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true, 'pending_api_tool' => true, 'pending_api_tools' => true, 'wave_dispatching' => true, 'waves' => true, 'api_tool_resumptions' => true, 'progressive_audit' => true]), [
                 'phase' => 'collection',
                 'retrieval_completed' => $retrieved,
                 'evidence' => $evidence->jsonSerialize(),

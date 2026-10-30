@@ -178,6 +178,8 @@ final class RunDiagnostics
             'fanout_concurrency' => config('agent.tools.fanout_concurrency'),
             'fanout_timeout_seconds' => config('agent.tools.fanout_timeout_seconds'),
             'reasoning_enabled' => (bool) config('reasoning.enabled'),
+            'verified_session_memory_enabled' => (bool) config('reasoning.session_memory.enabled', false),
+            'verified_session_memory_ttl_seconds' => config('reasoning.session_memory.ttl_seconds', 300),
             'research_driver' => app()->runningUnitTests() ? 'inline_test' : 'process',
             'research_concurrency' => config('reasoning.research_concurrency'),
             'research_timeout_seconds' => config('reasoning.research_timeout_seconds'),

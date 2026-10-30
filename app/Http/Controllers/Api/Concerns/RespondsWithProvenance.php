@@ -45,11 +45,8 @@ trait RespondsWithProvenance
             'tool_calls' => [], 'tool_calls_count' => 0, 'search_stats' => ['kb_searches' => 0, 'tool_calls' => 0],
             'latency_ms' => (int) ((microtime(true) - $startTime) * 1000), 'confidence' => null, 'refusal_reason' => null];
         $metadata += ['cost' => null, 'cost_currency' => null, 'streamed' => $stream];
-        $message = $conversation->messages()->create(['role' => 'assistant', 'content' => $answer->answer,
+        $message = app(ConversationReasoning::class)->saveMessage($conversation, $turn, ['role' => 'assistant', 'content' => $answer->answer,
             'metadata' => $metadata, 'confidence' => null, 'refusal_reason' => null]);
-        // An attribution is not another verified business fact or a fresh source observation.
-        app(ConversationReasoning::class)->finish($conversation, $turn, $message, []);
-        $conversation->touch();
         $log->log(new ChatLogEntry(sessionId: $request->header('X-Session-Id', (string) Str::uuid()), userId: $request->user()->id,
             question: $turn->content, answer: $answer->answer, projectKey: $conversation->project_key,
             aiProvider: 'server', aiModel: $model, chunksCount: 0,
@@ -64,7 +61,7 @@ trait RespondsWithProvenance
             $this->emit(StreamChunk::start());
             foreach ($answer->citations as $citation) {
                 $this->emit(StreamChunk::sourceUrl('doc-'.$citation['document_id'], '#doc-'.$citation['document_id'], $citation['title'],
-                    ['origin' => 'primary', 'source_type' => $citation['source_type'], 'headings' => [], 'chunks_used' => 0]));
+                    ['origin' => 'primary', 'source_type' => ($citation['source_type'] ?? null), 'headings' => [], 'chunks_used' => 0]));
             }
             $id = 'provenance-'.$message->id;
             $this->emit(StreamChunk::textStart($id));

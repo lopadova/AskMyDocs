@@ -1,5 +1,11 @@
 # Focus, memoria delle evidenze e validazione selettiva
 
+Con `CHAT_VERIFIED_SESSION_MEMORY_ENABLED=true`, la politica corrente è descritta
+in [Memoria verificata di sessione](verified-session-memory.md): i fatti verificati
+sono riutilizzabili per 300 secondi dall'acquisizione originale. Le descrizioni
+«memoria come navigazione» e «refresh live per ogni nuova domanda» qui sotto
+descrivono il percorso precedente, conservato dal flag di rollback.
+
 ## Contratto
 
 Ogni nuovo messaggio ha una sola interpretazione strict, salvata sul messaggio utente

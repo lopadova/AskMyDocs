@@ -139,20 +139,6 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 $diagnostics->end($run, $executionSpan, $run->fresh()->status === AgentRun::STATUS_CANCELLED ? 'cancelled' : 'completed', ['operation' => 'terminal_already_recorded']);
                 return;
             }
-            $run->refresh();
-            try {
-                $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-                $owner = $memory->runOwner($run);
-                $turn = $memory->runTurn($run);
-                $savedAnswer = $run->channel === 'widget'
-                    ? \App\Models\WidgetSessionStep::query()->where('agent_run_id', $run->id)->first()
-                    : \App\Models\Message::query()->where('agent_run_id', $run->id)->first();
-                if ($owner !== null && $turn !== null && $savedAnswer !== null) {
-                    $memory->finish($owner, $turn, $savedAnswer, $outcome->evidence->jsonSerialize(), $answer->grounding['claims'] ?? [], $answer->grounding['subquestions'] ?? []);
-                }
-            } catch (Throwable $exception) {
-                Log::warning('Agent post-finalization bookkeeping failed.', ['run_id' => $run->run_id, 'exception_class' => $exception::class]);
-            }
             $diagnostics->end($run, $executionSpan);
         } catch (AgentRunCancelledException $exception) {
             $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
@@ -205,6 +191,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 'completed_at' => now(), 'error_code' => null,
             ])->save();
             $this->projector->project($locked, $answer);
+            app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finishRun($locked, $outcome->evidence->jsonSerialize(), $answer);
             app(AgentResearchProgress::class)->finished($locked, $answer);
             $this->events->publish(
                 $locked,

@@ -37,6 +37,7 @@ final class AgentResultProjector
             throw new \DomainException('agent_conversation_scope_mismatch');
         }
 
+        $fromMemory = ($answer->grounding['model'] ?? '') === 'verified_session_memory';
         Message::query()->firstOrCreate(
             ['agent_run_id' => $run->id],
             [
@@ -47,15 +48,15 @@ final class AgentResultProjector
                 'refusal_reason' => $answer->completeness === 'insufficient' ? 'insufficient_data' : null,
                 'metadata' => [
                     'agent_run_id' => $run->run_id,
-                    'provider' => in_array($answer->grounding['status'] ?? '', ['provenance', 'conversational', 'host_verified'], true) ? 'server' : 'agent',
-                    'model' => match ($answer->grounding['status'] ?? '') {
+                    'provider' => $fromMemory || in_array($answer->grounding['status'] ?? '', ['provenance', 'conversational', 'host_verified'], true) ? 'server' : 'agent',
+                    'model' => $fromMemory ? 'verified-session-memory' : match ($answer->grounding['status'] ?? '') {
                         'provenance' => 'answer-provenance',
                         'conversational', 'host_verified' => 'assistant-conversation',
                         default => 'planner+synthesizer',
                     },
                     'citations' => $answer->citations,
                     'tool_sources' => $answer->toolSources,
-                    'tool_calls_count' => ($answer->grounding['status'] ?? '') === 'provenance' ? 0 : count($answer->toolSources),
+                    'tool_calls_count' => $fromMemory || ($answer->grounding['status'] ?? '') === 'provenance' ? 0 : count($answer->toolSources),
                     // "Livello di approfondimento" visibility: how many KB
                     // searches and MCP/API calls this run actually attempted
                     // over its WHOLE lifetime — not just the ones that ended
@@ -66,7 +67,7 @@ final class AgentResultProjector
                         'id' => (string) ($source['execution_id'] ?? ''),
                         'name' => (string) ($source['tool'] ?? ''),
                         'status' => 'ok',
-                    ], ($answer->grounding['status'] ?? '') === 'provenance' ? [] : $answer->toolSources),
+                    ], $fromMemory || ($answer->grounding['status'] ?? '') === 'provenance' ? [] : $answer->toolSources),
                     'completeness' => $answer->completeness,
                     'limitations' => $answer->limitations,
                     'locale' => $answer->locale,
@@ -95,7 +96,7 @@ final class AgentResultProjector
      */
     private function searchStats(AgentRun $run): array
     {
-        if (data_get($run->result_json, 'stop_reason') === 'answer_provenance') {
+        if (in_array(data_get($run->result_json, 'stop_reason'), ['answer_provenance', 'session_memory'], true)) {
             return ['kb_searches' => 0, 'tool_calls' => 0];
         }
         $children = AgentRun::query()->forTenant($run->tenant_id)

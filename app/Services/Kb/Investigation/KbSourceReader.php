@@ -69,7 +69,7 @@ class KbSourceReader
             if ($excerpt === null || trim($excerpt) === '') {
                 return null;
             }
-            return ['document_id' => (int) $document->id, 'title' => (string) $document->title,
+            return ['retrieved_at' => now()->toIso8601String(), 'document_id' => (int) $document->id, 'title' => (string) $document->title,
                 'source_path' => (string) $document->source_path, 'source_type' => (string) $document->source_type,
                 'excerpt' => $excerpt, 'complete_source' => false, 'chunk_ids' => [$chunkId], 'candidate' => $candidate,
                 'evidence_origin' => 'original_freshdesk_quotes'];
@@ -157,6 +157,7 @@ class KbSourceReader
 
         return [
             'document_id' => (int) $document->id,
+            'retrieved_at' => now()->toIso8601String(),
             'title' => (string) $document->title,
             'source_path' => (string) $document->source_path,
             'source_type' => (string) $document->source_type,

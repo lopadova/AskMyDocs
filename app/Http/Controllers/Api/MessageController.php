@@ -178,6 +178,12 @@ class MessageController extends Controller
             turnRecord: $userMessage,
         );
         $result = $investigationResult->search;
+        $memoryEvidence = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled()
+            ? app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult($result)->jsonSerialize() : [];
+        if ($investigationResult->memoryAnswer !== null) {
+            return $this->serverAnswerResponse($request, $conversation, $userMessage, $investigationResult->memoryAnswer,
+                $chatLog, $startTime, false, 'verified-session-memory');
+        }
         if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
             return $this->assistantConversationResponse($request, $conversation, $userMessage,
                 $investigationResult->intent->understanding, $chatLog, $startTime);
@@ -324,7 +330,9 @@ class MessageController extends Controller
         );
 
         // 8. Save assistant message
-        $assistantMessage = $conversation->messages()->create([
+        $memoryClaims = app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->extract($memoryEvidence,
+            $investigationResult->intent?->understanding, (string) $conversation->tenant_id, $projectKey);
+        $assistantMessage = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->saveMessage($conversation, $userMessage, [
             'role' => 'assistant',
             'content' => $aiResponse->content,
             // T3.5 — populate the dedicated columns (T3.1) so SQL
@@ -354,12 +362,7 @@ class MessageController extends Controller
                 'confidence' => $confidenceScore,
                 'refusal_reason' => null,
             ],
-        ]);
-
-        $conversation->touch();
-        app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finish(
-            $conversation, $userMessage, $assistantMessage, ['documents' => $citations],
-        );
+        ], $memoryEvidence !== [] ? $memoryEvidence : ['documents' => $citations], $memoryClaims);
 
         // 8b. Async, incremental session-recap update — off the request
         // path so a slow/failed update never adds latency to (or breaks)

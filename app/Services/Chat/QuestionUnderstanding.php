@@ -26,6 +26,8 @@ final readonly class QuestionUnderstanding
         public ?bool $requiresResearch = null,
         // Ephemeral proposal: deliberately excluded from conversation serialization.
         public ?array $initialPlan = null,
+        public array $memoryDecisions = [],
+        public array $memoryResolution = [],
     ) {}
 
     /** @return list<string> */
@@ -116,7 +118,20 @@ final readonly class QuestionUnderstanding
             'resolved_references' => $this->resolvedReferences, 'transition' => $this->transition,
             'needs_clarification' => $this->needsClarification, 'clarification' => $this->clarification,
             'failure_reason' => $this->failureReason, 'context_mode' => $this->effectiveContextMode()->value,
-            'requires_research' => $this->needsResearch()];
+            'requires_research' => $this->needsResearch(),
+            ...$this->memoryDecisions === [] ? [] : ['memory_decisions' => $this->memoryDecisions],
+            ...$this->memoryResolution === [] ? [] : ['memory_resolution' => $this->memoryResolution]];
+    }
+
+    public function withMemoryRouting(array $subquestions, array $resolution): self
+    {
+        $research = array_filter($subquestions, fn ($sub) => $sub['requires_research'] ?? true) !== [];
+        $modes = array_values(array_unique(array_column($subquestions, 'context_mode')));
+        $mode = count($modes) > 1 ? QuestionContextMode::Mixed : (QuestionContextMode::tryFrom($modes[0] ?? '') ?? $this->effectiveContextMode());
+        return new self($this->language, $this->intent, array_values(array_merge(...array_map(fn ($sub) => $sub['kb_queries'] ?? [], $subquestions))),
+            $this->mentions, $mode !== QuestionContextMode::NewRequest, $this->available, $this->focus, $subquestions,
+            $this->resolvedReferences, $this->transition, $this->needsClarification, $this->clarification, $this->failureReason,
+            $this->action, $mode, $research, $resolution['fact_ids'] === [] ? $this->initialPlan : null, $this->memoryDecisions, $resolution);
     }
 
     /** Each branch owns an objective and search seeds, never the combined parent intent. */
@@ -132,7 +147,11 @@ final readonly class QuestionUnderstanding
             array_values(array_intersect($this->resolvedReferences, $sub['identifiers'])), $this->transition,
             $this->needsClarification, $this->clarification, $this->failureReason, $this->effectiveAction(),
             isset($sub['context_mode']) ? QuestionContextMode::from($sub['context_mode']) : $this->effectiveContextMode(),
-            $sub['requires_research'] ?? $this->requiresResearch);
+            $sub['requires_research'] ?? $this->requiresResearch, null, [], $this->memoryResolution === [] ? [] : [
+                'tasks' => array_map(fn ($task) => [...$task, 'task_index' => 0], array_values(array_filter($this->memoryResolution['tasks'] ?? [], fn ($task) => $task['task_index'] === $index))),
+                'fact_ids' => $this->memoryResolution['tasks'][$index]['fact_ids'] ?? [],
+                'complete' => ($this->memoryResolution['tasks'][$index]['decision'] ?? '') === 'reuse',
+            ]);
     }
 
     public static function fromArray(array $data): self
@@ -143,6 +162,8 @@ final readonly class QuestionUnderstanding
             $data['transition'] ?? 'new', $data['needs_clarification'] ?? false, $data['clarification'] ?? '', $data['failure_reason'] ?? null,
             isset($data['action']) ? (is_string($data['action']) ? QuestionAction::tryFrom($data['action']) ?? QuestionAction::Research : QuestionAction::Research) : null,
             is_string($data['context_mode'] ?? null) ? QuestionContextMode::tryFrom($data['context_mode']) : null,
-            is_bool($data['requires_research'] ?? null) ? $data['requires_research'] : null);
+            is_bool($data['requires_research'] ?? null) ? $data['requires_research'] : null, null,
+            is_array($data['memory_decisions'] ?? null) ? $data['memory_decisions'] : [],
+            is_array($data['memory_resolution'] ?? null) ? $data['memory_resolution'] : []);
     }
 }
