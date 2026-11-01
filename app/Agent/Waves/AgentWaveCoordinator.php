@@ -124,7 +124,9 @@ final class AgentWaveCoordinator
                         'previous_waves' => data_get($run->result_json, 'waves', []),
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
             } catch (\Throwable $exception) {
-                if ($this->insufficientResearchTime($run, $budget, $minimumWaveSeconds, 'research_wave')) {
+                $minimumAfterFailure = $minimumWaveSeconds + ($completed === []
+                    ? min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30))) : 0);
+                if ($this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
                     return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
                 }
                 if (! $evidence->hasEvidence()) throw $exception;

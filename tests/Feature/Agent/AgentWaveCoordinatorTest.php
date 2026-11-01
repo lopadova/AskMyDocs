@@ -278,6 +278,24 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertSame(0, $run->toolExecutions()->count());
     }
 
+    public function test_a_first_plan_that_consumes_its_bounded_request_budget_returns_partial_instead_of_failing_the_worker(): void
+    {
+        $this->freezeTime();
+        $run = $this->makeRun();
+        $this->travel(23)->seconds();
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function () {
+            $this->travel(26)->seconds();
+            throw new \Illuminate\Http\Client\ConnectionException('Synthetic bounded request timeout');
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('time_limit', $outcome->stopReason);
+        $this->assertSame(0, $run->toolExecutions()->count());
+        $this->assertGreaterThanOrEqual(60, app(\App\Agent\AgentRunDeadline::class)->remaining($run));
+    }
+
     public function test_collection_stops_before_a_plan_that_cannot_leave_a_useful_next_wave(): void
     {
         $this->freezeTime();
