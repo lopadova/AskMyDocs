@@ -49,6 +49,22 @@ final class FocusedDecisionBatchingTest extends TestCase
         $this->assertSame('decision_unavailable', $result['semantic_validation'][0]['checks'][0]['reason']);
     }
 
+    public function test_a_failed_partition_does_not_erase_an_independent_verified_subject(): void
+    {
+        [$evidence, $claims, $understanding] = $this->fixture();
+        $evidence['documents'][] = ['document_id' => 4, 'title' => 'CASE-B', 'evidence' => [[
+            'content' => 'CASE-B status is confirmed.', 'evidence_hash' => 'hash-b', 'complete_source' => true,
+        ]]];
+        $claims[] = ['text' => 'CASE-B status is confirmed.', 'document_id' => 4, 'evidence_hash' => 'hash-b'];
+        $understanding['subquestions'][] = ['identifiers' => ['CASE-B'], 'fields' => ['*'], 'aspect' => 'status'];
+        $this->fake('missing');
+        $result = app(FocusedClaimEvaluator::class)->evaluate('CASE-A and CASE-B status?', $evidence, $claims, $understanding);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame('CASE-B status is confirmed.', $result['claims'][0]['text']);
+        $this->assertTrue($result['partial']);
+    }
+
     public function test_missing_answer_cannot_hide_a_confident_conflict_and_enable_literal_fallback(): void
     {
         $conflict = ['choice' => 'conflicting', 'probabilities' => ['conflicting' => .99, 'supported_relevant' => .01]];
