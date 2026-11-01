@@ -74,6 +74,8 @@ final readonly class FocusedClaimEvaluator
                 $check['source_resolution'] = ['method' => isset($originalSource['source_ref']) && in_array($originalSource['evidence_hash'] ?? null, [null, ''], true)
                     ? 'current_source_reference' : 'unique_evidence_hash', 'original_source' => $originalSource];
             }
+            if (isset($claim['source_selection'])) $check['source_resolution'] = $claim['source_selection'];
+            if (isset($claim['source_selection_error'])) $check['source_resolution'] = ['error' => $claim['source_selection_error']];
             $bound = $this->projector->bind($scopedEvidence, $claim, $ids, $tenant, $project);
             $reason = $subIndex === null ? 'unresolved_subquestion' : ($bound['reason'] ?? null);
             if ($reason === null) {

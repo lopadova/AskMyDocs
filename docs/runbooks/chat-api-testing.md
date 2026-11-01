@@ -297,3 +297,10 @@ delle API. `context_document_reread` registra numero di documenti e limiti;
 un passaggio troppo grande viene escluso interamente con una segnalazione.
 Questo impedisce che il solo sottoinsieme scelto dalla memoria diventi l'unica
 base per negare una conferma presente in un altro messaggio già trovato.
+
+Le nuove bozze selezionano un intero `source_choice` offerto nel prompt. Il
+server lo converte immediatamente nell'identità completa della fonte e del
+record, prima di salvare o unire le bozze. Gli indici non vengono reinterpretati
+in un altro elenco. Le vecchie `source_ref` restano leggibili; indici sconosciuti,
+identità esplicite in conflitto, hash, permessi e appartenenza al record restano
+controllati separatamente.

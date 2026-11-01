@@ -628,6 +628,43 @@ class FocusedClaimEvaluatorTest extends TestCase
         });
     }
 
+    public function test_numeric_source_choice_keeps_the_full_original_record_and_existing_gates(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $choice = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_choice'];
+        $candidate = [...array_diff_key($claims[0], array_flip(['document_id', 'tool_execution_id', 'evidence_hash'])), 'source_choice' => $choice];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $evidence, [$candidate], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertSame(67, $result['claims'][0]['tool_execution_id']);
+        $this->assertSame('tool', $result['claims'][0]['evidence_hash']);
+        $this->assertSame('current_prompt_choice', $result['semantic_validation'][0]['checks'][0]['source_resolution']['method']);
+    }
+
+    public function test_invalid_numeric_choices_and_explicit_conflicts_cannot_be_repaired_by_guessing(): void
+    {
+        Http::preventStrayRequests();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $choice = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_choice'];
+        foreach (['unknown', 'string', 'explicit_hash', 'explicit_id', 'record', 'scope'] as $failure) {
+            $candidate = [...array_diff_key($claims[0], array_flip(['document_id', 'tool_execution_id', 'evidence_hash'])), 'source_choice' => $choice];
+            $current = $evidence;
+            match ($failure) {
+                'unknown' => $candidate['source_choice'] = 999,
+                'string' => $candidate['source_choice'] = (string) $choice,
+                'explicit_hash' => $candidate['evidence_hash'] = 'wrong',
+                'explicit_id' => $candidate['tool_execution_id'] = 999,
+                'record' => $current['api_tools'][0]['result']['records'][0]['trackingCode'] = 'TRACK-OTHER',
+                'scope' => $current['api_tools'][0]['project_key'] = 'other',
+            };
+            $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $current, [$candidate], $u, 'demo', 'acme');
+            $this->assertFalse($result['valid'], $failure);
+        }
+        Http::assertNothingSent();
+    }
+
     public function test_navigation_recovers_raw_spacing_without_replacing_the_source(): void
     {
         $this->fake();
