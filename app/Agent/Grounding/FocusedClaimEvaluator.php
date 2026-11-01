@@ -324,6 +324,8 @@ final readonly class FocusedClaimEvaluator
             return null;
         }
         $fields = $pair['sub']['fields'] ?? [];
+        $collections = $fields === ['*'] || in_array('items', $fields, true)
+            ? \App\Agent\Evidence\DeclaredRecordCollections::project($record, $pair['bound']['record_collections'] ?? []) : [];
         $aliases = $pair['bound']['field_aliases'] ?? [];
         // General details are explicit in the interpretation. Otherwise only exact
         // requested keys may be rendered; a missing key must not erase present ones.
@@ -343,7 +345,7 @@ final readonly class FocusedClaimEvaluator
                 $fields[] = $aliases['currency'];
             }
         }
-        if ($fields === []) {
+        if ($fields === [] && $collections === []) {
             return null;
         }
         $selected = array_intersect_key($record, array_flip(array_merge(['id', 'code', 'trackingCode'], $pair['bound']['identity_fields'] ?? [], $fields)));
@@ -359,9 +361,21 @@ final readonly class FocusedClaimEvaluator
         }
         $scalars = array_filter($selected, fn ($value) => is_scalar($value) || $value === null);
         $heading = '| '.__('kb.record_fields.field', [], $pair['locale']).' | '.__('kb.record_fields.value', [], $pair['locale']).' |';
-        return $rows === [] ? null : [...$pair['claim'], 'text' => $heading."\n|---|---|\n".implode("\n", $rows),
+        $parts = $rows === [] ? [] : [$heading."\n|---|---|\n".implode("\n", $rows)];
+        $escape = fn ($value) => str_replace(["|", "\n", "\r"], ['\\|', ' ', ' '], (string) $value);
+        foreach ($collections as $collection) {
+            $columns = $collection['fields'];
+            $table = ['| '.implode(' | ', array_map(fn ($role) => $escape(__('kb.record_fields.'.$role, [], $pair['locale'])), array_keys($columns))).' |',
+                '|'.str_repeat('---|', count($columns))];
+            foreach ($collection['rows'] as $row) $table[] = '| '.implode(' | ', array_map(fn ($field) => $escape($row[$field] ?? ''), array_values($columns))).' |';
+            if ($collection['total_rows'] > count($collection['rows'])) $table[] = (string) __('kb.record_fields.collection_truncated',
+                ['shown' => count($collection['rows']), 'total' => $collection['total_rows']], $pair['locale']);
+            $parts[] = implode("\n", $table);
+        }
+        return $parts === [] ? null : [...$pair['claim'], 'text' => implode("\n\n", $parts),
             'literal_projection' => ['record_path' => $pair['bound']['path'], 'fields' => $scalars,
-                'roles' => array_filter($aliases, fn ($field) => array_key_exists($field, $scalars))]];
+                'roles' => array_filter($aliases, fn ($field) => array_key_exists($field, $scalars)),
+                ...($collections === [] ? [] : ['collections' => $collections])]];
     }
 
     /** Extracted evidence is never an approved claim and never enters the prose presenter. */

@@ -446,6 +446,35 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertTrue($result['partial']);
     }
 
+    public function test_literal_order_fallback_keeps_declared_item_comparison_without_dumping_internal_fields(): void
+    {
+        $this->fake([], .58);
+        $record = ['ref' => 'ORDER-A', 'state' => 'shipped', 'items' => [
+            ['sku' => 'SKU-A', 'size' => 40, 'qty' => 1, 'margin' => 97],
+            ['sku' => 'SKU-B', 'size' => 41, 'qty' => 2, 'margin' => 98],
+        ]];
+        $tool = ['execution_id' => 42, 'evidence_hash' => 'h', 'presentation' => [
+            'collection_path' => 'orders', 'identity_fields' => ['ref'], 'field_aliases' => ['reference' => 'ref', 'status' => 'state'],
+            'record_collections' => [['role' => 'items', 'path' => 'items.*', 'fields' => ['reference' => 'sku', 'variant' => 'size', 'quantity' => 'qty']]],
+        ], 'result' => ['orders' => [$record]]];
+        $sub = ['identifiers' => ['ORDER-A'], 'fields' => ['*']];
+        $claim = ['text' => 'ORDER-A unverified summary.', 'tool_execution_id' => 42, 'evidence_hash' => 'h'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Order and items?', ['api_tools' => [$tool]], [$claim],
+            ['language' => 'it', 'focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| SKU-A | 40 | 1 |', $text);
+        $this->assertStringContainsString('| SKU-B | 41 | 2 |', $text);
+        $this->assertStringNotContainsString('margin', $text);
+        $this->assertSame($record['items'][0]['sku'], $result['claims'][0]['literal_projection']['collections'][0]['rows'][0]['sku']);
+        $sub['fields'] = [];
+        $sub['aspect'] = 'source_assessment';
+        $assessment = app(FocusedClaimEvaluator::class)->evaluate('Can I say this is complete?', ['api_tools' => [$tool]], [$claim],
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertFalse($assessment['valid']);
+        $this->assertSame([], $assessment['claims']);
+    }
+
     public function test_independent_task_cannot_borrow_a_siblings_source_or_be_reassigned_to_that_task(): void
     {
         $this->fake();

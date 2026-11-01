@@ -234,6 +234,7 @@ final class EvidenceProjector
                 'record' => $matches[0]['record'], 'path' => $matches[0]['path'],
                 'identity_fields' => $source['presentation']['identity_fields'] ?? [],
                 'field_aliases' => $source['presentation']['field_aliases'] ?? [],
+                'record_collections' => $source['presentation']['record_collections'] ?? [],
                 'source_title' => $source['display_name'] ?? $source['tool'] ?? '',
                 'observed_at' => $source['retrieved_at'] ?? null];
         }

@@ -314,6 +314,15 @@ etichette dei ruoli noti sono tradotte; valori e nomi dei campi nella proiezione
 diagnostica restano esatti. La migrazione del servizio ordini Autry dichiara
 riferimento, stato, totale, valuta e data senza sovrascrivere ruoli manuali.
 
+Una collezione annidata viene mostrata nel fallback soltanto se il contratto
+dichiara `x-field=items` sull'array e ruoli scalari sui suoi campi. Il renderer
+proietta esclusivamente quei campi dal record padre già verificato, fino a 20
+righe con conteggio esplicito delle righe ulteriori. Non espone gli altri
+array o campi interni, non sposta l'identità su un figlio e conserva l'originale
+completo per la verifica. `fields=[]` continua a escludere ogni proiezione.
+La migrazione Autry dichiara codice, descrizione, variante e quantità delle
+righe Gescat solo per il tenant e il servizio noti, preservando ruoli manuali.
+
 Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
 quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.
 La selezione usa la data registrata della fonte per gli aggiornamenti, apre

@@ -14,7 +14,9 @@ declare(strict_types=1);
  */
 return [
     'record_fields' => ['field' => 'Field', 'value' => 'Value', 'reference' => 'Reference',
-        'status' => 'Status', 'total' => 'Total', 'currency' => 'Currency', 'date' => 'Date'],
+        'status' => 'Status', 'total' => 'Total', 'currency' => 'Currency', 'date' => 'Date',
+        'description' => 'Description', 'variant' => 'Variant', 'quantity' => 'Quantity',
+        'collection_truncated' => 'Showing :shown of :total rows.'],
     'no_grounded_answer' => 'I cannot find information in the provided documents to answer this question.',
     'refusal' => [
         'no_relevant_context' => 'No documents in the knowledge base match this question.',

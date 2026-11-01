@@ -150,7 +150,8 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         $builder = app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class);
         $capability = $builder->build([$tool->name => $tool])->get($tool->name);
         $aliases = $duplicates = [];
-        foreach ($builder->recordProperties($capability?->outputSchema, $path) as $field => $property) {
+        $recordProperties = $builder->recordProperties($capability?->outputSchema, $path);
+        foreach ($recordProperties as $field => $property) {
             if (! is_array($property)) {
                 continue;
             }
@@ -172,8 +173,10 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         $limits = $capability?->outputSchema['x-evidence-limitations'] ?? [];
         $limits = array_values(array_unique(array_filter(is_array($limits) ? $limits : [],
             \App\Agent\AgentSourceLimitations::supports(...))));
+        $collections = DeclaredRecordCollections::describe($recordProperties);
         return ['collection_path' => $path, 'operation' => $operation,
             'identity_fields' => $capability?->identityFields ?? [], 'field_aliases' => $aliases,
+            ...($collections === [] ? [] : ['record_collections' => $collections]),
             ...($limits === [] ? [] : ['evidence_limitations' => $limits])];
     }
 
