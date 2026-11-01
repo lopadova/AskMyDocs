@@ -304,6 +304,13 @@ Sintesi e verifica tengono separati il fatto documentato, un collegamento ancora
 incerto e l'eventuale mancanza di conferma di un altro evento. Queste istruzioni
 non sostituiscono i controlli di identità, supporto e confidenza.
 
+La pertinenza conserva l'aspetto richiesto della singola affermazione e la voce
+originale di una citazione inoltrata; una risposta a una domanda secondaria non
+deve rispondere anche alla primaria. La sintesi distingue la condizione posta
+da un attore dalla richiesta di verifica di un altro, preservando le decisioni
+successive. Nei confronti tra dato previsto e osservato riporta entrambi i valori
+richiesti; una quantità rientrata zero non identifica il sostituto fisico.
+
 Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
 `"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
 ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
