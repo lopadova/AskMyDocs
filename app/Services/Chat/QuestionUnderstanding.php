@@ -29,6 +29,7 @@ final readonly class QuestionUnderstanding
         public array $memoryDecisions = [],
         public array $memoryResolution = [],
         public array $failureDetails = [],
+        public bool $requiresComposition = false,
     ) {}
 
     /** @return list<string> */
@@ -122,7 +123,8 @@ final readonly class QuestionUnderstanding
             'requires_research' => $this->needsResearch(),
             ...$this->memoryDecisions === [] ? [] : ['memory_decisions' => $this->memoryDecisions],
             ...$this->memoryResolution === [] ? [] : ['memory_resolution' => $this->memoryResolution],
-            ...$this->failureDetails === [] ? [] : ['failure_details' => $this->failureDetails]];
+            ...$this->failureDetails === [] ? [] : ['failure_details' => $this->failureDetails],
+            ...$this->requiresComposition ? ['requires_composition' => true] : []];
     }
 
     public function withMemoryRouting(array $subquestions, array $resolution): self
@@ -133,7 +135,7 @@ final readonly class QuestionUnderstanding
         return new self($this->language, $this->intent, array_values(array_merge(...array_map(fn ($sub) => $sub['kb_queries'] ?? [], $subquestions))),
             $this->mentions, $mode !== QuestionContextMode::NewRequest, $this->available, $this->focus, $subquestions,
             $this->resolvedReferences, $this->transition, $this->needsClarification, $this->clarification, $this->failureReason,
-            $this->action, $mode, $research, $resolution['fact_ids'] === [] ? $this->initialPlan : null, $this->memoryDecisions, $resolution, $this->failureDetails);
+            $this->action, $mode, $research, $resolution['fact_ids'] === [] ? $this->initialPlan : null, $this->memoryDecisions, $resolution, $this->failureDetails, $this->requiresComposition);
     }
 
     /** Each branch owns an objective and search seeds, never the combined parent intent. */
@@ -153,7 +155,7 @@ final readonly class QuestionUnderstanding
                 'tasks' => array_map(fn ($task) => [...$task, 'task_index' => 0], array_values(array_filter($this->memoryResolution['tasks'] ?? [], fn ($task) => $task['task_index'] === $index))),
                 'fact_ids' => $this->memoryResolution['tasks'][$index]['fact_ids'] ?? [],
                 'complete' => ($this->memoryResolution['tasks'][$index]['decision'] ?? '') === 'reuse',
-            ], $this->failureDetails);
+            ], $this->failureDetails, $this->requiresComposition);
     }
 
     public static function fromArray(array $data): self
@@ -167,6 +169,6 @@ final readonly class QuestionUnderstanding
             is_bool($data['requires_research'] ?? null) ? $data['requires_research'] : null, null,
             is_array($data['memory_decisions'] ?? null) ? $data['memory_decisions'] : [],
             is_array($data['memory_resolution'] ?? null) ? $data['memory_resolution'] : [],
-            is_array($data['failure_details'] ?? null) ? $data['failure_details'] : []);
+            is_array($data['failure_details'] ?? null) ? $data['failure_details'] : [], ($data['requires_composition'] ?? false) === true);
     }
 }

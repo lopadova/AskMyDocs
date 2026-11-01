@@ -277,3 +277,9 @@ affermazioni mostrate nella chat (al massimo dieci da 240 caratteri per risposta
 servono soltanto a capire riferimenti come «le due registrazioni». Sono ammessi
 solo da fonti ancora autorizzate e selezionate e non sostituiscono rilettura,
 aggiornamento, timestamp o verifica del supporto dei fatti.
+
+`requires_composition` distingue la copertura dei fatti dalla presentazione
+richiesta. Una tabella, traduzione o riscrittura può usare fonti già verificate
+senza aggiornarle, ma passa comunque dalla composizione della risposta: non
+viene sostituita dalla concatenazione letterale dei fatti in memoria. Il flag
+resta separato da `requires_research` e non approva nuovi fatti.

@@ -131,6 +131,26 @@ class VerifiedSessionMemoryTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_complete_facts_still_require_composition_for_a_new_requested_presentation(): void
+    {
+        $this->source();
+        $understanding = QuestionUnderstanding::fromArray([
+            ...$this->understanding([$this->fact('trackingCode')['fact_id']], ['trackingCode'])->toArray(),
+            'requires_composition' => true,
+        ]);
+        $routed = $this->route($understanding);
+        $this->assertFalse($routed->needsResearch(), 'Changing format alone must not refresh valid source data.');
+        $this->assertTrue($routed->requiresComposition);
+        $this->assertTrue($routed->forSubquestion(0)->requiresComposition);
+        $this->assertTrue(QuestionUnderstanding::fromArray($routed->toArray())->requiresComposition);
+        $this->assertNull($this->memory->answer($this->chat, $routed, $this->user, allowedTools: [self::TOOL]),
+            'Concatenated verified text cannot replace a requested table or rewrite.');
+        $sources = $this->memory->evidence($this->chat, $routed, $this->user, allowedTools: [self::TOOL]);
+        $this->assertCount(1, $sources['api_tools'], 'The composer retains the original authorized source.');
+        $this->assertSame(1, \App\Models\AgentToolExecution::count());
+        Http::assertNothingSent();
+    }
+
     public function test_reuse_and_reconsolidation_do_not_extend_the_original_clock(): void
     {
         $this->source();
