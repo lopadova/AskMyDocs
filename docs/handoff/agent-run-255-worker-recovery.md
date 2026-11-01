@@ -43,6 +43,28 @@ container memory. At the latest attempt browser access was disabled in Codex
 Work settings. Normal login at `id.laravel.com` is already authorized by the user;
 no new access token or permission change is needed.
 
+The existing Cloud CLI credential was also tried against `Ask My Docs` / `develop`.
+Its application list belongs to a different organization and does not contain
+Ask My Docs, so it could not retrieve this environment's worker logs.
+
+## Bounded embedding request for exact searches
+
+The Laravel AI SDK's default embedding request timeout is 30 seconds. The
+interactive worker reserves time for synthesis, so a research wave can have
+less than 30 seconds left. A semantic request waiting for embeddings can thus
+consume the entire wave after exact candidates have already been found; when
+the process is stopped, those candidates are lost with it.
+
+When a KB wave has exact candidates, its SDK embedding request now has a
+configurable 10-second timeout (`AGENT_EXACT_EMBEDDING_TIMEOUT_SECONDS`). If
+the request fails, the existing partial-retrieval path reads and returns the
+authorized exact sources. Searches without exact candidates and embedding calls
+outside this scoped operation keep the SDK's existing timeout. This bounds the
+SDK HTTP request, not database access or the complete wave, and cannot guarantee
+completion if the wave has very little time left. The run 255 export does not
+establish whether an embedding provider was slow or whether the worker stopped
+for a different reason.
+
 ## Corrected application defect
 
 Previously terminal run publication did not reconcile open tool executions or
@@ -88,3 +110,5 @@ absence of enqueued work or network requests.
 
 After command registration, the lifecycle, handler, coordinator, API continuation
 and tenant-scope checks passed on PHP **8.5.12**: **40 tests / 352 assertions**.
+The exact search, SDK provider and real subprocess timeout regressions passed
+on PHP **8.5.12**: **36 tests / 159 assertions** after the embedding limit change.

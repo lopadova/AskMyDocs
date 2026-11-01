@@ -208,7 +208,11 @@ trait SdkChat
      */
     protected function embeddingsViaSdk(array $texts): EmbeddingsResponse
     {
-        $sdkResponse = Embeddings::for($texts)->generate(
+        $pending = Embeddings::for($texts);
+        if (($timeout = \App\Ai\EmbeddingTimeoutScope::seconds()) !== null) {
+            $pending->timeout($timeout);
+        }
+        $sdkResponse = $pending->generate(
             $this->name(),
             $this->config['models']['embeddings']['default'] ?? null,
         );

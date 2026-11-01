@@ -38,7 +38,12 @@ final class AgentWaveKnowledgeSearch
             $stats['exact_lookup_error'] = true;
         }
         try {
-            $semantic = app(ChatRetrievalService::class)->retrieve($query, $context->projectKey, $filters, false, $diagnostics)->primary;
+            $retrieve = fn () => app(ChatRetrievalService::class)->retrieve($query, $context->projectKey, $filters, false, $diagnostics)->primary;
+            // Preserve exact matches if a slow embedding call consumes the whole wave.
+            // Other searches keep the provider's normal timeout.
+            $semantic = $exact->isNotEmpty()
+                ? \App\Ai\EmbeddingTimeoutScope::within(max(1, (int) config('agent.waves.exact_embedding_timeout_seconds', 10)), $retrieve)
+                : $retrieve();
         } catch (\Throwable) {
             $stats['semantic_lookup_error'] = true;
         }

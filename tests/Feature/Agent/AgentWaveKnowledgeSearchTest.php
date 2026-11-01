@@ -29,7 +29,12 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->document('other', 'orders', 'Alien', ['U532638']);
         $this->document('acme', 'other', 'Another project', ['U532638']);
         $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
-        $retrieval->shouldReceive('retrieve')->once()->withArgs(fn ($q, $p, $f, $aux) => $aux === false)->andThrow(new \RuntimeException('unavailable'));
+        $observedTimeout = null;
+        $retrieval->shouldReceive('retrieve')->once()->withArgs(fn ($q, $p, $f, $aux) => $aux === false)
+            ->andReturnUsing(function () use (&$observedTimeout) {
+                $observedTimeout = \App\Ai\EmbeddingTimeoutScope::seconds();
+                throw new \RuntimeException('embedding timeout');
+            });
         $this->app->instance(ChatRetrievalService::class, $retrieval);
         $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
             'focus' => ['identifiers' => ['U532638']], 'mentions' => []]]]);
@@ -40,6 +45,8 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertTrue($result->stats['semantic_lookup_error']);
         $this->assertFalse($result->complete);
         $this->assertSame('retrieval_partial', $result->stopReason);
+        $this->assertSame(10, $observedTimeout);
+        $this->assertNull(\App\Ai\EmbeddingTimeoutScope::seconds());
     }
 
     public function test_conceptual_seeds_scope_targets_and_explicit_ids_do_not_pull_other_subjects(): void

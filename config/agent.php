@@ -13,6 +13,7 @@ return [
         'combined_initial_planning' => (bool) env('AGENT_COMBINED_INITIAL_PLANNING', true),
         'concurrency' => max(1, (int) env('AGENT_WAVE_CONCURRENCY', 10)),
         'timeout_seconds' => max(1, (int) env('AGENT_WAVE_TIMEOUT_SECONDS', 45)),
+        'exact_embedding_timeout_seconds' => max(1, (int) env('AGENT_EXACT_EMBEDDING_TIMEOUT_SECONDS', 10)),
         'minimum_dispatch_seconds' => max(1, (int) env('AGENT_WAVE_MINIMUM_DISPATCH_SECONDS', 5)),
     ],
     'progressive' => ['enabled' => (bool) env('AGENT_PROGRESSIVE_ANSWERS_ENABLED', true)],
