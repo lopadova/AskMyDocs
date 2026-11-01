@@ -57,4 +57,36 @@ final class EvidenceProjectorIdentityTest extends TestCase
         $claim['record_path'] = '$.0';
         $this->assertSame('entity_mismatch', $projector->bind($evidence, $claim, ['ORDER-A'], 'acme', 'orders')['reason']);
     }
+
+    public function test_record_references_resolve_the_parent_without_exposing_a_nested_path_choice(): void
+    {
+        $evidence = $this->evidence();
+        $evidence['api_tools'][0]['result']['orders'][0]['articles'] = [['id' => 'CHILD-1', 'sku' => 'SKU-1']];
+        $projector = new EvidenceProjector;
+        $prompt = $projector->forPrompt($evidence);
+        $references = $prompt['api_tools'][0]['record_sources'];
+        $this->assertArrayNotHasKey('source_ref', $prompt['api_tools'][0]);
+        $this->assertCount(2, $references);
+        $this->assertNotSame($references[0]['source_ref'], $references[1]['source_ref']);
+        $claim = $projector->resolveSourceIdentity($evidence, ['text' => 'ORDER-A contains SKU-1.', 'source_ref' => $references[0]['source_ref']]);
+        $this->assertSame('orders.0', $claim['record_path']);
+        $bound = $projector->bind($evidence, $claim, ['ORDER-A'], 'acme', 'orders');
+        $this->assertSame('SKU-1', $bound['record']['articles'][0]['sku']);
+        $this->assertSame('entity_mismatch', $projector->bind($evidence, $claim, ['ORDER-B'], 'acme', 'orders')['reason']);
+        $conflicting = ['source_ref' => $references[0]['source_ref'], 'record_path' => 'orders.0.articles.0'];
+        $this->assertSame($conflicting, $projector->resolveSourceIdentity($evidence, $conflicting));
+    }
+
+    public function test_empty_responses_offer_no_record_reference_and_stale_paths_do_not_resolve(): void
+    {
+        $projector = new EvidenceProjector;
+        $evidence = $this->evidence();
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][1]['source_ref'];
+        $evidence['api_tools'][0]['result']['orders'] = [];
+        $prompt = $projector->forPrompt($evidence);
+        $this->assertSame([], $prompt['api_tools'][0]['record_sources']);
+        $this->assertArrayNotHasKey('source_ref', $prompt['api_tools'][0]);
+        $claim = ['source_ref' => $reference];
+        $this->assertSame($claim, $projector->resolveSourceIdentity($evidence, $claim));
+    }
 }

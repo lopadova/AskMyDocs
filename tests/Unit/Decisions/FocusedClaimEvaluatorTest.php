@@ -510,7 +510,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->fake();
         [$evidence, $claims, $u] = $this->fixture();
         $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
-        $reference = $projector->forPrompt($evidence)['api_tools'][0]['source_ref'];
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_ref'];
         $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
         $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $evidence, [$claim], $u, 'demo', 'acme');
         $this->assertTrue($result['valid']);
@@ -554,7 +554,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->fake();
         [$evidence, $claims, $u] = $this->fixture();
         $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
-        $reference = $projector->forPrompt($evidence)['api_tools'][0]['source_ref'];
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_ref'];
         $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
         foreach (['unknown', 'explicit_hash', 'explicit_id', 'project', 'record', 'flow'] as $failure) {
             $candidate = $claim;

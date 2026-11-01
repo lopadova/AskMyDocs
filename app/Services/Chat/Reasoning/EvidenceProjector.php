@@ -22,14 +22,21 @@ final class EvidenceProjector
             }
         }
         foreach ($evidence['api_tools'] ?? [] as $index => $tool) {
-            if (is_int($tool['execution_id'] ?? null) && is_string($tool['evidence_hash'] ?? null)) {
-                $evidence['api_tools'][$index]['claim_source'] = [
-                    'document_id' => null, 'tool_execution_id' => $tool['execution_id'],
-                    'evidence_hash' => $tool['evidence_hash'],
-                ];
-                $evidence['api_tools'][$index]['source_ref'] = $this->sourceRef('t', $tool['execution_id'], $tool['evidence_hash']);
-            }
+            if (! is_int($tool['execution_id'] ?? null) || ! is_string($tool['evidence_hash'] ?? null)) continue;
+            $evidence['api_tools'][$index]['claim_source'] = [
+                'document_id' => null, 'tool_execution_id' => $tool['execution_id'],
+                'evidence_hash' => $tool['evidence_hash'],
+            ];
             $records = self::records($tool);
+            // References select an original record, not a tool wrapper, an
+            // invented nested item or a response containing no records.
+            $recordSources = [];
+            foreach ($records as $entry) {
+                $recordSources[] = ['record_path' => $entry['path'],
+                    'source_ref' => $this->recordSourceRef($tool, $entry['path'])];
+            }
+            $evidence['api_tools'][$index]['record_sources'] = $recordSources;
+            unset($evidence['api_tools'][$index]['source_ref']);
             if ($records !== []) {
                 $evidence['api_tools'][$index]['result'] = ['records' => array_column($records, 'record'),
                     'record_paths' => array_column($records, 'path'), 'retrieved_at' => $tool['retrieved_at'] ?? null];
@@ -59,10 +66,18 @@ final class EvidenceProjector
                 }
             }
             foreach ($evidence['api_tools'] ?? [] as $tool) {
-                if (is_int($tool['execution_id'] ?? null) && is_string($tool['evidence_hash'] ?? null)
-                    && $claim['source_ref'] === $this->sourceRef('t', $tool['execution_id'], $tool['evidence_hash'])) {
+                if (! is_int($tool['execution_id'] ?? null) || ! is_string($tool['evidence_hash'] ?? null)) continue;
+                // Legacy tool-level references remain readable for persisted
+                // claims. New drafts receive only host-owned record references.
+                if ($claim['source_ref'] === $this->sourceRef('t', $tool['execution_id'], $tool['evidence_hash'])) {
                     $matches['t:'.$tool['execution_id'].':'.$tool['evidence_hash']] = [
                         'document_id' => null, 'tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash']];
+                }
+                foreach (self::records($tool) as $entry) {
+                    if ($claim['source_ref'] !== $this->recordSourceRef($tool, $entry['path'])) continue;
+                    $matches['t:'.$tool['execution_id'].':'.$tool['evidence_hash'].':'.$entry['path']] = [
+                        'document_id' => null, 'tool_execution_id' => $tool['execution_id'],
+                        'evidence_hash' => $tool['evidence_hash'], 'record_path' => $entry['path']];
                 }
             }
             // Only an exact, unique reference in the CURRENT envelope resolves.
@@ -71,7 +86,8 @@ final class EvidenceProjector
             if (count($matches) !== 1) return $claim;
             $resolved = array_values($matches)[0];
             // Fill missing fields only. An explicit conflicting ID remains invalid.
-            foreach (['document_id', 'tool_execution_id'] as $field) {
+            foreach (['document_id', 'tool_execution_id', 'record_path'] as $field) {
+                if (! array_key_exists($field, $resolved)) continue;
                 if (($claim[$field] ?? null) !== null && $claim[$field] !== $resolved[$field]) return $claim;
             }
             return [...$claim, ...$resolved];
@@ -100,6 +116,11 @@ final class EvidenceProjector
     private function sourceRef(string $kind, int $id, string $hash): string
     {
         return $kind.$id.'_'.substr($hash, 0, 12);
+    }
+
+    private function recordSourceRef(array $tool, string $path): string
+    {
+        return $this->sourceRef('t', $tool['execution_id'], $tool['evidence_hash']).'_r'.substr(hash('sha256', $path), 0, 12);
     }
 
     /** Table rows stay literal; match exact requested identities, never a wrapper query echo. */
