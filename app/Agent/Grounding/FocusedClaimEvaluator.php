@@ -328,7 +328,13 @@ final readonly class FocusedClaimEvaluator
         // General details are explicit in the interpretation. Otherwise only exact
         // requested keys may be rendered; a missing key must not erase present ones.
         if ($fields === ['*']) {
-            $fields = array_keys(array_filter($record, fn ($value) => is_scalar($value) || $value === null));
+            // General details do not request a dump of telemetry, processor
+            // flags and every internal scalar. Prefer declared business roles.
+            $fields = array_values($aliases);
+            if ($fields === []) $fields = array_values(array_intersect([
+                'name', 'title', 'description', 'status', 'state', 'total', 'amount', 'currency',
+                'date', 'orderDate', 'quantity', 'orderId', 'customerId',
+            ], array_keys($record)));
         } else {
             $fields = array_values(array_intersect(array_map(fn ($field) => $aliases[$field] ?? $field, $fields), array_keys($record)));
             // A monetary total retains its declared currency; never invent a conversion.
@@ -346,10 +352,14 @@ final readonly class FocusedClaimEvaluator
             if (! is_scalar($value) && $value !== null) {
                 continue;
             }
-            $rows[] = '| '.str_replace('|', '\\|', $field).' | '.str_replace(["|", "\n"], ['\\|', ' '], (string) $value).' |';
+            $role = array_search($field, $aliases, true);
+            $label = is_string($role) && in_array($role, ['reference', 'status', 'total', 'currency', 'date'], true)
+                ? (string) __('kb.record_fields.'.$role, [], $pair['locale']) : $field;
+            $rows[] = '| '.str_replace('|', '\\|', $label).' | '.str_replace(["|", "\n"], ['\\|', ' '], (string) $value).' |';
         }
         $scalars = array_filter($selected, fn ($value) => is_scalar($value) || $value === null);
-        return $rows === [] ? null : [...$pair['claim'], 'text' => "| Campo / Field | Valore / Value |\n|---|---|\n".implode("\n", $rows),
+        $heading = '| '.__('kb.record_fields.field', [], $pair['locale']).' | '.__('kb.record_fields.value', [], $pair['locale']).' |';
+        return $rows === [] ? null : [...$pair['claim'], 'text' => $heading."\n|---|---|\n".implode("\n", $rows),
             'literal_projection' => ['record_path' => $pair['bound']['path'], 'fields' => $scalars,
                 'roles' => array_filter($aliases, fn ($field) => array_key_exists($field, $scalars))]];
     }

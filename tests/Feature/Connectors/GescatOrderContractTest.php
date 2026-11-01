@@ -100,6 +100,45 @@ final class GescatOrderContractTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_business_field_declarations_are_scoped_idempotent_and_preserve_manual_roles(): void
+    {
+        Http::preventStrayRequests();
+        $properties = [];
+        foreach (['ord_codiceweb', 'stato_ordine', 'valute_codice', 'ord_data', 'ipaddress'] as $field) $properties[$field] = ['type' => 'string'];
+        $properties['ord_totale_finale'] = ['type' => 'integer'];
+        $schema = ['type' => 'object', 'properties' => ['order' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => $properties]]]];
+        $route = $this->route('www.autry-usa.com', 'autry');
+        $route->update(['output_schema' => $schema]);
+        $other = $this->route('other.example.com', 'other');
+        $other->update(['output_schema' => $schema]);
+        $custom = $this->route('www.autry-usa.com', 'custom');
+        $manual = $schema;
+        $manual['properties']['order']['items']['properties']['stato_ordine']['x-field'] = 'manual_state';
+        $manual['properties']['order']['items']['properties']['external_state'] = ['type' => 'string', 'x-field' => 'status'];
+        $custom->update(['output_schema' => $manual]);
+        $migration = require dirname(__DIR__, 3).'/database/migrations/2026_11_01_140000_declare_gescat_order_business_fields.php';
+        $migration->up();
+        $fixed = $route->fresh()->output_schema;
+        $migration->up();
+        $this->assertSame($fixed, $route->fresh()->output_schema);
+        $this->assertSame('status', data_get($fixed, 'properties.order.items.properties.stato_ordine.x-field'));
+        $this->assertSame('total', data_get($fixed, 'properties.order.items.properties.ord_totale_finale.x-field'));
+        $this->assertArrayNotHasKey('x-field', $fixed['properties']['order']['items']['properties']['ipaddress']);
+        $this->assertSame($schema, $other->fresh()->output_schema);
+        $this->assertSame('manual_state', data_get($custom->fresh()->output_schema, 'properties.order.items.properties.stato_ordine.x-field'));
+        $tool = new AgentToolDefinition('orders', 'Orders', 'Orders', 'api', [], true, true, 1, 1, 1,
+            metadata: ['items_path' => 'order', 'identity_fields' => ['ord_codiceweb'], 'output_schema' => $fixed]);
+        $envelope = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+        $envelope->addToolResult($tool, [], ['order' => [['ord_codiceweb' => 'ORDER-A', 'stato_ordine' => 'SPEDITO',
+            'ord_totale_finale' => 180, 'valute_codice' => 'EUR', 'ord_data' => '2026-04-02', 'ipaddress' => '192.0.2.20']]], 42);
+        $this->assertSame(['reference' => 'ord_codiceweb', 'status' => 'stato_ordine', 'currency' => 'valute_codice',
+            'date' => 'ord_data', 'total' => 'ord_totale_finale'], $envelope->apiTools()[0]['presentation']['field_aliases']);
+        $this->assertSame('192.0.2.20', $envelope->apiTools()[0]['result']['order'][0]['ipaddress']); // The full original stays intact.
+        $migration->down();
+        $this->assertSame($fixed, $route->fresh()->output_schema);
+        Http::assertNothingSent();
+    }
+
     private function route(string $host, string $tenant): ApiRoute
     {
         $schema = ['type' => 'object', 'properties' => ['orderBy' => ['type' => 'string'], 'limit' => ['type' => 'integer']], 'required' => []];
