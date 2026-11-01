@@ -82,6 +82,21 @@ final class ChatApiTest extends TestCase
         $this->api('GET', '/api/chat/conversations')->assertForbidden();
     }
 
+    public function test_the_real_catalog_url_accepts_bearer_tokens_and_keeps_its_session_client(): void
+    {
+        $this->getJson('/api/chat/live-sources?project_key=orders')->assertUnauthorized();
+        $this->api('GET', '/api/chat/live-sources?project_key=orders')->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private');
+        $this->api('GET', '/api/chat/live-sources?project_key=forbidden')->assertForbidden();
+        ProjectMembership::create(['tenant_id' => 'other', 'project_key' => 'orders', 'user_id' => $this->user->id, 'role' => 'member']);
+        $this->api('GET', '/api/chat/live-sources?project_key=orders', [], 'other')->assertForbidden();
+
+        auth()->forgetGuards();
+        $this->actingAs($this->user, 'web')->withHeader('Authorization', '')
+            ->withHeader('X-Tenant-Id', 'acme')->getJson('/api/chat/live-sources?project_key=orders')->assertOk();
+        $this->getJson('/api/chat/conversations')->assertForbidden(); // Other headless routes still require Bearer auth.
+    }
+
     public function test_api_turn_finishes_through_the_real_worker_handler_and_projects_a_chat_answer(): void
     {
         config(['kb.investigation.enabled' => false, 'reasoning.enabled' => false,

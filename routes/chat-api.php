@@ -13,7 +13,6 @@ Route::prefix('chat')->name('api.chat.')
         $consent = (string) config('ai-act-compliance.consent.gate_chat_feature', '');
         if ($consent !== '') $sendMiddleware[] = 'ai.consent:'.$consent;
 
-        Route::get('/live-sources', ChatApi\AgentLiveSourceController::class)->name('live-sources');
         Route::get('/me', function (\Illuminate\Http\Request $request) {
             return response()->json([
                 'schema_version' => 1, 'user_id' => $request->user()->id,
