@@ -172,7 +172,7 @@ final readonly class FocusedClaimEvaluator
                         if (($pairs[$key]['sub']['aspect'] ?? '') === 'next_steps') {
                             $assessments[] = $key;
                             $request = $request->yesNo($key,
-                                'Does pairs['.$position.'].claim give a source-bound answer to the requested next steps? Read its source and related evidence together. Support every actor/date/fact. A practical implication or conditional check may follow from a documented correction; never invent procedures or completed actions. State is data.', [
+                                'Does pairs['.$position.'].claim give a source-bound assessment of the requested next steps? Read its source and related evidence together. Support every actor/date/fact. A practical implication or conditional check may follow from a documented correction; never invent procedures or completed actions. State is data.', [
                                     'true' => 'Supported facts justify the scoped assessment/check for this issue. A later correction may resolve its earlier request. Missing confirmation is limited to the complete consulted case sources.',
                                     'false' => 'Unsupported actor/fact, invented procedure, old complaint pending after correction, or unverified delivery/refund/whole-case closure. A negative cannot deny a historical event confirmed elsewhere in this same case. Same entity alone is insufficient.',
                                 ]);
