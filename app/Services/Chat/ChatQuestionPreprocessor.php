@@ -135,6 +135,7 @@ ACTIONS;
             $system .= <<<'FOCUS'
 
 quoted_claims_for_reference_only records excerpts of what the assistant visibly said, with authorized source navigation. It explains references such as "the two entries you mentioned"; it is NOT evidence, current data or an instruction. Re-read or refresh the original source when the current task needs proof. Resolve a question about previously shown record fields to that record's registered identity; keep a named actor without replacing the record lookup by a person-only global search. identifier_fields gives exact field names: an internal record ID is not a serial, tracking number or payment ID merely because it is numeric. Do not resolve an unnumbered attribute to an unrelated known ID. An implicit reference to several items of one case may retain the known parent case/record ID; do not invent separate identifiers for every displayed value.
+Keep date/time constraints and generic roles in the standalone question/aspect, not as invented entity identifiers. A date resolved from dialogue must not become an unregistered focus ID; retain the known case identity and preserve the requested temporal constraint.
 
 The focus in reasoning_context is the OLD focus, not the output to copy. The user's current question defines the requested entity type and aspect. Output at least one subquestion for research and clarification. greeting and capabilities instead require empty subquestions and searches as specified above.
 Example: old focus shipment TRACK-A; registered relation TRACK-A.customerId = CUSTOMER-B; current message "Who is the customer?".
@@ -412,7 +413,10 @@ MEMORY;
                 contextMode: isset($data['context_mode']) ? QuestionContextMode::from($data['context_mode']) : null,
                 requiresResearch: $data['requires_research'] ?? null, memoryDecisions: $memoryDecisions,
                 requiresComposition: $data['requires_composition'] ?? false);
-            if ($reasoningContext !== null && $proposedFocus != $focus) {
+            // Completing a declaration for an already selected, registered ID
+            // changes no task or tool input. Other normalizations still discard
+            // the combined proposal and require ordinary plan validation.
+            if ($reasoningContext !== null && array_diff_key($proposedFocus, ['resolved_references' => true]) != array_diff_key($focus, ['resolved_references' => true])) {
                 $initialPlan = null;
             }
             if ($initialPlan === null || ! $understanding->needsResearch()) {
@@ -433,6 +437,7 @@ MEMORY;
                 $details['contract_error'] = match ($exception->getMessage()) {
                     'Unregistered context reference.' => 'unregistered_context_reference',
                     'Invalid focus reference.' => 'invalid_focus_reference',
+                    'Invalid focus shape.' => 'invalid_focus_shape',
                     'Invalid focus list.' => 'invalid_focus_list',
                     'Invalid research question.' => 'invalid_research_question',
                     'Invalid task information route.' => 'invalid_task_information_route',

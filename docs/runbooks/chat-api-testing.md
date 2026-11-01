@@ -270,6 +270,11 @@ Gli export distinguono anche il componente in cui l'interpretazione si ferma
 (`failure_details.component`). Un errore del contratto di focus conserva un
 codice chiuso in `contract_error`, riusato dal solo tentativo di correzione
 previsto. Non vengono copiati corpi HTTP, header o messaggi arbitrari del provider.
+Un'identità già selezionata dal modello e presente esattamente nel registro
+della stessa chat può completare la sola dichiarazione `resolved_references`
+omessa in un seguito. Non vengono indovinati o registrati nuovi ID, né ereditati
+soggetti per richieste dichiarate nuove. Errori di forma e identità restano
+distinti; una normalizzazione puramente dichiarativa non cambia il piano.
 
 Per i seguiti, la navigazione conserva nomi e valori dei soli campi identità
 dichiarati dal connettore, con tool e percorso del record. Gli estratti di

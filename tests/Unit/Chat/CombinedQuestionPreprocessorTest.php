@@ -109,4 +109,21 @@ final class CombinedQuestionPreprocessorTest extends TestCase
         });
         $this->assertTrue((new ChatQuestionPreprocessor($ai))->interpret('Stato ordine')->available);
     }
+
+    public function test_completing_a_registered_reference_does_not_discard_an_unchanged_combined_plan(): void
+    {
+        $focus = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status', 'fields' => ['status']];
+        $payload = [...$this->payload(), 'kb_queries' => ['ORDER-A status'], 'mentions' => [],
+            'references_previous_turn' => true, 'context_mode' => 'conversation', 'transition' => 'continue',
+            'focus' => $focus, 'subquestions' => [[...$focus, 'question' => 'What is ORDER-A status?',
+                'kb_queries' => ['ORDER-A status'], 'context_mode' => 'conversation', 'requires_research' => true]],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '',
+            'initial_plan' => ['actions' => []]];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse(json_encode($payload), 'fake', 'fake'));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('E il suo stato?', reasoningContext: ['known_identifiers' => ['ORDER-A']], initialPlanning: $this->planning());
+        $this->assertTrue($result->available);
+        $this->assertSame(['ORDER-A'], $result->resolvedReferences);
+        $this->assertSame(['actions' => []], $result->initialPlan);
+    }
 }
