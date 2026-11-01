@@ -232,6 +232,12 @@ che ne dichiarano il supporto. `AGENT_WAVE_PROCESS_CONCURRENCY=2` limita i
 bootstrap PHP simultanei indipendentemente dalla larghezza logica della wave.
 La diagnostica distingue `wave_concurrency` e `wave_process_concurrency`.
 
+Quando manca ancora la prima osservazione, una stima di pianificazione più
+lunga del tempo residuo non ferma da sola la ricerca. Il planner usa un budget
+condiviso e decrescente per richiesta e correzione, lasciando il minimo previsto
+per la wave e la riserva esistente per la sintesi. Dopo la prima raccolta resta
+il controllo conservativo prima di pianificare altre wave.
+
 Per i thread lunghi verificare `DECISION_MAX_STATE_BYTES=131072`: un override
 esplicito precedente a 32.768 continua a prevalere. Controllare nel nuovo export
 il limite effettivo e la concorrenza dei processi prima di confrontare le due
