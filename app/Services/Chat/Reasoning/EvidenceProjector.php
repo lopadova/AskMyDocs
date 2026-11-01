@@ -234,6 +234,7 @@ final class EvidenceProjector
                 'record' => $matches[0]['record'], 'path' => $matches[0]['path'],
                 'identity_fields' => $source['presentation']['identity_fields'] ?? [],
                 'field_aliases' => $source['presentation']['field_aliases'] ?? [],
+                'record_collections' => $source['presentation']['record_collections'] ?? [],
                 'source_title' => $source['display_name'] ?? $source['tool'] ?? '',
                 'observed_at' => $source['retrieved_at'] ?? null];
         }
@@ -255,6 +256,12 @@ final class EvidenceProjector
         if (($opaque !== [] && ! array_filter($opaque, fn ($id) => $matches($source, $id)))
             || array_filter($asserted, fn ($id) => ! $matches($source, $id))) {
             return false;
+        }
+        // A current exact case anchor already scopes this document. A person's
+        // name in another reply cannot require that actor to repeat in every
+        // document about the case. Actor/fact attribution still needs grounding.
+        if ($opaque !== []) {
+            return true;
         }
         $prose = array_diff($identifiers, $opaque);
         // When this request has an exact subject anchor, a similar unrelated

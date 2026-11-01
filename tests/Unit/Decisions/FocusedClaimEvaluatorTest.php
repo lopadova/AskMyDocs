@@ -66,6 +66,44 @@ class FocusedClaimEvaluatorTest extends TestCase
         return [['conflicting'], ['supported_off_topic']];
     }
 
+    public function test_uncertain_task_purpose_cannot_turn_unverified_prose_into_literal_api_fields(): void
+    {
+        $this->fake([], .58);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus']['aspect'] = $u['subquestions'][0]['aspect'] = 'source_assessment';
+        $u['focus']['fields'] = $u['subquestions'][0]['fields'] = [];
+        $claims[0]['text'] = 'TRACK-55 was delivered and needs no action.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Can I say the shipment arrived?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+        $this->assertSame(.8, $result['semantic_validation'][0]['checks'][0]['threshold']);
+    }
+
+    public function test_a_negative_case_receipt_claim_cannot_override_a_supported_historical_receipt(): void
+    {
+        $this->fake(['claim_1' => 'unsupported']);
+        $receipt = 'CASE-A ORDER-A: on September 28 the correct article arrived and the mission was closed.';
+        $pickup = 'CASE-A ORDER-A: on October 2 the rejected article was picked up.';
+        $evidence = ['documents' => [
+            ['document_id' => 1, 'title' => 'CASE-A ORDER-A', 'evidence' => [['content' => $receipt, 'evidence_hash' => 'r', 'complete_source' => true]]],
+            ['document_id' => 2, 'title' => 'CASE-A ORDER-A update', 'evidence' => [['content' => $pickup, 'evidence_hash' => 'p', 'complete_source' => true]]],
+        ]];
+        $claims = [
+            ['text' => 'The correct article for ORDER-A arrived on September 28 and its mission was closed.', 'document_id' => 1, 'evidence_hash' => 'r'],
+            ['text' => 'The CASE-A correspondence does not document receipt or closure of the correct return.', 'document_id' => 2, 'evidence_hash' => 'p'],
+        ];
+        $sub = ['topic' => 'case', 'identifiers' => ['CASE-A', 'ORDER-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Compare receipt and pickup for CASE-A.', $evidence, $claims,
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
+        $this->assertTrue($result['partial']);
+        Http::assertSent(fn ($request) => isset($request['state']['sources'])
+            && in_array($receipt, $request['state']['sources'], true) && in_array($pickup, $request['state']['sources'], true));
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('literalVetoes')]
     public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(string $category): void
     {
@@ -430,6 +468,35 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertStringNotContainsString('internal-device', $text);
         $this->assertStringNotContainsString('ord_in_verifica', $text);
         $this->assertTrue($result['partial']);
+    }
+
+    public function test_literal_order_fallback_keeps_declared_item_comparison_without_dumping_internal_fields(): void
+    {
+        $this->fake([], .58);
+        $record = ['ref' => 'ORDER-A', 'state' => 'shipped', 'items' => [
+            ['sku' => 'SKU-A', 'size' => 40, 'qty' => 1, 'margin' => 97],
+            ['sku' => 'SKU-B', 'size' => 41, 'qty' => 2, 'margin' => 98],
+        ]];
+        $tool = ['execution_id' => 42, 'evidence_hash' => 'h', 'presentation' => [
+            'collection_path' => 'orders', 'identity_fields' => ['ref'], 'field_aliases' => ['reference' => 'ref', 'status' => 'state'],
+            'record_collections' => [['role' => 'items', 'path' => 'items.*', 'fields' => ['reference' => 'sku', 'variant' => 'size', 'quantity' => 'qty']]],
+        ], 'result' => ['orders' => [$record]]];
+        $sub = ['identifiers' => ['ORDER-A'], 'fields' => ['*']];
+        $claim = ['text' => 'ORDER-A unverified summary.', 'tool_execution_id' => 42, 'evidence_hash' => 'h'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Order and items?', ['api_tools' => [$tool]], [$claim],
+            ['language' => 'it', 'focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| SKU-A | 40 | 1 |', $text);
+        $this->assertStringContainsString('| SKU-B | 41 | 2 |', $text);
+        $this->assertStringNotContainsString('margin', $text);
+        $this->assertSame($record['items'][0]['sku'], $result['claims'][0]['literal_projection']['collections'][0]['rows'][0]['sku']);
+        $sub['fields'] = [];
+        $sub['aspect'] = 'source_assessment';
+        $assessment = app(FocusedClaimEvaluator::class)->evaluate('Can I say this is complete?', ['api_tools' => [$tool]], [$claim],
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertFalse($assessment['valid']);
+        $this->assertSame([], $assessment['claims']);
     }
 
     public function test_independent_task_cannot_borrow_a_siblings_source_or_be_reassigned_to_that_task(): void

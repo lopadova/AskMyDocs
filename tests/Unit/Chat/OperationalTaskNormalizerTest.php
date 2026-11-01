@@ -101,15 +101,22 @@ final class OperationalTaskNormalizerTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_an_uncertain_classification_gets_only_the_existing_bounded_repair(): void
+    public function test_uncertain_purpose_preserves_the_request_without_approving_a_field_projection(): void
     {
         $this->decision(.64);
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->twice()->andReturn($this->response($this->interpretation('consigli')));
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->response($this->interpretation('consigli')));
         $result = (new ChatQuestionPreprocessor($ai))->interpret('Tu cosa consigli?', reasoningContext: $this->navigation());
-        $this->assertFalse($result->available);
-        $this->assertSame('invalid_task_purpose', $result->failureReason);
-        Http::assertSentCount(2);
+        $this->assertTrue($result->available);
+        $this->assertNull($result->failureReason);
+        $this->assertSame('source_assessment', $result->focus['aspect']);
+        $this->assertSame([], $result->focus['fields']);
+        $this->assertSame('source_assessment', $result->subquestions[0]['aspect']);
+        $this->assertSame([], $result->subquestions[0]['fields']);
+        $this->assertSame('Quali azioni sono necessarie per ORDER-A?', $result->subquestions[0]['question']);
+        $this->assertSame(['ORDER-A'], $result->targetIdentifiers());
+        $this->assertFalse($result->needsResearch());
+        Http::assertSentCount(1);
     }
 
     public function test_provider_contract_failure_does_not_approve_or_regenerate_an_unclassified_task(): void
@@ -120,6 +127,23 @@ final class OperationalTaskNormalizerTest extends TestCase
         $result = (new ChatQuestionPreprocessor($ai))->interpret('Tu cosa consigli?', reasoningContext: $this->navigation());
         $this->assertFalse($result->available);
         $this->assertSame('provider_unavailable', $result->failureReason);
+        Http::assertSentCount(1);
+    }
+
+    public function test_uncertainty_changes_only_the_response_route_of_the_affected_task(): void
+    {
+        Http::fake(['*' => Http::response(['model' => 'jev-test', 'answers' => [
+            'task_0' => ['type' => 'noul', 'noul' => .5], 'task_1' => ['type' => 'noul', 'noul' => .02],
+        ]])]);
+        $first = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'proof and implications', 'fields' => ['status'],
+            'question' => 'Which proof is available for ORDER-A?', 'kb_queries' => ['ORDER-A proof'], 'context_mode' => 'conversation', 'requires_research' => true];
+        $second = ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'status', 'fields' => ['status']];
+        $result = app(OperationalTaskNormalizer::class)->normalize('Check A and report B.',
+            ['focus' => array_intersect_key($first, array_flip(['topic', 'identifiers', 'aspect', 'fields'])), 'subquestions' => [$first, $second]], []);
+        $this->assertSame([...$first, 'aspect' => 'source_assessment', 'fields' => []], $result['subquestions'][0]);
+        $this->assertSame($second, $result['subquestions'][1]);
+        $this->assertSame(['ORDER-A'], $result['focus']['identifiers']);
+        $this->assertSame('source_assessment', $result['focus']['aspect']);
         Http::assertSentCount(1);
     }
 

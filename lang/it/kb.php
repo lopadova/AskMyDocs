@@ -9,7 +9,9 @@ declare(strict_types=1);
  */
 return [
     'record_fields' => ['field' => 'Campo', 'value' => 'Valore', 'reference' => 'Riferimento',
-        'status' => 'Stato', 'total' => 'Totale', 'currency' => 'Valuta', 'date' => 'Data'],
+        'status' => 'Stato', 'total' => 'Totale', 'currency' => 'Valuta', 'date' => 'Data',
+        'description' => 'Descrizione', 'variant' => 'Variante', 'quantity' => 'Quantità',
+        'collection_truncated' => 'Mostrate :shown righe su :total.'],
     'no_grounded_answer' => 'Non riesco a trovare informazioni nei documenti per rispondere a questa domanda.',
     'refusal' => [
         'no_relevant_context' => 'Nessun documento nella knowledge base corrisponde a questa domanda.',

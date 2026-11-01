@@ -13,6 +13,44 @@ use Tests\TestCase;
 
 final class ChatQuestionPreprocessorTest extends TestCase
 {
+    public function test_focus_repair_receives_a_closed_diagnostic_without_loosening_registered_references(): void
+    {
+        $make = static function ($id): array {
+            $focus = ['topic' => 'order', 'identifiers' => [$id], 'aspect' => 'items', 'fields' => ['items']];
+            return ['language' => 'it', 'intent' => 'Confrontare gli articoli', 'action' => 'research',
+                'kb_queries' => [$id.' articoli'], 'mentions' => [], 'references_previous_turn' => true,
+                'context_mode' => 'conversation', 'requires_research' => true, 'transition' => 'continue', 'focus' => $focus,
+                'subquestions' => [[...$focus, 'question' => 'Quali articoli contiene '.$id.'?', 'kb_queries' => [$id.' articoli'],
+                    'context_mode' => 'conversation', 'requires_research' => true]],
+                'resolved_references' => [$id], 'needs_clarification' => false, 'clarification' => ''];
+        };
+        $calls = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturnUsing(function ($provider, $prompt, $messages) use (&$calls, $make) {
+            $calls[] = json_decode($messages[0]['content'], true);
+            return $this->response($make(count($calls) === 1 ? 'UNKNOWN' : 'ORDER-A'));
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Confronta gli articoli già trovati.', reasoningContext: ['known_identifiers' => ['ORDER-A']]);
+        $this->assertTrue($result->available);
+        $this->assertSame(['ORDER-A'], $result->targetIdentifiers());
+        $this->assertSame('invalid_focus_contract', $calls[1]['validation_error']);
+        $this->assertSame('unregistered_context_reference', $calls[1]['validation_details']['contract_error']);
+        $this->assertSame('focus_contract', $calls[1]['validation_details']['component']);
+    }
+
+    public function test_provider_failure_keeps_only_safe_component_and_exception_metadata(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andThrow(new \RuntimeException('PRIVATE-PROVIDER-BODY Bearer secret-value'));
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Quale etichetta hai letto?', reasoningContext: []);
+        $this->assertFalse($result->available);
+        $this->assertSame('provider_unavailable', $result->failureReason);
+        $this->assertSame(['component' => 'question_provider', 'exception_class' => \RuntimeException::class], $result->failureDetails);
+        $this->assertStringNotContainsString('PRIVATE-PROVIDER-BODY', json_encode($result->toArray()));
+        $this->assertStringNotContainsString('secret-value', json_encode($result->toArray()));
+        $this->assertSame($result->failureDetails, \App\Services\Chat\QuestionUnderstanding::fromArray($result->toArray())->failureDetails);
+    }
+
     public function test_parent_cannot_disable_research_required_by_a_mixed_task(): void
     {
         $focus = ['topic' => 'order', 'identifiers' => ['ORDER-B'], 'aspect' => 'current', 'fields' => ['status']];

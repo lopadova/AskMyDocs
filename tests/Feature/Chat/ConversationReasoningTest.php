@@ -202,6 +202,53 @@ class ConversationReasoningTest extends TestCase
         $this->assertStringNotContainsString($document->title, json_encode($revoked));
     }
 
+    public function test_custom_record_identity_keeps_field_roles_without_copying_other_record_values(): void
+    {
+        $conversation = $this->conversation();
+        $references = app(ConversationReasoning::class)->references($conversation, ['api_tools' => [[
+            'execution_id' => 42, 'tool' => 'erp_orders', 'evidence_hash' => 'h',
+            'presentation' => ['collection_path' => 'orders', 'identity_fields' => ['erp_reference', 'erp_id']],
+            'result' => ['orders' => [['erp_reference' => 'ORDER-A', 'erp_id' => 123, 'customerId' => 'CUSTOMER-B', 'total' => 195]]],
+        ]]]);
+        $reference = array_values($references)[0];
+        $this->assertSame(['ORDER-A', '123', 'CUSTOMER-B'], $reference['identifiers']);
+        $this->assertSame(['erp_reference' => 'ORDER-A', 'erp_id' => 123], $reference['identifier_fields']);
+        $this->assertSame('orders.0', $reference['record_path']);
+        $this->assertArrayNotHasKey('total', $reference['identifier_fields']);
+    }
+
+    public function test_only_visible_verified_claims_from_still_authorized_sources_resolve_answer_references(): void
+    {
+        $conversation = $this->conversation();
+        $document = \App\Models\KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'source_type' => 'text', 'title' => 'CASE-A', 'source_path' => 'mail/quoted-context', 'status' => 'active', 'document_hash' => 'd']);
+        $chunk = \App\Models\KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0, 'chunk_hash' => 'h',
+            'chunk_text' => 'PRIVATE-SOURCE-BODY. CASE-A contains two entries.']);
+        $memory = app(ConversationReasoning::class);
+        $refs = $memory->references($conversation, ['documents' => [['document_id' => $document->id,
+            'evidence' => [['chunk_id' => $chunk->id, 'evidence_hash' => 'h']]]]]);
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $refs]])->save();
+        $visible = 'CASE-A contains two entries.';
+        $conversation->messages()->create(['role' => 'assistant', 'content' => $visible, 'metadata' => ['grounding' => ['claims' => [
+            ['text' => $visible, 'document_id' => $document->id, 'evidence_hash' => 'h'],
+            ['text' => 'NOT-RENDERED-CANDIDATE', 'document_id' => $document->id, 'evidence_hash' => 'h'],
+            ['text' => $visible, 'document_id' => $document->id, 'evidence_hash' => 'wrong'],
+            'legacy malformed claim',
+        ]]]]);
+        $context = $memory->context($conversation);
+        $quotes = $context['dialogue'][0]['quoted_claims_for_reference_only'];
+        $this->assertCount(1, $quotes);
+        $this->assertSame($visible, $quotes[0]['quoted_text']);
+        $this->assertSame($document->id, $quotes[0]['source_navigation']['document_id']);
+        $this->assertStringNotContainsString('PRIVATE-SOURCE-BODY', json_encode($context));
+        $this->assertStringNotContainsString('NOT-RENDERED-CANDIDATE', json_encode($context));
+        $document->delete();
+        $revoked = $memory->context($conversation);
+        $this->assertSame([], $revoked['dialogue'][0]['quoted_claims_for_reference_only']);
+        $this->assertStringNotContainsString($visible, json_encode($revoked));
+    }
+
     public function test_a_greeting_preserves_the_current_business_focus(): void
     {
         $greeting = ['language' => 'it', 'intent' => 'Salutare', 'action' => 'greeting', 'kb_queries' => [], 'mentions' => [],

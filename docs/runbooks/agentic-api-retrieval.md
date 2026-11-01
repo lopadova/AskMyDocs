@@ -113,8 +113,12 @@ necessarie» non deve aggirare il contratto operativo. Una classificazione
 semantica circoscritta al compito attuale normalizza richieste di consiglio e
 valutazione in `next_steps`, con `fields=[]`, prima di sintesi e validazione.
 I dettagli fattuali restano tali; identificativi, modalità di ricerca e permessi
-non sono modificati. Un esito incerto permette la riparazione già prevista,
-mentre un errore del provider non autorizza una classificazione arbitraria.
+non sono modificati. Se il tipo di risposta resta incerto, il compito già
+validato usa `source_assessment`, con `fields=[]`: resta disponibile soltanto
+la risposta testuale verificata sulle fonti, senza proiezione letterale API
+automatica. Non è un'approvazione dei fatti o un consiglio operativo assunto
+come certo. Errori di risposta/provider restano fallimenti espliciti; nessuna
+soglia è abbassata.
 
 La sintesi deve distinguere una segnalazione ancora aperta da una successiva
 correzione, nominare autore e data dell'aggiornamento e limitare la conclusione
@@ -293,6 +297,13 @@ allineato a `record_sources`. Il server risolve riferimento, hash, esecuzione e
 Le risposte senza record non offrono riferimenti fattuali. I riferimenti legacy
 restano leggibili per le affermazioni già persistite, con gli stessi controlli.
 
+Le conclusioni di assenza devono confrontare tutte le fonti disponibili dello
+stesso caso. Un evento storico confermato non diventa assente perché una risposta
+successiva non ripete il codice o manca lo stato corrente del gestionale.
+Sintesi e verifica tengono separati il fatto documentato, un collegamento ancora
+incerto e l'eventuale mancanza di conferma di un altro evento. Queste istruzioni
+non sostituiscono i controlli di identità, supporto e confidenza.
+
 Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
 `"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
 ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
@@ -309,6 +320,15 @@ esplicitamente richiesti restano selezionabili se presenti nella fonte. Le
 etichette dei ruoli noti sono tradotte; valori e nomi dei campi nella proiezione
 diagnostica restano esatti. La migrazione del servizio ordini Autry dichiara
 riferimento, stato, totale, valuta e data senza sovrascrivere ruoli manuali.
+
+Una collezione annidata viene mostrata nel fallback soltanto se il contratto
+dichiara `x-field=items` sull'array e ruoli scalari sui suoi campi. Il renderer
+proietta esclusivamente quei campi dal record padre già verificato, fino a 20
+righe con conteggio esplicito delle righe ulteriori. Non espone gli altri
+array o campi interni, non sposta l'identità su un figlio e conserva l'originale
+completo per la verifica. `fields=[]` continua a escludere ogni proiezione.
+La migrazione Autry dichiara codice, descrizione, variante e quantità delle
+righe Gescat solo per il tenant e il servizio noti, preservando ruoli manuali.
 
 Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
 quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.

@@ -89,4 +89,39 @@ final class EvidenceProjectorIdentityTest extends TestCase
         $claim = ['source_ref' => $reference];
         $this->assertSame($claim, $projector->resolveSourceIdentity($evidence, $claim));
     }
+
+    private function caseDocuments(): array
+    {
+        return ['documents' => [
+            ['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [['content' => 'CASE-A: parcel received.', 'evidence_hash' => 'h1']]],
+            ['document_id' => 2, 'title' => 'CASE-A follow-up', 'evidence' => [['content' => 'Paula Schmidt replied about CASE-A.', 'evidence_hash' => 'h2']]],
+            ['document_id' => 3, 'title' => 'CASE-B', 'evidence' => [['content' => 'Paula Schmidt discussed CASE-B.', 'evidence_hash' => 'h3']]],
+        ]];
+    }
+
+    public function test_an_exact_case_document_does_not_need_every_actor_named_in_the_followup(): void
+    {
+        $bound = (new EvidenceProjector)->bind($this->caseDocuments(),
+            ['document_id' => 1, 'evidence_hash' => 'h1', 'text' => 'CASE-A parcel was received.'],
+            ['CASE-A', 'Paula Schmidt'], '', '');
+        $this->assertSame('CASE-A: parcel received.', $bound['quote']);
+    }
+
+    public function test_an_actor_in_another_case_cannot_authorize_a_different_case_or_an_asserted_code(): void
+    {
+        $projector = new EvidenceProjector;
+        $evidence = $this->caseDocuments();
+        $this->assertSame('entity_mismatch', $projector->bind($evidence,
+            ['document_id' => 3, 'evidence_hash' => 'h3', 'text' => 'CASE-A parcel was received.'], ['CASE-A', 'Paula Schmidt'], '', '')['reason']);
+        $this->assertSame('entity_mismatch', $projector->bind($evidence,
+            ['document_id' => 1, 'evidence_hash' => 'h1', 'text' => 'CASE-B parcel was received.'], ['CASE-A', 'CASE-B'], '', '')['reason']);
+        $this->assertSame('entity_mismatch', $projector->bind($evidence,
+            ['document_id' => 1, 'evidence_hash' => 'h1'], ['Paula Schmidt'], '', '')['reason']);
+    }
+
+    public function test_related_case_sources_include_replies_without_the_actor_but_exclude_other_cases(): void
+    {
+        $alternatives = (new EvidenceProjector)->alternatives($this->caseDocuments(), ['CASE-A', 'Paula Schmidt'], 'Different passage.', '', '');
+        $this->assertSame([1, 2], array_column($alternatives, 'document_id'));
+    }
 }

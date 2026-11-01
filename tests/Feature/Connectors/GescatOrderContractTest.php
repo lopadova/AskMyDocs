@@ -139,11 +139,59 @@ final class GescatOrderContractTest extends TestCase
         Http::assertNothingSent();
     }
 
-    private function route(string $host, string $tenant): ApiRoute
+    public function test_item_declarations_keep_nested_business_rows_and_preserve_other_tenants_and_manual_roles(): void
+    {
+        Http::preventStrayRequests();
+        $schema = ['type' => 'object', 'properties' => ['order' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+            'ord_codiceweb' => ['type' => 'string'],
+            'articoli' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                'articolo' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'art_pcode' => ['type' => 'string'], 'DescArticolo' => ['type' => 'string'],
+                    'variante' => ['type' => 'integer'], 'art_qta' => ['type' => 'integer'], 'internal_margin' => ['type' => 'number'],
+                ]]],
+            ]]],
+        ]]]]];
+        $route = $this->route('www.autry-usa.com', 'autry');
+        $route->update(['output_schema' => $schema]);
+        $otherHost = $this->route('other.example.com', 'autry', 'other-host');
+        $otherHost->update(['output_schema' => $schema]);
+        $otherTenant = $this->route('www.autry-usa.com', 'other');
+        $otherTenant->update(['output_schema' => $schema]);
+        $manual = $this->route('www.autry-usa.com', 'autry', 'manual');
+        $manualSchema = $schema;
+        data_set($manualSchema, 'properties.order.items.properties.articoli.items.properties.articolo.x-field', 'custom_items');
+        $manual->update(['output_schema' => $manualSchema]);
+        $before = $route->fresh()->only(['url', 'input_schema', 'output_transform', 'identity_fields', 'status']);
+        $migration = require dirname(__DIR__, 3).'/database/migrations/2026_11_01_170000_declare_gescat_order_item_fields.php';
+        $migration->up();
+        $fixed = $route->fresh()->output_schema;
+        $migration->up();
+        $this->assertSame($fixed, $route->fresh()->output_schema);
+        $this->assertSame($before, $route->fresh()->only(array_keys($before)));
+        $this->assertSame($schema, $otherHost->fresh()->output_schema);
+        $this->assertSame($schema, $otherTenant->fresh()->output_schema);
+        $this->assertSame($manualSchema, $manual->fresh()->output_schema);
+        $tool = new AgentToolDefinition('orders', 'Orders', 'Orders', 'api', [], true, true, 1, 1, 1,
+            metadata: ['items_path' => 'order', 'identity_fields' => ['ord_codiceweb'], 'output_schema' => $fixed]);
+        $envelope = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+        $envelope->addToolResult($tool, [], ['order' => [['ord_codiceweb' => 'ORDER-A', 'articoli' => [['articolo' => [[
+            'art_pcode' => 'SKU-A', 'DescArticolo' => 'Shoe', 'variante' => 40, 'art_qta' => 1, 'internal_margin' => 97,
+        ]]]]]]], 42);
+        $declarations = $envelope->apiTools()[0]['presentation']['record_collections'];
+        $this->assertSame('articoli.*.articolo.*', $declarations[0]['path']);
+        $this->assertSame(['reference' => 'art_pcode', 'description' => 'DescArticolo', 'variant' => 'variante', 'quantity' => 'art_qta'], $declarations[0]['fields']);
+        $this->assertStringNotContainsString('internal_margin', json_encode($declarations));
+        $this->assertSame(97, $envelope->apiTools()[0]['result']['order'][0]['articoli'][0]['articolo'][0]['internal_margin']);
+        $migration->down();
+        $this->assertSame($fixed, $route->fresh()->output_schema);
+        Http::assertNothingSent();
+    }
+
+    private function route(string $host, string $tenant, string $project = ''): ApiRoute
     {
         $schema = ['type' => 'object', 'properties' => ['orderBy' => ['type' => 'string'], 'limit' => ['type' => 'integer']], 'required' => []];
         $connector = ApiConnector::create(['tenant_id' => $tenant, 'name' => 'Orders', 'is_active' => true]);
-        $route = ApiRoute::create(['tenant_id' => $tenant, 'api_connector_id' => $connector->id, 'project_key' => '',
+        $route = ApiRoute::create(['tenant_id' => $tenant, 'api_connector_id' => $connector->id, 'project_key' => $project,
             'name' => 'Orders', 'slug' => 'gescat_cerca_ordini', 'url' => 'https://'.$host.'/api/admin/ws/ws_orders',
             'http_method' => 'GET', 'status' => 'active', 'mode' => 'tool', 'input_schema' => $schema,
             'output_transform' => ['include' => ['order.*.ord_ID', 'order.*.ord_codiceweb']],
