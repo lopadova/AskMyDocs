@@ -256,6 +256,12 @@ final class EvidenceProjector
             || array_filter($asserted, fn ($id) => ! $matches($source, $id))) {
             return false;
         }
+        // A current exact case anchor already scopes this document. A person's
+        // name in another reply cannot require that actor to repeat in every
+        // document about the case. Actor/fact attribution still needs grounding.
+        if ($opaque !== []) {
+            return true;
+        }
         $prose = array_diff($identifiers, $opaque);
         // When this request has an exact subject anchor, a similar unrelated
         // case cannot supply its procedure. Prose names may also be actors or
