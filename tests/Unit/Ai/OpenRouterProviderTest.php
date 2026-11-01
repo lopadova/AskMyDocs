@@ -215,6 +215,42 @@ class OpenRouterProviderTest extends TestCase
         }
     }
 
+    public function test_request_budget_reaches_http_and_sdk_and_reasoning_is_sent_only_when_advertised(): void
+    {
+        $this->setupConfig();
+        Http::preventStrayRequests();
+        $timeouts = [];
+        Http::fake(function (Request $request, array $options) use (&$timeouts) {
+            if (str_contains($request->url(), '/models/')) {
+                return Http::response(['data' => ['endpoints' => [['supported_parameters' => ['tools', 'temperature', 'reasoning']]]]]);
+            }
+            $timeouts[] = $options['timeout'];
+            return Http::response(['model' => 'vendor/bounded', 'choices' => [['message' => ['role' => 'assistant', 'content' => 'Done'], 'finish_reason' => 'stop']]]);
+        });
+        $provider = $this->provider();
+        foreach ([['tools' => []], []] as $extra) {
+            $provider->chat('sys', 'data', ['model' => 'vendor/bounded', 'timeout' => 4, 'reasoning' => ['effort' => 'low'], ...$extra]);
+        }
+        $this->assertCount(2, $timeouts);
+        foreach ($timeouts as $timeout) {
+            $this->assertGreaterThan(0, $timeout);
+            $this->assertLessThanOrEqual(4, $timeout);
+        }
+        Http::assertSent(fn ($request) => isset($request['tools']) && $request['reasoning'] === ['effort' => 'low']
+            && ! isset($request['timeout']));
+    }
+
+    public function test_optional_reasoning_is_omitted_when_the_model_does_not_advertise_it(): void
+    {
+        $this->setupConfig();
+        Http::fake([
+            '*/models/vendor/plain/endpoints' => Http::response(['data' => ['endpoints' => [['supported_parameters' => ['tools']]]]]),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => '{}']]]]),
+        ]);
+        $this->provider()->chat('sys', 'data', ['model' => 'vendor/plain', 'tools' => [], 'reasoning' => ['effort' => 'low']]);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/chat/completions') && ! isset($request['reasoning']));
+    }
+
     public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http(): void
     {
         // The MCP loop's final answer turn (no `tools`, but tool-role history)

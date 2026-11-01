@@ -71,7 +71,7 @@ trait SdkChat
             [],
             $this->name(),
             $this->resolveTextModel($options),
-            $this->config['timeout'] ?? null,
+            isset($options['timeout']) ? max(1, (int) min($options['timeout'], $this->config['timeout'] ?? $options['timeout'])) : ($this->config['timeout'] ?? null),
         );
 
         return $this->toAiResponse($sdkResponse);

@@ -153,6 +153,27 @@ con `chat:debug` e ruolo amministrativo, anche durante l'esecuzione. Non è una
 sonda OS: log del container, OOM e traffico mai persistito non sono ricostruibili
 tramite queste API.
 
+## Budget del worker e riprova
+
+Nel worker ogni richiesta testuale usa il tempo rimasto della sua invocazione,
+con un massimo predefinito di 60 secondi e una riserva di 10 secondi per verifica
+e chiusura, oltre al margine finale. Il timeout arriva sia ai provider HTTP sia
+al percorso SDK. Le decisioni Jev rispettano il tempo residuo e non eseguono
+retry nascosti dentro la stessa invocazione. Fuori da questo contesto i retry
+ordinari rimangono invariati.
+
+`AGENT_TEXT_REQUEST_TIMEOUT_SECONDS` e `AGENT_TEXT_REASONING_EFFORT` configurano
+il default testuale (`60`, `low`): OpenRouter invia l'effort soltanto ai modelli
+che ne dichiarano il supporto. `AGENT_WAVE_PROCESS_CONCURRENCY=2` limita i
+bootstrap PHP simultanei indipendentemente dalla larghezza logica della wave.
+La diagnostica distingue `wave_concurrency` e `wave_process_concurrency`.
+
+Per i thread lunghi verificare `DECISION_MAX_STATE_BYTES=131072`: un override
+esplicito precedente a 32.768 continua a prevalere. Controllare nel nuovo export
+il limite effettivo e la concorrenza dei processi prima di confrontare le due
+tornate. Usare conversazioni nuove e gli stessi prompt; conservare gli export
+precedenti senza sovrascriverli.
+
 ## Verifica locale
 
 I test HTTP usano token Sanctum reali, lo stack delle rotte e l'handler del

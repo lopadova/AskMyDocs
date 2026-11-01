@@ -146,7 +146,7 @@ final class OpenAiProvider implements AiProviderInterface
         $baseUrl = rtrim($this->config['url'] ?? 'https://api.openai.com/v1', '/');
 
         $response = Http::withToken($this->config['key'])
-            ->timeout($this->config['timeout'] ?? 120)
+            ->timeout(min($this->config['timeout'] ?? 120, $options['timeout'] ?? 120))
             ->post("{$baseUrl}/chat/completions", $payload);
 
         $response->throw();

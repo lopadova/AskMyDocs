@@ -49,6 +49,63 @@ class AgentChatModelScopeTest extends TestCase
             fn () => app(AgentChatModelScope::class)->options([]));
     }
 
+    public function test_request_timeout_tracks_the_active_worker_and_does_not_leak_after_it_finishes(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        app(TenantContext::class)->set('warehouse');
+        $scope = app(AgentChatModelScope::class);
+        $context = $this->context('orders');
+        $run = new \App\Models\AgentRun(['tenant_id' => 'warehouse', 'run_id' => 'run']);
+        $run->id = 1;
+        $deadline = app(\App\Agent\AgentRunDeadline::class);
+        $scope->within($context, function () use ($scope, $run, $deadline, $context): void {
+            try {
+                $deadline->within($run, now(), 120, function () use ($scope): void {
+                    $this->travel(80)->seconds();
+                    $options = $scope->options([]);
+                    $this->assertSame(25, $options['timeout']);
+                    $this->assertSame(['effort' => 'low'], $options['reasoning']);
+                    $this->assertSame(3, $scope->options(['timeout' => 3])['timeout']);
+                    $this->assertSame(['effort' => 'high'], $scope->options(['reasoning' => ['effort' => 'high']])['reasoning']);
+                    $this->travel(26)->seconds();
+                    $scope->options([]);
+                    $this->fail('No request should start inside the finalization reserve.');
+                });
+            } catch (\DomainException $exception) {
+                $this->assertSame('agent_provider_deadline_exhausted', $exception->getMessage());
+            }
+            $this->assertNull($deadline->activeRemaining($context));
+            $this->assertArrayNotHasKey('timeout', $scope->options([]));
+            $this->assertArrayNotHasKey('reasoning', $scope->options([]));
+        });
+        $this->assertNull($scope->context());
+    }
+
+    public function test_a_late_decision_uses_remaining_seconds_without_hidden_retries(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        config(['ai.providers.openrouter.key' => 'test', 'decisions.models.jev.timeout' => 15]);
+        $run = new \App\Models\AgentRun(['tenant_id' => 'warehouse', 'run_id' => 'run']);
+        $run->id = 1;
+        $timeouts = [];
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(function ($request, $options) use (&$timeouts) {
+            $timeouts[] = $options['timeout'];
+            return \Illuminate\Support\Facades\Http::response([], 503);
+        });
+        app(AgentChatModelScope::class)->within($this->context('orders'), fn () => app(\App\Agent\AgentRunDeadline::class)->within($run, now(), 120, function (): void {
+            $this->travel(110)->seconds();
+            try {
+                \App\Decisions\Decisions::using()->withState(['question' => 'Status?'])->relevance()->decide();
+                $this->fail('Provider failure must not become an approval.');
+            } catch (\App\Decisions\DecisionException $exception) {
+                $this->assertSame('Decision provider returned HTTP 503.', $exception->getMessage());
+            }
+        }));
+        $this->assertSame([3], $timeouts);
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     public function test_every_ai_manager_text_entry_point_overrides_an_explicit_old_stage_model(): void
     {
         app(TenantContext::class)->set('warehouse');
