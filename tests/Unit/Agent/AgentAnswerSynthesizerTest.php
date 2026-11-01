@@ -185,9 +185,10 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $payload = json_decode($messages[0]['content'], true);
             $reference = $payload['evidence']['documents'][0]['evidence'][0]['source_ref'];
             $this->assertSame('d252_'.substr($hash, 0, 12), $reference);
-            $this->assertSame([$reference], data_get($options, 'tools.0.function.parameters.properties.claims.items.properties.source_ref.enum'));
+            $this->assertSame([0], data_get($options, 'tools.0.function.parameters.properties.claims.items.properties.source_choice.enum'));
             $schema = data_get($options, 'tools.0.function.parameters.properties.claims.items');
-            $this->assertSame(['text', 'quote', 'source_ref'], $schema['required']);
+            $this->assertSame(['text', 'quote', 'source_choice'], $schema['required']);
+            $this->assertArrayNotHasKey('source_ref', $schema['properties']);
             $this->assertArrayNotHasKey('evidence_hash', $schema['properties']);
             $this->assertArrayNotHasKey('document_id', $schema['properties']);
             $this->assertArrayNotHasKey('record_path', $schema['properties']);
@@ -216,12 +217,38 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $this->assertSame('records.0', $sources[0]['record_path']);
             $this->assertSame([], $payload['evidence']['api_tools'][1]['record_sources']);
             $schema = data_get($options, 'tools.0.function.parameters.properties.claims.items');
-            $this->assertSame([$sources[0]['source_ref']], $schema['properties']['source_ref']['enum']);
+            $this->assertSame([0], $schema['properties']['source_choice']['enum']);
+            $this->assertSame(0, $sources[0]['source_choice']);
             $this->assertArrayNotHasKey('record_path', $schema['properties']);
             return new AiResponse('', 'fake', 'fake-agent');
         });
         $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
         (new \ReflectionMethod($synthesizer, 'draft'))->invoke($synthesizer, 'Compare ORDER-A and its requested email.', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null);
+    }
+
+    public function test_numeric_source_choice_is_bound_before_drafts_can_merge_or_be_cached(): void
+    {
+        config(['reasoning.selective_validation' => true]);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addToolResult(new AgentToolDefinition('orders', 'Orders', 'Read orders', 'api', [], true, true, 1, 1, 1),
+            [], ['records' => [['code' => 'ORDER-A', 'status' => 'sent']]], 81);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'fake-agent', toolCalls: [[
+            'name' => 'submit_agent_answer', 'arguments' => ['claims' => [['text' => 'ORDER-A is sent.',
+                'quote' => 'sent', 'source_choice' => 0]]],
+        ]]));
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        [, $payload] = (new \ReflectionMethod($synthesizer, 'structuredDraft'))->invoke($synthesizer,
+            'ORDER-A status?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null);
+        $claim = $payload['claims'][0];
+        $this->assertSame(81, $claim['tool_execution_id']);
+        $this->assertSame('records.0', $claim['record_path']);
+        $this->assertSame($evidence->apiTools()[0]['evidence_hash'], $claim['evidence_hash']);
+        $this->assertArrayNotHasKey('source_choice', $claim);
+        $expanded = ['documents' => [['document_id' => 99, 'evidence' => [['content' => 'Unrelated', 'evidence_hash' => 'other']]]],
+            'api_tools' => $evidence->apiTools()];
+        $this->assertSame($claim, app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->resolveSourceIdentity($expanded, $claim),
+            'A resolved local choice cannot be reinterpreted after source ordering changes.');
     }
 
     public function test_only_renderable_tool_records_allow_a_table_handoff_and_never_during_repair(): void

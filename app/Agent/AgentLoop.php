@@ -145,6 +145,24 @@ final readonly class AgentLoop
                 return $this->outcome('answer', $evidence, [], 'session_memory');
             }
         }
+        if (config('reasoning.enabled') && $understanding !== null && ! data_get($run->result_json, 'context_document_reread.completed', false)) {
+            $beforeBytes = $evidence->byteSize();
+            $reread = $this->diagnostics->measure($run, 'kb.conversation_source_reread',
+                fn () => app(\App\Services\Chat\Reasoning\ConversationSourceEvidence::class)->forRun($run, $understanding, $filters,
+                    max(0, (int) config('agent.limits.evidence_bytes', 524288) - $beforeBytes)),
+                ['operation' => 'read_registered_sources', 'wait_reason' => 'source_store_read']);
+            $evidence->import($reread);
+            $addedBytes = max(0, $evidence->byteSize() - $beforeBytes);
+            if ($addedBytes > 0) $budget->recordResult(0, $addedBytes, true);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($run, $evidence, $reread): void {
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                $state = (array) $locked->result_json;
+                $state['evidence'] = $evidence->jsonSerialize();
+                $state['context_document_reread'] = ['completed' => true, 'documents' => count($reread['documents']),
+                    'warnings' => $reread['warnings']];
+                $run->forceFill(['result_json' => $state])->save();
+            });
+        }
         if (config('agent.waves.enabled', true) && $understanding?->available && $understanding->needsResearch()
             && ! $understanding->needsClarification) {
             return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);

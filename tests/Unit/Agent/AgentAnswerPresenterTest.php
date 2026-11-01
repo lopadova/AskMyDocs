@@ -73,6 +73,60 @@ final class AgentAnswerPresenterTest extends TestCase
         ]]);
     }
 
+    public static function requestedSpeechActs(): array
+    {
+        return [
+            ['Può comunicarci la sua disponibilità per il ritiro?', .99, .99, 'accepted'],
+            ['Può comunicarci la sua disponibilità per il ritiro?', .2, .99, 'rejected'],
+            ['Il rimborso è già stato pagato e il ritiro è prenotato.', .99, .1, 'rejected'],
+            ['Le garantiamo il rimborso senza ulteriori verifiche.', .99, .5, 'rejected'],
+        ];
+    }
+
+    #[DataProvider('requestedSpeechActs')]
+    public function test_a_draft_request_is_checked_separately_and_never_supplies_factual_authority(string $text, float $requested, float $nonfactual, string $status): void
+    {
+        Http::fake(function ($request) use ($requested, $nonfactual, $text) {
+            $answers = [];
+            foreach (array_keys($request['questions']) as $key) $answers[$key] = ['type' => 'noul',
+                'noul' => match ($key) { 'requested' => $requested, 'nonfactual' => $nonfactual, default => .99 }];
+            if (isset($request['state']['blocks'])) {
+                $this->assertStringNotContainsString($text, json_encode($request['state']['blocks'], JSON_UNESCAPED_UNICODE));
+            } else {
+                $this->assertSame($text, $request['state']['proposed_nonfactual_request']);
+                $this->assertArrayNotHasKey('verified_facts', $request['state']);
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'Per CASE-A il cambio è predisposto senza sovrapprezzi.', 'claim_ids' => [0, 1], 'kind' => 'facts'],
+            ['text' => $text, 'claim_ids' => [], 'kind' => 'requested_speech_act'],
+        ]));
+        $claims = $this->claims();
+        $result = (new AgentAnswerPresenter($ai))->present('Scrivi una bozza sul cambio e chiedi disponibilità per il ritiro.',
+            $this->context(), $claims, understanding: ['requires_composition' => true]);
+        $this->assertSame($status, $result['trace']['status']);
+        $this->assertSame($this->claims(), $claims);
+        Http::assertSentCount(2);
+        if ($status === 'accepted') {
+            $this->assertSame([], $result['paragraphs'][1]['claim_ids']);
+            $this->assertSame('requested_speech_act', $result['paragraphs'][1]['kind']);
+        } else $this->assertNull($result['paragraphs']);
+    }
+
+    public function test_an_ordinary_factual_answer_cannot_add_an_unlinked_request(): void
+    {
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'Per CASE-A il cambio è predisposto senza sovrapprezzi.', 'claim_ids' => [0, 1]],
+            ['text' => 'Può comunicarci la sua disponibilità?', 'claim_ids' => [], 'kind' => 'requested_speech_act'],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Qual è lo stato?', $this->context(), $this->claims());
+        $this->assertNull($result['paragraphs']);
+        Http::assertNothingSent();
+    }
+
     public function test_a_verified_paragraph_merges_repeated_attribution_without_changing_original_facts(): void
     {
         $this->decisions();

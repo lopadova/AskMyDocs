@@ -454,7 +454,7 @@ final readonly class AgentAnswerSynthesizer
             is_array($payload['memory_candidates'] ?? null) ? $payload['memory_candidates'] : [],
             \App\Services\Chat\QuestionUnderstanding::fromArray($understanding ?? []), $context->tenantId, $context->projectKey, $durableRunId);
         return new AgentAnswer(
-            answer: $this->masker->maskString($presentedAnswer),
+            answer: $this->masker->maskString(app(VerifiedMarkdownTables::class)->normalize($presentedAnswer)),
             locale: $context->locale,
             completeness: $completeness,
             citations: $this->selectedDocuments($evidence['documents'], [...$grounding['claims'], ...($grounding['source_excerpts'] ?? [])]),
@@ -541,26 +541,26 @@ PROMPT;
         $sourceRefs = [];
         foreach ($promptEvidence['documents'] ?? [] as $document) {
             foreach ($document['evidence'] ?? [] as $chunk) {
-                if (is_string($chunk['source_ref'] ?? null)) {
-                    $sourceRefs[] = $chunk['source_ref'];
+                if (is_int($chunk['source_choice'] ?? null)) {
+                    $sourceRefs[] = $chunk['source_choice'];
                 }
             }
         }
         foreach ($promptEvidence['api_tools'] ?? [] as $tool) {
             foreach ($tool['record_sources'] ?? [] as $source) {
-                $sourceRefs[] = $source['source_ref'];
+                $sourceRefs[] = $source['source_choice'];
             }
         }
         $submission = $this->submissionTool();
         if ($sourceRefs !== []) {
             $claimSchema = &$submission['function']['parameters']['properties']['claims']['items'];
-            $claimSchema['properties']['source_ref']['enum'] = array_values(array_unique($sourceRefs));
-            $claimSchema['required'] = ['text', 'quote', 'source_ref'];
+            $claimSchema['properties']['source_choice'] = ['type' => 'integer', 'enum' => array_values(array_unique($sourceRefs))];
+            $claimSchema['required'] = ['text', 'quote', 'source_choice'];
             $claimSchema['properties']['quote']['maxLength'] = 700;
             $claimSchema['properties']['quote']['description'] = 'A short literal contiguous anchor from the selected original source. Full original context is independently checked by the host.';
-            unset($claimSchema['properties']['document_id'], $claimSchema['properties']['tool_execution_id'], $claimSchema['properties']['evidence_hash'], $claimSchema['properties']['record_path']);
+            unset($claimSchema['properties']['source_ref'], $claimSchema['properties']['document_id'], $claimSchema['properties']['tool_execution_id'], $claimSchema['properties']['evidence_hash'], $claimSchema['properties']['record_path']);
             unset($claimSchema);
-            $system .= "\nFor this submission copy the mandatory source_ref for every claim. For API evidence choose the reference in record_sources aligned with the selected original record. The host supplies its record_path, IDs and full hash: do not emit those fields or append nested item paths. An API response without record_sources supplies no factual record reference. Each claim must stand alone and contain only facts supported by that ONE source. Keep email observations separate from live-record observations; do not combine them into a comparison claim that one source cannot support.";
+            $system .= "\nFor this submission copy the mandatory integer source_choice for every claim. For API evidence choose source_choice in record_sources aligned with the selected original record; for documents copy it from the selected evidence passage. Do not copy hashes or construct a source_ref. The host supplies record_path, IDs and full hash before the draft is stored: do not emit those fields or append nested item paths. An API response without record_sources supplies no factual record choice. Each claim must stand alone and contain only facts supported by that ONE source. Keep email observations separate from live-record observations; do not combine them into a comparison claim that one source cannot support.";
         }
         // A table in document text is not a structured tool artifact. Tell the
         // draft which handoff can actually be rendered before it omits rows.
@@ -601,6 +601,22 @@ PROMPT;
                 $response = $this->draft($question, $context, $outcome, $understanding, $turnContext,
                     claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1, run: $run, parentSpanId: $span);
                 $payload = $this->payload($response->toolCalls, $response->content);
+                // Choices are local to THIS exact prompt. Persist full identities
+                // before task drafts merge or a later envelope changes ordering.
+                if (config('reasoning.selective_validation') && is_array($payload['claims'] ?? null)) {
+                    foreach ($payload['claims'] as &$claim) {
+                        if (! is_array($claim)) continue;
+                        $original = $claim;
+                        $claim = app(\App\Services\Chat\Reasoning\EvidenceProjector::class)
+                            ->resolveSourceIdentity($outcome->evidence->jsonSerialize(), $claim);
+                        if ($claim !== $original && ! isset($claim['source_selection']) && ! isset($claim['source_selection_error'])) {
+                            $claim['source_selection'] ??= ['method' => isset($original['source_ref']) && in_array($original['evidence_hash'] ?? null, [null, ''], true)
+                                ? 'current_source_reference' : 'unique_evidence_hash',
+                                'original_source' => array_intersect_key($original, array_flip(['source_ref', 'document_id', 'tool_execution_id', 'evidence_hash', 'record_path']))];
+                        }
+                    }
+                    unset($claim);
+                }
                 $diagnostics->end($run, $span);
                 return [$response, $payload];
             } catch (\UnexpectedValueException|\Illuminate\Http\Client\ConnectionException $exception) {
@@ -915,6 +931,7 @@ The server joins accepted claim texts with a blank line. Formatting organizes ve
 - Use one concise `## Topic` heading per section unless the server supplies the task heading from section_title. Never repeat the section heading for each claim. Headings are neutral noun phrases, not questions, task numbers or unsupported conclusions. Use `### Aspect` only when a long section genuinely needs subsections; never use a # page title. A rules section starts with actual rules, not another introduction to the entity.
 - Within each section, group related aspects into short paragraphs, usually one to three sentences. Lead with the direct supported answer, then the relevant detail. Several paragraphs may share the same section heading. Avoid walls of text and a heading for every sentence.
 - Keep claims atomic and source-bound even when they are adjacent in the same paragraph group. Each claim must remain understandable on its own if another claim is excluded. Do not combine evidence from different sources merely to obtain a nicer layout.
+- When drafting a reply, submit only the source-backed business statements as claims. A newly requested polite question to the recipient, such as asking for availability, is presentation wording rather than a historical fact; the final presenter can add it under a separate request-only check. Keep it separate from recorded statuses, commitments and actions, which still require factual grounding. Never imply that a draft was sent.
 - Use bullet lists for parallel attributes or conditions and numbered lists only for ordered steps. Add a blank line before and after every list, heading, table and code block. Do not turn every short paragraph into a list.
 - Use tables for comparable structured fields or requested collections, not for narrative explanations. Preserve exact identifiers and values; never invent cells or totals. Respect the render_table handoff instructions above and do not repeat an already rendered table in prose.
 - Use **bold** sparingly for important identifiers, statuses and values, not whole paragraphs. Use inline code for technical keys and fenced code blocks with a language tag for commands or configuration. Do not use raw HTML, decorative icons or all-capital headings.

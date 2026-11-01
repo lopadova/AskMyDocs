@@ -9,6 +9,7 @@ final class EvidenceProjector
 {
     public function forPrompt(array $evidence): array
     {
+        $choice = 0;
         foreach ($evidence['documents'] ?? [] as $index => $document) {
             foreach ($document['evidence'] ?? [] as $chunkIndex => $chunk) {
                 if (! is_int($document['document_id'] ?? null) || ! is_string($chunk['evidence_hash'] ?? null)) {
@@ -19,6 +20,7 @@ final class EvidenceProjector
                     'evidence_hash' => $chunk['evidence_hash'],
                 ];
                 $evidence['documents'][$index]['evidence'][$chunkIndex]['source_ref'] = $this->sourceRef('d', $document['document_id'], $chunk['evidence_hash']);
+                $evidence['documents'][$index]['evidence'][$chunkIndex]['source_choice'] = $choice++;
             }
         }
         foreach ($evidence['api_tools'] ?? [] as $index => $tool) {
@@ -33,7 +35,7 @@ final class EvidenceProjector
             $recordSources = [];
             foreach ($records as $entry) {
                 $recordSources[] = ['record_path' => $entry['path'],
-                    'source_ref' => $this->recordSourceRef($tool, $entry['path'])];
+                    'source_ref' => $this->recordSourceRef($tool, $entry['path']), 'source_choice' => $choice++];
             }
             $evidence['api_tools'][$index]['record_sources'] = $recordSources;
             unset($evidence['api_tools'][$index]['source_ref']);
@@ -53,6 +55,31 @@ final class EvidenceProjector
      */
     public function resolveSourceIdentity(array $evidence, array $claim): array
     {
+        if (array_key_exists('source_choice', $claim)) {
+            $choices = [];
+            $prompt = $this->forPrompt($evidence);
+            foreach ($prompt['documents'] ?? [] as $document) {
+                foreach ($document['evidence'] ?? [] as $chunk) {
+                    if (isset($chunk['source_choice'])) $choices[$chunk['source_choice']] = [...$chunk['claim_source'], 'source_ref' => $chunk['source_ref']];
+                }
+            }
+            foreach ($prompt['api_tools'] ?? [] as $tool) {
+                foreach ($tool['record_sources'] ?? [] as $source) {
+                    $choices[$source['source_choice']] = [...$tool['claim_source'],
+                        'record_path' => $source['record_path'], 'source_ref' => $source['source_ref']];
+                }
+            }
+            $choice = $claim['source_choice'];
+            $resolved = is_int($choice) ? ($choices[$choice] ?? null) : null;
+            if ($resolved === null) return [...$claim, 'source_selection_error' => 'unknown_choice'];
+            foreach ($resolved as $key => $value) {
+                if (($claim[$key] ?? null) !== null && ($claim[$key] ?? '') !== '' && $claim[$key] !== $value) {
+                    return [...$claim, 'source_selection_error' => 'conflicting_identity'];
+                }
+            }
+            unset($claim['source_choice']);
+            return [...$claim, ...$resolved, 'source_selection' => ['method' => 'current_prompt_choice', 'choice' => $choice]];
+        }
         $hash = $claim['evidence_hash'] ?? null;
         if (($hash === null || $hash === '') && is_string($claim['source_ref'] ?? null)) {
             $matches = [];
@@ -187,6 +214,7 @@ final class EvidenceProjector
 
     public function bind(array $evidence, array $claim, array $ids, string $tenant, string $project): array
     {
+        if (isset($claim['source_selection_error'])) return ['reason' => 'invalid_source_identity'];
         $hash = $claim['evidence_hash'] ?? '';
         $doc = $claim['document_id'] ?? null;
         $execution = $claim['tool_execution_id'] ?? null;
