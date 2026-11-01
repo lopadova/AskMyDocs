@@ -6,7 +6,9 @@ return [
     'default' => env('DECISION_MODEL', 'jev'),
     // Application guardrail for sanitized UTF-8 JSON, NOT the model token window.
     // Questions retain their independent 12,000-byte limit in Decisions::decide().
-    'max_state_bytes' => (int) env('DECISION_MAX_STATE_BYTES', 32768),
+    // Real mixed email/ERP cases exceed 80 KiB even after shared-source dedup.
+    // Keep complete originals and contradictions; never truncate them to fit.
+    'max_state_bytes' => (int) env('DECISION_MAX_STATE_BYTES', 131072),
     'models' => [
         'jev' => [
             'driver' => \App\Decisions\Models\JevDecisionModel::class,
