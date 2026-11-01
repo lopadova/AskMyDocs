@@ -117,6 +117,7 @@ python3 scripts/qa/chat-api.py document --id ID_DOCUMENTO
 python3 scripts/qa/chat-api.py tool-source --conversation ID --message ID --execution ID
 python3 scripts/qa/chat-api.py cancel --run UUID_RUN
 python3 scripts/qa/chat-api.py continue --run UUID_RUN --logical 5 --physical 20
+python3 scripts/qa/chat-api.py reconcile --run UUID_RUN
 python3 scripts/qa/chat-api.py revoke
 ```
 
@@ -125,6 +126,12 @@ estensioni di budget automaticamente. `continue` usa il contratto di conferma
 budget della chat; selezioni di righe passano come input del prossimo turno.
 Le interazioni MCP che richiedono azioni dell'utente rimangono handoff espliciti;
 questo client non automatizza OAuth o approvazioni di strumenti.
+
+`reconcile` è una riparazione esplicita per run già terminali, riservata ad
+admin/super-admin con `chat:debug` e accesso alla propria chat. Chiude strumenti
+rimasti aperti ed emette gli eventi mancanti, marcando l'esito fisico come
+sconosciuto. È idempotente, non cambia la risposta e non riesegue richieste.
+Una run attiva viene rifiutata con `409`.
 
 ## Contratto HTTP
 
@@ -142,6 +149,7 @@ Tutte le richieste richiedono `Authorization: Bearer TOKEN`, `X-Tenant-Id` e
 | GET `/api/chat/runs/{uuid}/events` | Stream SSE esistente, ripresa con `after` |
 | POST `/api/chat/runs/{uuid}/cancel` | Annullamento tramite il controllo standard |
 | POST `/api/chat/runs/{uuid}/continue` | Estensione confermata dei budget |
+| POST `/api/chat/runs/{uuid}/reconcile` | Riparazione admin di strumenti aperti in una run terminale |
 | GET `/api/chat/conversations/{id}/debug-transcript` | Export admin, richiede `chat:debug` |
 | GET `/api/chat/documents/{id}/preview` | Testo fonte autorizzato |
 | GET `/api/chat/conversations/{id}/messages/{message}/tool-sources/{execution}` | Risultato strumento registrato |

@@ -74,6 +74,16 @@ class ChatClientTest(unittest.TestCase):
             with self.assertRaises(ValueError): qa.read_private(profile)
         with self.assertRaises(ValueError): qa.Client({**self.profile(), 'base_url': 'http://example.com'})
 
+    def test_reconcile_sends_one_explicit_scoped_post(self):
+        with tempfile.TemporaryDirectory() as folder:
+            profile = Path(folder) / 'profile.json'
+            qa.write_private(profile, self.profile())
+            client = Mock()
+            client.request.return_value = {'closed_tools': 2}
+            with patch.object(qa, 'Client', return_value=client), patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(0, qa.main(['--profile', str(profile), 'reconcile', '--run', 'run-id']))
+            client.request.assert_called_once_with('POST', '/api/chat/runs/run-id/reconcile', {})
+
     def test_waiting_for_confirmation_is_returned_without_automatic_approval(self):
         with tempfile.TemporaryDirectory() as output:
             client = qa.Client(self.profile())

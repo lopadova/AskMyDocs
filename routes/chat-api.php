@@ -38,6 +38,8 @@ Route::prefix('chat')->name('api.chat.')
             ->middleware(['token.ability:chat:debug', 'role:admin|super-admin'])->name('debug-transcript');
         Route::get('/documents/{documentId}/preview', ChatApi\KbDocumentPreviewController::class)->whereNumber('documentId')->name('documents.preview');
         Route::get('/runs/{run}', ChatApi\ChatApiRunController::class)->name('runs.show');
+        Route::post('/runs/{run}/reconcile', ChatApi\ChatApiReconcileRunController::class)
+            ->middleware(['token.ability:chat:debug', 'role:admin|super-admin'])->name('runs.reconcile');
         Route::get('/runs/{run}/events', ChatApi\AgentRunEventController::class)->name('runs.events');
         Route::post('/runs/{run}/cancel', [ChatApi\AgentRunControlController::class, 'cancel'])->name('runs.cancel');
         Route::post('/runs/{run}/continue', [ChatApi\AgentRunControlController::class, 'resume'])->name('runs.continue');

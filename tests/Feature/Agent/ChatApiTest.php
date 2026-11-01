@@ -124,6 +124,37 @@ final class ChatApiTest extends TestCase
         $this->assertNotSame('failed', AgentRun::query()->sole()->status);
     }
 
+    public function test_debug_admin_can_reconcile_only_owned_terminal_work_without_replaying_it(): void
+    {
+        $conversation = $this->api('POST', '/api/chat/conversations', ['project_key' => 'orders'])->assertCreated()->json('id');
+        $id = $this->api('POST', "/api/chat/conversations/$conversation/messages", ['content' => 'Order'])->assertAccepted()->json('run_id');
+        $run = AgentRun::query()->sole();
+        $run->toolExecutions()->create(['logical_index' => 1, 'tool_name' => 'lookup', 'tool_kind' => 'api',
+            'status' => 'running', 'started_at' => now()->subMinute()]);
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertForbidden();
+        $this->user->assignRole('admin');
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertForbidden(); // Debug ability is independently required.
+        $this->token = $this->user->createToken('debug', ['chat:use', 'chat:tenant:acme', 'chat:debug'], now()->addDay())->plainTextToken;
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertConflict();
+        $this->assertSame('running', $run->toolExecutions()->sole()->status);
+        $run->forceFill(['status' => 'failed', 'error_code' => 'worker_timeout', 'completed_at' => now()])->save();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        Queue::fake();
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertOk()->assertJsonPath('closed_tools', 1)->assertJsonPath('status', 'failed');
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertOk()->assertJsonPath('closed_tools', 0);
+        $tool = $run->toolExecutions()->sole();
+        $this->assertSame('failed', $tool->status);
+        $this->assertTrue($tool->result_meta_json['outcome_unknown']);
+        $this->assertSame(1, $run->events()->where('type', 'tool.failed')->count());
+        $this->assertSame('failed', $run->fresh()->status);
+        $foreign = $run->replicate()->forceFill(['run_id' => (string) \Illuminate\Support\Str::uuid(), 'actor_id' => 'another-principal']);
+        $foreign->save();
+        $this->api('POST', "/api/chat/runs/$foreign->run_id/reconcile")->assertNotFound();
+        Queue::assertNothingPushed();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        $this->api('POST', '/api/chat/runs/'.\Illuminate\Support\Str::uuid().'/reconcile')->assertNotFound();
+    }
+
     public function test_foreign_conversations_and_revoked_project_access_are_denied(): void
     {
         $other = User::create(['name' => 'Other', 'email' => 'other@example.test', 'password' => 'password']);
