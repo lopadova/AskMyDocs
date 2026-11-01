@@ -61,6 +61,8 @@ use App\Http\Controllers\Api\Widget\WidgetSetupController;
 use App\Http\Controllers\Api\Widget\WidgetUserTokenController;
 use Illuminate\Support\Facades\Route;
 
+require __DIR__.'/chat-api.php';
+
 // Public presentation metadata contains only an allowlisted theme identifier.
 Route::get('/appearance', [\App\Http\Controllers\Api\AppearanceController::class, 'show'])
     ->name('api.appearance.show');

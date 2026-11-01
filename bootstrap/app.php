@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // app(TenantContext::class)->current(). Defaults to 'default'
         // when no header / claim is present (R31 backward-compat with v3).
         $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
+        $middleware->prepend(\App\Http\Middleware\RestrictChatApiToken::class);
 
         // Security response headers (SEC-CSP-001 / SEC-TLS-001 / response-headers
         // / csp-nonce-cache / request-correlation). Appended so it runs LAST on

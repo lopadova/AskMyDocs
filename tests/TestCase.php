@@ -608,6 +608,8 @@ abstract class TestCase extends OrchestraTestCase
         // class [tenant.authorize] does not exist". Keep in sync with
         // bootstrap/app.php.
         $router->aliasMiddleware('tenant.resolve', \App\Http\Middleware\ResolveTenant::class);
+        $app->make(\Illuminate\Contracts\Http\Kernel::class)
+            ->prependMiddleware(\App\Http\Middleware\RestrictChatApiToken::class);
         $router->aliasMiddleware('tenant.authorize', \App\Http\Middleware\AuthorizeTenantHeader::class);
         // Widget KITT public channel gate. Mirrors bootstrap/app.php
         // (Testbench does not execute that file). The global-prepended
