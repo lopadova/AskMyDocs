@@ -66,6 +66,7 @@ final class PiiRedactionMiddlewareScopeTest extends TestCase
 
         $this->assertSame(
             [
+                'api/chat/conversations/{conversation}/messages',
                 'conversations/{conversation}/messages',
                 'conversations/{conversation}/messages/agent',
                 'conversations/{conversation}/messages/stream',

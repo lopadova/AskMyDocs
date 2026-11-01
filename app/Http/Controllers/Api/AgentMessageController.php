@@ -98,14 +98,15 @@ final class AgentMessageController extends Controller
         }
         $message = $turn->message;
         $run = $turn->run;
+        $runBase = $request->routeIs('api.chat.*') ? '/api/chat/runs/' : '/agent-runs/';
 
         return response()->json([
             'run_id' => $run->run_id,
             'status' => $run->status,
             'locale' => $run->locale,
-            'events_url' => '/agent-runs/'.$run->run_id.'/events',
-            'cancel_url' => '/agent-runs/'.$run->run_id.'/cancel',
-            'continue_url' => '/agent-runs/'.$run->run_id.'/continue',
+            'events_url' => $runBase.$run->run_id.'/events',
+            'cancel_url' => $runBase.$run->run_id.'/cancel',
+            'continue_url' => $runBase.$run->run_id.'/continue',
             'user_message' => [
                 'id' => $message->id,
                 'role' => $message->role,
