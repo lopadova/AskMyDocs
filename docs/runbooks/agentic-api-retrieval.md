@@ -262,6 +262,11 @@ proteggere gli indirizzi esplicitamente vietati: non disabilitare
   conversazione/sessione, widget key e identità.
 - Prompt, evidenze, eventi, checkpoint e metadati delle esecuzioni passano dal
   masking PII prima della persistenza o dell'invio al client.
+  Codici brevi ordine/reso affiancati restano distinti, senza diventare un unico
+  falso IBAN: l'eccezione richiede prefissi alfabetici e segmenti sotto la
+  lunghezza minima IBAN, esclude contesti bancari e checksum IBAN validi.
+  Anche i riferimenti logistici esplicitamente etichettati richiedono un
+  checksum IBAN non valido per essere conservati. Conti e carte restano mascherati.
 - Gli output del tool sono byte-capped; retry e cache sono configurabili per
   route. I `4xx` non vengono ritentati come errori transitori.
 - Un `401/403/404` inatteso richiede di verificare membership, progetto, chiave
@@ -308,8 +313,12 @@ riferimento, stato, totale, valuta e data senza sovrascrivere ruoli manuali.
 Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
 quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.
 La selezione usa la data registrata della fonte per gli aggiornamenti, apre
-l'inizio della risposta recente e considera documenti distinti prima di altre
-finestre dello stesso thread. L'ordine di arrivo entra solo nel pool di ricerca,
+l'inizio della risposta recente e conserva una finestra pertinente ai termini
+non identificativi della query. Il punteggio lessicale favorisce termini
+discriminanti nel pool dei documenti esatti: serve solo alla navigazione, non
+approva fatti. Le due finestre possono appartenere allo stesso thread; gli altri
+slot privilegiano documenti distinti prima di ulteriori finestre ripetute.
+L'ordine di arrivo entra solo nel pool di ricerca,
 mai come data dell'evento. ACL, tenant, progetto e rilettura autorizzata restano
 obbligatori; un insieme limitato di risultati non prova un'assenza globale.
 
