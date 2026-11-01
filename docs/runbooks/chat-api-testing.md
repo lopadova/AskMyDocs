@@ -288,3 +288,12 @@ richiesta. Una tabella, traduzione o riscrittura può usare fonti già verificat
 senza aggiornarle, ma passa comunque dalla composizione della risposta: non
 viene sostituita dalla concatenazione letterale dei fatti in memoria. Il flag
 resta separato da `requires_research` e non approva nuovi fatti.
+
+Nei seguiti con identità risolte vengono inoltre riletti i documenti già trovati
+nella stessa chat, anche se non avevano prodotto un'affermazione pubblicata.
+Sono nuovi accessi alle fonti originali con permessi e filtri correnti: non
+riusano la prosa dell'assistente, non approvano fatti e non aggiornano i dati
+delle API. `context_document_reread` registra numero di documenti e limiti;
+un passaggio troppo grande viene escluso interamente con una segnalazione.
+Questo impedisce che il solo sottoinsieme scelto dalla memoria diventi l'unica
+base per negare una conferma presente in un altro messaggio già trovato.
