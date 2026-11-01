@@ -282,6 +282,12 @@ evidenze e il controllo delle risposte la usa per associare ogni affermazione
 al record corretto. Restano obbligatori scope, hash e corrispondenza del record;
 un filtro di ricerca o una chiave esterna non certificano l'identità.
 
+La sintesi selettiva riceve un `source_ref` distinto per ogni record originale,
+allineato a `record_sources`. Il server risolve riferimento, hash, esecuzione e
+`record_path`: il generatore non può emettere percorsi di articoli annidati.
+Le risposte senza record non offrono riferimenti fattuali. I riferimenti legacy
+restano leggibili per le affermazioni già persistite, con gli stessi controlli.
+
 Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
 `"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
 ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
@@ -290,6 +296,22 @@ può essere `currency`. Se un ruolo è dichiarato da più proprietà viene ignor
 perché ambiguo. In caso di giudizio semantico inconcludente, il fallback può
 mostrare soltanto i valori letterali richiesti del record già verificato,
 conservando identità, hash e valuta; non autorizza inferenze o altri record.
+
+Per dettagli generici (`fields=["*"]`), il fallback usa i ruoli aziendali
+dichiarati e l'identità del record, evitando un dump di tutti gli scalari interni.
+Senza ruoli usa soltanto un insieme ristretto di campi convenzionali. I campi
+esplicitamente richiesti restano selezionabili se presenti nella fonte. Le
+etichette dei ruoli noti sono tradotte; valori e nomi dei campi nella proiezione
+diagnostica restano esatti. La migrazione del servizio ordini Autry dichiara
+riferimento, stato, totale, valuta e data senza sovrascrivere ruoli manuali.
+
+Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
+quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.
+La selezione usa la data registrata della fonte per gli aggiornamenti, apre
+l'inizio della risposta recente e considera documenti distinti prima di altre
+finestre dello stesso thread. L'ordine di arrivo entra solo nel pool di ricerca,
+mai come data dell'evento. ACL, tenant, progetto e rilettura autorizzata restano
+obbligatori; un insieme limitato di risultati non prova un'assenza globale.
 
 ## API di lettura che restituiscono XML
 
