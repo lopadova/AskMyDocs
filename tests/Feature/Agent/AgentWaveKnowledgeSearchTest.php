@@ -127,6 +127,22 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertSame([$exact->id, $policy->id], array_column($result->body['documents'], 'document_id'));
     }
 
+    public function test_a_mentioned_source_name_does_not_expand_an_exact_order_search(): void
+    {
+        app(TenantContext::class)->set('acme');
+        $wanted = $this->document('acme', 'orders', 'Order email', ['ORDER-A return update.']);
+        $this->document('acme', 'orders', 'Other case', ['Unrelated Gescat procedure.']);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A']], 'mentions' => [['text' => 'Gescat', 'type' => 'name']]]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A in Gescat', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame([$wanted->id], array_column($result->body['documents'], 'document_id'));
+        $this->assertSame(1, $result->stats['exact_candidates']);
+    }
+
     public function test_followup_skips_already_collected_exact_sources_and_returns_new_policy(): void
     {
         app(TenantContext::class)->set('acme');

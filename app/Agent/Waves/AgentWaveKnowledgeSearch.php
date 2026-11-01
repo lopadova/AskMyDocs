@@ -142,9 +142,11 @@ final class AgentWaveKnowledgeSearch
         if (! $understanding->available) {
             return [];
         }
-        $known = array_values(array_filter(array_unique(array_merge(
-            $understanding->targetIdentifiers(), $understanding->mentionTexts(),
-        )), 'is_string'));
+        // The source/system name may be a literal mention without being the
+        // subject (for example "ORDER-A in Gescat"). Do not turn it into a
+        // corpus-wide exact anchor when the interpreter supplied precise targets.
+        $targets = $understanding->targetIdentifiers();
+        $known = array_values(array_filter(array_unique($targets !== [] ? $targets : $understanding->mentionTexts()), 'is_string'));
         $explicit = array_values(array_filter($known, fn ($id) => EvidenceProjector::contains($query, $id)));
         if ($explicit !== []) {
             return $explicit;
