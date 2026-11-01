@@ -332,6 +332,10 @@ righe Gescat solo per il tenant e il servizio noti, preservando ruoli manuali.
 
 Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
 quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.
+Se la stessa ricerca include codici opachi e nomi di attori o sistemi, i codici
+ancorano i candidati; i nomi contribuiscono al ranking dentro quel perimetro.
+La menzione di un corriere non aggiunge quindi tutti i suoi documenti al caso.
+Le ricerche indipendenti contenenti soltanto un nome restano disponibili.
 La selezione usa la data registrata della fonte per gli aggiornamenti, apre
 l'inizio della risposta recente e conserva una finestra pertinente ai termini
 non identificativi della query. Il punteggio lessicale favorisce termini

@@ -136,6 +136,18 @@ final class ExactIdentifierCandidatesTest extends TestCase
         $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
     }
 
+    public function test_an_actor_does_not_broaden_a_case_code_search_into_unrelated_cases(): void
+    {
+        $case = $this->document('CASE123: the parcel was received.');
+        $reply = $this->document('Courier requested collection.', ['title' => 'RE: CASE123']);
+        $unrelated = $this->document('Courier reply in an unrelated case.');
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['CASE123', 'Courier'], 'orders');
+        $this->assertEqualsCanonicalizing([$case->id, $reply->id], $candidates->pluck('document.id')->all());
+        $this->assertNotContains($unrelated->id, $candidates->pluck('document.id')->all());
+        $nameOnly = app(KbSearchService::class)->exactIdentifierCandidates(['Courier'], 'orders');
+        $this->assertContains($unrelated->id, $nameOnly->pluck('document.id')->all(), 'Independent actor-only research remains possible.');
+    }
+
     public function test_a_rare_subject_ranks_first_even_without_the_common_merchant_name(): void
     {
         for ($i = 0; $i < 65; $i++) {
