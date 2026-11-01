@@ -228,7 +228,7 @@ final class AgentWaveCoordinator
             $started = microtime(true);
             $waveTimeout = min((float) config('agent.waves.timeout_seconds', 45), $this->researchTimeRemaining($run, $budget));
             $observations = $this->diagnostics->measure($run, 'wave.execute', fn () => $this->executor->run($tasks,
-                diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout), ['operation' => 'parallel_wave', 'concurrency' => (int) config('agent.waves.concurrency', 10)]);
+                diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout), ['operation' => 'parallel_wave', 'concurrency' => AgentWaveExecutor::concurrency()]);
             $this->control->ensureActive($run);
             $pending = $interactions = [];
             $registered = [];

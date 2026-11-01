@@ -62,6 +62,31 @@ class AgentWaveExecutorTest extends TestCase
         $this->assertNull($results[2]);
     }
 
+    public function test_wide_logical_wave_respects_the_php_process_limit_and_keeps_all_results(): void
+    {
+        config(['agent.waves.concurrency' => 10, 'agent.waves.process_concurrency' => 2, 'agent.waves.timeout_seconds' => 15]);
+        $tasks = [];
+        for ($i = 0; $i < 5; $i++) {
+            $tasks[] = static function () {
+                $start = microtime(true);
+                usleep(300000);
+                return ['start' => $start, 'end' => microtime(true)];
+            };
+        }
+        $results = app(AgentWaveExecutor::class)->run($tasks, forceProcess: true);
+        $this->assertCount(5, $results);
+        $events = [];
+        foreach ($results as $result) {
+            $this->assertIsArray($result);
+            $events[] = [$result['start'], 1];
+            $events[] = [$result['end'], -1];
+        }
+        sort($events);
+        $active = $peak = 0;
+        foreach ($events as [, $change]) $peak = max($peak, $active += $change);
+        $this->assertSame(2, $peak, 'Two tasks overlap, but the wide wave never boots five PHP workers together.');
+    }
+
     public function test_timeout_does_not_discard_the_completed_sibling(): void
     {
         config(['agent.waves.concurrency' => 2, 'agent.waves.timeout_seconds' => 1]);

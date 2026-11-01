@@ -173,6 +173,7 @@ final class RunDiagnostics
             'waves_enabled' => (bool) config('agent.waves.enabled', true),
             'combined_initial_planning' => (bool) config('agent.waves.combined_initial_planning', true),
             'wave_concurrency' => config('agent.waves.concurrency', 10),
+            'wave_process_concurrency' => \App\Agent\Waves\AgentWaveExecutor::concurrency(),
             'wave_timeout_seconds' => config('agent.waves.timeout_seconds', 45),
             'fanout_driver' => config('agent.tools.fanout_driver'),
             'fanout_concurrency' => config('agent.tools.fanout_concurrency'),
