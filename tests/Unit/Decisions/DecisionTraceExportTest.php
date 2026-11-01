@@ -13,7 +13,7 @@ final class DecisionTraceExportTest extends TestCase
     public function test_export_reports_model_answer_and_skipped_repair_separately(): void
     {
         $validation = (new ReflectionMethod(ConversationDebugTranscriptController::class, 'validation'))
-            ->invoke(new ConversationDebugTranscriptController, [
+            ->invoke(app(ConversationDebugTranscriptController::class), [
                 'status' => 'blocked', 'reason' => 'quote_not_in_tool_result',
                 'semantic_validation' => [
                     ['stage' => 'initial_answer', 'attempted' => true, 'used' => true,
@@ -34,7 +34,7 @@ final class DecisionTraceExportTest extends TestCase
     public function test_old_runs_are_marked_not_recorded_rather_than_assumed_unused(): void
     {
         $validation = (new ReflectionMethod(ConversationDebugTranscriptController::class, 'validation'))
-            ->invoke(new ConversationDebugTranscriptController, ['status' => 'grounded']);
+            ->invoke(app(ConversationDebugTranscriptController::class), ['status' => 'grounded']);
 
         $this->assertSame('not_recorded', $validation['semantic']['status']);
         $this->assertNull($validation['semantic']['used']);
@@ -44,7 +44,7 @@ final class DecisionTraceExportTest extends TestCase
     public function test_batch_export_exposes_each_claim_decision_and_shared_cost(): void
     {
         $validation = (new ReflectionMethod(ConversationDebugTranscriptController::class, 'validation'))
-            ->invoke(new ConversationDebugTranscriptController, [
+            ->invoke(app(ConversationDebugTranscriptController::class), [
                 'status' => 'grounded', 'semantic_validation' => [[
                     'stage' => 'claim_batch', 'attempted' => true, 'used' => true,
                     'status' => 'completed', 'model' => 'typesafe/jev-1.13',
