@@ -36,18 +36,26 @@ final class OperationalTaskNormalizer
             $answers = $request->decide()->answers;
         }
         foreach ($tasks as $index => $task) {
-            $operational = ($task['aspect'] ?? '') === 'next_steps';
-            if (! $operational) {
+            $aspect = ($task['aspect'] ?? '') === 'next_steps' ? 'next_steps' : null;
+            if ($aspect === null) {
                 $probability = $answers['task_'.$index]['probability_true'] ?? null;
-                if (! is_numeric($probability) || max($probability, 1 - $probability) < $threshold) {
-                    return null; // Abstain; the existing bounded interpretation repair can resolve it.
+                if (! is_numeric($probability) || ! is_finite((float) $probability) || $probability < 0 || $probability > 1) {
+                    return null;
                 }
-                $operational = $probability >= $threshold;
+                if (max($probability, 1 - $probability) < $threshold) {
+                    // Abstain from choosing factual fields versus operational
+                    // advice, not from the already validated user request. This
+                    // route requires source-bound prose and forbids automatic
+                    // literal API projection; it approves no business fact.
+                    $aspect = 'source_assessment';
+                } elseif ($probability >= $threshold) {
+                    $aspect = 'next_steps';
+                }
             }
-            if (! $operational) {
+            if ($aspect === null) {
                 continue;
             }
-            $normalized = [...$task, 'aspect' => 'next_steps', 'fields' => []];
+            $normalized = [...$task, 'aspect' => $aspect, 'fields' => []];
             $primary = $focus['focus'] ?? [];
             if (($primary['topic'] ?? '') === ($task['topic'] ?? '')
                 && ($primary['identifiers'] ?? []) === ($task['identifiers'] ?? [])

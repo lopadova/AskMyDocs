@@ -66,6 +66,20 @@ class FocusedClaimEvaluatorTest extends TestCase
         return [['conflicting'], ['supported_off_topic']];
     }
 
+    public function test_uncertain_task_purpose_cannot_turn_unverified_prose_into_literal_api_fields(): void
+    {
+        $this->fake([], .58);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus']['aspect'] = $u['subquestions'][0]['aspect'] = 'source_assessment';
+        $u['focus']['fields'] = $u['subquestions'][0]['fields'] = [];
+        $claims[0]['text'] = 'TRACK-55 was delivered and needs no action.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Can I say the shipment arrived?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+        $this->assertSame(.8, $result['semantic_validation'][0]['checks'][0]['threshold']);
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('literalVetoes')]
     public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(string $category): void
     {

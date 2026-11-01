@@ -113,8 +113,12 @@ necessarie» non deve aggirare il contratto operativo. Una classificazione
 semantica circoscritta al compito attuale normalizza richieste di consiglio e
 valutazione in `next_steps`, con `fields=[]`, prima di sintesi e validazione.
 I dettagli fattuali restano tali; identificativi, modalità di ricerca e permessi
-non sono modificati. Un esito incerto permette la riparazione già prevista,
-mentre un errore del provider non autorizza una classificazione arbitraria.
+non sono modificati. Se il tipo di risposta resta incerto, il compito già
+validato usa `source_assessment`, con `fields=[]`: resta disponibile soltanto
+la risposta testuale verificata sulle fonti, senza proiezione letterale API
+automatica. Non è un'approvazione dei fatti o un consiglio operativo assunto
+come certo. Errori di risposta/provider restano fallimenti espliciti; nessuna
+soglia è abbassata.
 
 La sintesi deve distinguere una segnalazione ancora aperta da una successiva
 correzione, nominare autore e data dell'aggiornamento e limitare la conclusione
