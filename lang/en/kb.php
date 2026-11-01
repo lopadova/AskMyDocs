@@ -13,6 +13,8 @@ declare(strict_types=1);
  * produces a sensible response, just with the generic copy).
  */
 return [
+    'record_fields' => ['field' => 'Field', 'value' => 'Value', 'reference' => 'Reference',
+        'status' => 'Status', 'total' => 'Total', 'currency' => 'Currency', 'date' => 'Date'],
     'no_grounded_answer' => 'I cannot find information in the provided documents to answer this question.',
     'refusal' => [
         'no_relevant_context' => 'No documents in the knowledge base match this question.',

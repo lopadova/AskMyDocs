@@ -8,6 +8,8 @@ declare(strict_types=1);
  * Mirror of lang/en/kb.php — see that file for the structure rationale.
  */
 return [
+    'record_fields' => ['field' => 'Campo', 'value' => 'Valore', 'reference' => 'Riferimento',
+        'status' => 'Stato', 'total' => 'Totale', 'currency' => 'Valuta', 'date' => 'Data'],
     'no_grounded_answer' => 'Non riesco a trovare informazioni nei documenti per rispondere a questa domanda.',
     'refusal' => [
         'no_relevant_context' => 'Nessun documento nella knowledge base corrisponde a questa domanda.',

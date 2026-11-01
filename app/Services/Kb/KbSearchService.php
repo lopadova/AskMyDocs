@@ -1003,7 +1003,21 @@ class KbSearchService
         // Bound returned candidates; an incomplete list must never imply global absence.
         // A common actor cannot exhaust that bound before a more specific
         // person/title/place match. This rank is navigation, never support.
-        $chunks = $this->filterByFolderGlobs($query->orderBy('knowledge_chunks.id')->limit(64)->get(), $effectiveFilters->folderGlobs);
+        $rankedChunks = (clone $query)->orderBy('knowledge_chunks.id')->limit(64)->get();
+        // A long quoted thread can occupy all 64 chunk slots before a later
+        // reply reaches the application-level source-date ranking. Supplement
+        // that bounded pool with one matching anchor from each recent document.
+        // MIN locates its opening matching window; MAX orders document arrivals
+        // only for this navigation pool, never as the business/source date.
+        $representatives = collect();
+        $hasExactCode = array_filter($identifiers, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id) && preg_match('/[\pN_-]/u', $id));
+        if ($rankedChunks->count() === 64 && $hasExactCode !== []) {
+            $representativeIds = (clone $query)->withoutEagerLoads()->reorder()
+                ->selectRaw('MIN(knowledge_chunks.id) AS id')->groupBy('knowledge_document_id')
+                ->orderByRaw('MAX(knowledge_chunks.id) DESC')->limit(64);
+            $representatives = (clone $query)->whereIn('knowledge_chunks.id', $representativeIds)->get();
+        }
+        $chunks = $this->filterByFolderGlobs($rankedChunks->concat($representatives)->unique('id'), $effectiveFilters->folderGlobs);
         return $chunks->filter(fn ($chunk) => array_filter($identifiers,
             fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
                 || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)) !== [])

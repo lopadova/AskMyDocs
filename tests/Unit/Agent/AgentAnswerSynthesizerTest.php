@@ -190,6 +190,8 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $this->assertSame(['text', 'quote', 'source_ref'], $schema['required']);
             $this->assertArrayNotHasKey('evidence_hash', $schema['properties']);
             $this->assertArrayNotHasKey('document_id', $schema['properties']);
+            $this->assertArrayNotHasKey('record_path', $schema['properties']);
+            $this->assertSame(700, $schema['properties']['quote']['maxLength']);
             $this->assertFalse($payload['table_artifact_available']);
             $this->assertSame([false], data_get($options, 'tools.0.function.parameters.properties.render_table.enum'));
             $this->assertStringContainsString('put the actual requested records and values in source-bound claims', $system);
@@ -198,6 +200,28 @@ final class AgentAnswerSynthesizerTest extends TestCase
         });
         $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
         (new \ReflectionMethod($synthesizer, 'draft'))->invoke($synthesizer, 'What happened?', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null);
+    }
+
+    public function test_api_draft_choices_identify_records_and_exclude_empty_tool_responses(): void
+    {
+        config(['reasoning.selective_validation' => true]);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $tool = new AgentToolDefinition('orders', 'Orders', 'Read orders', 'api', [], true, true, 1, 1, 1);
+        $evidence->addToolResult($tool, [], ['records' => [['code' => 'ORDER-A', 'items' => [['sku' => 'SKU-A']]]]], 81);
+        $evidence->addToolResult($tool, [], ['records' => []], 82);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $messages, $options) {
+            $payload = json_decode($messages[0]['content'], true);
+            $sources = $payload['evidence']['api_tools'][0]['record_sources'];
+            $this->assertSame('records.0', $sources[0]['record_path']);
+            $this->assertSame([], $payload['evidence']['api_tools'][1]['record_sources']);
+            $schema = data_get($options, 'tools.0.function.parameters.properties.claims.items');
+            $this->assertSame([$sources[0]['source_ref']], $schema['properties']['source_ref']['enum']);
+            $this->assertArrayNotHasKey('record_path', $schema['properties']);
+            return new AiResponse('', 'fake', 'fake-agent');
+        });
+        $synthesizer = new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class));
+        (new \ReflectionMethod($synthesizer, 'draft'))->invoke($synthesizer, 'Compare ORDER-A and its requested email.', $this->context(), new AgentLoopOutcome('answer', $evidence, []), null);
     }
 
     public function test_only_renderable_tool_records_allow_a_table_handoff_and_never_during_repair(): void

@@ -127,6 +127,66 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertSame([$exact->id, $policy->id], array_column($result->body['documents'], 'document_id'));
     }
 
+    public function test_later_reply_is_not_lost_behind_sixty_four_old_thread_chunks(): void
+    {
+        app(TenantContext::class)->set('acme');
+        config(['kb.investigation.full_source_max_chars' => 10, 'kb.investigation.long_source_neighbor_radius' => 0]);
+        $old = $this->document('acme', 'orders', 'ORDER-A RETURN-A old history',
+            array_map(fn ($i) => 'ORDER-A RETURN-A old event '.$i, range(1, 70)));
+        $old->forceFill(['metadata' => ['converter_hints' => ['imap' => ['date' => '2026-07-01T12:00:00Z']]]])->save();
+        $new = $this->document('acme', 'orders', 'ORDER-A later customer reply', ['ORDER-A customer finally replied.']);
+        $new->forceFill(['metadata' => ['converter_hints' => ['imap' => ['date' => '2026-09-02T12:00:00Z']]]])->save();
+        $this->document('other', 'orders', 'ORDER-A private', ['ORDER-A unrelated tenant update.']);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A', 'RETURN-A']], 'mentions' => []]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A RETURN-A contacts and replies', $run, $context,
+            new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame([$new->id, $old->id], array_column($result->body['documents'], 'document_id'));
+        $this->assertStringContainsString('finally replied', $result->body['documents'][0]['evidence'][0]['content']);
+        $this->assertTrue($result->stats['semantic_skipped_full_exact']);
+        $this->assertLessThanOrEqual(128, $result->stats['exact_candidates']);
+    }
+
+    public function test_distinct_case_documents_precede_extra_windows_of_one_long_thread(): void
+    {
+        app(TenantContext::class)->set('acme');
+        config(['kb.investigation.full_source_max_chars' => 10, 'kb.investigation.long_source_neighbor_radius' => 0]);
+        $long = $this->document('acme', 'orders', 'ORDER-A long thread',
+            array_map(fn ($i) => 'ORDER-A long event '.$i, range(1, 12)));
+        $others = [];
+        for ($i = 0; $i < 4; $i++) $others[] = $this->document('acme', 'orders', 'ORDER-A supporting file '.$i, ['ORDER-A separate source '.$i]);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A']], 'mentions' => []]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A history', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame([$long->id, ...array_map(fn ($document) => $document->id, $others)], array_column($result->body['documents'], 'document_id'));
+        $this->assertCount(1, $result->body['documents'][0]['evidence']);
+    }
+
+    public function test_latest_long_email_opens_at_the_update_before_its_quoted_history(): void
+    {
+        app(TenantContext::class)->set('acme');
+        config(['kb.investigation.full_source_max_chars' => 10, 'kb.investigation.long_source_neighbor_radius' => 0]);
+        $latest = $this->document('acme', 'orders', 'ORDER-A', ['The customer has now replied.', 'ORDER-A old quoted complaint.']);
+        $latest->forceFill(['metadata' => ['converter_hints' => ['imap' => ['date' => '2026-09-02T12:00:00Z']]]])->save();
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A']], 'mentions' => []]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A customer response', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame('The customer has now replied.', $result->body['documents'][0]['evidence'][0]['content']);
+        $this->assertStringContainsString('old quoted complaint', $result->body['documents'][0]['evidence'][1]['content']);
+    }
+
     public function test_a_mentioned_source_name_does_not_expand_an_exact_order_search(): void
     {
         app(TenantContext::class)->set('acme');

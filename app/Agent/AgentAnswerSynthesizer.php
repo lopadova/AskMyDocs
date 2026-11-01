@@ -547,8 +547,8 @@ PROMPT;
             }
         }
         foreach ($promptEvidence['api_tools'] ?? [] as $tool) {
-            if (is_string($tool['source_ref'] ?? null)) {
-                $sourceRefs[] = $tool['source_ref'];
+            foreach ($tool['record_sources'] ?? [] as $source) {
+                $sourceRefs[] = $source['source_ref'];
             }
         }
         $submission = $this->submissionTool();
@@ -556,9 +556,11 @@ PROMPT;
             $claimSchema = &$submission['function']['parameters']['properties']['claims']['items'];
             $claimSchema['properties']['source_ref']['enum'] = array_values(array_unique($sourceRefs));
             $claimSchema['required'] = ['text', 'quote', 'source_ref'];
-            unset($claimSchema['properties']['document_id'], $claimSchema['properties']['tool_execution_id'], $claimSchema['properties']['evidence_hash']);
+            $claimSchema['properties']['quote']['maxLength'] = 700;
+            $claimSchema['properties']['quote']['description'] = 'A short literal contiguous anchor from the selected original source. Full original context is independently checked by the host.';
+            unset($claimSchema['properties']['document_id'], $claimSchema['properties']['tool_execution_id'], $claimSchema['properties']['evidence_hash'], $claimSchema['properties']['record_path']);
             unset($claimSchema);
-            $system .= "\nFor this submission copy the mandatory source_ref for every claim. The host supplies the IDs and full hash; do not emit legacy identity fields. Each claim must stand alone and contain only facts supported by that ONE source. Keep email observations separate from live-record observations; do not combine them into a comparison claim that one source cannot support.";
+            $system .= "\nFor this submission copy the mandatory source_ref for every claim. For API evidence choose the reference in record_sources aligned with the selected original record. The host supplies its record_path, IDs and full hash: do not emit those fields or append nested item paths. An API response without record_sources supplies no factual record reference. Each claim must stand alone and contain only facts supported by that ONE source. Keep email observations separate from live-record observations; do not combine them into a comparison claim that one source cannot support.";
         }
         // A table in document text is not a structured tool artifact. Tell the
         // draft which handoff can actually be rendered before it omits rows.

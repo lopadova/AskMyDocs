@@ -122,9 +122,9 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertTrue($result['valid']);
         $text = $result['claims'][0]['text'];
         $this->assertStringContainsString('| erp_reference | ORDER-A |', $text);
-        $this->assertStringContainsString('| order_state | SHIPPED |', $text);
-        $this->assertStringContainsString('| order_total | 245 |', $text);
-        $this->assertStringContainsString('| order_currency | USD |', $text);
+        $this->assertStringContainsString('| Status | SHIPPED |', $text);
+        $this->assertStringContainsString('| Total | 245 |', $text);
+        $this->assertStringContainsString('| Currency | USD |', $text);
         $this->assertStringNotContainsString('unrequested_field', $text);
         $projection = $result['claims'][0]['literal_projection'];
         $this->assertSame('items.0', $projection['record_path']);
@@ -407,6 +407,31 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
     }
 
+    public function test_general_order_fallback_uses_declared_business_fields_and_omits_internal_scalars(): void
+    {
+        $this->fake([], .58);
+        $record = ['ord_codiceweb' => 'ORDER-A', 'stato_ordine' => 'SPEDITO', 'ord_totale_finale' => 180,
+            'valute_codice' => 'EUR', 'ord_data' => '2026-04-02', 'ipaddress' => '192.0.2.20', 'device_id' => 'internal-device', 'ord_in_verifica' => 1];
+        $evidence = ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'hash', 'presentation' => [
+            'collection_path' => 'order', 'identity_fields' => ['ord_codiceweb'], 'field_aliases' => [
+                'reference' => 'ord_codiceweb', 'status' => 'stato_ordine', 'total' => 'ord_totale_finale',
+                'currency' => 'valute_codice', 'date' => 'ord_data',
+            ]], 'result' => ['order' => [$record]]]]];
+        $sub = ['identifiers' => ['ORDER-A'], 'fields' => ['*']];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Recupera ordine ORDER-A', $evidence,
+            [['text' => 'ORDER-A unsupported draft.', 'tool_execution_id' => 42, 'evidence_hash' => 'hash']],
+            ['language' => 'it', 'focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| Stato | SPEDITO |', $text);
+        $this->assertStringContainsString('| Totale | 180 |', $text);
+        $this->assertStringContainsString('| Valuta | EUR |', $text);
+        $this->assertStringNotContainsString('ipaddress', $text);
+        $this->assertStringNotContainsString('internal-device', $text);
+        $this->assertStringNotContainsString('ord_in_verifica', $text);
+        $this->assertTrue($result['partial']);
+    }
+
     public function test_independent_task_cannot_borrow_a_siblings_source_or_be_reassigned_to_that_task(): void
     {
         $this->fake();
@@ -510,7 +535,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->fake();
         [$evidence, $claims, $u] = $this->fixture();
         $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
-        $reference = $projector->forPrompt($evidence)['api_tools'][0]['source_ref'];
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_ref'];
         $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
         $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $evidence, [$claim], $u, 'demo', 'acme');
         $this->assertTrue($result['valid']);
@@ -554,7 +579,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->fake();
         [$evidence, $claims, $u] = $this->fixture();
         $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
-        $reference = $projector->forPrompt($evidence)['api_tools'][0]['source_ref'];
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_ref'];
         $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
         foreach (['unknown', 'explicit_hash', 'explicit_id', 'project', 'record', 'flow'] as $failure) {
             $candidate = $claim;
