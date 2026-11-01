@@ -38,6 +38,7 @@ final class AgentWaveKnowledgeSearch
                     [fn ($a, $b) => (strtotime((string) data_get($b, 'document.source_date', '')) ?: 0)
                         <=> (strtotime((string) data_get($a, 'document.source_date', '')) ?: 0)],
                 ])->values();
+                $exact = $this->diverseExactCandidates($exact, $identifiers);
             }
         } catch (\Throwable) {
             $stats['exact_lookup_error'] = true;
@@ -118,6 +119,31 @@ final class AgentWaveKnowledgeSearch
             [...$stats, 'exact_candidates' => $exact->count(), 'semantic_candidates' => $semantic->count(),
                 'semantic_skipped_full_exact' => $semanticSkipped, 'selected_sources' => count($sources)],
         );
+    }
+
+    /** Latest recorded updates per exact subject, then distinct documents before extra windows. */
+    private function diverseExactCandidates(\Illuminate\Support\Collection $candidates, array $identifiers): \Illuminate\Support\Collection
+    {
+        $updates = [];
+        foreach ($identifiers as $identifier) {
+            $dated = $candidates->filter(fn ($candidate) => strtotime((string) data_get($candidate, 'document.source_date', '')) !== false
+                && (EvidenceProjector::contains((string) data_get($candidate, 'document.title', ''), $identifier)
+                    || EvidenceProjector::contains((string) data_get($candidate, 'chunk_text', ''), $identifier)));
+            $latest = $dated->sortByDesc(fn ($candidate) => strtotime((string) data_get($candidate, 'document.source_date', '')))->first();
+            if ($latest !== null) {
+                // In a dated email the opening matching window contains the
+                // update; a quoted old reply can repeat more identifiers later.
+                $updates[] = $dated->filter(fn ($candidate) => data_get($candidate, 'document.id') === data_get($latest, 'document.id'))
+                    ->sortBy('chunk_id')->first();
+            }
+        }
+        $first = $extra = $seen = [];
+        foreach (collect($updates)->concat($candidates)->unique('chunk_id') as $candidate) {
+            $id = (int) data_get($candidate, 'document.id', 0);
+            if (isset($seen[$id])) $extra[] = $candidate;
+            else { $first[] = $candidate; $seen[$id] = true; }
+        }
+        return collect([...$first, ...$extra]);
     }
 
     /** @return array<string, true> */
