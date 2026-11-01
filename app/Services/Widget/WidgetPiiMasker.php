@@ -33,7 +33,7 @@ final class WidgetPiiMasker
         $references = [];
         $input = preg_replace_callback('/^.*\b(?:tracking|AWB|waybill|Packlink)\b.*$/imu', function (array $line) use (&$references): string {
             if (preg_match('/\b(?:IBAN|bank|banca|conto|account|payment|pagamento|card|carta)\b/iu', $line[0])) return $line[0];
-            return preg_replace_callback('/\b(?:tracking|AWB|waybill|Packlink)\b[\t :#-]*(?:(?:reference|riferimento|ref|code|codice|ID)[\t :#-]*)?([A-Z]{2}\d{2}[A-Z0-9]{11,30})\b/i',
+            return preg_replace_callback('/\b(?:tracking|AWB|waybill|Packlink)\b[\t :#*_`-]*(?:(?:reference|riferimento|ref|code|codice|ID)[\t :#*_`-]*)?([A-Z]{2}\d{2}[A-Z0-9]{11,30})\b/i',
                 function (array $match) use (&$references): string {
                     if ($this->hasIbanChecksum($match[1])) return $match[0];
                     $token = '__AMD_LOGISTICS_'.hash('sha256', $match[1]).'__';

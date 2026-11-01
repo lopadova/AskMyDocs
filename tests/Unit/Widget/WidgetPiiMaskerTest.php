@@ -111,6 +111,8 @@ final class WidgetPiiMaskerTest extends TestCase
         $reference = 'DE123456789012345678901234567890';
         $this->assertSame('Packlink reference '.$reference, $this->masker->maskString('Packlink reference '.$reference));
         $this->assertSame('Tracking '.$reference, $this->masker->maskString('Tracking '.$reference));
+        $this->assertSame('Packlink **IT2026COM0000488340**', $this->masker->maskString('Packlink **IT2026COM0000488340**'));
+        $this->assertSame('Packlink *IT2026COM0000488340*', $this->masker->maskString('Packlink *IT2026COM0000488340*'));
         $this->assertSame('Packlink [IBAN]', $this->masker->maskString('Packlink IT60X0542811101000000123456'));
         $this->assertSame('IBAN Packlink [IBAN]', $this->masker->maskString('IBAN Packlink '.$reference));
         $this->assertSame('[IBAN]', $this->masker->maskString($reference)); // Unlabelled values remain protected.
