@@ -100,7 +100,8 @@ final class CombinedInitialPlanningTest extends TestCase
         config(['ai.providers.openrouter.key' => 'test']);
         \Illuminate\Support\Facades\Http::preventStrayRequests();
         \Illuminate\Support\Facades\Http::fake(fn () => \Illuminate\Support\Facades\Http::response([
-            'model' => 'jev-test', 'answers' => ['required_0' => ['type' => 'noul', 'noul' => .99]],
+            'model' => 'jev-test', 'answers' => ['required_0' => ['type' => 'noul', 'noul' => .99],
+                'live_records_0' => ['type' => 'noul', 'noul' => .99]],
         ]));
         $action = ['id' => 'kb', 'tool' => 'search_knowledge_base', 'arguments_json' => '{"query":"ORDER-42"}',
             'depends_on' => [], 'purpose' => 'Search archived email'];
