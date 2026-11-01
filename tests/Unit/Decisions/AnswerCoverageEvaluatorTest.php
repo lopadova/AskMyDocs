@@ -113,4 +113,31 @@ final class AnswerCoverageEvaluatorTest extends TestCase
         $this->assertSame('Decision state exceeds the configured limit.', $result['decision_error']);
         Http::assertNothingSent();
     }
+
+    public function test_large_coverage_keeps_every_source_and_requires_every_partition_to_pass(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'decisions.max_state_bytes' => 24000, 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(fn ($request) => Http::response(['model' => 'jev-test',
+            'answers' => ['covered' => ['type' => 'noul', 'noul' => str_contains(json_encode($request['state']['sources']), 'Missing resolution') ? .2 : .99]]]));
+        $documents = [];
+        foreach (['Opening request', 'Missing resolution', 'Final update'] as $index => $label) {
+            $documents[] = ['document_id' => $index + 1, 'title' => 'CASE-A',
+                'evidence' => [['content' => $label.str_repeat(' Original source. ', 800), 'complete_source' => true]]];
+        }
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('CASE-A history?', ['documents' => $documents],
+            [['text' => 'CASE-A was requested.', 'document_id' => 1]], ['focus' => ['identifiers' => ['CASE-A']]]);
+        $this->assertFalse($result['sufficient']);
+        $this->assertSame(.2, $result['probability_true']);
+        $this->assertSame(3, $result['source_partition_count']);
+        $this->assertLessThanOrEqual(24000, $result['state_bytes']);
+        $this->assertGreaterThan(24000, $result['logical_state_bytes']);
+        $seen = [];
+        foreach (Http::recorded() as [$request]) {
+            $this->assertLessThanOrEqual(24000, strlen(json_encode($request['state'], JSON_UNESCAPED_UNICODE)));
+            array_push($seen, ...array_column($request['state']['sources'], 'text'));
+        }
+        foreach ($documents as $document) $this->assertContains($document['evidence'][0]['content'], $seen);
+        Http::assertSentCount(3);
+    }
 }

@@ -27,6 +27,20 @@ final class WidgetPiiMasker
      */
     public function maskString(string $input): string
     {
+        // An explicitly labelled logistics reference can resemble an IBAN.
+        // Exempt only a contiguous code with an invalid IBAN checksum, never
+        // a bank/payment line or an actual valid account number.
+        $references = [];
+        $input = preg_replace_callback('/^.*\b(?:tracking|AWB|waybill|Packlink)\b.*$/imu', function (array $line) use (&$references): string {
+            if (preg_match('/\b(?:IBAN|bank|banca|conto|account|payment|pagamento|card|carta)\b/iu', $line[0])) return $line[0];
+            return preg_replace_callback('/\b(?:tracking|AWB|waybill|Packlink)\b[\t :#*_`-]*(?:(?:reference|riferimento|ref|code|codice|ID)[\t :#*_`-]*)?([A-Z]{2}\d{2}[A-Z0-9]{11,30})\b/i',
+                function (array $match) use (&$references): string {
+                    if ($this->hasIbanChecksum($match[1])) return $match[0];
+                    $token = '__AMD_LOGISTICS_'.hash('sha256', $match[1]).'__';
+                    $references[$token] = $match[1];
+                    return substr($match[0], 0, -strlen($match[1])).$token;
+                }, $line[0]) ?? $line[0];
+        }, $input) ?? $input;
         // Retail identifiers need both a barcode field and a valid GTIN-13
         // checksum. Unlabelled numbers and payment fields remain protected.
         $barcodes = [];
@@ -116,7 +130,19 @@ final class WidgetPiiMasker
             $result,
         ) ?? $result;
 
-        return strtr($result, $barcodes);
+        return strtr($result, [...$barcodes, ...$references]);
+    }
+
+    private function hasIbanChecksum(string $code): bool
+    {
+        $code = strtoupper($code);
+        if (strlen($code) < 15 || strlen($code) > 34) return false;
+        $remainder = 0;
+        foreach (str_split(substr($code, 4).substr($code, 0, 4)) as $character) {
+            $digits = ctype_digit($character) ? $character : (string) (ord($character) - 55);
+            foreach (str_split($digits) as $digit) $remainder = ($remainder * 10 + (int) $digit) % 97;
+        }
+        return $remainder === 1;
     }
 
     /**

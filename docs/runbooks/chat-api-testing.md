@@ -182,6 +182,20 @@ il limite effettivo e la concorrenza dei processi prima di confrontare le due
 tornate. Usare conversazioni nuove e gli stessi prompt; conservare gli export
 precedenti senza sovrascriverli.
 
+Se il contesto complessivo supera quel limite, grounding e copertura usano
+richieste separate: `shared_sources_batched_v1`, `logical_state_bytes` e
+`batches` distinguono dimensione complessiva e dimensione effettiva massima.
+Ogni confronto conserva la propria fonte primaria completa e passa su tutte
+le alternative pertinenti. Un conflitto o un risultato mancante impedisce
+l'approvazione del claim; il controllo di copertura prende la probabilità
+minima fra i blocchi. Una singola fonte/confronto indivisibile ancora troppo
+grande resta `state_limit`, senza tagli o esclusioni silenziose.
+
+`requested_source_coverage_required` identifica invece un piano che cerca solo
+documenti quando la richiesta esige anche dati di una sorgente live selezionata.
+Il planner riceve questo errore prima dell'esecuzione e corregge la proposta.
+Non è una conferma dei dati né un'autorizzazione a operazioni di scrittura.
+
 ## Verifica locale
 
 I test HTTP usano token Sanctum reali, lo stack delle rotte e l'handler del

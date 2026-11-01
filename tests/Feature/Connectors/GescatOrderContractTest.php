@@ -66,6 +66,40 @@ final class GescatOrderContractTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_order_detail_identity_repair_preserves_other_services_and_explicit_configuration(): void
+    {
+        Http::preventStrayRequests();
+        $detail = $this->route('www.autry-usa.com', 'autry');
+        $detail->update(['slug' => 'gescat_dettaglio_ordine', 'endpoint_type' => 'detail', 'identity_fields' => []]);
+        $other = $this->route('other.example.com', 'other');
+        $other->update(['slug' => 'gescat_dettaglio_ordine']);
+        $custom = $this->route('www.autry-usa.com', 'custom');
+        $custom->update(['slug' => 'gescat_dettaglio_ordine', 'identity_fields' => ['custom_reference']]);
+        $list = $this->route('www.autry-usa.com', 'list');
+        $before = $detail->fresh()->only(['status', 'mode', 'endpoint_type', 'url', 'output_transform', 'input_schema']);
+        $migration = require dirname(__DIR__, 3).'/database/migrations/2026_11_01_130000_fix_gescat_order_detail_identity.php';
+        $migration->up();
+        $migration->up();
+        $fixed = $detail->fresh();
+        $this->assertSame(['ord_codiceweb', 'ord_ID'], $fixed->identity_fields);
+        $this->assertSame($before, $fixed->only(array_keys($before)));
+        $this->assertEmpty($other->fresh()->identity_fields);
+        $this->assertEmpty($list->fresh()->identity_fields);
+        $this->assertSame(['custom_reference'], $custom->fresh()->identity_fields);
+
+        $evidence = ['api_tools' => [['execution_id' => 1, 'evidence_hash' => 'verified',
+            'presentation' => ['collection_path' => 'order', 'identity_fields' => $fixed->identity_fields],
+            'result' => ['order' => [['ord_ID' => 42, 'ord_codiceweb' => 'ORDER-A', 'stato_ordine' => 'SPEDITO']]],
+        ]]];
+        $projector = new \App\Services\Chat\Reasoning\EvidenceProjector;
+        $claim = ['tool_execution_id' => 1, 'evidence_hash' => 'verified', 'record_path' => 'order.0'];
+        $this->assertSame('SPEDITO', $projector->bind($evidence, $claim, ['ORDER-A'], 'autry', '')['record']['stato_ordine']);
+        $this->assertSame('entity_mismatch', $projector->bind($evidence, $claim, ['ORDER-B'], 'autry', '')['reason']);
+        $migration->down();
+        $this->assertSame(['ord_codiceweb', 'ord_ID'], $detail->fresh()->identity_fields);
+        Http::assertNothingSent();
+    }
+
     private function route(string $host, string $tenant): ApiRoute
     {
         $schema = ['type' => 'object', 'properties' => ['orderBy' => ['type' => 'string'], 'limit' => ['type' => 'integer']], 'required' => []];
