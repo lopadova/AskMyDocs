@@ -122,7 +122,10 @@ final readonly class AgentAnswerSynthesizer
         // records are rendered from the structured tool artifact itself.
         $requiresSelection = $outcome->stopReason === 'ambiguous_selection_required'
             || (bool) ($payload['requires_selection'] ?? false);
-        $renderTable = (bool) ($payload['render_table'] ?? false);
+        // A live table cannot replace a mixed document/record investigation.
+        // Selection is still allowed: it resolves an ambiguous target first.
+        $renderTable = (bool) ($payload['render_table'] ?? false) && ($evidence['documents'] ?? []) === [];
+        $payload['render_table'] = $renderTable;
         $artifact = ! $requiresSelection && ! $renderTable ? null : $this->artifacts->fromToolEvidence(
             config('reasoning.selective_validation')
                 ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forTable($evidence['api_tools'], $understanding ?? [], $context->tenantId, $context->projectKey)
@@ -559,7 +562,8 @@ PROMPT;
         }
         // A table in document text is not a structured tool artifact. Tell the
         // draft which handoff can actually be rendered before it omits rows.
-        $tableArtifact = $this->artifacts->fromToolEvidence($evidence['api_tools'] ?? [], false, true);
+        $tableArtifact = ($evidence['documents'] ?? []) === []
+            ? $this->artifacts->fromToolEvidence($evidence['api_tools'] ?? [], false, true) : null;
         if ($tableArtifact === null || $repairAttempt || $claimBudget !== null) {
             $submission['function']['parameters']['properties']['render_table']['enum'] = [false];
         }
