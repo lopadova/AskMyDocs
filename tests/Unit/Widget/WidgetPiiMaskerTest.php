@@ -119,6 +119,19 @@ final class WidgetPiiMaskerTest extends TestCase
         $this->assertSame('Packlink reference '.$reference."\nCard [CARD]", $this->masker->maskString('Packlink reference '.$reference."\nCard 4111111111111111"));
     }
 
+    public function test_adjacent_short_order_and_return_codes_survive_without_exempting_bank_accounts(): void
+    {
+        $query = 'RU85199 U726180 U726256 confronto codici articolo e taglie nel reso anomalo';
+        $this->assertSame($query, $this->masker->maskString($query));
+        $this->assertSame('U780557 RU93257 stesso AWB', $this->masker->maskString('U780557 RU93257 stesso AWB'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('IT60 X054 2811 1010 0000 0123 456'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('DE89370400440532013000'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('DE89370400440532013000 U726180'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('FR86123456 AB123456 CD123456'));
+        $this->assertSame('IBAN [IBAN]', $this->masker->maskString('IBAN RU85199 U726180 U726256'));
+        $this->assertSame($query."\nCarta [CARD]", $this->masker->maskString($query."\nCarta 4111111111111111"));
+    }
+
     // ─── maskString: carta ──────────────────────────────────────────
 
     public function test_masks_card_number(): void
