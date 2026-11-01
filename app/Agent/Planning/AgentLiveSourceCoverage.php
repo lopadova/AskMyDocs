@@ -21,6 +21,7 @@ final readonly class AgentLiveSourceCoverage
         array $completedActions,
     ): void {
         if (! $this->intent->matches($question)) {
+            app(AgentRequestedSourceCoverage::class)->validate($question, $plan, $tools, $completedActions);
             return;
         }
 

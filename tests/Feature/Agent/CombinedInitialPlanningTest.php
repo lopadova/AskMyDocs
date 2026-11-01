@@ -95,6 +95,20 @@ final class CombinedInitialPlanningTest extends TestCase
         $this->assertFallbackFor($action, exhaustive: true, reason: 'live_source_coverage_required');
     }
 
+    public function test_explicit_email_and_live_comparison_rejects_a_document_only_combined_plan(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test']);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(fn () => \Illuminate\Support\Facades\Http::response([
+            'model' => 'jev-test', 'answers' => ['required_0' => ['type' => 'noul', 'noul' => .99]],
+        ]));
+        $action = ['id' => 'kb', 'tool' => 'search_knowledge_base', 'arguments_json' => '{"query":"ORDER-42"}',
+            'depends_on' => [], 'purpose' => 'Search archived email'];
+        $this->assertFallbackFor($action, reason: 'requested_source_coverage_required',
+            question: 'Confronta la mail su ORDER-42 con i dati attuali del gestionale ordini.');
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     public function test_valid_proposal_can_be_consumed_only_once(): void
     {
         $run = $this->runFixture();
@@ -154,18 +168,21 @@ final class CombinedInitialPlanningTest extends TestCase
         }
     }
 
-    private function assertFallbackFor(array $proposedAction, bool $identifierSchema = false, bool $exhaustive = false, ?string $reason = null): void
+    private function assertFallbackFor(array $proposedAction, bool $identifierSchema = false, bool $exhaustive = false, ?string $reason = null, ?string $question = null): void
     {
         $this->route($identifierSchema);
-        $run = $this->runFixture($exhaustive ? 'Cerca tutte le informazioni su ORDER-42' : 'Controlla ordine ORDER-42');
+        $run = $this->runFixture($question ?? ($exhaustive ? 'Cerca tutte le informazioni su ORDER-42' : 'Controlla ordine ORDER-42'));
         $phase = 'initial';
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithProvider')->once()->andReturn($this->interpretation($proposedAction));
-        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function () use (&$phase, $run, $reason, $identifierSchema) {
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system, $messages) use (&$phase, $run, $reason, $identifierSchema) {
             if ($phase === 'initial') {
                 if ($reason !== null) {
                     $this->assertSame('rejected', data_get($run->fresh()->result_json, 'initial_plan.status'));
                     $this->assertSame($reason, data_get($run->fresh()->result_json, 'initial_plan.reason'));
+                }
+                if ($reason === 'requested_source_coverage_required') {
+                    $this->assertStringContainsString('initial plan omitted operational data', json_decode($messages[0]['content'], true)['validation_error']);
                 }
                 $phase = 'repaired';
                 $action = $this->action('get_orders');
@@ -174,6 +191,9 @@ final class CombinedInitialPlanningTest extends TestCase
                 return $this->plan(['decision' => 'tools', 'actions' => [$action]]);
             }
             $this->assertSame('dispatched', $phase);
+            if ($reason === 'requested_source_coverage_required') {
+                $this->assertNull(json_decode($messages[0]['content'], true)['validation_error'], 'The initial correction must not force the completed live lookup again.');
+            }
             return $this->plan(['decision' => 'answer', 'actions' => []]);
         });
         $this->app->instance(AiManager::class, $ai);
