@@ -14,6 +14,11 @@ use function Illuminate\Support\php_binary;
 /** Separate PHP processes, not shared mutable tenant/DB state or extra queue workers. */
 class AgentWaveExecutor
 {
+    public static function concurrency(): int
+    {
+        return max(1, min((int) config('agent.waves.concurrency', 10), (int) config('agent.waves.process_concurrency', 2)));
+    }
+
     public function run(array $tasks, bool $forceProcess = false, ?\Closure $diagnostics = null, ?float $timeoutSeconds = null): array
     {
         $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
@@ -24,7 +29,7 @@ class AgentWaveExecutor
         $directory = null;
         $processes = [];
         try {
-            foreach (array_chunk($tasks, max(1, (int) config('agent.waves.concurrency', 10)), true) as $batch) {
+            foreach (array_chunk($tasks, self::concurrency(), true) as $batch) {
                 if (app()->runningUnitTests() && ! $forceProcess) {
                     foreach ($batch as $key => $task) {
                         if (hrtime(true) >= $deadline) {

@@ -31,56 +31,73 @@ final class AgentWaveKnowledgeSearch
                 $exact = $diagnostics('kb.exact_lookup', fn () => app(KbSearchService::class)->exactIdentifierCandidates($identifiers, $context->projectKey, $filters),
                     ['wait_reason' => 'local_database', 'error_handled' => true]);
                 // Prefer the matching chunk over earlier chunks of a title-matched document.
-                $exact = $exact->sortByDesc(fn ($candidate) => (int) (bool) array_filter($identifiers,
-                    fn ($id) => EvidenceProjector::contains((string) data_get($candidate, 'chunk_text', ''), $id)))->values();
+                $exact = $exact->sortBy([
+                    ['literal_rank', 'desc'],
+                    [fn ($a, $b) => (int) (bool) array_filter($identifiers, fn ($id) => EvidenceProjector::contains((string) data_get($b, 'chunk_text', ''), $id))
+                        <=> (int) (bool) array_filter($identifiers, fn ($id) => EvidenceProjector::contains((string) data_get($a, 'chunk_text', ''), $id))],
+                    [fn ($a, $b) => (strtotime((string) data_get($b, 'document.source_date', '')) ?: 0)
+                        <=> (strtotime((string) data_get($a, 'document.source_date', '')) ?: 0)],
+                ])->values();
             }
         } catch (\Throwable) {
             $stats['exact_lookup_error'] = true;
-        }
-        try {
-            $semantic = app(ChatRetrievalService::class)->retrieve($query, $context->projectKey, $filters, false, $diagnostics)->primary;
-        } catch (\Throwable) {
-            $stats['semantic_lookup_error'] = true;
         }
         $sources = [];
         $provenance = [];
         $alreadyCollected = $this->collectedEvidence($run);
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
-        foreach ($exact->concat($semantic)->unique('chunk_id') as $candidate) {
-            $id = (int) data_get($candidate, 'document.id', 0);
-            if ($id < 1) {
-                continue;
+        $collect = function ($candidates) use (&$sources, &$provenance, &$stats, $alreadyCollected, $limit, $diagnostics, $run, $context, $filters): void {
+            foreach ($candidates->unique('chunk_id') as $candidate) {
+                $id = (int) data_get($candidate, 'document.id', 0);
+                if ($id < 1) {
+                    continue;
+                }
+                try {
+                    $source = $diagnostics('kb.source_read', fn () => app(KbSourceReader::class)->readCandidate($candidate, $context->projectKey, $run->user, $filters, $diagnostics),
+                        ['wait_reason' => 'local_source_read', 'error_handled' => true]);
+                } catch (\Throwable) {
+                    $stats['source_read_error'] = true;
+                    continue;
+                }
+                if ($source === null) {
+                    continue;
+                }
+                $candidate['chunk_text'] = $source['excerpt'];
+                $candidate['chunk_hash'] = hash('sha256', $source['excerpt']);
+                $key = $id.':'.$candidate['chunk_hash'];
+                if (isset($sources[$key]) || isset($alreadyCollected[$key])) {
+                    continue;
+                }
+                $candidate['document'] = array_merge((array) ($candidate['document'] ?? []), [
+                    'id' => $source['document_id'], 'title' => $source['title'],
+                    'source_path' => $source['source_path'], 'source_type' => $source['source_type'],
+                ]);
+                $candidate['metadata'] = array_merge((array) ($candidate['metadata'] ?? []), [
+                    'investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids'],
+                        'evidence_origin' => $source['evidence_origin'] ?? null],
+                ]);
+                $sources[$key] = $candidate;
+                $provenance[$key] = ['complete_source' => $source['complete_source'],
+                    'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null];
+                if (count($sources) >= $limit) {
+                    break;
+                }
             }
+        };
+        // Revalidate exact candidates first. When they fill this bounded result,
+        // no semantic candidate could be selected: do not wait for unused embeddings.
+        $collect($exact);
+        $semanticSkipped = count($sources) >= $limit;
+        if (! $semanticSkipped) {
             try {
-                $source = $diagnostics('kb.source_read', fn () => app(KbSourceReader::class)->readCandidate($candidate, $context->projectKey, $run->user, $filters, $diagnostics),
-                    ['wait_reason' => 'local_source_read', 'error_handled' => true]);
+                $retrieve = fn () => app(ChatRetrievalService::class)->retrieve($query, $context->projectKey, $filters, false, $diagnostics)->primary;
+                $semantic = $exact->isNotEmpty()
+                    ? \App\Ai\EmbeddingTimeoutScope::within(max(1, (int) config('agent.waves.exact_embedding_timeout_seconds', 10)), $retrieve)
+                    : $retrieve();
             } catch (\Throwable) {
-                $stats['source_read_error'] = true;
-                continue;
+                $stats['semantic_lookup_error'] = true;
             }
-            if ($source === null) {
-                continue;
-            }
-            $candidate['chunk_text'] = $source['excerpt'];
-            $candidate['chunk_hash'] = hash('sha256', $source['excerpt']);
-            $key = $id.':'.$candidate['chunk_hash'];
-            if (isset($sources[$key]) || isset($alreadyCollected[$key])) {
-                continue;
-            }
-            $candidate['document'] = array_merge((array) ($candidate['document'] ?? []), [
-                'id' => $source['document_id'], 'title' => $source['title'],
-                'source_path' => $source['source_path'], 'source_type' => $source['source_type'],
-            ]);
-            $candidate['metadata'] = array_merge((array) ($candidate['metadata'] ?? []), [
-                'investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids'],
-                    'evidence_origin' => $source['evidence_origin'] ?? null],
-            ]);
-            $sources[$key] = $candidate;
-            $provenance[$key] = ['complete_source' => $source['complete_source'],
-                'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null];
-            if (count($sources) >= $limit) {
-                break;
-            }
+            $collect($semantic);
         }
         $search = new SearchResult(collect(array_values($sources)), collect(), collect());
         $documents = app(AgentEvidenceFactory::class)->fromSearchResult($search)->documents();
@@ -98,7 +115,8 @@ final class AgentWaveKnowledgeSearch
             0,
             ! $partial,
             $partial ? 'retrieval_partial' : null,
-            [...$stats, 'exact_candidates' => $exact->count(), 'semantic_candidates' => $semantic->count(), 'selected_sources' => count($sources)],
+            [...$stats, 'exact_candidates' => $exact->count(), 'semantic_candidates' => $semantic->count(),
+                'semantic_skipped_full_exact' => $semanticSkipped, 'selected_sources' => count($sources)],
         );
     }
 
@@ -124,9 +142,11 @@ final class AgentWaveKnowledgeSearch
         if (! $understanding->available) {
             return [];
         }
-        $known = array_values(array_filter(array_unique(array_merge(
-            $understanding->targetIdentifiers(), $understanding->mentionTexts(),
-        )), 'is_string'));
+        // The source/system name may be a literal mention without being the
+        // subject (for example "ORDER-A in Gescat"). Do not turn it into a
+        // corpus-wide exact anchor when the interpreter supplied precise targets.
+        $targets = $understanding->targetIdentifiers();
+        $known = array_values(array_filter(array_unique($targets !== [] ? $targets : $understanding->mentionTexts()), 'is_string'));
         $explicit = array_values(array_filter($known, fn ($id) => EvidenceProjector::contains($query, $id)));
         if ($explicit !== []) {
             return $explicit;

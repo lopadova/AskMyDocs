@@ -119,7 +119,7 @@ def parser():
         sub.add_argument('--wait', type=float, default=240)
         sub.add_argument('--poll', type=float, default=1)
         sub.add_argument('--debug', action='store_true')
-    for name in ('snapshot', 'cancel', 'continue'):
+    for name in ('snapshot', 'cancel', 'continue', 'reconcile'):
         sub = commands.add_parser(name)
         sub.add_argument('--run', required=True)
         if name == 'continue':
@@ -174,6 +174,7 @@ def main(argv=None):
         'tool-source': lambda: ('GET', f'/api/chat/conversations/{args.conversation}/messages/{args.message}/tool-sources/{args.execution}', None),
         'snapshot': lambda: ('GET', f'/api/chat/runs/{args.run}', None),
         'cancel': lambda: ('POST', f'/api/chat/runs/{args.run}/cancel', {}),
+        'reconcile': lambda: ('POST', f'/api/chat/runs/{args.run}/reconcile', {}),
         'continue': lambda: ('POST', f'/api/chat/runs/{args.run}/continue', {'logical_extension': args.logical, 'physical_extension': args.physical}),
         'messages': lambda: ('GET', f'/api/chat/conversations/{args.conversation}/messages', None),
         'debug': lambda: ('GET', f'/api/chat/conversations/{args.conversation}/debug-transcript', None),

@@ -449,6 +449,29 @@ I test coprono anche budget esatto, un byte oltre limite, mascheratura che
 modifica la dimensione, Unicode e conservazione delle fonti contraddittorie.
 
 Se l'ambiente ha un override esplicito a 16.000 byte, aggiornarlo a 32.768.
+
+### Collaudo Autry del 1 novembre 2026: thread completi più lunghi
+
+La suite remota DEMO-01–DEMO-10 ha mostrato che 32.768 byte non bastano per
+alcuni casi misti: nel caso 05 quattro email originali occupano circa 66 KB,
+prima del record gestionale e delle domande. Il default applicativo corrente
+è **131.072 byte** (`DECISION_MAX_STATE_BYTES=131072`). Un override esplicito
+più basso continua a prevalere: verificarlo nel deploy di sviluppo prima di
+ripetere la suite.
+
+Il limite riguarda il JSON UTF-8 già sanificato e continua a essere verificato
+prima dell'invio. Non vengono tagliate fonti originali o contraddizioni, né
+modificate le soglie di accettazione, le verifiche ACL o gli hash. Anche il
+controllo di copertura esporta ora `state_bytes`, `state_max_bytes` e l'errore
+contrattuale privo di contenuti e credenziali. I record live mantengono il nome
+host della sorgente, così il controllo di pertinenza può distinguere il
+gestionale da un riferimento presente nelle email.
+
+Jev supporta contesti più lunghi, ma il provider segnala prestazioni e accuratezza
+diverse oltre la modalità breve: il nuovo default deve essere verificato anche
+sulle risposte reali, separando approvazioni scorrette e astensioni. La suite
+demo confronta le risposte con fonti e limiti documentali, non solo con lo stato
+terminale della run. Vedi la [documentazione OpenRouter di Jev](https://openrouter.ai/docs/guides/community/jev).
 Eseguire `php artisan config:clear` (o ricostruire la cache in produzione), poi
 il riavvio graduale dei worker. In locale senza override vale il nuovo default.
 

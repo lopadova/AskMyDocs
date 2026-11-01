@@ -82,4 +82,35 @@ final class AnswerCoverageEvaluatorTest extends TestCase
         $this->assertEqualsCanonicalizing([1, 3], $result['source_document_ids']);
         Http::assertSent(fn ($request) => array_column($request['state']['sources'], 'document_id') === [1, 3]);
     }
+
+    public function test_compound_case_coverage_keeps_distinct_requested_anchors_and_excludes_unrelated_sources(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test']);
+        Http::preventStrayRequests();
+        Http::fake(fn () => Http::response(['model' => 'jev-test', 'answers' => ['covered' => ['type' => 'noul', 'noul' => .99]]]));
+        $documents = [];
+        foreach (['ORDER-A', 'RETURN-A', 'LABEL-A', 'OTHER-A'] as $index => $id) {
+            $documents[] = ['document_id' => $index + 1, 'title' => $id,
+                'evidence' => [['content' => $id.' original source.', 'evidence_hash' => 'h'.$index, 'complete_source' => true]]];
+        }
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('Compare order, return and label', ['documents' => $documents],
+            [['text' => 'The label exists.', 'document_id' => 3]], ['subquestions' => [['identifiers' => ['ORDER-A', 'RETURN-A', 'LABEL-A']]]]);
+        $this->assertTrue($result['sufficient']);
+        $this->assertEqualsCanonicalizing([1, 2, 3], $result['source_document_ids']);
+        Http::assertSent(fn ($request) => array_column($request['state']['sources'], 'document_id') === [1, 2, 3]);
+    }
+
+    public function test_coverage_budget_failure_reports_safe_measured_details_without_dispatching(): void
+    {
+        config(['decisions.max_state_bytes' => 100]);
+        Http::preventStrayRequests();
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('CASE-A?', ['documents' => [[
+            'document_id' => 1, 'title' => 'CASE-A', 'evidence' => [['content' => str_repeat('Original context. ', 100), 'evidence_hash' => 'h']],
+        ]]], []);
+        $this->assertNull($result['sufficient']);
+        $this->assertGreaterThan(100, $result['state_bytes']);
+        $this->assertSame(100, $result['state_max_bytes']);
+        $this->assertSame('Decision state exceeds the configured limit.', $result['decision_error']);
+        Http::assertNothingSent();
+    }
 }

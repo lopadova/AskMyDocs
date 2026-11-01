@@ -11,7 +11,7 @@ final class EvidenceProjectorIdentityTest extends TestCase
 {
     private function evidence(): array
     {
-        return ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'hash', 'tenant_id' => 'acme', 'project_key' => 'orders',
+        return ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'hash', 'tenant_id' => 'acme', 'project_key' => 'orders', 'display_name' => 'Warehouse ERP',
             'presentation' => ['collection_path' => 'orders', 'identity_fields' => ['erp_id', 'erp_reference']],
             'result' => ['query' => 'ORDER-A', 'orders' => [
                 ['erp_id' => 1, 'erp_reference' => 'ORDER-A', 'customerId' => 'CUSTOMER-X', 'status' => 'shipped'],
@@ -25,6 +25,7 @@ final class EvidenceProjectorIdentityTest extends TestCase
             ['tool_execution_id' => 42, 'evidence_hash' => 'hash', 'record_path' => 'orders.0'], ['ORDER-A', 'Brand'], 'acme', 'orders');
         $this->assertSame('shipped', $result['record']['status']);
         $this->assertSame('orders.0', $result['path']);
+        $this->assertSame('Warehouse ERP', $result['source_title']);
     }
 
     public function test_query_echo_and_foreign_keys_cannot_authorize_the_wrong_record(): void

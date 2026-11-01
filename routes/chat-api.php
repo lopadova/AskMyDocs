@@ -13,7 +13,6 @@ Route::prefix('chat')->name('api.chat.')
         $consent = (string) config('ai-act-compliance.consent.gate_chat_feature', '');
         if ($consent !== '') $sendMiddleware[] = 'ai.consent:'.$consent;
 
-        Route::get('/live-sources', ChatApi\AgentLiveSourceController::class)->name('live-sources');
         Route::get('/me', function (\Illuminate\Http\Request $request) {
             return response()->json([
                 'schema_version' => 1, 'user_id' => $request->user()->id,
@@ -39,6 +38,8 @@ Route::prefix('chat')->name('api.chat.')
             ->middleware(['token.ability:chat:debug', 'role:admin|super-admin'])->name('debug-transcript');
         Route::get('/documents/{documentId}/preview', ChatApi\KbDocumentPreviewController::class)->whereNumber('documentId')->name('documents.preview');
         Route::get('/runs/{run}', ChatApi\ChatApiRunController::class)->name('runs.show');
+        Route::post('/runs/{run}/reconcile', ChatApi\ChatApiReconcileRunController::class)
+            ->middleware(['token.ability:chat:debug', 'role:admin|super-admin'])->name('runs.reconcile');
         Route::get('/runs/{run}/events', ChatApi\AgentRunEventController::class)->name('runs.events');
         Route::post('/runs/{run}/cancel', [ChatApi\AgentRunControlController::class, 'cancel'])->name('runs.cancel');
         Route::post('/runs/{run}/continue', [ChatApi\AgentRunControlController::class, 'resume'])->name('runs.continue');

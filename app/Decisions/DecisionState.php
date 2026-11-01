@@ -23,7 +23,7 @@ final readonly class DecisionState
 
     public static function maxBytes(): int
     {
-        return max(0, (int) config('decisions.max_state_bytes', 32768));
+        return max(0, (int) config('decisions.max_state_bytes', 131072));
     }
 
     public function exceedsLimit(): bool

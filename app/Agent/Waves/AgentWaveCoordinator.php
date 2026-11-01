@@ -228,7 +228,7 @@ final class AgentWaveCoordinator
             $started = microtime(true);
             $waveTimeout = min((float) config('agent.waves.timeout_seconds', 45), $this->researchTimeRemaining($run, $budget));
             $observations = $this->diagnostics->measure($run, 'wave.execute', fn () => $this->executor->run($tasks,
-                diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout), ['operation' => 'parallel_wave', 'concurrency' => (int) config('agent.waves.concurrency', 10)]);
+                diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout), ['operation' => 'parallel_wave', 'concurrency' => AgentWaveExecutor::concurrency()]);
             $this->control->ensureActive($run);
             $pending = $interactions = [];
             $registered = [];
@@ -253,7 +253,12 @@ final class AgentWaveCoordinator
                 }
                 DB::transaction(function () use ($run, $item, $id, $observation, $started, $waveId, $budget,
                     &$evidence, &$completed, &$results, &$interactions, &$confirmation): void {
-                $execution = $item['execution'];
+                // Serialize result adoption with cancellation/queue failure. A child
+                // returning after terminal cleanup cannot resurrect its execution.
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                $this->control->ensureActive($locked);
+                $execution = $locked->toolExecutions()->whereKey($item['execution']->id)->firstOrFail();
+                if ($execution->status !== 'running') return;
                 $tool = $item['tool'];
                 $body = $this->masker->maskArray($observation->body) ?? [];
                 $execution->forceFill([

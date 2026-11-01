@@ -29,7 +29,12 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->document('other', 'orders', 'Alien', ['U532638']);
         $this->document('acme', 'other', 'Another project', ['U532638']);
         $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
-        $retrieval->shouldReceive('retrieve')->once()->withArgs(fn ($q, $p, $f, $aux) => $aux === false)->andThrow(new \RuntimeException('unavailable'));
+        $observedTimeout = null;
+        $retrieval->shouldReceive('retrieve')->once()->withArgs(fn ($q, $p, $f, $aux) => $aux === false)
+            ->andReturnUsing(function () use (&$observedTimeout) {
+                $observedTimeout = \App\Ai\EmbeddingTimeoutScope::seconds();
+                throw new \RuntimeException('embedding timeout');
+            });
         $this->app->instance(ChatRetrievalService::class, $retrieval);
         $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
             'focus' => ['identifiers' => ['U532638']], 'mentions' => []]]]);
@@ -40,6 +45,8 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertTrue($result->stats['semantic_lookup_error']);
         $this->assertFalse($result->complete);
         $this->assertSame('retrieval_partial', $result->stopReason);
+        $this->assertSame(10, $observedTimeout);
+        $this->assertNull(\App\Ai\EmbeddingTimeoutScope::seconds());
     }
 
     public function test_conceptual_seeds_scope_targets_and_explicit_ids_do_not_pull_other_subjects(): void
@@ -75,6 +82,32 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertCount(5, $onlyA->body['documents']);
     }
 
+    public function test_full_exact_result_prefers_recorded_recent_email_updates_without_waiting_for_unused_embeddings(): void
+    {
+        app(TenantContext::class)->set('acme');
+        $documents = [];
+        for ($i = 1; $i <= 7; $i++) {
+            $document = $this->document('acme', 'orders', 'Email', ['ORDER-A event '.$i]);
+            $document->forceFill(['metadata' => ['connector' => 'imap',
+                'converter_hints' => ['imap' => ['date' => sprintf('2026-01-%02dT12:00:00+00:00', $i)]]]])->save();
+            $documents[] = $document;
+        }
+        // A much later ingestion timestamp does not make an old message current.
+        $documents[0]->forceFill(['updated_at' => now()->addYear()])->save();
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A']], 'mentions' => []]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A history', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame(array_map(fn ($d) => $d->id, array_reverse(array_slice($documents, 2))),
+            array_column($result->body['documents'], 'document_id'));
+        $this->assertTrue($result->complete);
+        $this->assertTrue($result->stats['semantic_skipped_full_exact']);
+        $this->assertSame(0, $result->stats['semantic_candidates']);
+    }
+
     public function test_semantic_policy_without_record_id_is_kept_after_exact_source(): void
     {
         app(TenantContext::class)->set('acme');
@@ -92,6 +125,22 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
         $result = app(AgentWaveKnowledgeSearch::class)->search('barcode reso', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
         $this->assertSame([$exact->id, $policy->id], array_column($result->body['documents'], 'document_id'));
+    }
+
+    public function test_a_mentioned_source_name_does_not_expand_an_exact_order_search(): void
+    {
+        app(TenantContext::class)->set('acme');
+        $wanted = $this->document('acme', 'orders', 'Order email', ['ORDER-A return update.']);
+        $this->document('acme', 'orders', 'Other case', ['Unrelated Gescat procedure.']);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A']], 'mentions' => [['text' => 'Gescat', 'type' => 'name']]]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A in Gescat', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame([$wanted->id], array_column($result->body['documents'], 'document_id'));
+        $this->assertSame(1, $result->stats['exact_candidates']);
     }
 
     public function test_followup_skips_already_collected_exact_sources_and_returns_new_policy(): void

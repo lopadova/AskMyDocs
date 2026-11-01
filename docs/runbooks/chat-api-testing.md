@@ -117,6 +117,7 @@ python3 scripts/qa/chat-api.py document --id ID_DOCUMENTO
 python3 scripts/qa/chat-api.py tool-source --conversation ID --message ID --execution ID
 python3 scripts/qa/chat-api.py cancel --run UUID_RUN
 python3 scripts/qa/chat-api.py continue --run UUID_RUN --logical 5 --physical 20
+python3 scripts/qa/chat-api.py reconcile --run UUID_RUN
 python3 scripts/qa/chat-api.py revoke
 ```
 
@@ -125,6 +126,12 @@ estensioni di budget automaticamente. `continue` usa il contratto di conferma
 budget della chat; selezioni di righe passano come input del prossimo turno.
 Le interazioni MCP che richiedono azioni dell'utente rimangono handoff espliciti;
 questo client non automatizza OAuth o approvazioni di strumenti.
+
+`reconcile` è una riparazione esplicita per run già terminali, riservata ad
+admin/super-admin con `chat:debug` e accesso alla propria chat. Chiude strumenti
+rimasti aperti ed emette gli eventi mancanti, marcando l'esito fisico come
+sconosciuto. È idempotente, non cambia la risposta e non riesegue richieste.
+Una run attiva viene rifiutata con `409`.
 
 ## Contratto HTTP
 
@@ -142,6 +149,7 @@ Tutte le richieste richiedono `Authorization: Bearer TOKEN`, `X-Tenant-Id` e
 | GET `/api/chat/runs/{uuid}/events` | Stream SSE esistente, ripresa con `after` |
 | POST `/api/chat/runs/{uuid}/cancel` | Annullamento tramite il controllo standard |
 | POST `/api/chat/runs/{uuid}/continue` | Estensione confermata dei budget |
+| POST `/api/chat/runs/{uuid}/reconcile` | Riparazione admin di strumenti aperti in una run terminale |
 | GET `/api/chat/conversations/{id}/debug-transcript` | Export admin, richiede `chat:debug` |
 | GET `/api/chat/documents/{id}/preview` | Testo fonte autorizzato |
 | GET `/api/chat/conversations/{id}/messages/{message}/tool-sources/{execution}` | Risultato strumento registrato |
@@ -152,6 +160,27 @@ prima di considerare completo il log. `diagnostics` nello snapshot è disponibil
 con `chat:debug` e ruolo amministrativo, anche durante l'esecuzione. Non è una
 sonda OS: log del container, OOM e traffico mai persistito non sono ricostruibili
 tramite queste API.
+
+## Budget del worker e riprova
+
+Nel worker ogni richiesta testuale usa il tempo rimasto della sua invocazione,
+con un massimo predefinito di 60 secondi e una riserva di 10 secondi per verifica
+e chiusura, oltre al margine finale. Il timeout arriva sia ai provider HTTP sia
+al percorso SDK. Le decisioni Jev rispettano il tempo residuo e non eseguono
+retry nascosti dentro la stessa invocazione. Fuori da questo contesto i retry
+ordinari rimangono invariati.
+
+`AGENT_TEXT_REQUEST_TIMEOUT_SECONDS` e `AGENT_TEXT_REASONING_EFFORT` configurano
+il default testuale (`60`, `low`): OpenRouter invia l'effort soltanto ai modelli
+che ne dichiarano il supporto. `AGENT_WAVE_PROCESS_CONCURRENCY=2` limita i
+bootstrap PHP simultanei indipendentemente dalla larghezza logica della wave.
+La diagnostica distingue `wave_concurrency` e `wave_process_concurrency`.
+
+Per i thread lunghi verificare `DECISION_MAX_STATE_BYTES=131072`: un override
+esplicito precedente a 32.768 continua a prevalere. Controllare nel nuovo export
+il limite effettivo e la concorrenza dei processi prima di confrontare le due
+tornate. Usare conversazioni nuove e gli stessi prompt; conservare gli export
+precedenti senza sovrascriverli.
 
 ## Verifica locale
 

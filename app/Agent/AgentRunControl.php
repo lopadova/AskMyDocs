@@ -157,5 +157,8 @@ final readonly class AgentRunControl
         if ($status === AgentRun::STATUS_CANCELLED) {
             throw new AgentRunCancelledException($run->run_id);
         }
+        if ($status === null || in_array($status, [AgentRun::STATUS_FAILED, AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)) {
+            throw new \DomainException('agent_run_not_active');
+        }
     }
 }

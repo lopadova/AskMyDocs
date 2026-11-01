@@ -34,6 +34,16 @@ final class AgentChatModelScope
         if ($this->context->tenantId !== app(TenantContext::class)->current()) {
             throw new \DomainException('agent_model_scope_tenant_mismatch');
         }
+        $remaining = app(\App\Agent\AgentRunDeadline::class)->activeRemaining($this->context);
+        if ($remaining !== null) {
+            $seconds = (int) floor($remaining - max(0, (int) config('agent.finalization.provider_reserve_seconds', 10)));
+            if ($seconds < 1) throw new \DomainException('agent_provider_deadline_exhausted');
+            $options['timeout'] = min($seconds, max(1, (int) ($options['timeout'] ?? config('agent.synthesis.request_timeout_seconds', 60))));
+            $effort = config('agent.synthesis.reasoning_effort', 'low');
+            if (in_array($effort, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], true)) {
+                $options['reasoning'] ??= ['effort' => $effort];
+            }
+        }
         // No catch/default-on-error: a configured economical run must not
         // silently use an expensive stage default when settings cannot be read.
         $model = app(AppSettingsResolver::class)->effective('ai.chat_model', $this->context->tenantId,

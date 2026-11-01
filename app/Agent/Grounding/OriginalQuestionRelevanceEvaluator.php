@@ -72,7 +72,8 @@ final readonly class OriginalQuestionRelevanceEvaluator
             $trace = [...$trace, 'used' => true, 'status' => 'completed', 'model' => $result->model,
                 'usage' => $result->usage, 'latency_ms' => $result->latencyMs];
         } catch (\Throwable $exception) {
-            $trace = [...$trace, 'status' => 'error', 'reason' => 'provider_or_response_error', 'exception_class' => $exception::class];
+            $trace = [...$trace, 'status' => 'error', 'reason' => 'provider_or_response_error', 'exception_class' => $exception::class,
+                ...($exception instanceof \App\Decisions\DecisionException ? ['decision_error' => $exception->getMessage()] : [])];
         }
         $kept = [];
         $vetoes = [];

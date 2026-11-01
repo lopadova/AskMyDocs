@@ -12,11 +12,15 @@ return [
         'enabled' => (bool) env('AGENT_WAVES_ENABLED', true),
         'combined_initial_planning' => (bool) env('AGENT_COMBINED_INITIAL_PLANNING', true),
         'concurrency' => max(1, (int) env('AGENT_WAVE_CONCURRENCY', 10)),
+        // A task boots a whole PHP application. Keep the default safe for the
+        // 512 MiB development worker, independently of logical wave width.
+        'process_concurrency' => max(1, (int) env('AGENT_WAVE_PROCESS_CONCURRENCY', 2)),
         'timeout_seconds' => max(1, (int) env('AGENT_WAVE_TIMEOUT_SECONDS', 45)),
+        'exact_embedding_timeout_seconds' => max(1, (int) env('AGENT_EXACT_EMBEDDING_TIMEOUT_SECONDS', 10)),
         'minimum_dispatch_seconds' => max(1, (int) env('AGENT_WAVE_MINIMUM_DISPATCH_SECONDS', 5)),
     ],
     'progressive' => ['enabled' => (bool) env('AGENT_PROGRESSIVE_ANSWERS_ENABLED', true)],
-    'finalization' => ['safety_seconds' => 5, 'repair_min_seconds' => 45, 'presentation_min_seconds' => 45],
+    'finalization' => ['safety_seconds' => 5, 'provider_reserve_seconds' => 10, 'repair_min_seconds' => 45, 'presentation_min_seconds' => 45],
     'queue' => env('AGENT_QUEUE', 'agent'),
     // Must remain below the queue connection's retry_after. See the reasoning runbook.
     'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),
@@ -29,6 +33,8 @@ return [
         'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
     ],
     'synthesis' => [
+        'request_timeout_seconds' => max(1, (int) env('AGENT_TEXT_REQUEST_TIMEOUT_SECONDS', 60)),
+        'reasoning_effort' => env('AGENT_TEXT_REASONING_EFFORT', 'low'),
         'time_reserve_seconds' => (int) env('AGENT_SYNTHESIS_TIME_RESERVE_SECONDS', 60),
         // Provider-native model ids; null inherits the selected chat model.
         'model' => env('AGENT_ANSWER_MODEL'),

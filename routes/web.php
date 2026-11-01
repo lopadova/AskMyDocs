@@ -16,6 +16,12 @@ use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
 
+// One catalog route serves both the SPA session and tenant-bound automation.
+// Registering this URL again inside the web-only auth group shadows the API route.
+Route::get('/api/chat/live-sources', AgentLiveSourceController::class)
+    ->middleware(['auth:sanctum', 'tenant.authorize', \App\Http\Middleware\ChatApiTokenAccess::class.':session'])
+    ->name('api.chat.live-sources');
+
 // Render one source so the public language control shares the application's Select.
 Route::get('/landing', fn () => view('landing'))
     ->name('landing');
@@ -75,8 +81,6 @@ Route::middleware('auth')->group(function () {
         return redirect('/app/chat'.($conversation ? '/'.$conversation : ''));
     })->name('chat');
     Route::get('/chat-legacy/{conversation?}', [ChatController::class, 'index'])->name('chat.legacy');
-    Route::get('/api/chat/live-sources', AgentLiveSourceController::class)
-        ->middleware('tenant.authorize');
 
     // v8.0.2 — AI Act gates (R-deep-review B): the same stack
     // applied to `POST /api/kb/chat` (routes/api.php) must hold on

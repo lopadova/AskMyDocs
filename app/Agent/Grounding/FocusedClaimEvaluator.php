@@ -71,7 +71,7 @@ final readonly class FocusedClaimEvaluator
                 'source' => array_intersect_key($claim, array_flip(['document_id', 'tool_execution_id', 'evidence_hash', 'record_path'])),
                 'status' => 'excluded', 'reason' => null];
             if ($sourceRecovered) {
-                $check['source_resolution'] = ['method' => isset($originalSource['source_ref']) && ($originalSource['evidence_hash'] ?? null) === ''
+                $check['source_resolution'] = ['method' => isset($originalSource['source_ref']) && in_array($originalSource['evidence_hash'] ?? null, [null, ''], true)
                     ? 'current_source_reference' : 'unique_evidence_hash', 'original_source' => $originalSource];
             }
             $bound = $this->projector->bind($scopedEvidence, $claim, $ids, $tenant, $project);

@@ -47,8 +47,7 @@ final class EvidenceProjector
     public function resolveSourceIdentity(array $evidence, array $claim): array
     {
         $hash = $claim['evidence_hash'] ?? null;
-        if (($claim['document_id'] ?? null) === null && ($claim['tool_execution_id'] ?? null) === null
-            && $hash === '' && is_string($claim['source_ref'] ?? null)) {
+        if (($hash === null || $hash === '') && is_string($claim['source_ref'] ?? null)) {
             $matches = [];
             foreach ($evidence['documents'] ?? [] as $document) {
                 foreach ($document['evidence'] ?? [] as $chunk) {
@@ -69,7 +68,13 @@ final class EvidenceProjector
             // Only an exact, unique reference in the CURRENT envelope resolves.
             // Explicit IDs/hashes are never overwritten. bind() still checks
             // scope, record identity and literal membership against the full hash.
-            return count($matches) === 1 ? [...$claim, ...array_values($matches)[0]] : $claim;
+            if (count($matches) !== 1) return $claim;
+            $resolved = array_values($matches)[0];
+            // Fill missing fields only. An explicit conflicting ID remains invalid.
+            foreach (['document_id', 'tool_execution_id'] as $field) {
+                if (($claim[$field] ?? null) !== null && $claim[$field] !== $resolved[$field]) return $claim;
+            }
+            return [...$claim, ...$resolved];
         }
         if (($claim['document_id'] ?? null) !== null || ($claim['tool_execution_id'] ?? null) !== null
             || ! is_string($hash) || $hash === '') {
@@ -182,7 +187,7 @@ final class EvidenceProjector
                         continue;
                     }
                     $text = $chunk['content'] ?? '';
-                    if (! is_string($text) || ! $this->documentSubjectsMatch($evidence, $source, $ids)) {
+                    if (! is_string($text) || ! $this->documentSubjectsMatch($evidence, $source, $ids, (string) ($claim['text'] ?? ''))) {
                         return ['reason' => 'entity_mismatch'];
                     }
                     return ['quote' => $text, 'record' => null, 'path' => $chunk['chunk_id'] ?? null,
@@ -208,19 +213,26 @@ final class EvidenceProjector
                 'record' => $matches[0]['record'], 'path' => $matches[0]['path'],
                 'identity_fields' => $source['presentation']['identity_fields'] ?? [],
                 'field_aliases' => $source['presentation']['field_aliases'] ?? [],
+                'source_title' => $source['display_name'] ?? $source['tool'] ?? '',
                 'observed_at' => $source['retrieved_at'] ?? null];
         }
         return ['reason' => 'source_not_in_authorized_evidence'];
     }
 
-    private function documentSubjectsMatch(array $evidence, array $source, array $identifiers): bool
+    private function documentSubjectsMatch(array $evidence, array $source, array $identifiers, string $claimText = ''): bool
     {
         $matches = static fn ($document, $identifier) => self::contains($document['title'] ?? '', $identifier)
             || array_filter($document['evidence'] ?? [], fn ($chunk) => self::contains(($chunk['source_title'] ?? '')."\n".($chunk['content'] ?? ''), $identifier)
                 || in_array(hash('sha256', $identifier), $chunk['verified_identifier_hashes'] ?? [], true));
         $opaque = array_filter($identifiers, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id)
             && preg_match('/[\pN_-]/u', $id));
-        if (array_filter($opaque, fn ($id) => ! $matches($source, $id))) {
+        // A compound request may name an order, return and label. Its email
+        // need not repeat the label's identifier, nor vice versa. Require a
+        // current exact request anchor and every identifier actually asserted
+        // by this claim; relatedness alone never proves a cross-entity fact.
+        $asserted = array_filter($opaque, fn ($id) => self::contains($claimText, $id));
+        if (($opaque !== [] && ! array_filter($opaque, fn ($id) => $matches($source, $id)))
+            || array_filter($asserted, fn ($id) => ! $matches($source, $id))) {
             return false;
         }
         $prose = array_diff($identifiers, $opaque);
@@ -239,12 +251,15 @@ final class EvidenceProjector
     {
         $alternatives = [];
         foreach ($evidence['documents'] ?? [] as $document) {
-            // Cross-document context must share all requested anchors. One
-            // common organization name cannot pull every customer case in.
+            // Exact case codes may connect a thread whose replies name different
+            // subsets of the requested codes. Prose-only common actors still
+            // cannot pull unrelated customer cases into the comparison.
+            $opaque = array_filter($ids, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id) && preg_match('/[\pN_-]/u', $id));
             if (($document['document_id'] ?? null) !== $documentId && ($ids === []
-                || array_filter($ids, fn ($id) => ! self::contains($document['title'] ?? '', $id)
+                || ($opaque !== [] ? ! $this->documentSubjectsMatch($evidence, $document, $ids)
+                : array_filter($ids, fn ($id) => ! self::contains($document['title'] ?? '', $id)
                     && ! array_filter($document['evidence'] ?? [], fn ($chunk) => self::contains(($chunk['source_title'] ?? '')."\n".($chunk['content'] ?? ''), $id)
-                        || in_array(hash('sha256', $id), $chunk['verified_identifier_hashes'] ?? [], true))))) {
+                        || in_array(hash('sha256', $id), $chunk['verified_identifier_hashes'] ?? [], true)))))) {
                 continue;
             }
             foreach ($document['evidence'] ?? [] as $chunk) {

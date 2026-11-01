@@ -32,11 +32,18 @@ final class JevDecisionModel implements IndependentDecisionModel
             throw new DecisionException('OpenRouter API key is not configured.');
         }
         $started = microtime(true);
+        $timeout = (int) config('decisions.models.jev.timeout', 15);
+        $context = app(\App\Ai\AgentChatModelScope::class)->context();
+        $remaining = $context === null ? null : app(\App\Agent\AgentRunDeadline::class)->activeRemaining($context);
+        if ($remaining !== null) {
+            if ($remaining < 3) throw new DecisionException('Decision skipped at worker deadline.');
+            $timeout = min($timeout, max(1, (int) floor($remaining - 2)));
+        }
         try {
             $response = Http::withToken($key)
                 ->acceptJson()
-                ->timeout((int) config('decisions.models.jev.timeout', 15))
-                ->retry(3, fn (int $attempt): int => 750 * $attempt,
+                ->timeout($timeout)
+                ->retry($remaining === null ? 3 : 1, fn (int $attempt): int => 750 * $attempt,
                     fn (Throwable $error): bool => $error instanceof ConnectionException
                         || ($error instanceof RequestException
                             && ($error->response->status() === 429 || $error->response->serverError())),

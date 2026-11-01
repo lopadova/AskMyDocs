@@ -186,6 +186,10 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $reference = $payload['evidence']['documents'][0]['evidence'][0]['source_ref'];
             $this->assertSame('d252_'.substr($hash, 0, 12), $reference);
             $this->assertSame([$reference], data_get($options, 'tools.0.function.parameters.properties.claims.items.properties.source_ref.enum'));
+            $schema = data_get($options, 'tools.0.function.parameters.properties.claims.items');
+            $this->assertSame(['text', 'quote', 'source_ref'], $schema['required']);
+            $this->assertArrayNotHasKey('evidence_hash', $schema['properties']);
+            $this->assertArrayNotHasKey('document_id', $schema['properties']);
             $this->assertFalse($payload['table_artifact_available']);
             $this->assertSame([false], data_get($options, 'tools.0.function.parameters.properties.render_table.enum'));
             $this->assertStringContainsString('put the actual requested records and values in source-bound claims', $system);
@@ -221,7 +225,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $draft->invoke($synthesizer, 'List items', $this->context(), $outcome, null, null, 3);
     }
 
-    public function test_document_claims_are_not_discarded_by_an_unrenderable_table_flag(): void
+    public function test_document_claims_are_not_discarded_even_when_a_live_table_could_be_rendered(): void
     {
         config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false, 'agent.presentation.enabled' => false]);
         $content = 'RETURN-123: two products returned.';
@@ -229,13 +233,22 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $evidence = app(AgentEvidenceFactory::class)->empty();
         $evidence->addDocument(['document_id' => 252, 'title' => 'RETURN-123', 'source_path' => 'mail/return.md', 'origin' => 'primary',
             'evidence' => [['content' => $content, 'evidence_hash' => $hash]]]);
+        $tool = new AgentToolDefinition(name: 'get_orders', displayName: 'Orders', description: 'Orders', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true,
+            physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1, executorReference: 10);
+        $evidence->addToolResult($tool, [], ['items' => [['id' => 'ORDER-A', 'status' => 'SHIPPED']]], 56);
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'fake-agent', toolCalls: [[
+        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $messages, $options) use ($content, $hash) {
+            $input = json_decode($messages[0]['content'], true);
+            $this->assertFalse($input['table_artifact_available']);
+            $this->assertSame([false], data_get($options, 'tools.0.function.parameters.properties.render_table.enum'));
+            return new AiResponse('', 'fake', 'fake-agent', toolCalls: [[
             'name' => 'submit_agent_answer', 'arguments' => ['completeness' => 'complete', 'claims' => [[
                 'text' => $content, 'quote' => $content, 'document_id' => 252,
                 'tool_execution_id' => null, 'evidence_hash' => $hash,
             ]], 'render_table' => true, 'requires_selection' => false, 'limitations' => []],
-        ]]));
+            ]]);
+        });
         $answer = (new AgentAnswerSynthesizer($ai, app(WidgetPiiMasker::class), app(AgentTableArtifactFactory::class), app(AgentClaimGroundingValidator::class)))
             ->synthesize('How many products in RETURN-123?', $this->context(), new AgentLoopOutcome('answer', $evidence, []));
         $this->assertNull($answer->artifact);

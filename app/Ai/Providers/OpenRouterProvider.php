@@ -110,6 +110,7 @@ final class OpenRouterProvider implements AiProviderInterface
      */
     private function chatViaHttpWithTools(string $systemPrompt, array $messages, array $options): AiResponse
     {
+        $requestStarted = microtime(true);
         $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
         foreach ($messages as $msg) {
             if (! is_array($msg)) {
@@ -169,11 +170,21 @@ final class OpenRouterProvider implements AiProviderInterface
         }
 
         $baseUrl = rtrim($this->config['url'] ?? 'https://openrouter.ai/api/v1', '/');
-        $parameters = $this->supportedParameters($baseUrl, $payload['model']);
+        $parameters = $this->supportedParameters($baseUrl, $payload['model'], $options['timeout'] ?? null);
         if ($parameters !== null && ! in_array('temperature', $parameters, true)) {
             // Sampling is optional. Keep required tools/schema unchanged while
             // using the model's native sampling when its catalog disallows it.
             unset($payload['temperature']);
+        }
+        if (is_array($options['reasoning'] ?? null) && $parameters !== null
+            && (in_array('reasoning', $parameters, true) || in_array('reasoning_effort', $parameters, true))) {
+            $payload['reasoning'] = $options['reasoning'];
+        }
+        $timeout = (float) ($this->config['timeout'] ?? 120);
+        if (isset($options['timeout'])) {
+            $budget = (float) $options['timeout'] - (microtime(true) - $requestStarted);
+            if ($budget <= 0) throw new \DomainException('ai_request_deadline_exhausted');
+            $timeout = min($timeout, $budget);
         }
 
         $response = Http::withToken($this->config['key'])
@@ -181,7 +192,7 @@ final class OpenRouterProvider implements AiProviderInterface
                 'HTTP-Referer' => $this->config['http_referer'] ?? config('app.url', ''),
                 'X-Title' => $this->config['x_title'] ?? config('app.name', 'Enterprise KB'),
             ])
-            ->timeout($this->config['timeout'] ?? 120)
+            ->timeout($timeout)
             ->post("{$baseUrl}/chat/completions", $payload);
 
         $response->throw();
@@ -201,11 +212,11 @@ final class OpenRouterProvider implements AiProviderInterface
     }
 
     /** Unknown capabilities preserve the request; never guess from model names. */
-    private function supportedParameters(string $baseUrl, string $model): ?array
+    private function supportedParameters(string $baseUrl, string $model, ?float $timeoutSeconds = null): ?array
     {
         try {
-            return Cache::remember('openrouter-parameters:'.hash('sha256', $baseUrl.'|'.$model), 3600, function () use ($baseUrl, $model) {
-                $response = Http::timeout(10)->get($baseUrl.'/models/'.str_replace('%2F', '/', rawurlencode($model)).'/endpoints');
+            return Cache::remember('openrouter-parameters:'.hash('sha256', $baseUrl.'|'.$model), 3600, function () use ($baseUrl, $model, $timeoutSeconds) {
+                $response = Http::timeout(min(10, $timeoutSeconds ?? 10))->get($baseUrl.'/models/'.str_replace('%2F', '/', rawurlencode($model)).'/endpoints');
                 $endpoints = $response->successful() ? $response->json('data.endpoints') : null;
                 if (! is_array($endpoints) || $endpoints === []
                     || array_filter($endpoints, fn ($endpoint) => ! is_array($endpoint['supported_parameters'] ?? null))) {

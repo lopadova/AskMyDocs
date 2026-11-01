@@ -71,7 +71,7 @@ trait SdkChat
             [],
             $this->name(),
             $this->resolveTextModel($options),
-            $this->config['timeout'] ?? null,
+            isset($options['timeout']) ? max(1, (int) min($options['timeout'], $this->config['timeout'] ?? $options['timeout'])) : ($this->config['timeout'] ?? null),
         );
 
         return $this->toAiResponse($sdkResponse);
@@ -208,7 +208,11 @@ trait SdkChat
      */
     protected function embeddingsViaSdk(array $texts): EmbeddingsResponse
     {
-        $sdkResponse = Embeddings::for($texts)->generate(
+        $pending = Embeddings::for($texts);
+        if (($timeout = \App\Ai\EmbeddingTimeoutScope::seconds()) !== null) {
+            $pending->timeout($timeout);
+        }
+        $sdkResponse = $pending->generate(
             $this->name(),
             $this->config['models']['embeddings']['default'] ?? null,
         );

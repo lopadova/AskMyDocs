@@ -82,6 +82,21 @@ final class ChatApiTest extends TestCase
         $this->api('GET', '/api/chat/conversations')->assertForbidden();
     }
 
+    public function test_the_real_catalog_url_accepts_bearer_tokens_and_keeps_its_session_client(): void
+    {
+        $this->getJson('/api/chat/live-sources?project_key=orders')->assertUnauthorized();
+        $this->api('GET', '/api/chat/live-sources?project_key=orders')->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private');
+        $this->api('GET', '/api/chat/live-sources?project_key=forbidden')->assertForbidden();
+        ProjectMembership::create(['tenant_id' => 'other', 'project_key' => 'orders', 'user_id' => $this->user->id, 'role' => 'member']);
+        $this->api('GET', '/api/chat/live-sources?project_key=orders', [], 'other')->assertForbidden();
+
+        auth()->forgetGuards();
+        $this->actingAs($this->user, 'web')->withHeader('Authorization', '')
+            ->withHeader('X-Tenant-Id', 'acme')->getJson('/api/chat/live-sources?project_key=orders')->assertOk();
+        $this->getJson('/api/chat/conversations')->assertForbidden(); // Other headless routes still require Bearer auth.
+    }
+
     public function test_api_turn_finishes_through_the_real_worker_handler_and_projects_a_chat_answer(): void
     {
         config(['kb.investigation.enabled' => false, 'reasoning.enabled' => false,
@@ -107,6 +122,37 @@ final class ChatApiTest extends TestCase
         $messages->assertJsonPath('1.role', 'assistant');
         $this->assertNotEmpty($messages->json('1.content'));
         $this->assertNotSame('failed', AgentRun::query()->sole()->status);
+    }
+
+    public function test_debug_admin_can_reconcile_only_owned_terminal_work_without_replaying_it(): void
+    {
+        $conversation = $this->api('POST', '/api/chat/conversations', ['project_key' => 'orders'])->assertCreated()->json('id');
+        $id = $this->api('POST', "/api/chat/conversations/$conversation/messages", ['content' => 'Order'])->assertAccepted()->json('run_id');
+        $run = AgentRun::query()->sole();
+        $run->toolExecutions()->create(['logical_index' => 1, 'tool_name' => 'lookup', 'tool_kind' => 'api',
+            'status' => 'running', 'started_at' => now()->subMinute()]);
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertForbidden();
+        $this->user->assignRole('admin');
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertForbidden(); // Debug ability is independently required.
+        $this->token = $this->user->createToken('debug', ['chat:use', 'chat:tenant:acme', 'chat:debug'], now()->addDay())->plainTextToken;
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertConflict();
+        $this->assertSame('running', $run->toolExecutions()->sole()->status);
+        $run->forceFill(['status' => 'failed', 'error_code' => 'worker_timeout', 'completed_at' => now()])->save();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        Queue::fake();
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertOk()->assertJsonPath('closed_tools', 1)->assertJsonPath('status', 'failed');
+        $this->api('POST', "/api/chat/runs/$id/reconcile")->assertOk()->assertJsonPath('closed_tools', 0);
+        $tool = $run->toolExecutions()->sole();
+        $this->assertSame('failed', $tool->status);
+        $this->assertTrue($tool->result_meta_json['outcome_unknown']);
+        $this->assertSame(1, $run->events()->where('type', 'tool.failed')->count());
+        $this->assertSame('failed', $run->fresh()->status);
+        $foreign = $run->replicate()->forceFill(['run_id' => (string) \Illuminate\Support\Str::uuid(), 'actor_id' => 'another-principal']);
+        $foreign->save();
+        $this->api('POST', "/api/chat/runs/$foreign->run_id/reconcile")->assertNotFound();
+        Queue::assertNothingPushed();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        $this->api('POST', '/api/chat/runs/'.\Illuminate\Support\Str::uuid().'/reconcile')->assertNotFound();
     }
 
     public function test_foreign_conversations_and_revoked_project_access_are_denied(): void

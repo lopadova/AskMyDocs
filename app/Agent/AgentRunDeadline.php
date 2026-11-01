@@ -11,17 +11,27 @@ use Throwable;
 
 final class AgentRunDeadline
 {
-    /** @var list<array{tenant: string, id: int, start: \Carbon\CarbonInterface, timeout: float}> */
+    /** @var list<array{tenant: string, id: int, uuid: string, start: \Carbon\CarbonInterface, timeout: float}> */
     private static array $invocations = [];
 
     public function within(AgentRun $run, \Carbon\CarbonInterface $start, float $timeout, callable $callback): mixed
     {
-        self::$invocations[] = ['tenant' => $run->tenant_id, 'id' => $run->id, 'start' => $start->copy(), 'timeout' => max(30, $timeout)];
+        self::$invocations[] = ['tenant' => $run->tenant_id, 'id' => $run->id, 'uuid' => $run->run_id, 'start' => $start->copy(), 'timeout' => max(30, $timeout)];
         try {
             return $callback();
         } finally {
             array_pop(self::$invocations);
         }
+    }
+
+    /** Request budgets must use this worker invocation, never a redelivery's newer span. */
+    public function activeRemaining(AgentExecutionContext $context): ?float
+    {
+        $invocation = collect(array_reverse(self::$invocations))->first(
+            fn (array $entry) => $entry['tenant'] === $context->tenantId && $entry['uuid'] === $context->runId);
+        if ($invocation === null) return null;
+        return max(0, $invocation['timeout'] - max(0, $invocation['start']->diffInSeconds(now(), false))
+            - max(0, (float) config('agent.finalization.safety_seconds', 5)));
     }
 
     public function remaining(?AgentRun $run): float

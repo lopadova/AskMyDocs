@@ -600,7 +600,7 @@ class FocusedClaimEvaluatorTest extends TestCase
     public function test_chat_39_nine_facts_and_all_same_document_context_fit_the_default_in_one_call(): void
     {
         $this->fake();
-        $this->assertSame(32768, config('decisions.max_state_bytes'));
+        $this->assertSame(131072, config('decisions.max_state_bytes'));
         $fixture = json_decode(file_get_contents(dirname(__DIR__, 2).'/Fixtures/Agent/multi-question-state-budget.json'), true, flags: JSON_THROW_ON_ERROR);
         $result = app(FocusedClaimEvaluator::class)->evaluate($fixture['question'], $fixture['evidence'], $fixture['claims'],
             $fixture['understanding'], $fixture['project'], $fixture['tenant']);
@@ -650,5 +650,37 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertSame('state_limit', $tooLarge['semantic_validation'][0]['checks'][0]['reason']);
         $this->assertSame(1, $tooLarge['semantic_validation'][0]['checks'][0]['state_overflow_bytes']);
         Http::assertSentCount(4); // No provider attempt for the over-budget candidate.
+    }
+
+    public function test_default_budget_keeps_large_original_threads_and_their_contradictory_context(): void
+    {
+        $this->fake();
+        $evidence = ['documents' => []];
+        $claims = [];
+        foreach (['A refund was requested.', 'Repayment was promised, but has not been confirmed.', 'The customer is still waiting.'] as $index => $fact) {
+            $source = 'CASE-A: '.$fact.str_repeat(' Original recorded thread context; no completed payment is established. ', 350);
+            $evidence['documents'][] = ['document_id' => $index + 1, 'title' => 'CASE-A', 'evidence' => [[
+                'content' => $source, 'evidence_hash' => 'large-'.$index, 'complete_source' => true,
+            ]]];
+            $claims[] = ['text' => 'CASE-A: '.$fact, 'document_id' => $index + 1, 'evidence_hash' => 'large-'.$index];
+        }
+        $focus = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What is documented for CASE-A?', $evidence, $claims,
+            ['focus' => $focus, 'subquestions' => [$focus]]);
+        $this->assertCount(3, $result['claims']);
+        $meta = $result['semantic_validation'][0];
+        $this->assertGreaterThan(65536, $meta['state_bytes']);
+        $this->assertLessThanOrEqual(131072, $meta['state_bytes']);
+        $this->assertSame(0, $meta['state_limit_count']);
+        $state = Http::recorded()[0][0]['state'];
+        foreach ($evidence['documents'] as $document) $this->assertContains($document['evidence'][0]['content'], $state['sources']);
+        // An operator's lower bound still applies; no source is silently cut
+        // down or contradiction discarded to obtain an approval.
+        config(['decisions.max_state_bytes' => 32768]);
+        $bounded = app(FocusedClaimEvaluator::class)->evaluate('What is documented for CASE-A?', $evidence, $claims,
+            ['focus' => $focus, 'subquestions' => [$focus]]);
+        $this->assertFalse($bounded['valid']);
+        $this->assertSame(3, $bounded['semantic_validation'][0]['state_limit_count']);
+        Http::assertSentCount(2);
     }
 }

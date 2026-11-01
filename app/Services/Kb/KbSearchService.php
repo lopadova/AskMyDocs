@@ -580,6 +580,9 @@ class KbSearchService
                 'title' => $chunk->document?->title,
                 'source_path' => $chunk->document?->source_path,
                 'source_type' => $chunk->document?->source_type,
+                // Connector-owned message date is navigation only; it must not
+                // be inferred from import time or become a verified business fact.
+                'source_date' => data_get($chunk->document?->metadata, 'converter_hints.imap.date'),
                 // Canonical fields: consumed by Reranker (priority boost +
                 // status penalty) and by GraphExpander (seed node slugs).
                 'doc_id' => $chunk->document?->doc_id,
@@ -973,7 +976,7 @@ class KbSearchService
         // IN already removes duplicate membership; UNION ALL avoids an extra
         // corpus-sized distinct/sort when a code occurs in both body and title.
         $query->whereIn('knowledge_chunks.id', $bodyIds->unionAll($titleIds));
-        $matches = $matchBindings = $frequencySql = $frequencyBindings = [];
+        $matches = $matchBindings = $frequencySql = $frequencyBindings = $weights = [];
         // With one identifier every candidate has the same rank. Do not count
         // the whole corpus and sort it before applying the candidate limit.
         foreach (count($identifiers) > 1 ? $identifiers : [] as $index => $id) {
@@ -991,6 +994,7 @@ class KbSearchService
             $ranks = $bindings = [];
             foreach ($matches as $index => $match) {
                 $weight = max(1, intdiv(1_000_000, max(1, (int) ($frequencies->{'literal_'.$index} ?? 0))));
+                $weights[$identifiers[$index]] = $weight;
                 $ranks[] = "CASE WHEN {$match} THEN ? ELSE 0 END";
                 $bindings = [...$bindings, ...$matchBindings[$index], $weight];
             }
@@ -1004,6 +1008,10 @@ class KbSearchService
             fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
                 || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)) !== [])
             ->map(fn ($chunk) => [...$this->mapChunkToArray($chunk), 'chunk_hash' => $chunk->chunk_hash,
+                'literal_rank' => array_sum(array_map(fn ($id) =>
+                    \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
+                    || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)
+                        ? ($weights[$id] ?? 1_000_000) : 0, $identifiers)),
                 'retrieval_method' => 'exact_identifier'])->values();
     }
 

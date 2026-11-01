@@ -220,6 +220,20 @@ class OpenAiProviderTest extends TestCase
         Http::assertSent(fn (Request $req) => str_contains($req->url(), '/embeddings'));
     }
 
+    public function test_scoped_embedding_timeout_reaches_sdk_and_is_restored(): void
+    {
+        $this->setupConfig();
+        $timeouts = [];
+        \Laravel\Ai\Embeddings::fake(function ($prompt) use (&$timeouts) {
+            $timeouts[] = $prompt->timeout;
+            return [[0.1, 0.2, 0.3]];
+        });
+        $provider = $this->provider();
+        \App\Ai\EmbeddingTimeoutScope::within(10, fn () => $provider->generateEmbeddings(['one']));
+        $provider->generateEmbeddings(['two']);
+        $this->assertSame([10, 30], $timeouts);
+    }
+
     public function test_no_tools_chat_with_history_rejects_non_user_last_message(): void
     {
         $this->setupConfig();
