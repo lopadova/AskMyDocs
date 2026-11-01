@@ -605,8 +605,15 @@ PROMPT;
                 // before task drafts merge or a later envelope changes ordering.
                 if (config('reasoning.selective_validation') && is_array($payload['claims'] ?? null)) {
                     foreach ($payload['claims'] as &$claim) {
-                        if (is_array($claim)) $claim = app(\App\Services\Chat\Reasoning\EvidenceProjector::class)
+                        if (! is_array($claim)) continue;
+                        $original = $claim;
+                        $claim = app(\App\Services\Chat\Reasoning\EvidenceProjector::class)
                             ->resolveSourceIdentity($outcome->evidence->jsonSerialize(), $claim);
+                        if ($claim !== $original && ! isset($claim['source_selection']) && ! isset($claim['source_selection_error'])) {
+                            $claim['source_selection'] ??= ['method' => isset($original['source_ref']) && in_array($original['evidence_hash'] ?? null, [null, ''], true)
+                                ? 'current_source_reference' : 'unique_evidence_hash',
+                                'original_source' => array_intersect_key($original, array_flip(['source_ref', 'document_id', 'tool_execution_id', 'evidence_hash', 'record_path']))];
+                        }
                     }
                     unset($claim);
                 }
