@@ -76,6 +76,9 @@ jobs:
       - name: Run PHPUnit
         run: vendor/bin/phpunit --testdox
 
+      - name: Test chat API client
+        run: python3 -B -m unittest discover -s tests/Unit/Scripts -p 'test_chat_api_client.py'
+
   vitest:
     name: Vitest
     runs-on: ubuntu-latest
