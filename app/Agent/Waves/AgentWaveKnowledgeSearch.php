@@ -38,7 +38,7 @@ final class AgentWaveKnowledgeSearch
                     [fn ($a, $b) => (strtotime((string) data_get($b, 'document.source_date', '')) ?: 0)
                         <=> (strtotime((string) data_get($a, 'document.source_date', '')) ?: 0)],
                 ])->values();
-                $exact = $this->diverseExactCandidates($exact, $identifiers);
+                $exact = $this->diverseExactCandidates($exact, $identifiers, $query);
             }
         } catch (\Throwable) {
             $stats['exact_lookup_error'] = true;
@@ -121,8 +121,8 @@ final class AgentWaveKnowledgeSearch
         );
     }
 
-    /** Latest recorded updates per exact subject, then distinct documents before extra windows. */
-    private function diverseExactCandidates(\Illuminate\Support\Collection $candidates, array $identifiers): \Illuminate\Support\Collection
+    /** Latest updates and a query topic anchor, then distinct documents before extra windows. */
+    private function diverseExactCandidates(\Illuminate\Support\Collection $candidates, array $identifiers, string $query): \Illuminate\Support\Collection
     {
         $updates = [];
         foreach ($identifiers as $identifier) {
@@ -137,13 +137,51 @@ final class AgentWaveKnowledgeSearch
                     ->sortBy('chunk_id')->first();
             }
         }
-        $first = $extra = $seen = [];
-        foreach (collect($updates)->concat($candidates)->unique('chunk_id') as $candidate) {
+        $topical = $this->topicalCandidate($candidates, $query, $identifiers);
+        $priority = collect([...$updates, ...($topical === null ? [] : [$topical])])->unique('chunk_id')->values();
+        $first = $extra = [];
+        $seen = array_fill_keys($priority->pluck('document.id')->all(), true);
+        $used = array_fill_keys($priority->pluck('chunk_id')->all(), true);
+        foreach ($candidates->unique('chunk_id') as $candidate) {
+            if (isset($used[$candidate['chunk_id']])) continue;
             $id = (int) data_get($candidate, 'document.id', 0);
             if (isset($seen[$id])) $extra[] = $candidate;
             else { $first[] = $candidate; $seen[$id] = true; }
         }
-        return collect([...$first, ...$extra]);
+        return $priority->concat([...$first, ...$extra])->values();
+    }
+
+    /** Lexical navigation inside exact subjects; this never approves a fact. */
+    private function topicalCandidate(\Illuminate\Support\Collection $candidates, string $query, array $identifiers): ?array
+    {
+        preg_match_all('/[\pL\pN_-]{3,}/u', mb_strtolower($query), $queryTerms);
+        preg_match_all('/[\pL\pN_-]{3,}/u', mb_strtolower(implode(' ', $identifiers)), $subjectTerms);
+        $terms = array_values(array_diff(array_unique($queryTerms[0]), $subjectTerms[0]));
+        if ($terms === [] || $candidates->isEmpty()) return null;
+        $matches = $frequencies = [];
+        $documentCount = max(1, $candidates->pluck('document.id')->unique()->count());
+        foreach ($candidates as $candidate) {
+            $text = (string) data_get($candidate, 'document.title', '')."\n".($candidate['chunk_text'] ?? '');
+            foreach ($terms as $term) {
+                if (! EvidenceProjector::contains($text, $term)) continue;
+                $matches[$candidate['chunk_id']][] = $term;
+                $frequencies[$term][data_get($candidate, 'document.id')] = true;
+            }
+        }
+        $best = null;
+        $bestScore = 0;
+        foreach ($candidates as $candidate) {
+            $score = 0;
+            foreach ($matches[$candidate['chunk_id']] ?? [] as $term) {
+                $frequency = count($frequencies[$term]);
+                // Common connective words contribute no extra navigation when
+                // several documents are available. No domain vocabulary list.
+                if ($documentCount > 2 && $frequency > $documentCount / 2) continue;
+                $score += log(1 + $documentCount / $frequency);
+            }
+            if ($score > $bestScore) { $best = $candidate; $bestScore = $score; }
+        }
+        return $best;
     }
 
     /** @return array<string, true> */

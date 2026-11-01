@@ -187,6 +187,49 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertStringContainsString('old quoted complaint', $result->body['documents'][0]['evidence'][1]['content']);
     }
 
+    public function test_requested_historical_fact_survives_recent_general_updates(): void
+    {
+        app(TenantContext::class)->set('acme');
+        $history = $this->document('acme', 'orders', 'ORDER-A RETURN-A', ['ORDER-A RETURN-A: same AWB, original mission closed; DHL asked to inspect both parcels.']);
+        $history->forceFill(['metadata' => ['converter_hints' => ['imap' => ['date' => '2026-07-15T12:00:00Z']]]])->save();
+        $latest = null;
+        for ($i = 1; $i <= 6; $i++) {
+            $latest = $this->document('acme', 'orders', 'ORDER-A RETURN-A', ['ORDER-A RETURN-A: general case update '.$i]);
+            $latest->forceFill(['metadata' => ['converter_hints' => ['imap' => ['date' => sprintf('2026-09-%02dT12:00:00Z', $i)]]]])->save();
+        }
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A', 'RETURN-A']], 'mentions' => []]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A RETURN-A same AWB and request to DHL', $run, $context,
+            new RetrievalFilters(projectKeys: ['orders']));
+        $ids = array_column($result->body['documents'], 'document_id');
+        $this->assertSame($latest->id, $ids[0]);
+        $this->assertSame($history->id, $ids[1]);
+        $this->assertCount(5, $ids);
+    }
+
+    public function test_a_topic_window_can_accompany_the_opening_update_without_losing_other_documents(): void
+    {
+        app(TenantContext::class)->set('acme');
+        config(['kb.investigation.full_source_max_chars' => 10, 'kb.investigation.long_source_neighbor_radius' => 0]);
+        $thread = $this->document('acme', 'orders', 'ORDER-A', ['ORDER-A latest general update.', 'ORDER-A original serial mismatch documented.']);
+        $thread->forceFill(['metadata' => ['converter_hints' => ['imap' => ['date' => '2026-09-02T12:00:00Z']]]])->save();
+        for ($i = 0; $i < 4; $i++) $this->document('acme', 'orders', 'ORDER-A other '.$i, ['ORDER-A other case event '.$i]);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldNotReceive('retrieve');
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+        $run = new AgentRun(['result_json' => ['question_understanding' => ['available' => true,
+            'focus' => ['identifiers' => ['ORDER-A']], 'mentions' => []]]]);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', '1', 'it', 'UTC');
+        $result = app(AgentWaveKnowledgeSearch::class)->search('ORDER-A original serial mismatch', $run, $context, new RetrievalFilters(projectKeys: ['orders']));
+        $this->assertSame($thread->id, $result->body['documents'][0]['document_id']);
+        $this->assertCount(2, $result->body['documents'][0]['evidence']);
+        $this->assertCount(4, $result->body['documents']);
+    }
+
     public function test_a_mentioned_source_name_does_not_expand_an_exact_order_search(): void
     {
         app(TenantContext::class)->set('acme');

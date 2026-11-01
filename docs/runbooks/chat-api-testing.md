@@ -106,6 +106,62 @@ Codici di uscita: `0` completata o parziale, `1` fallita/annullata,
 Una risposta parziale non è un test funzionale riuscito: verificare contenuto,
 fonti, completezza e risultato atteso nei file salvati.
 
+## Casi demo conversazionali: almeno tre turni
+
+Ogni caso demo richiede almeno tre domande dell'utente nella **stessa
+conversazione**, quindi almeno trenta turni per una tornata di dieci casi.
+La prima domanda resta quella originale del caso, per confrontare il risultato
+con le tornate precedenti. Le domande successive si scelgono dopo aver letto la
+risposta precedente: non sono una sequenza di prompt prefissata né tre richieste
+indipendenti in chat nuove.
+
+Chi conduce il collaudo assume due prospettive:
+
+- **Utente che approfondisce:** formula ogni seguito usando soltanto la domanda
+  iniziale e ciò che è già emerso nella chat. Non anticipa fatti, date, codici,
+  nomi o risposte mancanti appresi dalle fonti di verifica, dagli export o da
+  prove precedenti. Un'affermazione della chat resta da verificare: non diventa
+  vera perché viene ripresa in una domanda.
+- **Verificatore:** confronta le risposte con documenti, risultati API e
+  diagnostica autorizzati. Registra errori, omissioni e contraddizioni anche
+  quando un seguito ottiene una risposta migliore.
+
+Per il secondo turno scegliere un dubbio concreto emerso nella prima risposta:
+un riferimento ambiguo, una differenza tra documenti e gestionale, un passaggio
+temporale o un'affermazione senza prova. Per il terzo approfondire un altro
+aspetto in base alle prime due risposte, per esempio la prova di un esito, un
+collegamento tra ordini o le informazioni ancora necessarie all'operatore.
+Se un aspetto è già chiarito, cambiare direzione invece di ripetere la domanda.
+Una risposta negativa documentata è valida; non insistere finché il sistema
+produce il risultato atteso.
+
+Prima di ogni seguito salvare in un file privato `follow-up-decision.json`:
+numero del turno, ID della risposta precedente, breve passaggio che ha motivato
+la scelta, aspetto da approfondire, domanda effettiva e motivazione. La domanda
+deve avere senso per un utente che ha letto soltanto quella conversazione.
+Le fonti di verifica e i risultati attesi restano separati dagli input inviati.
+
+Usare `--conversation ID` per i seguiti e directory distinte, per esempio
+`TORNATA/DEMO-01/turn-01`, `turn-02` e `turn-03`. Attendere la chiusura della run
+precedente e ispezionare la risposta prima del prossimo invio. Non contare tre
+subdomande nello stesso messaggio come tre turni. Non sostituire una chat
+fallita con una nuova conversazione per presentare il caso come riuscito:
+registrare l'impedimento ed eventuali turni mancanti. Un invio incerto richiede
+la normale riconciliazione in lettura, senza reinviare automaticamente.
+
+Il report conserva per ciascun turno domanda, motivo del seguito, chat/run,
+risposta, fonti, strumenti, tempi ed esito verificato. Valuta anche la continuità
+del contesto: clienti e ordini non scambiati, riferimenti impliciti risolti,
+fatti già emersi conservati, contraddizioni e dati nuovi attribuiti alle fonti.
+Distinguere la copertura al primo turno dalla copertura dopo approfondimento:
+un recupero al terzo turno non cancella un'omissione iniziale. Riportare sia i
+turni effettivamente eseguiti sia i casi con almeno tre turni completati.
+
+Completare tutti e dieci i dialoghi prima dei fix applicativi, accorpare i
+malfunzionamenti e poi ripetere la tornata dopo commit e deploy. Nei confronti
+fra deploy il primo prompt resta uguale; i seguiti restano adattivi e il report
+deve evidenziare le differenze, senza dichiararli una ripetizione identica.
+
 ## Ispezione e interazioni
 
 ```sh

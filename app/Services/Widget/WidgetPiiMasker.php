@@ -31,6 +31,19 @@ final class WidgetPiiMasker
         // Exempt only a contiguous code with an invalid IBAN checksum, never
         // a bank/payment line or an actual valid account number.
         $references = [];
+        // Several short case codes are separate identifiers, not one IBAN.
+        // Keep this exception bounded below IBAN length and out of financial
+        // contexts; formatted/unformatted bank accounts remain protected.
+        $input = preg_replace_callback('/^.*$/mu', function (array $line) use (&$references): string {
+            if (preg_match('/\b(?:IBAN|bank|banca|conto|account|payment|pagamento|card|carta)\b/iu', $line[0])) return $line[0];
+            return preg_replace_callback('/(?<![\pL\pN_-])[A-Z]{1,3}\d{3,9}(?:[\t ]+[A-Z]{1,3}\d{3,9})+(?![\pL\pN_-])/u',
+                function (array $match) use (&$references): string {
+                    if ($this->hasIbanChecksum(preg_replace('/[\t ]/', '', $match[0]))) return $match[0];
+                    $token = '__AMD_CASE_'.hash('sha256', $match[0]).'__';
+                    $references[$token] = $match[0];
+                    return $token;
+                }, $line[0]) ?? $line[0];
+        }, $input) ?? $input;
         $input = preg_replace_callback('/^.*\b(?:tracking|AWB|waybill|Packlink)\b.*$/imu', function (array $line) use (&$references): string {
             if (preg_match('/\b(?:IBAN|bank|banca|conto|account|payment|pagamento|card|carta)\b/iu', $line[0])) return $line[0];
             return preg_replace_callback('/\b(?:tracking|AWB|waybill|Packlink)\b[\t :#*_`-]*(?:(?:reference|riferimento|ref|code|codice|ID)[\t :#*_`-]*)?([A-Z]{2}\d{2}[A-Z0-9]{11,30})\b/i',
