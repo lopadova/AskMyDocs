@@ -106,6 +106,17 @@ final class WidgetPiiMaskerTest extends TestCase
         );
     }
 
+    public function test_labelled_logistics_reference_is_not_an_iban_but_payment_data_stays_masked(): void
+    {
+        $reference = 'DE123456789012345678901234567890';
+        $this->assertSame('Packlink reference '.$reference, $this->masker->maskString('Packlink reference '.$reference));
+        $this->assertSame('Tracking '.$reference, $this->masker->maskString('Tracking '.$reference));
+        $this->assertSame('Packlink [IBAN]', $this->masker->maskString('Packlink IT60X0542811101000000123456'));
+        $this->assertSame('IBAN Packlink [IBAN]', $this->masker->maskString('IBAN Packlink '.$reference));
+        $this->assertSame('[IBAN]', $this->masker->maskString($reference)); // Unlabelled values remain protected.
+        $this->assertSame('Packlink reference '.$reference."\nCard [CARD]", $this->masker->maskString('Packlink reference '.$reference."\nCard 4111111111111111"));
+    }
+
     // ─── maskString: carta ──────────────────────────────────────────
 
     public function test_masks_card_number(): void
