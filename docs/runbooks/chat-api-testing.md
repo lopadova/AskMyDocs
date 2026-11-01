@@ -304,3 +304,9 @@ record, prima di salvare o unire le bozze. Gli indici non vengono reinterpretati
 in un altro elenco. Le vecchie `source_ref` restano leggibili; indici sconosciuti,
 identità esplicite in conflitto, hash, permessi e appartenenza al record restano
 controllati separatamente.
+
+Nelle bozze, un solo paragrafo finale `requested_speech_act` può contenere la
+richiesta cortese esplicitamente chiesta dall'utente. Non ha riferimenti a fatti:
+due controlli distinti verificano che sia richiesta e che non affermi stati,
+promesse o operazioni eseguite. I fatti aziendali mantengono la normale verifica
+delle fonti. Questo testo rimane una bozza e non autorizza l'invio di messaggi.
