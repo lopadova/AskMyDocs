@@ -111,4 +111,41 @@ class EvidenceSourceIdentityTest extends TestCase
         $this->assertSame([], (new EvidenceProjector)->alternatives($evidence,
             ['Merchant', 'Ada Rossi'], 'Merchant replied to Ada Rossi.', 'default', 'demo', 1));
     }
+
+    public function test_short_reference_fills_missing_identity_but_cannot_override_explicit_ids_or_hashes(): void
+    {
+        $projector = new EvidenceProjector;
+        $ref = $projector->forPrompt($this->evidence())['documents'][0]['evidence'][0]['source_ref'];
+        $claim = ['source_ref' => $ref, 'document_id' => 12];
+        $this->assertSame('doc-hash', $projector->resolveSourceIdentity($this->evidence(), $claim)['evidence_hash']);
+        foreach ([['document_id' => 99], ['tool_execution_id' => 86], ['evidence_hash' => 'wrong']] as $conflict) {
+            $invalid = [...$claim, ...$conflict];
+            $this->assertSame($invalid, $projector->resolveSourceIdentity($this->evidence(), $invalid));
+        }
+    }
+
+    public function test_compound_request_keeps_sources_with_distinct_exact_anchors_without_authorizing_cross_entity_claims(): void
+    {
+        $evidence = ['documents' => [
+            ['document_id' => 1, 'title' => 'RETURN-A', 'evidence' => [['content' => 'ORDER-A: barcode reported missing.', 'evidence_hash' => 'first']]],
+            ['document_id' => 2, 'title' => 'RETURN-A', 'evidence' => [['content' => 'The customer later found the barcode.', 'evidence_hash' => 'update']]],
+            ['document_id' => 3, 'title' => 'Label', 'evidence' => [['content' => 'LABEL-A was issued.', 'evidence_hash' => 'label']]],
+            ['document_id' => 4, 'title' => 'ORDER-OTHER', 'evidence' => [['content' => 'A different customer has no barcode.', 'evidence_hash' => 'other']]],
+        ]];
+        $ids = ['ORDER-A', 'RETURN-A', 'LABEL-A'];
+        $projector = new EvidenceProjector;
+        $this->assertSame('ORDER-A: barcode reported missing.', $projector->bind($evidence,
+            ['document_id' => 1, 'evidence_hash' => 'first', 'text' => 'ORDER-A had a missing barcode report.'], $ids, '', '')['quote']);
+        $this->assertSame('The customer later found the barcode.', $projector->bind($evidence,
+            ['document_id' => 2, 'evidence_hash' => 'update', 'text' => 'The customer corrected the missing barcode report.'], $ids, '', '')['quote']);
+        $this->assertSame('LABEL-A was issued.', $projector->bind($evidence,
+            ['document_id' => 3, 'evidence_hash' => 'label', 'text' => 'LABEL-A was issued.'], $ids, '', '')['quote']);
+        $this->assertSame('entity_mismatch', $projector->bind($evidence,
+            ['document_id' => 4, 'evidence_hash' => 'other', 'text' => 'A barcode is missing.'], $ids, '', '')['reason']);
+        $this->assertSame('entity_mismatch', $projector->bind($evidence,
+            ['document_id' => 1, 'evidence_hash' => 'first', 'text' => 'ORDER-A and LABEL-A were shipped together.'], $ids, '', '')['reason']);
+        $alternatives = $projector->alternatives($evidence, $ids, 'ORDER-A: barcode reported missing.', '', '', 1);
+        $this->assertContains('The customer later found the barcode.', array_column($alternatives, 'source'));
+        $this->assertNotContains('A different customer has no barcode.', array_column($alternatives, 'source'));
+    }
 }

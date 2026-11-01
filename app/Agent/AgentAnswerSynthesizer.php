@@ -550,7 +550,12 @@ PROMPT;
         }
         $submission = $this->submissionTool();
         if ($sourceRefs !== []) {
-            $submission['function']['parameters']['properties']['claims']['items']['properties']['source_ref']['enum'] = array_values(array_unique($sourceRefs));
+            $claimSchema = &$submission['function']['parameters']['properties']['claims']['items'];
+            $claimSchema['properties']['source_ref']['enum'] = array_values(array_unique($sourceRefs));
+            $claimSchema['required'] = ['text', 'quote', 'source_ref'];
+            unset($claimSchema['properties']['document_id'], $claimSchema['properties']['tool_execution_id'], $claimSchema['properties']['evidence_hash']);
+            unset($claimSchema);
+            $system .= "\nFor this submission copy the mandatory source_ref for every claim. The host supplies the IDs and full hash; do not emit legacy identity fields. Each claim must stand alone and contain only facts supported by that ONE source. Keep email observations separate from live-record observations; do not combine them into a comparison claim that one source cannot support.";
         }
         // A table in document text is not a structured tool artifact. Tell the
         // draft which handoff can actually be rendered before it omits rows.

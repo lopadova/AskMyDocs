@@ -186,6 +186,10 @@ final class AgentAnswerSynthesizerTest extends TestCase
             $reference = $payload['evidence']['documents'][0]['evidence'][0]['source_ref'];
             $this->assertSame('d252_'.substr($hash, 0, 12), $reference);
             $this->assertSame([$reference], data_get($options, 'tools.0.function.parameters.properties.claims.items.properties.source_ref.enum'));
+            $schema = data_get($options, 'tools.0.function.parameters.properties.claims.items');
+            $this->assertSame(['text', 'quote', 'source_ref'], $schema['required']);
+            $this->assertArrayNotHasKey('evidence_hash', $schema['properties']);
+            $this->assertArrayNotHasKey('document_id', $schema['properties']);
             $this->assertFalse($payload['table_artifact_available']);
             $this->assertSame([false], data_get($options, 'tools.0.function.parameters.properties.render_table.enum'));
             $this->assertStringContainsString('put the actual requested records and values in source-bound claims', $system);
