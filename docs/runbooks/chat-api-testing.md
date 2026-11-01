@@ -259,3 +259,15 @@ worker. Provider e retrieval sono fixture; non contattano servizi esterni.
 Il client ha test per ripresa delle pagine, file privati, credenziali,
 invio incerto senza duplicazione e scadenza dell'osservazione senza annullamento.
 Il funzionamento sul server va verificato dopo deploy e provisioning del token.
+
+Gli export distinguono anche il componente in cui l'interpretazione si ferma
+(`failure_details.component`). Un errore del contratto di focus conserva un
+codice chiuso in `contract_error`, riusato dal solo tentativo di correzione
+previsto. Non vengono copiati corpi HTTP, header o messaggi arbitrari del provider.
+
+Per i seguiti, la navigazione conserva nomi e valori dei soli campi identità
+dichiarati dal connettore, con tool e percorso del record. Gli estratti di
+affermazioni mostrate nella chat (al massimo dieci da 240 caratteri per risposta)
+servono soltanto a capire riferimenti come «le due registrazioni». Sono ammessi
+solo da fonti ancora autorizzate e selezionate e non sostituiscono rilettura,
+aggiornamento, timestamp o verifica del supporto dei fatti.

@@ -40,20 +40,27 @@ class EvidenceAccessTest extends TestCase
         return AgentExecutionContext::fromArray($run->getAttributes());
     }
 
-    private function tool(AgentRun $run): array
+    private function tool(AgentRun $run, bool $customIdentity = false): array
     {
         $definition = app(AgentToolRegistry::class)->forContext($this->context($run), $run->user)['search_knowledge_base'];
         $execution = $run->toolExecutions()->create(['logical_index' => 1, 'tool_name' => $definition->name,
             'tool_kind' => $definition->kind, 'status' => 'completed']);
-        $body = ['records' => [['id' => 'TRACK-55', 'customerId' => 'CUSTOMER-X', 'status' => 'scheduled']]];
+        $body = ['records' => [[($customIdentity ? 'erp_reference' : 'id') => 'TRACK-55', 'customerId' => 'CUSTOMER-X', 'status' => 'scheduled']]];
         return ['execution_id' => $execution->id, 'tool' => $definition->name, 'executor_reference' => $definition->executorReference,
+            ...($customIdentity ? ['presentation' => ['identity_fields' => ['erp_reference']]] : []),
             'result' => $body, 'evidence_hash' => hash('sha256', json_encode($body, JSON_UNESCAPED_UNICODE)), 'retrieved_at' => now()->toIso8601String()];
     }
 
-    public function test_live_snapshot_is_not_reused_for_a_new_question_but_an_explicit_recap_can_use_it(): void
+    public static function identityContracts(): array
+    {
+        return ['standard' => [false], 'declared' => [true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('identityContracts')]
+    public function test_live_snapshot_is_not_reused_for_a_new_question_but_an_explicit_recap_can_use_it(bool $customIdentity): void
     {
         $previous = $this->runFixture();
-        $tool = $this->tool($previous);
+        $tool = $this->tool($previous, $customIdentity);
         $previous->forceFill(['result_json' => ['evidence' => ['api_tools' => [$tool]]]])->save();
         $conversation = $previous->conversation;
         $memory = app(ConversationReasoning::class);
@@ -83,10 +90,11 @@ class EvidenceAccessTest extends TestCase
         $this->assertSame([], $access->current($run, $this->context($run), ['api_tools' => [$tool]])['api_tools']);
     }
 
-    public function test_mixed_turn_reuses_observations_only_for_its_contextual_task_and_current_permissions(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('identityContracts')]
+    public function test_mixed_turn_reuses_observations_only_for_its_contextual_task_and_current_permissions(bool $customIdentity): void
     {
         $previous = $this->runFixture();
-        $tool = $this->tool($previous);
+        $tool = $this->tool($previous, $customIdentity);
         $previous->forceFill(['result_json' => ['evidence' => ['api_tools' => [$tool]]]])->save();
         $memory = app(ConversationReasoning::class);
         $conversation = $previous->conversation;

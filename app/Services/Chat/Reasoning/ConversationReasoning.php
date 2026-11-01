@@ -139,7 +139,7 @@ final readonly class ConversationReasoning
         });
     }
 
-    /** Context contains identifiers and provenance, never prior assistant prose or stale live values. */
+    /** Navigation and attributed dialogue quotes never authorize new business facts. */
     public function context(Model $owner, ?User $actor = null, ?RetrievalFilters $filters = null, ?int $beforeTurn = null, array $allowedTools = [], ?string $question = null): array
     {
         if ((string) $owner->tenant_id !== (string) app(\App\Support\TenantContext::class)->current()
@@ -150,6 +150,8 @@ final readonly class ConversationReasoning
         $known = array_keys($state['entities']);
         $relations = $references = $validDocumentHashes = [];
         foreach ($state['evidence'] as $reference) {
+            if (($reference['kind'] ?? '') === 'tool' && $allowedTools !== []
+                && ! in_array($reference['tool'] ?? '', $allowedTools, true)) continue;
             if (! $this->authorized($owner, $reference, $actor, $filters)) {
                 continue;
             }
@@ -162,7 +164,7 @@ final readonly class ConversationReasoning
                     $validDocumentHashes[] = hash('sha256', $current['excerpt']);
                 }
             }
-            $references[] = array_intersect_key($reference, array_flip(['kind', 'document_id', 'chunk_id', 'execution_id', 'identifiers', 'retrieved_at', 'status']));
+            $references[] = array_intersect_key($reference, array_flip(['kind', 'document_id', 'chunk_id', 'execution_id', 'tool', 'record_path', 'identifier_fields', 'identifiers', 'hash', 'retrieved_at', 'status']));
         }
         $focus = $state['focus'];
         $focus['identifiers'] = array_values(array_intersect($focus['identifiers'] ?? [], $known));
@@ -307,7 +309,8 @@ final readonly class ConversationReasoning
             }
             foreach (EvidenceProjector::records($tool) as $entry) {
                 $record = $entry['record'];
-                $ids = EvidenceProjector::identities($record);
+                $fields = $tool['presentation']['identity_fields'] ?? [];
+                $ids = EvidenceProjector::identities($record, $fields);
                 if ($ids === [] || ! is_int($tool['execution_id'] ?? null)) {
                     continue;
                 }
@@ -323,6 +326,8 @@ final readonly class ConversationReasoning
                 }
                 $references['tool:'.$tool['tool'].':'.$ids[0]] = ['kind' => 'tool', 'execution_id' => $tool['execution_id'],
                     'tool' => $tool['tool'], 'record_path' => $entry['path'], 'hash' => $tool['evidence_hash'] ?? '',
+                    'identifier_fields' => array_intersect_key($record, array_flip(array_filter($fields,
+                        fn ($field) => is_string($field) && is_scalar($record[$field] ?? null)))),
                     'identifiers' => array_values(array_unique([...$ids, ...array_column($relations, 'to')])),
                     'relations' => $relations, 'status' => 'refresh_required', 'retrieved_at' => $tool['retrieved_at'] ?? now()->toIso8601String()];
             }
@@ -431,6 +436,8 @@ final readonly class ConversationReasoning
                     && in_array($citation['document_id'] ?? null, $allowedDocuments, true))));
                 $dialogue[] = ['role' => 'assistant', 'answer_status' => $metadata['completeness'] ?? null,
                     'action' => $action, 'sources_shown' => $shown,
+                    'quoted_claims_for_reference_only' => $this->quotedClaims($metadata,
+                        (string) ($record->content ?? data_get($record->args_json, 'content', '')), $authorizedReferences),
                     'answered_questions' => data_get($metadata, 'reasoning.subquestions', []),
                     // Offers are server-written dialogue acts, not business facts.
                     // This replaces parsing the previous answer for "would you like...".
@@ -441,6 +448,28 @@ final readonly class ConversationReasoning
             }
         }
         return $dialogue;
+    }
+
+    /** What was visibly said resolves references; it never reapproves its facts. */
+    private function quotedClaims(array $metadata, string $answer, array $references): array
+    {
+        $quotes = [];
+        foreach ((array) data_get($metadata, 'grounding.claims', []) as $claim) {
+            if (! is_array($claim) || ! is_string($claim['evidence_hash'] ?? null)) continue;
+            $text = $claim['text'] ?? null;
+            if (! is_string($text) || $text === '' || ! str_contains($answer, $text)) continue;
+            $source = collect($references)->first(fn ($reference) =>
+                is_string($reference['hash'] ?? null) && ($reference['hash'] ?? '') !== ''
+                && hash_equals($reference['hash'], (string) ($claim['evidence_hash'] ?? ''))
+                && (($reference['kind'] === 'document' && ($reference['document_id'] ?? null) === ($claim['document_id'] ?? null))
+                    || ($reference['kind'] === 'tool' && ($reference['execution_id'] ?? null) === ($claim['tool_execution_id'] ?? null))));
+            if ($source === null) continue;
+            $quotes[] = ['quoted_text' => mb_substr($text, 0, 240), 'truncated' => mb_strlen($text) > 240,
+                'source_navigation' => array_intersect_key($source,
+                    array_flip(['kind', 'document_id', 'execution_id', 'tool', 'record_path', 'identifiers', 'identifier_fields']))];
+            if (count($quotes) >= 10) break;
+        }
+        return $quotes;
     }
 
     private function bounded(array $state): array

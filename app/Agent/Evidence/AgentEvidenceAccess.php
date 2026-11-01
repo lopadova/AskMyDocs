@@ -112,7 +112,7 @@ final readonly class AgentEvidenceAccess
     private function contextTaskAllows(AgentRun $run, array $tool): bool
     {
         $tasks = \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding', []))->contextOnlyTasks();
-        $identities = array_merge([], ...array_map(fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identities($entry['record']),
+        $identities = array_merge([], ...array_map(fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identities($entry['record'], $tool['presentation']['identity_fields'] ?? []),
             \App\Services\Chat\Reasoning\EvidenceProjector::records($tool)));
         foreach ($tasks as $task) {
             if (array_intersect($task['identifiers'] ?? [], $identities) !== []) {

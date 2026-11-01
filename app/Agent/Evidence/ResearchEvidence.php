@@ -12,7 +12,7 @@ final class ResearchEvidence
     {
         $scoped = [];
         foreach ($tools as $tool) {
-            $identities = array_merge([], ...array_map(fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identities($entry['record']),
+            $identities = array_merge([], ...array_map(fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identities($entry['record'], $tool['presentation']['identity_fields'] ?? []),
                 \App\Services\Chat\Reasoning\EvidenceProjector::records($tool)));
             $flows = array_keys(array_filter($subquestions, fn ($sub) => ($sub['requires_research'] ?? false) === false
                 && array_intersect($sub['identifiers'] ?? [], $identities) !== []));
