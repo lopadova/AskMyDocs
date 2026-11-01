@@ -80,6 +80,30 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertSame(.8, $result['semantic_validation'][0]['checks'][0]['threshold']);
     }
 
+    public function test_a_negative_case_receipt_claim_cannot_override_a_supported_historical_receipt(): void
+    {
+        $this->fake(['claim_1' => 'unsupported']);
+        $receipt = 'CASE-A ORDER-A: on September 28 the correct article arrived and the mission was closed.';
+        $pickup = 'CASE-A ORDER-A: on October 2 the rejected article was picked up.';
+        $evidence = ['documents' => [
+            ['document_id' => 1, 'title' => 'CASE-A ORDER-A', 'evidence' => [['content' => $receipt, 'evidence_hash' => 'r', 'complete_source' => true]]],
+            ['document_id' => 2, 'title' => 'CASE-A ORDER-A update', 'evidence' => [['content' => $pickup, 'evidence_hash' => 'p', 'complete_source' => true]]],
+        ]];
+        $claims = [
+            ['text' => 'The correct article for ORDER-A arrived on September 28 and its mission was closed.', 'document_id' => 1, 'evidence_hash' => 'r'],
+            ['text' => 'The CASE-A correspondence does not document receipt or closure of the correct return.', 'document_id' => 2, 'evidence_hash' => 'p'],
+        ];
+        $sub = ['topic' => 'case', 'identifiers' => ['CASE-A', 'ORDER-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Compare receipt and pickup for CASE-A.', $evidence, $claims,
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
+        $this->assertTrue($result['partial']);
+        Http::assertSent(fn ($request) => isset($request['state']['sources'])
+            && in_array($receipt, $request['state']['sources'], true) && in_array($pickup, $request['state']['sources'], true));
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('literalVetoes')]
     public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(string $category): void
     {

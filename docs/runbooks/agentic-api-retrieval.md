@@ -297,6 +297,13 @@ allineato a `record_sources`. Il server risolve riferimento, hash, esecuzione e
 Le risposte senza record non offrono riferimenti fattuali. I riferimenti legacy
 restano leggibili per le affermazioni già persistite, con gli stessi controlli.
 
+Le conclusioni di assenza devono confrontare tutte le fonti disponibili dello
+stesso caso. Un evento storico confermato non diventa assente perché una risposta
+successiva non ripete il codice o manca lo stato corrente del gestionale.
+Sintesi e verifica tengono separati il fatto documentato, un collegamento ancora
+incerto e l'eventuale mancanza di conferma di un altro evento. Queste istruzioni
+non sostituiscono i controlli di identità, supporto e confidenza.
+
 Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
 `"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
 ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
