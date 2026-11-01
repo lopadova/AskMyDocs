@@ -11,27 +11,28 @@ final class FocusContract
 {
     public static function schema(): array
     {
-        $strings = ['type' => 'array', 'items' => ['type' => 'string']];
+        $strings = ['type' => 'array', 'maxItems' => 12, 'items' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120]];
         $focus = ['type' => 'object', 'additionalProperties' => false,
             'required' => ['topic', 'identifiers', 'aspect', 'fields'], 'properties' => [
-                'topic' => ['type' => 'string'], 'identifiers' => $strings,
-                'aspect' => ['type' => 'string', 'description' => 'Use the exact machine key next_steps for an operational assessment, advice or recommendation about what to do. Never translate this reserved key. Other aspects describe the requested facts.'], 'fields' => $strings + ['description' => 'Use ["*"] for general information/all details. For a specific attribute use canonical machine keys such as status, trackingCode, name; do not translate keys or invent extra attributes. Use [] for next_steps and when no structured attribute is requested.'],
+                'topic' => ['type' => 'string', 'maxLength' => 300], 'identifiers' => $strings,
+                'aspect' => ['type' => 'string', 'maxLength' => 300, 'description' => 'Use the exact machine key next_steps for an operational assessment, advice or recommendation about what to do. Never translate this reserved key. Other aspects describe the requested facts.'], 'fields' => $strings + ['description' => 'Use ["*"] for general information/all details. For a specific attribute use canonical machine keys such as status, trackingCode, name; do not translate keys or invent extra attributes. Use [] for next_steps and when no structured attribute is requested.'],
             ]];
         $subquestion = $focus;
         $subquestion['required'] = [...$focus['required'], 'question', 'kb_queries', 'context_mode', 'requires_research'];
         $subquestion['properties'] += [
             'context_mode' => QuestionContextMode::schema(),
             'requires_research' => ['type' => 'boolean'],
-            'question' => ['type' => 'string', 'description' => 'A standalone question in the user language for ONLY this request, with resolved references.'],
-            'kb_queries' => $strings + ['description' => 'Empty when requires_research=false, otherwise 1-3 independent KB searches serving ONLY this question.'],
+            'question' => ['type' => 'string', 'maxLength' => 500, 'description' => 'A standalone question in the user language for ONLY this request, with resolved references.'],
+            'kb_queries' => ['type' => 'array', 'maxItems' => 3, 'items' => ['type' => 'string', 'maxLength' => 500],
+                'description' => 'Empty when requires_research=false, otherwise 1-3 independent KB searches serving ONLY this question.'],
         ];
         return [
             'transition' => ['type' => 'string', 'enum' => ['new', 'continue', 'switch', 'correct', 'recap', 'provenance']],
             'focus' => $focus,
-            'subquestions' => ['type' => 'array', 'items' => $subquestion, 'description' => 'Decompose unrelated requests into separate standalone questions. Include the EXACT focus topic, identifiers, aspect and fields in one subquestion, without adding a paraphrased duplicate of that request. Keep dependent steps for one request together: one case history and its corresponding live API lookup form one task. Never copy previous subquestions.'],
+            'subquestions' => ['type' => 'array', 'maxItems' => 10, 'items' => $subquestion, 'description' => 'Decompose unrelated requests into separate standalone questions. Include the EXACT focus topic, identifiers, aspect and fields in one subquestion, without adding a paraphrased duplicate of that request. Keep dependent steps for one request together: one case history and its corresponding live API lookup form one task. Never copy previous subquestions.'],
             'resolved_references' => $strings + ['description' => 'Every identifier used in focus or subquestions but not literally typed now MUST be listed here, and MUST be in known_identifiers.'],
             'needs_clarification' => ['type' => 'boolean'],
-            'clarification' => ['type' => 'string'],
+            'clarification' => ['type' => 'string', 'maxLength' => 500],
         ];
     }
 
@@ -50,9 +51,18 @@ final class FocusContract
         }
         foreach ([$data['focus'], ...$data['subquestions']] as $focus) {
             if (! is_array($focus) || ! in_array(count($focus), [4, 6, 8], true) || ! is_string($focus['topic'] ?? null)
-                || ! is_string($focus['aspect'] ?? null) || mb_strlen($focus['topic']) > 300 || mb_strlen($focus['aspect']) > 300
-                || array_diff(self::strings($focus['identifiers'] ?? null), [...$literal, ...$resolved]) !== []) {
-                throw new \UnexpectedValueException('Invalid focus reference.');
+                || ! is_string($focus['aspect'] ?? null) || mb_strlen($focus['topic']) > 300 || mb_strlen($focus['aspect']) > 300) {
+                throw new \UnexpectedValueException('Invalid focus shape.');
+            }
+            $missing = array_diff(self::strings($focus['identifiers'] ?? null), [...$literal, ...$resolved]);
+            if ($missing !== []) {
+                // Selecting a registered entity and listing that exact entity
+                // as a context reference are one deterministic consistency
+                // operation. Never infer or register an unknown identifier.
+                if (($data['references_previous_turn'] ?? false) !== true || array_diff($missing, $known) !== []) {
+                    throw new \UnexpectedValueException('Invalid focus reference.');
+                }
+                $resolved = self::strings(array_values(array_unique([...$resolved, ...$missing])));
             }
             self::strings($focus['fields'] ?? null);
             if (count($focus) === 8 && (! is_string($focus['context_mode'] ?? null)
@@ -69,6 +79,7 @@ final class FocusContract
                 throw new \UnexpectedValueException('Invalid research question.');
             }
         }
+        $data['resolved_references'] = $resolved;
         if ($conversation) {
             if ($data['subquestions'] !== [] || $data['kb_queries'] !== [] || $resolved !== []
                 || $data['needs_clarification'] || $data['clarification'] !== '' || $data['transition'] !== 'new'

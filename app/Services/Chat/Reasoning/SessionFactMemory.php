@@ -268,7 +268,7 @@ final readonly class SessionFactMemory
     /** Exact rendering reuses the verification, not a previous assistant message. */
     public function answer(Model $owner, QuestionUnderstanding $understanding, ?User $actor = null, ?RetrievalFilters $filters = null, array $allowedTools = []): ?AgentAnswer
     {
-        if (! ($understanding->memoryResolution['complete'] ?? false)) return null;
+        if (! ($understanding->memoryResolution['complete'] ?? false) || $understanding->requiresComposition) return null;
         $available = array_column($this->projection($owner, $actor, $filters, $allowedTools, identifiers: $understanding->targetIdentifiers()), null, 'fact_id');
         $ids = $understanding->memoryResolution['fact_ids'] ?? [];
         if ($ids === [] || array_diff($ids, array_keys($available)) !== []) return null;

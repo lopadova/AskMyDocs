@@ -232,6 +232,12 @@ che ne dichiarano il supporto. `AGENT_WAVE_PROCESS_CONCURRENCY=2` limita i
 bootstrap PHP simultanei indipendentemente dalla larghezza logica della wave.
 La diagnostica distingue `wave_concurrency` e `wave_process_concurrency`.
 
+Quando manca ancora la prima osservazione, una stima di pianificazione più
+lunga del tempo residuo non ferma da sola la ricerca. Il planner usa un budget
+condiviso e decrescente per richiesta e correzione, lasciando il minimo previsto
+per la wave e la riserva esistente per la sintesi. Dopo la prima raccolta resta
+il controllo conservativo prima di pianificare altre wave.
+
 Per i thread lunghi verificare `DECISION_MAX_STATE_BYTES=131072`: un override
 esplicito precedente a 32.768 continua a prevalere. Controllare nel nuovo export
 il limite effettivo e la concorrenza dei processi prima di confrontare le due
@@ -264,6 +270,11 @@ Gli export distinguono anche il componente in cui l'interpretazione si ferma
 (`failure_details.component`). Un errore del contratto di focus conserva un
 codice chiuso in `contract_error`, riusato dal solo tentativo di correzione
 previsto. Non vengono copiati corpi HTTP, header o messaggi arbitrari del provider.
+Un'identità già selezionata dal modello e presente esattamente nel registro
+della stessa chat può completare la sola dichiarazione `resolved_references`
+omessa in un seguito. Non vengono indovinati o registrati nuovi ID, né ereditati
+soggetti per richieste dichiarate nuove. Errori di forma e identità restano
+distinti; una normalizzazione puramente dichiarativa non cambia il piano.
 
 Per i seguiti, la navigazione conserva nomi e valori dei soli campi identità
 dichiarati dal connettore, con tool e percorso del record. Gli estratti di
@@ -271,3 +282,9 @@ affermazioni mostrate nella chat (al massimo dieci da 240 caratteri per risposta
 servono soltanto a capire riferimenti come «le due registrazioni». Sono ammessi
 solo da fonti ancora autorizzate e selezionate e non sostituiscono rilettura,
 aggiornamento, timestamp o verifica del supporto dei fatti.
+
+`requires_composition` distingue la copertura dei fatti dalla presentazione
+richiesta. Una tabella, traduzione o riscrittura può usare fonti già verificate
+senza aggiornarle, ma passa comunque dalla composizione della risposta: non
+viene sostituita dalla concatenazione letterale dei fatti in memoria. Il flag
+resta separato da `requires_research` e non approva nuovi fatti.

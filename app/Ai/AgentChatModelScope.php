@@ -12,6 +12,20 @@ use App\Support\TenantContext;
 final class AgentChatModelScope
 {
     private ?AgentExecutionContext $context = null;
+    private ?\Carbon\CarbonImmutable $requestDeadline = null;
+
+    /** A shared stage budget includes corrections; it never extends an outer budget. */
+    public function withinBudget(float $seconds, callable $callback): mixed
+    {
+        $previous = $this->requestDeadline;
+        $deadline = \Carbon\CarbonImmutable::now()->addMilliseconds((int) floor(max(0, $seconds) * 1000));
+        $this->requestDeadline = $previous !== null && $previous->lessThan($deadline) ? $previous : $deadline;
+        try {
+            return $callback();
+        } finally {
+            $this->requestDeadline = $previous;
+        }
+    }
 
     public function within(AgentExecutionContext $context, callable $callback): mixed
     {
@@ -28,6 +42,11 @@ final class AgentChatModelScope
 
     public function options(array $options): array
     {
+        if ($this->requestDeadline !== null) {
+            $seconds = (int) floor(now()->diffInSeconds($this->requestDeadline, false));
+            if ($seconds < 1) throw new \DomainException('agent_stage_deadline_exhausted');
+            $options['timeout'] = min($seconds, max(1, (int) ($options['timeout'] ?? config('agent.synthesis.request_timeout_seconds', 60))));
+        }
         if ($this->context === null) {
             return $options;
         }

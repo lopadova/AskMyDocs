@@ -13,6 +13,23 @@ use Tests\TestCase;
 
 final class ChatQuestionPreprocessorTest extends TestCase
 {
+    public function test_new_presentation_is_interpreted_independently_from_new_research(): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturnUsing(function ($provider, $system, $messages, $options) {
+            $schema = $options['response_format']['json_schema']['schema'];
+            $this->assertContains('requires_composition', $schema['required']);
+            $this->assertSame('boolean', $schema['properties']['requires_composition']['type']);
+            return $this->response(['language' => 'it', 'intent' => 'Presentare in tabella i fatti già mostrati',
+                'action' => 'recap', 'kb_queries' => [], 'mentions' => [], 'references_previous_turn' => true,
+                'context_mode' => 'conversation', 'requires_research' => false, 'requires_composition' => true]);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Metti i fatti appena mostrati in una tabella.');
+        $this->assertTrue($result->available);
+        $this->assertTrue($result->requiresComposition);
+        $this->assertFalse($result->needsResearch());
+    }
+
     public function test_focus_repair_receives_a_closed_diagnostic_without_loosening_registered_references(): void
     {
         $make = static function ($id): array {

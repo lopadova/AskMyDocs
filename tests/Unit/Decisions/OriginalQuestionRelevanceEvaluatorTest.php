@@ -135,6 +135,34 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_a_secondary_reply_request_has_its_own_task_and_forwarded_speaker_context(): void
+    {
+        $this->decisions(.98);
+        $tasks = [
+            ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'items', 'fields' => ['items'],
+                'question' => 'Which items are in ORDER-A?', 'kb_queries' => ['ORDER-A items']],
+            ['topic' => 'correspondence', 'identifiers' => ['ORDER-B'], 'aspect' => 'later_reply', 'fields' => [],
+                'question' => 'Did ORDER-B customer reply after June 1?', 'kb_queries' => ['ORDER-B later reply']],
+        ];
+        $source = 'June 8: Support forwarded the ORDER-B customer reply: "The replacement arrived."';
+        $result = app(OriginalQuestionRelevanceEvaluator::class)->apply('Compare ORDER-A items and check whether the ORDER-B customer replied after June 1.',
+            ['valid' => true, 'claims' => [['text' => 'On June 8 support forwarded the ORDER-B customer reply: "The replacement arrived."',
+                'quote' => $source, 'subquestion_id' => 1]], 'semantic_validation' => []], ['subquestions' => $tasks]);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        Http::assertSent(function ($request) use ($source, $tasks) {
+            $candidate = $request['state']['candidates'][0];
+            $this->assertSame(1, $candidate['subquestion_id']);
+            $task = $request['state']['interpreted_tasks_for_reference_resolution_only'][$candidate['subquestion_id']];
+            $this->assertSame($tasks[1]['question'], $task['question']);
+            $this->assertSame($source, $request['state']['sources'][$candidate['source_ref']]);
+            $this->assertArrayNotHasKey('requested_task', $candidate, 'The task is shared, not duplicated per claim.');
+            $this->assertArrayNotHasKey('kb_queries', $task);
+            $this->assertArrayNotHasKey('kb_queries', $request['state']['interpreted_tasks_for_reference_resolution_only'][0]);
+            return true;
+        });
+    }
+
     public function test_old_retrieval_plans_do_not_exhaust_the_budget_or_remove_authorized_source_context(): void
     {
         $this->decisions(.99);

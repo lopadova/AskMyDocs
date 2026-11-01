@@ -304,6 +304,13 @@ Sintesi e verifica tengono separati il fatto documentato, un collegamento ancora
 incerto e l'eventuale mancanza di conferma di un altro evento. Queste istruzioni
 non sostituiscono i controlli di identità, supporto e confidenza.
 
+La pertinenza conserva l'aspetto richiesto della singola affermazione e la voce
+originale di una citazione inoltrata; una risposta a una domanda secondaria non
+deve rispondere anche alla primaria. La sintesi distingue la condizione posta
+da un attore dalla richiesta di verifica di un altro, preservando le decisioni
+successive. Nei confronti tra dato previsto e osservato riporta entrambi i valori
+richiesti; una quantità rientrata zero non identifica il sostituto fisico.
+
 Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
 `"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
 ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
@@ -332,6 +339,10 @@ righe Gescat solo per il tenant e il servizio noti, preservando ruoli manuali.
 
 Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
 quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.
+Se la stessa ricerca include codici opachi e nomi di attori o sistemi, i codici
+ancorano i candidati; i nomi contribuiscono al ranking dentro quel perimetro.
+La menzione di un corriere non aggiunge quindi tutti i suoi documenti al caso.
+Le ricerche indipendenti contenenti soltanto un nome restano disponibili.
 La selezione usa la data registrata della fonte per gli aggiornamenti, apre
 l'inizio della risposta recente e conserva una finestra pertinente ai termini
 non identificativi della query. Il punteggio lessicale favorisce termini

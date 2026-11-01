@@ -95,6 +95,18 @@ final class AgentWaveCoordinator
                 max(1, (float) config('agent.waves.minimum_dispatch_seconds', 5)));
             $planningSeconds = $initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
                 (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000);
+            // A first observation must not be abandoned merely because the
+            // planning estimate exceeds the remaining collection allowance.
+            // Bound the actual requests (including correction) instead, still
+            // leaving a useful wave and the existing answer reserve intact.
+            if ($initialPlan === null && $completed === []) {
+                $planningSeconds = min($planningSeconds, max(0, $this->researchTimeRemaining($run, $budget) - $minimumWaveSeconds));
+                $minimumPlanningSeconds = min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
+                if ($planningSeconds < $minimumPlanningSeconds) {
+                    $this->insufficientResearchTime($run, $budget, $minimumPlanningSeconds + $minimumWaveSeconds, 'research_planning');
+                    return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
+                }
+            }
             if ($this->insufficientResearchTime($run, $budget, $planningSeconds + $minimumWaveSeconds, 'research_planning')) {
                 return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
             }
@@ -104,14 +116,19 @@ final class AgentWaveCoordinator
             $this->events->publish($run, $completed === [] ? 'plan.created' : 'plan.updated', $completed === [] ? 'plan.created' : 'plan.updated');
             $start = microtime(true);
             try {
-                $plan = $initialPlan ?? $this->diagnostics->measure($run, 'planner.decide', fn () => $this->planner->decide(
+                $plan = $initialPlan ?? $this->diagnostics->measure($run, 'planner.decide', fn () => app(\App\Ai\AgentChatModelScope::class)->withinBudget($planningSeconds, fn () => $this->planner->decide(
                     $run, (int) $budget->snapshot()['iterations'], $question, $context, $tools, $snapshot, $evidence,
                     $this->history($completed), $results, json_encode([
                         'previous_context' => $turnContext,
                         'question_understanding' => data_get($run->result_json, 'question_understanding'),
                         'previous_waves' => data_get($run->result_json, 'waves', []),
-                    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)), ['wait_reason' => 'provider_response']);
+                    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
             } catch (\Throwable $exception) {
+                $minimumAfterFailure = $minimumWaveSeconds + ($completed === []
+                    ? min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30))) : 0);
+                if ($this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
+                    return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
+                }
                 if (! $evidence->hasEvidence()) throw $exception;
                 $evidence->addWarning('planner_recovery', 'agent_planner');
                 $this->checkpoint($run, $evidence, $completed, $results);

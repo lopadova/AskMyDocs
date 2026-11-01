@@ -49,6 +49,32 @@ class AgentChatModelScopeTest extends TestCase
             fn () => app(AgentChatModelScope::class)->options([]));
     }
 
+    public function test_stage_budget_is_shared_by_corrections_and_restored_after_nested_errors(): void
+    {
+        $this->freezeTime();
+        $scope = app(AgentChatModelScope::class);
+        $scope->withinBudget(27, function () use ($scope): void {
+            $this->assertSame(27, $scope->options([])['timeout']);
+            $this->travel(10)->seconds();
+            $this->assertSame(17, $scope->options([])['timeout']);
+            try {
+                $scope->withinBudget(60, function () use ($scope): void {
+                    $this->assertSame(17, $scope->options([])['timeout'], 'A nested stage cannot extend the collection allowance.');
+                    throw new \RuntimeException('stage');
+                });
+            } catch (\RuntimeException) {}
+            $this->assertSame(3, $scope->options(['timeout' => 3])['timeout']);
+            $this->travel(17)->seconds();
+            try {
+                $scope->options([]);
+                $this->fail('A correction must not get another full request budget.');
+            } catch (\DomainException $exception) {
+                $this->assertSame('agent_stage_deadline_exhausted', $exception->getMessage());
+            }
+        });
+        $this->assertArrayNotHasKey('timeout', $scope->options([]));
+    }
+
     public function test_request_timeout_tracks_the_active_worker_and_does_not_leak_after_it_finishes(): void
     {
         $this->travelTo(now()->startOfSecond());

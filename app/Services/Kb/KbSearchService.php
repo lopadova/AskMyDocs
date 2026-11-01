@@ -945,6 +945,11 @@ class KbSearchService
         if ($identifiers === []) {
             return collect();
         }
+        // A case code anchors this search. Actor/system names may rank its
+        // sources, but must not OR an entire merchant/carrier corpus into it.
+        // A separate name-only task still searches that name normally.
+        $hasExactCode = array_filter($identifiers, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id) && preg_match('/[\pN_-]/u', $id));
+        $anchors = $hasExactCode !== [] ? array_values($hasExactCode) : $identifiers;
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
         $tenant = app(TenantContext::class)->current();
         $query = KnowledgeChunk::query()->forTenant($tenant)
@@ -958,15 +963,15 @@ class KbSearchService
         // LOWER(...) trigram index. A correlated title EXISTS inside a body
         // OR forces a scan of the chunk population even for a rare code.
         $bodyIds = (clone $query)->withoutEagerLoads()->select('knowledge_chunks.id')
-            ->where(function ($q) use ($identifiers): void {
-                foreach ($identifiers as $id) {
+            ->where(function ($q) use ($anchors): void {
+                foreach ($anchors as $id) {
                     $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
                     $q->orWhereRaw("LOWER(chunk_text) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
                 }
             });
         $titleDocuments = KnowledgeDocument::query()->forTenant($tenant)->select('id')
-            ->where(function ($q) use ($identifiers): void {
-                foreach ($identifiers as $id) {
+            ->where(function ($q) use ($anchors): void {
+                foreach ($anchors as $id) {
                     $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
                     $q->orWhereRaw("LOWER(title) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
                 }
@@ -1010,7 +1015,6 @@ class KbSearchService
         // MIN locates its opening matching window; MAX orders document arrivals
         // only for this navigation pool, never as the business/source date.
         $representatives = collect();
-        $hasExactCode = array_filter($identifiers, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id) && preg_match('/[\pN_-]/u', $id));
         if ($rankedChunks->count() === 64 && $hasExactCode !== []) {
             $representativeIds = (clone $query)->withoutEagerLoads()->reorder()
                 ->selectRaw('MIN(knowledge_chunks.id) AS id')->groupBy('knowledge_document_id')
