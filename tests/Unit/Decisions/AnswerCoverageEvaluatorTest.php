@@ -8,6 +8,44 @@ use Tests\TestCase;
 
 final class AnswerCoverageEvaluatorTest extends TestCase
 {
+    public function test_one_missing_task_vetoes_a_coarse_positive_coverage_judgment(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(fn () => Http::response(['model' => 'jev-test', 'answers' => [
+            'covered' => ['type' => 'noul', 'noul' => .99], 'task_0' => ['type' => 'noul', 'noul' => .99],
+            'task_1' => ['type' => 'noul', 'noul' => .2],
+        ]]));
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('Compare the item and explain the refund condition.',
+            ['documents' => [['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [[
+                'content' => 'CASE-A ordered ITEM-A. The merchant proposed a refund only if the returned pair is identical and conforming.', 'evidence_hash' => 'h',
+            ]]]]], [['text' => 'CASE-A ordered ITEM-A.', 'document_id' => 1]], ['subquestions' => [
+                ['question' => 'What item was ordered?', 'identifiers' => ['CASE-A']],
+                ['question' => 'What condition did the merchant state for the refund?', 'identifiers' => ['CASE-A']],
+            ]]);
+        $this->assertFalse($result['sufficient']);
+        $this->assertSame(.2, $result['probability_true']);
+        $this->assertSame(2, $result['requested_task_count']);
+        Http::assertSent(fn ($request) => count($request['questions']) === 3 && count($request['state']['requested_tasks']) === 2);
+    }
+
+    public function test_all_ten_tasks_are_checked_without_exceeding_the_transport_question_limit(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test']);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            return Http::response(['model' => 'jev-test', 'answers' => array_fill_keys(array_keys($request['questions']),
+                ['type' => 'noul', 'noul' => .99])]);
+        });
+        $tasks = array_map(fn ($i) => ['question' => 'Requested aspect '.$i, 'identifiers' => ['CASE-A']], range(0, 9));
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('All requested aspects?', ['documents' => [[
+            'document_id' => 1, 'title' => 'CASE-A', 'evidence' => [['content' => 'CASE-A original evidence.', 'evidence_hash' => 'h']],
+        ]]], [['text' => 'CASE-A.', 'document_id' => 1]], ['subquestions' => $tasks]);
+        $this->assertTrue($result['sufficient'], json_encode($result));
+        $this->assertSame([6, 6], array_map(fn ($pair) => count($pair[0]['questions']), Http::recorded()->all()));
+        $this->assertSame(range(0, 9), array_merge(...array_column($result['batches'], 'task_indexes')));
+    }
+
     public function test_coverage_checks_the_same_declared_source_limit_that_the_answer_will_render(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);

@@ -310,3 +310,9 @@ richiesta cortese esplicitamente chiesta dall'utente. Non ha riferimenti a fatti
 due controlli distinti verificano che sia richiesta e che non affermi stati,
 promesse o operazioni eseguite. I fatti aziendali mantengono la normale verifica
 delle fonti. Questo testo rimane una bozza e non autorizza l'invio di messaggi.
+
+La copertura controlla anche ogni domanda interpretata separatamente: un
+giudizio globale positivo non compensa un aspetto mancante. Le fonti restano
+complete e, quando serve, ripartite; anche i criteri sono divisi in gruppi entro
+i limiti di numero e dimensione. La copertura può richiedere una nuova bozza,
+ma non approva fatti né sostituisce i controlli di provenienza.
