@@ -60,6 +60,14 @@ final readonly class AgentEventPublisher
                 ->whereKey($run->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            // Terminal progress and durable tool state commit together. Emit each
+            // interrupted tool before the terminal event so connected clients close it too.
+            if ($locked->isTerminal() && in_array($type, ['run.failed', 'run.cancelled', 'run.completed', 'run.partial'], true)) {
+                foreach (app(AgentTerminalExecutionFinalizer::class)->close($locked) as $outcome) {
+                    $this->publish($locked, 'tool.failed', 'tool.failed', ['tool' => $outcome['tool']],
+                        [...$outcome, 'outcome_unknown' => true], canCancel: false);
+                }
+            }
             // The append log is authoritative, including runs affected by an older
             // stale-model save. The run-row lock serializes all branch publishers.
             $sequence = max((int) $locked->last_sequence, (int) $locked->events()->max('sequence')) + 1;

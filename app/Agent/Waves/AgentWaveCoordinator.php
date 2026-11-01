@@ -253,7 +253,12 @@ final class AgentWaveCoordinator
                 }
                 DB::transaction(function () use ($run, $item, $id, $observation, $started, $waveId, $budget,
                     &$evidence, &$completed, &$results, &$interactions, &$confirmation): void {
-                $execution = $item['execution'];
+                // Serialize result adoption with cancellation/queue failure. A child
+                // returning after terminal cleanup cannot resurrect its execution.
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                $this->control->ensureActive($locked);
+                $execution = $locked->toolExecutions()->whereKey($item['execution']->id)->firstOrFail();
+                if ($execution->status !== 'running') return;
                 $tool = $item['tool'];
                 $body = $this->masker->maskArray($observation->body) ?? [];
                 $execution->forceFill([
