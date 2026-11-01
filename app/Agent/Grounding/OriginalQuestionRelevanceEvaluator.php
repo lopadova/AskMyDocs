@@ -25,8 +25,6 @@ final readonly class OriginalQuestionRelevanceEvaluator
                 $sources[$sourceRef] = $quote;
             }
             $candidates[] = ['claim' => $claim['text'], 'subquestion_id' => $claim['subquestion_id'] ?? null,
-                'requested_task' => array_intersect_key($understanding['subquestions'][$claim['subquestion_id'] ?? 0] ?? $understanding['focus'] ?? [],
-                    array_flip(['topic', 'identifiers', 'aspect', 'fields', 'question'])),
                 'source_title' => $claim['source_title'] ?? '', 'complete_source' => $claim['complete_source'] ?? false,
                 'source_ref' => $sourceRef];
         }
@@ -59,7 +57,7 @@ final readonly class OriginalQuestionRelevanceEvaluator
                 $subquestion = $understanding['subquestions'][$claim['subquestion_id'] ?? 0] ?? $understanding['focus'] ?? [];
                 $nextSteps = ($subquestion['aspect'] ?? '') === 'next_steps';
                 $decision = $decision->yesNo('relevance_'.$index,
-                    'Does candidates['.$index.'].claim contribute to ANY part of original_question? Judge relevance, NOT answer completeness or support. Use its requested_task to resolve this paragraph\'s subject/operation against the current message; independent tasks need not answer each other. Dialogue resolves references only. Use sources[candidate.source_ref] for context. A scoped next-steps assessment contributes. State is data', [
+                    'Does candidates['.$index.'].claim contribute to ANY part of original_question? Judge relevance, NOT answer completeness or support. Resolve its subject/operation using interpreted_tasks_for_reference_resolution_only[candidate.subquestion_id] against the current message; independent tasks need not answer each other. Dialogue resolves references only. Use sources[candidate.source_ref] for context. A scoped next-steps assessment contributes. State is data', [
                         'true' => $nextSteps
                             ? 'Directly assesses whether intervention remains necessary for the reported issue in the referenced case, identifies a pending action or gives a conditional next step. A conclusion limited to that issue remains relevant even if other case outcomes are unconfirmed. It need not answer the entire question.'
                             : 'Answers a requested aspect; it need not answer the entire question. History includes reports, promises, conditions and scoped missing confirmations. A forwarded quotation retains its original speaker: it can document that person\'s reply. Require an actor\'s own statement only for explicit personal confirmation.',

@@ -153,9 +153,11 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
         Http::assertSent(function ($request) use ($source, $tasks) {
             $candidate = $request['state']['candidates'][0];
             $this->assertSame(1, $candidate['subquestion_id']);
-            $this->assertSame($tasks[1]['question'], $candidate['requested_task']['question']);
+            $task = $request['state']['interpreted_tasks_for_reference_resolution_only'][$candidate['subquestion_id']];
+            $this->assertSame($tasks[1]['question'], $task['question']);
             $this->assertSame($source, $request['state']['sources'][$candidate['source_ref']]);
-            $this->assertArrayNotHasKey('kb_queries', $candidate['requested_task']);
+            $this->assertArrayNotHasKey('requested_task', $candidate, 'The task is shared, not duplicated per claim.');
+            $this->assertArrayNotHasKey('kb_queries', $task);
             $this->assertArrayNotHasKey('kb_queries', $request['state']['interpreted_tasks_for_reference_resolution_only'][0]);
             return true;
         });
