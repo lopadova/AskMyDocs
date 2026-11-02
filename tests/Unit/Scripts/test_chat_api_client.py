@@ -1,6 +1,8 @@
 import importlib.util
 import io
 import json
+import socket
+import ssl
 from pathlib import Path
 import tempfile
 import unittest
@@ -27,6 +29,33 @@ class ChatClientTest(unittest.TestCase):
         self.assertEqual('Bearer private-token', request.get_header('Authorization'))
         self.assertEqual('acme', request.get_header('X-tenant-id'))
         self.assertIsNone(qa.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://foreign.test'))
+
+    def test_get_recovers_from_transient_dns_without_resending_a_mutation(self):
+        client = qa.Client(self.profile())
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = b'{"status":"partial"}'
+        client.opener = Mock()
+        client.opener.open.side_effect = [urllib.error.URLError(socket.gaierror('temporary DNS')), response]
+        with patch.object(qa.time, 'sleep'):
+            self.assertEqual({'status': 'partial'}, client.request('GET', '/api/chat/runs/r'))
+        self.assertEqual(2, client.opener.open.call_count)
+        first, second = client.opener.open.call_args_list
+        self.assertIs(first.args[0], second.args[0])
+        self.assertEqual('GET', first.args[0].method)
+
+    def test_get_retry_is_bounded_and_does_not_retry_http_or_tls_errors(self):
+        errors = [urllib.error.URLError(socket.gaierror('DNS')),
+                  urllib.error.HTTPError('https://demo.example.test', 401, 'no', {}, None),
+                  urllib.error.URLError(ssl.SSLCertVerificationError('certificate'))]
+        for error, attempts in zip(errors, [3, 1, 1]):
+            client = qa.Client(self.profile())
+            client.opener = Mock()
+            client.opener.open.side_effect = error
+            with patch.object(qa.time, 'sleep'), self.assertRaises((urllib.error.URLError, RuntimeError)):
+                client.request('GET', '/api/chat/runs/r')
+            self.assertEqual(attempts, client.opener.open.call_count)
 
     def test_watch_drains_terminal_pages_and_preserves_rich_messages(self):
         with tempfile.TemporaryDirectory() as output:
