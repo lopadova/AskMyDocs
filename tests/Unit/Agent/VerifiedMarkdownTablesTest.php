@@ -55,6 +55,15 @@ final class VerifiedMarkdownTablesTest extends TestCase
         $this->assertSame($result, app(VerifiedMarkdownTables::class)->normalize($result));
     }
 
+    public function test_explicit_separate_tables_keep_identical_headers_separate(): void
+    {
+        $text = "| Date | Event |\n|---|---|\n| June 7 | Collected |\n\n| Date | Event |\n|---|---|\n| June 8 | Awaiting arrival |";
+        $result = app(VerifiedMarkdownTables::class)->normalize($text, mergeRepeatedHeaders: false);
+        $this->assertSame(2, substr_count(Str::markdown($result), '<table>'));
+        $this->assertStringContainsString('June 7', $result);
+        $this->assertSame($result, app(VerifiedMarkdownTables::class)->normalize($result, mergeRepeatedHeaders: false));
+    }
+
     public function test_single_column_rows_are_tables_but_setext_headings_are_not(): void
     {
         $text = "| First recorded event |\n\n| Second recorded event |";

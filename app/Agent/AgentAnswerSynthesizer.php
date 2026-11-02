@@ -475,7 +475,8 @@ final readonly class AgentAnswerSynthesizer
             is_array($payload['memory_candidates'] ?? null) ? $payload['memory_candidates'] : [],
             \App\Services\Chat\QuestionUnderstanding::fromArray($understanding ?? []), $context->tenantId, $context->projectKey, $durableRunId);
         return new AgentAnswer(
-            answer: $this->masker->maskForDisplay(app(VerifiedMarkdownTables::class)->normalize($presentedAnswer), $context->locale),
+            answer: $this->masker->maskForDisplay(app(VerifiedMarkdownTables::class)->normalize($presentedAnswer,
+                mergeRepeatedHeaders: ! array_filter($presentationParagraphs ?? [], fn ($p) => $p['preserve_table_boundary'] ?? false)), $context->locale),
             locale: $context->locale,
             completeness: $completeness,
             citations: $this->selectedDocuments($evidence['documents'], [...$grounding['claims'], ...($grounding['source_excerpts'] ?? [])]),

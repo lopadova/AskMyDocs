@@ -183,6 +183,6 @@ class SelectiveSynthesisTest extends TestCase
         $this->assertStringNotContainsString('Tell me about', $answer->answer);
         $this->assertSame('partial', $answer->completeness);
         $this->assertCount(2, $answer->citations);
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 }

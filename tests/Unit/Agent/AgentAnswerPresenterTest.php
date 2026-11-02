@@ -178,7 +178,7 @@ final class AgentAnswerPresenterTest extends TestCase
         $this->assertSame(3, substr_count($html, '<tr>'));
         foreach (array_column($claims, 'text') as $fact) $this->assertStringContainsString($fact, strip_tags($html));
         foreach (['999', '888', 'Pagamento eseguito'] as $invented) $this->assertStringNotContainsString($invented, $text);
-        $extractorUnavailable ? Http::assertNothingSent() : Http::assertSentCount(1);
+        Http::assertSentCount($extractorUnavailable ? 1 : 2);
     }
 
     public function test_a_table_with_an_unknown_fact_cannot_use_the_literal_fallback(): void
@@ -272,12 +272,68 @@ final class AgentAnswerPresenterTest extends TestCase
         $this->assertSame('rejected', $result['trace']['status']);
     }
 
+    #[DataProvider('splitFactOutcomes')]
+    public function test_a_compound_fact_can_span_rows_only_with_complete_collective_coverage(float $coverage, string $status): void
+    {
+        Http::fake(function ($request) use ($coverage) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) $answers[$key] = ['type' => 'noul',
+                'noul' => str_starts_with($key, 'complete_') ? $coverage : .99];
+            if (isset($request['state']['fact_coverage'])) {
+                $this->assertCount(2, $request['state']['fact_coverage'][0]['candidate_display_blocks']);
+                $this->assertSame('CASE-A: Ada confirmed collection June 7; arrival remained unconfirmed June 8.', $request['state']['fact_coverage'][0]['verified_fact']);
+            }
+            return Http::response(['id' => 'd', 'model' => 'test', 'answers' => $answers]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'CASE-A: Ada confirmed collection June 7.', 'claim_ids' => [0]],
+            ['text' => 'Arrival remained unconfirmed June 8.', 'claim_ids' => [0]],
+        ]));
+        $claims = [['text' => 'CASE-A: Ada confirmed collection June 7; arrival remained unconfirmed June 8.',
+            'subquestion_id' => 0, 'entity_identifiers' => ['CASE-A']]];
+        $result = (new AgentAnswerPresenter($ai))->present('Give a timeline.', $this->context(), $claims);
+        $this->assertSame($status, $result['trace']['status']);
+        if ($status === 'accepted') $this->assertCount(2, $result['paragraphs']);
+        else $this->assertNull($result['paragraphs']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_separately_requested_tables_keep_their_boundaries_after_a_literal_fallback(): void
+    {
+        Http::fake(function ($request) {
+            if (isset($request['questions']['layout'])) return Http::response(['id' => 'layout', 'model' => 'test', 'answers' => [
+                'layout' => ['type' => 'choice', 'choice' => 'separate', 'confidence' => .98,
+                    'probabilities' => ['separate' => .98, 'single' => .01, 'unspecified' => .01]],
+            ]]);
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) $answers[$key] = ['type' => 'noul', 'noul' => .1];
+            return Http::response(['id' => 'facts', 'model' => 'test', 'answers' => $answers]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => "| Date | Status |\n|---|---|\n| June 7 CASE-A | Paid |", 'claim_ids' => [0]],
+            ['text' => "| Date | Status |\n|---|---|\n| June 8 CASE-A | Paid |", 'claim_ids' => [1]],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Give separate tables for the two events.', $this->context(), $this->claims(),
+            understanding: ['requires_composition' => true]);
+        $this->assertSame('literal_table_fallback', $result['trace']['status']);
+        $this->assertSame([true, true], array_column($result['paragraphs'], 'preserve_table_boundary'));
+        $text = implode("\n\n", array_column($result['paragraphs'], 'text'));
+        $html = \Illuminate\Support\Str::markdown(app(\App\Agent\VerifiedMarkdownTables::class)->normalize($text, mergeRepeatedHeaders: false));
+        $this->assertSame(2, substr_count($html, '<table>'));
+        $this->assertStringNotContainsString('Paid', $text);
+        Http::assertSentCount(2);
+    }
+
+    public static function splitFactOutcomes(): array { return [[.98, 'accepted'], [.7, 'rejected']]; }
+
     public static function invalidParagraphs(): array
     {
         return [
             'unknown fact' => [[['text' => 'CASE-A', 'claim_ids' => [0, 2]]], false],
             'omitted fact' => [[['text' => 'CASE-A', 'claim_ids' => [0]]], false],
-            'repeated fact' => [[['text' => 'CASE-A', 'claim_ids' => [0, 1]], ['text' => 'Again', 'claim_ids' => [0]]], false],
+            'repeated fact within block' => [[['text' => 'CASE-A', 'claim_ids' => [0, 0, 1]]], false],
             'changed identifier' => [[['text' => 'CASE-B: cambio gratuito.', 'claim_ids' => [0, 1]]], false],
             'mixed topics' => [[['text' => 'CASE-A', 'claim_ids' => [0, 1]]], true],
             'reversed topics' => [[['text' => 'Second topic', 'claim_ids' => [1]], ['text' => 'CASE-A', 'claim_ids' => [0]]], true],

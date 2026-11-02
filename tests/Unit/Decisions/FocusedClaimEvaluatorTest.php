@@ -61,6 +61,57 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertTrue($result['partial']);
     }
 
+    public function test_a_cross_record_reference_veto_preserves_only_requested_fields_from_the_bound_record(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 is scheduled, unlike product AB12 in another order.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('AB12', $result['claims'][0]['text']);
+        $this->assertSame('unattested_literal_reference', $result['semantic_validation'][0]['checks'][0]['rejected_prose']['reason']);
+        $this->assertSame('bound_record_projection', $result['semantic_validation'][0]['checks'][0]['recovery']);
+        $this->assertArrayHasKey('literal_projection', $result['claims'][0]);
+    }
+
+    public function test_cross_record_prose_recovery_cannot_bypass_record_identity(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 has product AB12.';
+        $u['focus']['identifiers'] = $u['subquestions'][0]['identifiers'] = ['OTHER-99'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of OTHER-99?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        Http::assertNothingSent();
+    }
+
+    public function test_an_ambiguous_supported_document_gets_source_support_then_original_question_checks(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::fake(function ($request) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                $answers[$key] = $question['type'] === 'noul' ? ['type' => 'noul', 'noul' => .97]
+                    : ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .79,
+                        'probabilities' => ['supported_relevant' => .79, 'supported_off_topic' => .05,
+                            'unsupported' => .06, 'conflicting' => .05, 'insufficient_context' => .05]];
+            }
+            return Http::response(['id' => 'd', 'model' => 'test', 'answers' => $answers]);
+        });
+        $text = 'CASE-A: Ada confirmed collection on June 7.';
+        $sub = ['identifiers' => ['CASE-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What did Ada confirm in CASE-A?',
+            ['documents' => [['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [['content' => $text, 'evidence_hash' => 'h']]]]],
+            [['text' => $text, 'document_id' => 1, 'evidence_hash' => 'h']], ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertSame($text, $result['claims'][0]['text']);
+        $this->assertSame(.79, $result['semantic_validation'][0]['source_support_reassessment']['claim_0']['initial_decision']['probabilities']['supported_relevant']);
+        $this->assertSame('original_question_relevance', $result['semantic_validation'][1]['stage']);
+        Http::assertSent(fn ($r) => isset($r['questions']['supported']) && count($r['state']['sources']) === 1);
+    }
+
     public static function literalVetoes(): array
     {
         return [['conflicting'], ['supported_off_topic']];
@@ -415,7 +466,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(2, $result['claims']);
         $this->assertSame(['answered', 'answered'], array_column($result['subquestions'], 'status'));
         $this->assertNotContains('entity_mismatch', array_column($result['semantic_validation'][0]['checks'], 'reason'));
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 
     public function test_partial_field_availability_does_not_erase_the_existing_requested_field(): void
@@ -542,7 +593,7 @@ class FocusedClaimEvaluatorTest extends TestCase
             $this->assertSame(4101, $check['source']['tool_execution_id']);
             $this->assertSame('passed', $check['deterministic']['status']);
         }
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
         $this->assertCount(4, $state['sources']); // Three complete documents + one identical MCP record, from two executions.
@@ -744,7 +795,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(9, $result['claims']);
         $this->assertFalse($result['partial']);
         $this->assertSame(['answered', 'answered', 'answered', 'answered'], array_column($result['subquestions'], 'status'));
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
         // Full documents AND overlapping passages remain original and distinct.
@@ -810,6 +861,6 @@ class FocusedClaimEvaluatorTest extends TestCase
             ['focus' => $focus, 'subquestions' => [$focus]]);
         $this->assertFalse($bounded['valid']);
         $this->assertSame(3, $bounded['semantic_validation'][0]['state_limit_count']);
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 }

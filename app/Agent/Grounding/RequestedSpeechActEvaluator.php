@@ -9,7 +9,7 @@ use App\Decisions\Decisions;
 /** A draft request is wording, never evidence or permission to perform an action. */
 final class RequestedSpeechActEvaluator
 {
-    public function evaluate(string $question, string $candidate, array $claims, ?string $runId = null, ?string $tenant = null): array
+    public function evaluate(string $question, string $candidate, array $claims, ?string $runId = null, ?string $tenant = null, string $slot = 'answer_draft_request_decision'): array
     {
         $state = ['current_user_request' => $question, 'proposed_nonfactual_request' => $candidate,
             'verified_facts_for_subject_resolution_only' => array_column($claims, 'text')];
@@ -23,14 +23,14 @@ final class RequestedSpeechActEvaluator
                     'false' => 'Introduces any assertion, presupposed business outcome, new term, fee, promise or completed action, even if the user asked to say it.',
                 ]);
             $result = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode($state, JSON_THROW_ON_ERROR)),
-                fn () => $request->decide(), 'answer_draft_request_decision', $tenant);
+                fn () => $request->decide(), $slot, $tenant);
             $threshold = (float) config('reasoning.threshold', .8);
-            return ['status' => 'completed', 'accepted' => is_finite($threshold) && $threshold > .5 && $threshold <= 1
+            return ['status' => 'completed', 'candidate' => $candidate, 'accepted' => is_finite($threshold) && $threshold > .5 && $threshold <= 1
                 && ($result->answers['requested']['probability_true'] ?? 0) >= $threshold
                 && ($result->answers['nonfactual']['probability_true'] ?? 0) >= $threshold,
                 ...$result->toArray()];
         } catch (\Throwable $exception) {
-            return ['status' => 'error', 'accepted' => false, 'exception_class' => $exception::class];
+            return ['status' => 'error', 'candidate' => $candidate, 'accepted' => false, 'exception_class' => $exception::class];
         }
     }
 }

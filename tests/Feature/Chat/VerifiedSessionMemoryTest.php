@@ -131,6 +131,64 @@ class VerifiedSessionMemoryTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_selected_authorized_facts_are_not_lost_when_another_source_fills_the_prompt_budget(): void
+    {
+        $this->document();
+        $id = collect($this->memory->projection($this->chat, $this->user))->firstWhere('field', 'statement')['fact_id'];
+        $this->travel(1)->seconds();
+        $this->source(['id' => 'ORD-123', 'status' => 'processing', 'trackingCode' => 'TRACK-55',
+            ...array_fill_keys(array_map(fn ($i) => 'telemetry_'.$i, range(1, 150)), 'unrequested')]);
+        config(['reasoning.session_memory.max_prompt_facts' => 1]);
+        $this->assertNotContains($id, array_column($this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL]), 'fact_id'));
+        $routed = $this->route($this->understanding([$id], []));
+        $this->assertFalse($routed->needsResearch());
+        $this->assertSame([$id], $routed->memoryResolution['fact_ids']);
+        $answer = $this->memory->answer($this->chat, $routed, $this->user, allowedTools: [self::TOOL]);
+        $this->assertStringContainsString('sostituzione', $answer->answer);
+        $this->assertCount(1, $this->memory->evidence($this->chat, $routed, $this->user, allowedTools: [self::TOOL])['documents']);
+        $this->travel(6)->minutes();
+        $expired = $this->route($this->understanding([$id], []));
+        $this->assertTrue($expired->needsResearch());
+        $this->assertSame('expired', $expired->memoryResolution['tasks'][0]['excluded'][0]['reason']);
+    }
+
+    public function test_a_large_record_does_not_starve_other_sources_or_its_verified_statement(): void
+    {
+        [, , $document, $claim] = $this->document();
+        $this->travel(1)->seconds();
+        [$tool, $turn] = $this->source(['id' => 'ORD-123', 'status' => 'processing',
+            ...array_fill_keys(array_map(fn ($i) => 'telemetry_'.$i, range(1, 150)), 'noise')]);
+        $statement = ['text' => 'ORD-123 has status processing.', 'quote' => json_encode($tool['result']['records'][0]),
+            'tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash'], 'entity_identifiers' => ['ORD-123']];
+        $this->memory->consolidate($this->chat, $turn, ['api_tools' => [$tool]], [$statement], $this->user);
+        $projection = $this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL]);
+        $statements = array_column(array_filter($projection, fn ($fact) => $fact['field'] === 'statement'), 'value');
+        $this->assertContains($claim['text'], $statements);
+        $this->assertContains($statement['text'], $statements);
+        $this->assertLessThanOrEqual(11, count($projection));
+    }
+
+    public function test_only_a_still_authorized_case_link_selects_its_api_context(): void
+    {
+        [, $chunk, $source, $claim] = $this->document();
+        $text = 'CASE-A references ORD-123. The customer requested a replacement.';
+        $hash = hash('sha256', $text);
+        $chunk->update(['chunk_text' => $text, 'chunk_hash' => $hash]);
+        $source['evidence'][0] = [...$source['evidence'][0], 'content' => $text, 'evidence_hash' => $hash];
+        $claim = [...$claim, 'text' => 'CASE-A references ORD-123.', 'quote' => $text,
+            'evidence_hash' => $hash, 'entity_identifiers' => ['CASE-A', 'ORD-123']];
+        $turn = $this->chat->messages()->create(['role' => 'user', 'content' => 'CASE-A',
+            'metadata' => ['reasoning' => ['understanding' => $this->understanding()->toArray()]]]);
+        $this->memory->consolidate($this->chat, $turn, ['documents' => [$source]], [$claim], $this->user);
+        $this->travel(1)->seconds();
+        $this->source();
+        $facts = $this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL], question: 'Prepare a note for CASE-A.');
+        $this->assertNotEmpty(array_filter($facts, fn ($fact) => str_starts_with($fact['namespace'], 'tool:')), json_encode(array_column($facts, 'namespace')));
+        $chunk->update(['chunk_text' => 'This document changed; its earlier link is no longer authorized.']);
+        $facts = $this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL], question: 'Prepare a note for CASE-A.');
+        $this->assertSame([], $facts);
+    }
+
     public function test_complete_facts_still_require_composition_for_a_new_requested_presentation(): void
     {
         $this->source();

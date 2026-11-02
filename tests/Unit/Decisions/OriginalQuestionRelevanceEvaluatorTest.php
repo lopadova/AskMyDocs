@@ -127,6 +127,26 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
         ];
     }
 
+    public function test_an_isolated_update_keeps_the_already_relevant_pending_event_as_scope_context(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::fake(function ($request) {
+            if (isset($request['questions']['relevant'])) {
+                $this->assertSame(['The warehouse was waiting for an amendment.'], $request['state']['already_relevant_statements_for_scope_only']);
+                $this->assertCount(1, $request['state']['candidates']);
+                return Http::response(['id' => 'd', 'model' => 'test', 'answers' => ['relevant' => ['type' => 'noul', 'noul' => .97]]]);
+            }
+            return Http::response(['id' => 'd', 'model' => 'test', 'answers' => [
+                'relevance_0' => ['type' => 'noul', 'noul' => .98], 'relevance_1' => ['type' => 'noul', 'noul' => .4],
+            ]]);
+        });
+        $claims = [['text' => 'The warehouse was waiting for an amendment.', 'subquestion_id' => 0],
+            ['text' => 'Ada later confirmed the amendment was completed.', 'subquestion_id' => 0]];
+        $result = app(OriginalQuestionRelevanceEvaluator::class)->apply('Reconstruct CASE-A.', ['valid' => true, 'claims' => $claims]);
+        $this->assertSame($claims, $result['claims']);
+        Http::assertSentCount(2);
+    }
+
     public function test_an_uncertain_shared_decision_gets_one_isolated_check_for_the_explicit_secondary_aspect(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);

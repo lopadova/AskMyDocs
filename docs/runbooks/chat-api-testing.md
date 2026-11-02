@@ -351,7 +351,7 @@ la soglia resta invariata.
 `cross_claim_consistency` confronta le affermazioni già verificate per impedire
 che una negazione globale contraddica una conferma dello stesso evento nella
 risposta. Non confonde una situazione precedente con un aggiornamento successivo,
-né ritiro con consegna o rimborso. Se manca il controllo, non approva i fatti.
+né ritiro con consegna o rimborso. Una negazione non verificata non viene approvata.
 
 La sintesi può proporre `requested_speech_act` separatamente da `claims`: una
 nuova domanda al destinatario non richiede una citazione storica. Il presenter
@@ -371,3 +371,57 @@ Gli errori strutturali del presenter espongono `failure_rule`, un codice chiuso
 come `unknown_or_repeated_fact`, `mixed_task_groups`, `incomplete_or_oversized`
 o `invalid_relation_extraction`. Non contengono il testo della bozza o la risposta
 grezza del provider; una semplice classe di eccezione non identifica la regola.
+
+### Controlli dopo la decima tornata a tre turni
+
+Il controllo di coerenza classifica prima le negazioni di eventi. Le sole
+osservazioni positive già verificate alla fonte non vengono scartate perché
+un'altra frase nega l'evento. Negazioni e classificazioni incerte richiedono il
+controllo indipendente di compatibilità; una verifica non disponibile non
+approva una negazione. Quantità zero dell'articolo atteso e ricezione di un
+articolo diverso sono proposizioni distinte.
+
+`source_support_reassessment` riguarda solo un risultato documentale il cui
+esito prevalente è `supported_relevant`, ma ancora sotto soglia. Una sola
+valutazione del supporto legge la fonte integrale e tutte le alternative, entro
+il budget di stato e la scadenza. Restano i controlli successivi di pertinenza e
+coerenza. Rifiuti netti, conflitti, errori del provider, fonti non valide e record
+strutturati non seguono questa via; le probabilità originali restano in traccia.
+Se un testo API fallisce soltanto il controllo dei riferimenti letterali, il
+record già vincolato può fornire esclusivamente i campi richiesti e dichiarati:
+la proiezione ripassa il validatore, senza approvare il confronto scartato.
+
+La memoria distingue il budget del prompt dalla verifica dei fatti selezionati.
+Un record ricco di campi non può rendere indisponibile un fatto selezionato da
+un'altra fonte: ID, campi correlati e conflitti vengono ricontrollati nel
+perimetro originale. Il prompt privilegia gli enunciati già verificati e ammette
+al massimo dieci fatti per osservazione, entro i limiti globali. I collegamenti
+verificati caso/record possono selezionare il contesto API associato. Nessun
+riuso rinnova acquisizione, scadenza, autorizzazioni o hash della fonte.
+
+`linked_paragraphs_v6` permette di distribuire un fatto composto su più blocchi.
+Ogni blocco deve essere fedele ai propri fatti; una verifica separata deve
+ritrovare **tutto** il fatto nell'insieme dei blocchi collegati. Restano vietati
+ID inesistenti, duplicati nello stesso blocco, gruppi mescolati, identificativi
+alterati e relazioni causali non supportate. Una richiesta esplicita di tabelle
+separate conserva i confini anche quando le intestazioni sono identiche.
+
+Se una proposta `requested_speech_act` non supera entrambi i controlli, può
+essere riscritta una sola volta come domanda priva di affermazioni. La nuova
+proposta deve superare gli stessi due controlli in uno slot distinto e durevole.
+`draft_request` e `draft_request_repair` includono il candidato limitato a 500
+caratteri nella diagnostica amministrativa, insieme al giudizio: non compare
+come fatto, citazione o permesso di invio.
+
+Il client riprova al massimo tre volte esclusivamente GET interrotti da errori
+transitori DNS/rete, entro un'unica scadenza. Nessun tentativo automatico per
+POST, DELETE, errori HTTP, autenticazione, redirect o verifica del certificato.
+Un invio dall'esito incerto richiede sempre di riprendere l'osservazione della
+run già accettata, senza duplicare il messaggio.
+
+La decima tornata ha completato 30 domande in 10 chat: 18 risposte coperte,
+12 parziali, nessuna inutilizzabile; due dialoghi interamente coperti. Tutti gli 88
+strumenti erano terminali. Questi esiti precedono i fix di questa sezione e non
+ne dimostrano il risultato sul server. Le omissioni e lo stato tecnico `partial`
+vanno verificati nuovamente dopo il deploy, senza modificare i vecchi export o
+abbassare soglie per ottenere un esito verde. Nessuna nuova migrazione.

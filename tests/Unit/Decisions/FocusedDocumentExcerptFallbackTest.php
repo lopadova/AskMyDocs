@@ -16,8 +16,8 @@ class FocusedDocumentExcerptFallbackTest extends TestCase
             $answers = [];
             foreach ($request['questions'] as $key => $question) {
                 if ($question['type'] === 'noul') {
-                    $answers[$key] = ['type' => 'noul', 'noul' => str_starts_with($key, 'excerpt_relevance_') ? $relevant
-                        : (str_starts_with($key, 'excerpt_') ? $safe : $relevant)];
+                    $answers[$key] = ['type' => 'noul', 'noul' => $key === 'supported' ? .1 : (str_starts_with($key, 'excerpt_relevance_') ? $relevant
+                        : (str_starts_with($key, 'excerpt_') ? $safe : $relevant))];
                 } else {
                     $probabilities = array_fill_keys(array_keys($question['criteria']), (1 - $confidence) / 4);
                     $probabilities[$category] = $confidence;

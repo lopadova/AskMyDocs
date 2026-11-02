@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import socket
 from pathlib import Path
 import sys
 import time
@@ -54,13 +55,24 @@ class Client:
             'X-Tenant-Id': self.profile['tenant_id'], 'Accept': 'application/json',
             'Content-Type': 'application/json', 'User-Agent': 'AskMyDocs-chat-qa/1',
         })
-        try:
-            with self.opener.open(req, timeout=timeout) as response:
-                raw = response.read()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as error:
-            # Never expose request headers or a redirect URL in errors.
-            raise RuntimeError(f'HTTP {error.code} on {method} {path.split("?")[0]}') from None
+        deadline = time.monotonic() + timeout
+        for attempt in range(3):
+            try:
+                with self.opener.open(req, timeout=max(.1, deadline - time.monotonic())) as response:
+                    raw = response.read()
+                    return json.loads(raw) if raw else None
+            except urllib.error.HTTPError as error:
+                # HTTP errors, redirects and authentication failures never retry.
+                error.close()
+                raise RuntimeError(f'HTTP {error.code} on {method} {path.split("?")[0]}') from None
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                reason = error.reason if isinstance(error, urllib.error.URLError) else error
+                delay = .25 * (attempt + 1)
+                # A read-only observation may recover from transient DNS/network
+                # failures. POST/DELETE outcomes are never submitted twice.
+                if method != 'GET' or attempt == 2 or not isinstance(reason, (socket.gaierror, TimeoutError, ConnectionError)) or time.monotonic() + delay >= deadline:
+                    raise
+                time.sleep(delay)
 
     def watch(self, run_id, output, wait=240, poll=1, debug=False):
         output = Path(output)
