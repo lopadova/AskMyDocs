@@ -83,7 +83,8 @@ final class QaCampaignTest extends TestCase
         $this->assertSame($run->run_id, $attempt->run_uuid);
         $this->assertStringNotContainsString('private original', $attempt->toJson());
         Http::assertSent(fn ($r) => json_decode($r->body(), true)['provider']['require_parameters'] === true
-            && (float) json_decode($r->body(), true)['provider']['max_price']['prompt'] === 1.0);
+            && (float) json_decode($r->body(), true)['provider']['max_price']['prompt'] === 1.0
+            && json_decode($r->body(), true)['plugins'] === [['id' => 'web', 'enabled' => false]]);
     }
 
     public function test_pending_reservations_are_shared_and_completion_is_idempotent(): void
@@ -158,7 +159,9 @@ final class QaCampaignTest extends TestCase
     public function test_unapproved_model_endpoint_and_streaming_fail_before_dispatch(): void
     {
         foreach ([['model' => 'foreign/model', 'max_tokens' => 1], ['model' => 'test/model', 'max_tokens' => 1, 'stream' => true],
-            ['model' => 'test/model'], ['model' => 'test/model', 'max_tokens' => 1, 'models' => ['foreign/model']]] as $body) {
+            ['model' => 'test/model'], ['model' => 'test/model', 'max_tokens' => 1, 'models' => ['foreign/model']],
+            ['model' => 'test/model', 'max_tokens' => 1, 'preset' => 'opaque-preset'],
+            ['model' => 'test/model', 'max_tokens' => 1, 'tools' => [['type' => 'openrouter:web_search']]]] as $body) {
             Http::fake();
             $campaign = $this->campaign();
             try {

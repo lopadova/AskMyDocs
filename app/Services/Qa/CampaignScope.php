@@ -87,7 +87,11 @@ final class CampaignScope
             $model = $body['model'] ?? null;
             $spec = is_string($model) ? ($campaign->manifest_json['allowed_models'][$model] ?? null) : null;
             if (! is_array($spec) || ! in_array($path, $spec['paths'], true)) $this->reject('qa_unapproved_model');
+            if (str_ends_with($model, ':online') || in_array($model, ['openrouter/auto', 'openrouter/free'], true)) {
+                $this->reject('qa_unsupported_inference_shape');
+            }
             if (($body['stream'] ?? false) || isset($body['models']) || isset($body['route']) || isset($body['plugins'])
+                || isset($body['preset']) || isset($body['transforms'])
                 || isset($body['audio']) || isset($body['image_config']) || isset($body['web_search_options'])
                 || array_diff($body['modalities'] ?? ['text'], ['text']) !== []
                 || (isset($body['n']) && $body['n'] !== 1) || $this->multimodal($body)
@@ -107,6 +111,9 @@ final class CampaignScope
                     'prompt' => min((float) ($ceiling['prompt'] ?? $spec['input_per_million']), (float) $spec['input_per_million']),
                     'completion' => min((float) ($ceiling['completion'] ?? $spec['output_per_million']), (float) $spec['output_per_million']),
                 ]];
+                // Omission inherits account defaults. Explicitly turn off the
+                // paid web plugin as well as rejecting request-level search.
+                $body['plugins'] = [['id' => 'web', 'enabled' => false]];
             }
             $encoded = json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             // UTF-8 bytes are a conservative input-token upper bound for this

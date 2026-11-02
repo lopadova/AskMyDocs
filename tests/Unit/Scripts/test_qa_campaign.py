@@ -44,15 +44,37 @@ class CampaignPreparationTest(unittest.TestCase):
             campaign.chat.write_private(root / 'index.json', {'cases': [{'id': str(i)} for i in range(10)]})
             campaign.chat.write_private(root / 'sources.json', {'api': ['api:synthetic'], 'mcp': []})
             catalog = {'data': {'id': 'test/model', 'endpoints': [{'pricing': {'prompt': '.000001', 'completion': '0'}}]}}
-            with patch.object(campaign, 'get_catalog', return_value=catalog) as fetch:
+            identities = {'data': [{'id': 'test/model', 'canonical_slug': 'test/model-2026-11'}]}
+            with patch.object(campaign, 'get_catalog', side_effect=[identities, catalog]) as fetch:
                 result = campaign.manifest(root / 'index.json', root / 'sources.json', {'decision': ['test/model']}, 16384, root / 'manifest.json')
-            fetch.assert_called_once_with('https://openrouter.ai/api/v1/models/test/model/endpoints')
+            self.assertEqual(['https://openrouter.ai/api/v1/models?output_modalities=all',
+                              'https://openrouter.ai/api/v1/models/test/model/endpoints'], [call.args[0] for call in fetch.call_args_list])
             self.assertEqual(10, result['budget_usd'])
             self.assertEqual(['/api/alpha/decisions'], result['allowed_models']['test/model']['paths'])
+            self.assertEqual(['test/model', 'test/model-2026-11'], result['allowed_models']['test/model']['response_models'])
             catalog['data']['endpoints'][0]['pricing']['completion'] = '.000001'
-            with patch.object(campaign, 'get_catalog', return_value=catalog), self.assertRaises(ValueError):
+            with patch.object(campaign, 'get_catalog', side_effect=[identities, catalog]), self.assertRaises(ValueError):
                 campaign.manifest(root / 'index.json', root / 'sources.json', {'decision': ['test/model']}, 16384, root / 'blocked.json')
             self.assertFalse((root / 'blocked.json').exists())
+
+    def test_missing_canonical_identity_cannot_create_a_partial_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            campaign.chat.write_private(root / 'index.json', {'cases': [{'id': str(i)} for i in range(10)]})
+            campaign.chat.write_private(root / 'sources.json', {'api': [], 'mcp': []})
+            catalog = {'data': {'id': 'test/model', 'endpoints': [{'pricing': {'prompt': '0', 'completion': '0'}}]}}
+            with patch.object(campaign, 'get_catalog', side_effect=[{'data': []}, catalog]), self.assertRaises(ValueError):
+                campaign.manifest(root / 'index.json', root / 'sources.json', {'text': ['test/model']}, 16384, root / 'manifest.json')
+            self.assertFalse((root / 'manifest.json').exists())
+
+    def test_long_context_and_time_prices_are_reserved_at_the_highest_tier_without_discount(self):
+        prices = {'prompt': '.000001', 'completion': '.000002', 'discount': '.5', 'web_search': '.01',
+                  'overrides': [{'min_prompt_tokens': 272000, 'prompt': '.000003', 'completion': '.000004'},
+                                {'utc_start': 2300, 'utc_end': 100, 'utc_days': ['monday'],
+                                 'input_cache_write': '.000005'}]}
+        self.assertEqual((5, 4), campaign.verified_price({'data': {'endpoints': [{'pricing': prices}]}}))
+        prices['overrides'].append({'min_prompt_tokens': 300000, 'unknown_billable_dimension': '1'})
+        with self.assertRaises(ValueError): campaign.verified_price({'data': {'endpoints': [{'pricing': prices}]}})
 
 
 if __name__ == '__main__':
