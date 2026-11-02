@@ -41,7 +41,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         $diagnostics->end($run, $lockSpan, metadata: ['lock_acquired' => true]);
         try {
             app(\App\Ai\AgentChatModelScope::class)->within(AgentExecutionContext::fromArray($run->toArray()),
-                fn () => $this->handleOwned($run));
+                fn () => app(\App\Services\Qa\CampaignScope::class)->withinRun($run, fn () => $this->handleOwned($run)));
         } finally {
             $lock->release();
             // A fast graph can finish while this worker still owns the parent

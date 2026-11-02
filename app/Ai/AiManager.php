@@ -304,6 +304,7 @@ class AiManager
 
     private function resolve(string $name): AiProviderInterface
     {
+        app(\App\Services\Qa\CampaignScope::class)->assertProvider($name);
         $config = config("ai.providers.{$name}");
 
         if (! $config) {

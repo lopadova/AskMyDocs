@@ -28,6 +28,8 @@ Route::prefix('chat')->name('api.chat.')
             return response()->noContent();
         })->name('token.revoke');
         Route::get('/conversations', [ChatApi\ConversationController::class, 'index'])->name('conversations.index');
+        Route::get('/qa-campaigns/{campaign}', ChatApi\ChatApiQaCampaignController::class)
+            ->middleware(['token.ability:chat:debug', 'role:admin|super-admin'])->name('qa-campaigns.show');
         Route::post('/conversations', [ChatApi\ConversationController::class, 'store'])->name('conversations.store');
         Route::get('/conversations/{conversation}/messages', [ChatApi\MessageController::class, 'index'])->name('messages.index');
         Route::post('/conversations/{conversation}/messages', [ChatApi\AgentMessageController::class, 'store'])

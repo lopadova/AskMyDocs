@@ -35,6 +35,10 @@ final class ChatApiRunController extends Controller
             'started_at' => $record->started_at, 'completed_at' => $record->completed_at,
             'counters' => $record->counters_json ?? [],
             'diagnostics' => $diagnostics,
+            ...$diagnostics !== null && is_string(data_get($record->input_json, 'qa.campaign_id'))
+                ? ['qa_campaign' => app(\App\Services\Qa\CampaignLedger::class)->summary(
+                    app(\App\Services\Qa\CampaignLedger::class)->owned(data_get($record->input_json, 'qa.campaign_id'),
+                        $record->tenant_id, (string) $record->project_key, $request->user()->id))] : [],
             'events' => $events->map(fn ($event) => $publisher->serialize($event))->all(),
             'next_after' => $cursor, 'has_more' => $record->events()->where('sequence', '>', $cursor)->exists(),
             'tools' => $record->toolExecutions()->orderBy('logical_index')->get([

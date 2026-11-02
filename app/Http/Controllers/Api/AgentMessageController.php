@@ -45,6 +45,11 @@ final class AgentMessageController extends Controller
                 // (AgentBudgetTracker defaults to agent.depth.default = 3 =
                 // 1.0x = unscaled).
                 'depth' => ['sometimes', 'integer', 'between:1,5'],
+                'qa' => ['sometimes', 'array:campaign_id,round,case_id,turn'],
+                'qa.campaign_id' => ['required_with:qa', 'uuid'],
+                'qa.round' => ['required_with:qa', 'in:baseline,candidate'],
+                'qa.case_id' => ['required_with:qa', 'string', 'regex:/^[A-Z0-9_-]{1,40}$/D'],
+                'qa.turn' => ['required_with:qa', 'integer', 'between:1,3'],
             ],
             AgentChatScopeRules::rules(),
         ));
@@ -80,6 +85,9 @@ final class AgentMessageController extends Controller
         }
         if (is_array($validated['live_sources'] ?? null)) {
             $input['live_sources'] = $validated['live_sources'];
+        }
+        if (isset($validated['qa'])) {
+            $input = app(\App\Services\Qa\CampaignBinding::class)->bind($request, $conversation, $validated['qa'], $input);
         }
         try {
             $turn = $turns->start(
