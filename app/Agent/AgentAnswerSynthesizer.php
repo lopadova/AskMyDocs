@@ -754,7 +754,8 @@ PROMPT;
         $sections = [];
         $renderedGroups = [];
         $coveredTasks = $presentation === null ? [] : array_unique(array_merge(...array_column($presentation, 'subquestion_ids')));
-        $oneTopic = $presentation !== null && count(array_unique(array_column($presentation, 'presentation_group'))) === 1
+        $jointLiteralTable = $presentation !== null && ! array_filter($presentation, fn ($p) => ! ($p['literal_table'] ?? false));
+        $oneTopic = $presentation !== null && (count(array_unique(array_column($presentation, 'presentation_group'))) === 1 || $jointLiteralTable)
             && count($coveredTasks) === count($understanding['subquestions']);
         $italian = str_starts_with($locale, 'it');
         foreach ($understanding['subquestions'] as $index => $sub) {

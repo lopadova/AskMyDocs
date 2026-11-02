@@ -29,6 +29,7 @@ final readonly class AgentAnswerPresenter
             return ['paragraphs' => null, 'trace' => [...$trace, 'status' => 'skipped', 'reason' => 'deadline']];
         }
         $span = $diagnostics->begin($run, 'presentation.attempt');
+        $validatedParagraphs = null;
         try {
             $threshold = (float) config('reasoning.threshold', .8);
             if (! is_finite($threshold) || $threshold <= .5 || $threshold > 1) {
@@ -87,6 +88,7 @@ final readonly class AgentAnswerPresenter
             }
             $paragraphs = $this->validate($memo['paragraphs'], $claims, array_column($facts, 'presentation_group', 'id'),
                 ($understanding['requires_composition'] ?? false) === true);
+            $validatedParagraphs = $paragraphs;
             $extracted = $this->extractCausalLinks(array_values(array_filter($paragraphs,
                 fn ($paragraph) => ($paragraph['kind'] ?? 'facts') === 'facts')), $context, $runId);
             foreach ($extracted['causal_links'] as $link) {
@@ -101,6 +103,17 @@ final readonly class AgentAnswerPresenter
             if (($verification['answers']['faithful']['probability_true'] ?? 0) < $threshold
                 || ($verification['answers']['complete']['probability_true'] ?? 0) < $threshold) {
                 $requestProof = $verification['requested_speech_act']['answers'] ?? [];
+                $table = ($understanding['requires_composition'] ?? false)
+                    ? app(VerifiedFactTables::class)->render($validatedParagraphs, $claims, $context->locale) : null;
+                if ($table !== null) {
+                    if (($requestProof['requested']['probability_true'] ?? 0) >= $threshold
+                        && ($requestProof['nonfactual']['probability_true'] ?? 0) >= $threshold) {
+                        $table = [...$table, ...array_values(array_filter($validatedParagraphs,
+                            fn ($p) => ($p['kind'] ?? 'facts') === 'requested_speech_act'))];
+                    }
+                    return ['paragraphs' => $table, 'trace' => [...$trace, 'status' => 'literal_table_fallback',
+                        'reason' => 'factual_rewrite_rejected', 'fact_count' => count($claims), 'paragraph_count' => count($table)]];
+                }
                 if (($requestProof['requested']['probability_true'] ?? 0) >= $threshold
                     && ($requestProof['nonfactual']['probability_true'] ?? 0) >= $threshold) {
                     // A rejected factual rewrite must not erase a separately
@@ -122,6 +135,12 @@ final readonly class AgentAnswerPresenter
                 'fact_count' => count($claims), 'paragraph_count' => count($paragraphs)]];
         } catch (\Throwable $exception) {
             $diagnostics->failure($run, $span, $exception, ['error_handled' => true]);
+            if ($validatedParagraphs !== null && ($understanding['requires_composition'] ?? false)
+                && ($table = app(VerifiedFactTables::class)->render($validatedParagraphs, $claims, $context->locale)) !== null) {
+                return ['paragraphs' => $table, 'trace' => [...$trace, 'status' => 'literal_table_fallback',
+                    'reason' => 'presentation_verification_unavailable', 'exception_class' => $exception::class,
+                    'fact_count' => count($claims), 'paragraph_count' => count($table)]];
+            }
             return ['paragraphs' => null, 'trace' => [...$trace, 'status' => 'unavailable', 'exception_class' => $exception::class]];
         }
     }
