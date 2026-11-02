@@ -173,6 +173,7 @@ final readonly class AgentAnswerPresenter
             return ['paragraphs' => $paragraphs, 'trace' => [...$trace, 'status' => 'accepted',
                 'fact_count' => count($claims), 'paragraph_count' => count($paragraphs)]];
         } catch (\Throwable $exception) {
+            $trace['failure_rule'] = $this->failureRule($exception);
             $diagnostics->failure($run, $span, $exception, ['error_handled' => true]);
             if ($validatedParagraphs !== null && ($understanding['requires_composition'] ?? false)
                 && ($table = app(VerifiedFactTables::class)->render($validatedParagraphs, $claims, $context->locale)) !== null) {
@@ -182,6 +183,25 @@ final readonly class AgentAnswerPresenter
             }
             return ['paragraphs' => null, 'trace' => [...$trace, 'status' => 'unavailable', 'exception_class' => $exception::class]];
         }
+    }
+
+    /** Persist a closed rule code, never candidate text or exception payloads. */
+    private function failureRule(\Throwable $exception): string
+    {
+        if (! $exception instanceof \UnexpectedValueException) return 'provider_or_verification_unavailable';
+        return match ($exception->getMessage()) {
+            'Unknown or repeated presentation fact.' => 'unknown_or_repeated_fact',
+            'Mixed presentation tasks.' => 'mixed_task_groups',
+            'Presentation tasks out of order.' => 'task_groups_out_of_order',
+            'Incomplete or oversized presentation.' => 'incomplete_or_oversized',
+            'Presentation changed an exact identifier.' => 'changed_identifier',
+            'Invalid requested speech act.' => 'invalid_request_block',
+            'Invalid presentation block.', 'Invalid factual presentation block.' => 'invalid_block',
+            'Presentation input exceeds the bounded verification state.' => 'input_limit',
+            'Invalid causal extraction.', 'Invalid causal paragraph reference.', 'Invalid linguistic relationship kind.',
+            'Invalid causal span.', 'Causal spans are not literal candidate text.' => 'invalid_relation_extraction',
+            default => 'invalid_presentation_response',
+        };
     }
 
     /** Each check receives one display block and only its linked, approved facts. */

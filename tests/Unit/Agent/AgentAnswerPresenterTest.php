@@ -115,6 +115,19 @@ final class AgentAnswerPresenterTest extends TestCase
         } else $this->assertNull($result['paragraphs']);
     }
 
+    public function test_structural_failure_reports_a_closed_rule_without_candidate_prose(): void
+    {
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'UNTRUSTED CANDIDATE TEXT', 'claim_ids' => [0, 0, 1]],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Show the case.', $this->context(), $this->claims());
+        $this->assertNull($result['paragraphs']);
+        $this->assertSame('unknown_or_repeated_fact', $result['trace']['failure_rule']);
+        $this->assertStringNotContainsString('UNTRUSTED CANDIDATE TEXT', json_encode($result['trace']));
+        Http::assertNothingSent();
+    }
+
     public function test_an_ordinary_factual_answer_cannot_add_an_unlinked_request(): void
     {
         $ai = $this->ai();
