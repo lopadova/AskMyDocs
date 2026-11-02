@@ -17,7 +17,46 @@ final readonly class AgentAnswerPresenter
 {
     public function __construct(private AiManager $ai) {}
 
-    public function present(string $question, AgentExecutionContext $context, array $claims, ?string $runId = null, array $understanding = []): array
+    public function present(string $question, AgentExecutionContext $context, array $claims, ?string $runId = null, array $understanding = [], ?string $requestedSpeechAct = null): array
+    {
+        $result = $this->presentFacts($question, $context, $claims, $runId, $understanding);
+        if (! ($understanding['requires_composition'] ?? false) || $claims === [] || count($claims) > 10
+            || $requestedSpeechAct === null || trim($requestedSpeechAct) === '' || mb_strlen($requestedSpeechAct) > 500
+            || preg_match('/<\/?[a-z][^>]*>/i', $requestedSpeechAct) || preg_match('/^#{1,2}\s/m', $requestedSpeechAct)
+            || preg_match('/!\[[^\]]*\]\(|\]\(\s*(?:javascript|data|file):/i', $requestedSpeechAct)) return $result;
+        $groups = [];
+        $originals = [];
+        foreach (array_values($claims) as $id => $claim) {
+            $task = $claim['subquestion_id'] ?? 0;
+            $scope = $understanding['subquestions'][$task]['identifiers'] ?? [];
+            sort($scope);
+            $key = $scope === [] ? 'task_'.$task : hash('sha256', json_encode($scope, JSON_THROW_ON_ERROR));
+            if (! array_key_exists($key, $groups)) $groups[$key] = count($groups);
+            $originals[] = ['text' => $claim['text'], 'claim_ids' => [$id], 'kind' => 'facts',
+                'subquestion_ids' => [$task], 'presentation_group' => $groups[$key], 'causal_links' => []];
+        }
+        // One request cannot join unrelated cases merely because facts survived.
+        if (count($groups) !== 1) return $result;
+        $run = app(ProviderDiagnostics::class)->resolve($runId, $context->tenantId);
+        if (app(AgentRunDeadline::class)->skip($run, 'draft_request_verification', 5)) return $result;
+        $proof = app(\App\Agent\Grounding\RequestedSpeechActEvaluator::class)->evaluate(
+            $question, $requestedSpeechAct, $claims, $runId, $context->tenantId);
+        $result['trace']['draft_request'] = $proof;
+        if (! $proof['accepted']) return $result;
+        $paragraphs = array_values(array_filter($result['paragraphs'] ?? $originals,
+            fn ($paragraph) => ($paragraph['kind'] ?? 'facts') === 'facts'));
+        $paragraphs[] = ['text' => $requestedSpeechAct, 'claim_ids' => [], 'kind' => 'requested_speech_act',
+            'subquestion_ids' => array_values(array_unique(array_column($claims, 'subquestion_id')) ?: [0]),
+            'presentation_group' => 0, 'causal_links' => []];
+        if ($result['paragraphs'] === null) {
+            $result['trace']['factual_presentation_status'] = $result['trace']['status'];
+            $result['trace']['status'] = 'accepted_request_only';
+        }
+        $result['paragraphs'] = $paragraphs;
+        return $result;
+    }
+
+    private function presentFacts(string $question, AgentExecutionContext $context, array $claims, ?string $runId, array $understanding): array
     {
         $trace = ['stage' => 'answer_presentation', 'status' => 'not_used', 'model' => null];
         if ($claims === [] || count($claims) > 10) {

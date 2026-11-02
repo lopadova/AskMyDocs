@@ -186,6 +186,9 @@ final readonly class AgentAnswerSynthesizer
                         $understanding, json_encode($feedback, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), repairAttempt: true, run: $run);
                     // Repair is factual synthesis, never a new artifact/selection handoff.
                     $repairedPayload['render_table'] = false;
+                    if (! isset($repairedPayload['requested_speech_act']) && isset($payload['requested_speech_act'])) {
+                        $repairedPayload['requested_speech_act'] = $payload['requested_speech_act'];
+                    }
                     $repairedPayload['requires_selection'] = $payload['requires_selection'] ?? false;
                     if ($independent) {
                         $repairedPayload['claims'] = $this->bindRepairTasks($repairedPayload['claims'] ?? [], $repairEvidence);
@@ -414,7 +417,8 @@ final readonly class AgentAnswerSynthesizer
         if (config('agent.presentation.enabled') && $grounding['valid'] && ! $presentationOnly
             && ! ($payload['render_table'] ?? false) && ! ($payload['requires_selection'] ?? false)) {
             $presented = $diagnostics->measure($run, 'validation.presentation',
-                fn () => app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? []));
+                fn () => app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? [],
+                    is_string($payload['requested_speech_act'] ?? null) ? $payload['requested_speech_act'] : null));
             $presentation = $presented['trace'];
             if ($presented['paragraphs'] !== null) {
                 // Presentation never replaces the original facts used for citations or memory.
@@ -691,7 +695,7 @@ PROMPT;
         $u = \App\Services\Chat\QuestionUnderstanding::fromArray($understanding);
         $payload = ['claims' => [], 'limitations' => [], 'completeness' => 'complete', 'render_table' => false,
             'requires_selection' => false, 'research_drafts' => []];
-        $models = [];
+        $models = $requestCandidates = [];
         foreach ($u->subquestions as $index => $sub) {
             $branch = $u->forSubquestion($index);
             $evidence = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
@@ -730,6 +734,7 @@ PROMPT;
                 if (is_array($candidate)) $payload['memory_candidates'][] = [...$candidate, 'subquestion_id' => $index];
             }
             $models[] = $draft['model'];
+            if (is_string($draft['payload']['requested_speech_act'] ?? null)) $requestCandidates[] = $draft['payload']['requested_speech_act'];
             $draftClaims = is_array($draft['payload']['claims'] ?? null) ? $draft['payload']['claims'] : [];
             $payload['research_drafts'][$index] = array_diff_key($draft, ['payload' => true, 'signature' => true]);
             $payload['research_drafts'][$index]['section_title'] = $draft['payload']['section_title'] ?? null;
@@ -745,6 +750,7 @@ PROMPT;
                 $payload['completeness'] = 'partial';
             }
         }
+        if (count(array_unique($requestCandidates)) === 1) $payload['requested_speech_act'] = $requestCandidates[0];
         return [new \App\Ai\AiResponse('', 'agent', implode(', ', array_unique(array_filter($models))) ?: 'independent-research'), $payload];
     }
 
@@ -932,7 +938,7 @@ The server joins accepted claim texts with a blank line. Formatting organizes ve
 - Use one concise `## Topic` heading per section unless the server supplies the task heading from section_title. Never repeat the section heading for each claim. Headings are neutral noun phrases, not questions, task numbers or unsupported conclusions. Use `### Aspect` only when a long section genuinely needs subsections; never use a # page title. A rules section starts with actual rules, not another introduction to the entity.
 - Within each section, group related aspects into short paragraphs, usually one to three sentences. Lead with the direct supported answer, then the relevant detail. Several paragraphs may share the same section heading. Avoid walls of text and a heading for every sentence.
 - Keep claims atomic and source-bound even when they are adjacent in the same paragraph group. Each claim must remain understandable on its own if another claim is excluded. Do not combine evidence from different sources merely to obtain a nicer layout.
-- When drafting a reply, submit only the source-backed business statements as claims. A newly requested polite question to the recipient, such as asking for availability, is presentation wording rather than a historical fact; the final presenter can add it under a separate request-only check. Keep it separate from recorded statuses, commitments and actions, which still require factual grounding. Never imply that a draft was sent.
+- When drafting a reply, submit only the source-backed business statements as claims. Put a newly requested polite question to the recipient in requested_speech_act, NEVER in claims: it is presentation wording rather than a historical fact and has an independent request-only check. Use this field only when the current user explicitly asks for a draft with that request; otherwise omit it. Keep it separate from recorded statuses, commitments and actions, which still require factual grounding. Never imply that a draft was sent.
 - Use bullet lists for parallel attributes or conditions and numbered lists only for ordered steps. Add a blank line before and after every list, heading, table and code block. Do not turn every short paragraph into a list.
 - Use tables for comparable structured fields or requested collections, not for narrative explanations. Preserve exact identifiers and values; never invent cells or totals. Respect the render_table handoff instructions above and do not repeat an already rendered table in prose.
 - Use **bold** sparingly for important identifiers, statuses and values, not whole paragraphs. Use inline code for technical keys and fenced code blocks with a language tag for commands or configuration. Do not use raw HTML, decorative icons or all-capital headings.
@@ -955,6 +961,8 @@ PROMPT;
                     'type' => 'object',
                     'properties' => [
                         'completeness' => ['type' => 'string', 'enum' => ['complete', 'partial', 'insufficient']],
+                        'requested_speech_act' => ['type' => 'string', 'maxLength' => 500,
+                            'description' => 'Optional final polite question explicitly requested in a draft. No facts, assumptions, promises or actions. Keep it OUT of claims; independently verified by the host.'],
                         'section_title' => ['type' => 'string', 'maxLength' => 100,
                             'description' => 'Optional short, neutral topic label in the response language. No question, copied request, Markdown, task number, or factual conclusion. Rendered by the server for independent research tasks.'],
                         'claims' => ['type' => 'array', 'items' => $this->claimSchema()],
