@@ -299,6 +299,49 @@ final class QaCampaignTest extends TestCase
         $this->campaign(10.01);
     }
 
+    public function test_operator_probe_uses_two_bootstrapped_processes_and_never_owns_a_chat_actor(): void
+    {
+        $probe = app(\App\Services\Qa\CampaignBudgetProbe::class);
+        $campaign = $probe->create('acme', 'orders', $this->actor);
+        $this->assertSame(0, (int) $campaign->actor_id);
+        $this->assertSame('ledger_reservation_v1', $campaign->manifest_json['simulation']);
+        $directory = sys_get_temp_dir().'/qa-probe-test-'.bin2hex(random_bytes(6));
+        mkdir($directory, 0700);
+        $database = $directory.'/database.sqlite';
+        touch($database);
+        config(['database.connections.qa_probe_test' => ['driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'busy_timeout' => 10000]]);
+        $db = \Illuminate\Support\Facades\DB::getFacadeRoot();
+        $oldDefault = $db->getDefaultConnection();
+        $connection = $db->connection('qa_probe_test');
+        $oldSchema = \Illuminate\Support\Facades\Schema::getFacadeRoot();
+        try {
+            \Illuminate\Support\Facades\Schema::swap($connection->getSchemaBuilder());
+            (require dirname(__DIR__, 3).'/database/migrations/2026_11_02_160000_create_qa_campaign_tables.php')->up();
+            $connection->table('qa_campaigns')->insert($campaign->getAttributes());
+            $db->setDefaultConnection('qa_probe_test');
+            $fileCampaign = QaCampaign::query()->forTenant('acme')->findOrFail($campaign->id);
+            $result = $probe->exercise($fileCampaign, ['APP_ENV' => 'testing', 'APP_DEBUG' => 'false',
+                'APP_RELEASE' => str_repeat('a', 40), 'APP_CONFIG_CACHE' => $directory.'/absent-config.php',
+                'ASKMYDOCS_QA_CAMPAIGNS_ENABLED' => 'true', 'ASKMYDOCS_DEPLOYMENT_TIER' => 'development',
+                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => false, 'DATABASE_URL' => false,
+                'ASKMYDOCS_QA_MANIFEST' => false, 'AI_PROVIDER' => 'fake', 'LOG_CHANNEL' => 'null',
+                'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync']);
+            $this->assertSame(['blocked', 'reserved'], $result['results']);
+            $this->assertSame(0, $result['inference_calls']);
+            $this->assertSame('0.000000000', $result['spent_usd']);
+            $this->assertSame('simulation', QaInferenceAttempt::query()->forTenant('acme')->sole()->cost_source);
+        } finally {
+            $db->setDefaultConnection($oldDefault);
+            \Illuminate\Support\Facades\Schema::swap($oldSchema);
+            $db->purge('qa_probe_test');
+            foreach (glob($directory.'/*') as $file) unlink($file);
+            rmdir($directory);
+        }
+        Http::assertNothingSent();
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        app(CampaignScope::class)->withinRun($this->runFixture($campaign), fn () => $this->infer());
+    }
+
     public function test_missing_tariff_is_rejected_instead_of_assumed_free(): void
     {
         $manifest = $this->manifest();

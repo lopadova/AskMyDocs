@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 /** Operator-only bootstrap. Manifest files contain no tokens or original messages. */
 final class QaCampaignCommand extends Command
 {
-    protected $signature = 'qa:campaign {action : runtime, create, inspect or export} {--manifest=} {--id=} {--tenant=} {--project=} {--actor=}';
+    protected $signature = 'qa:campaign {action : runtime, create, inspect, export or probe} {--manifest=} {--id=} {--tenant=} {--project=} {--actor=} {--barrier=}';
     protected $description = 'Create or inspect a development-only, budget-reserved QA campaign';
 
     public function handle(CampaignLedger $ledger): int
@@ -23,7 +23,17 @@ final class QaCampaignCommand extends Command
             $project = trim((string) $this->option('project'));
             $actorId = filter_var($this->option('actor'), FILTER_VALIDATE_INT);
             if ($tenant === '' || $project === '' || ! $actorId) throw new \DomainException('qa_explicit_scope_required');
-            if ($this->argument('action') === 'runtime') {
+            if ($this->argument('action') === 'probe-reserve') {
+                $result = app(\App\Services\Qa\CampaignBudgetProbe::class)->reserveChild($tenant, $project, $actorId,
+                    (string) $this->option('id'), (string) $this->option('barrier'));
+                $this->line(json_encode($result, JSON_THROW_ON_ERROR));
+                return self::SUCCESS;
+            } elseif ($this->argument('action') === 'probe') {
+                $probe = app(\App\Services\Qa\CampaignBudgetProbe::class);
+                $campaign = $probe->create($tenant, $project, User::findOrFail($actorId));
+                $this->line(json_encode($probe->exercise($campaign), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+                return self::SUCCESS;
+            } elseif ($this->argument('action') === 'runtime') {
                 $this->line(json_encode(app(\App\Services\Qa\CampaignRuntime::class)->snapshot($tenant, $project), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
                 return self::SUCCESS;
             } elseif ($this->argument('action') === 'create') {
