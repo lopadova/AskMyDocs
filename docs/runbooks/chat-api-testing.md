@@ -316,3 +316,28 @@ giudizio globale positivo non compensa un aspetto mancante. Le fonti restano
 complete e, quando serve, ripartite; anche i criteri sono divisi in gruppi entro
 i limiti di numero e dimensione. La copertura può richiedere una nuova bozza,
 ma non approva fatti né sostituisce i controlli di provenienza.
+
+`requires_research=true` può indicare una consultazione soltanto API/MCP:
+`kb_queries=[]` è valido e non elimina la ricerca né i controlli delle capacità.
+Non serve inventare una ricerca documentale per rendere valido quel compito.
+Per `invalid_research_question`, `failure_details.research_contract` indica
+posizione, indice del compito e regola violata senza salvare il testo rifiutato.
+
+Se una riscrittura viene respinta, una richiesta cortese verificata separatamente
+può restare accanto ai fatti originali invariati. Per le tabelle, un raggruppamento
+di fatti già validato può essere reso con intestazioni neutre e testi originali,
+senza usare parole, valori o conclusioni della riscrittura respinta. La traccia
+riporta `accepted_request_only` o `literal_table_fallback`; non sono approvazioni
+di nuovi fatti. Gruppi misti, riferimenti ignoti e fatti mancanti restano esclusi.
+
+I codici alfanumerici maiuscoli devono comparire letteralmente nella fonte o nel
+record selezionato; non basta che un altro record della risposta contenga il
+codice. Nel testo finale i placeholder di redazione sono presentati come dati
+mascherati, senza ricostruire valori né modificare gli originali diagnostici.
+
+Per fonti divise in partizioni, la copertura registra anche la loro pertinenza
+alla domanda corrente. Soltanto una partizione giudicata con sufficiente certezza
+estranea non introduce un obbligo di copertura; tutte le fonti sono conservate.
+Un dettaglio richiesto ma omesso o una pertinenza incerta continua a bloccare la
+copertura. `coverage_validation.checks` conserva punteggi per compito e documenti
+per guidare l'unico tentativo di correzione, senza abbassare la soglia fattuale.
