@@ -49,13 +49,27 @@ final readonly class SessionFactMemory
     }
 
     /** Only source-authorized facts reach interpretation; expired facts are explicitly historical. */
-    public function projection(Model $owner, ?User $actor = null, ?RetrievalFilters $filters = null, array $allowedTools = [], ?int $beforeTurn = null, array $identifiers = [], ?string $question = null): array
+    public function projection(Model $owner, ?User $actor = null, ?RetrievalFilters $filters = null, array $allowedTools = [], ?int $beforeTurn = null, array $identifiers = [], ?string $question = null, ?array $selectedFactIds = null): array
     {
         if (! $this->enabled()) return [];
         $facts = [];
         $bytes = 0;
         $seen = [];
         $query = $this->observations($owner, $actor)->when($beforeTurn !== null, fn ($q) => $q->where('turn_id', '<', $beforeTurn));
+        // Prompt budgets are not authorization limits. Recheck explicitly
+        // selected IDs (and related fields for conflict detection) independently
+        // of which other source happened to fill the prompt projection first.
+        $selectedFields = null;
+        if ($selectedFactIds !== null) {
+            $selectedFactIds = array_slice(array_values(array_unique(array_filter($selectedFactIds,
+                fn ($id) => is_string($id) && preg_match('/^[a-f0-9]{64}$/D', $id)))), 0, 1000);
+            if ($selectedFactIds === []) return [];
+            $selectedFields = SessionMemoryFact::query()->whereIn('id', $selectedFactIds)
+                ->whereHas('observation', fn ($q) => $q->whereIn('id', (clone $query)->select('id')))
+                ->distinct()->pluck('field')->all();
+            if ($selectedFields === []) return [];
+            $query->whereHas('facts', fn ($q) => $q->whereIn('field', $selectedFields));
+        }
         if ($identifiers === [] && $question !== null) {
             // Exact identifier membership is a local lookup, not interpretation of user intent.
             foreach (SessionMemoryFact::query()->whereHas('observation', fn ($q) => $q->whereIn('id', (clone $query)->select('id')))
@@ -70,7 +84,8 @@ final readonly class SessionFactMemory
             });
         });
         foreach ($query
-            ->with('facts')->orderByDesc('acquired_at')->orderByDesc('id')->lazy(50) as $observation) {
+            ->with(['facts' => fn ($q) => $q->when($selectedFields !== null, fn ($q) => $q->whereIn('field', $selectedFields))])
+            ->orderByDesc('acquired_at')->orderByDesc('id')->lazy(50) as $observation) {
             if (! $this->authorized($owner, $observation, $actor, $filters, $allowedTools)) continue;
             foreach ($observation->facts as $fact) {
                 $entry = $this->factView($fact, $observation);
@@ -78,8 +93,8 @@ final readonly class SessionFactMemory
                 if ($entry['field'] !== 'statement' && isset($seen[$identity])) continue;
                 $seen[$identity] = true;
                 $size = strlen(json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-                if (count($facts) >= (int) config('reasoning.session_memory.max_prompt_facts', 100)) return $facts;
-                if ($bytes + $size > (int) config('reasoning.session_memory.max_prompt_bytes', 32768)) continue;
+                if ($selectedFactIds === null && count($facts) >= (int) config('reasoning.session_memory.max_prompt_facts', 100)) return $facts;
+                if ($selectedFactIds === null && $bytes + $size > (int) config('reasoning.session_memory.max_prompt_bytes', 32768)) continue;
                 $facts[] = $entry;
                 $bytes += $size;
             }
@@ -92,7 +107,8 @@ final readonly class SessionFactMemory
     {
         if (! $this->enabled() || ! $understanding->available || $understanding->needsClarification
             || $understanding->isAssistantConversation() || $understanding->asksForProvenance() || $understanding->asksToReadSource()) return $understanding;
-        $available = array_column($this->projection($owner, $actor, $filters, $allowedTools, $beforeTurn, $understanding->targetIdentifiers()), null, 'fact_id');
+        $available = array_column($this->projection($owner, $actor, $filters, $allowedTools, $beforeTurn, $understanding->targetIdentifiers(), selectedFactIds: array_merge([], ...array_map(
+            fn ($decision) => is_array($decision['fact_ids'] ?? null) ? $decision['fact_ids'] : [], $understanding->memoryDecisions))), null, 'fact_id');
         $subs = $understanding->memoryResolution['original_subquestions'] ?? $understanding->subquestions;
         $originalSubs = $subs;
         $tasks = $selected = [];
@@ -269,7 +285,8 @@ final readonly class SessionFactMemory
     public function answer(Model $owner, QuestionUnderstanding $understanding, ?User $actor = null, ?RetrievalFilters $filters = null, array $allowedTools = []): ?AgentAnswer
     {
         if (! ($understanding->memoryResolution['complete'] ?? false) || $understanding->requiresComposition) return null;
-        $available = array_column($this->projection($owner, $actor, $filters, $allowedTools, identifiers: $understanding->targetIdentifiers()), null, 'fact_id');
+        $available = array_column($this->projection($owner, $actor, $filters, $allowedTools, identifiers: $understanding->targetIdentifiers(),
+            selectedFactIds: $understanding->memoryResolution['fact_ids'] ?? []), null, 'fact_id');
         $ids = $understanding->memoryResolution['fact_ids'] ?? [];
         if ($ids === [] || array_diff($ids, array_keys($available)) !== []) return null;
         $historical = $understanding->effectiveAction() === QuestionAction::Recap;

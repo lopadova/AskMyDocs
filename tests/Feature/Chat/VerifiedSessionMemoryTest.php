@@ -131,6 +131,27 @@ class VerifiedSessionMemoryTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_selected_authorized_facts_are_not_lost_when_another_source_fills_the_prompt_budget(): void
+    {
+        $this->document();
+        $id = collect($this->memory->projection($this->chat, $this->user))->firstWhere('field', 'statement')['fact_id'];
+        $this->travel(1)->seconds();
+        $this->source(['id' => 'ORD-123', 'status' => 'processing', 'trackingCode' => 'TRACK-55',
+            ...array_fill_keys(array_map(fn ($i) => 'telemetry_'.$i, range(1, 150)), 'unrequested')]);
+        config(['reasoning.session_memory.max_prompt_facts' => 1]);
+        $this->assertNotContains($id, array_column($this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL]), 'fact_id'));
+        $routed = $this->route($this->understanding([$id], []));
+        $this->assertFalse($routed->needsResearch());
+        $this->assertSame([$id], $routed->memoryResolution['fact_ids']);
+        $answer = $this->memory->answer($this->chat, $routed, $this->user, allowedTools: [self::TOOL]);
+        $this->assertStringContainsString('sostituzione', $answer->answer);
+        $this->assertCount(1, $this->memory->evidence($this->chat, $routed, $this->user, allowedTools: [self::TOOL])['documents']);
+        $this->travel(6)->minutes();
+        $expired = $this->route($this->understanding([$id], []));
+        $this->assertTrue($expired->needsResearch());
+        $this->assertSame('expired', $expired->memoryResolution['tasks'][0]['excluded'][0]['reason']);
+    }
+
     public function test_complete_facts_still_require_composition_for_a_new_requested_presentation(): void
     {
         $this->source();
