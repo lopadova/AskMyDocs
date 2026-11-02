@@ -13,6 +13,31 @@ use Tests\TestCase;
 
 final class ChatQuestionPreprocessorTest extends TestCase
 {
+    public function test_research_contract_repair_receives_only_the_task_index_and_closed_rule(): void
+    {
+        $focus = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status', 'fields' => ['status']];
+        $payload = ['language' => 'it', 'intent' => 'Controllare ORDER-A', 'action' => 'research',
+            'kb_queries' => [], 'mentions' => [], 'references_previous_turn' => false,
+            'context_mode' => 'new', 'requires_research' => true, 'transition' => 'new', 'focus' => $focus,
+            'subquestions' => [[...$focus, 'question' => str_repeat('PRIVATE-TASK-', 50), 'kb_queries' => [],
+                'context_mode' => 'new', 'requires_research' => true]],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => ''];
+        $calls = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturnUsing(function ($provider, $prompt, $messages) use (&$calls, $payload) {
+            $calls[] = json_decode($messages[0]['content'], true);
+            if (count($calls) === 2) $payload['subquestions'][0]['question'] = 'Qual è lo stato di ORDER-A?';
+            return $this->response($payload);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Controlla lo stato di ORDER-A.', reasoningContext: []);
+        $this->assertTrue($result->available);
+        $this->assertTrue($result->needsResearch());
+        $this->assertSame(['location' => 'subquestion', 'task_index' => 0, 'rule' => 'task_question_too_long'],
+            $calls[1]['validation_details']['research_contract']);
+        $this->assertStringNotContainsString('PRIVATE-TASK', json_encode($calls[1]['validation_details']));
+        $this->assertSame($calls[0]['question'], $calls[1]['question']);
+    }
+
     public function test_new_presentation_is_interpreted_independently_from_new_research(): void
     {
         $ai = Mockery::mock(AiManager::class);

@@ -6,6 +6,7 @@ namespace App\Services\Chat;
 
 use App\Ai\AiManager;
 use App\Agent\Capabilities\AgentCapabilitySnapshot;
+use App\Services\Chat\Reasoning\FocusContract;
 use App\Support\SupportedLocale;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -446,6 +447,9 @@ MEMORY;
                     'Missing primary task information route.' => 'missing_primary_task_information_route',
                     default => 'invalid_focus_shape',
                 };
+                if ($details['contract_error'] === 'invalid_research_question') {
+                    $details['research_contract'] = FocusContract::researchFailureDetails($data);
+                }
             }
             Log::warning('Chat question preprocessing was unavailable.', [...$details, 'reason' => $failureStage]);
             return QuestionUnderstanding::fromArray([...$fallback->toArray(), 'failure_reason' => $failureStage, 'failure_details' => $details]);

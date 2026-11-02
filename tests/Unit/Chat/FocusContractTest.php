@@ -89,4 +89,22 @@ final class FocusContractTest extends TestCase
         $this->expectExceptionMessage('Invalid research question.');
         FocusContract::validate($data, ['ORDER-A'], []);
     }
+
+    public function test_research_failure_details_identify_the_rule_without_revealing_query_content(): void
+    {
+        $data = $this->proposal();
+        $data['subquestions'][0]['kb_queries'] = ['curl PRIVATE-CUSTOMER-CONTENT'];
+        $this->assertSame(['location' => 'subquestion', 'task_index' => 0, 'rule' => 'unsafe_kb_query'],
+            FocusContract::researchFailureDetails($data));
+        $this->assertStringNotContainsString('PRIVATE-CUSTOMER', json_encode(FocusContract::researchFailureDetails($data)));
+        $this->expectExceptionMessage('Invalid research question.');
+        FocusContract::validate($data, ['ORDER-A'], []);
+    }
+
+    public function test_live_only_research_has_no_research_contract_violation(): void
+    {
+        $data = $this->proposal();
+        $data['kb_queries'] = $data['subquestions'][0]['kb_queries'] = [];
+        $this->assertSame([], FocusContract::researchFailureDetails($data));
+    }
 }
