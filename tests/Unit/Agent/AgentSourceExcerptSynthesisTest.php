@@ -23,7 +23,7 @@ class AgentSourceExcerptSynthesisTest extends TestCase
             $answers = [];
             foreach ($request['questions'] as $key => $question) {
                 if ($question['type'] === 'noul') {
-                    $answers[$key] = ['type' => 'noul', 'noul' => .95];
+                    $answers[$key] = ['type' => 'noul', 'noul' => $key === 'supported' ? .1 : .95];
                 } else {
                     $probabilities = array_fill_keys(array_keys($question['criteria']), .0825);
                     $probabilities['supported_relevant'] = .67;

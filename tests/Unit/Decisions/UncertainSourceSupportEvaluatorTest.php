@@ -40,11 +40,18 @@ final class UncertainSourceSupportEvaluatorTest extends TestCase
             ['unsupported', .95, false], ['conflicting', .95, false], ['supported_off_topic', .95, false]];
     }
 
-    public function test_unavailable_or_uncertain_adjudication_keeps_the_original_abstention(): void
+    #[DataProvider('abstentions')]
+    public function test_unavailable_or_uncertain_adjudication_keeps_the_original_abstention(int $status, array $payload): void
     {
         config(['ai.providers.openrouter.key' => 'test']);
-        Http::fake(['*' => Http::response([], 503)]);
+        Http::fake(['*' => Http::response($payload, $status)]);
         $initial = ['claim_0' => ['choice' => 'supported_relevant', 'probabilities' => ['supported_relevant' => .7]]];
         $this->assertSame($initial, app(UncertainSourceSupportEvaluator::class)->evaluate($this->state(), $initial, null, null, 'test')['decisions']);
     }
+    public static function abstentions(): array
+    {
+        return [[503, []], [200, ['id' => 'd', 'model' => 'test', 'answers' => ['supported' => ['type' => 'noul', 'noul' => .6]]]],
+            [200, ['id' => 'd', 'model' => 'test', 'answers' => ['supported' => ['type' => 'noul', 'noul' => .02]]]]];
+    }
+
 }

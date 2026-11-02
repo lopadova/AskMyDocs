@@ -16,7 +16,7 @@ final class VerifiedRepairAdditionsTest extends TestCase
         Http::fake(function ($request) use ($novel, $consistent) {
             $answers = [];
             foreach ($request['questions'] as $key => $question) $answers[$key] = ['type' => 'noul',
-                'noul' => str_starts_with($key, 'adds_') ? $novel : $consistent];
+                'noul' => str_starts_with($key, 'denial_') ? .98 : (str_starts_with($key, 'adds_') ? $novel : $consistent)];
             return Http::response(['id' => 'decision', 'model' => 'test', 'answers' => $answers]);
         });
         $original = ['valid' => true, 'claims' => [['text' => 'Expected ITEM-A.', 'fact_id' => 'original', 'subquestion_id' => 0]],
