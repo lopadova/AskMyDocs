@@ -194,7 +194,8 @@ class IndependentResearchTest extends TestCase
             \App\Agent\AgentExecutionContext::fromArray($parent->getAttributes()), $outcome,
             understanding: $parent->result_json['question_understanding'], durableRunId: $parent->run_id);
         $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
-        \Illuminate\Support\Facades\Http::assertSentCount(2);
+        $this->assertSame('completed', data_get($parent->fresh()->result_json, 'focused_decision_consistency.status'));
+        \Illuminate\Support\Facades\Http::assertSentCount(3);
     }
 
     public function test_four_tasks_have_separate_plans_budgets_and_retry_checkpoints_without_new_interpretations(): void

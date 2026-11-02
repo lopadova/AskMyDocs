@@ -113,7 +113,7 @@ final class AgentAnswerSynthesizerTest extends TestCase
         $this->assertStringContainsString($limitation, $answer->answer);
         $this->assertStringNotContainsString('non riesco a verificarne la pertinenza', $answer->answer);
         $this->assertNull($answer->artifact);
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
     }
 
     public function test_malformed_submission_is_retried_once_and_valid_claims_are_still_grounded(): void

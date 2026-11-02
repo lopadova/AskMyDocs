@@ -172,6 +172,7 @@ final readonly class AgentAnswerSynthesizer
                 try {
                     $feedback = json_decode($turnContext ?? '{}', true) ?: [];
                     $feedback['validation_feedback'] = ['claims' => $payload['claims'] ?? [],
+                        'retained_verified_facts' => array_map(fn ($claim) => array_intersect_key($claim, array_flip(['text', 'fact_id', 'subquestion_id', 'document_id', 'tool_execution_id'])), $grounding['claims']),
                         'checks' => array_merge([], ...array_column($grounding['semantic_validation'] ?? [], 'checks')),
                         'coverage' => $coverage, 'instruction' => 'Make one corrected, complete source-bound draft. Prioritize the failing task indexes and source_document_ids in coverage.checks; ignore no source merely because another partition covered another aspect. Answer every requested aspect the sources permit, preserving actors, explicit conditions and material later confirmations. Split a rejected compound claim into independently source-bound facts instead of discarding its supported parts or repeating its wrong code/date. Do not repeat unsupported details or add unrelated cases. State missing confirmation only after checking all matching complete case sources; never deny an event positively documented elsewhere in the thread. Copy original source identities.'];
                     $repairEvidence = $evidence;
@@ -186,6 +187,9 @@ final readonly class AgentAnswerSynthesizer
                         $understanding, json_encode($feedback, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), repairAttempt: true, run: $run);
                     // Repair is factual synthesis, never a new artifact/selection handoff.
                     $repairedPayload['render_table'] = false;
+                    if (! isset($repairedPayload['requested_speech_act']) && isset($payload['requested_speech_act'])) {
+                        $repairedPayload['requested_speech_act'] = $payload['requested_speech_act'];
+                    }
                     $repairedPayload['requires_selection'] = $payload['requires_selection'] ?? false;
                     if ($independent) {
                         $repairedPayload['claims'] = $this->bindRepairTasks($repairedPayload['claims'] ?? [], $repairEvidence);
@@ -212,6 +216,22 @@ final readonly class AgentAnswerSynthesizer
                         $response = $repairedResponse;
                         $repair['status'] = 'accepted';
                         $grounding['coverage_validation'] = $repairedCoverage;
+                    } elseif ($repaired['valid']) {
+                        $augmented = app(\App\Agent\Grounding\VerifiedRepairAdditions::class)->augment(
+                            $question, $grounding, $repaired, $durableRunId, $context->tenantId);
+                        if ($augmented !== null) {
+                            // The candidate may omit old material and score lower
+                            // overall, while supplying one verified missing fact.
+                            // Preserve every old fact; never label this complete
+                            // without evaluating the combined answer separately.
+                            $augmented['coverage_validation'] = $this->evaluateCoverage($question, $evidence,
+                                $augmented['claims'], $understanding ?? [], $augmented['source_excerpts'] ?? [], $run);
+                            $grounding = $augmented;
+                            $payload['claims'] = $augmented['claims'];
+                            if (isset($repairedPayload['requested_speech_act'])) $payload['requested_speech_act'] = $repairedPayload['requested_speech_act'];
+                            $repair['status'] = 'augmented';
+                            $repair['added_fact_count'] = data_get($augmented, 'semantic_validation.'.(count($augmented['semantic_validation']) - 1).'.added_fact_count');
+                        }
                     }
                     $diagnostics->end($run, $repairSpan);
                 } catch (\Throwable $exception) {
@@ -414,7 +434,8 @@ final readonly class AgentAnswerSynthesizer
         if (config('agent.presentation.enabled') && $grounding['valid'] && ! $presentationOnly
             && ! ($payload['render_table'] ?? false) && ! ($payload['requires_selection'] ?? false)) {
             $presented = $diagnostics->measure($run, 'validation.presentation',
-                fn () => app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? []));
+                fn () => app(AgentAnswerPresenter::class)->present($question, $context, $grounding['claims'], $durableRunId, $understanding ?? [],
+                    is_string($payload['requested_speech_act'] ?? null) ? $payload['requested_speech_act'] : null));
             $presentation = $presented['trace'];
             if ($presented['paragraphs'] !== null) {
                 // Presentation never replaces the original facts used for citations or memory.
@@ -512,7 +533,7 @@ final readonly class AgentAnswerSynthesizer
         }
         if ($repairAttempt) {
             $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
-            $system .= "\nWhen a compound claim was inconclusive, split its clear observations from identity reconciliation, hypotheses and ambiguous explanations. Use separate atomic claims for the requested facts; do not repeat the same compound paragraph. Preserve the documented speaker without assuming that a forwarder and an embedded author are the same person. Keep only the uncertain part unresolved.";
+            $system .= "\nThe host feedback retained_verified_facts identifies facts already kept. Prioritize missing requested observations and explicit conditional clauses, not more background or paraphrases of retained facts. A useful atomic addition can be retained with the original facts even if your new draft alone is incomplete. When a compound claim was inconclusive, split its clear observations from identity reconciliation, hypotheses and ambiguous explanations. Use separate atomic claims for the requested facts; do not repeat the same compound paragraph. Preserve the documented speaker without assuming that a forwarder and an embedded author are the same person. Keep only the uncertain part unresolved.";
             $system .= "\nIf an observation is explicit but its attribution or causal link is uncertain, quote what the consulted thread reports without asserting that uncertain identity or cause. This cannot substitute for an explicitly requested personal confirmation by a particular speaker.";
             $system .= "\nWhen a source-supported paragraph failed original-question relevance, resolve its implicit subject and operation explicitly from the complete source. Restate that fact with the requested case/product/person and actor, rather than repeating the same ambiguous paragraph. Resolve short replies such as commitments to proceed using the preceding request. Tie alternatives and conditions to the specific response the user requested. Add no new facts.";
             $system .= "\nFor EACH failed original_question_relevance paragraph, explicitly name its source-attested subject and requested operation, including the documented actor. A compound request can name an order, a return and a label, while one original source names only one of those. Use the exact identifiers attested by THAT source; never add every request identifier to each paragraph or assert an unattested cross-entity link. Do not rely on neighboring paragraphs to identify the subject.";
@@ -691,7 +712,7 @@ PROMPT;
         $u = \App\Services\Chat\QuestionUnderstanding::fromArray($understanding);
         $payload = ['claims' => [], 'limitations' => [], 'completeness' => 'complete', 'render_table' => false,
             'requires_selection' => false, 'research_drafts' => []];
-        $models = [];
+        $models = $requestCandidates = [];
         foreach ($u->subquestions as $index => $sub) {
             $branch = $u->forSubquestion($index);
             $evidence = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
@@ -730,6 +751,7 @@ PROMPT;
                 if (is_array($candidate)) $payload['memory_candidates'][] = [...$candidate, 'subquestion_id' => $index];
             }
             $models[] = $draft['model'];
+            if (is_string($draft['payload']['requested_speech_act'] ?? null)) $requestCandidates[] = $draft['payload']['requested_speech_act'];
             $draftClaims = is_array($draft['payload']['claims'] ?? null) ? $draft['payload']['claims'] : [];
             $payload['research_drafts'][$index] = array_diff_key($draft, ['payload' => true, 'signature' => true]);
             $payload['research_drafts'][$index]['section_title'] = $draft['payload']['section_title'] ?? null;
@@ -745,6 +767,7 @@ PROMPT;
                 $payload['completeness'] = 'partial';
             }
         }
+        if (count(array_unique($requestCandidates)) === 1) $payload['requested_speech_act'] = $requestCandidates[0];
         return [new \App\Ai\AiResponse('', 'agent', implode(', ', array_unique(array_filter($models))) ?: 'independent-research'), $payload];
     }
 
@@ -932,7 +955,7 @@ The server joins accepted claim texts with a blank line. Formatting organizes ve
 - Use one concise `## Topic` heading per section unless the server supplies the task heading from section_title. Never repeat the section heading for each claim. Headings are neutral noun phrases, not questions, task numbers or unsupported conclusions. Use `### Aspect` only when a long section genuinely needs subsections; never use a # page title. A rules section starts with actual rules, not another introduction to the entity.
 - Within each section, group related aspects into short paragraphs, usually one to three sentences. Lead with the direct supported answer, then the relevant detail. Several paragraphs may share the same section heading. Avoid walls of text and a heading for every sentence.
 - Keep claims atomic and source-bound even when they are adjacent in the same paragraph group. Each claim must remain understandable on its own if another claim is excluded. Do not combine evidence from different sources merely to obtain a nicer layout.
-- When drafting a reply, submit only the source-backed business statements as claims. A newly requested polite question to the recipient, such as asking for availability, is presentation wording rather than a historical fact; the final presenter can add it under a separate request-only check. Keep it separate from recorded statuses, commitments and actions, which still require factual grounding. Never imply that a draft was sent.
+- When drafting a reply, submit only the source-backed business statements as claims. Put a newly requested polite question to the recipient in requested_speech_act, NEVER in claims: it is presentation wording rather than a historical fact and has an independent request-only check. Use this field only when the current user explicitly asks for a draft with that request; otherwise omit it. Keep it separate from recorded statuses, commitments and actions, which still require factual grounding. Never imply that a draft was sent.
 - Use bullet lists for parallel attributes or conditions and numbered lists only for ordered steps. Add a blank line before and after every list, heading, table and code block. Do not turn every short paragraph into a list.
 - Use tables for comparable structured fields or requested collections, not for narrative explanations. Preserve exact identifiers and values; never invent cells or totals. Respect the render_table handoff instructions above and do not repeat an already rendered table in prose.
 - Use **bold** sparingly for important identifiers, statuses and values, not whole paragraphs. Use inline code for technical keys and fenced code blocks with a language tag for commands or configuration. Do not use raw HTML, decorative icons or all-capital headings.
@@ -955,6 +978,8 @@ PROMPT;
                     'type' => 'object',
                     'properties' => [
                         'completeness' => ['type' => 'string', 'enum' => ['complete', 'partial', 'insufficient']],
+                        'requested_speech_act' => ['type' => 'string', 'maxLength' => 500,
+                            'description' => 'Optional final polite question explicitly requested in a draft. No facts, assumptions, promises or actions. Keep it OUT of claims; independently verified by the host.'],
                         'section_title' => ['type' => 'string', 'maxLength' => 100,
                             'description' => 'Optional short, neutral topic label in the response language. No question, copied request, Markdown, task number, or factual conclusion. Rendered by the server for independent research tasks.'],
                         'claims' => ['type' => 'array', 'items' => $this->claimSchema()],

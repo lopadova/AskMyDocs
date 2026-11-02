@@ -127,6 +127,41 @@ final class OriginalQuestionRelevanceEvaluatorTest extends TestCase
         ];
     }
 
+    public function test_an_uncertain_shared_decision_gets_one_isolated_check_for_the_explicit_secondary_aspect(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::fake(function ($request) {
+            $isolated = isset($request['questions']['relevant']);
+            $key = $isolated ? 'relevant' : 'relevance_0';
+            return Http::response(['id' => 'decision', 'model' => 'test', 'answers' => [
+                $key => ['type' => 'noul', 'noul' => $isolated ? .98 : .55],
+            ]]);
+        });
+        $source = 'Support confirmed the update; the warehouse still needed the registration.';
+        $result = app(OriginalQuestionRelevanceEvaluator::class)->apply('What did support say? Also distinguish the warehouse position.',
+            ['valid' => true, 'claims' => [['text' => 'The warehouse still needed the registration.', 'quote' => $source]]]);
+        $this->assertTrue($result['valid']);
+        $check = $result['semantic_validation'][0]['checks'][0];
+        $this->assertSame(.55, $check['shared_state_probability_true']);
+        $this->assertSame(.98, $check['probability_true']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($r) => isset($r['questions']['relevant']) && count($r['state']['candidates']) === 1
+            && array_values($r['state']['sources']) === [$source]);
+    }
+
+    public function test_an_uncertain_isolated_result_cannot_approve_a_fact(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test']);
+        Http::fake(function ($request) {
+            $key = array_key_first($request['questions']);
+            return Http::response(['id' => 'decision', 'model' => 'test', 'answers' => [$key => ['type' => 'noul', 'noul' => .55]]]);
+        });
+        $result = app(OriginalQuestionRelevanceEvaluator::class)->apply('What did support say?',
+            ['valid' => true, 'claims' => [['text' => 'Warehouse note.', 'quote' => 'Warehouse note.']]]);
+        $this->assertFalse($result['valid']);
+        Http::assertSentCount(2);
+    }
+
     public function test_relevance_can_never_override_a_failed_source_validation(): void
     {
         Http::preventStrayRequests();
