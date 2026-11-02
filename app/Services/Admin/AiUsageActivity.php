@@ -9,15 +9,18 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 use Padosoft\LaravelAiFinOps\Models\UsageRecord;
+use Padosoft\LaravelAiFinOps\Data\TokenUsage;
 
 /** Read the existing call ledger. No prompts, credentials or cross-tenant totals. */
 final readonly class AiUsageActivity
 {
     private const METRICS = ['cost', 'token_cost', 'token_cost_tokens', 'tokens_input', 'tokens_output', 'tokens_cached',
         'tokens_reasoning', 'entries', 'unpriced_entries', 'unpriced_token_entries', 'estimated_entries',
-        'latency_ms', 'latency_entries'];
+        'latency_ms', 'latency_entries', 'estimated_cost', 'repriced_entries', 'repriced_tokens'];
 
-    public function __construct(private TenantContext $tenant) {}
+    private const MONEY_METRICS = ['cost', 'token_cost', 'estimated_cost'];
+
+    public function __construct(private TenantContext $tenant, private AiUsagePriceCatalog $prices) {}
 
     public function report(CarbonImmutable $from, CarbonImmutable $to, string $timezone, array $filters): array
     {
@@ -35,7 +38,7 @@ final readonly class AiUsageActivity
             'currency' => $filters['currency'] ?? config('ai-finops.currency.base', 'USD'),
             'filters' => array_intersect_key($filters, array_flip(['provider', 'purpose', 'status'])),
             'options' => ['providers' => [], 'purposes' => [], 'statuses' => [], 'currencies' => []],
-            'summary' => null, 'ranking_metric' => 'cost', 'buckets' => [], 'series' => [], 'models' => [], 'top_models' => [], 'top_providers' => []];
+            'summary' => null, 'ranking_metric' => 'cost', 'price_sources' => [], 'buckets' => [], 'series' => [], 'models' => [], 'top_models' => [], 'top_providers' => []];
         try {
             $model = new UsageRecord;
             $connection = $model->getConnection();
@@ -92,6 +95,9 @@ final readonly class AiUsageActivity
                 ->selectRaw("SUM(CASE WHEN {$tokenRow} AND NOT {$unknown} THEN tokens_input + tokens_output ELSE 0 END) AS token_cost_tokens")
                 ->selectRaw("SUM(CASE WHEN {$unknown} THEN 1 ELSE 0 END) AS unpriced_entries")
                 ->selectRaw("SUM(CASE WHEN {$unknown} AND {$tokenRow} THEN 1 ELSE 0 END) AS unpriced_token_entries")
+                ->selectRaw("SUM(CASE WHEN {$unknown} AND {$tokenRow} THEN tokens_input ELSE 0 END) AS unpriced_input")
+                ->selectRaw("SUM(CASE WHEN {$unknown} AND {$tokenRow} THEN tokens_output ELSE 0 END) AS unpriced_output")
+                ->selectRaw("SUM(CASE WHEN {$unknown} AND {$tokenRow} THEN tokens_cached ELSE 0 END) AS unpriced_cached")
                 ->selectRaw("SUM(CASE WHEN tokens_estimated = true OR cost_method = 'estimated' THEN 1 ELSE 0 END) AS estimated_entries")
                 ->selectRaw('SUM(tokens_input) AS tokens_input, SUM(tokens_output) AS tokens_output, SUM(tokens_cached) AS tokens_cached, SUM(tokens_reasoning) AS tokens_reasoning')
                 ->selectRaw('SUM(COALESCE(latency_ms, 0)) AS latency_ms, COUNT(latency_ms) AS latency_entries')
@@ -104,6 +110,18 @@ final readonly class AiUsageActivity
                 return [...$base, 'reason' => 'interval_too_broad'];
             }
 
+            $this->prices->load($rows->where('unpriced_token_entries', '>', 0)->pluck('model')->all());
+            foreach ($rows as $row) {
+                $estimate = (int) $row->unpriced_token_entries > 0 ? $this->prices->estimate(
+                    $row->provider, $row->model,
+                    new TokenUsage(input: (int) $row->unpriced_input, output: (int) $row->unpriced_output, cached: (int) $row->unpriced_cached),
+                    $currency,
+                ) : null;
+                $row->estimated_cost = $estimate ?? 0.0;
+                $row->repriced_entries = $estimate !== null ? (int) $row->unpriced_token_entries : 0;
+                $row->repriced_tokens = $estimate !== null ? (int) $row->unpriced_input + (int) $row->unpriced_output : 0;
+            }
+
             $summary = $this->zero();
             $models = $providers = $calendar = [];
             foreach ($buckets as $index => $bucket) {
@@ -114,15 +132,15 @@ final readonly class AiUsageActivity
                 $models[$key] ??= ['id' => $key, 'provider' => $row->provider, 'model' => $row->model, ...$this->zero()];
                 $providers[$row->provider] ??= ['provider' => $row->provider, ...$this->zero()];
                 foreach (self::METRICS as $metric) {
-                    $value = in_array($metric, ['cost', 'token_cost'], true) ? (float) $row->$metric : (int) $row->$metric;
+                    $value = in_array($metric, self::MONEY_METRICS, true) ? (float) $row->$metric : (int) $row->$metric;
                     $summary[$metric] += $value;
                     $models[$key][$metric] += $value;
                     $providers[$row->provider][$metric] += $value;
                     $calendar[(int) $row->bucket][$metric] += $value;
                 }
             }
-            $rankingMetric = $summary['entries'] > 0 && $summary['unpriced_entries'] === $summary['entries'] ? 'tokens' : 'cost';
-            $value = static fn ($row) => $rankingMetric === 'tokens' ? $row['tokens_input'] + $row['tokens_output'] : $row['cost'];
+            $rankingMetric = $summary['entries'] > 0 && $summary['unpriced_entries'] - $summary['repriced_entries'] === $summary['entries'] ? 'tokens' : 'cost';
+            $value = static fn ($row) => $rankingMetric === 'tokens' ? $row['tokens_input'] + $row['tokens_output'] : $row['cost'] + $row['estimated_cost'];
             $rank = static fn ($a, $b) => $value($b) <=> $value($a) ?: strcmp($a['id'] ?? $a['provider'], $b['id'] ?? $b['provider']);
             uasort($models, $rank);
             uasort($providers, $rank);
@@ -140,14 +158,14 @@ final readonly class AiUsageActivity
                 $key = hash('sha256', $row->provider."\0".$row->model);
                 $key = isset($top[$key]) ? $key : 'other';
                 foreach (self::METRICS as $metric) {
-                    $series[$key]['values'][(int) $row->bucket][$metric] += in_array($metric, ['cost', 'token_cost'], true) ? (float) $row->$metric : (int) $row->$metric;
+                    $series[$key]['values'][(int) $row->bucket][$metric] += in_array($metric, self::MONEY_METRICS, true) ? (float) $row->$metric : (int) $row->$metric;
                 }
             }
             foreach ($series as &$line) {
                 $line['values'] = array_map($this->decorate(...), $line['values']);
             }
             unset($line);
-            return [...$base, 'status' => 'available', 'reason' => null, 'ranking_metric' => $rankingMetric,
+            return [...$base, 'status' => 'available', 'reason' => null, 'ranking_metric' => $rankingMetric, 'price_sources' => $this->prices->sourcesUsed(),
                 'summary' => $this->decorate($summary), 'buckets' => array_map($this->decorate(...), array_values($calendar)),
                 'models' => array_map($this->decorate(...), array_values($models)), 'series' => array_values($series),
                 'top_models' => array_map($this->decorate(...), array_slice(array_values($models), 0, 5)),
@@ -167,9 +185,13 @@ final readonly class AiUsageActivity
     private function decorate(array $metrics): array
     {
         $tokens = $metrics['tokens_input'] + $metrics['tokens_output'];
+        $unresolved = $metrics['unpriced_entries'] - $metrics['repriced_entries'];
+        $pricedTokens = $metrics['token_cost_tokens'] + $metrics['repriced_tokens'];
 
         return [...$metrics, 'tokens' => $tokens,
-            'cost_per_million' => $metrics['token_cost_tokens'] > 0 && $metrics['unpriced_token_entries'] === 0 ? $metrics['token_cost'] / $metrics['token_cost_tokens'] * 1_000_000 : null,
+            'unresolved_entries' => $unresolved,
+            'spend' => $metrics['entries'] > 0 && $unresolved === $metrics['entries'] ? null : $metrics['cost'] + $metrics['estimated_cost'],
+            'cost_per_million' => $pricedTokens > 0 && $metrics['unpriced_token_entries'] === $metrics['repriced_entries'] ? ($metrics['token_cost'] + $metrics['estimated_cost']) / $pricedTokens * 1_000_000 : null,
             'average_latency_ms' => $metrics['latency_entries'] > 0 ? $metrics['latency_ms'] / $metrics['latency_entries'] : null];
     }
 }
