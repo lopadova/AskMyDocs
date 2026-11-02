@@ -81,6 +81,11 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(\Padosoft\LaravelAiFinOps\Pricing\OpenRouterPricingSource::class,
+            \App\FinOps\OpenRouterPricingSource::class);
+        $this->app->bind(\Padosoft\LaravelAiFinOps\Console\CapturePricesCommand::class,
+            \App\FinOps\CapturePricesCommand::class);
+
         $this->app->bind(AgentRunHandler::class, DefaultAgentRunHandler::class);
         $this->app->singleton(\App\Agent\Debug\RunDiagnostics::class);
 
