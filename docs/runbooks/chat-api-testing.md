@@ -341,3 +341,33 @@ estranea non introduce un obbligo di copertura; tutte le fonti sono conservate.
 Un dettaglio richiesto ma omesso o una pertinenza incerta continua a bloccare la
 copertura. `coverage_validation.checks` conserva punteggi per compito e documenti
 per guidare l'unico tentativo di correzione, senza abbassare la soglia fattuale.
+
+Nei controlli di pertinenza, un giudizio incerto sullo stato condiviso può avere
+un solo controllo isolato sullo stesso fatto e sulla domanda corrente completa.
+Un rifiuto netto, una fonte non valida o un errore del provider non vengono
+aggirati. `isolated_checks` conserva il nuovo giudizio con costo e latenza;
+la soglia resta invariata.
+
+`cross_claim_consistency` confronta le affermazioni già verificate per impedire
+che una negazione globale contraddica una conferma dello stesso evento nella
+risposta. Non confonde una situazione precedente con un aggiornamento successivo,
+né ritiro con consegna o rimborso. Se manca il controllo, non approva i fatti.
+
+La sintesi può proporre `requested_speech_act` separatamente da `claims`: una
+nuova domanda al destinatario non richiede una citazione storica. Il presenter
+verifica richiesta e assenza di affermazioni fattuali prima di aggiungerla; può
+conservarla anche se la riscrittura dei fatti non riesce. Non compare tra i fatti
+per citazioni o memoria, non può unire casi distinti e non autorizza un invio.
+
+Se una correzione incompleta recupera un fatto verificato ma ha copertura globale
+inferiore, `verified_repair_additions` può conservarne solo il materiale richiesto
+che manca nell'originale. Tutti i fatti originari devono sopravvivere al controllo
+di coerenza; restano il limite di dieci affermazioni e una valutazione separata
+della copertura combinata. Lo stato della correzione è `augmented`: non significa
+che la risposta sia completa. Le tabelle originali già verificate vengono rese
+come tabelle, senza annidarle in una cella del fallback.
+
+Gli errori strutturali del presenter espongono `failure_rule`, un codice chiuso
+come `unknown_or_repeated_fact`, `mixed_task_groups`, `incomplete_or_oversized`
+o `invalid_relation_extraction`. Non contengono il testo della bozza o la risposta
+grezza del provider; una semplice classe di eccezione non identifica la regola.
