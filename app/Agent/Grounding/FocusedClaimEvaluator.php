@@ -286,6 +286,7 @@ final readonly class FocusedClaimEvaluator
             'partial' => count($accepted) < count(array_filter($checks, fn ($c) => ! in_array($c['reason'], ['duplicate_fact', 'already_communicated'], true)))
                 || in_array('unverified', array_column($coverage, 'status'), true) || array_filter($checks, fn ($c) => ($c['fallback'] ?? null) !== null) !== []], $understanding, $navigation, $runId, $repairAttempt, $tenant,
             $decisionSlot === 'focused_decision' ? 'original_question_relevance_decision' : $decisionSlot.'_relevance');
+        $validated = app(ClaimConsistencyEvaluator::class)->apply($question, $validated, $runId, $repairAttempt, $tenant, $decisionSlot.'_consistency');
         return [...$validated, 'source_excerpts' => $sourceExcerpts];
     }
 
