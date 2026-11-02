@@ -18,6 +18,7 @@ export type SidebarSection =
     | 'sessions'
     | 'kb-browse'
     | 'dashboard'
+    | 'ai-usage'
     | 'insights'
     | 'projects'
     | 'teams'
@@ -137,6 +138,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Tenant administration',
         items: [
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/$teamHash/admin' },
+            { id: 'ai-usage', label: 'AI usage', icon: 'Activity', route: '/app/$teamHash/admin/ai-usage', roles: ['admin', 'super-admin'] },
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },
             { id: 'insights', label: 'AI Insights', icon: 'Sparkles', route: '/app/$teamHash/admin/insights' },
             { id: 'projects', label: 'Projects', icon: 'Cube', route: '/app/$teamHash/admin/projects' },

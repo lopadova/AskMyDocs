@@ -64,6 +64,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
         $matrix = [
             // ── Core admin API group — middleware role:admin|super-admin ──
             '/api/admin/metrics/overview' => ['admin', 'super-admin'],
+            '/api/admin/ai-usage' => ['admin', 'super-admin'],
             '/api/admin/users' => ['admin', 'super-admin'],
             '/api/admin/projects' => ['admin', 'super-admin'],
             // v8.28 — team (tenant) create + rename registry.
