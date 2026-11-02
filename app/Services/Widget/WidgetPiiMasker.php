@@ -18,6 +18,14 @@ namespace App\Services\Widget;
  */
 final class WidgetPiiMasker
 {
+    /** Display placeholders as unavailable data, never as usable reference values. */
+    public function maskForDisplay(string $input, string $locale): string
+    {
+        $label = str_starts_with($locale, 'it') ? '(dato mascherato)' : '(redacted value)';
+        return strtr($this->maskString($input), array_fill_keys(
+            ['[EMAIL]', '[IBAN]', '[CARD]', '[PHONE]', '[TOKEN]', '[JWT]', '[CF]', '[VAT]'], $label));
+    }
+
     /**
      * Mask una stringa rimpiazzando i pattern PII con placeholder.
      * I pattern coprono: email, telefono (IT/intl), IBAN, numeri carta,
