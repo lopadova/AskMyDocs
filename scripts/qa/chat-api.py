@@ -35,6 +35,16 @@ def read_private(path):
     return json.loads(path.read_text())
 
 
+def read_question(path):
+    path = Path(path)
+    if path.stat().st_mode & 0o077:
+        raise ValueError('Prompt file must be private: chmod 600 the file.')
+    content = path.read_text(encoding='utf-8')
+    if not content.strip():
+        raise ValueError('Prompt file is empty.')
+    return content
+
+
 class Client:
     def __init__(self, profile):
         self.base = profile['base_url'].rstrip('/')
@@ -121,9 +131,15 @@ def parser():
     init.add_argument('--token-file', required=True)
     init.add_argument('--project', required=True)
     ask = commands.add_parser('ask')
-    ask.add_argument('--question', required=True)
+    question = ask.add_mutually_exclusive_group(required=True)
+    question.add_argument('--question')
+    question.add_argument('--question-file', help='Private UTF-8 prompt file; preserved without rewriting')
     ask.add_argument('--conversation', type=int)
     ask.add_argument('--input-json', help='Additional chat inputs: filters, live_sources, depth, selection')
+    ask.add_argument('--campaign', help='Development QA campaign UUID; requires debug administrator access')
+    ask.add_argument('--round', choices=['baseline', 'candidate'])
+    ask.add_argument('--case', dest='case_id')
+    ask.add_argument('--turn', type=int, choices=[1, 2, 3])
     for name in ('ask', 'watch'):
         sub = ask if name == 'ask' else commands.add_parser(name)
         if name == 'watch': sub.add_argument('--run', required=True)
@@ -142,6 +158,7 @@ def parser():
     commands.add_parser('sources')
     commands.add_parser('check')
     commands.add_parser('conversations')
+    commands.add_parser('campaign').add_argument('--id', required=True)
     commands.add_parser('document').add_argument('--id', required=True, type=int)
     tool = commands.add_parser('tool-source')
     for name in ('conversation', 'message', 'execution'): tool.add_argument('--' + name, required=True, type=int)
@@ -165,7 +182,11 @@ def main(argv=None):
         if (output / 'submission.json').exists():
             raise ValueError('Output already contains a submission; use watch with its run_id or a new directory.')
         payload = json.loads(Path(args.input_json).read_text()) if args.input_json else {}
-        payload['content'] = args.question
+        if any(value is not None for value in (args.campaign, args.round, args.case_id, args.turn)):
+            if not all(value is not None for value in (args.campaign, args.round, args.case_id, args.turn)):
+                raise ValueError('Campaign, round, case and turn must be provided together.')
+            payload['qa'] = {'campaign_id': args.campaign, 'round': args.round, 'case_id': args.case_id, 'turn': args.turn}
+        payload['content'] = read_question(args.question_file) if args.question_file else args.question
         write_private(output / 'submission.json', {'state': 'preparing', 'input': payload}, exclusive=True)
         conversation = args.conversation
         if conversation is None:
@@ -181,6 +202,8 @@ def main(argv=None):
     paths = {
         'check': lambda: ('GET', '/api/chat/me', None),
         'conversations': lambda: ('GET', '/api/chat/conversations', None),
+        'campaign': lambda: ('GET', '/api/chat/qa-campaigns/' + urllib.parse.quote(args.id, safe='')
+                             + '?project_key=' + urllib.parse.quote(profile['project_key'], safe=''), None),
         'sources': lambda: ('GET', '/api/chat/live-sources?project_key=' + urllib.parse.quote(profile['project_key']), None),
         'document': lambda: ('GET', f'/api/chat/documents/{args.id}/preview', None),
         'tool-source': lambda: ('GET', f'/api/chat/conversations/{args.conversation}/messages/{args.message}/tool-sources/{args.execution}', None),

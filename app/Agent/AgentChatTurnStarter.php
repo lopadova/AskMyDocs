@@ -48,6 +48,11 @@ final readonly class AgentChatTurnStarter
             // share this fence; internal research branches are not new turns.
             Conversation::query()->forTenant($context->tenantId)->whereKey($conversation->id)
                 ->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $previousQa = AgentRun::query()->forTenant($context->tenantId)->where('conversation_id', $conversation->id)
+                ->whereNotNull('input_json->qa->campaign_id')->orderByDesc('id')->first();
+            if ($previousQa !== null && data_get($input, 'qa.campaign_id') !== data_get($previousQa->input_json, 'qa.campaign_id')) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_campaign_context_required']);
+            }
             $busy = AgentRun::query()->forTenant($context->tenantId)
                 ->where('conversation_id', $conversation->id)
                 ->whereNull('input_json->research_parent_id')

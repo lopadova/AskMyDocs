@@ -950,6 +950,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->commands([
+            \App\Console\Commands\QaCampaignCommand::class,
             \App\Console\Commands\IssueChatApiTokenCommand::class,
             \App\Console\Commands\ReconcileTerminalAgentRunCommand::class,
             \App\Console\Commands\PumpEmailTriageCommand::class,

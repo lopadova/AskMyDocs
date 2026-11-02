@@ -46,7 +46,7 @@ final class AgentWaveTask
                 Auth::setUser($run->user);
             }
             $taskStarted = hrtime(true);
-            return app(\App\Agent\Debug\RunDiagnostics::class)->measure($run, 'tool.execute',
+            return app(\App\Services\Qa\CampaignScope::class)->withinRun($run, fn () => app(\App\Agent\Debug\RunDiagnostics::class)->measure($run, 'tool.execute',
                 fn () => app(\App\Ai\AgentChatModelScope::class)->within($context, function () use ($run, $context, $payload, $taskStarted): AgentToolActionResult {
                 app(AgentRunControl::class)->ensureActive($run);
                 $requested = $payload['tool'];
@@ -99,7 +99,7 @@ final class AgentWaveTask
                 app(AgentRunControl::class)->ensureActive($run);
                 return new AgentToolActionResult($result->body, $result->physicalRequests, $result->complete, $result->stopReason,
                     [...$result->stats, 'wave_latency_ms' => (int) ((hrtime(true) - $taskStarted) / 1_000_000)]);
-            }), ['tool_kind' => $payload['tool']->kind, 'tool_name' => $payload['tool']->name, 'wait_reason' => 'tool_response']);
+            }), ['tool_kind' => $payload['tool']->kind, 'tool_name' => $payload['tool']->name, 'wait_reason' => 'tool_response']));
         } finally {
             Auth::forgetGuards();
             if ($user !== null) Auth::setUser($user);

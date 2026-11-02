@@ -122,6 +122,35 @@ class ChatClientTest(unittest.TestCase):
                 self.assertEqual(3, client.watch('r', output))
             self.assertTrue(all(call.args[0] == 'GET' for call in client.request.call_args_list))
 
+    def test_campaign_flags_and_private_prompt_are_persisted_without_rewriting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            qa.write_private(root / 'profile.json', self.profile())
+            prompt = root / 'first.txt'
+            prompt.touch(mode=0o600)
+            prompt.write_text('Codice ORD-041\nVerifica l’ultima conferma.\n')
+            client = Mock()
+            client.request.return_value = {'run_id': 'run'}
+            client.watch.return_value = 0
+            args = ['--profile', str(root / 'profile.json'), 'ask', '--conversation', '3', '--question-file', str(prompt),
+                    '--output', str(root / 'output'), '--campaign', 'campaign', '--round', 'baseline', '--case', 'CASE-01', '--turn', '1']
+            with patch.object(qa, 'Client', return_value=client):
+                self.assertEqual(0, qa.main(args))
+            payload = client.request.call_args.args[2]
+            self.assertEqual(prompt.read_text(), payload['content'])
+            self.assertEqual({'campaign_id': 'campaign', 'round': 'baseline', 'case_id': 'CASE-01', 'turn': 1}, payload['qa'])
+            self.assertEqual(payload, json.loads((root / 'output/submission.json').read_text())['input'])
+
+    def test_incomplete_campaign_flags_do_not_create_a_conversation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            qa.write_private(root / 'profile.json', self.profile())
+            client = Mock()
+            with patch.object(qa, 'Client', return_value=client), self.assertRaises(ValueError):
+                qa.main(['--profile', str(root / 'profile.json'), 'ask', '--question', 'Question',
+                         '--campaign', 'campaign', '--output', str(root / 'output')])
+            client.request.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
