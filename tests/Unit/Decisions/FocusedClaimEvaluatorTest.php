@@ -441,7 +441,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(2, $result['claims']);
         $this->assertSame(['answered', 'answered'], array_column($result['subquestions'], 'status'));
         $this->assertNotContains('entity_mismatch', array_column($result['semantic_validation'][0]['checks'], 'reason'));
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 
     public function test_partial_field_availability_does_not_erase_the_existing_requested_field(): void
@@ -568,7 +568,7 @@ class FocusedClaimEvaluatorTest extends TestCase
             $this->assertSame(4101, $check['source']['tool_execution_id']);
             $this->assertSame('passed', $check['deterministic']['status']);
         }
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
         $this->assertCount(4, $state['sources']); // Three complete documents + one identical MCP record, from two executions.
@@ -770,7 +770,7 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertCount(9, $result['claims']);
         $this->assertFalse($result['partial']);
         $this->assertSame(['answered', 'answered', 'answered', 'answered'], array_column($result['subquestions'], 'status'));
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         $state = Http::recorded()[0][0]['state'];
         $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
         // Full documents AND overlapping passages remain original and distinct.
@@ -836,6 +836,6 @@ class FocusedClaimEvaluatorTest extends TestCase
             ['focus' => $focus, 'subquestions' => [$focus]]);
         $this->assertFalse($bounded['valid']);
         $this->assertSame(3, $bounded['semantic_validation'][0]['state_limit_count']);
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 }
