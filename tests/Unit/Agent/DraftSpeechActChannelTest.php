@@ -63,6 +63,40 @@ final class DraftSpeechActChannelTest extends TestCase
         $this->assertSame('accepted_request_only', $answer->grounding['presentation']['status']);
     }
 
+    #[DataProvider('repairOutcomes')]
+    public function test_a_single_request_rewrite_still_needs_both_independent_proofs(bool $accepted): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        $original = 'After the refund, send its receipt.';
+        $replacement = 'Could you confirm whether the refund occurred and share a receipt if available?';
+        Http::fake(function ($request) use ($replacement, $accepted) {
+            $repair = ($request['state']['proposed_nonfactual_request'] ?? '') === $replacement;
+            return Http::response(['id' => 'decision', 'model' => 'test', 'answers' => [
+                'requested' => ['type' => 'noul', 'noul' => $repair && ! $accepted ? .1 : .98],
+                'nonfactual' => ['type' => 'noul', 'noul' => $repair ? .98 : .77],
+            ]]);
+        });
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->ordered()->andThrow(new \RuntimeException('Optional prose unavailable'));
+        $ai->shouldReceive('chatWithHistory')->once()->ordered()->andReturn(new AiResponse('', 'fake', 'test', toolCalls: [[
+            'name' => 'compose_draft_question', 'arguments' => ['text' => $replacement],
+        ]]));
+        $this->app->instance(AiManager::class, $ai);
+        $fact = 'Support authorized a refund.';
+        $result = app(AgentAnswerPresenter::class)->present('Draft a note asking whether the refund occurred, with a receipt if available.',
+            new AgentExecutionContext('run', 'default', 'demo', 'chat', 'user', '1', 'en', 'UTC'),
+            [['text' => $fact, 'subquestion_id' => 0]], understanding: ['requires_composition' => true], requestedSpeechAct: $original);
+        $this->assertSame($accepted, $result['trace']['draft_request_repair']['accepted']);
+        $this->assertSame($original, $result['trace']['draft_request']['candidate']);
+        if ($accepted) {
+            $this->assertSame([$fact, $replacement], array_column($result['paragraphs'], 'text'));
+            $this->assertSame([], $result['paragraphs'][1]['claim_ids']);
+        } else $this->assertNull($result['paragraphs']);
+        Http::assertSentCount(2);
+    }
+
+    public static function repairOutcomes(): array { return [[true], [false]]; }
+
     #[DataProvider('rejectedRequests')]
     public function test_unasked_requests_or_assertions_never_enter_the_request_channel(float $requested, float $nonfactual): void
     {
