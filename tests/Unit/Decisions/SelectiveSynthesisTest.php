@@ -120,7 +120,10 @@ class SelectiveSynthesisTest extends TestCase
     {
         config(['reasoning.enabled' => true, 'reasoning.selective_validation' => true, 'ai.providers.openrouter.key' => 'test']);
         Http::fake(function ($request) {
-            if (isset($request['state']['original_question'])) {
+            if (isset($request['state']['source_verified_statements'])) {
+                $this->assertSame(['ITEM-0 is active.', 'ITEM-2 is active.'], array_column($request['state']['source_verified_statements'], 'text'));
+            }
+            if (isset($request['state']['original_question']) || isset($request['state']['source_verified_statements'])) {
                 return Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => array_fill_keys(
                     array_keys($request['questions']), ['type' => 'noul', 'noul' => .96])]);
             }
@@ -180,6 +183,6 @@ class SelectiveSynthesisTest extends TestCase
         $this->assertStringNotContainsString('Tell me about', $answer->answer);
         $this->assertSame('partial', $answer->completeness);
         $this->assertCount(2, $answer->citations);
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
     }
 }
