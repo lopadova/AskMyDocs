@@ -168,6 +168,27 @@ class VerifiedSessionMemoryTest extends TestCase
         $this->assertLessThanOrEqual(11, count($projection));
     }
 
+    public function test_only_a_still_authorized_case_link_selects_its_api_context(): void
+    {
+        [, $chunk, $source, $claim] = $this->document();
+        $text = 'CASE-A references ORD-123. The customer requested a replacement.';
+        $hash = hash('sha256', $text);
+        $chunk->update(['chunk_text' => $text, 'chunk_hash' => $hash]);
+        $source['evidence'][0] = [...$source['evidence'][0], 'content' => $text, 'evidence_hash' => $hash];
+        $claim = [...$claim, 'text' => 'CASE-A references ORD-123.', 'quote' => $text,
+            'evidence_hash' => $hash, 'entity_identifiers' => ['CASE-A', 'ORD-123']];
+        $turn = $this->chat->messages()->create(['role' => 'user', 'content' => 'CASE-A',
+            'metadata' => ['reasoning' => ['understanding' => $this->understanding()->toArray()]]]);
+        $this->memory->consolidate($this->chat, $turn, ['documents' => [$source]], [$claim], $this->user);
+        $this->travel(1)->seconds();
+        $this->source();
+        $facts = $this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL], question: 'Prepare a note for CASE-A.');
+        $this->assertNotEmpty(array_filter($facts, fn ($fact) => str_starts_with($fact['namespace'], 'tool:')), json_encode(array_column($facts, 'namespace')));
+        $chunk->update(['chunk_text' => 'This document changed; its earlier link is no longer authorized.']);
+        $facts = $this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL], question: 'Prepare a note for CASE-A.');
+        $this->assertSame([], $facts);
+    }
+
     public function test_complete_facts_still_require_composition_for_a_new_requested_presentation(): void
     {
         $this->source();

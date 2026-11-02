@@ -72,14 +72,16 @@ final readonly class SessionFactMemory
         }
         if ($identifiers === [] && $question !== null) {
             // Exact identifier membership is a local lookup, not interpretation of user intent.
-            foreach (SessionMemoryFact::query()->whereHas('observation', fn ($q) => $q->whereIn('id', (clone $query)->select('id')))
-                ->select(['id', 'subject_identifiers', 'verification_json'])->orderBy('id')->lazy(100) as $fact) {
+            $authorizedLinks = [];
+            foreach (SessionMemoryFact::query()->with('observation')->whereHas('observation', fn ($q) => $q->whereIn('id', (clone $query)->select('id')))
+                ->select(['id', 'observation_id', 'subject_identifiers', 'verification_json'])->orderBy('id')->lazy(100) as $fact) {
                 foreach ($fact->subject_identifiers as $id) {
                     if (! EvidenceProjector::contains($question, $id)) continue;
                     $identifiers[] = $id;
                     // A verified statement can link a case to its API record.
                     // These labels select context only, never establish a new fact.
-                    if (($fact->verification_json['method'] ?? null) === 'verified_claim') {
+                    if (($fact->verification_json['method'] ?? null) === 'verified_claim'
+                        && ($authorizedLinks[$fact->observation_id] ??= $fact->observation !== null && $this->authorized($owner, $fact->observation, $actor, $filters, $allowedTools))) {
                         $identifiers = [...$identifiers, ...$fact->subject_identifiers];
                     }
                 }
