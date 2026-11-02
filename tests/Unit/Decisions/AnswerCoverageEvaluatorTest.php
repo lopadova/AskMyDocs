@@ -8,6 +8,44 @@ use Tests\TestCase;
 
 final class AnswerCoverageEvaluatorTest extends TestCase
 {
+    public static function partitionRelevance(): array
+    {
+        return [[.02, false, true], [.02, true, false], [.25, false, false]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('partitionRelevance')]
+    public function test_only_confidently_unrelated_partitions_add_no_obligation_and_missing_material_still_vetoes(float $oldEpisodeRelevance, bool $missingUpdate, bool $sufficient): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'decisions.max_state_bytes' => 24000, 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($oldEpisodeRelevance) {
+            $text = json_encode($request['state']['sources']);
+            $old = str_contains($text, 'Old packaging discussion');
+            $probability = $old ? .05 : (str_contains($text, 'Missing pickup update') ? .2 : .99);
+            $answers = array_fill_keys(array_keys($request['questions']), ['type' => 'noul', 'noul' => $probability]);
+            $answers['material_in_partition']['noul'] = $old ? $oldEpisodeRelevance : .99;
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $labels = ['Pickup confirmation', 'Old packaging discussion'];
+        if ($missingUpdate) $labels[] = 'Missing pickup update';
+        $documents = [];
+        foreach ($labels as $index => $label) $documents[] = ['document_id' => $index + 1, 'title' => 'CASE-A',
+            'evidence' => [['content' => $label.str_repeat(' Original context. ', 800), 'complete_source' => true]]];
+        $tasks = array_map(fn ($i) => ['question' => 'Pickup aspect '.$i, 'identifiers' => ['CASE-A']], range(0, 4));
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('What confirms the pickup?', ['documents' => $documents],
+            [['text' => 'Pickup was confirmed.', 'document_id' => 1]], ['subquestions' => $tasks]);
+        $this->assertSame($sufficient, $result['sufficient'], json_encode($result));
+        $this->assertSame(count($documents), $result['source_partition_count']);
+        $this->assertSame($oldEpisodeRelevance <= .2, $result['checks'][1]['ignored_as_unrelated']);
+        if ($missingUpdate) $this->assertSame(.2, $result['probability_true']);
+        $seen = [];
+        foreach (Http::recorded() as [$request]) {
+            $this->assertSame(7, count($request['questions']));
+            array_push($seen, ...array_column($request['state']['sources'], 'document_id'));
+        }
+        $this->assertSame(range(1, count($documents)), $seen);
+    }
+
     public function test_one_missing_task_vetoes_a_coarse_positive_coverage_judgment(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
@@ -26,6 +64,8 @@ final class AnswerCoverageEvaluatorTest extends TestCase
         $this->assertFalse($result['sufficient']);
         $this->assertSame(.2, $result['probability_true']);
         $this->assertSame(2, $result['requested_task_count']);
+        $this->assertSame([.99, .2], $result['checks'][0]['task_probabilities']);
+        $this->assertSame([1], $result['checks'][0]['source_document_ids']);
         Http::assertSent(fn ($request) => count($request['questions']) === 3 && count($request['state']['requested_tasks']) === 2);
     }
 
@@ -157,7 +197,8 @@ final class AnswerCoverageEvaluatorTest extends TestCase
         config(['ai.providers.openrouter.key' => 'test', 'decisions.max_state_bytes' => 24000, 'reasoning.threshold' => .8]);
         Http::preventStrayRequests();
         Http::fake(fn ($request) => Http::response(['model' => 'jev-test',
-            'answers' => ['covered' => ['type' => 'noul', 'noul' => str_contains(json_encode($request['state']['sources']), 'Missing resolution') ? .2 : .99]]]));
+            'answers' => ['covered' => ['type' => 'noul', 'noul' => str_contains(json_encode($request['state']['sources']), 'Missing resolution') ? .2 : .99],
+                'material_in_partition' => ['type' => 'noul', 'noul' => .99]]]));
         $documents = [];
         foreach (['Opening request', 'Missing resolution', 'Final update'] as $index => $label) {
             $documents[] = ['document_id' => $index + 1, 'title' => 'CASE-A',
