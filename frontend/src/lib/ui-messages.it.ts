@@ -2,8 +2,10 @@ import { MCP_TOOLS_MESSAGES_IT } from '../features/admin/mcp-tools/mcp-tools-mes
 import operational from './ui-messages-operational.it.json';
 import { SETTINGS_MESSAGES_IT } from '../features/admin/app-settings/settings-messages.it';
 import { MCP_TOKENS_MESSAGES_IT } from '../features/admin/mcp-tokens/mcp-tokens-messages.it';
+import { AI_USAGE_MESSAGES_IT } from '../features/admin/ai-usage/ai-usage.messages.it';
 
 export const IT_MESSAGES: Record<string, string> = {
+    ...AI_USAGE_MESSAGES_IT,
     ...SETTINGS_MESSAGES_IT,
     ...MCP_TOKENS_MESSAGES_IT,
     ...MCP_TOOLS_MESSAGES_IT,

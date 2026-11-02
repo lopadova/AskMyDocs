@@ -14,7 +14,7 @@ export const NAV_AREAS: { id: NavArea; label: string }[] = [
 ];
 export const WORKSPACE_ITEMS: SidebarSection[] = ['my-kb', 'chat', 'kb-browse', 'digest', 'connected-apps'];
 export const NAV_HUBS: NavHub[] = [
-    { id: 'overview', area: 'admin', label: 'Overview', description: 'See what needs attention and choose your next step.', icon: 'Grid', artwork: 'observatory', topics: [{ label: 'Overview', items: ['dashboard', 'engagement'] }] },
+    { id: 'overview', area: 'admin', label: 'Overview', description: 'See what needs attention and choose your next step.', icon: 'Grid', artwork: 'observatory', topics: [{ label: 'Overview', items: ['dashboard', 'ai-usage', 'engagement'] }] },
     { id: 'knowledge', area: 'admin', label: 'Knowledge', description: 'A place for everything your team knows.', icon: 'Book', artwork: 'archive', topics: [
         { label: 'Documents', items: ['kb', 'collections'] },
         { label: 'Quality', items: ['insights', 'kb-insights', 'content-gaps'] },
@@ -39,6 +39,7 @@ export const NAV_LABELS: Partial<Record<SidebarSection, string>> = { 'my-kb': 'H
 export function navLabel(item: NavItem): string { return NAV_LABELS[item.id] ?? item.label; }
 export const NAV_DESCRIPTIONS: Partial<Record<SidebarSection, string>> = {
     dashboard: 'Usage, recent activity, and measured service health.', engagement: 'Participation and the impact of shared knowledge.',
+    'ai-usage': 'Review tokens, costs and models used by your tenant.',
     kb: 'Read, organise, and maintain your source documents.', collections: 'Group documents around a topic or a shared purpose.',
     insights: 'Find documents to improve, classify, or promote.', 'kb-insights': 'Review suggestions after a document changes.', 'content-gaps': 'Turn unanswered questions into useful knowledge.',
     'wiki-explorer': 'Explore pages and their connections.', 'wiki-health': 'Find broken links, isolated pages, and missing indices.', 'wiki-indices': 'View and rebuild the map of your wiki.',

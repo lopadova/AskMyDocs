@@ -5,6 +5,13 @@ import { translateUi } from '../../lib/ui-locale';
 
 const admin: NavAccess = { roles: ['admin'], permissions: [], features: {}, hasTenant: true };
 describe('navigation admission and discovery', () => {
+    it('makes tenant AI usage discoverable only to tenant administrators', () => {
+        expect(canAccessNav(navItem('ai-usage'), admin)).toBe(true);
+        expect(canAccessNav(navItem('ai-usage'), { ...admin, roles: ['super-admin'] })).toBe(true);
+        for (const role of ['viewer', 'editor', 'dpo', 'system-admin']) expect(canAccessNav(navItem('ai-usage'), { ...admin, roles: [role] })).toBe(false);
+        expect(canAccessNav(navItem('ai-usage'), { ...admin, hasTenant: false })).toBe(false);
+        expect(searchNavigation('consumi', admin, text => translateUi(text, 'it')).map(item => item.id)).toContain('ai-usage');
+    });
     it('gives every non-workspace destination exactly one hub', () => {
         const hubItems = NAV_HUBS.flatMap((hub) => hub.topics.flatMap((topic) => topic.items));
         expect(new Set(hubItems).size).toBe(hubItems.length);

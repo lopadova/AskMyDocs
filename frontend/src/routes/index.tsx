@@ -16,6 +16,7 @@ import { AnonymousChatView } from '../features/chat/AnonymousChatView';
 import { SessionsView } from '../features/chat/sessions/SessionsView';
 import { KnowledgeBrowseView } from '../features/kb-browse/KnowledgeBrowseView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
+import { AiUsageView } from '../features/admin/ai-usage/AiUsageView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { ProjectsList } from '../features/admin/projects/ProjectsList';
@@ -596,6 +597,12 @@ const adminRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin',
     component: AdminRoute,
+});
+
+const adminAiUsageRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/ai-usage',
+    component: () => <RequireRole roles={['admin', 'super-admin']}><AiUsageView /></RequireRole>,
 });
 
 // v8.9 — Admin Projects registry. Same flat-RBAC pattern: the
@@ -1594,6 +1601,7 @@ const teamChildren = [
     logsRoute,
     maintenanceRoute,
     adminRoute,
+    adminAiUsageRoute,
     adminProjectsRoute,
     adminTeamsRoute,
     adminUsersRoute,
