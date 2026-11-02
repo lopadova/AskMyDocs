@@ -74,6 +74,28 @@ final class CombinedInitialPlanningTest extends TestCase
         $this->assertFallbackFor($this->action('revoked_tool'));
     }
 
+    public function test_live_only_research_with_no_kb_queries_reaches_the_authorized_tool(): void
+    {
+        $this->route();
+        $run = $this->runFixture();
+        $data = json_decode($this->interpretation($this->action('get_orders'))->content, true);
+        $data['kb_queries'] = $data['subquestions'][0]['kb_queries'] = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse(json_encode($data), 'fake', 'interpreter'));
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->plan(['decision' => 'answer', 'actions' => []]));
+        $this->app->instance(AiManager::class, $ai);
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->once()->andReturnUsing(function (array $tasks) {
+            $this->assertSame(['orders'], array_keys($tasks));
+            return ['orders' => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)];
+        });
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $outcome = app(AgentLoop::class)->run($run, AgentExecutionContext::fromArray($run->toArray()));
+        $this->assertSame(['get_orders'], array_column($outcome->completedActions, 'tool'));
+        $this->assertTrue(data_get($run->fresh()->result_json, 'question_understanding.available'));
+        $this->assertTrue(data_get($run->fresh()->result_json, 'question_understanding.requires_research'));
+    }
+
     public function test_malformed_arguments_fall_back_to_ordinary_planner_before_dispatch(): void
     {
         $action = $this->action('get_orders');

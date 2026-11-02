@@ -295,4 +295,16 @@ final class WidgetPiiMaskerTest extends TestCase
         $this->assertStringContainsString('[IBAN]', $result);
         $this->assertStringContainsString('[CARD]', $result);
     }
+
+    public function test_chat_display_marks_redacted_references_as_unavailable_without_changing_source_redaction(): void
+    {
+        $source = 'Packlink: [IBAN]; tracking UPS: 1Z12345; contact: user@example.com';
+        $display = $this->masker->maskForDisplay($source, 'it');
+        $this->assertStringContainsString('Packlink: (dato mascherato)', $display);
+        $this->assertStringContainsString('tracking UPS: 1Z12345', $display);
+        $this->assertStringContainsString('contact: (dato mascherato)', $display);
+        $this->assertStringNotContainsString('user@example.com', $display);
+        $this->assertStringContainsString('[IBAN]', $this->masker->maskString($source));
+        $this->assertSame('Reference: (redacted value)', $this->masker->maskForDisplay('Reference: [IBAN]', 'en'));
+    }
 }

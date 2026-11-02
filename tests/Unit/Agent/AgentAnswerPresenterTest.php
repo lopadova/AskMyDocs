@@ -127,6 +127,88 @@ final class AgentAnswerPresenterTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public static function requestsWithRejectedRewrites(): array
+    {
+        return [[.99, .99, true], [.2, .99, false], [.99, .2, false]];
+    }
+
+    public static function failedTableRewrites(): array
+    {
+        return [[false], [true]];
+    }
+
+    #[DataProvider('failedTableRewrites')]
+    public function test_table_layout_fallback_copies_original_facts_and_never_rejected_values(bool $extractorUnavailable): void
+    {
+        $this->decisions(.1, .1);
+        $claims = [$this->claims()[0], ['text' => 'Per CASE-B il pagamento non è confermato.', 'subquestion_id' => 1,
+            'document_id' => 8, 'quote' => 'CASE-B: pagamento non confermato.', 'entity_identifiers' => ['CASE-B']]];
+        $ai = $this->ai();
+        if ($extractorUnavailable) $ai->shouldReceive('chat')->once()->andThrow(new \RuntimeException('Unavailable relation extraction'));
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => "| Caso | Pagamento eseguito |\n|---|---|\n| CASE-A | 999 EUR |", 'claim_ids' => [0], 'kind' => 'facts'],
+            ['text' => "| Caso | Pagamento eseguito |\n|---|---|\n| CASE-B | 888 EUR |", 'claim_ids' => [1], 'kind' => 'facts'],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Mostra una tabella con una riga per CASE-A e CASE-B.',
+            $this->context(), $claims, understanding: ['requires_composition' => true,
+                'subquestions' => [['identifiers' => ['CASE-A']], ['identifiers' => ['CASE-B']]]]);
+        $this->assertSame('literal_table_fallback', $result['trace']['status']);
+        $this->assertSame([[0], [1]], array_column($result['paragraphs'], 'claim_ids'));
+        $synthesizer = (new \ReflectionClass(AgentAnswerSynthesizer::class))->newInstanceWithoutConstructor();
+        $text = (new \ReflectionMethod($synthesizer, 'composeResearch'))->invoke($synthesizer,
+            ['subquestions' => [['identifiers' => ['CASE-A']], ['identifiers' => ['CASE-B']]]],
+            ['claims' => $result['paragraphs']], [], 'it', $result['paragraphs']);
+        $this->assertStringNotContainsString('##', $text);
+        $text = app(\App\Agent\VerifiedMarkdownTables::class)->normalize($text);
+        $html = \Illuminate\Support\Str::markdown($text);
+        $this->assertSame(1, substr_count($html, '<table>'));
+        $this->assertSame(3, substr_count($html, '<tr>'));
+        foreach (array_column($claims, 'text') as $fact) $this->assertStringContainsString($fact, strip_tags($html));
+        foreach (['999', '888', 'Pagamento eseguito'] as $invented) $this->assertStringNotContainsString($invented, $text);
+        $extractorUnavailable ? Http::assertNothingSent() : Http::assertSentCount(1);
+    }
+
+    public function test_a_table_with_an_unknown_fact_cannot_use_the_literal_fallback(): void
+    {
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => "| Case | Status |\n|---|---|\n| CASE-A | Paid |", 'claim_ids' => [99], 'kind' => 'facts'],
+        ]));
+        $result = (new AgentAnswerPresenter($ai))->present('Mostra una tabella.', $this->context(), $this->claims(),
+            understanding: ['requires_composition' => true]);
+        $this->assertNull($result['paragraphs']);
+        Http::assertNothingSent();
+    }
+
+    #[DataProvider('requestsWithRejectedRewrites')]
+    public function test_a_verified_request_survives_a_rejected_factual_rewrite_without_reusing_its_prose(float $requested, float $nonfactual, bool $keep): void
+    {
+        Http::fake(function ($request) use ($requested, $nonfactual) {
+            $answers = [];
+            foreach (array_keys($request['questions']) as $key) $answers[$key] = ['type' => 'noul',
+                'noul' => match ($key) { 'requested' => $requested, 'nonfactual' => $nonfactual, default => .1 }];
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'Il rimborso di CASE-A è già pagato.', 'claim_ids' => [0, 1], 'kind' => 'facts'],
+            ['text' => 'Potresti integrare la ricevuta del vettore, se disponibile?', 'claim_ids' => [], 'kind' => 'requested_speech_act'],
+        ]));
+        $claims = $this->claims();
+        $result = (new AgentAnswerPresenter($ai))->present('Scrivi una nota e chiedi al collega di integrare l’eventuale ricevuta del vettore.',
+            $this->context(), $claims, understanding: ['requires_composition' => true]);
+        Http::assertSentCount(2);
+        $this->assertSame($this->claims(), $claims);
+        if (! $keep) {
+            $this->assertNull($result['paragraphs']);
+            return;
+        }
+        $this->assertSame('accepted_request_only', $result['trace']['status']);
+        $this->assertSame(array_column($claims, 'text'), array_column(array_slice($result['paragraphs'], 0, 2), 'text'));
+        $this->assertSame('requested_speech_act', $result['paragraphs'][2]['kind']);
+        $this->assertStringNotContainsString('già pagato', json_encode($result['paragraphs'], JSON_UNESCAPED_UNICODE));
+    }
+
     public function test_a_verified_paragraph_merges_repeated_attribution_without_changing_original_facts(): void
     {
         $this->decisions();

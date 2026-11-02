@@ -22,6 +22,7 @@ final class AgentClaimGroundingValidator
         }
 
         $documents = [];
+        $documentTitles = [];
         foreach (is_array($evidence['documents'] ?? null) ? $evidence['documents'] : [] as $document) {
             if (! is_array($document)) {
                 continue;
@@ -31,6 +32,7 @@ final class AgentClaimGroundingValidator
                     continue;
                 }
                 $documents[(string) ($document['document_id'] ?? '')][(string) $chunk['evidence_hash']] = (string) ($chunk['content'] ?? '');
+                $documentTitles[(string) ($document['document_id'] ?? '')][(string) $chunk['evidence_hash']] = (string) ($chunk['source_title'] ?? $document['title'] ?? '');
             }
         }
 
@@ -68,11 +70,23 @@ final class AgentClaimGroundingValidator
                 if (! is_string($content) || ($quote = $this->literalQuote($content, $quote)) === null) {
                     return $this->failure('quote_not_in_chunk', $terms);
                 }
+                $referenceSource = $documentTitles[(string) $documentId][$hash]."\n".$content;
             } else {
                 $tool = $tools[(string) $executionId] ?? null;
                 if ($tool === null || ! hash_equals($tool['hash'], $hash)
                     || ($quote = $this->toolQuote($tool, $quote)) === null) {
                     return $this->failure('quote_not_in_tool_result', $terms);
+                }
+                // Use the bound record/quote, never identifiers from another
+                // record merely present in the same response envelope.
+                $referenceSource = $quote;
+            }
+            // Capitalized alphanumeric code atoms must be copied literally.
+            // Semantic support cannot turn AB12 into AB21 within a long claim.
+            preg_match_all('/(?<![\pL\pN_])[A-Z]+[A-Z0-9]*[0-9][A-Z0-9]*(?![\pL\pN_])/u', $text, $references);
+            foreach (array_unique($references[0]) as $reference) {
+                if (! preg_match('/(?<![\pL\pN])'.preg_quote($reference, '/').'(?![\pL\pN])/iu', $referenceSource)) {
+                    return $this->failure('unattested_literal_reference', [$reference]);
                 }
             }
             $normalisedClaims[] = [

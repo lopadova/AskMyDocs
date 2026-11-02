@@ -24,7 +24,7 @@ final class FocusContract
             'requires_research' => ['type' => 'boolean'],
             'question' => ['type' => 'string', 'maxLength' => 500, 'description' => 'A standalone question in the user language for ONLY this request, with resolved references.'],
             'kb_queries' => ['type' => 'array', 'maxItems' => 3, 'items' => ['type' => 'string', 'maxLength' => 500],
-                'description' => 'Empty when requires_research=false, otherwise 1-3 independent KB searches serving ONLY this question.'],
+                'description' => 'Empty when requires_research=false or this task needs only API/MCP research. Otherwise up to 3 independent KB searches serving ONLY this question. Research is not restricted to the KB.'],
         ];
         return [
             'transition' => ['type' => 'string', 'enum' => ['new', 'continue', 'switch', 'correct', 'recap', 'provenance']],
@@ -71,11 +71,7 @@ final class FocusContract
                 throw new \UnexpectedValueException('Invalid task information route.');
             }
 
-            if (count($focus) >= 6 && (! self::safeQuery($focus['question'] ?? null)
-                || ! is_array($focus['kb_queries'] ?? null) || ! array_is_list($focus['kb_queries'])
-                || (count($focus['kb_queries']) < 1 && ($focus['requires_research'] ?? true)) || count($focus['kb_queries']) > 3
-                || (($focus['requires_research'] ?? null) === false && $focus['kb_queries'] !== [])
-                || array_filter($focus['kb_queries'], fn ($query) => ! self::safeQuery($query)))) {
+            if (count($focus) >= 6 && self::researchIssue($focus) !== null) {
                 throw new \UnexpectedValueException('Invalid research question.');
             }
         }
@@ -132,6 +128,32 @@ final class FocusContract
     {
         return is_string($query) && trim($query) !== '' && mb_strlen($query) <= 500
             && ! preg_match('~https?://|\bcurl\b|\b(?:call|invoke|execute|chiama|esegui)\s+(?:an?\s+|un\s+)?(?:mcp|api|tool|strumento)\b~iu', $query);
+    }
+
+    /** Closed diagnostic codes only; never return provider text or query values. */
+    public static function researchFailureDetails(array $data): array
+    {
+        foreach ([$data['focus'] ?? [], ...(is_array($data['subquestions'] ?? null) ? $data['subquestions'] : [])] as $index => $focus) {
+            if (is_array($focus) && count($focus) >= 6 && ($rule = self::researchIssue($focus)) !== null) {
+                return ['location' => $index === 0 ? 'focus' : 'subquestion',
+                    'task_index' => $index === 0 ? null : $index - 1, 'rule' => $rule];
+            }
+        }
+        return [];
+    }
+
+    private static function researchIssue(array $focus): ?string
+    {
+        $question = $focus['question'] ?? null;
+        if (! is_string($question) || trim($question) === '') return 'missing_task_question';
+        if (mb_strlen($question) > 500) return 'task_question_too_long';
+        if (! self::safeQuery($question)) return 'unsafe_task_question';
+        $queries = $focus['kb_queries'] ?? null;
+        if (! is_array($queries) || ! array_is_list($queries)) return 'invalid_query_list';
+        if (count($queries) > 3) return 'too_many_queries';
+        if (($focus['requires_research'] ?? null) === false && $queries !== []) return 'queries_without_research';
+        if (array_filter($queries, fn ($query) => ! self::safeQuery($query))) return 'unsafe_kb_query';
+        return null;
     }
 
     /** The primary focus is a request too, not merely a heading for secondary requests. */
