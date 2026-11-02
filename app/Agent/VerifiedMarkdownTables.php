@@ -7,7 +7,7 @@ namespace App\Agent;
 /** Add only empty headers/separators to orphan table rows; never invent column labels or values. */
 final class VerifiedMarkdownTables
 {
-    public function normalize(string $text): string
+    public function normalize(string $text, bool $mergeRepeatedHeaders = true): string
     {
         $lines = preg_split('/\r\n|\n|\r/', $text);
         $output = [];
@@ -39,7 +39,7 @@ final class VerifiedMarkdownTables
             $next = $this->cells($lines[$index + 1] ?? '');
             if ((count($cells) > 1 || str_starts_with(ltrim($line), '|'))
                 && count($next) === count($cells) && $this->separator($next)) {
-                if ($columns === count($cells) && $header === $cells) {
+                if ($mergeRepeatedHeaders && $columns === count($cells) && $header === $cells) {
                     $skip = $index + 1;
                     continue;
                 }
