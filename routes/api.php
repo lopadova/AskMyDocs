@@ -358,6 +358,8 @@ Route::middleware([
             ->name('api.admin.metrics.series');
         Route::get('/metrics/health', [DashboardMetricsController::class, 'health'])
             ->name('api.admin.metrics.health');
+        Route::get('/ai-usage', \App\Http\Controllers\Api\Admin\AiUsageController::class)
+            ->name('api.admin.ai-usage');
 
         // Phase F2 — Users & Roles + Memberships.
         // `users` is soft-deletable, so the controller opts into
