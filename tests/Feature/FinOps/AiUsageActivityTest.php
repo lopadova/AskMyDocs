@@ -10,6 +10,8 @@ use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Padosoft\LaravelAiFinOps\Models\UsageRecord;
 use Tests\TestCase;
 
@@ -153,5 +155,80 @@ final class AiUsageActivityTest extends TestCase
         $this->getJson('/api/admin/ai-usage?from=2020-01-01&to=2026-11-03')->assertUnprocessable();
         $this->getJson('/api/admin/ai-usage?timezone=not-a-timezone')->assertUnprocessable();
         $this->getJson('/api/admin/ai-usage?from=2026-11-04&to=2026-11-03')->assertUnprocessable();
+    }
+
+    public function test_current_catalog_estimates_reconcile_without_rewriting_unknown_history_or_known_costs(): void
+    {
+        Http::preventStrayRequests();
+        config(['ai-finops.pricing.openrouter.enabled' => true]);
+        $rates = [];
+        for ($i = 1; $i <= 7; $i++) {
+            $model = 'arbitrary/model-'.$i;
+            $rates[$model] = ['input_cost_per_token' => .002, 'output_cost_per_token' => .004, 'cache_read_input_token_cost' => .001];
+            $this->entry(['provider' => 'openrouter', 'model' => $model, 'cost_total' => 0, 'metadata' => null]);
+        }
+        Cache::put('ai-finops:pricing:openrouter', $rates);
+        Cache::put('ai-finops:pricing:openrouter:synced_at', '2026-11-02T10:00:00Z');
+        $this->entry(['cost_total' => -.1, 'cost_method' => 'actual']);
+        $this->entry(['cost_total' => 0, 'cost_method' => 'covered', 'status' => 'covered', 'metadata' => null]);
+        $this->entry(['cost_total' => 5, 'modality' => 'image', 'tokens_input' => 0, 'tokens_output' => 0]);
+        $data = $this->actingAs($this->actor())->getJson($this->url())->assertOk()
+            ->assertJsonPath('summary.repriced_entries', 7)->assertJsonPath('summary.unresolved_entries', 0)
+            ->assertJsonPath('ranking_metric', 'cost')->assertJsonPath('price_sources.openrouter', '2026-11-02T10:00:00Z')->json();
+        $this->assertEqualsWithDelta(2.59, $data['summary']['estimated_cost'], .0000001);
+        $this->assertEqualsWithDelta(7.49, $data['summary']['spend'], .0000001);
+        $this->assertEqualsWithDelta(4.9, $data['summary']['cost'], .0000001);
+        $this->assertEqualsWithDelta(2.49 / 1350 * 1_000_000, $data['summary']['cost_per_million'], .0000001);
+        $this->assertEqualsWithDelta(7.49, array_sum(array_column($data['buckets'], 'spend')), .0000001);
+        $this->assertEqualsWithDelta(7.49, array_sum(array_column($data['models'], 'spend')), .0000001);
+        $this->assertEqualsWithDelta(7.49, array_sum(array_map(fn ($s) => array_sum(array_column($s['values'], 'spend')), $data['series'])), .0000001);
+        $this->assertSame(7, UsageRecord::where('provider', 'openrouter')->where('cost_total', 0)->whereNull('metadata')->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_unmatched_prices_and_currencies_remain_unknown_and_free_rates_remain_valid(): void
+    {
+        config(['ai-finops.pricing.openrouter.enabled' => true]);
+        Cache::put('ai-finops:pricing:openrouter', ['free-model' => ['input_cost_per_token' => 0, 'output_cost_per_token' => 0],
+            'missing-output' => ['input_cost_per_token' => .1]]);
+        Cache::put('ai-finops:pricing:openrouter:synced_at', '2026-11-02T10:00:00Z');
+        $this->entry(['provider' => 'openrouter', 'model' => 'free-model', 'cost_total' => 0, 'metadata' => null]);
+        $this->entry(['provider' => 'openrouter', 'model' => 'missing-output', 'cost_total' => 0, 'metadata' => null]);
+        $this->entry(['provider' => 'openrouter', 'model' => 'free-model', 'currency' => 'EUR', 'cost_total' => 0, 'metadata' => null]);
+        $this->actingAs($this->actor())->getJson($this->url())->assertOk()
+            ->assertJsonPath('summary.repriced_entries', 1)->assertJsonPath('summary.unresolved_entries', 1)
+            ->assertJsonPath('summary.spend', 0)->assertJsonPath('summary.cost_per_million', null);
+        $this->getJson($this->url('&currency=EUR'))->assertOk()
+            ->assertJsonPath('summary.repriced_entries', 0)->assertJsonPath('summary.spend', null);
+    }
+
+    public function test_current_manual_override_uses_its_currency_and_units_without_network_access(): void
+    {
+        Http::preventStrayRequests();
+        \Padosoft\LaravelAiFinOps\Models\PricingOverride::create(['model' => 'arbitrary-model', 'provider' => 'regolo',
+            'input_cost_per_token' => 2, 'output_cost_per_token' => 4, 'currency' => 'EUR', 'unit' => 'per_million']);
+        $this->entry(['provider' => 'regolo', 'model' => 'arbitrary-model', 'currency' => 'EUR', 'cost_total' => 0, 'metadata' => null]);
+        $data = $this->actingAs($this->actor())->getJson($this->url('&currency=EUR'))->assertOk()
+            ->assertJsonPath('summary.repriced_entries', 1)->assertJsonPath('summary.unresolved_entries', 0)->json();
+        $this->assertEqualsWithDelta(.0004, $data['summary']['spend'], .00000001);
+        $this->assertArrayHasKey('manual', $data['price_sources']);
+        Http::assertNothingSent();
+    }
+
+    public function test_the_billing_provider_catalog_precedes_a_fresher_feed_and_manual_prices_can_override_it(): void
+    {
+        config(['ai-finops.pricing.openrouter.enabled' => true]);
+        foreach (['openrouter' => [.1, .2, '2026-11-01T00:00:00Z'], 'litellm' => [1, 2, '2026-11-02T00:00:00Z']] as $name => [$input, $output, $at]) {
+            Cache::put('ai-finops:pricing:'.$name, ['same-model' => ['input_cost_per_token' => $input, 'output_cost_per_token' => $output]]);
+            Cache::put('ai-finops:pricing:'.$name.':synced_at', $at);
+        }
+        $this->entry(['provider' => 'openrouter', 'model' => 'same-model', 'cost_total' => 0, 'metadata' => null]);
+        $this->actingAs($this->actor())->getJson($this->url())->assertOk()->assertJsonPath('summary.spend', 20);
+        \Padosoft\LaravelAiFinOps\Models\PricingOverride::create(['model' => 'same-model', 'provider' => 'openrouter',
+            'input_cost_per_token' => 2, 'output_cost_per_token' => 4, 'currency' => 'USD', 'unit' => 'per_million']);
+        $data = $this->getJson($this->url())->assertOk()->json();
+        $this->assertEqualsWithDelta(.0004, $data['summary']['spend'], .00000001);
+        config(['ai-finops.pricing.overrides_win' => false]);
+        $this->getJson($this->url())->assertOk()->assertJsonPath('summary.spend', 20);
     }
 }

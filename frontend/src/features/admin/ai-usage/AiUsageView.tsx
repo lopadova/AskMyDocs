@@ -28,8 +28,9 @@ export function AiUsageView() {
     const change = (key: keyof UsageFilters, value: string) => { setFilters(f => ({ ...f, [key]: value })); setPage(0); };
     const money = (value: number) => amount(value, locale, data?.currency ?? 'USD');
     const noValue = t('Not available');
-    const priced = data?.summary?.entries === 0 || (data?.summary && data.summary.unpriced_entries < data.summary.entries);
-    const rowCost = (m: UsageMetrics) => m.entries > 0 && m.unpriced_entries === m.entries ? noValue : money(m.cost);
+    const estimated = (data?.summary?.repriced_entries ?? 0) > 0;
+    const spendLabel = estimated ? 'Estimated spend' : 'Recorded spend';
+    const rowCost = (m: UsageMetrics) => m.spend === null ? noValue : `${money(m.spend)}${m.repriced_entries > 0 ? ` · ${t('estimated')}` : ''}`;
     const models = useMemo(() => (data?.models ?? []).filter(m => `${m.model} ${m.provider}`.toLowerCase().includes(search.toLowerCase())), [data, search]);
     const currencies = [...new Set([...(data?.options.currencies ?? []), filters.currency || data?.currency || 'USD'])];
     const state = query.isError ? 'error' : query.isLoading ? 'loading' : ready ? data.summary?.entries ? 'ready' : 'empty' : 'unavailable';
@@ -69,10 +70,11 @@ export function AiUsageView() {
         {ready && data.summary && <>
             {!data.metering_enabled && <div className="usage-notice">{t('Usage metering is disabled. These are historical records; new activity may be missing.')}</div>}
             {(filters.status === 'estimated' || filters.status === 'blocked') && <div className="usage-notice">{t('This view includes pre-flight or blocked records, not incurred spend.')}</div>}
-            {data.summary.unpriced_entries > 0 && <div className="usage-notice">{count(data.summary.unpriced_entries, locale)} {t('entries have no verifiable price. Recorded spend is partial; zero does not mean free.')}</div>}
+            {data.summary.unresolved_entries > 0 && <div className="usage-notice">{count(data.summary.unresolved_entries, locale)} {t('entries have no verifiable price. Recorded spend is partial; zero does not mean free.')}</div>}
+            {estimated && <div className="usage-notice">{count(data.summary.repriced_entries, locale)} {t('historical entries are estimated at current catalog prices. This is not a billed amount; original records are unchanged.')}</div>}
             {data.summary.estimated_entries > 0 && <p className="usage-source-note">{count(data.summary.estimated_entries, locale)} {t('entries use estimated tokens or costs.')}</p>}
             <div className="usage-kpis">{([
-                ['Recorded spend', priced ? money(data.summary.cost) : noValue, 'Costs in the selected currency', data.summary.unpriced_entries ? [] : data.buckets.map(b => b.cost)],
+                [spendLabel, data.summary.spend === null ? noValue : money(data.summary.spend), estimated ? 'Recorded costs plus estimates at current rates' : 'Costs in the selected currency', data.summary.unresolved_entries ? [] : data.buckets.map(b => b.spend ?? 0)],
                 ['Total tokens', count(data.summary.tokens, locale), 'Input plus output; subsets are not added', data.buckets.map(b => b.tokens)],
                 ['Ledger entries', count(data.summary.entries, locale), 'Recorded entries, not user questions', data.buckets.map(b => b.entries)],
                 ['Cost per 1M tokens', data.summary.cost_per_million === null ? noValue : money(data.summary.cost_per_million), 'Token costs and matching token volume only', []],
@@ -87,12 +89,13 @@ export function AiUsageView() {
             </section>}
             {tab === 'models' && <section role="tabpanel" className="usage-card usage-models" id="usage-models" aria-labelledby="usage-models-tab">
                 <div className="usage-card-heading"><h2>{t('Model details')}</h2><label>{t('Search models')}<input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} /></label></div>
-                <div className="usage-table-scroll"><table><thead><tr>{['Model', 'Provider', 'Recorded spend', 'Input tokens', 'Output tokens', 'Ledger entries'].map(h => <th key={h}>{t(h)}</th>)}</tr></thead>
+                <div className="usage-table-scroll"><table><thead><tr>{['Model', 'Provider', spendLabel, 'Input tokens', 'Output tokens', 'Ledger entries'].map(h => <th key={h}>{t(h)}</th>)}</tr></thead>
                     <tbody>{models.slice(page * 20, (page + 1) * 20).map(m => <tr key={m.id}><td title={m.model}>{m.model}</td><td>{m.provider}</td><td>{rowCost(m)}</td><td>{count(m.tokens_input, locale)}</td><td>{count(m.tokens_output, locale)}</td><td>{count(m.entries, locale)}</td></tr>)}</tbody></table></div>
                 {models.length === 0 && <p className="usage-empty">{t('No models match your search.')}</p>}
                 <div className="usage-pagination"><span>{count(models.length, locale)} {t('models')}</span><Button size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>{t('Previous')}</Button><Button size="sm" disabled={(page + 1) * 20 >= models.length} onClick={() => setPage(p => p + 1)}>{t('Next')}</Button></div>
             </section>}
             <p className="usage-source-note">{t('Source: tenant usage ledger. Currencies are kept separate; costs may be provider-reported or calculated from tariffs. Cache is included in input and reasoning in output.')}</p>
+            {estimated && <p className="usage-source-note">{t('Price catalogs:')} {Object.entries(data.price_sources).map(([source, updated]) => `${source}${updated ? ` · ${new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(updated))}` : ''}`).join('; ')}</p>}
         </>}
     </div></AdminShell>;
 }
@@ -104,12 +107,13 @@ function Ranking({ title, rows }: { title: string; rows: { id: string; name: str
 function Charts({ data }: { data: UsageActivity }) {
     const { t } = useUiTranslation();
     const modelSeries: ChartSeries[] = data.series.map((s, i) => ({ key: `s${i}`, label: s.other ? t('Other models') : `${s.name} · ${s.provider}`, color: seriesColor(s.id) }));
-    const observed = (m: UsageMetrics, key: keyof UsageMetrics) => key === 'cost' && m.entries > 0 && m.unpriced_entries === m.entries ? null : m[key] ?? 0;
+    const observed = (m: UsageMetrics, key: keyof UsageMetrics) => key === 'spend' ? m.spend : m[key] ?? 0;
     const points = (metric: keyof UsageMetrics): ChartPoint[] => data.buckets.map((b, index) => ({ date: b.from, end: b.to, ...Object.fromEntries(data.series.map((s, i) => [`s${i}`, observed(s.values[index], metric)])) }));
     const single = (keys: (keyof UsageMetrics)[]): ChartPoint[] => data.buckets.map(b => ({ date: b.from, end: b.to, ...Object.fromEntries(keys.map(k => [k, observed(b, k)])) }));
     const tokensOnly = data.ranking_metric === 'tokens';
-    return <div className="usage-charts"><ActivityChart title={tokensOnly ? 'Tokens by model' : 'Cost by model'} points={points(tokensOnly ? 'tokens' : 'cost')} series={modelSeries} currency={tokensOnly ? undefined : data.currency} unit="Tokens" />
-        <div className="usage-two"><ActivityChart title={tokensOnly ? 'Entries over time' : 'Spend over time'} points={single([tokensOnly ? 'entries' : 'cost'])} series={[{ key: tokensOnly ? 'entries' : 'cost', label: t(tokensOnly ? 'Ledger entries' : 'Recorded spend'), color: '#8b5cf6' }]} currency={tokensOnly ? undefined : data.currency} area />
+    const estimated = (data.summary?.repriced_entries ?? 0) > 0;
+    return <div className="usage-charts"><ActivityChart title={tokensOnly ? 'Tokens by model' : estimated ? 'Estimated cost by model' : 'Cost by model'} points={points(tokensOnly ? 'tokens' : 'spend')} series={modelSeries} currency={tokensOnly ? undefined : data.currency} unit="Tokens" />
+        <div className="usage-two"><ActivityChart title={tokensOnly ? 'Entries over time' : estimated ? 'Estimated spend over time' : 'Spend over time'} points={single([tokensOnly ? 'entries' : 'spend'])} series={[{ key: tokensOnly ? 'entries' : 'spend', label: t(tokensOnly ? 'Ledger entries' : estimated ? 'Estimated spend' : 'Recorded spend'), color: '#8b5cf6' }]} currency={tokensOnly ? undefined : data.currency} area />
             <ActivityChart title="Volume by model" points={points('entries')} series={modelSeries} />
             <ActivityChart title="Token composition" subtitle="Input plus output; subsets are not added" unit="Tokens" points={single(['tokens_input', 'tokens_output'])} series={[{ key: 'tokens_input', label: t('Input tokens'), color: '#3485ff' }, { key: 'tokens_output', label: t('Output tokens'), color: '#8b5cf6' }]} />
             <ActivityChart title="Token details" subtitle="Cache and reasoning are already included in total tokens" unit="Tokens" points={single(['tokens_cached', 'tokens_reasoning'])} series={[{ key: 'tokens_cached', label: t('Cached tokens'), color: '#06b6a0' }, { key: 'tokens_reasoning', label: t('Reasoning tokens'), color: '#d969d9' }]} /></div>

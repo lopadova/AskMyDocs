@@ -1,4 +1,9 @@
 export const AI_USAGE_MESSAGES_IT: Record<string, string> = {
+    'Estimated spend': 'Spesa stimata', 'estimated': 'stima',
+    'Recorded costs plus estimates at current rates': 'Costi registrati più stime da listino attuale',
+    'historical entries are estimated at current catalog prices. This is not a billed amount; original records are unchanged.': 'voci storiche sono stimate ai prezzi di listino attuali. Non è un importo fatturato; i dati originali restano invariati.',
+    'Price catalogs:': 'Listini utilizzati:',
+    'Estimated cost by model': 'Costo stimato per modello', 'Estimated spend over time': 'Andamento della spesa stimata',
     'AI usage': 'Consumi AI',
     'Review tokens, costs and models used by your tenant.': 'Consulta token, costi e modelli utilizzati dal tuo tenant.',
     'Tokens, recorded costs and models used by this tenant.': 'Token, costi registrati e modelli utilizzati da questo tenant.',

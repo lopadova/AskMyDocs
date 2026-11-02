@@ -1,7 +1,8 @@
 import { api } from '../../../lib/api';
 
 export type UsageMetrics = {
-    cost: number; tokens: number; tokens_input: number; tokens_output: number;
+    cost: number; spend: number | null; estimated_cost: number; repriced_entries: number; unresolved_entries: number;
+    tokens: number; tokens_input: number; tokens_output: number;
     tokens_cached: number; tokens_reasoning: number; entries: number;
     unpriced_entries: number; estimated_entries: number;
     cost_per_million: number | null; average_latency_ms: number | null;
@@ -14,6 +15,7 @@ export type UsageFilters = {
 };
 export type UsageActivity = {
     ranking_metric: 'cost' | 'tokens';
+    price_sources: Record<string, string | null>;
     status: 'available' | 'unavailable'; reason: 'ledger_unavailable' | 'interval_too_broad' | null;
     from: string; to: string; timezone: string; currency: string; bucket_days: number; metering_enabled: boolean;
     summary: UsageMetrics | null; buckets: UsageBucket[]; series: UsageSeries[]; models: UsageModel[];

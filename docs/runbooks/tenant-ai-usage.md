@@ -27,9 +27,36 @@ escludendo costi OCR o altri metri; non viene mostrato con prezzi non verificabi
 Un costo nullo, oppure zero con token consumati e senza tariffa verificabile
 nei metodi computed/estimated, è segnalato come non verificabile. Le righe
 covered/actual a zero mantengono invece il significato dichiarato dal registro.
-Se tutti i prezzi sono sconosciuti, spesa e costo per milione sono non disponibili:
-classifiche e grafico principale usano i token realmente registrati. I costi
-storici mancanti non vengono ricostruiti usando il listino corrente.
+Per le voci tokenizzate senza costo viene calcolata una **stima da listino
+attuale**, separata da `cost` in `estimated_cost`. La spesa visualizzata (`spend`)
+somma costi registrati e stime, mentre `repriced_entries` ne dichiara la copertura.
+KPI, classifiche e grafici sono etichettati come stime quando le includono e
+mostrano fonte e data del listino. Non è una ricostruzione dell'importo fatturato:
+il registro storico rimane invariato. Cache e reasoning non sono contati due
+volte; i prezzi di valute diverse non vengono applicati. Prezzi assenti, modelli
+non riconosciuti e tariffe automatiche negative restano non disponibili.
+Se nessun costo è valorizzabile, classifiche e grafico usano i token registrati.
+
+La pagina legge solo i listini già in cache, senza richieste esterne. Mantiene
+la precedenza FinOps: override manuale, fonte del provider, poi listino più
+recente e ordine configurato. OpenRouter comprende sia il catalogo chat sia
+[quello degli embedding](https://openrouter.ai/docs/api_reference/embeddings).
+Un refresh fallito conserva il catalogo completo precedente con la sua data.
+
+Per le nuove chiamate sono attivi per default il listino OpenRouter e la raccolta
+di [`usage.cost`](https://openrouter.ai/docs/cookbook/administration/usage-accounting).
+Il costo dichiarato dal provider precede quello calcolato da tariffa. Le
+variabili esplicitamente impostate nell'ambiente continuano a prevalere:
+
+```dotenv
+AI_FINOPS_PRICING_OPENROUTER=true
+AI_FINOPS_ACTUAL_COST=true
+```
+
+Dopo il deploy, ricostruire l'eventuale cache della configurazione e inizializzare
+i listini con `php artisan ai-finops:capture-prices`. Lo stesso comando ora
+aggiorna i cataloghi prima degli snapshot nello slot notturno esistente
+`finops_capture_prices`. Non esegue chiamate AI a pagamento né modifica consumi.
 
 Il servizio aggrega in SQL; oltre 6.000 gruppi richiede un periodo più breve
 o un filtro, senza tagliare silenziosamente i dati. Le serie mostrano fino a sei
