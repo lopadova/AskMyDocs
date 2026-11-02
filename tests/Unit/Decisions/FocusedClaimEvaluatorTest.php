@@ -87,6 +87,31 @@ class FocusedClaimEvaluatorTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_an_ambiguous_supported_document_gets_source_support_then_original_question_checks(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::fake(function ($request) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                $answers[$key] = $question['type'] === 'noul' ? ['type' => 'noul', 'noul' => .97]
+                    : ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .79,
+                        'probabilities' => ['supported_relevant' => .79, 'supported_off_topic' => .05,
+                            'unsupported' => .06, 'conflicting' => .05, 'insufficient_context' => .05]];
+            }
+            return Http::response(['id' => 'd', 'model' => 'test', 'answers' => $answers]);
+        });
+        $text = 'CASE-A: Ada confirmed collection on June 7.';
+        $sub = ['identifiers' => ['CASE-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What did Ada confirm in CASE-A?',
+            ['documents' => [['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [['content' => $text, 'evidence_hash' => 'h']]]]],
+            [['text' => $text, 'document_id' => 1, 'evidence_hash' => 'h']], ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertSame($text, $result['claims'][0]['text']);
+        $this->assertSame(.79, $result['semantic_validation'][0]['source_support_reassessment']['claim_0']['initial_decision']['probabilities']['supported_relevant']);
+        $this->assertSame('original_question_relevance', $result['semantic_validation'][1]['stage']);
+        Http::assertSent(fn ($r) => isset($r['questions']['supported']) && count($r['state']['sources']) === 1);
+    }
+
     public static function literalVetoes(): array
     {
         return [['conflicting'], ['supported_off_topic']];

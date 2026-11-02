@@ -119,7 +119,7 @@ final readonly class FocusedClaimEvaluator
                     $related[] = [...array_diff_key($alternative, ['source' => true]),
                         'source_ref' => $this->registerSource($trial['sources'], $alternative['source'])];
                 }
-                $trial['pairs'][] = ['claim_id' => $key, 'subquestion_id' => $subIndex, 'claim' => $claim['text'],
+                $trial['pairs'][] = ['claim_id' => $key, 'source_kind' => isset($claim['document_id']) ? 'document' : 'tool', 'subquestion_id' => $subIndex, 'claim' => $claim['text'],
                     'source_ref' => $sourceRef, 'source_title' => $bound['source_title'] ?? '',
                     'observed_at' => $bound['observed_at'] ?? null,
                     'complete_source' => $bound['complete_source'] ?? false, 'related_evidence' => $related];
@@ -247,6 +247,10 @@ final readonly class FocusedClaimEvaluator
                 : (array_filter($batchTraces, fn ($trace) => $trace['status'] !== 'completed') ? 'partial' : 'completed');
             if ($batched) $meta['batches'] = $batchTraces;
         }
+        $reassessment = app(UncertainSourceSupportEvaluator::class)->evaluate($state, $decisions, $runId, $tenant,
+            $decisionSlot.'_source_support'.($repairAttempt ? '_repair' : ''));
+        $decisions = $reassessment['decisions'];
+        $meta['source_support_reassessment'] = $reassessment['trace'];
         $excerpts = $decisionSlot === 'focused_decision'
             ? app(DocumentExcerptFallbackEvaluator::class)->evaluate($question, $pairs, $decisions, $runId, $repairAttempt, $tenant)
             : ['excerpts' => [], 'trace' => []];
