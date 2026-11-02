@@ -10,6 +10,42 @@ use Tests\TestCase;
 
 final class AgentClaimGroundingValidatorTest extends TestCase
 {
+    public function test_a_long_supported_claim_cannot_change_one_literal_product_code(): void
+    {
+        $source = 'CASE-A ordered ITEM-AB12. The warehouse received ITEM-CD34.';
+        $evidence = ['documents' => [['document_id' => 7, 'evidence' => [['evidence_hash' => 'h', 'content' => $source]]]]];
+        $claim = ['text' => 'CASE-A ordered ITEM-AB12; the warehouse received CD43.', 'quote' => $source,
+            'document_id' => 7, 'evidence_hash' => 'h'];
+        $result = $this->validator()->validate('Compare the ordered and received items.', $evidence, [$claim]);
+        $this->assertFalse($result['valid']);
+        $this->assertSame('unattested_literal_reference', $result['reason']);
+        $this->assertSame(['CD43'], $result['terms']);
+        $claim['text'] = 'CASE-A ordered ITEM-AB12; the warehouse received CD34.';
+        $this->assertTrue($this->validator()->validate('Compare the items.', $evidence, [$claim])['valid']);
+    }
+
+    public function test_a_source_title_can_attest_a_masked_case_identity_but_not_another_document(): void
+    {
+        $source = 'Return [IBAN] was reported as received.';
+        $evidence = ['documents' => [
+            ['document_id' => 7, 'title' => 'Return RU12345', 'evidence' => [['evidence_hash' => 'h', 'content' => $source]]],
+            ['document_id' => 8, 'title' => 'Return RU99999', 'evidence' => [['evidence_hash' => 'other', 'content' => $source]]],
+        ]];
+        $claim = ['text' => 'RU12345 was reported as received.', 'quote' => $source, 'document_id' => 7, 'evidence_hash' => 'h'];
+        $this->assertTrue($this->validator()->validate('Return status?', $evidence, [$claim])['valid']);
+        $claim['text'] = 'RU99999 was reported as received.';
+        $this->assertSame('unattested_literal_reference', $this->validator()->validate('Return status?', $evidence, [$claim])['reason']);
+    }
+
+    public function test_a_literal_code_in_another_tool_record_cannot_support_the_selected_record(): void
+    {
+        $record = ['id' => 'ORDER-A', 'item' => 'AB12'];
+        $evidence = ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'h',
+            'result' => [$record, ['id' => 'ORDER-B', 'item' => 'AB21']]]]];
+        $claim = ['text' => 'ORDER-A contains AB21.', 'quote' => json_encode($record), 'tool_execution_id' => 42, 'evidence_hash' => 'h'];
+        $this->assertSame('unattested_literal_reference', $this->validator()->validate('ORDER-A item?', $evidence, [$claim])['reason']);
+    }
+
     /** A structured name at the start of the question still needs a source. */
     public function test_it_blocks_an_unattested_named_entity_even_when_context_is_related(): void
     {
