@@ -61,4 +61,32 @@ final class FocusContractTest extends TestCase
         $this->expectExceptionMessage('Invalid focus shape.');
         FocusContract::validate($data, ['ORDER-A'], []);
     }
+
+    public function test_live_research_does_not_require_an_unrelated_kb_search(): void
+    {
+        $data = $this->proposal(contextual: false);
+        $data['kb_queries'] = $data['subquestions'][0]['kb_queries'] = [];
+        $result = FocusContract::validate($data, [], ['ORDER-A']);
+        $this->assertTrue($result['subquestions'][0]['requires_research']);
+        $this->assertSame([], $result['subquestions'][0]['kb_queries']);
+    }
+
+    public function test_mixed_document_and_live_tasks_keep_their_distinct_search_routes(): void
+    {
+        $data = $this->proposal(contextual: false);
+        $live = $this->proposal('ORDER-B', false)['subquestions'][0];
+        $live['kb_queries'] = [];
+        $data['subquestions'][] = $live;
+        $result = FocusContract::validate($data, [], ['ORDER-A', 'ORDER-B']);
+        $this->assertSame([['ORDER-A items'], []], array_column($result['subquestions'], 'kb_queries'));
+        $this->assertSame([true, true], array_column($result['subquestions'], 'requires_research'));
+    }
+
+    public function test_a_task_without_research_still_cannot_propose_kb_searches(): void
+    {
+        $data = $this->proposal();
+        $data['requires_research'] = $data['subquestions'][0]['requires_research'] = false;
+        $this->expectExceptionMessage('Invalid research question.');
+        FocusContract::validate($data, ['ORDER-A'], []);
+    }
 }
