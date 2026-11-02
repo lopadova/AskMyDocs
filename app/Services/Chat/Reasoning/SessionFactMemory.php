@@ -73,8 +73,16 @@ final readonly class SessionFactMemory
         if ($identifiers === [] && $question !== null) {
             // Exact identifier membership is a local lookup, not interpretation of user intent.
             foreach (SessionMemoryFact::query()->whereHas('observation', fn ($q) => $q->whereIn('id', (clone $query)->select('id')))
-                ->select(['id', 'subject_identifiers'])->orderBy('id')->lazy(100) as $fact) {
-                foreach ($fact->subject_identifiers as $id) if (EvidenceProjector::contains($question, $id)) $identifiers[] = $id;
+                ->select(['id', 'subject_identifiers', 'verification_json'])->orderBy('id')->lazy(100) as $fact) {
+                foreach ($fact->subject_identifiers as $id) {
+                    if (! EvidenceProjector::contains($question, $id)) continue;
+                    $identifiers[] = $id;
+                    // A verified statement can link a case to its API record.
+                    // These labels select context only, never establish a new fact.
+                    if (($fact->verification_json['method'] ?? null) === 'verified_claim') {
+                        $identifiers = [...$identifiers, ...$fact->subject_identifiers];
+                    }
+                }
             }
             $identifiers = array_slice(array_unique($identifiers), 0, 12);
         }
@@ -84,10 +92,13 @@ final readonly class SessionFactMemory
             });
         });
         foreach ($query
-            ->with(['facts' => fn ($q) => $q->when($selectedFields !== null, fn ($q) => $q->whereIn('field', $selectedFields))])
+            ->with(['facts' => fn ($q) => $q->when($selectedFields !== null, fn ($q) => $q->whereIn('field', $selectedFields))
+                ->orderByRaw("case when field = 'statement' then 0 else 1 end")->orderBy('id')])
             ->orderByDesc('acquired_at')->orderByDesc('id')->lazy(50) as $observation) {
             if (! $this->authorized($owner, $observation, $actor, $filters, $allowedTools)) continue;
+            $sourceFacts = 0;
             foreach ($observation->facts as $fact) {
+                if ($selectedFactIds === null && $sourceFacts >= 10) break;
                 $entry = $this->factView($fact, $observation);
                 $identity = $entry['namespace'].'|'.json_encode($entry['subject_identifiers']).'|'.$entry['field'];
                 if ($entry['field'] !== 'statement' && isset($seen[$identity])) continue;
@@ -96,6 +107,7 @@ final readonly class SessionFactMemory
                 if ($selectedFactIds === null && count($facts) >= (int) config('reasoning.session_memory.max_prompt_facts', 100)) return $facts;
                 if ($selectedFactIds === null && $bytes + $size > (int) config('reasoning.session_memory.max_prompt_bytes', 32768)) continue;
                 $facts[] = $entry;
+                $sourceFacts++;
                 $bytes += $size;
             }
         }

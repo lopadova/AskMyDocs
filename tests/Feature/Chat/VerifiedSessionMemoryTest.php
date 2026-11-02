@@ -152,6 +152,22 @@ class VerifiedSessionMemoryTest extends TestCase
         $this->assertSame('expired', $expired->memoryResolution['tasks'][0]['excluded'][0]['reason']);
     }
 
+    public function test_a_large_record_does_not_starve_other_sources_or_its_verified_statement(): void
+    {
+        [, , $document, $claim] = $this->document();
+        $this->travel(1)->seconds();
+        [$tool, $turn] = $this->source(['id' => 'ORD-123', 'status' => 'processing',
+            ...array_fill_keys(array_map(fn ($i) => 'telemetry_'.$i, range(1, 150)), 'noise')]);
+        $statement = ['text' => 'ORD-123 has status processing.', 'quote' => json_encode($tool['result']['records'][0]),
+            'tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash'], 'entity_identifiers' => ['ORD-123']];
+        $this->memory->consolidate($this->chat, $turn, ['api_tools' => [$tool]], [$statement], $this->user);
+        $projection = $this->memory->projection($this->chat, $this->user, allowedTools: [self::TOOL]);
+        $statements = array_column(array_filter($projection, fn ($fact) => $fact['field'] === 'statement'), 'value');
+        $this->assertContains($claim['text'], $statements);
+        $this->assertContains($statement['text'], $statements);
+        $this->assertLessThanOrEqual(11, count($projection));
+    }
+
     public function test_complete_facts_still_require_composition_for_a_new_requested_presentation(): void
     {
         $this->source();
