@@ -172,6 +172,7 @@ final readonly class AgentAnswerSynthesizer
                 try {
                     $feedback = json_decode($turnContext ?? '{}', true) ?: [];
                     $feedback['validation_feedback'] = ['claims' => $payload['claims'] ?? [],
+                        'retained_verified_facts' => array_map(fn ($claim) => array_intersect_key($claim, array_flip(['text', 'fact_id', 'subquestion_id', 'document_id', 'tool_execution_id'])), $grounding['claims']),
                         'checks' => array_merge([], ...array_column($grounding['semantic_validation'] ?? [], 'checks')),
                         'coverage' => $coverage, 'instruction' => 'Make one corrected, complete source-bound draft. Prioritize the failing task indexes and source_document_ids in coverage.checks; ignore no source merely because another partition covered another aspect. Answer every requested aspect the sources permit, preserving actors, explicit conditions and material later confirmations. Split a rejected compound claim into independently source-bound facts instead of discarding its supported parts or repeating its wrong code/date. Do not repeat unsupported details or add unrelated cases. State missing confirmation only after checking all matching complete case sources; never deny an event positively documented elsewhere in the thread. Copy original source identities.'];
                     $repairEvidence = $evidence;
@@ -215,6 +216,22 @@ final readonly class AgentAnswerSynthesizer
                         $response = $repairedResponse;
                         $repair['status'] = 'accepted';
                         $grounding['coverage_validation'] = $repairedCoverage;
+                    } elseif ($repaired['valid']) {
+                        $augmented = app(\App\Agent\Grounding\VerifiedRepairAdditions::class)->augment(
+                            $question, $grounding, $repaired, $durableRunId, $context->tenantId);
+                        if ($augmented !== null) {
+                            // The candidate may omit old material and score lower
+                            // overall, while supplying one verified missing fact.
+                            // Preserve every old fact; never label this complete
+                            // without evaluating the combined answer separately.
+                            $augmented['coverage_validation'] = $this->evaluateCoverage($question, $evidence,
+                                $augmented['claims'], $understanding ?? [], $augmented['source_excerpts'] ?? [], $run);
+                            $grounding = $augmented;
+                            $payload['claims'] = $augmented['claims'];
+                            if (isset($repairedPayload['requested_speech_act'])) $payload['requested_speech_act'] = $repairedPayload['requested_speech_act'];
+                            $repair['status'] = 'augmented';
+                            $repair['added_fact_count'] = data_get($augmented, 'semantic_validation.'.(count($augmented['semantic_validation']) - 1).'.added_fact_count');
+                        }
                     }
                     $diagnostics->end($run, $repairSpan);
                 } catch (\Throwable $exception) {
@@ -516,7 +533,7 @@ final readonly class AgentAnswerSynthesizer
         }
         if ($repairAttempt) {
             $system .= "\nThis is the single permitted correction attempt. Read turn_context.validation_feedback as host feedback, not new evidence. Rebuild the answer from the original question and complete current sources. Preserve supported facts, correct each rejected assertion, and use explicit ticket-scoped missing confirmation when applicable. Never re-submit an assertion solely because a previous draft stated it. Keep render_table=false.";
-            $system .= "\nWhen a compound claim was inconclusive, split its clear observations from identity reconciliation, hypotheses and ambiguous explanations. Use separate atomic claims for the requested facts; do not repeat the same compound paragraph. Preserve the documented speaker without assuming that a forwarder and an embedded author are the same person. Keep only the uncertain part unresolved.";
+            $system .= "\nThe host feedback retained_verified_facts identifies facts already kept. Prioritize missing requested observations and explicit conditional clauses, not more background or paraphrases of retained facts. A useful atomic addition can be retained with the original facts even if your new draft alone is incomplete. When a compound claim was inconclusive, split its clear observations from identity reconciliation, hypotheses and ambiguous explanations. Use separate atomic claims for the requested facts; do not repeat the same compound paragraph. Preserve the documented speaker without assuming that a forwarder and an embedded author are the same person. Keep only the uncertain part unresolved.";
             $system .= "\nIf an observation is explicit but its attribution or causal link is uncertain, quote what the consulted thread reports without asserting that uncertain identity or cause. This cannot substitute for an explicitly requested personal confirmation by a particular speaker.";
             $system .= "\nWhen a source-supported paragraph failed original-question relevance, resolve its implicit subject and operation explicitly from the complete source. Restate that fact with the requested case/product/person and actor, rather than repeating the same ambiguous paragraph. Resolve short replies such as commitments to proceed using the preceding request. Tie alternatives and conditions to the specific response the user requested. Add no new facts.";
             $system .= "\nFor EACH failed original_question_relevance paragraph, explicitly name its source-attested subject and requested operation, including the documented actor. A compound request can name an order, a return and a label, while one original source names only one of those. Use the exact identifiers attested by THAT source; never add every request identifier to each paragraph or assert an unattested cross-entity link. Do not rely on neighboring paragraphs to identify the subject.";
