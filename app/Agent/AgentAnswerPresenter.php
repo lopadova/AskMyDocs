@@ -100,6 +100,21 @@ final readonly class AgentAnswerPresenter
             $diagnostics->end($run, $span);
             if (($verification['answers']['faithful']['probability_true'] ?? 0) < $threshold
                 || ($verification['answers']['complete']['probability_true'] ?? 0) < $threshold) {
+                $requestProof = $verification['requested_speech_act']['answers'] ?? [];
+                if (($requestProof['requested']['probability_true'] ?? 0) >= $threshold
+                    && ($requestProof['nonfactual']['probability_true'] ?? 0) >= $threshold) {
+                    // A rejected factual rewrite must not erase a separately
+                    // verified, explicitly requested question. Keep the original
+                    // approved facts verbatim; no rejected prose is authority.
+                    $originals = array_map(fn ($fact) => ['text' => $fact['text'],
+                        'claim_ids' => [$fact['id']], 'kind' => 'facts'], $facts);
+                    $requests = array_values(array_filter($paragraphs,
+                        fn ($paragraph) => ($paragraph['kind'] ?? 'facts') === 'requested_speech_act'));
+                    $fallback = $this->validate([...$originals, ...$requests], $claims,
+                        array_column($facts, 'presentation_group', 'id'), true);
+                    return ['paragraphs' => $fallback, 'trace' => [...$trace, 'status' => 'accepted_request_only',
+                        'reason' => 'factual_rewrite_rejected', 'fact_count' => count($claims), 'paragraph_count' => count($fallback)]];
+                }
                 return ['paragraphs' => null, 'trace' => [...$trace, 'status' => 'rejected', 'reason' => 'rewrite_not_verified']];
             }
 
@@ -182,6 +197,7 @@ final readonly class AgentAnswerPresenter
         // hypotheses and linked approved facts, never the candidate paragraphs.
         $causal = $this->verifyCausalLinks($blocks, $runId, $context->tenantId);
         $faithful = min($faithful, $causal['probability_true']);
+        $requestVerification = null;
         if ($requests !== []) {
             $requestState = ['current_user_request' => $question, 'proposed_nonfactual_request' => $requests[0]['text']];
             $requestDecision = app(DecisionOnce::class)->run($runId, hash('sha256', json_encode($requestState, JSON_THROW_ON_ERROR)),
@@ -195,11 +211,13 @@ final readonly class AgentAnswerPresenter
                     ])->decide(), 'answer_presentation_request_decision', $context->tenantId);
             $faithful = min($faithful, $requestDecision->answers['requested']['probability_true'] ?? 0,
                 $requestDecision->answers['nonfactual']['probability_true'] ?? 0);
+            $requestVerification = $requestDecision->toArray();
         }
         return ['model' => $batches[0]['model'], 'answers' => [
             'faithful' => ['type' => 'noul', 'probability_true' => $faithful],
             'complete' => ['type' => 'noul', 'probability_true' => $complete],
-        ], 'batches' => $batches, 'causal_proofs' => $causal];
+        ], 'batches' => $batches, 'causal_proofs' => $causal,
+            'requested_speech_act' => $requestVerification];
     }
 
     /** Linguistic extraction has no business sources and cannot approve facts. */

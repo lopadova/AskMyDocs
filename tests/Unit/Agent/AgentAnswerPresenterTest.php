@@ -127,6 +127,40 @@ final class AgentAnswerPresenterTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public static function requestsWithRejectedRewrites(): array
+    {
+        return [[.99, .99, true], [.2, .99, false], [.99, .2, false]];
+    }
+
+    #[DataProvider('requestsWithRejectedRewrites')]
+    public function test_a_verified_request_survives_a_rejected_factual_rewrite_without_reusing_its_prose(float $requested, float $nonfactual, bool $keep): void
+    {
+        Http::fake(function ($request) use ($requested, $nonfactual) {
+            $answers = [];
+            foreach (array_keys($request['questions']) as $key) $answers[$key] = ['type' => 'noul',
+                'noul' => match ($key) { 'requested' => $requested, 'nonfactual' => $nonfactual, default => .1 }];
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $ai = $this->ai();
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->response([
+            ['text' => 'Il rimborso di CASE-A è già pagato.', 'claim_ids' => [0, 1], 'kind' => 'facts'],
+            ['text' => 'Potresti integrare la ricevuta del vettore, se disponibile?', 'claim_ids' => [], 'kind' => 'requested_speech_act'],
+        ]));
+        $claims = $this->claims();
+        $result = (new AgentAnswerPresenter($ai))->present('Scrivi una nota e chiedi al collega di integrare l’eventuale ricevuta del vettore.',
+            $this->context(), $claims, understanding: ['requires_composition' => true]);
+        Http::assertSentCount(2);
+        $this->assertSame($this->claims(), $claims);
+        if (! $keep) {
+            $this->assertNull($result['paragraphs']);
+            return;
+        }
+        $this->assertSame('accepted_request_only', $result['trace']['status']);
+        $this->assertSame(array_column($claims, 'text'), array_column(array_slice($result['paragraphs'], 0, 2), 'text'));
+        $this->assertSame('requested_speech_act', $result['paragraphs'][2]['kind']);
+        $this->assertStringNotContainsString('già pagato', json_encode($result['paragraphs'], JSON_UNESCAPED_UNICODE));
+    }
+
     public function test_a_verified_paragraph_merges_repeated_attribution_without_changing_original_facts(): void
     {
         $this->decisions();
