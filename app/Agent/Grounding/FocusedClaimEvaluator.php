@@ -82,6 +82,24 @@ final readonly class FocusedClaimEvaluator
                 $verified = $this->validator->validate($question, $scopedEvidence, [[...$claim, 'quote' => $bound['quote']]]);
                 $reason = $verified['valid'] ? null : $verified['reason'];
             }
+            // The source binding has already checked tenant/project, hash and
+            // exact record identity. A prose-only reference error rejects that
+            // prose, not independently requested values from this SAME record.
+            if ($reason === 'unattested_literal_reference' && isset($claim['tool_execution_id']) && $subIndex !== null) {
+                $projection = $this->structuredFallback(['claim' => [...$claim, 'quote' => $bound['quote']],
+                    'bound' => $bound, 'sub' => $subs[$subIndex], 'locale' => $understanding['language'] ?? app()->getLocale()]);
+                if ($projection !== null) {
+                    $projected = $this->validator->validate($question, $scopedEvidence, [$projection]);
+                    if ($projected['valid']) {
+                        $check['rejected_prose'] = ['text' => $claim['text'], 'reason' => $reason];
+                        $claim = $projection;
+                        $check['text'] = $claim['text'];
+                        $check['recovery'] = 'bound_record_projection';
+                        $verified = $projected;
+                        $reason = null;
+                    }
+                }
+            }
             $check['deterministic'] = ['status' => $reason === null ? 'passed' : 'failed', 'reason' => $reason,
                 'checks' => ['authorized_envelope', 'source_identity', 'hash', 'record_identity', 'subquestion']];
             if ($reason === null && count($pairs) >= 10) {
@@ -132,7 +150,8 @@ final readonly class FocusedClaimEvaluator
             }
             $entities = array_values(array_filter(array_slice(is_array($claim['entity_identifiers'] ?? null) ? $claim['entity_identifiers'] : [], 0, 12),
                 fn ($id) => is_string($id) && mb_strlen($id) <= 120 && EvidenceProjector::contains($bound['quote'], $id) && EvidenceProjector::contains($claim['text'], $id)));
-            $pairs[$key] = ['claim' => [...$verified['claims'][0], 'entity_identifiers' => $entities,
+            $pairs[$key] = ['claim' => [...$verified['claims'][0],
+                ...(isset($claim['literal_projection']) ? ['literal_projection' => $claim['literal_projection']] : []), 'entity_identifiers' => $entities,
                 'source_title' => $bound['source_title'] ?? '', 'complete_source' => $bound['complete_source'] ?? false],
                 'bound' => $bound, 'sub' => $subs[$subIndex], 'check' => $check,
                 'literal_excerpt' => $literalAnchors[$key] ?? null, 'locale' => $understanding['language'] ?? app()->getLocale()];

@@ -61,6 +61,32 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertTrue($result['partial']);
     }
 
+    public function test_a_cross_record_reference_veto_preserves_only_requested_fields_from_the_bound_record(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 is scheduled, unlike product AB12 in another order.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('AB12', $result['claims'][0]['text']);
+        $this->assertSame('unattested_literal_reference', $result['semantic_validation'][0]['checks'][0]['rejected_prose']['reason']);
+        $this->assertSame('bound_record_projection', $result['semantic_validation'][0]['checks'][0]['recovery']);
+        $this->assertArrayHasKey('literal_projection', $result['claims'][0]);
+    }
+
+    public function test_cross_record_prose_recovery_cannot_bypass_record_identity(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 has product AB12.';
+        $u['focus']['identifiers'] = $u['subquestions'][0]['identifiers'] = ['OTHER-99'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of OTHER-99?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        Http::assertNothingSent();
+    }
+
     public static function literalVetoes(): array
     {
         return [['conflicting'], ['supported_off_topic']];
