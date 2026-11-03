@@ -32,9 +32,9 @@ deploy di configurazione sul solo ambiente di sviluppo.
 
 | Verifica | Esito | Limite dell'evidenza |
 |---|---|---|
-| Suite Agent/Chat/Unit Agent/OpenRouter/Architecture | 645 test, 644 superati, 1 fallimento preesistente; 3589 asserzioni | Prima dell'ultima aggiunta opzionale dei metadati del catalogo |
-| QA dopo metadati degli alias e probe applicativo | 21 test, 96 asserzioni, superati | HTTP provider simulato; due processi applicativi reali sullo stesso SQLite |
-| Client HTTP e preparazione del corpus/manifesto | 16 test superati | Fixture locali; non attestano inferenze live |
+| Suite Agent/Chat/Unit Agent/OpenRouter/Architecture | 654 test, 653 superati, 1 fallimento preesistente; 3662 asserzioni | Include verifica identità embedding e turni aggiuntivi |
+| QA e isolamento tenant dopo identità embedding e turni aggiuntivi | 32 test, 171 asserzioni, superati | HTTP provider simulato; due processi applicativi reali sullo stesso SQLite |
+| Client HTTP e preparazione del corpus/manifesto | 17 test superati | Fixture locali; non attestano inferenze live |
 | Sintassi PHP e controllo whitespace del diff | Superati | Non sostituiscono il collaudo di sviluppo |
 
 Il fallimento esteso è
@@ -60,8 +60,9 @@ il primo deploy.
 
 ## Preparazione privata e attività live
 
-Sono state effettuate soltanto letture delle cronologie e delle fonti già
-autorizzate sul progetto `autry`. Nessuna nuova domanda è stata inviata alla chat.
+La preparazione iniziale ha usato sole letture delle cronologie e delle fonti
+autorizzate sul progetto `autry`. Dopo il deploy 184 è stato eseguito il primo
+turno nuovo, conservato con il suo esito fallito come descritto sotto.
 
 - Dieci prime domande congelate, con hash individuali, in file 0600 esclusi da Git.
 - Indice del corpus: `3c9a72978d54640a8ede758202b85a7477afb329fcf163b7983911ed610d5626`.
@@ -180,9 +181,13 @@ riscontro verificato e in assenza di run aperte, costi ignoti, prenotazioni
 pendenti, errori diversi o limiti esauriti. Un evento conserva la causa originale
 dell'arresto e tutti i saldi; il tentativo mantiene costo, errore e tempi originali.
 Questa correzione richiede integrazione e deploy prima di riprendere il collaudo.
-La suite mirata QA e isolamento tenant supera **32 test e 167 asserzioni**,
+La suite mirata QA e isolamento tenant supera **32 test e 171 asserzioni**,
 con HTTP simulato; include riscontro mancante o discordante, cambiamento
 concorrente, attore revocato e rifiuto della riapertura con addebiti irrisolti.
+Il fix è nel commit locale `42ba10617`; il commit `df1ec403f` consente di numerare
+turni ulteriori nella stessa campagna, per rispettare il requisito di almeno tre
+turni senza sostituire il primo fallito. La suite estesa aggiornata conferma lo
+stesso solo errore Flow già presente; 17 test Python sono superati.
 
 G0c resta incompleto. Le fasi 1–6 mantengono il loro perimetro completo e attendono
 la baseline obbligatoria, senza anticipare modifiche della pipeline.
