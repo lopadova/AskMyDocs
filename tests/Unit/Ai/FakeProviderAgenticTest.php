@@ -152,6 +152,17 @@ final class FakeProviderAgenticTest extends TestCase
         $this->assertArrayNotHasKey('memory_candidates', $answer);
     }
 
+    public function test_unlisted_order_requests_never_plan_canned_customer_or_order_calls(): void
+    {
+        foreach (['Find every order for Caio', 'Dammi tutti gli ordini di Tizio e di Caio', 'Dammi gli ordini di Tizio e simula HTTP504'] as $question) {
+            $response = $this->provider()->chatWithHistory('system', [['role' => 'user', 'content' => json_encode([
+                'question' => $question, 'available_tools' => [['name' => 'find_customer'], ['name' => 'get_orders']],
+                'completed_actions' => [['id' => 'lookup', 'tool' => 'find_customer', 'status' => 'completed']],
+            ], JSON_THROW_ON_ERROR)]], $this->forcedOptions('submit_agent_plan'));
+            $this->assertSame(['decision' => 'insufficient', 'actions' => []], $response->toolCalls[0]['arguments']);
+        }
+    }
+
     /** @return array<string,mixed> */
     private function forcedOptions(string $function): array
     {

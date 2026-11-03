@@ -13,7 +13,7 @@ final class AgentRetrievalFixture
         ['number' => 'A-101', 'customer_id' => 77, 'total' => 80],
         ['number' => 'A-102', 'customer_id' => 77, 'total' => 45],
     ];
-    public const QUESTIONS = ['Dammi tutti gli ordini di Tizio', 'Dammi gli ordini di Tizio e simula 503'];
+    public const QUESTIONS = ['Dammi tutti gli ordini di Tizio', 'Dammi gli ordini di Tizio e simula HTTP503'];
     public const POLICY_QUESTION = 'How many days per week can I work remotely?';
     public const POLICY = 'Employees may work remotely up to 3 days per week with manager approval.';
 

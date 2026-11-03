@@ -121,11 +121,28 @@ final class E2eFixtureDecisionModel implements IndependentDecisionModel
 
     private function hasPolicy(mixed $value): bool
     {
-        if (is_array($value)) {
-            foreach ($value as $child) if ($this->hasPolicy($child)) return true;
-            return false;
+        $canonical = static fn ($text) => is_string($text)
+            && in_array(trim($text), [Fixture::POLICY, "# Remote Work Policy\n\n".Fixture::POLICY], true);
+        // Claim checks receive the original literal source directly.
+        if (is_string($value)) return $canonical($value);
+        if (! is_array($value)) throw new DecisionException('Unknown fixture source collection.');
+        $found = false;
+        foreach ($value as $source) {
+            if (! is_array($source)) throw new DecisionException('Unknown fixture source shape.');
+            if (isset($source['document_id'])) {
+                $keys = array_keys($source);
+                sort($keys);
+                if ($keys !== ['complete_source', 'document_id', 'text', 'title']
+                    || ! is_int($source['document_id']) || $source['document_id'] < 1
+                    || $source['title'] !== 'Remote Work Policy' || ! is_bool($source['complete_source'])
+                    || ! $canonical($source['text'])) throw new DecisionException('Unknown fixture document.');
+                $found = true;
+            } elseif (array_diff(array_keys($source), ['tool_execution_id', 'source_title', 'observed_at', 'result']) !== []
+                || ! is_array($source['result'] ?? null)) {
+                throw new DecisionException('Unknown fixture source shape.');
+            }
         }
-        return is_string($value) && in_array(trim($value), [Fixture::POLICY, "# Remote Work Policy\n\n".Fixture::POLICY], true);
+        return $found;
     }
 
     private function records(mixed $value): array

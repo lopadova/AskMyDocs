@@ -64,7 +64,7 @@ test.describe('Agentic API retrieval — real backend and SSE', () => {
     test('a real upstream 503 is visible and produces a partial localized answer', async ({ page }) => {
         await page.goto('/app/chat');
         const controls = composer(page);
-        await controls.input.fill('Dammi gli ordini di Tizio e simula 503');
+        await controls.input.fill('Dammi gli ordini di Tizio e simula HTTP503');
         await controls.send.click();
 
         const information = page.getByRole('button', { name: 'Informazioni sulla risposta' });

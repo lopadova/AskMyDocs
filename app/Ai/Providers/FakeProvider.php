@@ -123,7 +123,10 @@ final class FakeProvider implements AiProviderInterface
     private function agentPlan(string $systemPrompt, array $messages): array
     {
         $payload = $this->lastJsonPayload($messages);
-        $question = mb_strtolower((string) ($payload['question'] ?? ''));
+        $question = (string) ($payload['question'] ?? '');
+        if (! in_array($question, [...\App\Services\Dev\AgentRetrievalFixture::QUESTIONS, \App\Services\Dev\AgentRetrievalFixture::POLICY_QUESTION], true)) {
+            return ['decision' => 'insufficient', 'actions' => []];
+        }
         $completed = is_array($payload['completed_actions'] ?? null)
             ? $payload['completed_actions']
             : [];
@@ -149,11 +152,11 @@ final class FakeProvider implements AiProviderInterface
             }
             return ['decision' => 'answer', 'actions' => []];
         }
-        if ((str_contains($question, 'ordin') || str_contains($question, 'order'))
+        if (in_array($question, \App\Services\Dev\AgentRetrievalFixture::QUESTIONS, true)
             && in_array('find_customer', $toolNames, true)
             && in_array('get_orders', $toolNames, true)) {
             $italian = $this->expectsItalian($systemPrompt);
-            $customer = str_contains($question, '503') || str_contains($question, 'simula') ? '503' : 'Tizio';
+            $customer = $question === \App\Services\Dev\AgentRetrievalFixture::QUESTIONS[1] ? '503' : 'Tizio';
 
             return [
                 'decision' => 'tools',
@@ -186,7 +189,10 @@ final class FakeProvider implements AiProviderInterface
     {
         $payload = $this->lastJsonPayload($messages);
         $question = (string) ($payload['question'] ?? '');
-        $orders = str_contains(mb_strtolower($question), 'ordini') && str_contains($question, 'Tizio');
+        if (! in_array($question, [...\App\Services\Dev\AgentRetrievalFixture::QUESTIONS, \App\Services\Dev\AgentRetrievalFixture::POLICY_QUESTION], true)) {
+            throw new \DomainException('Question is outside the finite offline interpretation fixture.');
+        }
+        $orders = in_array($question, \App\Services\Dev\AgentRetrievalFixture::QUESTIONS, true);
         // A customer name is a discovery target, not the identity of an order not yet retrieved.
         $focus = ['topic' => $orders ? 'orders' : 'documents', 'identifiers' => [],
             'aspect' => $orders ? 'orders' : 'details', 'fields' => $orders ? ['number', 'total'] : ['*']];

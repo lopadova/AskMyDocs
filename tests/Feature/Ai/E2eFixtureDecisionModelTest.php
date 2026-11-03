@@ -66,6 +66,31 @@ final class E2eFixtureDecisionModelTest extends TestCase
         $this->assertSame('unsupported', $driver->decide($this->state(text: 'Ordine A-100: totale 999.'), $this->question())->answers['claim_4']['choice']);
     }
 
+    public function test_unlisted_interpretation_does_not_propose_any_canned_lookup(): void
+    {
+        Http::preventStrayRequests();
+        config(['ai.question_preprocessor.provider' => 'fake']);
+        $understanding = app(ChatQuestionPreprocessor::class)->interpret('Dammi tutti gli ordini di Tizio e di Caio', reasoningContext: []);
+        $this->assertFalse($understanding->available);
+        $this->assertNull($understanding->initialPlan);
+        Http::assertNothingSent();
+    }
+
+    public function test_only_the_canonical_document_content_can_supply_policy_coverage(): void
+    {
+        $driver = new E2eFixtureDecisionModel;
+        $state = ['question' => Fixture::POLICY_QUESTION, 'answer' => [Fixture::POLICY],
+            'sources' => [['document_id' => 1, 'title' => 'Remote Work Policy', 'text' => Fixture::POLICY, 'complete_source' => true]]];
+        $questions = ['covered' => ['type' => 'noul', 'criteria' => ['true' => 'covered', 'false' => 'missing']]];
+        $this->assertSame(1.0, $driver->decide($state, $questions)->answers['covered']['probability_true']);
+        $state['sources'] = [['result' => ['metadata' => Fixture::POLICY]]];
+        $this->assertSame(0.0, $driver->decide($state, $questions)->answers['covered']['probability_true']);
+        $state['sources'] = [['metadata' => ['text' => Fixture::POLICY]]];
+        $result = $driver->decideIndependently($state, $questions);
+        $this->assertArrayNotHasKey('covered', $result->answers);
+        $this->assertArrayHasKey('covered', $result->answerErrors);
+    }
+
     public function test_changed_source_values_are_not_approved(): void
     {
         $this->expectException(DecisionException::class);
