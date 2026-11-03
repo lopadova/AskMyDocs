@@ -1,6 +1,7 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
 import { loginAsProjectUser } from './setup-helpers';
+import { openAdminHubSection } from './helpers';
 
 /*
  * v4.2/W4 sub-PR 5 — Admin PII Redactor SPA mount (initial iframe).
@@ -45,12 +46,7 @@ seededTest.describe('Admin PII Redactor — admin (cross-mount + nav)', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        // Sidebar entry exposes the new section. The button label is
-        // 'PII Redactor' — find it via the accessible name (R11) and
-        // click; it routes to /app/admin/pii-redactor.
-        const navButton = page.getByRole('button', { name: 'PII Redactor', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'governance', 'pii-redactor');
 
         // Route lands on the host component. The host's
         // data-testid="admin-pii-redactor-host" wraps the cross-mounted

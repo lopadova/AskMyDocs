@@ -49,6 +49,13 @@ export async function chooseSelectOption(trigger: Locator, choice: SelectChoice)
     await expect(menu).toBeHidden();
 }
 
+/** Follow the current administration hub navigation through its visible controls. */
+export async function openAdminHubSection(page: Page, hub: string, section: string): Promise<void> {
+    await chooseSelectOption(page.getByRole('combobox', { name: 'Workspace area' }), 'admin');
+    await page.getByTestId(`sidebar-hub-${hub}`).click();
+    await page.getByTestId(`hub-link-${section}`).click();
+}
+
 /**
  * Wait for the chat thread to reach a terminal (non-loading) state.
  * `data-state` is the source of truth — never sleep.

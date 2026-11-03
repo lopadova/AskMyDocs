@@ -1,5 +1,7 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
+import { openAdminHubSection } from './helpers';
+import { loginAsProjectUser } from './setup-helpers';
 
 /*
  * v4.2/W4 sub-PR 6 — Admin Flows cockpit mount
@@ -43,12 +45,7 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        // Sidebar entry exposes the new section. The button label is
-        // 'Flows' — find it via the accessible name (R11) and click;
-        // it routes to /app/admin/flows.
-        const navButton = page.getByRole('button', { name: 'Flows', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'automation', 'flows');
 
         // Route lands on the host component. The host's
         // data-testid="admin-flows-host" is unconditional —
@@ -103,6 +100,9 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
 
 baseTest.describe('Admin Flows — viewer (RBAC denied)', () => {
     baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
+    baseTest.beforeEach(async ({ page, context }) => {
+        await loginAsProjectUser(page, context, null, 'chromium-viewer');
+    });
 
     baseTest('viewer hitting /app/admin/flows sees admin-forbidden', async ({ page }) => {
         await page.goto('/app/admin/flows');
@@ -124,13 +124,11 @@ baseTest.describe('Admin Flows — viewer (RBAC denied)', () => {
      * without branching the test on env.
      */
     baseTest('viewer GET /admin/flows rejects with 4xx (R13: failure injection on package mount URL)', async ({
-        request,
+        page,
     }) => {
-        const response = await request.get('/admin/flows');
+        const response = await page.request.get('/admin/flows', { maxRedirects: 0 });
 
-        // 404 when env=false (default in CI/dev — flow-admin.enabled
-        // middleware aborts), 403 when env=true + viewer role. Either
-        // status proves the package console is NOT exposed to a viewer.
-        expect([403, 404]).toContain(response.status());
+        // The enabled test mount must reject the authenticated viewer itself.
+        expect(response.status()).toBe(403);
     });
 });

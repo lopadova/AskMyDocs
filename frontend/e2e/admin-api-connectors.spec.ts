@@ -302,8 +302,11 @@ test.describe('Admin API Connectors', () => {
         await chooseSelectOption(listRoute, { label: /^List users \(/ });
         const detailRoute = page.getByTestId('api-route-relation-form-detail_route');
         await chooseSelectOption(detailRoute, { label: /^User detail \(/ });
-        await page.getByTestId('api-route-relation-form-map-0-from').fill('id');
-        await page.getByTestId('api-route-relation-form-map-0-to_param').fill('id');
+        await page.getByRole('button', { name: 'Campo lista 1', exact: true }).click();
+        await page.getByRole('combobox', { name: 'Cerca Campo lista 1', exact: true }).fill('id');
+        await page.getByRole('option', { name: /^id\s/ }).click();
+        await page.getByRole('button', { name: 'Parametro dettaglio 1', exact: true }).click();
+        await page.getByRole('option', { name: /^id\s/ }).click();
         await page.getByTestId('api-route-relation-form-submit').click();
         await expect(page.getByTestId('toast-api-relation-created')).toBeVisible({ timeout: 15_000 });
 

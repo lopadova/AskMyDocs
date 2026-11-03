@@ -103,6 +103,12 @@ const serveEnv = {
     // viewAiGuardrails gate (admin allowed, viewer 403). Default-OFF
     // clean-404 is covered by GuardrailsAdminMountingTest (phpunit), R43.
     AI_GUARDRAILS_ADMIN_ENABLED: 'true',
+    // Exercise enabled package mounts and their real RBAC gates. Default-OFF
+    // behavior remains covered by the dedicated PHP mounting/disabled suites.
+    EVAL_HARNESS_UI_ENABLED: 'true',
+    EVAL_HARNESS_API_ENABLED: 'false',
+    FLOW_ADMIN_ENABLED: 'true',
+    PII_REDACTOR_ADMIN_ENABLED: 'true',
     // v8.x — light up the Invitations admin SPA so
     // admin-invitations.spec.ts reaches the real package-served
     // Blade panel under /admin/invitations and proves the

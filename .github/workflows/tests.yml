@@ -544,6 +544,11 @@ jobs:
           # clean-404 landing is covered by GuardrailsAdminMountingTest (phpunit), per
           # R43 (both states tested).
           AI_GUARDRAILS_ADMIN_ENABLED: 'true'
+          # Match the local E2E mounts. PHP tests retain default-OFF coverage.
+          EVAL_HARNESS_UI_ENABLED: 'true'
+          EVAL_HARNESS_API_ENABLED: 'false'
+          FLOW_ADMIN_ENABLED: 'true'
+          PII_REDACTOR_ADMIN_ENABLED: 'true'
           # The native Invitations page exposes its authenticated Advanced
           # launcher only while the cross-mounted package panel is enabled.
           # admin-invitations.spec.ts asserts that ON path; the default-OFF

@@ -1,5 +1,7 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
+import { openAdminHubSection } from './helpers';
+import { loginAsProjectUser } from './setup-helpers';
 
 /*
  * v4.4/W3 — Admin Eval Harness UI dashboard mount
@@ -42,22 +44,16 @@ seededTest.describe('Admin Eval Harness — admin (cross-mount + nav)', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        // Sidebar entry exposes the section. Label is 'Eval Harness' (R11).
-        const navButton = page.getByRole('button', { name: 'Eval Harness', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'operations', 'eval-harness');
 
         await expect(page).toHaveURL(/\/admin\/eval-harness$/);
         const host = page.getByTestId('admin-eval-harness-host');
         await expect(host).toBeVisible({ timeout: 15_000 });
         await expect(host).toHaveAttribute('data-mount', 'cross-mount');
 
-        // EVAL_HARNESS_UI_ENABLED is off by default in CI/dev, so the package's
-        // data API is unwired — the host probes it and shows a single clean
-        // "unavailable" landing instead of mounting the cross-mount and letting
-        // it render a storm of error panels / a raw 500 (the hardening that
-        // makes the feature safe whether the flag is on OR off). data-state
-        // settles to 'unavailable', the SPA does NOT mount.
+        // The UI is enabled for this E2E gate; its separate data API is off.
+        // A package HTML response with HTTP 200 must also fail the shared
+        // report-payload contract and keep the cross-mount unavailable.
         await expect(host).toHaveAttribute('data-state', 'unavailable');
         await expect(page.getByTestId('admin-eval-harness-unavailable')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-eval-harness-app')).toHaveCount(0);
@@ -66,6 +62,9 @@ seededTest.describe('Admin Eval Harness — admin (cross-mount + nav)', () => {
 
 baseTest.describe('Admin Eval Harness — viewer (RBAC denied)', () => {
     baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
+    baseTest.beforeEach(async ({ page, context }) => {
+        await loginAsProjectUser(page, context, null, 'chromium-viewer');
+    });
 
     baseTest('viewer hitting /app/admin/eval-harness sees admin-forbidden', async ({ page }) => {
         await page.goto('/app/admin/eval-harness');
@@ -88,14 +87,12 @@ baseTest.describe('Admin Eval Harness — viewer (RBAC denied)', () => {
      * without branching the test on env.
      */
     baseTest('viewer GET /admin/eval-harness rejects with 4xx (R13: failure injection on package mount URL)', async ({
-        request,
+        page,
     }) => {
-        const response = await request.get('/admin/eval-harness');
+        const response = await page.request.get('/admin/eval-harness', { maxRedirects: 0 });
 
-        // 404 when env=false (default in CI/dev — package controller
-        // aborts), 404 in production (non-prod middleware aborts), 403
-        // when env=true + viewer role. Either status proves the
-        // package dashboard is NOT exposed to a viewer.
-        expect([403, 404]).toContain(response.status());
+        // The test module is enabled and the page context is a freshly
+        // authenticated viewer: prove RBAC, with no redirect-to-login escape.
+        expect(response.status()).toBe(403);
     });
 });
