@@ -2,10 +2,12 @@
 
 ## Stato del ciclo
 
-Il branch `codex/feature-operational-consolidation` nasce da `develop`
-(`7852a14f22395d54863fdd1530985bb07cd0d3c9`). Questa consegna prepara la fase 0:
+La prima strumentazione è partita da `develop` (`7852a14`); il seguito usa
+`codex/feature-operational-consolidation-pipeline`, basato su `01092f5`. La fase 0 comprende:
 strumentazione, prenotazioni condivise, corpus fisso e procedura. **Non costituisce
-la baseline live e non abilita l'inizio delle fasi 1–6.** I push spettano a Marco.
+la baseline live e non abilita l'inizio delle fasi 1–6.** Marco ha ora autorizzato
+l'agente anche a push, merge su `develop` e deploy di sviluppo; restano obbligatori
+PR, revisioni e gate del repository. La produzione è esclusa.
 Marco ha autorizzato il deploy delle tre variabili QA: il deploy di configurazione
 184 è concluso sul codice `01092f5`. Le verifiche correnti sono nel dossier di
 avanzamento; i risultati simulati restano separati dai turni baseline.
@@ -20,7 +22,7 @@ avanzamento; i risultati simulati restano separati dai turni baseline.
 | G3 | Verifiche indipendenti e tentativi durevoli, fixture superate | Attende G2 |
 | G4 | Fatti e blocchi conservati nella composizione, fixture superate | Attende G3 |
 | G5 | Privacy, connettori e provenienza dei costi, fixture superate | Attende G4 |
-| G6 | Client/build pertinenti, secondo deploy di Marco, dieci dialoghi candidato e rollback verificato | Attende G5 |
+| G6 | Client/build pertinenti, deploy candidato autorizzato, dieci dialoghi candidato e rollback verificato | Attende G5 |
 
 Il risultato storico 18/30 e i dialoghi già presenti sono materiale di partenza,
 non prove di questo ciclo. I test con risposte HTTP simulate sono separati dal
@@ -63,7 +65,7 @@ annullato dal middleware. Il costo ignoto non diventa mai zero. Le tariffe del
 manifesto vanno riesaminate prima del round candidato: se non sono verificabili,
 non si procede. Riferimento: [routing e tetti di prezzo OpenRouter](https://openrouter.ai/docs/guides/routing/provider-selection).
 
-## Primo deploy — operazioni di Marco
+## Deploy della strumentazione — operazioni autorizzate
 
 1. Portare su sviluppo i commit locali della fase 0 tramite il normale Gitflow.
    Verificare lo stato delle migrazioni; applicare la nuova migrazione QA.
@@ -192,6 +194,23 @@ php artisan qa:campaign inspect --id=<UUID-campagna> \
 ```
 
 Il budget totale è 10 USD, non 10 per round, processo o campagna sostitutiva.
+Se il ciclo richiede revisioni AI esterne, riservare loro una quota del medesimo
+tetto: l'allocazione corrente prevista è 9 USD live e 1 USD per revisioni.
+Una riduzione del tetto della campagna deve essere atomica, solo verso il basso,
+compatibile con speso e prenotato e registrata nel manifesto con attore, motivo,
+revisione e vecchio/nuovo limite. Conservare intatti addebiti e risultati.
+La quota revisioni è un limite prudenziale, non un costo AI già sostenuto:
+registrare separatamente consumi misurati, tariffa e copertura da abbonamento.
+Per la revisione locale Copilot usare il limite di sessione e il file di uso;
+[GitHub documenta un minimo di 30 crediti](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/set-session-limit)
+e [1 credito = 0,01 USD](https://docs.github.com/en/billing/concepts/product-billing/github-copilot-billing).
+La revisione cloud della PR ha invece consumo variabile e non va richiesta
+quando non è possibile verificarne il tetto entro il residuo assegnato. Il budget
+esplicito dell'utente prevale sull'avvio di revisioni AI non quantificabili:
+conservare la revisione indipendente locale, i gate CI e l'eventuale eccezione
+nel dossier, senza presentare un review cloud non eseguito come approvato.
+Finché l'adeguamento non è applicato e riesportato, il tetto live resta quello
+effettivamente presente nel ledger e non si riprendono inferenze.
 Un manifesto superiore a 10 viene rifiutato. Non modificare i saldi manualmente.
 Non creare un'altra campagna per superare un arresto o rinnovare il budget.
 

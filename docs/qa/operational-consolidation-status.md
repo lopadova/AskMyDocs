@@ -28,7 +28,7 @@ strumentazione; nessun push o PR è stato eseguito dall'agente. Il 3 novembre
 Marco ha autorizzato l'agente ad applicare le tre variabili QA e il relativo
 deploy di configurazione sul solo ambiente di sviluppo.
 
-## Verifiche locali
+## Verifiche locali precedenti alla revisione del branch
 
 | Verifica | Esito | Limite dell'evidenza |
 |---|---|---|
@@ -191,3 +191,75 @@ stesso solo errore Flow già presente; 17 test Python sono superati.
 
 G0c resta incompleto. Le fasi 1–6 mantengono il loro perimetro completo e attendono
 la baseline obbligatoria, senza anticipare modifiche della pipeline.
+
+
+## Revisione e pubblicazione del branch — 3 novembre
+
+Marco ha autorizzato push, merge del branch in `develop` e deploy di sviluppo.
+Il branch remoto è pubblicato fino a `b918d4625`. La PR e il merge attendono
+la conclusione dei gate completi.
+
+Il gate Flow ora verifica il confine definito da ADR 0032 e una vera esecuzione
+con job accodati: tenant corretto, payload cifrati, riferimenti opachi e assenza
+di righe nelle tre tabelle non adottate. Non cambia il runtime della pipeline.
+La suite mirata supera 15 test e 122 asserzioni, con uno smoke live opzionale
+intenzionalmente escluso.
+
+Le revisioni hanno consolidato l'ammissione delle campagne: contesto immutabile,
+turni monotoni sotto lock, primo turno in una conversazione vuota, attore
+riautorizzato prima dell'esecuzione e stati terminali condivisi. La revisione
+locale del delta QA riporta zero must-fix. Il controllo UI del modulo Eval
+verifica ora anche schema e versione del payload, non solo il codice HTTP.
+
+I gate aggiornati includono **2.011 test frontend e 34 test legacy superati**,
+build e typecheck riusciti. Il gruppo PHP precedente su fixture offline, interpretazione, claims atomici
+e pulizia OCR supera 62 test e 338 asserzioni; l'ultimo delta delle fixture
+finite supera **20 test e 62 asserzioni**, comprese le esclusioni dei metadati.
+La suite PHP completa precedente arriva a 6.520 test, con una sola asserzione
+errata che assumeva vuota la directory temporanea condivisa: il test ora misura
+l'assenza di nuovi file. Una ripetizione da 6.530 test ha sovrapposto una vecchia classe di test già
+caricata e il nuovo driver delle fixture: quell'esito misto non è valido come
+gate finale. La suite viene ripetuta su `b918d4625`, con hash congelati dei
+2.523 input PHP/config/composer e progressione per classe.
+
+Playwright usa due siti Herd isolati, `askmydocsconsolidationqa.test` e
+`askmydocsconsolidationqa-outbound.test`, con il solo database usa e getta
+`askmydocs_consolidation_test`. Il sito principale e il suo database restano
+inalterati. Le fixture usano provider fittizi senza chiavi AI, interpretazione
+validata e decisioni finite abilitate soltanto in ambiente `testing` con opt-in.
+Domande, decisioni o dati fuori fixture non vengono approvati. I controlli host
+di accesso, identità, hash, supporto letterale e pertinenza restano attivi.
+Questi esiti non validano Jev o la qualità semantica delle risposte live.
+
+Il browser ha confermato il recupero paginato dei tre ordini sintetici con i
+valori originali. Sono stati corretti la navigazione CodeMirror e diversi test
+che usavano hub precedenti, tenant impliciti, sessioni invalidate o l'id della
+versione documentale archiviata. Il gruppo mirato ha superato 40/41 scenari; la sola richiesta connettori priva
+di tenant è stata corretta e il gruppo connettori ha poi superato 10/10 scenari
+(inclusi quattro setup). La prima suite generale è stata interrotta dopo l'emersione di fixture
+obsolete e dell'overlay developer di Herd che intercettava i click. Il browser
+di test usa ora il marker preview riconosciuto da Herd soltanto sui domini
+`.test`; il browser CI rimane invariato. Il gruppo chat/widget documentale
+aggiornato supera **11/11 scenari**, inclusi i setup: il profilo aziendale viene
+configurato via API senza fatti attesi, con progetto esplicito. La run sintetica
+finale è `grounded` e `complete`. La suite generale da 389 scenari è ripartita
+sul candidato congelato.
+La revisione indipendente del nuovo delta non ha must-fix residui.
+
+Una revisione Copilot locale è stata inizialmente rifiutata dal controllo
+automatico per l'invio di sorgenti presunti privati. Il connettore GitHub ha poi
+confermato che il repository è pubblico. Dopo il push autorizzato, una nuova
+revisione legge esclusivamente un archivio Git del commit remoto pubblico
+`c1a3d6a98`, senza overlay locale o file privati: il controllo l'ha consentita.
+La revisione del delta finale pubblico `b918d4625` riporta **0 must-fix e 0 nit**;
+anche la revisione indipendente locale non ha must-fix. Le sessioni CLI sono
+limitate a 30 crediti ciascuna. Il consumo locale misurato cumulativo è
+15,0549765 crediti, pari a 0,150549765 USD nominali al listino GitHub, più
+0,85 crediti osservati soltanto arrotondati in un precedente prompt di uso.
+La copertura da abbonamento rimane distinta dall'equivalente nominale.
+
+La campagna live originaria resta arrestata con **0,005091574 USD** contabilizzati
+e nessuna prenotazione aperta. Si prevede di riservare 1 USD alle revisioni e di
+ridurre a 9 USD il tetto live, con audit e senza alterare costi o risultati già
+registrati; la riduzione non è ancora applicata. Nessun test simulato viene
+contato come turno baseline. G0c e le fasi 1–6 restano da completare.
