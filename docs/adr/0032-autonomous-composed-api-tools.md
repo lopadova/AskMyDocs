@@ -10,6 +10,19 @@ A run freezes the revision and endpoint fingerprints. Every worker restores tena
 
 The generic flow graph, input and output carry opaque references only. Host run inputs, outputs, continuations, step values, diagnostics and verification results are encrypted. Composed endpoint cache entries are encrypted in a separate namespace, with actor, locale, project, semantic dependency fingerprint and a private credential cache scope. Connector call logs for composed execution retain the run reference/status, never raw intermediate values. Administrators receive masked diagnostics.
 
+The adoption is confined to `OperationNode`, `ToolGraphCompiler` and the direct
+`QueueGraphCoordinator` entry in `ToolRuntime`. Persisted graph runs and node
+rows carry the host tenant, while graph inputs, outputs and bindings contain
+only run/step references. The generic `flow_definitions`, `flow_node_children`
+and `flow_node_cache` tables remain unadopted and empty: no saved graph
+definitions, child fan-out or cacheable graph nodes are enabled. New use of
+those tables requires a separate tenancy decision. `GraphExecutorBoundaryTest`
+rejects new host entry points outside this boundary;
+`ApiToolRuntimeTest::test_queued_graph_keeps_payloads_in_encrypted_tenant_storage_and_unadopted_tables_empty`
+drains actual coordinator/node jobs and verifies tenant stamping, opaque Flow
+payloads, encrypted domain output and empty unadopted tables. This replaces the
+older blanket assumption that the host never invokes a graph executor.
+
 HTTP middleware debits every actual attempt, including retries and authentication requests, atomically against the shared run budget. Cache hits cost zero. The remaining parent agent/chat allowance caps each composed run. Elementary collection accounting also measures actual attempts; page counts are independent of request counts. Collection defaults to a single request and requires explicit page/item caps for bounded traversal. Cursor URLs are not followed by composed tools; configure a cursor value field.
 
 A missing value, `null`, false, zero and an empty list remain distinct. Lists never become scalars implicitly. Bindings explicitly choose a complete value, an index or a projection. Iteration with permitted partial errors always returns `{items, errors, _partial}`, including an empty or successful result. Public output selection never deletes intermediates.

@@ -84,6 +84,39 @@ final class ApiToolRuntimeTest extends TestCase
         $this->assertSame('running',$states['right']);
         $this->assertSame('pending',$states['join']);
     }
+
+    public function test_queued_graph_keeps_payloads_in_encrypted_tenant_storage_and_unadopted_tables_empty(): void
+    {
+        $privateValue = 'domain-only-graph-regression-value';
+        $run = $this->start($this->definition([[
+            'id' => 'compose', 'operation' => 'compose', 'wait_for' => [],
+            'bindings' => ['memo' => ['source' => 'constant', 'value' => $privateValue]],
+        ]], ['result' => ['source' => 'step', 'step' => 'compose']]));
+        $handled = [];
+        for ($index = 0; $index < 20; $index++) {
+            $next = Queue::pushed(CoordinatorJob::class)->merge(Queue::pushed(NodeJob::class))
+                ->first(fn ($job) => ! isset($handled[spl_object_id($job)]));
+            if ($next === null) break;
+            $handled[spl_object_id($next)] = true;
+            app(\Illuminate\Contracts\Bus\Dispatcher::class)->dispatchNow($next);
+        }
+        $this->assertSame('completed', $run->fresh()->status);
+        $this->assertSame(['result' => ['memo' => $privateValue]], $run->fresh()->outputs);
+        $flow = DB::table('flow_runs')->where('id', $run->flow_run_id)->first();
+        $nodes = DB::table('flow_run_nodes')->where('run_id', $run->flow_run_id)->get();
+        $this->assertSame($this->context->tenantId, $flow->tenant_id);
+        $this->assertCount(2, $nodes);
+        $this->assertSame([$this->context->tenantId], $nodes->pluck('tenant_id')->unique()->all());
+        $this->assertStringNotContainsString($privateValue, json_encode([$flow, $nodes], JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString($privateValue,
+            DB::table('api_tool_runs')->where('id', $run->id)->value('outputs'));
+        foreach (['flow_definitions', 'flow_node_children', 'flow_node_cache'] as $table) {
+            $this->assertTrue(\Illuminate\Support\Facades\Schema::hasTable($table), 'Missing fixture table: '.$table);
+            $this->assertDatabaseCount($table, 0);
+        }
+        $this->assertFalse(config('laravel-flow.persistence.enabled'));
+        Http::assertNothingSent();
+    }
     public function test_cache_costs_zero_and_retries_each_consume_shared_budget(): void
     {
         $route=$this->route('cache',['type'=>'object']);
