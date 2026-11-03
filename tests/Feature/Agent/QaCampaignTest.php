@@ -230,6 +230,19 @@ final class QaCampaignTest extends TestCase
         }
     }
 
+    public function test_embedding_generation_type_is_verified_from_metadata_instead_of_the_id_prefix(): void
+    {
+        $generation = 'gen-3bhGkxlo4XFrqiabUM7NDtwDzWwG';
+        Http::fake(['*/generation*' => Http::response(['data' => [...$this->embeddingGeneration(), 'id' => $generation]]),
+            '*/embeddings' => Http::response([...$this->embeddingReply(), 'id' => $generation])]);
+        $campaign = $this->embeddingCampaign();
+        app(CampaignScope::class)->withinRun($this->runFixture($campaign), fn () => $this->embed());
+        $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        $this->assertSame($generation, QaInferenceAttempt::sole()->identity_json['generation_id']);
+        Http::assertSentCount(2);
+    }
+
     public function test_unavailable_embedding_generation_is_not_approval(): void
     {
         Http::fake(['*/generation*' => Http::failedConnection(), '*/embeddings' => Http::response($this->embeddingReply())]);

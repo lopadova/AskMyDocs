@@ -24,7 +24,7 @@ final readonly class VerifiedEmbeddingIdentity
         // Do not infer aliases by stripping arbitrary vendors or model versions.
         if ($attempt->path !== '/api/v1/embeddings' || $attempt->requested_model !== 'openai/text-embedding-3-small'
             || $actual !== 'text-embedding-3-small' || $cost === null
-            || $generation === null || ! preg_match('/^gen-emb-[a-zA-Z0-9_-]{1,140}$/D', $generation)) return null;
+            || $generation === null || ! preg_match('/^gen-[a-zA-Z0-9_-]{1,144}$/D', $generation)) return null;
         try {
             $response = Http::withToken(config('ai.providers.openrouter.key'))->timeout(10)
                 ->get('https://openrouter.ai/api/v1/generation', ['id' => $generation]);
