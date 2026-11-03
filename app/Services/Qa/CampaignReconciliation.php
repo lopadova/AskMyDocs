@@ -73,7 +73,7 @@ final class CampaignReconciliation
             throw new \DomainException('qa_campaign_not_reconcilable');
         }
         if (AgentRun::query()->forTenant($campaign->tenant_id)->where('project_key', $campaign->project_key)
-            ->where('input_json->qa->campaign_id', $campaign->id)->whereNotIn('status', ['completed', 'failed', 'cancelled'])->exists()) {
+            ->where('input_json->qa->campaign_id', $campaign->id)->whereNotIn('status', AgentRun::TERMINAL_STATUSES)->exists()) {
             throw new \DomainException('qa_campaign_has_open_runs');
         }
         $all = QaInferenceAttempt::query()->forTenant($campaign->tenant_id)->where('campaign_id', $campaign->id)->get();

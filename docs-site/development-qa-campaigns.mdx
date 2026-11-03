@@ -156,7 +156,10 @@ python3 scripts/qa/chat-api.py ask --campaign=<campaign-UUID> \
 ```
 
 Additional turns remain numbered in the same campaign and consume its existing
-allowance. They do not replace failed first outcomes. An uncertain POST must not
+allowance. Campaign, round and case are immutable within a conversation. Each new
+turn must exceed every recorded turn; the conversation lock protects this check
+before any message or job is created. Inconsistent legacy contexts fail closed.
+Additional turns do not replace failed first outcomes. An uncertain POST must not
 be submitted again. Resume observation with `watch --run` when a known run outlives
 the client wait; a client timeout does not cancel the worker.
 

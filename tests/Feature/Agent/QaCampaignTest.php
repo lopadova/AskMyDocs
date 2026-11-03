@@ -301,6 +301,17 @@ final class QaCampaignTest extends TestCase
         }
     }
 
+    public function test_a_terminal_partial_run_does_not_block_verified_reconciliation(): void
+    {
+        [$campaign, , $run] = $this->stoppedEmbeddingCampaign();
+        $run->update(['status' => AgentRun::STATUS_PARTIAL]);
+        $this->assertTrue($run->isTerminal());
+        Http::fake(['*/generation*' => Http::response(['data' => $this->embeddingGeneration()])]);
+        app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+        $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+    }
+
     public function test_reconciliation_rechecks_state_after_provider_lookup(): void
     {
         [$campaign, $attempt] = $this->stoppedEmbeddingCampaign();
@@ -610,7 +621,7 @@ final class QaCampaignTest extends TestCase
         } finally { unlink($file); rmdir($directory); }
     }
 
-    public function test_http_campaign_binding_requires_debug_and_narrows_live_sources(): void
+    public function test_http_campaign_binding_preserves_owned_scope_and_corpus_context(): void
     {
         $this->app->make(\Illuminate\Contracts\Http\Kernel::class)->prependMiddleware(\App\Http\Middleware\ResolveTenant::class);
         Queue::fake();
@@ -640,11 +651,42 @@ final class QaCampaignTest extends TestCase
         $this->assertSame(4, data_get($followup->input_json, 'qa.turn'));
         $this->assertSame($campaign->id, data_get($followup->input_json, 'qa.campaign_id'));
         $followup->update(['status' => 'completed']);
+        foreach ([['round' => 'candidate', 'turn' => 5], ['case_id' => 'OTHER', 'turn' => 5], ['turn' => 4], ['turn' => 2]] as $difference) {
+            $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
+                ['content' => 'Do not relabel this conversation', 'qa' => [...$qa, ...$difference]])->assertUnprocessable();
+        }
+        $this->assertSame(2, $conversation->messages()->count());
+        $this->assertSame(2, AgentRun::query()->forTenant('acme')->where('conversation_id', $conversation->id)->count());
         $this->withHeaders($headers)->getJson('/api/chat/qa-campaigns/'.$campaign->id.'?project_key=orders')
             ->assertOk()->assertJsonPath('budget_usd', '10.000000000')->assertHeader('Cache-Control', 'no-store, private');
         config(['qa.campaigns_enabled' => false]);
         $this->withHeaders($headers)->getJson('/api/chat/qa-campaigns/'.$campaign->id.'?project_key=orders')->assertOk();
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
             ['content' => 'Followup', 'qa' => $qa])->assertNotFound();
+    }
+
+    public function test_legacy_qa_history_uses_the_highest_turn_and_rejects_mixed_case_context(): void
+    {
+        $this->app->make(\Illuminate\Contracts\Http\Kernel::class)->prependMiddleware(\App\Http\Middleware\ResolveTenant::class);
+        Queue::fake();
+        $campaign = $this->campaign();
+        $conversation = Conversation::create(['tenant_id' => 'acme', 'project_key' => 'orders', 'user_id' => $this->actor->id, 'title' => 'QA']);
+        $qa = ['campaign_id' => $campaign->id, 'round' => 'baseline', 'case_id' => 'DEMO-01', 'turn' => 1];
+        $last = null;
+        foreach ([1, 4, 2] as $number) {
+            $last = $this->runFixture($campaign);
+            $last->update(['conversation_id' => $conversation->id, 'status' => AgentRun::STATUS_COMPLETED,
+                'input_json' => ['qa' => [...$qa, 'turn' => $number]]]);
+        }
+        $token = $this->actor->createToken('debug', ['chat:use', 'chat:tenant:acme', 'chat:debug'])->plainTextToken;
+        $this->withHeaders(['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => 'acme'])
+            ->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Earlier turn cannot be reused', 'qa' => [...$qa, 'turn' => 3]])
+            ->assertUnprocessable();
+        $last->update(['input_json' => ['qa' => [...$qa, 'case_id' => 'OTHER', 'turn' => 2]]]);
+        $this->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Mixed history stays rejected', 'qa' => [...$qa, 'turn' => 5]])
+            ->assertUnprocessable();
+        $this->assertSame(0, $conversation->messages()->count());
+        $this->assertSame(3, AgentRun::query()->forTenant('acme')->where('conversation_id', $conversation->id)->count());
+        Http::assertNothingSent();
     }
 }

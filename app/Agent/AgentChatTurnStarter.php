@@ -49,14 +49,25 @@ final readonly class AgentChatTurnStarter
             Conversation::query()->forTenant($context->tenantId)->whereKey($conversation->id)
                 ->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
             $previousQa = AgentRun::query()->forTenant($context->tenantId)->where('conversation_id', $conversation->id)
-                ->whereNotNull('input_json->qa->campaign_id')->orderByDesc('id')->first();
-            if ($previousQa !== null && data_get($input, 'qa.campaign_id') !== data_get($previousQa->input_json, 'qa.campaign_id')) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_campaign_context_required']);
+                ->whereNull('input_json->research_parent_id')->whereNotNull('input_json->qa->campaign_id')->orderBy('id')
+                ->get(['input_json->qa->campaign_id as qa_campaign_id', 'input_json->qa->round as qa_round',
+                    'input_json->qa->case_id as qa_case_id', 'input_json->qa->turn as qa_turn']);
+            if ($firstQa = $previousQa->first()) {
+                foreach (['campaign_id', 'round', 'case_id'] as $field) {
+                    if (data_get($input, 'qa.'.$field) !== $firstQa->{'qa_'.$field}
+                        || $previousQa->contains(fn ($row) => $row->{'qa_'.$field} !== $firstQa->{'qa_'.$field})) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_campaign_context_required']);
+                    }
+                }
+                $turn = data_get($input, 'qa.turn');
+                if (! is_int($turn) || $turn <= $previousQa->max(fn ($row) => (int) $row->qa_turn)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_turn_must_increase']);
+                }
             }
             $busy = AgentRun::query()->forTenant($context->tenantId)
                 ->where('conversation_id', $conversation->id)
                 ->whereNull('input_json->research_parent_id')
-                ->whereNotIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL, AgentRun::STATUS_FAILED, AgentRun::STATUS_CANCELLED])
+                ->whereNotIn('status', AgentRun::TERMINAL_STATUSES)
                 ->exists();
             if ($busy) {
                 throw new AgentConversationBusy($context->locale);

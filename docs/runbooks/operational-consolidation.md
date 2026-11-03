@@ -218,6 +218,8 @@ php artisan qa:campaign export --id=<stesso-UUID> \
 
 Il comando verifica nuovamente il provider e controlla lo stato sotto lock.
 Richiede un amministratore proprietario ancora autorizzato e tutte le run chiuse.
+Gli stati terminali sono `completed`, `partial`, `failed` e `cancelled`: una
+risposta parziale già finalizzata non viene scambiata per un worker ancora attivo.
 Rifiuta costi ignoti, prenotazioni aperte, errori diversi, esaurimento dei limiti o
 un cambiamento concorrente dello stato. Non modifica budget, addebiti,
 prenotazioni o numero dei tentativi. Aggiunge la prova al tentativo conservandone
@@ -251,6 +253,10 @@ corretto. Sono ammessi almeno tre turni: i turni aggiuntivi restano numerati nel
 stessa campagna (massimo 255), consumano lo stesso residuo e non sostituiscono i
 primi esiti. Ripetere sui dieci casi. Tutti i seguiti della conversazione richiedono
 il medesimo contesto QA, anche passando da un'altra superficie della chat.
+Campagna, round e caso restano immutabili nella conversazione; il numero del
+nuovo turno deve superare tutti quelli già registrati. Il controllo avviene sotto
+il lock della conversazione, prima di salvare messaggi o avviare nuovi job.
+Cronologie precedenti con contesti discordanti vengono rifiutate esplicitamente.
 
 Se l'esito della POST è incerto, leggere `submission.json` e la cronologia:
 **non ripetere la POST**. Se il client smette di attendere, usare `watch --run`;

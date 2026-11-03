@@ -25,6 +25,7 @@ final class AgentRun extends Model
     public const STATUS_PARTIAL = 'partial';
     public const STATUS_FAILED = 'failed';
     public const STATUS_CANCELLED = 'cancelled';
+    public const TERMINAL_STATUSES = [self::STATUS_COMPLETED, self::STATUS_PARTIAL, self::STATUS_FAILED, self::STATUS_CANCELLED];
 
     protected $fillable = [
         'run_id', 'tenant_id', 'project_key', 'user_id', 'conversation_id',
@@ -64,11 +65,6 @@ final class AgentRun extends Model
 
     public function isTerminal(): bool
     {
-        return in_array($this->status, [
-            self::STATUS_COMPLETED,
-            self::STATUS_PARTIAL,
-            self::STATUS_FAILED,
-            self::STATUS_CANCELLED,
-        ], true);
+        return in_array($this->status, self::TERMINAL_STATUSES, true);
     }
 }
