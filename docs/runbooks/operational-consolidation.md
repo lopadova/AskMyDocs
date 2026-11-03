@@ -247,7 +247,9 @@ python3 scripts/qa/chat-api.py ask \
 I turni 2 e 3 usano lo stesso `--conversation` restituito dal primo e gli stessi
 campagna/round/caso; i seguiti sono scritti dopo aver letto la risposta precedente
 e valutati separatamente. Per ciascuno usare un file privato distinto e `--turn`
-corretto. Ripetere sui dieci casi. Tutti i seguiti della conversazione richiedono
+corretto. Sono ammessi almeno tre turni: i turni aggiuntivi restano numerati nella
+stessa campagna (massimo 255), consumano lo stesso residuo e non sostituiscono i
+primi esiti. Ripetere sui dieci casi. Tutti i seguiti della conversazione richiedono
 il medesimo contesto QA, anche passando da un'altra superficie della chat.
 
 Se l'esito della POST è incerto, leggere `submission.json` e la cronologia:

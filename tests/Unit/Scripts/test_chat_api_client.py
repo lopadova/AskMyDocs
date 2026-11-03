@@ -151,6 +151,15 @@ class ChatClientTest(unittest.TestCase):
                          '--campaign', 'campaign', '--output', str(root / 'output')])
             client.request.assert_not_called()
 
+    def test_additional_qa_turns_are_numbered_without_renewing_the_campaign(self):
+        args = qa.parser().parse_args(['ask', '--question', 'Followup', '--output', 'private', '--campaign', 'same-campaign',
+                                      '--round', 'baseline', '--case', 'CASE-01', '--turn', '4'])
+        self.assertEqual(4, args.turn)
+        self.assertEqual('same-campaign', args.campaign)
+        for value in ('0', '256', 'invalid'):
+            with self.assertRaises(qa.argparse.ArgumentTypeError):
+                qa.campaign_turn(value)
+
 
 if __name__ == '__main__':
     unittest.main()

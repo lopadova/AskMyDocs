@@ -632,6 +632,14 @@ final class QaCampaignTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Followup'])->assertUnprocessable();
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Question', 'qa' => $qa,
             'live_sources' => ['api' => ['api:unauthorized'], 'mcp' => []]])->assertUnprocessable();
+        $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
+            ['content' => 'Additional diagnostic followup', 'qa' => [...$qa, 'turn' => 256]])->assertUnprocessable();
+        $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
+            ['content' => 'Additional diagnostic followup', 'qa' => [...$qa, 'turn' => 4]])->assertAccepted();
+        $followup = AgentRun::query()->forTenant('acme')->where('conversation_id', $conversation->id)->whereKeyNot($run->id)->sole();
+        $this->assertSame(4, data_get($followup->input_json, 'qa.turn'));
+        $this->assertSame($campaign->id, data_get($followup->input_json, 'qa.campaign_id'));
+        $followup->update(['status' => 'completed']);
         $this->withHeaders($headers)->getJson('/api/chat/qa-campaigns/'.$campaign->id.'?project_key=orders')
             ->assertOk()->assertJsonPath('budget_usd', '10.000000000')->assertHeader('Cache-Control', 'no-store, private');
         config(['qa.campaigns_enabled' => false]);

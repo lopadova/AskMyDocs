@@ -49,7 +49,7 @@ final class AgentMessageController extends Controller
                 'qa.campaign_id' => ['required_with:qa', 'uuid'],
                 'qa.round' => ['required_with:qa', 'in:baseline,candidate'],
                 'qa.case_id' => ['required_with:qa', 'string', 'regex:/^[A-Z0-9_-]{1,40}$/D'],
-                'qa.turn' => ['required_with:qa', 'integer', 'between:1,3'],
+                'qa.turn' => ['required_with:qa', 'integer', 'between:1,255'],
             ],
             AgentChatScopeRules::rules(),
         ));

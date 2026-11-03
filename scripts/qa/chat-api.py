@@ -122,6 +122,16 @@ class Client:
         return 3 if summary['requires_action'] else 1 if snapshot['status'] in ('failed', 'cancelled') else 0
 
 
+def campaign_turn(value):
+    try:
+        turn = int(value)
+    except (ValueError, TypeError):
+        raise argparse.ArgumentTypeError('QA turn must be an integer from 1 to 255.') from None
+    if not 1 <= turn <= 255:
+        raise argparse.ArgumentTypeError('QA turn must be an integer from 1 to 255.')
+    return turn
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--profile', default=os.environ.get('ASKMYDOCS_CHAT_PROFILE', str(Path.home() / '.config/askmydocs/chat-api.json')))
@@ -139,7 +149,7 @@ def parser():
     ask.add_argument('--campaign', help='Development QA campaign UUID; requires debug administrator access')
     ask.add_argument('--round', choices=['baseline', 'candidate'])
     ask.add_argument('--case', dest='case_id')
-    ask.add_argument('--turn', type=int, choices=[1, 2, 3])
+    ask.add_argument('--turn', type=campaign_turn, metavar='1..255')
     for name in ('ask', 'watch'):
         sub = ask if name == 'ask' else commands.add_parser(name)
         if name == 'watch': sub.add_argument('--run', required=True)
