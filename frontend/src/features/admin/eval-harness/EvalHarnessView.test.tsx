@@ -96,6 +96,21 @@ afterEach(() => {
 });
 
 describe('EvalHarnessView (cross-mount shell)', () => {
+    it.each([
+        '<!doctype html><html><body>Package shell</body></html>',
+        { error: 'backend unavailable' },
+        { schema_version: 'v1', items: null, total: 0 },
+        { items: [], total: 0 },
+    ])('keeps the SPA unavailable when HTTP 200 contains an invalid data probe: %j', async (payload) => {
+        apiMock.getResponses['/api/admin/eval-harness/bootstrap-config'] = { kind: 'fail', status: 503 };
+        apiMock.getResponses['/admin/eval-harness/api/reports'] = { kind: 'ok', data: payload };
+        render(<EvalHarnessView />);
+        await waitFor(() => {
+            expect(screen.getByTestId('admin-eval-harness-host')).toHaveAttribute('data-state', 'unavailable');
+        });
+        expect(screen.getByTestId('admin-eval-harness-unavailable')).toBeInTheDocument();
+        expect(screen.queryByTestId('admin-eval-harness-app')).not.toBeInTheDocument();
+    });
     it('renders the loading state while the bootstrap-config fetch is pending (no SPA mounted yet)', async () => {
         apiMock.getResponses['/api/admin/eval-harness/bootstrap-config'] = { kind: 'pending' };
 

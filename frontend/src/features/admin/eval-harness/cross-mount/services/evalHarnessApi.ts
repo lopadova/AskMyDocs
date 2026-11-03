@@ -134,6 +134,13 @@ const asResult = <T>(payload: unknown, expectedSchema?: string, validateShape?: 
 
 type SchemaValidator = (value: unknown) => boolean;
 
+const isReportListShape = (value: unknown): boolean =>
+  isRecord(value) && typeof value.total === 'number' && Array.isArray(value.items);
+
+/** Use the same response contract for availability probes and real report reads. */
+export const parseReportListPayload = (payload: unknown): ApiResult<ReportListPayload> =>
+  asResult<ReportListPayload>(payload, undefined, isReportListShape);
+
 export class EvalHarnessApiClient {
   constructor(
     private readonly baseUrl: string,
@@ -218,8 +225,7 @@ export class EvalHarnessApiClient {
       '/reports',
       this.requestOptions(),
       undefined,
-      (value): boolean =>
-        isRecord(value) && typeof value.total === 'number' && Array.isArray(value.items),
+      isReportListShape,
     );
   }
 

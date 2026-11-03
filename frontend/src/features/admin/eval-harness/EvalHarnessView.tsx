@@ -59,6 +59,7 @@ import { api } from '../../../lib/api';
 import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 import EvalHarnessUiApp from './cross-mount/main-entry';
 import type { AppBootstrapConfig } from './cross-mount/utils/bootstrap';
+import { parseReportListPayload } from './cross-mount/services/evalHarnessApi';
 
 /*
  * `apiBase` targets the package's eval-harness BE API routes mounted
@@ -158,7 +159,8 @@ export function EvalHarnessView() {
             // Only mount the cross-mount when the data API actually answered.
             // Otherwise show a single clean unavailable landing rather than a
             // storm of error panels / a raw 500 (R14: degrade loudly but clean).
-            setState(dataResult.status === 'fulfilled' ? 'ready' : 'unavailable');
+            setState(dataResult.status === 'fulfilled' && !parseReportListPayload(dataResult.value.data).error
+                ? 'ready' : 'unavailable');
         });
 
         return () => {

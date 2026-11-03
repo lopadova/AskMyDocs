@@ -39,6 +39,12 @@ gated by a single-use confirm token.
 
 ## RBAC + audit (every page)
 
+The Eval Harness availability probe validates the report payload with the same
+schema and shape checks as the report client. A successful HTTP status carrying
+HTML, an application error or an incomplete JSON envelope keeps the panel in its
+unavailable state. This prevents a package shell or login page from being treated
+as a working data API. The probe performs one read; it does not run evaluations.
+
 ```mermaid
 flowchart LR
     REQ[admin request] --> AUTH[auth:sanctum]
