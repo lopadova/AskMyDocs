@@ -48,6 +48,14 @@ final readonly class AgentChatTurnStarter
             // share this fence; internal research branches are not new turns.
             Conversation::query()->forTenant($context->tenantId)->whereKey($conversation->id)
                 ->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            if (is_array($input['qa'] ?? null)) {
+                try {
+                    app(\App\Services\Qa\CampaignLedger::class)->admitTurn(
+                        $input['qa']['campaign_id'], $context->tenantId, (string) $context->projectKey, $user);
+                } catch (\DomainException $exception) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['qa' => $exception->getMessage()]);
+                }
+            }
             $previousQa = AgentRun::query()->forTenant($context->tenantId)->where('conversation_id', $conversation->id)
                 ->whereNull('input_json->research_parent_id')->whereNotNull('input_json->qa->campaign_id')->orderBy('id')
                 ->get(['input_json->qa->campaign_id as qa_campaign_id', 'input_json->qa->round as qa_round',
@@ -63,6 +71,8 @@ final readonly class AgentChatTurnStarter
                 if (! is_int($turn) || $turn <= $previousQa->max(fn ($row) => (int) $row->qa_turn)) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_turn_must_increase']);
                 }
+            } elseif (isset($input['qa']) && data_get($input, 'qa.turn') !== 1) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_first_turn_required']);
             }
             $busy = AgentRun::query()->forTenant($context->tenantId)
                 ->where('conversation_id', $conversation->id)

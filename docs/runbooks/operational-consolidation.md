@@ -257,6 +257,10 @@ Campagna, round e caso restano immutabili nella conversazione; il numero del
 nuovo turno deve superare tutti quelli già registrati. Il controllo avviene sotto
 il lock della conversazione, prima di salvare messaggi o avviare nuovi job.
 Cronologie precedenti con contesti discordanti vengono rifiutate esplicitamente.
+La prima run QA della conversazione richiede il turno 1. Il controllo finale di
+ammissione blocca anche la riga della campagna fino alla creazione della run:
+un controllo HTTP precedente non autorizza l'inserimento dopo un arresto o una
+riconciliazione concorrente.
 
 Se l'esito della POST è incerto, leggere `submission.json` e la cronologia:
 **non ripetere la POST**. Se il client smette di attendere, usare `watch --run`;

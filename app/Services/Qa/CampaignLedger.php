@@ -59,6 +59,19 @@ final class CampaignLedger
         return QaCampaign::query()->forTenant($tenant)->where('project_key', $project)->where('actor_id', $actor)->findOrFail($id);
     }
 
+    /** Hold the campaign fence until the caller commits its new root run. */
+    public function admitTurn(string $id, string $tenant, string $project, User $actor): void
+    {
+        if (DB::transactionLevel() < 1) throw new \LogicException('QA admission requires the run creation transaction.');
+        $this->assertEnabled();
+        $this->assertActor($tenant, $project, $actor->fresh());
+        $campaign = $this->lockedCampaign($tenant, $id);
+        if ($campaign->project_key !== $project || $campaign->actor_id !== $actor->id) {
+            throw new \DomainException('qa_campaign_actor_not_authorized');
+        }
+        if ($campaign->status !== 'active') throw new \DomainException('qa_campaign_stopped');
+    }
+
     public function reserve(QaCampaign $campaign, AgentRun $run, string $scope, array $request, int $amount): QaInferenceAttempt
     {
         if ($amount < 1) throw new \DomainException('qa_invalid_reservation');

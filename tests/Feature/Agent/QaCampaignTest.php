@@ -650,6 +650,9 @@ final class QaCampaignTest extends TestCase
         auth()->forgetGuards();
         $token = $this->actor->createToken('debug', ['chat:use', 'chat:tenant:acme', 'chat:debug'])->plainTextToken;
         $headers = ['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => 'acme'];
+        $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
+            ['content' => 'First turn cannot start at four', 'qa' => [...$qa, 'turn' => 4]])->assertUnprocessable();
+        $this->assertSame(0, $conversation->messages()->count());
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Question', 'qa' => $qa])->assertAccepted();
         $run = AgentRun::sole();
         $this->assertSame([], data_get($run->input_json, 'live_sources.api'));
@@ -703,6 +706,28 @@ final class QaCampaignTest extends TestCase
             ->assertUnprocessable();
         $this->assertSame(0, $conversation->messages()->count());
         $this->assertSame(3, AgentRun::query()->forTenant('acme')->where('conversation_id', $conversation->id)->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_campaign_stopped_after_binding_cannot_insert_or_dispatch_a_turn(): void
+    {
+        Queue::fake();
+        $campaign = $this->campaign();
+        $conversation = Conversation::create(['tenant_id' => 'acme', 'project_key' => 'orders', 'user_id' => $this->actor->id, 'title' => 'QA']);
+        $input = ['question' => 'Question admitted by the earlier request check',
+            'qa' => ['campaign_id' => $campaign->id, 'round' => 'baseline', 'case_id' => 'DEMO-01', 'turn' => 1]];
+        app(CampaignLedger::class)->stop($campaign, 'qa_response_model_mismatch');
+        try {
+            app(\App\Agent\AgentChatTurnStarter::class)->start(
+                app(\App\Agent\AgentExecutionContextFactory::class)->forUser($this->actor, 'orders'),
+                $conversation, $this->actor, $input['question'], $input);
+            $this->fail('A stale campaign admission created a root run.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertSame(['qa_campaign_stopped'], $exception->errors()['qa']);
+        }
+        $this->assertSame(0, $conversation->messages()->count());
+        $this->assertSame(0, AgentRun::count());
+        Queue::assertNothingPushed();
         Http::assertNothingSent();
     }
 }
