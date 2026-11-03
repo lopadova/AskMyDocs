@@ -150,9 +150,11 @@ final class CampaignScope
                         try { $nanos = CampaignManifest::nanos($cost); } catch (\DomainException) { $nanos = null; }
                         $model = is_string($data['model'] ?? null) && strlen($data['model']) <= 160
                             && preg_match('~^[a-zA-Z0-9_./:-]+$~D', $data['model']) ? $data['model'] : null;
+                        $identity = $response->getStatusCode() === 200 && ! isset($data['error'])
+                            ? VerifiedEmbeddingIdentity::verify($attempt, $model, $generation, $nanos) : null;
                         app(CampaignLedger::class)->finish($attempt, $nanos, $response->getStatusCode(), $model,
                             $response->getStatusCode() < 200 || $response->getStatusCode() >= 300 || isset($data['error']) ? 'qa_inference_error' : null,
-                            $generation, $costSource, $durationMs);
+                            $generation, $costSource, $durationMs, $identity);
                         return $response;
                     },
                     function ($error) use ($attempt, $started) {

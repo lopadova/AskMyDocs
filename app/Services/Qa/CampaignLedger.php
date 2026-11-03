@@ -30,11 +30,7 @@ final class CampaignLedger
     public function create(string $tenant, string $project, User $actor, array $manifest): QaCampaign
     {
         $this->assertEnabled();
-        if (! $actor->is_active || ! $actor->hasAnyRole(['admin', 'super-admin'])
-            || ! \App\Models\ProjectMembership::query()->forTenant($tenant)->where('user_id', $actor->id)->exists()
-            || (! $actor->canReadAllProjects() && ! in_array($project, $actor->allowedProjects(), true))) {
-            throw new \DomainException('qa_campaign_actor_not_authorized');
-        }
+        $this->assertActor($tenant, $project, $actor);
         $manifest = CampaignManifest::validate($manifest);
         $release = config('agent.diagnostics.release');
         if (! is_string($release) || ! preg_match('/^[a-f0-9]{7,40}$/D', $release)) {
@@ -45,6 +41,15 @@ final class CampaignLedger
         return QaCampaign::forceCreate(['id' => (string) Str::uuid(), 'tenant_id' => $tenant,
             'project_key' => $project, 'actor_id' => $actor->id, 'status' => 'active',
             'budget_nanos' => CampaignManifest::nanos($manifest['budget_usd']), 'manifest_json' => $manifest]);
+    }
+
+    public function assertActor(string $tenant, string $project, User $actor): void
+    {
+        if (! $actor->is_active || ! $actor->hasAnyRole(['admin', 'super-admin'])
+            || ! \App\Models\ProjectMembership::query()->forTenant($tenant)->where('user_id', $actor->id)->exists()
+            || (! $actor->canReadAllProjects() && ! in_array($project, $actor->allowedProjects(), true))) {
+            throw new \DomainException('qa_campaign_actor_not_authorized');
+        }
     }
 
     public function owned(string $id, string $tenant, string $project, int $actor): QaCampaign
@@ -83,17 +88,19 @@ final class CampaignLedger
     }
 
     public function finish(QaInferenceAttempt $attempt, ?int $cost, ?int $httpStatus, ?string $model, ?string $error,
-        ?string $generation = null, ?string $costSource = null, ?int $durationMs = null): void
+        ?string $generation = null, ?string $costSource = null, ?int $durationMs = null, ?VerifiedEmbeddingIdentity $identity = null): void
     {
-        DB::transaction(function () use ($attempt, $cost, $httpStatus, $model, $error, $generation, $costSource, $durationMs): void {
+        DB::transaction(function () use ($attempt, $cost, $httpStatus, $model, $error, $generation, $costSource, $durationMs, $identity): void {
             $campaign = $this->lockedCampaign($attempt->tenant_id, $attempt->campaign_id);
             $locked = QaInferenceAttempt::query()->forTenant($attempt->tenant_id)->lockForUpdate()->findOrFail($attempt->id);
             if ($locked->status !== 'pending') return;
             $spec = $campaign->manifest_json['allowed_models'][$locked->requested_model];
-            if ($model === null || ! in_array($model, $spec['response_models'], true)) $error ??= 'qa_response_model_mismatch';
+            $identity = $identity?->matches($locked, $model, $generation, $cost) ? $identity : null;
+            if (($model === null || ! in_array($model, $spec['response_models'], true)) && $identity === null) $error ??= 'qa_response_model_mismatch';
             if ($cost !== null && $cost > $locked->reserved_nanos) $error ??= 'qa_reservation_exceeded';
             $locked->forceFill(['cost_nanos' => $cost, 'http_status' => $httpStatus, 'actual_model' => $model,
                 'generation_id' => $generation, 'cost_source' => $cost === null ? 'unknown' : $costSource,
+                'identity_json' => $identity?->metadata,
                 'duration_ms' => $durationMs,
                 'status' => $cost === null ? 'unknown' : 'recorded', 'error_code' => $error, 'completed_at' => now()])->save();
             // Unknown charges retain their full reservation and stop the campaign.

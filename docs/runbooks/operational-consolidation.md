@@ -5,14 +5,16 @@
 Il branch `codex/feature-operational-consolidation` nasce da `develop`
 (`7852a14f22395d54863fdd1530985bb07cd0d3c9`). Questa consegna prepara la fase 0:
 strumentazione, prenotazioni condivise, corpus fisso e procedura. **Non costituisce
-la baseline live e non abilita l'inizio delle fasi 1–6.** Push e deploy spettano a
-Marco. Non sono state effettuate inferenze a pagamento durante la preparazione.
+la baseline live e non abilita l'inizio delle fasi 1–6.** I push spettano a Marco.
+Marco ha autorizzato il deploy delle tre variabili QA: il deploy di configurazione
+184 è concluso sul codice `01092f5`. Le verifiche correnti sono nel dossier di
+avanzamento; i risultati simulati restano separati dai turni baseline.
 
 | Gate | Evidenza richiesta | Stato iniziale |
 |---|---|---|
-| G0a | Primo deploy, revisione riconoscibile, migrazione QA, web e worker allineati | Da eseguire |
-| G0b | Prenotazioni concorrenti verificate sul database di sviluppo; nessuna inferenza durante la prova | Da verificare su sviluppo; test locale a due processi disponibile |
-| G0c | Dieci dialoghi baseline di almeno tre turni, fonti originali riesaminate, costi riconciliati | Da eseguire |
+| G0a | Primo deploy, revisione riconoscibile, migrazione QA, web e worker allineati | Verificato su deploy 184 |
+| G0b | Prenotazioni concorrenti verificate sul database di sviluppo; nessuna inferenza durante la prova | Superato su PostgreSQL, due processi; costo zero |
+| G0c | Dieci dialoghi baseline di almeno tre turni, fonti originali riesaminate, costi riconciliati | Primo turno fallito per controllo identità embedding; campagna arrestata |
 | G1 | Tempo e ciclo di vita consolidati, fixture superate | Attende G0c |
 | G2 | Identità delle fonti e riuso autorizzato, fixture superate | Attende G1 |
 | G3 | Verifiche indipendenti e tentativi durevoli, fixture superate | Attende G2 |
@@ -192,6 +194,40 @@ php artisan qa:campaign inspect --id=<UUID-campagna> \
 Il budget totale è 10 USD, non 10 per round, processo o campagna sostitutiva.
 Un manifesto superiore a 10 viene rifiutato. Non modificare i saldi manualmente.
 Non creare un'altra campagna per superare un arresto o rinnovare il budget.
+
+### Identità nativa degli embedding e riconciliazione
+
+Il nome nativo `text-embedding-3-small` può essere restituito alla richiesta
+`openai/text-embedding-3-small`. Non autorizza rimozioni generiche del prefisso.
+Il middleware verifica la stessa generazione con una GET al registro del provider,
+richiedendo ID, tipo `embeddings`, modello completo e costo identici. Conserva il
+nome originale in `actual_model` e il riscontro in `identity_json`. Una GET fallita,
+un costo sconosciuto o una discordanza continuano ad arrestare la campagna.
+Il [registro generazioni del provider](https://openrouter.ai/docs/api/api-reference/generations/get-generation)
+fornisce il riscontro; la lettura non genera una nuova inferenza.
+
+Per una campagna già fermata da questo specifico controllo, dopo il deploy della
+correzione QA e della migrazione `2026_11_03_100000_add_qa_model_identity_proof.php`:
+
+```sh
+php artisan qa:campaign reconcile-embedding-identity --id=<UUID-campagna-esistente> \
+  --tenant=autry --project=autry --actor=10
+php artisan qa:campaign export --id=<stesso-UUID> \
+  --tenant=autry --project=autry --actor=10
+```
+
+Il comando verifica nuovamente il provider e controlla lo stato sotto lock.
+Richiede un amministratore proprietario ancora autorizzato e tutte le run chiuse.
+Rifiuta costi ignoti, prenotazioni aperte, errori diversi, esaurimento dei limiti o
+un cambiamento concorrente dello stato. Non modifica budget, addebiti,
+prenotazioni o numero dei tentativi. Aggiunge la prova al tentativo conservandone
+l'errore originario; un evento nel manifesto conserva motivo dell'arresto,
+operatore, revisione e saldi. Non riavvia run né ripete POST. Un secondo comando
+su una campagna già attiva non effettua altre letture provider o modifiche.
+
+Il primo turno fallito resta parte dei risultati baseline. Gli eventuali turni
+aggiuntivi sono numerati e valutati separatamente: non sostituiscono un esito
+negativo o la prima domanda congelata.
 
 ## Esecuzione e valutazione
 

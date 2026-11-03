@@ -1,7 +1,9 @@
 # Dossier di avanzamento — 3 novembre 2026
 
-La preparazione della fase 0 è consegnabile. La validazione sull'ambiente di
-sviluppo e le fasi 1–6 restano da eseguire, rispettando il gate della baseline.
+La strumentazione della fase 0 è attiva su sviluppo e il controllo concorrente
+PostgreSQL è verificato. Il primo turno della baseline ha rilevato un errore nel
+controllo dell'identità embedding; la campagna è arrestata in attesa della
+correzione QA. Le fasi 1–6 attendono il completamento della baseline.
 
 ## Codice e perimetro
 
@@ -66,11 +68,11 @@ autorizzate sul progetto `autry`. Nessuna nuova domanda è stata inviata alla ch
 - Sedici riscontri delle fonti storiche archiviati con sole GET, tutti disponibili.
 - Schede di valutazione separate dagli input: 55 fatti con riscontro letterale
   nei file originali e 12 attese ERP; le risposte storiche non sono l'oracolo.
-- Campagna di sviluppo: non ancora creata; manifesto verificato con sole GET
-  del catalogo pubblico e modelli invariati, in attesa del gate distribuito.
-- Nuova baseline: 0/10 dialoghi, 0/30 turni.
+- Campagna unica di sviluppo creata; modelli e tariffe verificati con sole GET.
+- Nuova baseline: 0/10 dialoghi completi; 1 turno eseguito, fallito, su 30 minimi.
 - Candidato: 0/10 dialoghi, 0/30 turni.
-- Spesa AI di questo ciclo: **0 USD**; budget autorizzato complessivo: **10 USD**.
+- Spesa AI di questo ciclo: **0,005091574 USD**; budget totale: **10 USD**;
+  residuo **9,994908426 USD**, senza prenotazioni pendenti o costi sconosciuti.
 
 Gli snapshot storici delle fonti non dimostrano che quei record siano immutati
 oggi: durante i due round confrontare versioni/date e annotare eventuali variazioni
@@ -148,6 +150,39 @@ fallimento Flow già presente; QA mirata dopo l'aggiunta degli alias: 21 test e
 96 asserzioni superati; 16 test Python superati. Il runbook ora segue il ciclo
 gestito da Laravel Cloud per migrazioni, configurazione e ricambio dei worker.
 
-La spesa AI resta **0/10 USD** e i nuovi turni live restano **0/60**. G0 non è
-chiuso: le fasi 1–6 mantengono il loro perimetro completo e attendono la baseline
-obbligatoria, senza anticipare modifiche della pipeline.
+## Attivazione e primo turno del 3 novembre
+
+Dopo l'autorizzazione esplicita a utilizzare l'editor Cloud, sono state aggiunte
+le sole tre variabili QA. Il deploy di configurazione **184**, sullo stesso SHA
+`01092f5122ceb18467cf01d5ffbfcd189d13cff9`, è concluso. Il preflight conferma
+campagne abilitate, tier `development` e `APP_RELEASE` corretto; nessuna
+credenziale è stata riportata. Il runtime e la prima run confermano la stessa
+revisione nel processo web e nel worker che ha eseguito il turno.
+
+G0b passa sul database PostgreSQL: due processi applicativi concorrenti producono
+`blocked` e `reserved`; la doppia callback lascia spesa e prenotazioni a zero.
+L'evidenza simulata resta separata dalla campagna di inferenze. Modelli, soglie e
+limiti effettivi coincidono con il preflight precedente.
+
+Il primo turno baseline è fallito. Due inferenze risultano registrate: una
+comprensione della domanda e un embedding, con costo totale **0,005091574 USD**.
+La risposta embedding riporta il nome nativo `text-embedding-3-small`; la GET
+al registro della medesima generazione conferma `openai/text-embedding-3-small`
+e lo stesso addebito di 320 nanodollari. Il confronto con il manifesto ha fermato
+la campagna su `qa_response_model_mismatch`. Il fallimento e il costo sono
+conservati; non è stata creata una campagna sostitutiva o azzerato alcun saldo.
+
+La correzione QA locale verifica questa specifica forma nativa con una GET,
+richiedendo concordanza di ID generazione, tipo embedding, modello e costo.
+Conserva modello nativo e prova tecnica separati. Il comando
+`reconcile-embedding-identity` può riaprire la stessa campagna soltanto dopo
+riscontro verificato e in assenza di run aperte, costi ignoti, prenotazioni
+pendenti, errori diversi o limiti esauriti. Un evento conserva la causa originale
+dell'arresto e tutti i saldi; il tentativo mantiene costo, errore e tempi originali.
+Questa correzione richiede integrazione e deploy prima di riprendere il collaudo.
+La suite mirata QA e isolamento tenant supera **32 test e 167 asserzioni**,
+con HTTP simulato; include riscontro mancante o discordante, cambiamento
+concorrente, attore revocato e rifiuto della riapertura con addebiti irrisolti.
+
+G0c resta incompleto. Le fasi 1–6 mantengono il loro perimetro completo e attendono
+la baseline obbligatoria, senza anticipare modifiche della pipeline.

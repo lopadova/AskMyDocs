@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 /** Operator-only bootstrap. Manifest files contain no tokens or original messages. */
 final class QaCampaignCommand extends Command
 {
-    protected $signature = 'qa:campaign {action : runtime, create, inspect, export or probe} {--manifest=} {--id=} {--tenant=} {--project=} {--actor=} {--barrier=}';
+    protected $signature = 'qa:campaign {action : runtime, create, inspect, export, probe or reconcile-embedding-identity} {--manifest=} {--id=} {--tenant=} {--project=} {--actor=} {--barrier=}';
     protected $description = 'Create or inspect a development-only, budget-reserved QA campaign';
 
     public function handle(CampaignLedger $ledger): int
@@ -36,6 +36,9 @@ final class QaCampaignCommand extends Command
             } elseif ($this->argument('action') === 'runtime') {
                 $this->line(json_encode(app(\App\Services\Qa\CampaignRuntime::class)->snapshot($tenant, $project), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
                 return self::SUCCESS;
+            } elseif ($this->argument('action') === 'reconcile-embedding-identity') {
+                $campaign = app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity(
+                    $tenant, $project, User::findOrFail($actorId), (string) $this->option('id'));
             } elseif ($this->argument('action') === 'create') {
                 $path = (string) $this->option('manifest');
                 if (! is_file($path) || filesize($path) > 65536) throw new \DomainException('qa_manifest_file_required');

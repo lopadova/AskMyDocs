@@ -156,6 +156,199 @@ final class QaCampaignTest extends TestCase
         $this->assertSame(1000000000, $campaign->fresh()->spent_nanos);
     }
 
+    private function embeddingCampaign(): QaCampaign
+    {
+        $manifest = $this->manifest();
+        $manifest['allowed_models'] = ['openai/text-embedding-3-small' => [
+            ...$manifest['allowed_models']['test/model'], 'paths' => ['/api/v1/embeddings'],
+            'response_models' => ['openai/text-embedding-3-small'], 'output_per_million' => 0,
+        ]];
+        return app(CampaignLedger::class)->create('acme', 'orders', $this->actor, $manifest);
+    }
+
+    private function embeddingReply(): array
+    {
+        return ['id' => 'gen-emb-native', 'model' => 'text-embedding-3-small', 'usage' => ['cost' => .00000032]];
+    }
+
+    private function embeddingGeneration(): array
+    {
+        return ['id' => 'gen-emb-native', 'api_type' => 'embeddings',
+            'model' => 'openai/text-embedding-3-small', 'total_cost' => .00000032];
+    }
+
+    private function embed(): void
+    {
+        Http::post('https://openrouter.ai/api/v1/embeddings', [
+            'model' => 'openai/text-embedding-3-small', 'input' => 'synthetic regression',
+        ]);
+    }
+
+    public function test_native_embedding_identity_is_verified_without_a_second_inference(): void
+    {
+        Http::fake(['*/generation*' => Http::response(['data' => $this->embeddingGeneration()]),
+            '*/embeddings' => Http::response($this->embeddingReply())]);
+        $campaign = $this->embeddingCampaign();
+        app(CampaignScope::class)->withinRun($this->runFixture($campaign), fn () => $this->embed());
+        $attempt = QaInferenceAttempt::sole();
+        $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        $this->assertSame('text-embedding-3-small', $attempt->actual_model);
+        $this->assertSame('openai/text-embedding-3-small', $attempt->identity_json['canonical_model']);
+        $this->assertNull($attempt->error_code);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && $request->url() === 'https://openrouter.ai/api/v1/generation?id=gen-emb-native');
+    }
+
+    public function test_embedding_alias_without_matching_generation_and_cost_stays_stopped(): void
+    {
+        foreach ([['model' => 'another/model'], ['id' => 'gen-emb-other'], ['api_type' => 'completions'],
+            ['total_cost' => null], ['total_cost' => .000001]] as $difference) {
+            Http::fake(['*/generation*' => Http::response(['data' => [...$this->embeddingGeneration(), ...$difference]]),
+                '*/embeddings' => Http::response($this->embeddingReply())]);
+            $campaign = $this->embeddingCampaign();
+            app(CampaignScope::class)->withinRun($this->runFixture($campaign), fn () => $this->embed());
+            $this->assertSame('qa_response_model_mismatch', $campaign->fresh()->stop_reason);
+            $this->assertSame(320, $campaign->fresh()->spent_nanos);
+            $this->assertNull(QaInferenceAttempt::query()->where('campaign_id', $campaign->id)->sole()->identity_json);
+        }
+    }
+
+    public function test_unavailable_embedding_generation_is_not_approval(): void
+    {
+        Http::fake(['*/generation*' => Http::failedConnection(), '*/embeddings' => Http::response($this->embeddingReply())]);
+        $campaign = $this->embeddingCampaign();
+        app(CampaignScope::class)->withinRun($this->runFixture($campaign), fn () => $this->embed());
+        $this->assertSame('qa_response_model_mismatch', $campaign->fresh()->stop_reason);
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        $this->assertSame(0, $campaign->fresh()->reserved_nanos);
+    }
+
+    private function stoppedEmbeddingCampaign(): array
+    {
+        $campaign = $this->embeddingCampaign();
+        $run = $this->runFixture($campaign);
+        $attempt = app(CampaignLedger::class)->reserve($campaign, $run, 'synthetic', [
+            'path' => '/api/v1/embeddings', 'requested_model' => 'openai/text-embedding-3-small',
+            'request_sha256' => str_repeat('e', 64),
+        ], 1000);
+        app(CampaignLedger::class)->finish($attempt, 320, 200, 'text-embedding-3-small', null,
+            'gen-emb-native', 'provider_usage', 20);
+        $run->update(['status' => 'failed']);
+        return [$campaign->fresh(), $attempt->fresh(), $run];
+    }
+
+    public function test_reconciliation_keeps_the_same_budget_original_error_and_addebited_cost(): void
+    {
+        [$campaign, $attempt] = $this->stoppedEmbeddingCampaign();
+        $original = $attempt->getAttributes();
+        Http::fake(['*/generation*' => Http::response(['data' => $this->embeddingGeneration()])]);
+        $this->artisan('qa:campaign', ['action' => 'reconcile-embedding-identity', '--id' => $campaign->id,
+            '--tenant' => 'acme', '--project' => 'orders', '--actor' => $this->actor->id])->assertExitCode(0);
+        $campaign->refresh(); $attempt->refresh();
+        $this->assertSame('active', $campaign->status);
+        $this->assertSame(10000000000, $campaign->budget_nanos);
+        $this->assertSame(320, $campaign->spent_nanos);
+        $this->assertSame(0, $campaign->reserved_nanos);
+        $this->assertSame(1, $campaign->attempt_count);
+        $this->assertSame($original, array_replace($attempt->getAttributes(), ['identity_json' => $original['identity_json']]));
+        $this->assertSame('qa_response_model_mismatch', $attempt->error_code);
+        $this->assertSame('text-embedding-3-small', $attempt->actual_model);
+        $this->assertSame('qa_response_model_mismatch', $campaign->manifest_json['reconciliations'][0]['previous_stop_reason']);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->method() === 'GET');
+        $this->artisan('qa:campaign', ['action' => 'reconcile-embedding-identity', '--id' => $campaign->id,
+            '--tenant' => 'acme', '--project' => 'orders', '--actor' => $this->actor->id])->assertExitCode(1);
+        $this->assertCount(1, $campaign->fresh()->manifest_json['reconciliations']);
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        Http::assertSentCount(1);
+    }
+
+    public function test_reconciliation_cannot_release_unknown_charges_budget_stops_or_open_runs(): void
+    {
+        foreach (['unknown', 'pending', 'budget', 'open_run', 'above_reservation', 'other_error'] as $case) {
+            [$campaign, $attempt, $run] = $this->stoppedEmbeddingCampaign();
+            match ($case) {
+                'unknown' => $attempt->update(['status' => 'unknown', 'cost_nanos' => null]),
+                'pending' => $attempt->update(['status' => 'pending']),
+                'budget' => $campaign->update(['stop_reason' => 'qa_budget_exhausted']),
+                'open_run' => $run->update(['status' => 'running']),
+                'above_reservation' => $attempt->update(['reserved_nanos' => 1]),
+                'other_error' => $attempt->update(['error_code' => 'qa_connection_failed']),
+            };
+            try {
+                app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+                $this->fail('Unresolved or exhausted budget was reopened: '.$case);
+            } catch (\DomainException) {
+                $this->assertSame('stopped', $campaign->fresh()->status);
+                $this->assertSame(320, $campaign->fresh()->spent_nanos);
+            }
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_reconciliation_requires_an_owned_campaign_and_current_administrator(): void
+    {
+        [$campaign] = $this->stoppedEmbeddingCampaign();
+        $this->actor->removeRole('admin');
+        $this->expectExceptionMessage('qa_campaign_actor_not_authorized');
+        try {
+            app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+        } finally {
+            Http::assertNothingSent();
+            $this->assertSame('stopped', $campaign->fresh()->status);
+        }
+    }
+
+    public function test_reconciliation_rechecks_state_after_provider_lookup(): void
+    {
+        [$campaign, $attempt] = $this->stoppedEmbeddingCampaign();
+        Http::fake(function () use ($campaign) {
+            $campaign->update(['stop_reason' => 'qa_unknown_billing']);
+            return Http::response(['data' => $this->embeddingGeneration()]);
+        });
+        $this->expectExceptionMessage('qa_campaign_not_reconcilable');
+        try {
+            app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+        } finally {
+            $this->assertSame('stopped', $campaign->fresh()->status);
+            $this->assertSame('qa_unknown_billing', $campaign->fresh()->stop_reason);
+            $this->assertNull($attempt->fresh()->identity_json);
+            $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        }
+    }
+
+    public function test_unverified_reconciliation_preserves_the_stop_and_original_ledger(): void
+    {
+        [$campaign, $attempt] = $this->stoppedEmbeddingCampaign();
+        Http::fake(['*/generation*' => Http::response(['data' => [...$this->embeddingGeneration(), 'model' => 'other/model']])]);
+        $original = $attempt->getAttributes();
+        $this->expectExceptionMessage('qa_identity_not_verified');
+        try {
+            app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+        } finally {
+            $this->assertSame($original, $attempt->fresh()->getAttributes());
+            $this->assertSame('stopped', $campaign->fresh()->status);
+            $this->assertArrayNotHasKey('reconciliations', $campaign->fresh()->manifest_json);
+        }
+    }
+
+    public function test_model_identity_proof_cannot_be_reused_for_another_attempt(): void
+    {
+        $campaign = $this->embeddingCampaign(); $run = $this->runFixture($campaign);
+        $request = ['path' => '/api/v1/embeddings', 'requested_model' => 'openai/text-embedding-3-small', 'request_sha256' => str_repeat('d', 64)];
+        $one = app(CampaignLedger::class)->reserve($campaign, $run, 'one', $request, 1000);
+        $two = app(CampaignLedger::class)->reserve($campaign, $run, 'two', $request, 1000);
+        Http::fake(['*/generation*' => Http::response(['data' => $this->embeddingGeneration()])]);
+        $proof = \App\Services\Qa\VerifiedEmbeddingIdentity::verify($one, 'text-embedding-3-small', 'gen-emb-native', 320);
+        $this->assertNotNull($proof);
+        app(CampaignLedger::class)->finish($two, 320, 200, 'text-embedding-3-small', null, 'gen-emb-native', 'provider_usage', 1, $proof);
+        $this->assertSame('qa_response_model_mismatch', $campaign->fresh()->stop_reason);
+        $this->assertNull($two->fresh()->identity_json);
+        app(CampaignLedger::class)->interruptScope('acme', $campaign->id, 'one');
+    }
+
     public function test_unapproved_model_endpoint_and_streaming_fail_before_dispatch(): void
     {
         foreach ([['model' => 'foreign/model', 'max_tokens' => 1], ['model' => 'test/model', 'max_tokens' => 1, 'stream' => true],
@@ -317,6 +510,7 @@ final class QaCampaignTest extends TestCase
         try {
             \Illuminate\Support\Facades\Schema::swap($connection->getSchemaBuilder());
             (require dirname(__DIR__, 3).'/database/migrations/2026_11_02_160000_create_qa_campaign_tables.php')->up();
+            (require dirname(__DIR__, 3).'/database/migrations/2026_11_03_100000_add_qa_model_identity_proof.php')->up();
             $connection->table('qa_campaigns')->insert($campaign->getAttributes());
             $db->setDefaultConnection('qa_probe_test');
             $fileCampaign = QaCampaign::query()->forTenant('acme')->findOrFail($campaign->id);
