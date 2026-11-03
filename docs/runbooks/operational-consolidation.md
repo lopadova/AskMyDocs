@@ -45,6 +45,10 @@ collaudo live e dal test locale di concorrenza fra processi reali.
 - Trasporti/modelli non approvati, stream, fallback automatici, modalità non
   testuali e output non limitato vengono bloccati. Jev senza limite di output è
   ammesso solo con tariffa output verificata pari a zero.
+- Per il testo il plugin web è disabilitato esplicitamente sulla richiesta:
+  ometterlo può ereditare un default dell'account. Preset, scorciatoia `:online`
+  e strumenti web del provider sono esclusi dal perimetro delle fonti QA.
+  Riferimento: [contratto plugin OpenRouter](https://raw.githubusercontent.com/OpenRouterTeam/docs/main/guides/features/plugins.mdx).
 - La prenotazione usa byte UTF-8 come limite prudenziale dell'input e il massimo
   output ammesso. Per testo viene imposto anche il tetto di prezzo del provider,
   preservando un eventuale tetto preesistente più basso. Non vengono cambiati
@@ -72,21 +76,32 @@ non si procede. Riferimento: [routing e tetti di prezzo OpenRouter](https://open
    Cloud develop può avere `APP_ENV=production`; il tier esplicito identifica
    questa destinazione. Entrambe le opzioni sono necessarie fuori da local/test.
    Lasciare invariati provider, modelli, prezzi applicativi, soglie e limiti.
-3. Sul server di sviluppo, dopo la verifica delle migrazioni:
+3. Laravel Cloud applica le migrazioni con i deploy commands già previsti dal
+   progetto. Non aggiungere `queue:restart`: i worker vengono sostituiti dalla
+   piattaforma. Se il progetto usa `config:cache`, eseguirlo in build e non nei
+   deploy commands. [Ciclo di deploy Cloud](https://laravel.com/cloud/docs/environments#unnecessary-build-and-deploy-commands).
+   Dopo il deploy, nella console di sviluppo:
 
    ```sh
-   php artisan migrate --path=database/migrations/2026_11_02_160000_create_qa_campaign_tables.php --force
-   php artisan config:cache
-   php artisan queue:restart
+   php artisan migrate:status --path=database/migrations/2026_11_02_160000_create_qa_campaign_tables.php
    php artisan qa:campaign runtime --tenant=autry --project=autry --actor=10
+   php artisan qa:campaign probe --tenant=autry --project=autry --actor=10
    ```
 
    Controllare che web e tutti i worker usino lo stesso `APP_RELEASE`. Il tier e
    la revisione non vanno dedotti dal nome del branch. La run conserva revisione
    e configurazione fotografate alla ricezione; un worker con revisione diversa
    rifiuta di eseguirla.
-4. Verificare accesso API, permessi diagnostici, sorgenti ammesse e prova
-   concorrente sul database di sviluppo prima delle inferenze baseline.
+4. Archiviare l'output del probe: deve indicare `simulated_database_reservations`,
+   due processi, risultati `blocked`/`reserved`, costo e prenotazione finale zero,
+   `inference_calls=0`, driver PostgreSQL e la revisione distribuita. Il probe
+   usa due processi applicativi e connessioni DB distinte, sincronizzati prima
+   della prenotazione; verifica anche due callback di chiusura per lo stesso
+   tentativo. Blocca ogni richiesta HTTP e crea esclusivamente una campagna
+   simulata con `actor_id=0`, separata dalla campagna AI. La fixture resta
+   tracciabile nel ledger e non può entrare nella chat. Non vale come collaudo AI.
+5. Verificare accesso API, permessi diagnostici e sorgenti ammesse prima delle
+   inferenze baseline.
 
 Non avviare le fasi successive per aggirare il gate della baseline. Il controllo
 di budget deve essere attivo sul server, anche se il client si interrompe.
@@ -103,9 +118,17 @@ fonti originali. Hash dell'indice congelato:
 
 Gli input inviati all'agente sono solo i file in `inputs/` ed eventuali normali
 filtri chat. `oracle-review.json` non deve essere incluso nei payload. Le risposte
-storiche dell'assistente non sono state copiate come risultati attesi. Completare
-la revisione indipendente con documenti, record API e date originali, indicando
-esplicitamente fatti non verificabili. L'indice pubblico delle regressioni è in
+storiche dell'assistente non sono state copiate come risultati attesi. La revisione
+privata iniziale ora contiene 55 fatti con quote e hash di 34 preview. Le quote
+sono state inoltre riscontrate letteralmente nei 34 file originali dello storage,
+normalizzando gli spazi ed estraendo il testo del PDF; gli hash dei byte originali
+restano distinti da quelli delle preview. Questo dimostra il supporto degli
+estratti selezionati, non l'assenza di altri documenti. Si aggiungono 12 attese
+su record ERP provenienti da 16 riscontri tecnici archiviati.
+Uno dei dieci casi non aveva un riscontro ERP storico: verificarlo sulle fonti
+ottenute nel nuovo round. Le attese sono storiche, non dimostrano l'immutabilità
+dei record; confrontare sempre originali e date effettivamente recuperati live.
+L'indice pubblico delle regressioni è in
 `docs/qa/operational-consolidation-regressions.md`.
 
 Per ricostruire una campagna da esportazioni private delle cronologie:
@@ -134,7 +157,11 @@ usa la lista della campagna e non allarga il perimetro. L'accesso a documenti e
 record continua a essere governato dai normali controlli del progetto.
 
 Il preparatore consulta solo il catalogo pubblico del provider e usa il massimo
-delle tariffe degli endpoint pubblicati; prezzi assenti, negativi, supplementi
+delle tariffe degli endpoint pubblicati, comprese fasce per contesto lungo,
+finestre orarie e scrittura cache, senza applicare sconti presunti. Il massimo
+non dipende dalla previsione del tokenizzatore o dall'ora della richiesta.
+Il [contratto tariffario del catalogo](https://raw.githubusercontent.com/OpenRouterTeam/docs/main/guides/overview/models.mdx)
+descrive gli override. Prezzi assenti, negativi, supplementi
 non gestiti e output Jev a pagamento impediscono la generazione:
 
 ```sh
@@ -232,8 +259,9 @@ live incompleta; la produzione rimane fuori dal ciclo.
 
 ## Rollback e criteri di chiusura
 
-Per fermare nuove inferenze QA: impostare `ASKMYDOCS_QA_CAMPAIGNS_ENABLED=false`,
-ricostruire la configurazione e riavviare i worker. Le run QA in coda rifiutano
+Per fermare nuove inferenze QA: impostare `ASKMYDOCS_QA_CAMPAIGNS_ENABLED=false`
+e applicare il nuovo deploy di configurazione con il ciclo gestito da Cloud.
+Le run QA in coda sui nuovi worker rifiutano
 l'esecuzione; non diventano chat senza controllo. Una chiamata già accettata dal
 provider non è annullata dal cambio di configurazione. Il registro e le run
 restano leggibili, con autorizzazioni invariate, conservando il tier development.

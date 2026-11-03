@@ -27,14 +27,23 @@ rilascio idempotente, revoca dell'attore, isolamento tenant, sorgenti ristrette,
 contesto obbligatorio nei seguiti, revisione del worker e rollback della lettura.
 Il test di concorrenza lancia due processi PHP distinti contro lo stesso file
 SQLite. Non è una verifica del database PostgreSQL distribuito.
+Il comando `qa:campaign probe` rende ora ripetibile la stessa verifica sul
+database configurato nell'ambiente, con due processi applicativi e una campagna
+simulata che non appartiene ad alcun attore chat. Il test locale del comando
+dimostra anche il bootstrap dei figli, l'idempotenza e l'assenza di richieste HTTP;
+la sua esecuzione PostgreSQL resta un gate dopo il deploy.
 
 `tests/Unit/Scripts/test_chat_api_client.py` e `test_qa_campaign.py` verificano
 che un invio incerto non sia ripetuto, che gli input privati mantengano il testo,
 che i risultati attesi restino fuori dagli input e che prezzi assenti o
 supplementi non gestiti impediscano il manifesto. Le tariffe zero devono essere
 presenti esplicitamente nel catalogo; i default non dimostrano gratuità.
+La prenotazione prende il massimo anche fra fasce tariffarie e finestre temporali,
+senza sconti o cache hit presunti; la ricerca web implicita viene disabilitata
+sulle richieste testuali e non giustifica un nuovo accesso a fonti esterne.
 
 Il corpus live fissato contiene dieci prime domande immutate. Gli esiti e i
 seguiti delle cronologie storiche non vengono riutilizzati come baseline. Per
-ciascun caso la scheda privata `oracle-review.json` deve indicare originali,
-date/versioni, attese e inferenze vietate prima di valutarne il risultato.
+ciascun caso la scheda privata `oracle-review.json` indica ora originali,
+quote/hash, attese e inferenze vietate. Le fonti nuove o modificate del collaudo
+richiedono una verifica separata; nessuna valutazione live è già acquisita.
