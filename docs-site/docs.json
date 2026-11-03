@@ -91,6 +91,7 @@
         "pages": [
           "configuration",
           "runtime-config-governance",
+          "development-qa-campaigns",
           "self-hosting",
           "case-study-email-datasets",
           "scheduler-and-maintenance",
