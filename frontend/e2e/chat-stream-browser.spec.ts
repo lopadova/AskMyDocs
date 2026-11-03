@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
 import { seedDb } from './setup-helpers';
+import { preparePolicyChat } from './helpers/policy-chat';
 
 /*
  * v8.5 — the definitive real browser transport E2E.
@@ -22,8 +23,8 @@ import { seedDb } from './setup-helpers';
  * and are NOT vector-searchable, which is exactly why every other chat spec
  * stubs retrieval. With the fake provider, the query embeds to the same
  * vector → cosine 1.0 → the doc is ALWAYS retrieved → the controller ALWAYS
- * emits a real `source-url` citation frame. The fresh `/app/chat` turn scopes
- * to PROJECTS[0] = `hr-portal` (ChatView), so the seeded doc is in scope.
+ * emits a real `source-url` citation frame. The test configures the trusted business profile and explicitly selects
+ * `hr-portal`, so retrieval stays scoped to the seeded project.
  *
  * NOTHING is stubbed here (R13): no `page.route` on internal routes. The whole
  * round-trip — auth, retrieval, durable agent events, canonical history, and
@@ -54,7 +55,7 @@ test.describe('Chat agent transport — real durable run and event feed', () => 
             }
         });
 
-        await page.goto('/app/chat');
+        await preparePolicyChat(page);
         const { input, send } = composer(page);
         await input.fill('How many days per week can I work remotely?');
         await send.click();
@@ -67,7 +68,8 @@ test.describe('Chat agent transport — real durable run and event feed', () => 
         await page.getByRole('button', { name: 'Close information' }).click();
 
         const assistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
-        await expect(assistant).toContainText('I completed the search with the available information.', { timeout: 30_000 });
+        await expect(assistant).toContainText('I did not retrieve usable sources for this request.', { timeout: 30_000 });
+        await expect(assistant).toContainText('This does not establish that the data does not exist.');
         await expect(page.getByTestId('chat-citations')).not.toBeVisible();
 
         // The event feed completed and canonical history was reloaded.
@@ -96,7 +98,7 @@ test.describe('Chat agent transport — real durable run and event feed', () => 
         // this is purely additive (db:seed --class, no migrate:fresh).
         await seedDb(page, 'E2eStreamSeeder');
 
-        await page.goto('/app/chat');
+        await preparePolicyChat(page);
         const { input, send } = composer(page);
         await input.fill('How many days per week can I work remotely?');
         await send.click();

@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
 import { seedDb } from './setup-helpers';
+import { preparePolicyChat } from './helpers/policy-chat';
 
 /*
  * v8.6 — the chat "live actions" E2E. These actions used to be dead in the
@@ -80,7 +81,7 @@ test.describe('Chat live actions — feedback, auto-title, rename, citation nav'
     test('a grounded turn exposes working feedback, an auto-title + rename, and a clickable citation', async ({ page }) => {
         await seedDb(page, 'E2eStreamSeeder');
 
-        await page.goto('/app/chat');
+        await preparePolicyChat(page);
         const { input, send } = composer(page);
         await input.fill('How many days per week can I work remotely?');
         await send.click();
