@@ -36,15 +36,18 @@ test.describe('Agentic API retrieval — real backend and SSE', () => {
         await expect(activity).toContainText('La risposta è pronta.');
         await expect(activity).toContainText('Sto chiamando Cerca cliente.');
         await expect(activity).toContainText('Sto chiamando Recupera ordini.');
-        await expect(activity).toContainText(/Completate 2 richieste API/);
+        await expect(activity).toContainText('Cerca cliente completato.');
+        await expect(activity).toContainText('Recupera ordini completato.');
         await page.getByRole('button', { name: 'Chiudi informazioni' }).click();
 
         const answer = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
-        await expect(answer).toContainText('Ho trovato 3 ordini per Tizio: A-100, A-101, A-102.', { timeout: 30_000 });
+        for (const text of ['Ordine A-100: totale 120.', 'Ordine A-101: totale 80.', 'Ordine A-102: totale 45.']) {
+            await expect(answer).toContainText(text, { timeout: 30_000 });
+        }
     });
 
     test('widget uses the same loop and exposes API provenance', async ({ page }) => {
-        await page.goto('/widget-demo?mode=inline');
+        await mountInlineWidget(page);
         await page.getByTestId('askmydocs-widget-input').fill('Dammi tutti gli ordini di Tizio');
         await page.getByTestId('askmydocs-widget-send').click();
 
@@ -52,10 +55,9 @@ test.describe('Agentic API retrieval — real backend and SSE', () => {
         await expect(activity).toBeVisible({ timeout: 30_000 });
         await expect(activity).toHaveAttribute('data-state', 'settled', { timeout: 30_000 });
         await expect(activity).toContainText('La risposta è pronta.');
-        await expect(page.getByTestId('askmydocs-widget-message').last()).toContainText(
-            'Ho trovato 3 ordini per Tizio: A-100, A-101, A-102.',
-            { timeout: 30_000 },
-        );
+        for (const text of ['Ordine A-100: totale 120.', 'Ordine A-101: totale 80.', 'Ordine A-102: totale 45.']) {
+            await expect(page.getByTestId('askmydocs-widget-message').last()).toContainText(text, { timeout: 30_000 });
+        }
         await expect(page.getByTestId('askmydocs-widget-citation').filter({ hasText: 'get_orders' })).toBeVisible();
     });
 
@@ -72,7 +74,11 @@ test.describe('Agentic API retrieval — real backend and SSE', () => {
         await expect(activity).toContainText('Non è stato possibile completare Cerca cliente.');
         await page.getByRole('button', { name: 'Chiudi informazioni' }).click();
         const answer = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').last();
-        await expect(answer).toContainText('Non ho potuto recuperare gli ordini', { timeout: 30_000 });
+        await expect(answer).toContainText('Non ho potuto completare la chiamata alla sorgente esterna.', { timeout: 30_000 });
+        await expect(answer).toContainText('Le altre fonti consultate non bastano per rispondere a questa richiesta.');
+        await expect(answer).not.toContainText('A-100');
+        await expect(answer).not.toContainText('A-101');
+        await expect(answer).not.toContainText('A-102');
     });
 });
 
@@ -93,4 +99,32 @@ async function loginPage(page: Page, context: BrowserContext): Promise<void> {
     if (!login.ok()) {
         throw new Error(`Agent E2E login failed: ${login.status()} ${await login.text()}`);
     }
+}
+
+/** Mount the public bundle on a separate host origin; all widget APIs remain real. */
+async function mountInlineWidget(page: Page): Promise<void> {
+    await page.goto('/healthz');
+    const host = new URL(page.url());
+    const configuredApi = process.env.E2E_WIDGET_API_BASE_URL;
+    const api = configuredApi ? new URL(configuredApi) : new URL(host);
+    if (!configuredApi) api.hostname = host.hostname === '127.0.0.1' ? 'localhost' : '127.0.0.1';
+    if (api.origin === host.origin) throw new Error('Widget test requires a separate API origin.');
+    await page.setContent('<!doctype html><html lang="it"><body><main><div id="widget-host" style="height:700px"></div></main></body></html>');
+    const setup = page.waitForResponse(response => response.url().startsWith(api.origin + '/api/widget/setup'));
+    await page.evaluate(async apiBase => {
+        (window as Window & { AskMyDocsWidget?: Record<string, unknown> }).AskMyDocsWidget = {
+            key: 'pk_demo_local', apiBase, mode: 'inline', mount: '#widget-host',
+        };
+        await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/widget/askmydocs-widget.js';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Widget bundle failed to load.'));
+            document.body.append(script);
+        });
+    }, api.origin);
+    const response = await setup;
+    expect(response.ok()).toBe(true);
+    expect((await response.json()).data_agent).toEqual({ enabled: true, tool_count: 2 });
+    await expect(page.getByTestId('askmydocs-widget-input')).toBeEnabled();
 }

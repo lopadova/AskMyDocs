@@ -31,16 +31,26 @@ final class E2eAgentRetrievalSeeder extends Seeder
                 'tenant_id' => 'default',
                 'project_key' => 'docs-v3',
                 'label' => 'demo-local',
-                'allowed_origins' => [
-                    'http://127.0.0.1:8000',
-                    'http://localhost:8000',
-                    'http://localhost:5173',
-                ],
+                'allowed_origins' => $this->widgetOrigins(),
                 'rate_limit' => 1000,
                 'skill' => 'askmydocs-assistant@1',
                 'is_active' => true,
             ],
         );
+    }
+
+    /** Keep the real origin gate active on a configured Herd test site too. */
+    private function widgetOrigins(): array
+    {
+        $origins = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://localhost:5173'];
+        $url = rtrim((string) config('app.url'), '/');
+        if (app()->environment('testing') && filter_var($url, FILTER_VALIDATE_URL)
+            && in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true)
+            && in_array(parse_url($url, PHP_URL_PATH), [null, ''], true)) {
+            $origins[] = $url;
+        }
+
+        return array_values(array_unique($origins));
     }
 
     /**
