@@ -22,6 +22,7 @@ use App\Services\Kb\Investigation\KbInvestigationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Tests\TestCase;
@@ -102,8 +103,17 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertSame(1, AgentRun::query()->count(), 'Subquestions must not spawn autonomous research runs.');
     }
 
-    public function test_dependent_calls_persist_the_exact_parent_field_proof_before_dispatch_and_ground_the_child(): void
+    public static function dependencyDelays(): array
     {
+        return ['immediate parent' => [0], 'parent leaves less than the planning estimate' => [27]];
+    }
+
+    #[DataProvider('dependencyDelays')]
+    public function test_dependent_calls_persist_the_exact_parent_field_proof_before_dispatch_and_ground_the_child(int $delay): void
+    {
+        $this->freezeTime();
+        config(['agent.job_timeout_seconds' => 120, 'agent.synthesis.time_reserve_seconds' => 60,
+            'agent.planner.time_reserve_seconds' => 30, 'agent.waves.minimum_dispatch_seconds' => 5]);
         $this->route('get_orders'); $this->route('get_followup');
         ApiRoute::where('tenant_id', 'acme')->where('slug', 'get_orders')->firstOrFail()->update(['identity_fields' => ['reference']]);
         ApiRoute::where('tenant_id', 'acme')->where('slug', 'get_followup')->firstOrFail()->update(['identity_fields' => ['resource_key'],
@@ -111,7 +121,12 @@ final class AgentWaveCoordinatorTest extends TestCase
                 'input_schema' => ['type' => 'object', 'properties' => ['lookup' => ['type' => 'integer']]]]]);
         $run = $this->makeRun(); $phase = 0;
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->times(3)->andReturnUsing(function () use (&$phase) {
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturnUsing(function () use (&$phase, $delay) {
+            if ($phase === 1 && $delay > 0) {
+                $timeout = app(\App\Ai\AgentChatModelScope::class)->options([])['timeout'];
+                $this->assertGreaterThanOrEqual(22, $timeout);
+                $this->assertLessThanOrEqual(23, $timeout, 'Replanning must fit before the useful wave and synthesis reserves.');
+            }
             return $this->plan(match ($phase++) {
                 0 => ['decision' => 'tools', 'actions' => [$this->action('source', 'get_orders')]],
                 1 => ['decision' => 'tools', 'actions' => [['id' => 'resource', 'tool' => 'get_followup',
@@ -121,9 +136,12 @@ final class AgentWaveCoordinatorTest extends TestCase
         });
         $this->app->instance(AiManager::class, $ai);
         $executor = Mockery::mock(AgentWaveExecutor::class);
-        $executor->shouldReceive('run')->twice()->andReturnUsing(function (array $tasks) use ($run) {
+        $executor->shouldReceive('run')->twice()->andReturnUsing(function (array $tasks) use ($run, $delay) {
             $id = array_key_first($tasks);
-            if ($id === 'source') return [$id => new AgentToolActionResult(['reference' => 'PURCHASE-Q91', 'resource_key' => 72345], 1)];
+            if ($id === 'source') {
+                if ($delay > 0) $this->travel($delay)->seconds();
+                return [$id => new AgentToolActionResult(['reference' => 'PURCHASE-Q91', 'resource_key' => 72345], 1)];
+            }
             $execution = $run->toolExecutions()->where('tool_name', 'get_followup')->firstOrFail();
             $this->assertSame('resource_key', $execution->result_meta_json['argument_bindings'][0]['source_path']);
             $this->assertSame(['lookup' => 72345], $execution->arguments_json);
@@ -138,6 +156,7 @@ final class AgentWaveCoordinatorTest extends TestCase
             ['PURCHASE-Q91'], 'acme', 'crm');
         $this->assertArrayNotHasKey('reason', $bound);
         $this->assertSame(0, $bound['record']['available']);
+        $this->assertGreaterThanOrEqual(60, app(\App\Agent\AgentRunDeadline::class)->remaining($run));
     }
 
     public function test_completed_empty_knowledge_action_unblocks_dependency_after_replan(): void
@@ -287,8 +306,14 @@ final class AgentWaveCoordinatorTest extends TestCase
         });
         $this->app->instance(AgentWaveExecutor::class, $executor);
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->once()->andReturnUsing(function () {
+        $planning = 0;
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function () use (&$planning) {
             $timeout = app(\App\Ai\AgentChatModelScope::class)->options([])['timeout'];
+            if ($planning++ > 0) {
+                $this->assertGreaterThanOrEqual(21, $timeout);
+                $this->assertLessThanOrEqual(22, $timeout);
+                return $this->plan(['decision' => 'answer', 'actions' => []]);
+            }
             $this->assertGreaterThanOrEqual(26, $timeout);
             $this->assertLessThanOrEqual(27, $timeout, 'Milliseconds and HTTP seconds round down, never into the wave reserve.');
             $this->travel(3)->seconds();
@@ -298,7 +323,8 @@ final class AgentWaveCoordinatorTest extends TestCase
         $outcome = app(AgentLoop::class)->run($run, $this->context($run));
         $this->assertSame('ORDER-42', data_get($outcome->evidence->apiTools(), '0.result.order.id'));
         $this->assertSame(1, $run->toolExecutions()->count());
-        $this->assertSame('time_limit', $outcome->stopReason, 'After collecting evidence, keep the original conservative replanning reserve.');
+        $this->assertSame('answer', $outcome->decision);
+        $this->assertNull($outcome->stopReason);
         $this->assertGreaterThanOrEqual(60, app(\App\Agent\AgentRunDeadline::class)->remaining($run));
         $this->assertArrayNotHasKey('timeout', app(\App\Ai\AgentChatModelScope::class)->options([]));
     }
@@ -341,7 +367,7 @@ final class AgentWaveCoordinatorTest extends TestCase
         $run = $this->makeRun();
         $executor = Mockery::mock(AgentWaveExecutor::class);
         $executor->shouldReceive('run')->once()->andReturnUsing(function (array $tasks) {
-            $this->travel(23)->seconds();
+            $this->travel(47)->seconds();
             return [array_key_first($tasks) => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)];
         });
         $this->app->instance(AgentWaveExecutor::class, $executor);
@@ -359,6 +385,35 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertSame(1, $run->toolExecutions()->count());
         $this->assertSame(1, $run->fresh()->counters_json['logical_calls']);
         $this->assertSame(1, $run->fresh()->counters_json['physical_calls']);
+    }
+
+    public function test_a_replan_that_exhausts_its_bounded_budget_keeps_evidence_and_the_answer_reserve(): void
+    {
+        $this->freezeTime();
+        $this->route('get_orders');
+        $run = $this->makeRun();
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->once()->andReturnUsing(function (array $tasks) {
+            $this->travel(27)->seconds();
+            return [array_key_first($tasks) => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)];
+        });
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $phase = 0;
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function () use (&$phase) {
+            if ($phase++ === 0) return $this->plan(['decision' => 'tools', 'actions' => [$this->action('orders', 'get_orders')]]);
+            $this->assertLessThanOrEqual(23, app(\App\Ai\AgentChatModelScope::class)->options([])['timeout']);
+            $this->travel(23)->seconds();
+            throw new \Illuminate\Http\Client\ConnectionException('Synthetic bounded replan timeout');
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('partial', $outcome->decision);
+        $this->assertSame('time_limit', $outcome->stopReason);
+        $this->assertSame('ORDER-42', data_get($outcome->evidence->apiTools(), '0.result.order.id'));
+        $this->assertSame(1, $run->toolExecutions()->count());
+        $this->assertGreaterThanOrEqual(60, app(\App\Agent\AgentRunDeadline::class)->remaining($run));
+        $this->assertArrayNotHasKey('timeout', app(\App\Ai\AgentChatModelScope::class)->options([]));
     }
 
     private function action(string $id, string $tool, array $dependsOn = []): array

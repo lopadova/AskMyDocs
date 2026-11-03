@@ -176,6 +176,14 @@ fisiche prodotte da retry, paginazione o fan-out:
 | Tempo interattivo / bulk | 60 s / 90 s | produce un risultato parziale |
 | Evidenze accumulate | 512 KiB | evita crescita incontrollata del contesto |
 
+Ogni pianificazione, anche dopo aver raccolto evidenze, può usare un timeout
+ridotto rispetto alla stima di 30 secondi quando il tempo residuo lo richiede.
+Il budget effettivo include eventuali correzioni del piano e lascia spazio per
+una wave utile, la sintesi e la finalizzazione. Se non entrano il minimo di
+pianificazione e quello di dispatch, la ricerca si ferma mantenendo le evidenze
+già raccolte. Il tempo viene verificato di nuovo prima di emettere le chiamate;
+non vengono aumentati i timeout del worker o sottratte le riserve della risposta.
+
 Una lista di 50 ordini non consuma necessariamente 50 chiamate logiche: una
 singola azione può scorrere fino a 100 pagine e produrre più richieste fisiche.
 Il frontend mostra conteggio completato, stima minima/probabile/massima ed ETA.

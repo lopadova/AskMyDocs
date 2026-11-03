@@ -95,11 +95,11 @@ final class AgentWaveCoordinator
                 max(1, (float) config('agent.waves.minimum_dispatch_seconds', 5)));
             $planningSeconds = $initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
                 (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000);
-            // A first observation must not be abandoned merely because the
+            // A useful observation must not be abandoned merely because the
             // planning estimate exceeds the remaining collection allowance.
             // Bound the actual requests (including correction) instead, still
             // leaving a useful wave and the existing answer reserve intact.
-            if ($initialPlan === null && $completed === []) {
+            if ($initialPlan === null) {
                 $planningSeconds = min($planningSeconds, max(0, $this->researchTimeRemaining($run, $budget) - $minimumWaveSeconds));
                 $minimumPlanningSeconds = min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
                 if ($planningSeconds < $minimumPlanningSeconds) {
@@ -124,8 +124,7 @@ final class AgentWaveCoordinator
                         'previous_waves' => data_get($run->result_json, 'waves', []),
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
             } catch (\Throwable $exception) {
-                $minimumAfterFailure = $minimumWaveSeconds + ($completed === []
-                    ? min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30))) : 0);
+                $minimumAfterFailure = $minimumWaveSeconds + min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
                 if ($this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
                     return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
                 }
