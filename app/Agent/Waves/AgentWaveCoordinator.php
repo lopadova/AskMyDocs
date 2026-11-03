@@ -189,7 +189,9 @@ final class AgentWaveCoordinator
                     $this->skipped($run, $action, $tool, $decision->reason ?? 'budget_limit', $completed);
                     continue;
                 }
-                $ready[$action->id] = ['action' => $action, 'tool' => $tool, 'arguments' => $arguments];
+                $ready[$action->id] = ['action' => $action, 'tool' => $tool, 'arguments' => $arguments,
+                    'argument_bindings' => app(\App\Agent\Evidence\ToolResultLineage::class)->capture(
+                        $action->arguments, $arguments, $completed, $evidence->jsonSerialize())];
             }
             foreach ($plan->rejectedActions as $action) {
                 $this->skipped($run, $action, $tools[$action->tool], 'input_pattern_branch_rejected', $completed);
@@ -222,7 +224,8 @@ final class AgentWaveCoordinator
                     'tool_name' => $item['tool']->name, 'tool_kind' => $item['tool']->kind,
                     'api_route_id' => $item['tool']->kind === 'api' && is_int($item['tool']->executorReference) ? $item['tool']->executorReference : null,
                     'status' => 'running', 'depends_on_json' => $item['action']->dependsOn,
-                    'result_meta_json' => ['action_id' => $id, 'wave_id' => $waveId, 'physical_quota' => $quota, 'arguments_hash' => $this->signature($item['arguments'])],
+                    'result_meta_json' => ['action_id' => $id, 'wave_id' => $waveId, 'physical_quota' => $quota, 'arguments_hash' => $this->signature($item['arguments']),
+                        'argument_bindings' => $item['argument_bindings']],
                     'arguments_json' => $this->masker->maskArray($item['arguments']) ?? [], 'started_at' => now(),
                 ]);
                 $payload = ['run_id' => $run->id, 'context' => $context->jsonSerialize(), 'tool' => $item['tool'],
@@ -290,7 +293,7 @@ final class AgentWaveCoordinator
                     $evidence->import(['documents' => $body['documents'] ?? []]);
                     $budget->recordKnowledgeSearchResult($evidence->byteSize() > $before);
                 } else {
-                    $evidence->addToolResult($tool, $item['arguments'], $observation->body, $execution->id);
+                    $evidence->addToolResult($tool, $item['arguments'], $observation->body, $execution->id, $item['argument_bindings']);
                 }
                 $budget->recordResult($observation->physicalRequests, max(0, $evidence->byteSize() - $before), $observation->successful());
                 if (! $observation->complete) $evidence->addWarning($observation->stopReason ?? 'incomplete', $tool->name);

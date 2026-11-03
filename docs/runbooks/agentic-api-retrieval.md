@@ -126,6 +126,39 @@ al problema documentato. La disponibilità di un barcode non conferma ricezione,
 rimborso o chiusura di un reso. Restano attivi i controlli su fonti, hash, entità,
 pertinenza e supporto delle singole affermazioni.
 
+## Provenienza verificata tra chiamate API
+
+Una ricerca dipendente usa riferimenti espliciti `{"$from":"step_id","path":"percorso.esatto"}`.
+Prima di eseguire la chiamata, l'host salva in `argument_bindings` il riferimento
+all'esecuzione padre, l'hash completo della sua risposta, i percorsi del campo
+origine e del parametro destinazione e l'hash del valore scalare osservato.
+Il metadata viene conservato nelle wave, nel percorso sequenziale e nelle riprese
+asincrone. Alla ripresa viene riletto dall'esecuzione host; una dichiarazione
+nella risposta remota o nel checkpoint non può creare una relazione.
+
+Il verificatore può collegare il risultato dipendente al soggetto richiesto quando
+il valore del parametro corrisponde a un'identità dichiarata del record restituito.
+Il padre e tutti gli altri elementi della catena devono essere ancora disponibili
+nell'evidenza autorizzata, con hash, tenant e progetto coerenti. Un'identità di un
+altro elemento della stessa lista non vale per l'elemento selezionato. Restano
+rifiutati risultati ambigui, semplici echo dei parametri, dipendenze letterali non
+registrate, wildcard e riferimenti circolari o a esecuzioni successive.
+
+La catena fornisce contesto di identità, non valori operativi: quantità, stati e
+date devono restare sostenuti dal record finale scelto. Il modello semantico vede
+le fonti originali e la relazione, mantenendo le soglie esistenti. L'export di
+validazione distingue `dependency_identity` dal normale controllo diretto.
+
+Il contratto dell'endpoint resta necessario: `identity_fields` contiene i nomi dei
+campi identificativi del singolo record, anche se proprietari. Non vengono indovinati
+dal nome del tool o da campi stranieri. Gli identificativi interi sono riconosciuti
+come osservazioni; gli zeri iniziali delle stringhe non sono eliminati. La gestione
+non contiene nomi di gestionali, endpoint, prodotti o campi specifici del caso.
+
+Le catene sono limitate a otto livelli e a un numero finito di collegamenti. I vecchi
+turni senza provenienza registrata non vengono promossi retroattivamente: la prova
+viene raccolta eseguendo un nuovo turno con il codice aggiornato.
+
 ## Budget adattivi e grandi collezioni
 
 I limiti predefiniti distinguono chiamate logiche ai tool da richieste HTTP

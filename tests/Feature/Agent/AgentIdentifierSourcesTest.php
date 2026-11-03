@@ -13,6 +13,18 @@ class AgentIdentifierSourcesTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_integer_identifiers_are_observations_only_when_the_source_hash_and_execution_are_valid(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $result = ['records' => [['resource_key' => 7654321098765]]];
+        $evidence->import(['api_tools' => [['execution_id' => 20, 'result' => $result,
+            'arguments' => ['invented_key' => 7654321098766], 'evidence_hash' => hash('sha256', json_encode($result, JSON_UNESCAPED_UNICODE))]]]);
+        $guard = app(AgentIdentifierSources::class);
+        $sources = $guard->texts('', $evidence);
+        $this->assertTrue(AgentIdentifierSources::contains('7654321098765', $sources));
+        $this->assertFalse(AgentIdentifierSources::contains('7654321098766', $sources));
+    }
+
     public function test_generated_branch_questions_cannot_authorize_a_new_identifier(): void
     {
         $attrs = ['tenant_id' => 'warehouse', 'project_key' => 'orders', 'channel' => 'chat', 'actor_type' => 'user',

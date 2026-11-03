@@ -45,6 +45,7 @@ final class AgentClaimGroundingValidator
                 'hash' => (string) ($tool['evidence_hash'] ?? ''),
                 'content' => json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '',
                 'result' => $tool['result'] ?? [],
+                'observation' => $tool,
             ];
         }
 
@@ -80,6 +81,18 @@ final class AgentClaimGroundingValidator
                 // Use the bound record/quote, never identifiers from another
                 // record merely present in the same response envelope.
                 $referenceSource = $quote;
+                $source = $tool['observation'];
+                $records = array_values(array_filter(\App\Services\Chat\Reasoning\EvidenceProjector::records($source),
+                    fn ($entry) => (! isset($claim['record_path']) || $claim['record_path'] === $entry['path'])
+                        && $this->toolQuote(['content' => json_encode($entry['record'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                            'result' => $entry['record']], $quote) !== null));
+                if (count($records) === 1) {
+                    $contexts = (new \App\Agent\Evidence\ToolResultLineage)->contexts($evidence, $source, $records[0]['path'],
+                        (string) ($source['tenant_id'] ?? ''), (string) ($source['project_key'] ?? $source['result']['companyKey'] ?? ''));
+                    // Only exact identifiers along a verified dependency path can
+                    // supply contextual references; no parent measurements are copied.
+                    foreach ($contexts as $context) $referenceSource .= "\n".implode("\n", $context['identifiers']);
+                }
             }
             // Capitalized alphanumeric code atoms must be copied literally.
             // Semantic support cannot turn AB12 into AB21 within a long claim.
@@ -95,6 +108,7 @@ final class AgentClaimGroundingValidator
                 'evidence_hash' => $hash,
                 'document_id' => $documentId === null ? null : (int) $documentId,
                 'tool_execution_id' => $executionId === null ? null : (int) $executionId,
+                ...(isset($claim['record_path']) ? ['record_path' => $claim['record_path']] : []),
             ];
         }
 

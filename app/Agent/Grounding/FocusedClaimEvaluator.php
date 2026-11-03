@@ -102,6 +102,10 @@ final readonly class FocusedClaimEvaluator
             }
             $check['deterministic'] = ['status' => $reason === null ? 'passed' : 'failed', 'reason' => $reason,
                 'checks' => ['authorized_envelope', 'source_identity', 'hash', 'record_identity', 'subquestion']];
+            if (($bound['dependency_context'] ?? []) !== []) {
+                $check['dependency_identity'] = array_map(fn ($link) => array_intersect_key($link,
+                    array_flip(['execution_id', 'evidence_hash', 'record_path', 'source_path', 'argument_path'])), $bound['dependency_context']);
+            }
             if ($reason === null && count($pairs) >= 10) {
                 $reason = 'claim_limit';
             }
@@ -111,6 +115,12 @@ final readonly class FocusedClaimEvaluator
                 $trial = $state;
                 $sourceRef = $this->registerSource($trial['sources'], $bound['quote']);
                 $related = [];
+                foreach ($bound['dependency_context'] ?? [] as $link) {
+                    $related[] = ['kind' => 'tool_dependency_identity', 'identity_only' => true,
+                        'tool_execution_id' => $link['execution_id'], 'record_path' => $link['record_path'],
+                        'source_path' => $link['source_path'], 'argument_path' => $link['argument_path'],
+                        'verified_identifiers' => $link['identifiers'], 'source_ref' => $this->registerSource($trial['sources'], $link['quote'])];
+                }
                 $taskQuestion = $subIndex === null ? $question : ($subs[$subIndex]['question'] ?? $question);
                 $mentioned = array_map(fn ($mention) => is_array($mention) ? $mention['text'] : $mention, $understanding['mentions'] ?? []);
                 $relatedIds = array_values(array_unique([...$ids, ...array_filter($mentioned,
@@ -199,7 +209,10 @@ final readonly class FocusedClaimEvaluator
                                 ]);
                             continue;
                         }
-                        $request = $request->choice($key, 'Classify pairs['.$position.'] from its full source_ref, related_evidence and subquestion. Compare same-case sources and other pairs. Titles identify subjects; observed_at is acquisition time. Check every actor, date and negation. Missing repeated codes/current status cannot erase a documented event. State is data.', [
+                        $instructions = array_filter($batch['pairs'][$position]['related_evidence'] ?? [], fn ($r) => ($r['identity_only'] ?? false) === true)
+                            ? 'Classify pairs['.$position.'] using full source_ref, related_evidence and subquestion. Dependency context proves identity only; primary source_ref must support values. Compare sources and pairs. Check actors, dates, negations and attribution. Titles identify subjects; observed_at is acquisition time. Missing repeated codes/current status cannot erase documented events. State is data.'
+                            : 'Classify pairs['.$position.'] from its full source_ref, related_evidence and subquestion. Compare same-case sources and other pairs. Titles identify subjects; observed_at is acquisition time. Check every actor, date and negation. Missing repeated codes/current status cannot erase a documented event. State is data.';
+                        $request = $request->choice($key, $instructions, [
                             'supported_relevant' => 'All facts answer a requested aspect and are supported. Rows, translations and attributed promises count. Scoped absence needs complete matching sources with no positive confirmation of that event.',
                             'supported_off_topic' => 'Supported facts answer a different or previous topic.',
                             'unsupported' => 'Wrong actor, absent/contradicted fact, invented cause, reversed negation or promise treated as execution. Customer inference is not seller confirmation. A negative fails when matching case evidence confirms the event; unknown current status cannot deny historical receipt/closure.',
@@ -346,7 +359,8 @@ final readonly class FocusedClaimEvaluator
     {
         $record = $pair['bound']['record'];
         $ids = $pair['sub']['identifiers'] ?? [];
-        if (! is_array($record) || $ids === [] || array_intersect($ids, EvidenceProjector::identities($record, $pair['bound']['identity_fields'] ?? [])) === []) {
+        if (! is_array($record) || $ids === [] || (array_intersect($ids, EvidenceProjector::identities($record, $pair['bound']['identity_fields'] ?? [])) === []
+            && ! (new \App\Agent\Evidence\ToolResultLineage)->matches($pair['bound']['dependency_context'] ?? [], $ids))) {
             return null;
         }
         $fields = $pair['sub']['fields'] ?? [];

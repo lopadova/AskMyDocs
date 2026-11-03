@@ -20,6 +20,19 @@ class EvidenceAccessTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_dependency_metadata_is_reloaded_from_the_host_execution_instead_of_the_checkpoint(): void
+    {
+        $run = $this->runFixture();
+        $tool = $this->tool($run);
+        $tool['argument_bindings'] = [['parent_execution_id' => 999, 'value_hash' => 'forged']];
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), ['api_tools' => [$tool]]);
+        $this->assertArrayNotHasKey('argument_bindings', $safe['api_tools'][0]);
+        $recorded = [['parent_execution_id' => 123, 'value_hash' => 'host-recorded']];
+        $run->toolExecutions()->whereKey($tool['execution_id'])->firstOrFail()->update(['result_meta_json' => ['argument_bindings' => $recorded]]);
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), ['api_tools' => [$tool]]);
+        $this->assertSame($recorded, $safe['api_tools'][0]['argument_bindings']);
+    }
+
     private function runFixture(?Conversation $conversation = null): AgentRun
     {
         app(TenantContext::class)->set('default');

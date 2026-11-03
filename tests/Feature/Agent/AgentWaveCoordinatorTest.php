@@ -102,6 +102,44 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertSame(1, AgentRun::query()->count(), 'Subquestions must not spawn autonomous research runs.');
     }
 
+    public function test_dependent_calls_persist_the_exact_parent_field_proof_before_dispatch_and_ground_the_child(): void
+    {
+        $this->route('get_orders'); $this->route('get_followup');
+        ApiRoute::where('tenant_id', 'acme')->where('slug', 'get_orders')->firstOrFail()->update(['identity_fields' => ['reference']]);
+        ApiRoute::where('tenant_id', 'acme')->where('slug', 'get_followup')->firstOrFail()->update(['identity_fields' => ['resource_key'],
+            'tool_definition' => ['name' => 'get_followup', 'description' => 'Read resource',
+                'input_schema' => ['type' => 'object', 'properties' => ['lookup' => ['type' => 'integer']]]]]);
+        $run = $this->makeRun(); $phase = 0;
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturnUsing(function () use (&$phase) {
+            return $this->plan(match ($phase++) {
+                0 => ['decision' => 'tools', 'actions' => [$this->action('source', 'get_orders')]],
+                1 => ['decision' => 'tools', 'actions' => [['id' => 'resource', 'tool' => 'get_followup',
+                    'arguments' => ['lookup' => ['$from' => 'source', 'path' => 'resource_key']], 'depends_on' => ['source'], 'purpose' => 'Read resource']]],
+                default => ['decision' => 'answer', 'actions' => []],
+            });
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->twice()->andReturnUsing(function (array $tasks) use ($run) {
+            $id = array_key_first($tasks);
+            if ($id === 'source') return [$id => new AgentToolActionResult(['reference' => 'PURCHASE-Q91', 'resource_key' => 72345], 1)];
+            $execution = $run->toolExecutions()->where('tool_name', 'get_followup')->firstOrFail();
+            $this->assertSame('resource_key', $execution->result_meta_json['argument_bindings'][0]['source_path']);
+            $this->assertSame(['lookup' => 72345], $execution->arguments_json);
+            return [$id => new AgentToolActionResult(['resource_key' => 72345, 'available' => 0], 1)];
+        });
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+        $this->assertSame('answer', $outcome->decision);
+        $child = $outcome->evidence->apiTools()[1];
+        $bound = app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->bind($outcome->evidence->jsonSerialize(),
+            ['tool_execution_id' => $child['execution_id'], 'evidence_hash' => $child['evidence_hash'], 'record_path' => '$'],
+            ['PURCHASE-Q91'], 'acme', 'crm');
+        $this->assertArrayNotHasKey('reason', $bound);
+        $this->assertSame(0, $bound['record']['available']);
+    }
+
     public function test_completed_empty_knowledge_action_unblocks_dependency_after_replan(): void
     {
         $this->route('get_followup');
