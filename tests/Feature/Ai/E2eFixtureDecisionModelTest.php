@@ -83,8 +83,10 @@ final class E2eFixtureDecisionModelTest extends TestCase
             'sources' => [['document_id' => 1, 'title' => 'Remote Work Policy', 'text' => Fixture::POLICY, 'complete_source' => true]]];
         $questions = ['covered' => ['type' => 'noul', 'criteria' => ['true' => 'covered', 'false' => 'missing']]];
         $this->assertSame(1.0, $driver->decide($state, $questions)->answers['covered']['probability_true']);
+        $state['sources'][0]['title'] = 'e2e-remote-work';
+        $this->assertSame(1.0, $driver->decide($state, $questions)->answers['covered']['probability_true']);
         $state['sources'] = [['result' => ['metadata' => Fixture::POLICY]]];
-        $this->assertSame(0.0, $driver->decide($state, $questions)->answers['covered']['probability_true']);
+        $this->assertArrayHasKey('covered', $driver->decideIndependently($state, $questions)->answerErrors);
         $state['sources'] = [['metadata' => ['text' => Fixture::POLICY]]];
         $result = $driver->decideIndependently($state, $questions);
         $this->assertArrayNotHasKey('covered', $result->answers);
@@ -118,7 +120,7 @@ final class E2eFixtureDecisionModelTest extends TestCase
 
     public function test_coverage_requires_every_available_canonical_order(): void
     {
-        $state = ['question' => Fixture::QUESTIONS[0], 'sources' => [['result' => ['orders' => Fixture::ORDERS]]],
+        $state = ['question' => Fixture::QUESTIONS[0], 'sources' => [['result' => ['items' => Fixture::ORDERS]]],
             'answer' => array_map(fn ($record) => Fixture::orderText($record), Fixture::ORDERS)];
         $questions = ['covered' => ['type' => 'noul', 'criteria' => ['true' => 'covered', 'false' => 'missing']]];
         $driver = new E2eFixtureDecisionModel;
@@ -142,6 +144,16 @@ final class E2eFixtureDecisionModelTest extends TestCase
             $this->assertArrayNotHasKey($key, $result->answers);
             $this->assertArrayHasKey($key, $result->answerErrors);
         }
+    }
+
+    public function test_a_canonical_order_hidden_in_metadata_is_not_returned_record_evidence(): void
+    {
+        $state = ['question' => Fixture::QUESTIONS[0], 'answer' => [Fixture::orderText(Fixture::ORDERS[0])],
+            'sources' => [['result' => ['metadata' => ['cached_order' => Fixture::ORDERS[0]]]]]];
+        $questions = ['covered' => ['type' => 'noul', 'criteria' => ['true' => 'covered', 'false' => 'missing']]];
+        $result = (new E2eFixtureDecisionModel)->decideIndependently($state, $questions);
+        $this->assertArrayNotHasKey('covered', $result->answers);
+        $this->assertArrayHasKey('covered', $result->answerErrors);
     }
 
     public function test_unknown_questions_and_decisions_fail_closed(): void

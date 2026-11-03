@@ -134,7 +134,7 @@ final class E2eFixtureDecisionModel implements IndependentDecisionModel
                 sort($keys);
                 if ($keys !== ['complete_source', 'document_id', 'text', 'title']
                     || ! is_int($source['document_id']) || $source['document_id'] < 1
-                    || $source['title'] !== 'Remote Work Policy' || ! is_bool($source['complete_source'])
+                    || ! in_array($source['title'], Fixture::POLICY_TITLES, true) || ! is_bool($source['complete_source'])
                     || ! $canonical($source['text'])) throw new DecisionException('Unknown fixture document.');
                 $found = true;
             } elseif (array_diff(array_keys($source), ['tool_execution_id', 'source_title', 'observed_at', 'result']) !== []
@@ -147,14 +147,24 @@ final class E2eFixtureDecisionModel implements IndependentDecisionModel
 
     private function records(mixed $value): array
     {
-        if (! is_array($value)) return [];
-        if (isset($value['number'])) {
-            $record = Fixture::matchOrder($value);
-            if ($record === null) throw new DecisionException('Unknown or changed fixture record.');
-            return [$record];
-        }
+        if (! is_array($value)) throw new DecisionException('Unknown fixture sources.');
         $records = [];
-        foreach ($value as $child) array_push($records, ...$this->records($child));
+        foreach ($value as $source) {
+            if (is_array($source) && isset($source['document_id'])) continue;
+            // ApiToolCollector emits items, never a recursive metadata search.
+            $result = is_array($source) ? ($source['result'] ?? null) : null;
+            if (! is_array($result) || array_keys($result) !== ['items']
+                || ! is_array($result['items']) || ! array_is_list($result['items'])) {
+                throw new DecisionException('Unknown fixture tool result.');
+            }
+            foreach ($result['items'] as $item) {
+                $record = Fixture::matchOrder($item);
+                if ($record !== null) { $records[] = $record; continue; }
+                if (is_array($item) && count($item) === 2 && ($item['id'] ?? null) === Fixture::CUSTOMER_ID
+                    && ($item['name'] ?? null) === 'Tizio') continue;
+                throw new DecisionException('Unknown or changed fixture record.');
+            }
+        }
         return $records;
     }
 }
