@@ -67,6 +67,7 @@ final class PdfTextFallbackTest extends TestCase
 
     public function test_no_text_or_a_failing_binary_means_ocr(): void
     {
+        $before = glob(sys_get_temp_dir().'/kb_pdf_*') ?: [];
         config(['kb.pdf.pdftotext_bin' => $this->stub("printf '  \\f \\f'")]);
         $this->assertNull((new PdfTextFallback)->textPages('%PDF-1.4 scanned'), 'whitespace only → OCR');
 
@@ -75,7 +76,7 @@ final class PdfTextFallbackTest extends TestCase
 
         config(['kb.pdf.pdftotext_bin' => '/nonexistent/pdftotext']);
         $this->assertNull((new PdfTextFallback)->textPages('%PDF-1.4 x'), 'binary missing → OCR');
-        $this->assertSame([], glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'no temporary PDF is left behind');
+        $this->assertSame($before, glob(sys_get_temp_dir().'/kb_pdf_*') ?: [], 'this operation leaves no temporary PDF behind');
     }
 
     /**
