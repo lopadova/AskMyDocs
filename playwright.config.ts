@@ -28,6 +28,12 @@ const outboundBaseURL = process.env.E2E_OUTBOUND_BASE_URL ?? 'http://127.0.0.1:8
 const outboundWebServerUrl = new URL(outboundBaseURL);
 const outboundWebServerHost = outboundWebServerUrl.hostname;
 const outboundWebServerPort = outboundWebServerUrl.port || (outboundWebServerUrl.protocol === 'https:' ? '443' : '80');
+// Herd's own loader recognizes this preview marker and omits its developer
+// overlay. Keep application requests and controls intact; CI keeps the stock UA.
+const desktopChrome = {
+    ...devices['Desktop Chrome'],
+    ...(localWebServerHost.endsWith('.test') ? { userAgent: devices['Desktop Chrome'].userAgent + ' HerdApplications' } : {}),
+};
 
 /**
  * Environment for the dev-spawned `php artisan serve` processes.
@@ -343,7 +349,7 @@ export default defineConfig({
         {
             name: 'chromium',
             use: {
-                ...devices['Desktop Chrome'],
+                ...desktopChrome,
                 storageState: 'playwright/.auth/admin.json',
             },
             dependencies: ['system-admin-setup'],
@@ -365,7 +371,7 @@ export default defineConfig({
             // `auth.setup.ts` does not leak in.
             name: 'chromium-viewer',
             use: {
-                ...devices['Desktop Chrome'],
+                ...desktopChrome,
                 storageState: 'playwright/.auth/viewer.json',
             },
             dependencies: ['system-admin-setup'],
@@ -377,7 +383,7 @@ export default defineConfig({
             // flows don't leak into the admin project's scope.
             name: 'chromium-super-admin',
             use: {
-                ...devices['Desktop Chrome'],
+                ...desktopChrome,
                 storageState: 'playwright/.auth/super-admin.json',
             },
             dependencies: ['system-admin-setup'],
@@ -386,7 +392,7 @@ export default defineConfig({
         {
             name: 'chromium-system-admin',
             use: {
-                ...devices['Desktop Chrome'],
+                ...desktopChrome,
                 storageState: 'playwright/.auth/system-admin.json',
             },
             dependencies: ['system-admin-setup'],
@@ -403,7 +409,7 @@ export default defineConfig({
             // resetAndSeed.
             name: 'chromium-role-access',
             use: {
-                ...devices['Desktop Chrome'],
+                ...desktopChrome,
                 storageState: { cookies: [], origins: [] },
             },
             dependencies: ['system-admin-setup'],
