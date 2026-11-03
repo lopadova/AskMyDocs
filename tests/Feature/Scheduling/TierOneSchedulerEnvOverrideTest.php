@@ -40,9 +40,9 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
 {
     public function test_default_cron_is_registered_when_no_override(): void
     {
-        $schedule = $this->app->make(Schedule::class);
-        // Sanity: the schedule instance comes from the IoC container,
-        // not from the bootstrap closure, so it starts empty.
+        $schedule = new Schedule('UTC');
+        // Isolate the registrar from callbacks independently registered by
+        // package providers on the application-owned schedule.
         $this->assertSame([], $schedule->events());
 
         (new TierOneSchedulerRegistrar)->register($schedule);
@@ -55,7 +55,7 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
     {
         config(['askmydocs.schedule.kb_prune_deleted.cron' => '7 7 * * *']);
 
-        $schedule = $this->app->make(Schedule::class);
+        $schedule = new Schedule('UTC');
         (new TierOneSchedulerRegistrar)->register($schedule);
 
         $events = $this->collectExpressionsFor($schedule, 'kb:prune-deleted');
@@ -67,7 +67,7 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
     {
         config(['askmydocs.schedule.kb_prune_deleted.enabled' => false]);
 
-        $schedule = $this->app->make(Schedule::class);
+        $schedule = new Schedule('UTC');
         (new TierOneSchedulerRegistrar)->register($schedule);
 
         $events = $this->collectExpressionsFor($schedule, 'kb:prune-deleted');
@@ -114,7 +114,7 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
             config(["askmydocs.schedule.$slotKey.cron" => $sentinelCron]);
         }
 
-        $schedule = $this->app->make(Schedule::class);
+        $schedule = new Schedule('UTC');
         (new TierOneSchedulerRegistrar)->register($schedule);
 
         foreach ($slotMap as $slotKey => [$command, $sentinelCron]) {
@@ -155,7 +155,7 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
             config(["askmydocs.schedule.$slotKey.cron" => $sentinelCron]);
         }
 
-        $schedule = $this->app->make(Schedule::class);
+        $schedule = new Schedule('UTC');
         $registrar = new TierOneSchedulerRegistrar;
         foreach ($compositeSlots as $slotKey => [$command, $sentinelCron]) {
             $registrar->registerSlot($schedule, $slotKey, $command);
