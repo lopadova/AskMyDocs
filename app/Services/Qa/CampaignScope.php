@@ -37,12 +37,9 @@ final class CampaignScope
         if ($this->active !== null && $this->active['campaign']->id !== $campaign->id) {
             throw new \DomainException('qa_campaign_scope_mismatch');
         }
-        $actor = $run->user;
-        if ($actor === null || ! $actor->is_active || ! $actor->hasAnyRole(['admin', 'super-admin'])
-            || ! \App\Models\ProjectMembership::query()->forTenant($run->tenant_id)->where('user_id', $actor->id)->exists()
-            || (! $actor->canReadAllProjects() && ! in_array($run->project_key, $actor->allowedProjects(), true))) {
-            throw new \DomainException('qa_campaign_actor_not_authorized');
-        }
+        $actor = $run->user()->first();
+        if ($actor === null) throw new \DomainException('qa_campaign_actor_not_authorized');
+        $ledger->assertActor($run->tenant_id, (string) $run->project_key, $actor);
         if (getenv('ASKMYDOCS_QA_MANIFEST')) throw new \DomainException('qa_duplicate_accounting_guard');
         $previous = $this->active;
         $scope = (string) Str::uuid();

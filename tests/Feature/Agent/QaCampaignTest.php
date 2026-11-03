@@ -358,6 +358,58 @@ final class QaCampaignTest extends TestCase
         }
     }
 
+    public function test_revocation_during_provider_lookup_keeps_campaign_stopped(): void
+    {
+        [$campaign, $attempt] = $this->stoppedEmbeddingCampaign();
+        Http::fake(function () {
+            User::findOrFail($this->actor->id)->removeRole('admin');
+            return Http::response(['data' => $this->embeddingGeneration()]);
+        });
+        try {
+            app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+            $this->fail('A revoked operator reactivated a campaign.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('qa_campaign_actor_not_authorized', $exception->getMessage());
+        }
+        $this->assertSame('stopped', $campaign->fresh()->status);
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        $this->assertNull($attempt->fresh()->identity_json);
+        Http::assertSentCount(1);
+    }
+
+    public function test_revocation_after_reconciliation_blocks_admission_and_a_cached_run_actor(): void
+    {
+        Queue::fake();
+        [$campaign, , $run] = $this->stoppedEmbeddingCampaign();
+        Http::fake(['*/generation*' => Http::response(['data' => $this->embeddingGeneration()])]);
+        app(\App\Services\Qa\CampaignReconciliation::class)->embeddingIdentity('acme', 'orders', $this->actor, $campaign->id);
+        $run->load('user.roles');
+        $this->assertTrue($run->user->hasRole('admin'));
+        User::findOrFail($this->actor->id)->removeRole('admin');
+        $this->assertTrue($run->user->hasRole('admin'), 'Fixture must retain the stale loaded role.');
+        try {
+            app(CampaignScope::class)->withinRun($run, fn () => $this->fail('A stale role dispatched inference.'));
+            $this->fail('A revoked actor entered a campaign scope.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('qa_campaign_actor_not_authorized', $exception->getMessage());
+        }
+        $conversation = Conversation::create(['tenant_id' => 'acme', 'project_key' => 'orders', 'user_id' => $this->actor->id, 'title' => 'QA']);
+        try {
+            app(\App\Agent\AgentChatTurnStarter::class)->start(
+                app(\App\Agent\AgentExecutionContextFactory::class)->forUser($this->actor, 'orders'),
+                $conversation, $this->actor, 'Question', ['question' => 'Question',
+                    'qa' => ['campaign_id' => $campaign->id, 'round' => 'baseline', 'case_id' => 'DEMO-01', 'turn' => 1]]);
+            $this->fail('Reactivation granted access after revocation.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertSame(['qa_campaign_actor_not_authorized'], $exception->errors()['qa']);
+        }
+        $this->assertSame(0, $conversation->messages()->count());
+        $this->assertSame(1, AgentRun::count());
+        $this->assertSame(320, $campaign->fresh()->spent_nanos);
+        Queue::assertNothingPushed();
+        Http::assertSentCount(1);
+    }
+
     public function test_unverified_reconciliation_preserves_the_stop_and_original_ledger(): void
     {
         [$campaign, $attempt] = $this->stoppedEmbeddingCampaign();
@@ -740,6 +792,34 @@ final class QaCampaignTest extends TestCase
         }
         $this->assertSame(0, $conversation->messages()->count());
         $this->assertSame(0, AgentRun::count());
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    }
+
+    public function test_first_qa_turn_cannot_adopt_non_campaign_history(): void
+    {
+        Queue::fake();
+        $campaign = $this->campaign();
+        foreach (['message', 'run'] as $history) {
+            $conversation = Conversation::create(['tenant_id' => 'acme', 'project_key' => 'orders', 'user_id' => $this->actor->id, 'title' => 'Earlier conversation']);
+            if ($history === 'message') {
+                $conversation->messages()->create(['role' => 'user', 'content' => 'Earlier unrelated question']);
+            } else {
+                $this->runFixture($campaign)->update(['conversation_id' => $conversation->id,
+                    'status' => AgentRun::STATUS_COMPLETED, 'input_json' => ['question' => 'Earlier ordinary run']]);
+            }
+            $before = [$conversation->messages()->count(), AgentRun::count()];
+            try {
+                app(\App\Agent\AgentChatTurnStarter::class)->start(
+                    app(\App\Agent\AgentExecutionContextFactory::class)->forUser($this->actor, 'orders'),
+                    $conversation, $this->actor, 'Fixed corpus input', ['question' => 'Fixed corpus input',
+                        'qa' => ['campaign_id' => $campaign->id, 'round' => 'baseline', 'case_id' => 'DEMO-01', 'turn' => 1]]);
+                $this->fail('An unrelated history contaminated the fixed QA input.');
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                $this->assertSame(['qa_empty_conversation_required'], $exception->errors()['qa']);
+            }
+            $this->assertSame($before, [$conversation->messages()->count(), AgentRun::count()]);
+        }
         Queue::assertNothingPushed();
         Http::assertNothingSent();
     }

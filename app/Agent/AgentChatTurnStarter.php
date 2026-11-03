@@ -73,6 +73,9 @@ final readonly class AgentChatTurnStarter
                 }
             } elseif (isset($input['qa']) && data_get($input, 'qa.turn') !== 1) {
                 throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_first_turn_required']);
+            } elseif (isset($input['qa']) && ($conversation->messages()->exists()
+                || AgentRun::query()->forTenant($context->tenantId)->where('conversation_id', $conversation->id)->exists())) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_empty_conversation_required']);
             }
             $busy = AgentRun::query()->forTenant($context->tenantId)
                 ->where('conversation_id', $conversation->id)
