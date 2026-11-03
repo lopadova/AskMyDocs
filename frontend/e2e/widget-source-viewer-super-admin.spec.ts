@@ -6,6 +6,19 @@ import { seedDb } from './setup-helpers';
 
 type WidgetMode = 'helper' | 'inline' | 'fullscreen';
 
+const widgetApiBaseOverride = process.env.E2E_WIDGET_API_BASE_URL;
+
+function widgetApiBase(pageUrl: string): string {
+    if (widgetApiBaseOverride) {
+        const origin = new URL(widgetApiBaseOverride).origin;
+        if (origin === new URL(pageUrl).origin) throw new Error('Widget E2E requires a separate API origin.');
+        return origin;
+    }
+    const url = new URL(pageUrl);
+    url.hostname = url.hostname === '127.0.0.1' ? 'localhost' : '127.0.0.1';
+    return url.origin;
+}
+
 interface CreatedWidgetKey {
     id: number;
     publicKey: string;
@@ -41,7 +54,7 @@ async function createWidgetKey(page: Page, label: string): Promise<CreatedWidget
 
     await page
         .getByTestId('admin-widget-keys-origins')
-        .fill('http://127.0.0.1:8000\nhttp://localhost:8000');
+        .fill([new URL(page.url()).origin, widgetApiBase(page.url())].join('\n'));
 
     const createResponse = page.waitForResponse(
         (response) =>
@@ -79,16 +92,12 @@ async function mountWidget(page: Page, publicKey: string, mode: WidgetMode): Pro
         </html>`);
 
     await page.evaluate(
-        async ({ key, widgetMode }) => {
+        async ({ key, widgetMode, apiBase }) => {
             const configuredWindow = window as Window & {
                 AskMyDocsWidget?: Record<string, unknown>;
             };
             // Mirror /widget-demo's real embed boundary so every GET and POST
             // carries an Origin header for the widget allow-list middleware.
-            const apiHost = window.location.hostname === '127.0.0.1'
-                ? 'localhost'
-                : '127.0.0.1';
-            const apiBase = `${window.location.protocol}//${apiHost}:${window.location.port}`;
             configuredWindow.AskMyDocsWidget = {
                 key,
                 apiBase,
@@ -104,7 +113,7 @@ async function mountWidget(page: Page, publicKey: string, mode: WidgetMode): Pro
                 document.body.append(script);
             });
         },
-        { key: publicKey, widgetMode: mode },
+        { key: publicKey, widgetMode: mode, apiBase: widgetApiBase(page.url()) },
     );
 
     const panel = page.getByTestId('askmydocs-widget-panel');
