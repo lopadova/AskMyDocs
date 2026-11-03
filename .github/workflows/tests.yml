@@ -495,6 +495,7 @@ jobs:
       - name: Start Laravel server (testing)
         env:
           APP_ENV: testing
+          BCRYPT_ROUNDS: '4'
           # Deterministic OFFLINE AI for the Playwright run. The PHP built-in
           # dev server reads these at runtime (no config:cache here), so
           # chat + embeddings resolve to FakeProvider — no external LLM, no
@@ -509,6 +510,9 @@ jobs:
           # E2E_SKIP_WEBSERVER=1.)
           AI_PROVIDER: fake
           AI_EMBEDDINGS_PROVIDER: fake
+          CHAT_PREPROCESSOR_PROVIDER: fake
+          DECISION_MODEL: e2e_fixture
+          ASKMYDOCS_E2E_DECISIONS_ENABLED: 'true'
           # v8.8.3 — anonymous chat ON for the Playwright run so
           # anonymous-chat.spec.ts exercises the real stateless /api/kb/chat
           # turn end-to-end. CI skips playwright.config.ts's webServer block
@@ -745,6 +749,9 @@ jobs:
           APP_ENV: testing
           AI_PROVIDER: fake
           AI_EMBEDDINGS_PROVIDER: fake
+          CHAT_PREPROCESSOR_PROVIDER: fake
+          DECISION_MODEL: e2e_fixture
+          ASKMYDOCS_E2E_DECISIONS_ENABLED: 'true'
           # ExecuteAgentRunJob resolves the connector URL guard inside this
           # long-lived worker process, not inside the HTTP server that queued
           # it. Mirror the E2E-only server overrides here or loopback fixture

@@ -28,6 +28,9 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- Disposable test identities still use bcrypt; keep fixture hashing
+             inexpensive without changing the application's runtime default. -->
+        <env name="BCRYPT_ROUNDS" value="4"/>
         <!-- Legacy transport fixtures opt out; dedicated reasoning tests explicitly enable these. -->
         <env name="CHAT_REASONING_ENABLED" value="false"/>
         <!-- Legacy fixtures retain the old policy; verified memory tests opt in. -->

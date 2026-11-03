@@ -292,20 +292,14 @@ if (app()->environment('testing')) {
         }
 
         return response()->json(['items' => [[
-            'id' => 77,
+            'id' => \App\Services\Dev\AgentRetrievalFixture::CUSTOMER_ID,
             'name' => $name !== '' ? $name : 'Tizio',
         ]]]);
     });
     Route::get('/testing/api-fixture/customers/{id}/orders', function (string $id, \Illuminate\Http\Request $request) {
         $page = max(1, (int) $request->query('page', 1));
-        $orders = match ($page) {
-            1 => [
-                ['number' => 'A-100', 'customer_id' => (int) $id, 'total' => 120],
-                ['number' => 'A-101', 'customer_id' => (int) $id, 'total' => 80],
-            ],
-            2 => [['number' => 'A-102', 'customer_id' => (int) $id, 'total' => 45]],
-            default => [],
-        };
+        $orders = array_map(fn (array $order) => [...$order, 'customer_id' => (int) $id],
+            array_slice(\App\Services\Dev\AgentRetrievalFixture::ORDERS, ($page - 1) * 2, 2));
 
         return response()->json([
             'orders' => $orders,

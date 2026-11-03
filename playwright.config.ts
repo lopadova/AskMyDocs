@@ -38,6 +38,7 @@ const outboundWebServerPort = outboundWebServerUrl.port || (outboundWebServerUrl
  */
 const serveEnv = {
     APP_ENV: 'testing',
+    BCRYPT_ROUNDS: '4',
     // SAFETY (local-only — CI sets E2E_SKIP_WEBSERVER=1 and skips this
     // whole block): point the dev-spawned `php artisan serve` at a
     // DEDICATED test database, NEVER the dev DB from `.env`.
@@ -77,6 +78,9 @@ const serveEnv = {
     // frame is exercised). No external LLM call, no API key.
     AI_PROVIDER: 'fake',
     AI_EMBEDDINGS_PROVIDER: 'fake',
+    CHAT_PREPROCESSOR_PROVIDER: 'fake',
+    DECISION_MODEL: 'e2e_fixture',
+    ASKMYDOCS_E2E_DECISIONS_ENABLED: 'true',
     // v8.8.3 — anonymous chat ON for E2E so the happy-path
     // spec (anonymous-chat.spec.ts) exercises the real
     // stateless /api/kb/chat turn end-to-end. The OFF /

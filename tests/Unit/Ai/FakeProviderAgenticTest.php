@@ -136,6 +136,22 @@ final class FakeProviderAgenticTest extends TestCase
         $this->assertSame([12], $answer->toolCalls[0]['arguments']['tool_execution_ids']);
     }
 
+    public function test_atomic_claims_use_only_matching_host_source_choices_and_canonical_records(): void
+    {
+        $options = $this->forcedOptions('submit_agent_answer');
+        $options['tools'][0]['function']['parameters']['properties'] = array_fill_keys(['claims', 'completeness', 'limitations'], []);
+        $record = \App\Services\Dev\AgentRetrievalFixture::ORDERS[0];
+        $response = $this->provider()->chatWithHistory('final answer in it.', [[
+            'role' => 'user', 'content' => json_encode(['evidence' => ['api_tools' => [[
+                'result' => ['records' => [$record, [...$record, 'total' => 999], $record]],
+                'record_sources' => [['source_choice' => 7], ['source_choice' => 8], []],
+            ]]]], JSON_THROW_ON_ERROR),
+        ]], $options);
+        $answer = $response->toolCalls[0]['arguments'];
+        $this->assertSame([['text' => 'Ordine A-100: totale 120.', 'quote' => 'A-100', 'source_choice' => 7]], $answer['claims']);
+        $this->assertArrayNotHasKey('memory_candidates', $answer);
+    }
+
     /** @return array<string,mixed> */
     private function forcedOptions(string $function): array
     {

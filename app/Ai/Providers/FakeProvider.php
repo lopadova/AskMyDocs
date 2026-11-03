@@ -52,6 +52,10 @@ final class FakeProvider implements AiProviderInterface
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
+        if (data_get($options, 'response_format.json_schema.name') === 'chat_question_understanding') {
+            return new AiResponse(content: json_encode($this->questionUnderstanding($messages, $options), JSON_THROW_ON_ERROR),
+                provider: 'fake', model: $this->modelName('chat_model'), promptTokens: 11, completionTokens: 7, totalTokens: 18);
+        }
         // The durable retrieval agent uses forced structured-output tools for
         // planning and synthesis. Supporting those two contracts here lets the
         // browser E2E exercise the real queue, HTTP tools and SSE transport
@@ -63,6 +67,10 @@ final class FakeProvider implements AiProviderInterface
             return $this->structuredResponse($forcedFunction, $this->agentPlan($systemPrompt, $messages));
         }
         if ($forcedFunction === 'submit_agent_answer') {
+            if (isset($options['tools'][0]['function']['parameters']['properties']['claims'])) {
+                return $this->structuredResponse($forcedFunction, array_intersect_key($this->sourceBoundAnswer($systemPrompt, $messages),
+                    $options['tools'][0]['function']['parameters']['properties']));
+            }
             return $this->structuredResponse($forcedFunction, $this->agentAnswer($systemPrompt, $messages));
         }
 
@@ -127,13 +135,25 @@ final class FakeProvider implements AiProviderInterface
         }
 
         if ($completed !== []) {
+            foreach ($completed as $action) {
+                if (($action['tool'] ?? null) === 'get_orders') return ['decision' => 'answer', 'actions' => []];
+            }
+            foreach ($completed as $action) {
+                if (($action['tool'] ?? null) !== 'find_customer') continue;
+                if (($action['status'] ?? null) === 'failed') return ['decision' => 'insufficient', 'actions' => []];
+                return ['decision' => 'tools', 'actions' => [[
+                    'id' => 'load_orders_after_lookup', 'tool' => 'get_orders',
+                    'arguments' => ['customer_id' => ['$from' => $action['id'], 'path' => 'items.0.id']],
+                    'depends_on' => [$action['id']], 'purpose' => $this->expectsItalian($systemPrompt) ? 'Recupero gli ordini' : 'Load the orders',
+                ]]];
+            }
             return ['decision' => 'answer', 'actions' => []];
         }
         if ((str_contains($question, 'ordin') || str_contains($question, 'order'))
             && in_array('find_customer', $toolNames, true)
             && in_array('get_orders', $toolNames, true)) {
             $italian = $this->expectsItalian($systemPrompt);
-            $customer = str_contains($question, '503') ? '503' : 'Tizio';
+            $customer = str_contains($question, '503') || str_contains($question, 'simula') ? '503' : 'Tizio';
 
             return [
                 'decision' => 'tools',
@@ -159,6 +179,67 @@ final class FakeProvider implements AiProviderInterface
         }
 
         return ['decision' => 'answer', 'actions' => []];
+    }
+
+    /** The schema still goes through the real interpretation validator. */
+    private function questionUnderstanding(array $messages, array $options): array
+    {
+        $payload = $this->lastJsonPayload($messages);
+        $question = (string) ($payload['question'] ?? '');
+        $orders = str_contains(mb_strtolower($question), 'ordini') && str_contains($question, 'Tizio');
+        // A customer name is a discovery target, not the identity of an order not yet retrieved.
+        $focus = ['topic' => $orders ? 'orders' : 'documents', 'identifiers' => [],
+            'aspect' => $orders ? 'orders' : 'details', 'fields' => $orders ? ['number', 'total'] : ['*']];
+        $data = ['language' => $orders ? 'it' : 'en', 'intent' => $question, 'action' => 'research',
+            'kb_queries' => $orders ? [] : [$question], 'mentions' => $orders ? [['text' => 'Tizio', 'type' => 'name']] : [],
+            'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+            'requires_composition' => false, 'focus' => $focus, 'transition' => 'new',
+            'subquestions' => [[...$focus, 'question' => $question, 'kb_queries' => $orders ? [] : [$question],
+                'context_mode' => 'new', 'requires_research' => true]],
+            'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '', 'memory_decisions' => []];
+        $properties = data_get($options, 'response_format.json_schema.schema.properties', []);
+        if (isset($properties['initial_plan'])) {
+            $plan = $this->agentPlan('', $messages);
+            // The current first wave resolves the named customer before orders.
+            $plan['actions'] = array_slice($plan['actions'], 0, 1);
+            foreach ($plan['actions'] as &$action) {
+                $action['arguments_json'] = json_encode((object) $action['arguments'], JSON_THROW_ON_ERROR);
+                unset($action['arguments']);
+            }
+            unset($action);
+            $data['initial_plan'] = $plan;
+        }
+        return array_intersect_key($data, $properties);
+    }
+
+    /** Generate atomic claims only from the host's actual source choices. */
+    private function sourceBoundAnswer(string $systemPrompt, array $messages): array
+    {
+        $payload = $this->lastJsonPayload($messages);
+        $evidence = $payload['evidence'] ?? [];
+        $claims = [];
+        foreach ($evidence['api_tools'] ?? [] as $tool) {
+            foreach (data_get($tool, 'result.records', []) as $index => $record) {
+                $choice = $tool['record_sources'][$index]['source_choice'] ?? null;
+                $order = \App\Services\Dev\AgentRetrievalFixture::matchOrder($record);
+                if ($order !== null && is_int($choice)) $claims[] = [
+                    'text' => \App\Services\Dev\AgentRetrievalFixture::orderText($order, $this->expectsItalian($systemPrompt)),
+                    'quote' => $order['number'], 'source_choice' => $choice,
+                ];
+            }
+        }
+        foreach ($evidence['documents'] ?? [] as $document) {
+            foreach ($document['evidence'] ?? [] as $chunk) {
+                $policy = \App\Services\Dev\AgentRetrievalFixture::POLICY;
+                if (is_int($chunk['source_choice'] ?? null) && str_contains($chunk['content'] ?? '', $policy)) {
+                    $claims[] = ['text' => $policy, 'quote' => $policy, 'source_choice' => $chunk['source_choice']];
+                }
+            }
+        }
+        return ['claims' => $claims, 'completeness' => $claims === [] ? 'insufficient' : 'complete',
+            'limitations' => $claims === [] ? [$this->expectsItalian($systemPrompt)
+                ? 'Non ho potuto recuperare informazioni sufficienti.' : 'I could not retrieve sufficient information.'] : [],
+            'requires_selection' => false, 'render_table' => false, 'memory_candidates' => []];
     }
 
     /** @param list<array{role:string,content:string}> $messages @return array<string,mixed> */
