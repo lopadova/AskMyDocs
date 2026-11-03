@@ -296,6 +296,11 @@ final class WidgetSessionTest extends TestCase
         $chatTurn = 0;
         $interpretations = 0;
         Http::fake(function ($request) use (&$chatTurn, &$interpretations) {
+            if ($request->method() === 'GET' && str_ends_with($request->url(), '/models/openai/gpt-4o-mini/endpoints')) {
+                return Http::response(['data' => ['endpoints' => [
+                    ['supported_parameters' => ['response_format', 'structured_outputs']],
+                ]]]);
+            }
             if (isset($request->data()['response_format'])) {
                 $interpretations++;
                 return Http::response([
@@ -303,6 +308,7 @@ final class WidgetSessionTest extends TestCase
                     'choices' => [['message' => ['role' => 'assistant', 'content' => json_encode([
                         'language' => 'it', 'intent' => 'Salvare', 'action' => 'research', 'kb_queries' => ['salvataggio'],
                         'mentions' => [], 'references_previous_turn' => false,
+                        'context_mode' => 'new', 'requires_research' => true, 'requires_composition' => false,
                     ])], 'finish_reason' => 'stop']],
                     'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
                 ], 200);
@@ -356,6 +362,7 @@ final class WidgetSessionTest extends TestCase
 
         $this->assertDatabaseHas('widget_session_steps', ['kind' => WidgetSessionStep::KIND_TOOL_RESULT]);
         $this->assertSame(1, $interpretations, 'A tool-result continuation must not re-interpret the user turn.');
+        $this->assertSame(2, $chatTurn, 'Catalog reads must not consume a mocked widget action.');
     }
 
     // ─── M4: /exec-tool ────────────────────────────────────────────────
