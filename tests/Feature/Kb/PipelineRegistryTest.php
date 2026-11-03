@@ -66,7 +66,8 @@ final class PipelineRegistryTest extends TestCase
         // v8.36 / ADR 0029 — OCR converter (registered before pdf-converter;
         // claims image/* only when kb.ocr.enabled).
         $this->assertContains('ocr-converter', $names);
-        $this->assertCount(6, $names);
+        $this->assertContains('freshdesk-case-study', $names);
+        $this->assertCount(7, $names);
         $this->assertLessThan(array_search('pdf-converter', $names, true), array_search('ocr-converter', $names, true));
     }
 
@@ -84,7 +85,8 @@ final class PipelineRegistryTest extends TestCase
         $this->assertContains('atomic-note-chunker', $names);
         // v4.5/W6 — Jira issue chunker.
         $this->assertContains('jira-issue-chunker', $names);
-        $this->assertCount(7, $names);
+        $this->assertContains('freshdesk-case-study', $names);
+        $this->assertCount(8, $names);
     }
 
     public function test_enrichers_list_is_empty_in_v3_0(): void
