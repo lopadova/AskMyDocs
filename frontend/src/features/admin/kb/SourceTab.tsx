@@ -3,13 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
+import { defaultKeymap } from '@codemirror/commands';
 import { useKbRaw, useUpdateKbRaw } from './kb-document.api';
 import { useToast } from '../shared/Toast';
 import type { KbUpdateRawErrorShape } from '../admin.api';
 
 /*
  * Phase G3 — Source tab. Minimal CodeMirror 6 bundle (state + view +
- * lang-markdown only; no basic-setup), a Save / Cancel / Diff toolbar,
+ * lang-markdown and standard editing commands; no basic-setup), a Save / Cancel / Diff toolbar,
  * and a hand-rolled line-by-line diff panel.
  *
  * Failure surfaces are testid-addressable (R11):
@@ -99,7 +100,7 @@ export function SourceTab({ documentId }: SourceTabProps) {
                     bufferRef.current = next;
                     setIsDirty(next !== savedRef.current);
                 }),
-                keymap.of([]),
+                keymap.of(defaultKeymap),
             ],
         });
         viewRef.current = new EditorView({
