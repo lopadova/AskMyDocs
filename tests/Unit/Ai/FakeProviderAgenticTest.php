@@ -163,6 +163,17 @@ final class FakeProviderAgenticTest extends TestCase
         }
     }
 
+    public function test_the_known_policy_request_searches_the_real_knowledge_tool_before_answering(): void
+    {
+        $payload = ['question' => \App\Services\Dev\AgentRetrievalFixture::POLICY_QUESTION,
+            'available_tools' => [['name' => 'search_knowledge_base']], 'completed_actions' => []];
+        $plan = $this->provider()->chatWithHistory('system', [['role' => 'user', 'content' => json_encode($payload)]], $this->forcedOptions('submit_agent_plan'));
+        $this->assertSame('search_knowledge_base', $plan->toolCalls[0]['arguments']['actions'][0]['tool']);
+        $payload['completed_actions'] = [['id' => 'find_fixture_policy', 'tool' => 'search_knowledge_base', 'status' => 'completed']];
+        $plan = $this->provider()->chatWithHistory('system', [['role' => 'user', 'content' => json_encode($payload)]], $this->forcedOptions('submit_agent_plan'));
+        $this->assertSame(['decision' => 'answer', 'actions' => []], $plan->toolCalls[0]['arguments']);
+    }
+
     /** @return array<string,mixed> */
     private function forcedOptions(string $function): array
     {

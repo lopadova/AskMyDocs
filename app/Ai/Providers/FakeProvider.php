@@ -152,6 +152,14 @@ final class FakeProvider implements AiProviderInterface
             }
             return ['decision' => 'answer', 'actions' => []];
         }
+        if ($question === \App\Services\Dev\AgentRetrievalFixture::POLICY_QUESTION
+            && in_array('search_knowledge_base', $toolNames, true)
+            && ($payload['evidence_summary']['documents'] ?? []) === []) {
+            return ['decision' => 'tools', 'actions' => [[
+                'id' => 'find_fixture_policy', 'tool' => 'search_knowledge_base',
+                'arguments' => ['query' => $question], 'depends_on' => [], 'purpose' => 'Find the remote work policy',
+            ]]];
+        }
         if (in_array($question, \App\Services\Dev\AgentRetrievalFixture::QUESTIONS, true)
             && in_array('find_customer', $toolNames, true)
             && in_array('get_orders', $toolNames, true)) {
