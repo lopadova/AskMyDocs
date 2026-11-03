@@ -447,6 +447,8 @@ final readonly class AgentLoop
 
                 $issuedAction = true;
                 $execution = $this->startExecution($run, $action, $tool, $resolved, $budget, $plan);
+                $execution->forceFill(['result_meta_json' => ['argument_bindings' => app(\App\Agent\Evidence\ToolResultLineage::class)
+                    ->capture($action->arguments, $resolved, $completed, $evidence->jsonSerialize())]])->save();
                 $started = microtime(true);
                 $toolSpan = $this->diagnostics->begin($run, 'tool.execute', [
                     'tool_kind' => $tool->kind,
@@ -498,7 +500,8 @@ final readonly class AgentLoop
                         ...$result->successful() ? [] : ['failure' => AgentToolFailure::summarize($result->body, $tool->inputSchema)],
                     ];
                     if ($tool->kind !== 'knowledge') {
-                        $evidence->addToolResult($tool, $resolved, $result->body, $execution->id);
+                        $evidence->addToolResult($tool, $resolved, $result->body, $execution->id,
+                            $execution->result_meta_json['argument_bindings'] ?? []);
                     }
                     if (! $result->complete && $result->stopReason !== null) {
                         $evidence->addWarning($result->stopReason, $tool->name);
@@ -756,6 +759,7 @@ final readonly class AgentLoop
         $execution->forceFill([
             'status' => $result->successful() ? 'completed' : 'failed',
             'result_meta_json' => [
+                ...((array) $execution->result_meta_json),
                 'request' => $result->stats['initial_request'] ?? null,
                 'result' => $this->masker->maskArray($result->body) ?? [],
                 'complete' => $result->complete,

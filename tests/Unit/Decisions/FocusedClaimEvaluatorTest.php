@@ -8,6 +8,52 @@ use Tests\TestCase;
 
 class FocusedClaimEvaluatorTest extends TestCase
 {
+    public function test_dependent_record_identity_is_verified_while_values_stay_bound_to_the_child_source(): void
+    {
+        $this->fake();
+        [$evidence, $claim, $understanding] = $this->dependentRecord();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Availability for PURCHASE-Q91?', $evidence, [$claim], $understanding, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertSame($claim['text'], $result['claims'][0]['text']);
+        $this->assertNotEmpty($result['semantic_validation'][0]['checks'][0]['dependency_identity']);
+        Http::assertSent(function ($request) {
+            $pair = $request['state']['pairs'][0] ?? null;
+            if ($pair === null) return false;
+            $link = collect($pair['related_evidence'])->firstWhere('kind', 'tool_dependency_identity');
+            return $link !== null && $link['identity_only'] === true
+                && str_contains($request['state']['sources'][$pair['source_ref']], '"available":0')
+                && str_contains($request['state']['sources'][$link['source_ref']], '"available":999');
+        });
+    }
+
+    public function test_an_unsupported_value_cannot_be_borrowed_from_the_dependency_parent(): void
+    {
+        $this->fake(['claim_0' => 'unsupported']);
+        [$evidence, $claim, $understanding] = $this->dependentRecord();
+        $claim['text'] = 'PURCHASE-Q91: MODEL-R73 has available quantity 999.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Availability for PURCHASE-Q91?', $evidence, [$claim], $understanding, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| available | 0 |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('999', $result['claims'][0]['text']);
+        $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
+    }
+
+    private function dependentRecord(): array
+    {
+        $parent = ['execution_id' => 10, 'tool' => 'lookup_purchase', 'presentation' => ['collection_path' => 'rows', 'identity_fields' => ['ref']],
+            'result' => ['rows' => [['ref' => 'PURCHASE-Q91', 'items' => [['model' => 'MODEL-R73', 'key' => 72345, 'available' => 999]]]]]];
+        $parent['evidence_hash'] = hash('sha256', json_encode($parent['result'], JSON_UNESCAPED_UNICODE));
+        $child = ['execution_id' => 11, 'tool' => 'lookup_resource', 'presentation' => ['collection_path' => 'rows', 'identity_fields' => ['resource_key']],
+            'arguments' => ['lookup' => 72345], 'result' => ['rows' => [['resource_key' => 72345, 'available' => 0]]]];
+        $child['evidence_hash'] = hash('sha256', json_encode($child['result'], JSON_UNESCAPED_UNICODE));
+        $child['argument_bindings'] = (new \App\Agent\Evidence\ToolResultLineage)->capture(
+            ['lookup' => ['$from' => 'purchase', 'path' => 'rows.0.items.0.key']], $child['arguments'],
+            [['id' => 'purchase', 'status' => 'completed', 'execution_id' => 10]], ['api_tools' => [$parent]]);
+        $sub = ['identifiers' => ['PURCHASE-Q91', 'MODEL-R73'], 'fields' => ['available'], 'aspect' => 'availability'];
+        return [['api_tools' => [$parent, $child]], ['text' => 'PURCHASE-Q91: MODEL-R73 has available quantity 0.',
+            'tool_execution_id' => 11, 'evidence_hash' => $child['evidence_hash'], 'record_path' => 'rows.0'], ['focus' => $sub, 'subquestions' => [$sub]]];
+    }
+
     public function test_one_inconsistent_choice_cannot_erase_another_independent_document_claim(): void
     {
         config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8,

@@ -95,11 +95,11 @@ final class AgentWaveCoordinator
                 max(1, (float) config('agent.waves.minimum_dispatch_seconds', 5)));
             $planningSeconds = $initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
                 (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000);
-            // A first observation must not be abandoned merely because the
+            // A useful observation must not be abandoned merely because the
             // planning estimate exceeds the remaining collection allowance.
             // Bound the actual requests (including correction) instead, still
             // leaving a useful wave and the existing answer reserve intact.
-            if ($initialPlan === null && $completed === []) {
+            if ($initialPlan === null) {
                 $planningSeconds = min($planningSeconds, max(0, $this->researchTimeRemaining($run, $budget) - $minimumWaveSeconds));
                 $minimumPlanningSeconds = min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
                 if ($planningSeconds < $minimumPlanningSeconds) {
@@ -124,8 +124,7 @@ final class AgentWaveCoordinator
                         'previous_waves' => data_get($run->result_json, 'waves', []),
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
             } catch (\Throwable $exception) {
-                $minimumAfterFailure = $minimumWaveSeconds + ($completed === []
-                    ? min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30))) : 0);
+                $minimumAfterFailure = $minimumWaveSeconds + min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
                 if ($this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
                     return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
                 }
@@ -189,7 +188,9 @@ final class AgentWaveCoordinator
                     $this->skipped($run, $action, $tool, $decision->reason ?? 'budget_limit', $completed);
                     continue;
                 }
-                $ready[$action->id] = ['action' => $action, 'tool' => $tool, 'arguments' => $arguments];
+                $ready[$action->id] = ['action' => $action, 'tool' => $tool, 'arguments' => $arguments,
+                    'argument_bindings' => app(\App\Agent\Evidence\ToolResultLineage::class)->capture(
+                        $action->arguments, $arguments, $completed, $evidence->jsonSerialize())];
             }
             foreach ($plan->rejectedActions as $action) {
                 $this->skipped($run, $action, $tools[$action->tool], 'input_pattern_branch_rejected', $completed);
@@ -222,7 +223,8 @@ final class AgentWaveCoordinator
                     'tool_name' => $item['tool']->name, 'tool_kind' => $item['tool']->kind,
                     'api_route_id' => $item['tool']->kind === 'api' && is_int($item['tool']->executorReference) ? $item['tool']->executorReference : null,
                     'status' => 'running', 'depends_on_json' => $item['action']->dependsOn,
-                    'result_meta_json' => ['action_id' => $id, 'wave_id' => $waveId, 'physical_quota' => $quota, 'arguments_hash' => $this->signature($item['arguments'])],
+                    'result_meta_json' => ['action_id' => $id, 'wave_id' => $waveId, 'physical_quota' => $quota, 'arguments_hash' => $this->signature($item['arguments']),
+                        'argument_bindings' => $item['argument_bindings']],
                     'arguments_json' => $this->masker->maskArray($item['arguments']) ?? [], 'started_at' => now(),
                 ]);
                 $payload = ['run_id' => $run->id, 'context' => $context->jsonSerialize(), 'tool' => $item['tool'],
@@ -290,7 +292,7 @@ final class AgentWaveCoordinator
                     $evidence->import(['documents' => $body['documents'] ?? []]);
                     $budget->recordKnowledgeSearchResult($evidence->byteSize() > $before);
                 } else {
-                    $evidence->addToolResult($tool, $item['arguments'], $observation->body, $execution->id);
+                    $evidence->addToolResult($tool, $item['arguments'], $observation->body, $execution->id, $item['argument_bindings']);
                 }
                 $budget->recordResult($observation->physicalRequests, max(0, $evidence->byteSize() - $before), $observation->successful());
                 if (! $observation->complete) $evidence->addWarning($observation->stopReason ?? 'incomplete', $tool->name);

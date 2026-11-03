@@ -58,6 +58,7 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         array $arguments,
         array $result,
         ?int $executionId = null,
+        array $argumentBindings = [],
     ): void {
         $maskedArguments = $this->masker->maskArray($arguments) ?? [];
         $maskedResult = $this->masker->maskArray($result) ?? [];
@@ -72,6 +73,7 @@ final class AgentEvidenceEnvelope implements JsonSerializable
             'result' => $maskedResult,
             'evidence_hash' => hash('sha256', (string) json_encode($maskedResult, JSON_UNESCAPED_UNICODE)),
             'retrieved_at' => now()->toIso8601String(),
+            ...($argumentBindings === [] ? [] : ['argument_bindings' => $argumentBindings]),
         ];
     }
 

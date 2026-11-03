@@ -205,7 +205,7 @@ final readonly class ToolContinuation
                 'latency_ms' => (int) min(2147483647, max(0, now()->getTimestamp() - $locked->created_at->getTimestamp()) * 1000),
                 'completed_at' => now(),
             ])->save();
-            $evidence->addToolResult($toolDefinition, $handoff['arguments'], $body, $execution->id);
+            $evidence->addToolResult($toolDefinition, $handoff['arguments'], $body, $execution->id, $executionMeta['argument_bindings'] ?? []);
             if ($locked->status !== 'completed') { $evidence->addWarning($locked->error_code ?? 'api_tool_incomplete', $toolDefinition->name); }
             $completed = (array) ($checkpoint['completed_actions'] ?? []);
             $completed[] = [

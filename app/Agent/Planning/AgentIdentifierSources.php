@@ -67,8 +67,8 @@ final class AgentIdentifierSources
                 continue;
             }
             array_walk_recursive($result, static function ($value) use (&$texts): void {
-                if (is_string($value)) {
-                    $texts[] = $value;
+                if (is_string($value) || is_int($value)) {
+                    $texts[] = (string) $value;
                 }
             });
         }

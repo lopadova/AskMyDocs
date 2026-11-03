@@ -100,6 +100,10 @@ final readonly class AgentEvidenceAccess
                 && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool))
                 && ($tool['executor_reference'] ?? null) === $definition->executorReference
                 && hash_equals((string) ($tool['evidence_hash'] ?? ''), hash('sha256', (string) json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE)))) {
+                // Dependency links are host execution metadata, never checkpoint or remote assertions.
+                unset($tool['argument_bindings']);
+                $bindings = $execution->result_meta_json['argument_bindings'] ?? [];
+                if ($bindings !== []) $tool['argument_bindings'] = $bindings;
                 $safe['api_tools'][] = $sourceRun->id !== $run->id && ! $researchChild && ! $memoryReuse
                     ? [...$tool, 'historical_context' => true] : $tool;
             } else {

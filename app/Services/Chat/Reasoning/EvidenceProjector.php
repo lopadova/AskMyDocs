@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Chat\Reasoning;
 
+use App\Agent\Evidence\ToolResultLineage;
+
 /** Projects original evidence, never model-provided quotations or wrapper search terms. */
 final class EvidenceProjector
 {
     public function forPrompt(array $evidence): array
     {
+        $originalEvidence = $evidence;
         $choice = 0;
         foreach ($evidence['documents'] ?? [] as $index => $document) {
             foreach ($document['evidence'] ?? [] as $chunkIndex => $chunk) {
@@ -34,8 +37,12 @@ final class EvidenceProjector
             // invented nested item or a response containing no records.
             $recordSources = [];
             foreach ($records as $entry) {
+                $links = (new ToolResultLineage)->contexts($originalEvidence, $tool, $entry['path'],
+                    (string) ($tool['tenant_id'] ?? ''), (string) ($tool['project_key'] ?? $tool['result']['companyKey'] ?? ''));
                 $recordSources[] = ['record_path' => $entry['path'],
-                    'source_ref' => $this->recordSourceRef($tool, $entry['path']), 'source_choice' => $choice++];
+                    'source_ref' => $this->recordSourceRef($tool, $entry['path']), 'source_choice' => $choice++,
+                    ...($links === [] ? [] : ['verified_dependency_identity' => array_map(fn ($link) => array_intersect_key($link,
+                        array_flip(['execution_id', 'record_path', 'source_path', 'argument_path', 'identifiers'])), $links)])];
             }
             $evidence['api_tools'][$index]['record_sources'] = $recordSources;
             unset($evidence['api_tools'][$index]['source_ref']);
@@ -154,6 +161,7 @@ final class EvidenceProjector
     public function forTable(array $tools, array $understanding, string $tenant, string $project): array
     {
         $ids = $understanding['focus']['identifiers'] ?? [];
+        $lineage = new ToolResultLineage;
         $selected = [];
         foreach ($tools as $tool) {
             if ((isset($tool['tenant_id']) && $tool['tenant_id'] !== $tenant)
@@ -164,10 +172,11 @@ final class EvidenceProjector
             if ($records === []) {
                 continue;
             }
-            $rows = array_values(array_filter(array_column($records, 'record'), fn ($record) => $ids === []
-                || array_intersect($ids, self::identities($record, $tool['presentation']['identity_fields'] ?? [])) !== []
-                || array_filter($record, fn ($value, $key) => preg_match('/(?:Id|Ids)$/', (string) $key)
-                    && array_intersect($ids, is_array($value) ? $value : [(string) $value]) !== [], ARRAY_FILTER_USE_BOTH)));
+            $rows = array_values(array_column(array_filter($records, fn ($entry) => $ids === []
+                || array_intersect($ids, self::identities($entry['record'], $tool['presentation']['identity_fields'] ?? [])) !== []
+                || $lineage->matches($lineage->contexts(['api_tools' => $tools], $tool, $entry['path'], $tenant, $project), $ids)
+                || array_filter($entry['record'], fn ($value, $key) => preg_match('/(?:Id|Ids)$/', (string) $key)
+                    && array_intersect($ids, is_array($value) ? $value : [(string) $value]) !== [], ARRAY_FILTER_USE_BOTH)), 'record'));
             if ($rows !== []) {
                 $selected[] = [...$tool, 'result' => ['records' => $rows, 'total' => count($rows)],
                     'presentation' => [...($tool['presentation'] ?? []), 'collection_path' => 'records']];
@@ -249,11 +258,13 @@ final class EvidenceProjector
                 return ['reason' => 'source_hash_mismatch'];
             }
             $records = self::records($source);
-            $matches = array_values(array_filter($records, static function ($entry) use ($ids, $claim, $source): bool {
+            $lineage = new ToolResultLineage;
+            $matches = array_values(array_filter($records, function ($entry) use ($ids, $claim, $source, $lineage, $evidence, $tenant, $project): bool {
                 if (isset($claim['record_path']) && $claim['record_path'] !== $entry['path']) {
                     return false;
                 }
-                return $ids === [] || array_intersect($ids, self::identities($entry['record'], $source['presentation']['identity_fields'] ?? [])) !== [];
+                return $ids === [] || array_intersect($ids, self::identities($entry['record'], $source['presentation']['identity_fields'] ?? [])) !== []
+                    || $lineage->matches($lineage->contexts($evidence, $source, $entry['path'], $tenant, $project), $ids);
             }));
             if (count($matches) !== 1) {
                 return ['reason' => $matches === [] ? 'entity_mismatch' : 'ambiguous_record'];
@@ -264,7 +275,8 @@ final class EvidenceProjector
                 'field_aliases' => $source['presentation']['field_aliases'] ?? [],
                 'record_collections' => $source['presentation']['record_collections'] ?? [],
                 'source_title' => $source['display_name'] ?? $source['tool'] ?? '',
-                'observed_at' => $source['retrieved_at'] ?? null];
+                'observed_at' => $source['retrieved_at'] ?? null,
+                'dependency_context' => $lineage->contexts($evidence, $source, $matches[0]['path'], $tenant, $project)];
         }
         return ['reason' => 'source_not_in_authorized_evidence'];
     }
