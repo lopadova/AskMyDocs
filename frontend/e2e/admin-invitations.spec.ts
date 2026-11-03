@@ -1,6 +1,7 @@
 import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
 import { loginAsProjectUser } from './setup-helpers';
+import { openAdminHubSection } from './helpers';
 
 /*
  * v8.x — Native Invitations admin.
@@ -31,9 +32,7 @@ seededTest.describe('Admin Invitations — native admin', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        const navButton = page.getByRole('button', { name: 'Invitations', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'organisation', 'invitations');
 
         await expect(page).toHaveURL(/\/admin\/invitations/);
         await expect(page.getByTestId('admin-invitations')).toBeVisible({ timeout: 15_000 });

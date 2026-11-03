@@ -1,4 +1,5 @@
 import { test as baseTest, expect } from './fixtures';
+import { openAdminHubSection } from './helpers';
 /*
  * Uses the `seeded` auto-fixture (reset -> DemoSeeder -> project login)
  * rather than raw @playwright/test.
@@ -54,9 +55,7 @@ baseTest.describe('Admin Ingestion & Sync — super-admin', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        const navButton = page.getByRole('button', { name: 'Ingestion & Sync', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'integrations', 'ingestion');
 
         await expect(page).toHaveURL(/\/admin\/ingestion$/);
         await expect(page.getByTestId('admin-ingestion')).toBeVisible({ timeout: 15_000 });

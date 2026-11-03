@@ -50,8 +50,8 @@ export async function chooseSelectOption(trigger: Locator, choice: SelectChoice)
 }
 
 /** Follow the current administration hub navigation through its visible controls. */
-export async function openAdminHubSection(page: Page, hub: string, section: string): Promise<void> {
-    await chooseSelectOption(page.getByRole('combobox', { name: 'Workspace area' }), 'admin');
+export async function openAdminHubSection(page: Page, hub: string, section: string, area: 'admin' | 'system' = 'admin'): Promise<void> {
+    await chooseSelectOption(page.getByRole('combobox', { name: 'Workspace area' }), area);
     await page.getByTestId(`sidebar-hub-${hub}`).click();
     await page.getByTestId(`hub-link-${section}`).click();
 }

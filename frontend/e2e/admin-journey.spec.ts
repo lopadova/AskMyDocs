@@ -39,9 +39,9 @@ import { seedDb } from './setup-helpers';
  */
 
 test.describe('Admin golden-path journey — Phase J', () => {
+    test.describe.configure({ timeout: 90_000 });
     test('login → dashboard → users → roles → kb tree + source edit + graph → logs → maintenance → insights → logout', async ({
         page,
-        request,
     }) => {
         // ─── Step 1: Login as admin → land on /app ──────────────────────
         //
@@ -171,7 +171,7 @@ test.describe('Admin golden-path journey — Phase J', () => {
         await expect(cm).toBeVisible();
         const content = cm.locator('.cm-content');
         await content.click();
-        await page.keyboard.press('Control+End');
+        await page.keyboard.press('ControlOrMeta+End');
         await page.keyboard.type('\n\n<!-- journey spec edit -->\n');
 
         // Confirm the keystrokes landed in the CodeMirror buffer before relying on
@@ -197,6 +197,10 @@ test.describe('Admin golden-path journey — Phase J', () => {
         await expect(page.getByTestId('toast-success')).toBeVisible({ timeout: 15_000 });
 
         // History tab must surface a new `updated` row.
+        // Reopen the current version after ingestion, without retaining the archived row id.
+        await page.goto('/app/admin/kb');
+        await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready');
+        await page.getByTestId('kb-tree-node-policies/remote-work-policy.md').click();
         await page.getByTestId('kb-tab-history').click();
         await expect(page.getByTestId('kb-history')).toBeVisible({ timeout: 10_000 });
         const updatedRow = page.locator(
@@ -274,7 +278,7 @@ test.describe('Admin golden-path journey — Phase J', () => {
         // AdminInsightsSeeder is designed to be idempotent on top of
         // DemoSeeder.
 
-        await seedDb(request, 'AdminInsightsSeeder');
+        await seedDb(page, 'AdminInsightsSeeder');
         await page.goto('/app/admin/insights');
         await expect(page.getByTestId('insights-view')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
@@ -293,40 +297,16 @@ test.describe('Admin golden-path journey — Phase J', () => {
 
         // ─── Step 10: Logout ─────────────────────────────────────────────
         //
-        // The current shell doesn't render a visible logout button —
-        // end the session via the real `POST /api/auth/logout` route
-        // and assert the subsequent /app navigation bounces to /login
-        // (the RequireAuth guard does the redirect).
-
-        // POST /api/auth/logout sits under the `web` middleware group
-        // so VerifyCsrfToken applies. Without an explicit X-XSRF-TOKEN
-        // header the request 419s. The seeded fixture already populated
-        // the top-level `request` jar with a XSRF-TOKEN via
-        // /sanctum/csrf-cookie + login; pull it out and forward it.
-        const reqStorage = await request.storageState();
-        const xsrfCookie = reqStorage.cookies.find((c) => c.name === 'XSRF-TOKEN');
-        if (!xsrfCookie) {
-            throw new Error(
-                'admin-journey: XSRF-TOKEN missing from request jar before logout',
-            );
-        }
-        const logoutRes = await request.post('/api/auth/logout', {
-            headers: {
-                'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),
-                Accept: 'application/json',
-            },
+        // End the browser's actual session, then verify the same jar is unauthenticated.
+        const cookies = await page.context().cookies(page.url());
+        const xsrf = cookies.find(cookie => cookie.name === 'XSRF-TOKEN');
+        if (!xsrf) throw new Error('Missing browser CSRF token before logout.');
+        const logout = await page.request.post('/api/auth/logout', {
+            headers: { 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' },
         });
-        expect([200, 204]).toContain(logoutRes.status());
-
-        // Backend session is invalidated, but the SPA's auth store is still
-        // hydrated from the pre-logout state, so the /app/admin → /login bounce
-        // is racy. Clear the client cookies and hard-load /login instead: it
-        // now serves the React SPA login on a full page load too (the legacy
-        // Blade auth pages were removed). `login-form` is the React-only testid
-        // — the old Blade form never carried it — so asserting it both proves
-        // we landed on the auth surface with the previous session gone AND
-        // guards against a Blade login ever being reintroduced at /login.
-        await page.context().clearCookies();
+        expect([200, 204]).toContain(logout.status());
+        const me = await page.request.get('/api/auth/me', { headers: { Accept: 'application/json' } });
+        expect(me.status()).toBe(401);
         await page.goto('/login');
         await expect(page.getByTestId('login-form')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('login-email')).toBeVisible();

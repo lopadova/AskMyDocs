@@ -1,4 +1,5 @@
-import { test as baseTest, expect } from '@playwright/test';
+import { test as baseTest, expect } from './fixtures';
+import { openAdminHubSection } from './helpers';
 
 const e2eBaseUrl = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
 
@@ -9,21 +10,13 @@ const e2eBaseUrl = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
  * (super-admin only). These scenarios run under the `chromium-super-admin`
  * Playwright project (storageState: playwright/.auth/super-admin.json).
  *
- * IMPORTANT (R38): this file deliberately does NOT call resetDb()/migrate:fresh.
- * It relies on the global seeded state + serial test ordering, exactly like the
- * pre-v8.20 version — a per-test migrate:fresh here races the other super-admin
- * specs (admin-insights / maintenance / mcp) that authenticate via storageState
- * and flips them to 401 mid-run. The multi-account WRITE flows (create / edit /
- * duplicate-rejection / project binding) are covered by the self-contained
- * `connectors-imap-super-admin.spec.ts` (credential connector, inline login).
+ * Each test resets, seeds and signs in through the shared fixture. The
+ * self-contained IMAP spec separately exercises credential configuration.
  *
  * R13: the only external boundary touched is the OAuth redirect
  * (accounts.google.com) — aborted via page.route so the test never leaves the
  * application. Internal routes are real.
  *
- * Test order matters: the not_installed assertions run before the scenarios that
- * create a PENDING google-drive row (the contract probe + the OAuth-add happy
- * path), so they see the clean seeded state.
  */
 
 baseTest.describe.configure({ timeout: 90_000 });
@@ -63,6 +56,7 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         const probeLabel = `probe-${Date.now()}`;
         const installResp = await page.request.get(
             `/api/admin/connectors/google-drive/install?label=${encodeURIComponent(probeLabel)}`,
+            { headers: { 'X-Tenant-Id': 'a-demo' } },
         );
         if (!installResp.ok()) {
             throw new Error(`GET install returned ${installResp.status()}: ${await installResp.text()}`);
@@ -96,9 +90,7 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        const navButton = page.getByRole('button', { name: 'Connectors', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'integrations', 'connectors');
 
         await expect(page).toHaveURL(/\/admin\/connectors$/);
         await expect(page.getByTestId('admin-connectors')).toBeVisible({ timeout: 15_000 });

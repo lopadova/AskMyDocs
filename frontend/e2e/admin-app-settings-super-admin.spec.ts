@@ -1,4 +1,6 @@
-import { test as baseTest, expect } from '@playwright/test';
+import { test as baseTest, expect } from './fixtures';
+import { openAdminHubSection } from './helpers';
+import { E2E_BASE_URL } from './setup-helpers';
 
 /*
  * v8.22 (Ciclo 3) — "Configuration" admin screen + runtime config governance.
@@ -7,12 +9,8 @@ import { test as baseTest, expect } from '@playwright/test';
  * (storageState). R13: real backend / DB / Gate, no internal route mocking
  * (except the explicit failure-injection test, marked below).
  *
- * IMPORTANT (R38): no resetDb()/migrate:fresh here — it would race the other
- * super-admin specs. The one mutating test changes `connector.sync_cadence_minutes`
- * (inert for every other spec — chat/retrieval never read it) and resets the
- * override at the end, so it leaves no cross-spec state. We deliberately do NOT
- * touch `ai.provider` here: a tenant override would re-route the chat provider
- * and break the chat specs.
+ * Each scenario uses the shared reset/seed/login fixture. Only the inert
+ * connector cadence is mutated; the AI provider stays in the offline profile.
  */
 
 const CADENCE_KEY = 'connector.sync_cadence_minutes';
@@ -28,11 +26,16 @@ baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
     const clearCadence = async (page: import('@playwright/test').Page) => {
         const resp = await page.request.put('/api/admin/app-settings', {
             data: { key: CADENCE_KEY, value: null, project_key: '*' },
+            headers: await apiHeaders(page),
         });
-        expect(resp.ok()).toBeTruthy();
+        if (!resp.ok()) throw new Error(`Clearing cadence returned ${resp.status()}: ${await resp.text()}`);
     };
 
-    baseTest.beforeEach(async ({ page }) => clearCadence(page));
+    baseTest.beforeEach(async ({ page }) => {
+        // Establish the SPA origin before API calls so Sanctum loads its session.
+        await page.goto('/app/admin/app-settings');
+        await clearCadence(page);
+    });
     baseTest.afterEach(async ({ page }) => clearCadence(page));
 
     baseTest('lands on /app/admin/app-settings with the guided configuration form', async ({ page }) => {
@@ -87,16 +90,14 @@ baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        const navButton = page.getByRole('button', { name: 'Configuration', exact: true });
-        await expect(navButton).toBeVisible();
-        await navButton.click();
+        await openAdminHubSection(page, 'system', 'app-settings', 'system');
 
         await expect(page).toHaveURL(/\/admin\/app-settings$/);
         await expect(page.getByTestId('admin-app-settings')).toBeVisible({ timeout: 15_000 });
     });
 
     baseTest('BE contract — app-settings endpoint returns the governable keys', async ({ page }) => {
-        const resp = await page.request.get('/api/admin/app-settings');
+        const resp = await page.request.get('/api/admin/app-settings', { headers: await apiHeaders(page) });
         if (!resp.ok()) {
             throw new Error(`GET app-settings returned ${resp.status()}: ${await resp.text()}`);
         }
@@ -109,6 +110,7 @@ baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
     baseTest('failure — deploy-only key is rejected with 422 (R14)', async ({ page }) => {
         const resp = await page.request.put('/api/admin/app-settings', {
             data: { key: 'ai_finops.enabled', value: true, project_key: '*' },
+            headers: await apiHeaders(page),
         });
         expect(resp.status()).toBe(422);
     });
@@ -131,3 +133,9 @@ baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
         await expect(page.getByTestId('admin-app-settings-retry')).toBeVisible();
     });
 });
+
+async function apiHeaders(page: import('@playwright/test').Page) {
+    const xsrf = (await page.context().cookies(E2E_BASE_URL)).find(cookie => cookie.name === 'XSRF-TOKEN');
+    if (!xsrf) throw new Error('Missing XSRF cookie for app-settings test.');
+    return { 'X-Tenant-Id': 'a-demo', 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' };
+}

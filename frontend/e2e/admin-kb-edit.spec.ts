@@ -43,7 +43,7 @@ test.describe('Admin KB Source Editor', () => {
         const content = cm.locator('.cm-content');
         await content.click();
         // Move cursor to end of document, then append a marker line.
-        await page.keyboard.press('Control+End');
+        await page.keyboard.press('ControlOrMeta+End');
         await page.keyboard.type('\n\n<!-- edited by e2e -->\n');
 
         // Confirm the keystrokes actually landed in the CodeMirror buffer before
@@ -76,6 +76,10 @@ test.describe('Admin KB Source Editor', () => {
 
         // Switch to the History tab — a new `updated` audit row must appear
         // in addition to the seeded `promoted` row.
+        // Reopen the current version after ingestion, without retaining the archived row id.
+        await page.goto('/app/admin/kb');
+        await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready');
+        await page.getByTestId('kb-tree-node-policies/remote-work-policy.md').click();
         await page.getByTestId('kb-tab-history').click();
         await expect(page.getByTestId('kb-history')).toBeVisible({ timeout: 10_000 });
         const updatedRow = page.locator(
@@ -151,7 +155,7 @@ test.describe('Admin KB Source Editor', () => {
         const cm = page.getByTestId('kb-editor-cm');
         const content = cm.locator('.cm-content');
         await content.click();
-        await page.keyboard.press('Control+End');
+        await page.keyboard.press('ControlOrMeta+End');
         await page.keyboard.type('\n\n<!-- trigger 500 -->\n');
 
         await page.getByTestId('kb-editor-save').click();
@@ -177,7 +181,7 @@ test.describe('Admin KB Source Editor', () => {
         expect(before).not.toBeNull();
 
         await content.click();
-        await page.keyboard.press('Control+End');
+        await page.keyboard.press('ControlOrMeta+End');
         await page.keyboard.type('\n\nSHOULD BE REMOVED BY CANCEL\n');
 
         await expect(page.getByTestId('kb-editor-cancel')).toBeEnabled({ timeout: 10_000 });

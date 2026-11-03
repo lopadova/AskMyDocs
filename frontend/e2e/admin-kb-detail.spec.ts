@@ -17,7 +17,7 @@ import { test } from './fixtures';
  */
 
 test.describe('Admin KB Document Detail', () => {
-    test('happy — browse to a doc and preview renders with frontmatter pills', async ({ page }) => {
+    test('happy — browse to a doc and preview renders with document metadata', async ({ page }) => {
         await page.goto('/app/admin/kb');
 
         await expect(page.getByTestId('admin-shell')).toBeVisible({ timeout: 15_000 });
@@ -37,11 +37,12 @@ test.describe('Admin KB Document Detail', () => {
         // Preview tab is active by default.
         await expect(page.getByTestId('kb-tab-preview')).toHaveAttribute('data-active', 'true');
 
-        // Frontmatter pill pack comes from the YAML fence DemoSeeder now
-        // writes to disk — keys `id`, `type`, `status`, `project`.
-        await expect(page.getByTestId('frontmatter-pills')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('frontmatter-pill-type')).toContainText('standard');
-        await expect(page.getByTestId('frontmatter-pill-status')).toContainText('accepted');
+        // The reader keeps metadata in the shared details sidebar, leaving
+        // the preview body for document content.
+        const details = page.getByRole('complementary', { name: 'Document details', exact: true });
+        await expect(details.getByText('standard', { exact: true })).toBeVisible();
+        await expect(details.getByText('accepted', { exact: true })).toBeVisible();
+        await expect(details).toContainText('hr-portal');
 
         // Body comes from the seeded markdown (# Remote Work Policy).
         await expect(page.getByTestId('kb-preview-body')).toContainText('Remote Work Policy');
