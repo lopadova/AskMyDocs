@@ -32,7 +32,7 @@ final class CampaignBinding
             }
             $input['live_sources'][$kind] = $selected;
         }
-        return [...$input, 'qa' => [...$qa, 'release' => $release,
+        return [...$input, 'qa' => [...$qa, 'turn' => (int) $qa['turn'], 'release' => $release,
             'configuration' => app(CampaignRuntime::class)->snapshot($conversation->tenant_id, (string) $conversation->project_key)]];
     }
 }

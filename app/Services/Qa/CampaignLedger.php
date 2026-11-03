@@ -47,7 +47,8 @@ final class CampaignLedger
     {
         if (! $actor->is_active || ! $actor->hasAnyRole(['admin', 'super-admin'])
             || ! \App\Models\ProjectMembership::query()->forTenant($tenant)->where('user_id', $actor->id)->exists()
-            || (! $actor->canReadAllProjects() && ! in_array($project, $actor->allowedProjects(), true))) {
+            || (! $actor->canReadAllProjects() && ! \App\Models\ProjectMembership::query()->forTenant($tenant)
+                ->where('user_id', $actor->id)->where('project_key', $project)->exists())) {
             throw new \DomainException('qa_campaign_actor_not_authorized');
         }
     }

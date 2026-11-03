@@ -67,6 +67,21 @@ final class QaCampaignTest extends TestCase
         return Http::post('https://openrouter.ai'.$path, ['model' => 'test/model', 'messages' => [['role' => 'user', 'content' => 'private original']], 'max_tokens' => 100]);
     }
 
+    public function test_operator_authorization_uses_the_explicit_tenant_instead_of_ambient_context(): void
+    {
+        config(['kb.project_isolation.enabled' => true]);
+        \Spatie\Permission\Models\Role::findByName('admin', 'web')->revokePermissionTo('kb.read.all_projects');
+        $this->assertFalse($this->actor->canReadAllProjects());
+        ProjectMembership::create(['tenant_id' => 'other', 'project_key' => 'unrelated', 'user_id' => $this->actor->id, 'role' => 'member']);
+        $ledger = app(CampaignLedger::class);
+        app(TenantContext::class)->set('other');
+        $ledger->assertActor('acme', 'orders', $this->actor);
+        $this->assertSame('other', app(TenantContext::class)->current());
+        app(TenantContext::class)->set('acme');
+        $this->expectExceptionObject(new \DomainException('qa_campaign_actor_not_authorized'));
+        $ledger->assertActor('other', 'orders', $this->actor);
+    }
+
     public function test_real_http_middleware_reserves_and_records_without_storing_originals(): void
     {
         $campaign = $this->campaign();
@@ -627,7 +642,7 @@ final class QaCampaignTest extends TestCase
         Queue::fake();
         $campaign = $this->campaign();
         $conversation = Conversation::create(['tenant_id' => 'acme', 'project_key' => 'orders', 'user_id' => $this->actor->id, 'title' => 'QA']);
-        $qa = ['campaign_id' => $campaign->id, 'round' => 'baseline', 'case_id' => 'DEMO-01', 'turn' => 1];
+        $qa = ['campaign_id' => $campaign->id, 'round' => 'baseline', 'case_id' => 'DEMO-01', 'turn' => '1'];
         $token = $this->actor->createToken('qa', ['chat:use', 'chat:tenant:acme'])->plainTextToken;
         $this->withHeaders(['Authorization' => 'Bearer '.$token, 'X-Tenant-Id' => 'acme'])
             ->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Question', 'qa' => $qa])->assertForbidden();
@@ -639,6 +654,7 @@ final class QaCampaignTest extends TestCase
         $run = AgentRun::sole();
         $this->assertSame([], data_get($run->input_json, 'live_sources.api'));
         $this->assertSame($campaign->id, data_get($run->input_json, 'qa.campaign_id'));
+        $this->assertSame(1, data_get($run->input_json, 'qa.turn'));
         $run->update(['status' => 'completed']);
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Followup'])->assertUnprocessable();
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages', ['content' => 'Question', 'qa' => $qa,
@@ -646,7 +662,7 @@ final class QaCampaignTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
             ['content' => 'Additional diagnostic followup', 'qa' => [...$qa, 'turn' => 256]])->assertUnprocessable();
         $this->withHeaders($headers)->postJson('/api/chat/conversations/'.$conversation->id.'/messages',
-            ['content' => 'Additional diagnostic followup', 'qa' => [...$qa, 'turn' => 4]])->assertAccepted();
+            ['content' => 'Additional diagnostic followup', 'qa' => [...$qa, 'turn' => '4']])->assertAccepted();
         $followup = AgentRun::query()->forTenant('acme')->where('conversation_id', $conversation->id)->whereKeyNot($run->id)->sole();
         $this->assertSame(4, data_get($followup->input_json, 'qa.turn'));
         $this->assertSame($campaign->id, data_get($followup->input_json, 'qa.campaign_id'));
