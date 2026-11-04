@@ -1,6 +1,6 @@
 # ADR 0035 — Retrieval quality: explainable, contextual, cross-encoded, expanded, code-aware
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-04 — approved by the product owner; cross-encoder drivers: both `http` API and self-hosted selectable via settings/env, default self-hosted; Node available on ingestion workers)
 - **Date:** 2026-11-04
 - **Cycle:** v8.41 → v8.45 ("Retrieval Quality", plan:
   [`PLAN-v8.41-retrieval-quality.md`](../v4-platform/PLAN-v8.41-retrieval-quality.md))

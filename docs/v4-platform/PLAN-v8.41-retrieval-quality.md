@@ -1,6 +1,6 @@
 # PLAN v8.41 → v8.45 — Retrieval quality
 
-- **Status:** Proposed (2026-11-04)
+- **Status:** Accepted (2026-11-04)
 - **Decision record:** [ADR 0035](../adr/0035-v841-retrieval-quality-cycle.md) —
   decisions D1–D7 referenced below.
 - **Origin:** comparative study of `tobi/qmd` (`86d2365`, 2026-10-14). Our
