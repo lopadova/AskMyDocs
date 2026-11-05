@@ -1,0 +1,336 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api\Admin;
+
+use App\Agent\Debug\RunDiagnostics;
+use App\Agent\Debug\RunDiagnosticSnapshot;
+use App\Models\AdminCommandAudit;
+use App\Models\AgentPlannerShadowReport;
+use App\Models\AgentRun;
+use App\Models\AgentRunEvent;
+use App\Models\AgentToolExecution;
+use App\Models\Conversation;
+use App\Models\Message;
+use App\Support\SensitivePayloadRedactor;
+use App\Support\TenantContext;
+use Carbon\CarbonInterface;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
+
+/**
+ * Builds the durable, tenant-scoped debugging record for one chat.
+ *
+ * This deliberately exposes persisted run payloads under the shared redaction
+ * policy: they contain the
+ * retrieval query, returned evidence, planner decisions and tool results that
+ * a tenant administrator needs to investigate an answer. The route middleware
+ * is the authorization boundary; never reuse this controller on a
+ * reader-facing API.
+ */
+final class ConversationDebugTranscriptController extends Controller
+{
+    public function __construct(
+        private readonly RunDiagnosticSnapshot $diagnostics,
+        private readonly SensitivePayloadRedactor $redactor,
+    ) {}
+
+    public function __invoke(
+        Request $request,
+        Conversation $conversation,
+        TenantContext $tenants,
+    ): JsonResponse {
+        $tenantId = $tenants->current();
+
+        // Resolve once more under the active tenant rather than relying only on
+        // route binding. This keeps the exported graph tenant-bound even if a
+        // future route changes its binding behavior.
+        $conversation = Conversation::query()
+            ->forTenant($tenantId)
+            ->findOrFail($conversation->getKey());
+
+        $messages = Message::query()
+            ->forTenant($tenantId)
+            ->where('conversation_id', $conversation->getKey())
+            ->orderBy('id')
+            ->get();
+
+        $runs = AgentRun::query()
+            ->forTenant($tenantId)
+            ->where('conversation_id', $conversation->getKey())
+            ->with([
+                'events' => static fn ($query) => $query->orderBy('sequence')->orderBy('id'),
+                'toolExecutions' => static fn ($query) => $query->orderBy('logical_index')->orderBy('id'),
+                'plannerShadowReports' => static fn ($query) => $query->orderBy('iteration')->orderBy('id'),
+            ])
+            ->orderBy('id')
+            ->get();
+
+        $exportedAt = now();
+        $payload = [
+            'schema_version' => 2,
+            'kind' => 'askmydocs.conversation_debug_transcript',
+            'exported_at' => $exportedAt->toIso8601String(),
+            'diagnostics' => [
+                'schema_version' => 1,
+                'captured_at' => $exportedAt->toISOString(),
+                'runtime_at_export' => app(RunDiagnostics::class)->runtime(),
+                'note' => 'Runtime at export belongs to the exporting process; compare with recorded span metadata.runtime for the worker configuration. No remote service or worker liveness probe was performed.',
+            ],
+            'tenant_id' => $tenantId,
+            'conversation' => $this->conversation($conversation),
+            'messages' => $messages
+                ->map(fn (Message $message): array => $this->message($message))
+                ->values()
+                ->all(),
+            'agent_runs' => $runs
+                ->map(fn (AgentRun $run): array => $this->run($run, $exportedAt, $runs))
+                ->values()
+                ->all(),
+            'coverage' => [
+                'messages' => 'All persisted messages in the conversation, in chronological order.',
+                'agent_runs' => 'All persisted planner, retrieval, evidence, event and tool-execution data linked to this conversation.',
+                'validation' => 'The deterministic grounding result and recorded semantic decision checks. Older runs may have no semantic trace.',
+                'diagnostics' => 'Versioned durable spans, open phases and activity timestamps are available during active runs. Missing observations do not establish the reason for an interruption.',
+                'note' => 'Provider traffic that was never persisted by the application cannot be reconstructed.',
+            ],
+        ];
+
+        // A transcript can contain the exact prompts and retrieved text. Keep a
+        // durable forensic record of who exported it, without duplicating the
+        // transcript itself in the audit table.
+        AdminCommandAudit::query()->create([
+            'tenant_id' => $tenantId,
+            'user_id' => $request->user()?->id,
+            'command' => 'chat:debug-transcript-download',
+            'args_json' => [
+                'conversation_id' => $conversation->getKey(),
+                'messages' => $messages->count(),
+                'agent_runs' => $runs->count(),
+            ],
+            'status' => AdminCommandAudit::STATUS_COMPLETED,
+            'stdout_head' => 'Conversation debug transcript exported.',
+            'started_at' => $exportedAt,
+            'completed_at' => now(),
+            'client_ip' => $request->ip(),
+            'user_agent' => mb_substr((string) $request->userAgent(), 0, 255),
+        ]);
+
+        $filename = sprintf(
+            'chat-debug-%d-%s.json',
+            $conversation->getKey(),
+            $exportedAt->format('Ymd-His'),
+        );
+
+        return response()
+            ->json($payload, 200, [
+                'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
+                'Cache-Control' => 'private, no-store',
+            ])
+            ->setEncodingOptions(
+                JSON_PRETTY_PRINT
+                | JSON_UNESCAPED_UNICODE
+                | JSON_UNESCAPED_SLASHES
+                | JSON_INVALID_UTF8_SUBSTITUTE,
+            );
+    }
+
+    /** @return array<string, mixed> */
+    private function conversation(Conversation $conversation): array
+    {
+        return [
+            'id' => $conversation->getKey(),
+            'tenant_id' => $conversation->tenant_id,
+            'user_id' => $conversation->user_id,
+            'title' => $this->safeValue($conversation->title),
+            'project_key' => $conversation->project_key,
+            'chat_folder_id' => $conversation->chat_folder_id,
+            'pinned_at' => $conversation->pinned_at?->toIso8601String(),
+            'archived_at' => $conversation->archived_at?->toIso8601String(),
+            'importance' => $conversation->importance?->value,
+            'session_recap' => $this->safeValue($conversation->session_recap),
+            'reasoning_state' => $this->safeValue($conversation->reasoning_state),
+            'verified_session_memory' => $this->safeValue(app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->snapshot($conversation)),
+            'created_at' => $conversation->created_at?->toIso8601String(),
+            'updated_at' => $conversation->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function message(Message $message): array
+    {
+        return [
+            'id' => $message->getKey(),
+            'tenant_id' => $message->tenant_id,
+            'conversation_id' => $message->conversation_id,
+            'agent_run_id' => $message->agent_run_id,
+            'role' => $message->role,
+            'content' => $this->safeValue($message->content),
+            'metadata' => $this->safeValue($message->metadata),
+            'validation' => $this->validation(data_get($message->metadata, 'grounding')),
+            'rating' => $message->rating,
+            'confidence' => $message->confidence,
+            'refusal_reason' => $this->safeValue($message->refusal_reason),
+            'created_at' => $message->created_at?->toIso8601String(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function run(AgentRun $run, CarbonInterface $capturedAt, Collection $runs): array
+    {
+        return [
+            'id' => $run->getKey(),
+            'run_id' => $run->run_id,
+            'tenant_id' => $run->tenant_id,
+            'project_key' => $run->project_key,
+            'user_id' => $run->user_id,
+            'conversation_id' => $run->conversation_id,
+            'widget_identity_id' => $run->widget_identity_id,
+            'widget_session_id' => $run->widget_session_id,
+            'channel' => $run->channel,
+            'actor_type' => $run->actor_type,
+            'actor_id' => $run->actor_id,
+            'locale' => $run->locale,
+            'timezone' => $run->timezone,
+            'status' => $run->status,
+            'input_json' => $this->safeValue($run->input_json),
+            'plan_json' => $this->safeValue($run->plan_json),
+            'budget_json' => $this->safeValue($run->budget_json),
+            'counters_json' => $this->safeValue($run->counters_json),
+            'result_json' => $this->safeValue($run->result_json),
+            'validation' => $this->validation(data_get($run->result_json, 'response.grounding')),
+            'error_code' => $this->safeValue($run->error_code),
+            'last_sequence' => $run->last_sequence,
+            'started_at' => $run->started_at?->toIso8601String(),
+            'completed_at' => $run->completed_at?->toIso8601String(),
+            'cancelled_at' => $run->cancelled_at?->toIso8601String(),
+            'created_at' => $run->created_at?->toIso8601String(),
+            'updated_at' => $run->updated_at?->toIso8601String(),
+            'diagnostics' => $this->diagnostics->build($run, $capturedAt, $runs),
+            'events' => $run->events
+                ->map(fn (AgentRunEvent $event): array => $this->event($event))
+                ->values()
+                ->all(),
+            'tool_executions' => $run->toolExecutions
+                ->map(fn (AgentToolExecution $execution): array => $this->toolExecution($execution))
+                ->values()
+                ->all(),
+            'planner_shadow_reports' => $run->plannerShadowReports
+                ->map(fn (AgentPlannerShadowReport $report): array => $this->plannerShadowReport($report))
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function validation(mixed $grounding): array
+    {
+        $grounding = is_array($grounding) ? $this->redactor->redact($grounding) : [];
+        $checks = $grounding['semantic_validation'] ?? null;
+        $checks = is_array($checks) ? array_values(array_filter($checks, 'is_array')) : [];
+        $last = $checks === [] ? null : $checks[array_key_last($checks)];
+        foreach ($checks as $check) {
+            if (($check['used'] ?? false) === true) {
+                $last = $check;
+            }
+        }
+
+        return [
+            'deterministic' => [
+                'status' => $grounding['status'] ?? 'not_recorded',
+                'reason' => $grounding['reason'] ?? null,
+            ],
+            'semantic' => [
+                'attempted' => $checks === [] ? null : (bool) array_filter($checks, static fn (array $check): bool => (bool) ($check['attempted'] ?? false)),
+                'used' => $checks === [] ? null : (bool) array_filter($checks, static fn (array $check): bool => (bool) ($check['used'] ?? false)),
+                'status' => $last['status'] ?? 'not_recorded',
+                'answer' => $last['answer'] ?? null,
+                'claims' => is_array($last['checks'] ?? null) ? $last['checks'] : [],
+                'model' => $last['model'] ?? null,
+                'usage' => $last['usage'] ?? [],
+                'latency_ms' => $last['latency_ms'] ?? null,
+                'checks' => $checks,
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function event(AgentRunEvent $event): array
+    {
+        return [
+            'id' => $event->getKey(),
+            'sequence' => $event->sequence,
+            'type' => $event->type,
+            'phase' => $event->phase,
+            'locale' => $event->locale,
+            'message_key' => $event->message_key,
+            'message_params' => $this->safeValue($event->message_params),
+            'message' => $this->safeValue($event->message),
+            'payload_json' => $this->safeValue($event->payload_json),
+            'created_at' => $event->created_at?->toIso8601String(),
+            'updated_at' => $event->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function toolExecution(AgentToolExecution $execution): array
+    {
+        return [
+            'id' => $execution->getKey(),
+            'logical_index' => $execution->logical_index,
+            'tool_name' => $execution->tool_name,
+            'tool_kind' => $execution->tool_kind,
+            'api_route_id' => $execution->api_route_id,
+            'status' => $execution->status,
+            'depends_on_json' => $this->safeValue($execution->depends_on_json),
+            'arguments_json' => $this->safeValue($execution->arguments_json),
+            'result_meta_json' => $this->safeValue($execution->result_meta_json),
+            'error_code' => $this->safeValue($execution->error_code),
+            'physical_request_count' => $execution->physical_request_count,
+            'latency_ms' => $execution->latency_ms,
+            'started_at' => $execution->started_at?->toIso8601String(),
+            'completed_at' => $execution->completed_at?->toIso8601String(),
+            'created_at' => $execution->created_at?->toIso8601String(),
+            'updated_at' => $execution->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function plannerShadowReport(AgentPlannerShadowReport $report): array
+    {
+        return [
+            'id' => $report->getKey(),
+            'iteration' => $report->iteration,
+            'tenant_id' => $report->tenant_id,
+            'project_key' => $report->project_key,
+            'mode' => $report->mode,
+            'status' => $report->status,
+            'capability_hash' => $report->capability_hash,
+            'capability_count' => $report->capability_count,
+            'capability_bytes' => $report->capability_bytes,
+            'candidate_tools_json' => $this->safeValue($report->candidate_tools_json),
+            'route_json' => $this->safeValue($report->route_json),
+            'classic_plan_json' => $this->safeValue($report->classic_plan_json),
+            'capability_plan_json' => $this->safeValue($report->capability_plan_json),
+            'comparison_json' => $this->safeValue($report->comparison_json),
+            'router_latency_ms' => $report->router_latency_ms,
+            'planner_latency_ms' => $report->planner_latency_ms,
+            'prompt_tokens' => $report->prompt_tokens,
+            'completion_tokens' => $report->completion_tokens,
+            'fallback_used' => $report->fallback_used,
+            'error_code' => $this->safeValue($report->error_code),
+            'created_at' => $report->created_at?->toIso8601String(),
+            'updated_at' => $report->updated_at?->toIso8601String(),
+        ];
+    }
+
+    private function safeValue(mixed $value): mixed
+    {
+        // Preserve the transcript's shape and size contract. Apply the shared
+        // credential/PII policy to content, not to correlation IDs or timestamps.
+        return $this->redactor->redact(['value' => $value])['value'];
+    }
+}

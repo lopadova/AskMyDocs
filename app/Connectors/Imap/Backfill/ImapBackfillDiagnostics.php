@@ -16,6 +16,7 @@ final class ImapBackfillDiagnostics
             'hostname' => gethostname() ?: null,
             'pid' => getmypid() ?: null,
             'php_version' => PHP_VERSION,
+            'php_memory_limit' => ini_get('memory_limit'),
             'memory_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
             'peak_memory_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
             'cache_driver' => (string) config('cache.default'),
