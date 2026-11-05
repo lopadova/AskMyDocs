@@ -1,3 +1,4 @@
+import { chooseSelectOption, openSelect } from './helpers';
 import { test as baseTest, expect, type Page, type Locator } from '@playwright/test';
 import { resetDb, seedDb } from './setup-helpers';
 
@@ -61,12 +62,13 @@ async function addImapAccount(
     if (opts.project) {
         const projectSelect = page.getByTestId('connector-imap-form-project_key');
         // The projects registry loads independently of the connectors list, so
-        // wait for the option to exist before selecting (avoids a select flake
+        // wait for the visible option before selecting (avoids a select flake
         // when the dropdown still has only the "Global" sentinel).
-        await expect(projectSelect.locator(`option[value="${opts.project}"]`)).toHaveCount(1, {
+        const projects = await openSelect(projectSelect);
+        await expect(projects.locator(`[role="option"][data-value=${JSON.stringify(opts.project)}]`)).toHaveCount(1, {
             timeout: 15_000,
         });
-        await projectSelect.selectOption(opts.project);
+        await chooseSelectOption(projectSelect, opts.project);
     }
     await page.getByTestId('connector-imap-form-host').fill(opts.host ?? 'imap.example.com');
     await page.getByTestId('connector-imap-form-username').fill('alice@example.com');

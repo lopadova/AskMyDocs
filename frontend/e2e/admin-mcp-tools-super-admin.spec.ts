@@ -50,13 +50,13 @@ test.describe('Admin MCP Tools — super-admin', () => {
         page,
     }) => {
         await page.goto('/app/admin/mcp-tools');
-        await page.getByTestId('admin-mcp-tools-register').click();
+        await page.getByTestId('admin-mcp-tools-manual').click();
         const dialog = page.getByTestId('admin-mcp-register-dialog');
         await expect(dialog).toBeVisible();
 
         // Submit empty form → browser-level required validation prevents
         // submission; the dialog stays open.
-        await page.getByTestId('admin-mcp-register-submit').click();
+        await expect(page.getByTestId('admin-mcp-register-submit')).toBeDisabled();
         await expect(dialog).toBeVisible();
 
         // Close via cancel

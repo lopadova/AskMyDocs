@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { ModalSourceHeader } from './ModalSourceHeader';
@@ -32,7 +34,7 @@ import type {
  *      testid; per-field 422 errors render under the field with
  *      `connector-{key}-form-{name}-error`.
  * R15: every input has a bound `<label htmlFor>`; secrets use `type=password` and
- *      are never pre-filled; the dialog is `role="dialog"` + `aria-modal`; Esc closes.
+ *      are never pre-filled; the dialog is `role="dialog"` + `aria-modal`; explicit close controls only.
  */
 
 export interface CredentialConnectorFormProps {
@@ -126,6 +128,7 @@ export function CredentialConnectorForm({
     footerless = false,
     formId,
 }: CredentialConnectorFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const schema = useMemo(() => entry.credential_form_schema ?? [], [entry.credential_form_schema]);
     const isEdit = mode === 'edit';
     // In edit mode the label/project live in the Details tab — this panel edits
@@ -169,14 +172,6 @@ export function CredentialConnectorForm({
         setLabel(initialLabel);
         setProjectKey(initialProjectKey ?? '');
     }, [entry.key, initialLabel, initialProjectKey]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const isVisible = (field: CredentialFieldSchema): boolean =>
         field.showIf === null || values[field.showIf.field] === field.showIf.equals;
@@ -378,20 +373,20 @@ export function CredentialConnectorForm({
                         style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
                     >
                         <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
-                        <select
+                        <SelectField
                             id={`connector-${entry.key}-form-project_key`}
                             data-testid={`connector-${entry.key}-form-project_key`}
                             value={projectKey}
-                            onChange={(e) => setProjectKey(e.target.value)}
+                            onValueChange={(selectedValue) => setProjectKey(selectedValue)}
                             style={inputStyle()}
                         >
-                            <option value="">Global (tenant default)</option>
+                            <SelectOption value="">Global (tenant default)</SelectOption>
                             {projects.map((p) => (
-                                <option key={p.project_key} value={p.project_key}>
+                                <SelectOption key={p.project_key} value={p.project_key}>
                                     {p.name} ({p.project_key})
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                         {fieldErrors?.project_key && (
                             <span
                                 data-testid={`connector-${entry.key}-form-project_key-error`}
@@ -519,8 +514,7 @@ export function CredentialConnectorForm({
                             disabled={isSubmitting}
                             style={buttonStyle('secondary', !!isSubmitting)}
                         >
-                            Cancel
-                        </button>
+                            {translateInterface("Cancel")}</button>
                         <button
                             type="submit"
                             data-testid={`connector-${entry.key}-form-submit`}
@@ -548,9 +542,6 @@ export function CredentialConnectorForm({
     return (
         <div
             data-testid={`connector-${entry.key}-form-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -591,20 +582,20 @@ function Field({ connectorKey, field, value, error, secretOptional, onChange }: 
             </span>
 
             {field.type === 'select' ? (
-                <select
+                <SelectField
                     id={id}
                     data-testid={testid}
                     required={required}
                     value={String(value ?? '')}
-                    onChange={(e) => onChange(e.target.value)}
+                    onValueChange={(selectedValue) => onChange(selectedValue)}
                     style={inputStyle()}
                 >
                     {Object.entries(field.options).map(([val, label]) => (
-                        <option key={val} value={val}>
+                        <SelectOption key={val} value={val}>
                             {label}
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
             ) : field.type === 'checkbox' ? (
                 <input
                     id={id}

@@ -64,40 +64,47 @@ export interface McpRegisterPayload {
     enabled_tools?: string[];
 }
 
-export async function listMcpServers(): Promise<McpServerEntry[]> {
-    const response = await api.get<McpServerListResponse>('/api/admin/mcp-servers');
+const tenantOptions = (tenant?: string | null): [] | [{ headers: { 'X-Tenant-Id': string } }] => tenant ? [{ headers: { 'X-Tenant-Id': tenant } }] : [];
+
+export interface McpAdminCapabilities { connector_enabled: boolean; oauth_enabled: boolean; runtime_mode: 'off' | 'shadow' | 'active' }
+export async function mcpAdminCapabilities(tenant?: string | null): Promise<McpAdminCapabilities> {
+    return (await api.get<McpAdminCapabilities>('/api/admin/mcp-servers/capabilities', ...tenantOptions(tenant))).data;
+}
+
+export async function listMcpServers(tenant?: string | null): Promise<McpServerEntry[]> {
+    const response = await api.get<McpServerListResponse>('/api/admin/mcp-servers', ...tenantOptions(tenant));
     return response.data.data ?? [];
 }
 
-export async function registerMcpServer(payload: McpRegisterPayload): Promise<McpServerEntry> {
-    const response = await api.post<McpServerSingleResponse>('/api/admin/mcp-servers', payload);
+export async function registerMcpServer(payload: McpRegisterPayload, tenant?: string | null): Promise<McpServerEntry> {
+    const response = await api.post<McpServerSingleResponse>('/api/admin/mcp-servers', payload, ...tenantOptions(tenant));
     return response.data.data;
 }
 
-export async function handshakeMcpServer(id: number): Promise<McpServerEntry> {
+export async function handshakeMcpServer(id: number, tenant?: string | null): Promise<McpServerEntry> {
     const response = await api.post<McpServerSingleResponse>(
-        `/api/admin/mcp-servers/${id}/handshake`,
+        `/api/admin/mcp-servers/${id}/handshake`, undefined, ...tenantOptions(tenant),
     );
     return response.data.data;
 }
 
-export async function updateMcpServerTools(id: number, enabledTools: string[]): Promise<McpServerEntry> {
+export async function updateMcpServerTools(id: number, enabledTools: string[], tenant?: string | null): Promise<McpServerEntry> {
     const response = await api.patch<McpServerSingleResponse>(
         `/api/admin/mcp-servers/${id}/tools`,
-        { enabled_tools: enabledTools },
+        { enabled_tools: enabledTools }, ...tenantOptions(tenant),
     );
     return response.data.data;
 }
 
-export async function disableMcpServer(id: number): Promise<McpServerEntry> {
+export async function disableMcpServer(id: number, tenant?: string | null): Promise<McpServerEntry> {
     const response = await api.post<McpServerSingleResponse>(
-        `/api/admin/mcp-servers/${id}/disable`,
+        `/api/admin/mcp-servers/${id}/disable`, undefined, ...tenantOptions(tenant),
     );
     return response.data.data;
 }
 
-export async function deleteMcpServer(id: number): Promise<void> {
-    await api.delete(`/api/admin/mcp-servers/${id}`);
+export async function deleteMcpServer(id: number, tenant?: string | null): Promise<void> {
+    await api.delete(`/api/admin/mcp-servers/${id}`, ...tenantOptions(tenant));
 }
 
 /* --------------------------------------------------------------------- */
@@ -160,7 +167,7 @@ export interface McpAuditFilters {
     per_page?: number;
 }
 
-export async function listMcpAudit(filters: McpAuditFilters = {}): Promise<McpAuditListResponse> {
+export async function listMcpAudit(filters: McpAuditFilters = {}, tenant?: string | null): Promise<McpAuditListResponse> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
         if (value !== undefined && value !== null && value !== '') {
@@ -168,7 +175,7 @@ export async function listMcpAudit(filters: McpAuditFilters = {}): Promise<McpAu
         }
     }
     const response = await api.get<McpAuditListResponse>(
-        `/api/admin/mcp-tool-call-audit${params.toString() ? `?${params.toString()}` : ''}`,
+        `/api/admin/mcp-tool-call-audit${params.toString() ? `?${params.toString()}` : ''}`, ...tenantOptions(tenant),
     );
     return response.data;
 }

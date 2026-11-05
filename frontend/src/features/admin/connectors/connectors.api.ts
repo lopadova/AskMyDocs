@@ -18,7 +18,24 @@ import { api } from '../../../lib/api';
 
 export type ConnectorStatus = 'pending' | 'active' | 'disabled' | 'errored';
 
+export interface ConnectorActionDescriptor {
+    key: string;
+    label: string;
+    description: string;
+    enabled: boolean;
+}
+export interface ConnectorActionStatus {
+    id: number;
+    mode: string;
+    status: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+    counts: Record<string, number>;
+    error: string | null;
+    phase: string | null;
+    updated_since?: string | null;
+}
 export interface ConnectorInstallationDto {
+    supports_email_triage?: boolean;
+    actions?: ConnectorActionDescriptor[];
     id: number;
     // v8.20 multi-account: `label` disambiguates the N accounts a tenant connects
     // on one connector; `project_key` is the optional KB project binding (null =
@@ -57,7 +74,7 @@ export interface CredentialFieldSchema {
     name: string;
     // v8.25 — `multiselect` (a list chosen from a fixed or live option set) and
     // `tags` (an open free-text string list) are the connection-settings types.
-    type: 'text' | 'number' | 'password' | 'select' | 'checkbox' | 'multiselect' | 'tags';
+    type: 'text' | 'number' | 'date' | 'password' | 'select' | 'checkbox' | 'multiselect' | 'tags';
     label: string;
     target: 'auth_mode' | 'provider' | 'connection' | 'secret' | 'config';
     required: boolean;
@@ -71,6 +88,9 @@ export interface CredentialFieldSchema {
     // queries to populate the choices (`'folders'` → the live folder list).
     // Optional (additive); the BE emits it (null for non-discovery fields).
     discovery?: string | null;
+    /** Optional ISO date boundaries advertised by the connector. */
+    min?: string;
+    max?: string;
 }
 
 export interface ConnectorEntry {
@@ -453,5 +473,16 @@ export const adminConnectorsApi = {
 
     async destroy(installationId: number): Promise<void> {
         await api.delete(`/api/admin/connectors/${installationId}`);
+    },
+};
+
+export const connectorActionsApi = {
+    async status(installationId: number, key: string): Promise<ConnectorActionStatus | null> {
+        const { data } = await api.get<{ data: ConnectorActionStatus | null }>(`/api/admin/connectors/${installationId}/actions/${encodeURIComponent(key)}`);
+        return data.data;
+    },
+    async start(installationId: number, key: string): Promise<ConnectorActionStatus> {
+        const { data } = await api.post<{ data: ConnectorActionStatus }>(`/api/admin/connectors/${installationId}/actions/${encodeURIComponent(key)}`);
+        return data.data;
     },
 };

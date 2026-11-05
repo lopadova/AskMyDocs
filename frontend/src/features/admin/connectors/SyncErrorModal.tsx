@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef } from 'react';
 import type { ConnectionVM } from './connection-vm';
 
@@ -7,7 +8,7 @@ import type { ConnectionVM } from './connection-vm';
  * offers Dismiss / Retry sync. Retry re-queues the account's sync then closes.
  *
  * R15 — a real dialog: `role="dialog" aria-modal`, labelled by its title, the
- * close button is focused on open, Escape + backdrop click dismiss it.
+ * close button is focused on open, only the explicit close controls dismiss it.
  * R14 — the full (untruncated) error message is shown so the operator can act.
  */
 
@@ -18,26 +19,16 @@ export interface SyncErrorModalProps {
 }
 
 export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
+    const { t: translateInterface } = useUiTranslation();
     const closeRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         closeRef.current?.focus();
     }, []);
 
-    // Document-level Escape (like the sibling modals) so it closes regardless of
-    // which control holds focus — not only when focus is inside the backdrop.
-    useEffect(() => {
-        function onKey(e: KeyboardEvent) {
-            if (e.key === 'Escape') onClose();
-        }
-        document.addEventListener('keydown', onKey, true);
-        return () => document.removeEventListener('keydown', onKey, true);
-    }, [onClose]);
-
     return (
         <div
             data-testid="connector-sync-error-backdrop"
-            onClick={onClose}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -123,7 +114,7 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
                         type="button"
                         data-testid="connector-sync-error-close"
                         className="amd-cn-menu-btn focus-ring"
-                        aria-label="Close"
+                        aria-label={translateInterface("Close")}
                         onClick={onClose}
                         style={{
                             flex: 'none',
@@ -243,8 +234,7 @@ export function SyncErrorModal({ vm, onClose, onRetry }: SyncErrorModalProps) {
                             cursor: 'pointer',
                         }}
                     >
-                        Dismiss
-                    </button>
+                        {translateInterface("Dismiss")}</button>
                     <button
                         type="button"
                         data-testid="connector-sync-error-retry"

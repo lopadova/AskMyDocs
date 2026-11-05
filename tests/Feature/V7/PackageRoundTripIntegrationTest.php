@@ -121,10 +121,12 @@ final class PackageRoundTripIntegrationTest extends TestCase
     public function test_tool_invocation_round_trip_writes_audit_row_through_host_model(): void
     {
         // Script the package's transport so no real HTTP is made.
-        // Pack 2.0 negotiates before the first call, so `initialize` must be scripted too.
-        $transport = (new StubMcpTransport())->scriptInitialize()->scriptToolCall('kb.search', [
-            'hits' => [['title' => 'Hello World', 'score' => 0.91]],
-        ]);
+        // Pack 2.0 negotiates before the first call.
+        $transport = (new StubMcpTransport())
+            ->scriptInitialize()
+            ->scriptToolCall('kb.search', [
+                'hits' => [['title' => 'Hello World', 'score' => 0.91]],
+            ]);
         McpClient::useTransportResolver(fn() => $transport);
 
         $serverAdapter = new McpServerAdapter($this->server);

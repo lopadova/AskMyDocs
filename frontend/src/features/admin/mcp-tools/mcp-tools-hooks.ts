@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTeamStore } from '../../../lib/team-store';
 
 import {
     deleteMcpServer,
+    mcpAdminCapabilities,
     disableMcpServer,
     handshakeMcpServer,
     listMcpAudit,
@@ -24,68 +26,81 @@ import {
 
 export const MCP_KEY = ['admin', 'mcp'] as const;
 
+export function useMcpCapabilities() {
+    const tenant = useTeamStore((state) => state.currentTeam);
+    return useQuery({ queryKey: [...MCP_KEY, tenant, 'capabilities'], queryFn: () => mcpAdminCapabilities(tenant), retry: false });
+}
+
 export function useMcpServers() {
+    const tenant = useTeamStore((state) => state.currentTeam);
     return useQuery<McpServerEntry[]>({
-        queryKey: [...MCP_KEY, 'servers'],
-        queryFn: listMcpServers,
+        queryKey: [...MCP_KEY, tenant, 'servers'],
+        queryFn: () => listMcpServers(tenant),
         staleTime: 30_000,
     });
 }
 
 export function useRegisterMcpServer() {
+    const tenant = useTeamStore((state) => state.currentTeam);
     const queryClient = useQueryClient();
     return useMutation<McpServerEntry, Error, McpRegisterPayload>({
-        mutationFn: registerMcpServer,
+        mutationFn: (value) => registerMcpServer(value, tenant),
+        gcTime: 0,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, 'servers'] });
+            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, tenant, 'servers'] });
         },
     });
 }
 
 export function useHandshakeMcpServer() {
+    const tenant = useTeamStore((state) => state.currentTeam);
     const queryClient = useQueryClient();
     return useMutation<McpServerEntry, Error, number>({
-        mutationFn: handshakeMcpServer,
+        mutationFn: (value) => handshakeMcpServer(value, tenant),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, 'servers'] });
+            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, tenant, 'servers'] });
         },
     });
 }
 
 export function useUpdateMcpServerTools() {
+    const tenant = useTeamStore((state) => state.currentTeam);
     const queryClient = useQueryClient();
     return useMutation<McpServerEntry, Error, { id: number; enabledTools: string[] }>({
-        mutationFn: ({ id, enabledTools }) => updateMcpServerTools(id, enabledTools),
+        mutationFn: ({ id, enabledTools }) => updateMcpServerTools(id, enabledTools, tenant),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, 'servers'] });
+            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, tenant, 'servers'] });
         },
     });
 }
 
 export function useDisableMcpServer() {
+    const tenant = useTeamStore((state) => state.currentTeam);
     const queryClient = useQueryClient();
     return useMutation<McpServerEntry, Error, number>({
-        mutationFn: disableMcpServer,
+        mutationFn: (value) => disableMcpServer(value, tenant),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, 'servers'] });
+            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, tenant, 'servers'] });
         },
     });
 }
 
 export function useDeleteMcpServer() {
+    const tenant = useTeamStore((state) => state.currentTeam);
     const queryClient = useQueryClient();
     return useMutation<void, Error, number>({
-        mutationFn: deleteMcpServer,
+        mutationFn: (value) => deleteMcpServer(value, tenant),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, 'servers'] });
+            queryClient.invalidateQueries({ queryKey: [...MCP_KEY, tenant, 'servers'] });
         },
     });
 }
 
 export function useMcpAudit(filters: McpAuditFilters) {
+    const tenant = useTeamStore((state) => state.currentTeam);
     return useQuery<McpAuditListResponse>({
-        queryKey: [...MCP_KEY, 'audit', filters],
-        queryFn: () => listMcpAudit(filters),
+        queryKey: [...MCP_KEY, tenant, 'audit', filters],
+        queryFn: () => listMcpAudit(filters, tenant),
         staleTime: 15_000,
     });
 }

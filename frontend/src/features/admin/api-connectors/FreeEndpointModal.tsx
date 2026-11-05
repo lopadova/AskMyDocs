@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { HttpMethod, ProbePayload, ProbeResult } from './api-connectors.api';
 import { ResponseViewer } from './ResponseViewer';
@@ -20,7 +22,7 @@ import {
  * Presentational (R11/R16): it owns the FORM state but delegates the call via
  * `onSend` and receives `result`/`error`/`isSending`, so it is unit-testable
  * without a query/router context. R14 — the ResponseViewer surfaces request vs
- * upstream failure distinctly. R15 — bound labels, role=dialog, Esc closes, the
+ * upstream failure distinctly. R15 — bound labels, role=dialog, explicit close controls only, the
  * URL input autofocuses.
  */
 
@@ -62,6 +64,7 @@ export function FreeEndpointModal({
     isSending,
     onClose,
 }: FreeEndpointModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [method, setMethod] = useState<HttpMethod>('GET');
     const [url, setUrl] = useState('');
     const [headersText, setHeadersText] = useState('');
@@ -74,14 +77,6 @@ export function FreeEndpointModal({
     useEffect(() => {
         urlRef.current?.focus();
     }, []);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const allowsBody = methodAllowsBody(method);
 
@@ -134,9 +129,6 @@ export function FreeEndpointModal({
     return (
         <div
             data-testid="api-probe-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <div
@@ -162,19 +154,19 @@ export function FreeEndpointModal({
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                     <label htmlFor="api-probe-method" style={{ ...fieldLabelStyle(), flex: '0 0 110px' }}>
                         <span style={fieldCaptionStyle()}>Method</span>
-                        <select
+                        <SelectField
                             id="api-probe-method"
                             data-testid="api-probe-method"
                             value={method}
-                            onChange={(e) => setMethod(e.target.value as HttpMethod)}
+                            onValueChange={(selectedValue) => setMethod(selectedValue as HttpMethod)}
                             style={inputStyle()}
                         >
                             {HTTP_METHODS.map((m) => (
-                                <option key={m} value={m}>
+                                <SelectOption key={m} value={m}>
                                     {m}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </label>
                     <label htmlFor="api-probe-url" style={{ ...fieldLabelStyle(), flex: 1 }}>
                         <span style={fieldCaptionStyle()}>URL</span>
@@ -262,7 +254,7 @@ export function FreeEndpointModal({
                         disabled={isSending}
                         style={buttonStyle('primary', !!isSending)}
                     >
-                        {isSending ? 'Sending…' : 'Send'}
+                        {isSending ? 'Sending…' : translateInterface("Send")}
                     </button>
                 </div>
 
@@ -275,8 +267,7 @@ export function FreeEndpointModal({
                         onClick={onClose}
                         style={buttonStyle('secondary', false)}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

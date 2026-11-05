@@ -62,7 +62,7 @@ final class MailboxLockKey
     }
 
     /**
-     * The key for an installation, read from its `config_json.connection`.
+     * The key for the endpoint actually used by this installation's auth mode.
      */
     public static function forInstallation(?ConnectorInstallation $installation): ?string
     {
@@ -72,6 +72,6 @@ final class MailboxLockKey
 
         $config = (array) ($installation->config_json ?? []);
 
-        return self::forConnection((array) ($config['connection'] ?? []));
+        return self::forConnection(ImapConnectionParameters::forConfig($config));
     }
 }

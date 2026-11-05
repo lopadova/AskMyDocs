@@ -34,6 +34,8 @@ final class McpToolCallAuditController extends Controller
             // package or host code legitimately writes.
             'status' => ['nullable', 'string', 'max:32'],
             'tool_name' => ['nullable', 'string', 'max:100'],
+            'source' => ['nullable', 'string', 'max:40'],
+            'mcp_connection_id' => ['nullable', 'string', 'max:64'],
             // The SPA filter bar sends `server_id` (canonical FE
             // name); the original controller validated only
             // `mcp_server_id` (canonical DB name) so the SPA "Server"
@@ -68,6 +70,14 @@ final class McpToolCallAuditController extends Controller
             $query->where('tool_name', $validated['tool_name']);
         }
 
+        if (($validated['source'] ?? null) !== null) {
+            $query->where('source', $validated['source']);
+        }
+
+        if (($validated['mcp_connection_id'] ?? null) !== null) {
+            $query->where('mcp_connection_id', $validated['mcp_connection_id']);
+        }
+
         $serverId = $validated['server_id'] ?? $validated['mcp_server_id'] ?? null;
         if ($serverId !== null) {
             $query->where('mcp_server_id', (int) $serverId);
@@ -97,8 +107,14 @@ final class McpToolCallAuditController extends Controller
                 'tenant_id' => $row->tenant_id,
                 'status' => $row->status,
                 'tool_name' => $row->tool_name,
+                'source' => $row->source,
+                'mcp_connection_id' => $row->mcp_connection_id,
+                'invocation_id' => $row->invocation_id,
+                'tool_remote_name' => $row->tool_remote_name,
+                'tool_local_name' => $row->tool_local_name,
                 'duration_ms' => $row->duration_ms,
                 'result_hash' => $row->result_hash,
+                'error_class' => $row->error_class,
                 'created_at' => $row->created_at?->toIso8601String(),
                 // Flat shape matches the SPA's `McpAuditEntry` TS
                 // type (`user_id`, `user_name`, `mcp_server_id`,

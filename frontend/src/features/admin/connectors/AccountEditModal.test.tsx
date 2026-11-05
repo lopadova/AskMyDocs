@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountEditModal } from './AccountEditModal';
+import { AccountEditModal, type AccountEditModalProps } from './AccountEditModal';
 import type { ConnectorEntry, ConnectorInstallationDto, CredentialFieldSchema } from './connectors.api';
 
 /*
@@ -60,20 +60,20 @@ function exportReady() {
 }
 
 interface Handlers {
-    onSubmitDetails?: ReturnType<typeof vi.fn>;
-    onSubmitConnection?: ReturnType<typeof vi.fn>;
-    onTestConnection?: ReturnType<typeof vi.fn>;
-    onSubmitSettings?: ReturnType<typeof vi.fn>;
-    onClose?: ReturnType<typeof vi.fn>;
+    onSubmitDetails?: AccountEditModalProps['onSubmitDetails'];
+    onSubmitConnection?: AccountEditModalProps['onSubmitConnection'];
+    onTestConnection?: AccountEditModalProps['onTestConnection'];
+    onSubmitSettings?: AccountEditModalProps['onSubmitSettings'];
+    onClose?: AccountEditModalProps['onClose'];
     initialTab?: 'details' | 'connection' | 'settings';
 }
 
 function renderModal(h: Handlers = {}) {
     const handlers = {
-        onSubmitDetails: h.onSubmitDetails ?? vi.fn().mockResolvedValue(undefined),
-        onSubmitConnection: h.onSubmitConnection ?? vi.fn().mockResolvedValue(undefined),
-        onTestConnection: h.onTestConnection ?? vi.fn().mockResolvedValue({ ok: true }),
-        onSubmitSettings: h.onSubmitSettings ?? vi.fn().mockResolvedValue(undefined),
+        onSubmitDetails: h.onSubmitDetails ?? vi.fn<AccountEditModalProps['onSubmitDetails']>().mockResolvedValue(undefined),
+        onSubmitConnection: h.onSubmitConnection ?? vi.fn<AccountEditModalProps['onSubmitConnection']>().mockResolvedValue(undefined),
+        onTestConnection: h.onTestConnection ?? vi.fn<AccountEditModalProps['onTestConnection']>().mockResolvedValue({ ok: true }),
+        onSubmitSettings: h.onSubmitSettings ?? vi.fn<AccountEditModalProps['onSubmitSettings']>().mockResolvedValue(undefined),
         onClose: h.onClose ?? vi.fn(),
     };
     render(
@@ -103,6 +103,49 @@ beforeEach(() => {
 });
 
 describe('AccountEditModal', () => {
+    it.each(['gmail', 'microsoft-mail'])('edits native OAuth settings and exposes the shared triage tab for %s', async (key) => {
+        const onSubmitSettings = vi.fn().mockResolvedValue(undefined);
+        const oauthEntry = { ...credentialEntry(), key, display_name: key, auth_kind: 'oauth' as const, credential_form_schema: null };
+        const oauthAccount = { ...account(), supports_email_triage: true, settings: { folders: { include: ['CaseSensitive-ID'] } },
+            connection_settings_schema: [field({ name: 'folders.include', label: 'Folder IDs', type: 'multiselect', target: 'config', discovery: 'folders' })] };
+        render(<AccountEditModal entry={oauthEntry} account={oauthAccount} projects={[]} onSubmitDetails={vi.fn()} onSubmitConnection={vi.fn()}
+            onTestConnection={vi.fn()} onSubmitSettings={onSubmitSettings} onClose={vi.fn()} />);
+        expect(screen.queryByTestId('connector-account-7-edit-tab-connection')).toBeNull();
+        expect(screen.getByTestId('connector-account-7-edit-tab-triage')).toBeVisible();
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-tab-settings'));
+        expect(screen.getByTestId(`connector-${key}-settings-folders-include-list`)).toBeVisible();
+        await userEvent.click(screen.getByTestId('connector-account-7-edit-save'));
+        await waitFor(() => expect(onSubmitSettings).toHaveBeenCalledWith({ folders: { include: ['CaseSensitive-ID'] } }));
+    });
+
+    it('preserves edited details on outside click and Escape, then closes with Cancel', async () => {
+        const user = userEvent.setup();
+        const { onClose } = renderModal();
+        const input = screen.getByTestId('connector-imap-account-form-label');
+        await user.clear(input);
+        await user.type(input, 'Unsaved account');
+        await user.click(screen.getByTestId('connector-account-7-edit-backdrop'));
+        await user.keyboard('{Escape}');
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(input).toHaveValue('Unsaved account');
+        await user.click(screen.getByTestId('connector-account-7-edit-cancel'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['connection', 'settings'] as const)('keeps the %s tab open on Escape and outside click', async (initialTab) => {
+        const user = userEvent.setup();
+        exportReady();
+        const { onClose } = renderModal({ initialTab });
+        await user.click(screen.getByTestId('connector-account-7-edit-backdrop'));
+        await user.keyboard('{Escape}');
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByTestId('connector-account-7-edit-modal')).toHaveAttribute('data-active-tab', initialTab);
+        await user.click(screen.getByTestId('connector-account-7-edit-close'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('renders all three tabs for a credential connector and Details by default', () => {
         renderModal();
         expect(screen.getByTestId('connector-account-7-edit-tab-details')).toBeInTheDocument();

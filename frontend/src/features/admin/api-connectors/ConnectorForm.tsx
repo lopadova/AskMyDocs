@@ -1,8 +1,13 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import type { ApiConnector, ConnectorPayload } from './api-connectors.api';
+import { SourceAvatar } from '../connectors/SourceAvatar';
+import { Button } from '../../../components/Button';
+import './connector-form.css';
+import { DEFAULT_API_USER_AGENT, USER_AGENT_PRESETS, readUserAgent, withoutUserAgent } from './user-agents';
 import {
-    buttonStyle,
     errorTextStyle,
     fieldCaptionStyle,
     fieldLabelStyle,
@@ -11,12 +16,26 @@ import {
     modalPanelStyle,
 } from './styles';
 
+const CLOUDFLARE_HEADER = 'X-AskMyDocs-Cloudflare-Token';
+
+function isCloudflareHeader(name: string): boolean {
+    return name.toLowerCase() === CLOUDFLARE_HEADER.toLowerCase();
+}
+
+function connectorInputStyle(): CSSProperties {
+    return {
+        ...inputStyle(),
+        fontSize: 'var(--api-connector-field-size, 12px)',
+        minHeight: 'var(--api-connector-control-height, 0px)',
+    };
+}
+
 /**
  * Create / edit an API connector (the parent of routes + auth profiles).
  *
  * R11/R29: testids `api-connector-form-{field}`.
  * R15: every control has a bound `<label htmlFor>`; dialog is role=dialog +
- *      aria-modal; Esc closes; field errors render next to the input.
+ *      aria-modal; explicit close controls only; field errors render next to the input.
  */
 
 export interface ConnectorFormProps {
@@ -60,27 +79,46 @@ export function ConnectorForm({
     fieldErrors,
     isSubmitting,
 }: ConnectorFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = !!connector;
     const [name, setName] = useState(connector?.name ?? '');
     const [description, setDescription] = useState(connector?.description ?? '');
     const [projectKey, setProjectKey] = useState(connector?.project_key ?? '');
     const [baseUrl, setBaseUrl] = useState(connector?.base_url ?? '');
-    const [headersText, setHeadersText] = useState(
-        connector?.headers ? stringifyHeaders(connector.headers) : '',
+    const sharedHeaders = Object.entries(connector?.headers ?? {});
+    const [cloudflareToken, setCloudflareToken] = useState(
+        sharedHeaders.find(([key]) => isCloudflareHeader(key))?.[1] ?? '',
     );
+    const [userAgent, setUserAgent] = useState(
+        connector ? readUserAgent(connector.headers ?? {}) : DEFAULT_API_USER_AGENT,
+    );
+    const [userAgentPreset, setUserAgentPreset] = useState<string>(() => {
+        const value = connector ? readUserAgent(connector.headers ?? {}) : DEFAULT_API_USER_AGENT;
+        return USER_AGENT_PRESETS.find((preset) => preset.value === value)?.id ?? (value ? 'custom' : 'default');
+    });
+    const [headersText, setHeadersText] = useState(
+        stringifyHeaders(withoutUserAgent(Object.fromEntries(sharedHeaders.filter(([key]) => !isCloudflareHeader(key))))),
+    );
+    const [headersError, setHeadersError] = useState<string | null>(null);
     const [isActive, setIsActive] = useState(connector?.is_active ?? true);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         const headers = parseHeaders(headersText);
+        if (Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent')) {
+            setHeadersError('Choose the User-Agent above instead of adding it here.');
+            return;
+        }
+        setHeadersError(null);
+        if (userAgent.trim()) headers['User-Agent'] = userAgent.trim();
+        if (cloudflareToken.trim() !== '') {
+            // Avoid duplicate values when the textarea uses different casing.
+            for (const key of Object.keys(headers)) {
+                if (isCloudflareHeader(key)) delete headers[key];
+            }
+            headers[CLOUDFLARE_HEADER] = cloudflareToken.trim();
+        }
         onSubmit({
             name: name.trim(),
             description: description.trim() === '' ? null : description.trim(),
@@ -92,13 +130,11 @@ export function ConnectorForm({
     };
 
     const titleId = 'api-connector-form-title';
+    const cloudflareHeaderError = fieldErrors?.[`headers.${CLOUDFLARE_HEADER}`];
 
     return (
         <div
             data-testid="api-connector-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <form
@@ -107,17 +143,21 @@ export function ConnectorForm({
                 aria-labelledby={titleId}
                 aria-busy={isSubmitting}
                 data-testid="api-connector-form"
+                className="api-connector-form"
                 data-state={isSubmitting ? 'loading' : 'idle'}
                 onSubmit={handleSubmit}
-                style={modalPanelStyle(480)}
+                style={{ ...modalPanelStyle(480), minWidth: 0, boxSizing: 'border-box' }}
             >
-                <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                    {isEdit ? `Edit connector: ${connector?.name}` : 'New API connector'}
-                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <SourceAvatar connectorKey="api" displayName="API" size={38} radius={10} />
+                    <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
+                        {isEdit ? `Edit connector: ${connector?.name}` : 'New API connector'}
+                    </h2>
+                </div>
 
                 <label htmlFor="api-connector-form-name" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>
-                        Name<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
+                        {translateInterface("Name")}<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
                     </span>
                     <input
                         id="api-connector-form-name"
@@ -128,7 +168,7 @@ export function ConnectorForm({
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Weather API"
-                        style={inputStyle()}
+                        style={connectorInputStyle()}
                     />
                     {fieldErrors?.name && (
                         <span data-testid="api-connector-form-name-error" role="alert" style={errorTextStyle()}>
@@ -138,7 +178,7 @@ export function ConnectorForm({
                 </label>
 
                 <label htmlFor="api-connector-form-description" style={fieldLabelStyle()}>
-                    <span style={fieldCaptionStyle()}>Description</span>
+                    <span style={fieldCaptionStyle()}>{translateInterface("Description")}</span>
                     <textarea
                         id="api-connector-form-description"
                         data-testid="api-connector-form-description"
@@ -146,7 +186,7 @@ export function ConnectorForm({
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="What this connector exposes"
-                        style={{ ...inputStyle(), resize: 'vertical' }}
+                        style={{ ...connectorInputStyle(), resize: 'vertical' }}
                     />
                     {fieldErrors?.description && (
                         <span
@@ -168,7 +208,7 @@ export function ConnectorForm({
                         value={baseUrl}
                         onChange={(e) => setBaseUrl(e.target.value)}
                         placeholder="https://api.example.com"
-                        style={inputStyle()}
+                        style={connectorInputStyle()}
                     />
                     {fieldErrors?.base_url && (
                         <span
@@ -181,22 +221,68 @@ export function ConnectorForm({
                     )}
                 </label>
 
+                <div style={fieldLabelStyle()}>
+                    <label htmlFor="api-connector-form-user_agent" style={fieldCaptionStyle()}>User-Agent</label>
+                    <SelectField
+                        id="api-connector-form-user_agent"
+                        data-testid="api-connector-form-user_agent"
+                        value={userAgentPreset}
+                        disabled={isSubmitting}
+                        onValueChange={(selectedValue) => {
+                            const preset = selectedValue;
+                            setUserAgentPreset(preset);
+                            if (preset !== 'custom') {
+                                setUserAgent(USER_AGENT_PRESETS.find((item) => item.id === preset)?.value ?? '');
+                            }
+                        }}
+                        aria-describedby="api-connector-form-user_agent-hint"
+                        style={connectorInputStyle()}
+                    >
+                        {USER_AGENT_PRESETS.map((preset) => (
+                            <SelectOption key={preset.id} value={preset.id}>{preset.label}</SelectOption>
+                        ))}
+                        <SelectOption value="custom">Custom</SelectOption>
+                        <SelectOption value="default">HTTP client default (Guzzle)</SelectOption>
+                    </SelectField>
+                    <span id="api-connector-form-user_agent-hint" style={fieldCaptionStyle()}>
+                        Identity sent to the API. Chrome is selected for new connectors.
+                    </span>
+                </div>
+
+                {userAgentPreset === 'custom' && (
+                    <label htmlFor="api-connector-form-user_agent-custom" style={fieldLabelStyle()}>
+                        <span style={fieldCaptionStyle()}>Custom User-Agent</span>
+                        <input
+                            id="api-connector-form-user_agent-custom"
+                            data-testid="api-connector-form-user_agent-custom"
+                            type="text"
+                            required
+                            pattern={'.*\\S.*'}
+                            value={userAgent}
+                            onChange={(e) => setUserAgent(e.target.value)}
+                            disabled={isSubmitting}
+                            placeholder="MyApplication/1.0"
+                            style={connectorInputStyle()}
+                        />
+                    </label>
+                )}
+
                 <label htmlFor="api-connector-form-project_key" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>KB project binding</span>
-                    <select
+                    <SelectField
                         id="api-connector-form-project_key"
                         data-testid="api-connector-form-project_key"
                         value={projectKey}
-                        onChange={(e) => setProjectKey(e.target.value)}
-                        style={inputStyle()}
+                        onValueChange={(selectedValue) => setProjectKey(selectedValue)}
+                        style={connectorInputStyle()}
                     >
-                        <option value="">Global (tenant default)</option>
+                        <SelectOption value="">Global (tenant default)</SelectOption>
                         {projects.map((p) => (
-                            <option key={p.project_key} value={p.project_key}>
+                            <SelectOption key={p.project_key} value={p.project_key}>
                                 {p.name} ({p.project_key})
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                     {fieldErrors?.project_key && (
                         <span
                             data-testid="api-connector-form-project_key-error"
@@ -208,26 +294,53 @@ export function ConnectorForm({
                     )}
                 </label>
 
+                <label htmlFor="api-connector-form-cloudflare-token" style={fieldLabelStyle()}>
+                    <span id="api-connector-form-cloudflare-label" style={fieldCaptionStyle()}>Cloudflare rule token (optional)</span>
+                    <input
+                        id="api-connector-form-cloudflare-token"
+                        data-testid="api-connector-form-cloudflare-token"
+                        name="cloudflare_rule_token"
+                        type="password"
+                        autoComplete="new-password"
+                        spellCheck={false}
+                        value={cloudflareToken}
+                        onChange={(e) => setCloudflareToken(e.target.value)}
+                        aria-labelledby="api-connector-form-cloudflare-label"
+                        aria-describedby={`api-connector-form-cloudflare-hint${cloudflareHeaderError ? ' api-connector-form-cloudflare-error' : ''}`}
+                        aria-invalid={!!cloudflareHeaderError}
+                        placeholder="Value used in your Cloudflare rule"
+                        style={connectorInputStyle()}
+                    />
+                    <span id="api-connector-form-cloudflare-hint" style={{ ...fieldCaptionStyle(), lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                        Sends <code>{CLOUDFLARE_HEADER}</code> on every endpoint test and tool call.
+                        Match this header and value in a Cloudflare Skip rule for your API.
+                        Leave blank to remove it. For a different header name, use Default headers below.
+                    </span>
+                    {cloudflareHeaderError && (
+                        <span id="api-connector-form-cloudflare-error" role="alert" style={errorTextStyle()}>{cloudflareHeaderError}</span>
+                    )}
+                </label>
+
                 <label htmlFor="api-connector-form-headers" style={fieldLabelStyle()}>
                     <span style={fieldCaptionStyle()}>
-                        Default headers (one per line, <code>Key: Value</code>)
+                        Other default headers (one per line, <code>Key: Value</code>)
                     </span>
                     <textarea
                         id="api-connector-form-headers"
                         data-testid="api-connector-form-headers"
                         rows={2}
                         value={headersText}
-                        onChange={(e) => setHeadersText(e.target.value)}
+                        onChange={(e) => { setHeadersText(e.target.value); setHeadersError(null); }}
                         placeholder={'Accept: application/json'}
-                        style={{ ...inputStyle(), resize: 'vertical', fontFamily: 'var(--font-mono, monospace)' }}
+                        style={{ ...connectorInputStyle(), resize: 'vertical', fontFamily: 'var(--font-mono, monospace)' }}
                     />
-                    {fieldErrors?.headers && (
+                    {(headersError || fieldErrors?.headers) && (
                         <span
                             data-testid="api-connector-form-headers-error"
                             role="alert"
                             style={errorTextStyle()}
                         >
-                            {fieldErrors.headers}
+                            {headersError || fieldErrors?.headers}
                         </span>
                     )}
                 </label>
@@ -243,7 +356,7 @@ export function ConnectorForm({
                         checked={isActive}
                         onChange={(e) => setIsActive(e.target.checked)}
                     />
-                    <span style={fieldCaptionStyle()}>Active</span>
+                    <span style={fieldCaptionStyle()}>{translateInterface("Active")}</span>
                 </label>
 
                 {submitError && (
@@ -252,24 +365,25 @@ export function ConnectorForm({
                     </p>
                 )}
 
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 4 }}>
+                    <Button
                         type="button"
                         data-testid="api-connector-form-cancel"
                         onClick={onClose}
                         disabled={isSubmitting}
-                        style={buttonStyle('secondary', !!isSubmitting)}
+                        variant="secondary"
+                        size="sm"
                     >
-                        Cancel
-                    </button>
-                    <button
+                        {translateInterface("Cancel")}</Button>
+                    <Button
                         type="submit"
                         data-testid="api-connector-form-submit"
-                        disabled={isSubmitting}
-                        style={buttonStyle('primary', !!isSubmitting)}
+                        busy={isSubmitting}
+                        variant="primary"
+                        size="sm"
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create connector'}
-                    </button>
+                        {isEdit ? translateInterface("Save changes") : 'Create connector'}
+                    </Button>
                 </div>
             </form>
         </div>

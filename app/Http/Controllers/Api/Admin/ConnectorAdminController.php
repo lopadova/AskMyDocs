@@ -32,6 +32,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\ValidationException;
+use Padosoft\AskMyDocsConnectorFreshdesk\Support\Features;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -409,6 +410,14 @@ final class ConnectorAdminController extends Controller
             ], 422);
         }
 
+        if ($installation->connector_name === 'freshdesk'
+            && class_exists(Features::class)
+            && ! Features::ingestion($installation)) {
+            return response()->json([
+                'error' => 'Freshdesk ingestion is disabled for this account. Enable it in connection settings before importing.',
+            ], 422);
+        }
+
         if ($installation->status === ConnectorInstallation::STATUS_ERRORED) {
             // Operator-driven retry: re-arm so the sync job's ACTIVE-only guard
             // passes. A still-failing source flips the row back to ERRORED.
@@ -423,7 +432,7 @@ final class ConnectorAdminController extends Controller
             $installation->connector_name === 'imap'
             && $imapBackfills->isEnabled()
             && (int) ($config['date_window_days'] ?? 365) === 0
-            && ! $imapBackfills->hasCompletedBackfill($installation->id)
+            && ! $imapBackfills->hasFinishedBackfill($installation->id)
         ) {
             $backfill = $imapBackfills->start($installation->id);
 

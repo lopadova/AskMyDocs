@@ -1,5 +1,7 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ApiConnector, ApiRoute, ProduceConfigResponse, RouteConfig, TestConfigResponse } from './api-connectors.api';
 
 type MutationStub = { mutate: ReturnType<typeof vi.fn>; isPending: boolean; isError: boolean; error: unknown; data: unknown };
@@ -48,7 +50,7 @@ function testResult(over = {}) {
 
 describe('RouteConfigModal', () => {
     beforeEach(() => {
-        [createMutate, updateMutate, testRouteMutate, testMutate, produceMutate].forEach((m) => m.mockClear());
+        [createMutate, updateMutate, testRouteMutate, testMutate, produceMutate].forEach((m) => m.mockReset());
         createState = stub(createMutate);
         updateState = stub(updateMutate);
         testRouteState = stub(testRouteMutate);
@@ -56,12 +58,27 @@ describe('RouteConfigModal', () => {
         produceState = stub(produceMutate);
     });
 
+    it('preserves the route draft on outside click and Escape, then closes with the X', async () => {
+        const user = userEvent.setup();
+        const onClose = vi.fn();
+        render(<RouteConfigModal connector={connector} route={null} onClose={onClose} />);
+        const input = screen.getByTestId('api-route-form-name');
+        await user.type(input, 'Ordini da configurare');
+        await user.click(screen.getByTestId('api-route-form-backdrop'));
+        await user.keyboard('{Escape}');
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(input).toHaveValue('Ordini da configurare');
+        await user.click(screen.getByTestId('api-route-form-cancel'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('create mode: Testa is available without saving, and Save sends the recombined config', () => {
         render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
         // The single-modal win: the test action exists in create mode (no save-first).
         expect(screen.getByTestId('api-route-form-test')).toBeInTheDocument();
-        expect(screen.getByTestId('api-route-form')).toHaveAttribute('aria-label', 'New route');
+        expect(screen.getByRole('dialog', { name: 'Nuova rotta' })).toBeInTheDocument();
 
         fireEvent.change(screen.getByTestId('api-route-form-name'), { target: { value: 'Prodotti' } });
         fireEvent.change(screen.getByTestId('api-route-form-url'), { target: { value: '/products' } });
@@ -91,7 +108,46 @@ describe('RouteConfigModal', () => {
         expect(vars.config.identity.description).toBe('Edited.');
     });
 
-    it('param source toggles the conditional value / secret_ref field', () => {
+    it.each(['tool', 'ingest', 'both'] as const)('saves identity fields in response settings for %s endpoints', async mode => {
+        const user = userEvent.setup();
+        const route = { id: 5, config: config({ identity: { name: 'Orders', slug: 'orders', description: null, mode } }) } as ApiRoute;
+        render(<RouteConfigModal connector={connector} route={route} onClose={vi.fn()} />);
+        await user.click(screen.getByRole('tab', { name: 'Risposta' }));
+        const input = screen.getByRole('textbox', { name: 'Campi identificativi' });
+        await user.type(input, 'ord_codiceweb, ord_ID');
+        expect(input).toHaveValue('ord_codiceweb, ord_ID');
+        await user.click(screen.getByTestId('api-route-form-test'));
+        expect(testMutate.mock.calls[0][0].config.response.identity_fields).toEqual(['ord_codiceweb', 'ord_ID']);
+        await user.click(screen.getByTestId('api-route-form-submit'));
+        expect(updateMutate.mock.calls[0][0].config.response.identity_fields).toEqual(['ord_codiceweb', 'ord_ID']);
+        expect(updateMutate.mock.calls[0][0].config.identity.mode).toBe(mode);
+    });
+
+    it('reopens and clears identity fields on detail endpoints', async () => {
+        const user = userEvent.setup();
+        const route = { id: 5, config: config({ response: { endpoint_type: 'detail', items_path: null, identity_fields: ['ord_codiceweb', 'ord_ID'], transform: null, pagination: null } }) } as ApiRoute;
+        render(<RouteConfigModal connector={connector} route={route} onClose={vi.fn()} />);
+        await user.click(screen.getByRole('tab', { name: 'Risposta' }));
+        const input = screen.getByRole('textbox', { name: 'Campi identificativi' });
+        expect(input).toHaveValue('ord_codiceweb, ord_ID');
+        await user.clear(input);
+        await user.click(screen.getByTestId('api-route-form-submit'));
+        expect(updateMutate.mock.calls[0][0].config.response.identity_fields).toEqual([]);
+    });
+
+    it('shows identity validation failures on the response tab', () => {
+        const route = { id: 5, config: config() } as ApiRoute;
+        updateMutate.mockImplementation((_vars, options) => options.onError({ response: { status: 422, data: {
+            message: 'Invalid identity fields.', errors: { 'config.response.identity_fields.0': ['Use a field name.'] },
+        } } }));
+        render(<RouteConfigModal connector={connector} route={route} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+        expect(screen.getByRole('tab', { name: 'Risposta' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByTestId('api-route-form-identity_fields-error')).toHaveTextContent('Use a field name.');
+        expect(screen.getByRole('textbox', { name: 'Campi identificativi' })).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('param source toggles the conditional value / secret_ref field', async () => {
         render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
         fireEvent.click(screen.getByTestId('api-route-form-param-add'));
@@ -99,11 +155,11 @@ describe('RouteConfigModal', () => {
         expect(screen.queryByTestId('api-route-form-param-0-value')).not.toBeInTheDocument();
         expect(screen.queryByTestId('api-route-form-param-0-secret_ref')).not.toBeInTheDocument();
 
-        fireEvent.change(screen.getByTestId('api-route-form-param-0-source'), { target: { value: 'secret' } });
+        await chooseSelectOption(screen.getByTestId('api-route-form-param-0-source'), 'secret');
         expect(screen.getByTestId('api-route-form-param-0-secret_ref')).toBeInTheDocument();
         expect(screen.queryByTestId('api-route-form-param-0-value')).not.toBeInTheDocument();
 
-        fireEvent.change(screen.getByTestId('api-route-form-param-0-source'), { target: { value: 'fixed' } });
+        await chooseSelectOption(screen.getByTestId('api-route-form-param-0-source'), 'fixed');
         expect(screen.getByTestId('api-route-form-param-0-value')).toBeInTheDocument();
         expect(screen.queryByTestId('api-route-form-param-0-secret_ref')).not.toBeInTheDocument();
     });
@@ -127,7 +183,7 @@ describe('RouteConfigModal', () => {
         // The whole form reflects the produced config.
         expect(screen.getByTestId('api-route-form-name')).toHaveValue('list_catalog');
         expect(screen.getByTestId('api-route-form-description')).toHaveValue('Elenca il catalogo.');
-        expect(screen.getByTestId('api-route-form-endpoint_type-list')).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByTestId('api-route-form-endpoint_type-list')).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByTestId('api-route-form-items_path')).toHaveValue('data');
         expect(screen.getByTestId('api-route-form-param-0-name')).toHaveValue('q');
         // Verdict strip + dirty.
@@ -155,5 +211,76 @@ describe('RouteConfigModal', () => {
         expect(result).toHaveAttribute('data-ok', 'true');
         expect(screen.getByTestId('api-route-form-test-endpoint-type')).toHaveAttribute('data-endpoint-type', 'list');
         expect(screen.getByTestId('api-route-form-response')).toBeInTheDocument();
+    });
+
+    it('explains a Cloudflare challenge, hides unknown taxonomy and keeps HTML as inert text', () => {
+        const html = '<html><script src="https://challenges.cloudflare.com/test.js"></script></html>';
+        testMutate.mockImplementation((_vars, opts) => opts.onSuccess({
+            test: testResult({ ok: false, status: 403, status_label: 'http_403', is_json: false, body: html, headers: { 'CF-Mitigated': 'challenge', 'CF-Ray': 'example-ray' } }),
+            endpoint_type: 'unknown', item_count: null,
+        }));
+        render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-form-test'));
+
+        expect(screen.getByRole('tab', { name: 'Prova' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Cloudflare ha bloccato la chiamata');
+        expect(screen.getByRole('alert')).toHaveTextContent('Questo risultato non permette di verificare le credenziali');
+        expect(screen.getByRole('alert')).toHaveTextContent('HTTP 403');
+        expect(screen.queryByTestId('api-route-form-test-endpoint-type')).not.toBeInTheDocument();
+        expect(screen.getByTestId('api-route-form-response').textContent).toBe(html);
+        expect(screen.getByTestId('api-route-form-response').querySelector('script')).toBeNull();
+        expect(screen.getByTestId('api-route-form-response').closest('details')).not.toHaveAttribute('open');
+    });
+
+    it('does not blame Cloudflare for a JSON 403 passing through its proxy', () => {
+        testMutate.mockImplementation((_vars, opts) => opts.onSuccess({
+            test: testResult({ ok: false, status: 403, body: { message: 'Forbidden' }, headers: { server: 'cloudflare', 'cf-ray': 'example-ray' } }),
+            endpoint_type: 'unknown',
+        }));
+        render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('api-route-form-test'));
+        expect(screen.getByRole('alert')).toHaveTextContent('Accesso negato');
+        expect(screen.getByRole('alert')).not.toHaveTextContent('Cloudflare ha bloccato');
+    });
+
+    it('keeps a saved route open after a failed final test and retries with update instead of creating a duplicate', () => {
+        const close = vi.fn();
+        const saved = vi.fn();
+        createMutate.mockImplementation((_vars, opts) => opts.onSuccess({ id: 42 }));
+        testRouteMutate.mockImplementation((_vars, opts) => opts.onSuccess({
+            test: testResult({ ok: false, status: 403, is_json: false, body: 'Denied' }),
+            endpoint_type: 'unknown',
+        }));
+        render(<RouteConfigModal connector={connector} route={null} onClose={close} onSaved={saved} />);
+        fireEvent.change(screen.getByTestId('api-route-form-name'), { target: { value: 'Ordini' } });
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+
+        expect(screen.getByTestId('api-route-form-save-notice')).toHaveTextContent('Configurazione salvata. Il test non è riuscito');
+        expect(screen.getByTestId('api-route-form-status')).toHaveTextContent('Salvata');
+        expect(close).not.toHaveBeenCalled();
+        expect(saved).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+        expect(createMutate).toHaveBeenCalledTimes(1);
+        expect(updateMutate).toHaveBeenCalledWith({ routeId: 42, config: expect.anything() }, expect.anything());
+    });
+
+    it('blocks saving invalid test arguments without losing the form', () => {
+        render(<RouteConfigModal connector={connector} route={null} onClose={vi.fn()} />);
+        fireEvent.change(screen.getByTestId('api-route-form-name'), { target: { value: 'Ordini' } });
+        fireEvent.change(screen.getByTestId('api-route-form-example-args'), { target: { value: '[1]' } });
+        fireEvent.click(screen.getByTestId('api-route-form-submit'));
+        expect(createMutate).not.toHaveBeenCalled();
+        expect(screen.getByTestId('api-route-form-example-args-error')).toHaveTextContent('oggetto JSON');
+        expect(screen.getByTestId('api-route-form-name')).toHaveValue('Ordini');
+    });
+
+    it('describes inherited authentication instead of promising an anonymous call', async () => {
+        const inherited = { ...connector, default_auth_profile_id: 5, auth_profiles: [{ id: 5, type: 'basic' }] } as ApiConnector;
+        const route = { id: 2, config: config() } as ApiRoute;
+        render(<RouteConfigModal connector={inherited} route={route} onClose={vi.fn()} />);
+        expect(screen.getByTestId('api-route-form-auth_profile_id')).toHaveAttribute('data-value', '');
+        await userEvent.click(screen.getByTestId('api-route-form-auth_profile_id'));
+        expect(screen.getByRole('option', { name: 'Predefinito del connettore (#5)' })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: 'Nessuno (chiamata anonima)' })).not.toBeInTheDocument();
     });
 });

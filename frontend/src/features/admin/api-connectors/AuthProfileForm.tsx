@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { ApiAuthProfile, AuthProfilePayload, AuthType } from './api-connectors.api';
 import {
     buttonStyle,
@@ -18,7 +20,7 @@ import {
  * payload when every field is empty).
  *
  * R11/R29: testids `api-auth-profile-form-{field}`.
- * R15: bound labels, role=dialog, Esc closes, field errors next to inputs.
+ * R15: bound labels, role=dialog, explicit close controls only, field errors next to inputs.
  */
 
 export interface AuthProfileFormProps {
@@ -80,6 +82,7 @@ export function AuthProfileForm({
     fieldErrors,
     isSubmitting,
 }: AuthProfileFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = !!profile;
     const [type, setType] = useState<AuthType>(profile?.type ?? 'none');
     const [credentials, setCredentials] = useState<Record<string, string>>({});
@@ -91,14 +94,6 @@ export function AuthProfileForm({
         }
         return initial;
     });
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const credFields = useMemo(() => CREDENTIAL_FIELDS[type], [type]);
     const cfgFields = useMemo(() => CONFIG_FIELDS[type], [type]);
@@ -128,9 +123,6 @@ export function AuthProfileForm({
     return (
         <div
             data-testid="api-auth-profile-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <form
@@ -151,23 +143,23 @@ export function AuthProfileForm({
                     <span style={fieldCaptionStyle()}>
                         Auth type<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
                     </span>
-                    <select
+                    <SelectField
                         id="api-auth-profile-form-type"
                         data-testid="api-auth-profile-form-type"
                         value={type}
-                        onChange={(e) => {
-                            setType(e.target.value as AuthType);
+                        onValueChange={(selectedValue) => {
+                            setType(selectedValue as AuthType);
                             // Reset credentials when the type changes — the field set differs.
                             setCredentials({});
                         }}
                         style={inputStyle()}
                     >
                         {(Object.keys(AUTH_TYPE_LABELS) as AuthType[]).map((t) => (
-                            <option key={t} value={t}>
+                            <SelectOption key={t} value={t}>
                                 {AUTH_TYPE_LABELS[t]}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                     {fieldErrors?.type && (
                         <span data-testid="api-auth-profile-form-type-error" role="alert" style={errorTextStyle()}>
                             {fieldErrors.type}
@@ -228,7 +220,7 @@ export function AuthProfileForm({
                             gap: 8,
                         }}
                     >
-                        <legend style={{ ...fieldCaptionStyle(), padding: '0 4px' }}>Configuration</legend>
+                        <legend style={{ ...fieldCaptionStyle(), padding: '0 4px' }}>{translateInterface("Configuration")}</legend>
                         {cfgFields.map((f) => {
                             const fieldId = `api-auth-profile-form-config-${f.key}`;
                             return (
@@ -263,15 +255,14 @@ export function AuthProfileForm({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="api-auth-profile-form-submit"
                         disabled={isSubmitting}
                         style={buttonStyle('primary', !!isSubmitting)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create profile'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save changes") : 'Create profile'}
                     </button>
                 </div>
             </form>

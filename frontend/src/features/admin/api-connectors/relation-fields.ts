@@ -1,51 +1,87 @@
-import type { ApiRoute } from './api-connectors.api';
+import type { ApiRoute, ParamType, RouteConfigParam } from './api-connectors.api';
 
-/*
- * Pure helpers (no React) so the relation editor's field suggestions can be
- * unit-tested. They derive:
- *   - the LIST route's item field names (dot-paths) from its inferred
- *     output_schema walked to items_path — the `from` side of a field map;
- *   - the DETAIL route's LLM parameter names — the `to_param` side (only `llm`
- *     params can be injected from a list item; R5).
- */
+export interface RelationSourceField {
+    path: string;
+    types: string[];
+    present: number;
+    total: number;
+    cardinality: 'one' | 'many';
+}
 
-/**
- * The JSON schema of a single list item, walked from a list route's
- * output_schema at its items_path ('' / null = top-level array). Mirrors the
- * backend ApiRouteController::itemSchema().
- */
 export function listItemSchema(route: ApiRoute): Record<string, unknown> | null {
     if (route.endpoint_type !== 'list') return null;
     let node: unknown = route.output_schema;
-    if (!isRecord(node)) return null;
+    for (const segment of (route.items_path ?? '').split('.').filter(Boolean)) {
+        node = isRecord(node) && isRecord(node.properties) ? node.properties[segment] : undefined;
+    }
+    return isRecord(node) && isRecord(node.items) ? node.items : null;
+}
 
-    const path = (route.items_path ?? '').trim();
-    if (path !== '') {
-        for (const segment of path.split('.')) {
-            const props = isRecord(node) ? node.properties : undefined;
-            node = isRecord(props) ? props[segment] : undefined;
-            if (!isRecord(node)) return null;
+export function hasSuccessfulResponse(route: ApiRoute): boolean {
+    const status = route.last_test_status;
+    return status === 'ok' || (typeof status === 'number' && status >= 200 && status < 300);
+}
+
+/** Only real successful responses are evidence. Schemas can be obsolete or AI-produced. */
+export function listResponseItems(route: ApiRoute, body: unknown = route.last_test_payload): unknown[] | null {
+    if (route.endpoint_type !== 'list') return null;
+    let node = body;
+    for (const segment of (route.items_path ?? '').split('.').filter(Boolean)) {
+        node = isRecord(node) || Array.isArray(node) ? (node as Record<string, unknown>)[segment] : undefined;
+    }
+    return Array.isArray(node) ? node : null;
+}
+
+export function listItemFields(route: ApiRoute, body?: unknown): RelationSourceField[] {
+    if (body === undefined && !hasSuccessfulResponse(route)) return [];
+    const items = listResponseItems(route, body === undefined ? route.last_test_payload : body);
+    if (!items) return [];
+    const fields = new Map<string, { types: Set<string>; present: number }>();
+    function walk(value: Record<string, unknown>, prefix = '') {
+        for (const [name, child] of Object.entries(value)) {
+            // Dots in a literal key cannot be read by the package's dot-path mapper.
+            if (name.includes('.')) continue;
+            const path = prefix ? `${prefix}.${name}` : name;
+            const type = child === null ? 'null' : Array.isArray(child) ? 'array' : typeof child === 'number' ? (Number.isInteger(child) ? 'integer' : 'number') : typeof child;
+            const field = fields.get(path) ?? { types: new Set<string>(), present: 0 };
+            field.types.add(type);
+            field.present += 1;
+            fields.set(path, field);
+            if (isRecord(child)) walk(child, path);
         }
     }
-
-    const items = isRecord(node) ? node.items : undefined;
-    return isRecord(items) ? items : null;
+    items.forEach((item) => { if (isRecord(item)) walk(item); });
+    return [...fields].map(([path, field]) => ({ path, types: [...field.types].sort(), present: field.present, total: items.length, cardinality: field.types.has('array') ? 'many' : 'one' }));
 }
 
-/**
- * The top-level field names of a list item, e.g. `['id', 'name']`. Suggestions
- * for a field map's `from` (an operator can still type a nested dot-path).
- */
 export function listItemFieldNames(route: ApiRoute): string[] {
-    const schema = listItemSchema(route);
-    const props = schema && isRecord(schema.properties) ? schema.properties : null;
-    return props ? Object.keys(props) : [];
+    return listItemFields(route).map((field) => field.path);
 }
 
-/** The LLM-sourced parameter names of a detail route — the valid `to_param` set. */
+export function detailLlmParams(route: ApiRoute): RouteConfigParam[] {
+    return (route.config?.request.params ?? route.parameters ?? []).filter((param) => param.source === 'llm').map((param) => ({ ...param, sort_order: param.sort_order ?? 0 }));
+}
+
 export function detailLlmParamNames(route: ApiRoute): string[] {
-    if (!route.parameters) return [];
-    return route.parameters.filter((p) => p.source === 'llm').map((p) => p.name);
+    return detailLlmParams(route).map((param) => param.name);
+}
+
+/** The connector relation mapper currently accepts only scalar sources. */
+export function compatibleField(field: RelationSourceField, target: ParamType): boolean {
+    if (target === 'array' || target === 'object' || field.cardinality === 'many') return false;
+    const types = field.types.filter((type) => type !== 'null');
+    return types.length > 0 && types.every((type) => type === target || (target === 'number' && type === 'integer'));
+}
+
+export function parseRelationArgument(value: string, type: ParamType): unknown {
+    if (type === 'string') return value;
+    const parsed: unknown = JSON.parse(value);
+    if ((type === 'integer' && (typeof parsed !== 'number' || !Number.isInteger(parsed))) ||
+        (type === 'number' && typeof parsed !== 'number') ||
+        (type === 'boolean' && typeof parsed !== 'boolean') ||
+        (type === 'array' && !Array.isArray(parsed)) ||
+        (type === 'object' && !isRecord(parsed))) throw new Error(`Valore non valido per ${type}`);
+    return parsed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

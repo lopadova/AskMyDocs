@@ -313,6 +313,27 @@ final class ConnectorAdminControllerTest extends TestCase
         Queue::assertPushed(SerializedConnectorSyncJob::class);
     }
 
+    public function test_sync_now_after_cancelled_import_downloads_new_mail_without_restarting_history(): void
+    {
+        Queue::fake();
+        $admin = $this->makeSuperAdmin();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'test-tenant', 'connector_name' => 'imap',
+            'config_json' => ['date_window_days' => 0],
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => $admin->id,
+            'last_sync_at' => now()->subHour(),
+        ]);
+        \App\Models\ImapBackfill::create([
+            'tenant_id' => 'test-tenant', 'connector_installation_id' => $installation->id,
+            'status' => \App\Models\ImapBackfill::STATUS_CANCELLED, 'cutoff_at' => now()->subHour(),
+        ]);
+        $this->actingAs($admin)->postJson("/api/admin/connectors/{$installation->id}/sync-now")
+            ->assertAccepted()->assertJsonPath('data.queued', true)->assertJsonMissingPath('data.mode');
+        Queue::assertPushed(SerializedConnectorSyncJob::class);
+        Queue::assertNotPushed(\App\Jobs\Imap\DiscoverImapBackfillJob::class);
+        $this->assertDatabaseCount('imap_backfills', 1);
+    }
+
     public function test_sync_now_dispatches_the_vendor_job_for_a_non_imap_connector(): void
     {
         // R43 — a non-IMAP connector does NOT share a per-account connection limit, so

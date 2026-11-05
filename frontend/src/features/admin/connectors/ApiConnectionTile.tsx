@@ -1,4 +1,8 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ApiConnector } from '../api-connectors/api-connectors.api';
+import { ConnectorExportButton } from '../api-connectors/ConnectorExportButton';
+import { Button } from '../../../components/Button';
+import { SourceAvatar } from './SourceAvatar';
 
 /**
  * A gallery card for ONE saved API connection (spec Obj — "salvare una
@@ -18,6 +22,7 @@ export interface ApiConnectionTileProps {
     onManage: () => void;
     onEdit: (connector: ApiConnector) => void;
     onRemove: (connector: ApiConnector) => void;
+    compact?: boolean;
 }
 
 function hostOf(url: string | null): string {
@@ -29,7 +34,8 @@ function hostOf(url: string | null): string {
     }
 }
 
-export function ApiConnectionTile({ connector, onManage, onEdit, onRemove }: ApiConnectionTileProps) {
+export function ApiConnectionTile({ connector, onManage, onEdit, onRemove, compact = false }: ApiConnectionTileProps) {
+    const { t: translateInterface } = useUiTranslation();
     const routes = connector.routes ?? [];
     const activeTools = routes.filter((r) => r.status === 'active').length;
     const base = `api-connection-tile-${connector.id}`;
@@ -40,102 +46,81 @@ export function ApiConnectionTile({ connector, onManage, onEdit, onRemove }: Api
             data-active={connector.is_active}
             style={{
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                padding: 14,
+                flexDirection: compact ? 'row' : 'column',
+                alignItems: compact ? 'center' : undefined,
+                flexWrap: compact ? 'wrap' : undefined,
+                gap: compact ? 12 : 8,
+                padding: compact ? 13 : 14,
                 border: '1px solid var(--hairline)',
                 borderRadius: 12,
                 background: 'var(--bg-1)',
             }}
         >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)' }}>{connector.name}</span>
-                {!connector.is_active && (
-                    <span
-                        data-testid={`${base}-disabled`}
-                        style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: 'var(--fg-3)',
-                            background: 'var(--bg-2)',
-                            borderRadius: 999,
-                            padding: '1px 7px',
-                        }}
-                    >
-                        Disabled
-                    </span>
-                )}
+            <SourceAvatar connectorKey="api" displayName="API" />
+            <div style={{ flex: 1, minWidth: compact ? 150 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--fg-0)' }}>{connector.name}</span>
+                    {!connector.is_active && (
+                        <span data-testid={`${base}-disabled`} style={disabledBadgeStyle}>Disabled</span>
+                    )}
+                </div>
+                <div
+                    data-testid={`${base}-base-url`}
+                    style={{ marginTop: 4, fontSize: 11.5, color: 'var(--fg-3)', fontFamily: 'var(--mono, ui-monospace, monospace)' }}
+                >
+                    {hostOf(connector.base_url)}
+                </div>
+                <div data-testid={`${base}-routes`} style={compact ? compactSummaryStyle : { marginTop: 7, fontSize: 12.5, color: 'var(--fg-2)' }}>
+                    {routes.length} route{routes.length === 1 ? '' : 's'} · {activeTools} active tool
+                    {activeTools === 1 ? '' : 's'}
+                </div>
             </div>
 
-            <div
-                data-testid={`${base}-base-url`}
-                style={{ fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--mono, ui-monospace, monospace)' }}
-            >
-                {hostOf(connector.base_url)}
-            </div>
-
-            <div data-testid={`${base}-routes`} style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-                {routes.length} route{routes.length === 1 ? '' : 's'} · {activeTools} active tool
-                {activeTools === 1 ? '' : 's'}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button
+            <div className="api-config-transfer-actions" style={{ marginTop: compact ? 0 : 4, marginLeft: compact ? 'auto' : 0 }}>
+                <Button
                     type="button"
                     data-testid={`${base}-manage`}
-                    className="focus-ring"
                     onClick={onManage}
-                    style={{
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        padding: '6px 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'var(--bg-2)',
-                        color: 'var(--fg-0)',
-                        cursor: 'pointer',
-                    }}
                 >
                     Manage
-                </button>
-                <div style={{ flex: 1 }} />
-                <button
+                </Button>
+                <ConnectorExportButton connector={connector} testId={`${base}-export`} />
+                {!compact && <div style={{ flex: 1 }} />}
+                <Button
                     type="button"
                     data-testid={`${base}-edit`}
-                    className="focus-ring"
                     aria-label={`Edit ${connector.name}`}
                     onClick={() => onEdit(connector)}
-                    style={{
-                        fontSize: 12.5,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'transparent',
-                        color: 'var(--fg-2)',
-                        cursor: 'pointer',
-                    }}
                 >
-                    Edit
-                </button>
-                <button
+                    {translateInterface("Edit")}</Button>
+                <Button
                     type="button"
                     data-testid={`${base}-remove`}
-                    className="focus-ring"
                     aria-label={`Remove ${connector.name}`}
                     onClick={() => onRemove(connector)}
-                    style={{
-                        fontSize: 12.5,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'transparent',
-                        color: '#fca5a5',
-                        cursor: 'pointer',
-                    }}
+                    variant="danger"
                 >
-                    Remove
-                </button>
+                    {translateInterface("Remove")}</Button>
             </div>
         </div>
     );
 }
+
+const disabledBadgeStyle: React.CSSProperties = {
+    fontSize: 10.5,
+    fontWeight: 600,
+    color: 'var(--fg-3)',
+    background: 'var(--bg-2)',
+    borderRadius: 999,
+    padding: '1px 7px',
+};
+
+const compactSummaryStyle: React.CSSProperties = {
+    display: 'inline-block',
+    marginTop: 8,
+    padding: '3px 8px',
+    borderRadius: 999,
+    background: 'var(--bg-2)',
+    color: 'var(--fg-2)',
+    fontSize: 10.5,
+};

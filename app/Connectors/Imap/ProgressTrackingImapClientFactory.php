@@ -31,7 +31,11 @@ final class ProgressTrackingImapClientFactory implements ImapClientFactoryInterf
             return $client;
         }
 
-        return new ProgressTrackingImapClient($client, $this->progress);
+        return new ProgressTrackingImapClient(
+            $client,
+            $this->progress,
+            (int) config('connectors.imap.sync.max_messages_per_job', 10),
+        );
     }
 
     public function makeBackfill(array $connection, string $secret, string $authMode): ImapBackfillClient

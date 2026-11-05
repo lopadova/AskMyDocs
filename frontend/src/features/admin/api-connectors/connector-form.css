@@ -1,0 +1,14 @@
+@media (max-width: 560px), (pointer: coarse) {
+    .api-connector-form {
+        --api-connector-field-size: 16px;
+        --api-connector-control-height: 48px;
+    }
+
+    .api-connector-form .ui-button {
+        --button-height: 48px;
+    }
+
+    .api-connector-form label:has(input[type='checkbox']) {
+        min-height: 48px;
+    }
+}

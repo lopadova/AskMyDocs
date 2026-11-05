@@ -65,7 +65,7 @@ describe('SyncErrorModal', () => {
         expect(onRetry).not.toHaveBeenCalled();
     });
 
-    it('closes on backdrop click but NOT on a click inside the dialog', async () => {
+    it('stays open on clicks inside and outside the dialog', async () => {
         const onClose = vi.fn();
         render(<SyncErrorModal vm={erroredVm()} onClose={onClose} onRetry={vi.fn()} />);
 
@@ -73,14 +73,16 @@ describe('SyncErrorModal', () => {
         expect(onClose).not.toHaveBeenCalled();
 
         await userEvent.click(screen.getByTestId('connector-sync-error-backdrop'));
-        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(onClose).not.toHaveBeenCalled();
     });
 
-    it('closes on Escape and focuses the close button on open (R15)', async () => {
+    it('focuses the close button and requires explicit dismissal', async () => {
         const onClose = vi.fn();
         render(<SyncErrorModal vm={erroredVm()} onClose={onClose} onRetry={vi.fn()} />);
         expect(screen.getByTestId('connector-sync-error-close')).toHaveFocus();
         await userEvent.keyboard('{Escape}');
+        expect(onClose).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByTestId('connector-sync-error-close'));
         expect(onClose).toHaveBeenCalled();
     });
 });

@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { CredentialFieldSchema } from './connectors.api';
 
@@ -189,26 +191,26 @@ export function FieldRow({
             <label htmlFor={base} style={fieldCol()}>
                 {label}
                 {help}
-                <select
+                <SelectField
                     id={base}
                     data-testid={base}
                     value={String(value ?? '')}
-                    onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
+                    onValueChange={(selectedValue) => onChange(selectedValue === '' ? null : selectedValue)}
                     style={inputStyle()}
                 >
-                    {nullable && <option value="">— connector default —</option>}
+                    {nullable && <SelectOption value="">— connector default —</SelectOption>}
                     {Object.entries(field.options).map(([val, lbl]) => (
-                        <option key={val} value={val}>
+                        <SelectOption key={val} value={val}>
                             {lbl}
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
                 {errEl}
             </label>
         );
     }
 
-    // number | text
+    // number | date | text
     return (
         <label htmlFor={base} style={fieldCol()}>
             {label}
@@ -216,7 +218,9 @@ export function FieldRow({
             <input
                 id={base}
                 data-testid={base}
-                type={field.type === 'number' ? 'number' : 'text'}
+                type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                min={field.type === 'date' ? field.min : undefined}
+                max={field.type === 'date' ? field.max : undefined}
                 value={String(value ?? '')}
                 onChange={(e) => onChange(e.target.value)}
                 style={inputStyle()}
@@ -245,6 +249,7 @@ export function FolderOrOptionMultiselect({
     fetchState,
     onRetryFolders,
 }: MultiselectProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const live = field.discovery === 'folders';
     const options = useMemo(() => {
         if (!live) return Object.keys(field.options);
@@ -282,8 +287,7 @@ export function FolderOrOptionMultiselect({
             <div data-testid={`${base}-fetch-error`} role="alert" style={{ ...boxStyle(), color: '#fca5a5' }}>
                 Could not reach the source to list folders.{' '}
                 <button type="button" data-testid={`${base}-retry`} onClick={onRetryFolders} style={ghostButton()}>
-                    Retry
-                </button>
+                    {translateInterface("Retry")}</button>
             </div>
         );
     }
@@ -334,6 +338,7 @@ interface TagInputProps {
 }
 
 export function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [draft, setDraft] = useState('');
 
     const add = () => {
@@ -398,8 +403,7 @@ export function TagInput({ base, ariaLabelledBy, values, onChange }: TagInputPro
                     style={{ ...inputStyle(), flex: 1 }}
                 />
                 <button type="button" data-testid={`${base}-add`} onClick={add} style={buttonStyle('secondary', false)}>
-                    Add
-                </button>
+                    {translateInterface("Add")}</button>
             </div>
         </div>
     );
@@ -430,7 +434,7 @@ export function buildSettingsPayload(
             }
             continue;
         }
-        setPath(settings, f.name, v);
+        setPath(settings, f.name, f.type === 'date' && !v ? null : v);
     }
     return settings;
 }

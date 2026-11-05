@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ApiConnectionsSection } from './ApiConnectionsSection';
@@ -8,6 +9,7 @@ import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
 import { ConnectionsCards } from './ConnectionsCards';
 import { ConnectionsTable } from './ConnectionsTable';
 import { ConnectionSettingsForm } from './ConnectionSettingsForm';
+import { ConnectionTypeTile } from './ConnectionTypeTile';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
 import { SourceTile } from './SourceTile';
 import { SyncErrorModal } from './SyncErrorModal';
@@ -20,6 +22,7 @@ import {
 } from './connection-vm';
 import type { ConnectionActions, ConnectionInFlight } from './connections-shared';
 import { CONNECTORS_STYLES } from './connectors-styles';
+import { McpConnectionsPanel } from '../../mcp-connections/McpConnectionsPanel';
 import {
     adminConnectorsApi,
     type ConfigureConnectorPayload,
@@ -118,8 +121,10 @@ type Modal =
 type TestFetchModal = { account: ConnectorInstallationDto; result: TestFetchResponse['data'] } | null;
 
 type ConnectionsViewMode = 'table' | 'cards';
+type ConnectionKindFilter = 'all' | 'sources' | 'api' | 'mcp';
 
 export function ConnectorsView() {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const connectorsQuery = useConnectors();
     const projectsQuery = useProjectOptions();
@@ -147,6 +152,9 @@ export function ConnectorsView() {
 
     // ── Redesign state: view toggle, search, open ⋮ menu, sync-error modal ────
     const [view, setView] = useState<ConnectionsViewMode>('table');
+    const [connectionKind, setConnectionKind] = useState<ConnectionKindFilter>('all');
+    const [apiCreateRequest, setApiCreateRequest] = useState(0);
+    const [mcpCreateRequest, setMcpCreateRequest] = useState(0);
     const [query, setQuery] = useState('');
     const [menuId, setMenuId] = useState<number | null>(null);
     // The errored connection whose "Sync failed" detail modal is open. Stored by
@@ -154,13 +162,11 @@ export function ConnectorsView() {
     // the modal auto-dismisses if the row disappears (e.g. removed elsewhere).
     const [errorId, setErrorId] = useState<number | null>(null);
 
-    const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
+    const state: 'loading' | 'ready' | 'error' = connectorsQuery.isLoading
         ? 'loading'
         : connectorsQuery.isError
           ? 'error'
-          : (connectorsQuery.data?.length ?? 0) === 0
-            ? 'empty'
-            : 'ready';
+          : 'ready';
 
     const entries = connectorsQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
@@ -601,8 +607,7 @@ const errorVm: ConnectionVM | null =
                             color: 'var(--fg-0)',
                         }}
                     >
-                        Connectors
-                    </h1>
+                        {translateInterface("Connectors")}</h1>
                     <p
                         style={{
                             fontSize: 13,
@@ -612,9 +617,7 @@ const errorVm: ConnectionVM | null =
                             maxWidth: 640,
                         }}
                     >
-                        Connect multiple accounts per source and bind each to a project (or the tenant
-                        default), then sync their content into your knowledge base.
-                    </p>
+                        {translateInterface("Connect multiple accounts per source and bind each to a project (or the tenant default), then sync their content into your knowledge base.")}</p>
                 </div>
 
                 {state === 'loading' && (
@@ -630,8 +633,7 @@ const errorVm: ConnectionVM | null =
                             borderRadius: 10,
                         }}
                     >
-                        Loading connectors…
-                    </div>
+                        {translateInterface("Loading connectors…")}</div>
                 )}
 
                 {state === 'error' && (
@@ -647,7 +649,7 @@ const errorVm: ConnectionVM | null =
                             fontSize: 13,
                         }}
                     >
-                        Could not load connectors.{' '}
+                        {translateInterface("Could not load connectors.")}{' '}
                         <button
                             type="button"
                             data-testid="admin-connectors-retry"
@@ -664,37 +666,24 @@ const errorVm: ConnectionVM | null =
                                 cursor: 'pointer',
                             }}
                         >
-                            Retry
-                        </button>
-                    </div>
-                )}
-
-                {state === 'empty' && (
-                    <div
-                        data-testid="admin-connectors-empty"
-                        role="status"
-                        style={{
-                            padding: 28,
-                            textAlign: 'center',
-                            color: 'var(--fg-3)',
-                            border: '1px dashed var(--hairline)',
-                            borderRadius: 10,
-                        }}
-                    >
-                        No source connectors are registered in this AskMyDocs build.
+                            {translateInterface("Retry")}</button>
                     </div>
                 )}
 
                 {state === 'ready' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-                        {/* Available sources — one add/import tile per registered source. */}
+                        {/* Every connection type starts from the same gallery. */}
                         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            <h2 style={sectionHeadingStyle}>Available sources</h2>
+                            <div>
+                                <h2 style={sectionHeadingStyle}>{translateInterface("Add a connection")}</h2>
+                                <p style={{ margin: '5px 0 0', color: 'var(--fg-3)', fontSize: 12 }}>
+                                    {translateInterface("Choose a content source, an HTTP API or a live MCP server.")}</p>
+                            </div>
                             <div
                                 data-testid="admin-connectors-grid"
                                 style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',
                                     gap: 12,
                                 }}
                             >
@@ -708,134 +697,154 @@ const errorVm: ConnectionVM | null =
                                         addPending={addPendingFor(entry.key)}
                                     />
                                 ))}
+                                <ConnectionTypeTile
+                                    kind="api"
+                                    title={translateInterface("API connection")}
+                                    description={translateInterface("Turn HTTP endpoints into live tools")}
+                                    onAdd={() => setApiCreateRequest((request) => request + 1)}
+                                />
+                                <ConnectionTypeTile
+                                    kind="mcp"
+                                    title={translateInterface("MCP connection")}
+                                    description={translateInterface("Connect tools and resources from an MCP server")}
+                                    onAdd={() => setMcpCreateRequest((request) => request + 1)}
+                                />
                             </div>
                         </section>
 
-                        {/* Connections — flat list of every connected account, table/cards. */}
-                        <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {/* One hub for source accounts, HTTP APIs and MCP servers. */}
+                        <section style={connectionsHubStyle}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                <h2 style={sectionHeadingStyle}>Connections</h2>
-                                <span
-                                    data-testid="connector-connections-count"
-                                    style={{
-                                        fontSize: 12,
-                                        fontWeight: 600,
-                                        color: 'var(--fg-2)',
-                                        background: 'var(--bg-2)',
-                                        borderRadius: 999,
-                                        padding: '1px 8px',
-                                    }}
-                                >
-                                    {visible.length}
-                                </span>
-                                <div style={{ flex: 1, minWidth: 12 }} />
-                                <input
-                                    data-testid="connector-connections-search"
-                                    type="search"
-                                    aria-label="Search connections"
-                                    placeholder="Search connections…"
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    className="focus-ring"
-                                    style={{
-                                        fontSize: 13,
-                                        padding: '6px 10px',
-                                        borderRadius: 8,
-                                        border: '1px solid var(--hairline)',
-                                        background: 'var(--bg-1)',
-                                        color: 'var(--fg-0)',
-                                        minWidth: 180,
-                                    }}
-                                />
+                                <h2 style={sectionHeadingStyle}>{translateInterface("Connections")}</h2>
                                 <div
                                     role="group"
-                                    aria-label="Connections view mode"
-                                    style={{
-                                        display: 'flex',
-                                        gap: 4,
-                                        background: 'var(--bg-2)',
-                                        borderRadius: 9,
-                                        padding: 3,
-                                    }}
+                                    aria-label={translateInterface("Connection type")}
+                                    style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 9, background: 'var(--bg-2)' }}
                                 >
-                                    <ViewTab
-                                        testid="connector-connections-view-table"
-                                        label="Table"
-                                        active={view === 'table'}
-                                        onClick={() => setView('table')}
-                                        icon={
-                                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                                <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" />
-                                                <path d="M1.5 6.5h13M6 6.5v7" stroke="currentColor" />
-                                            </svg>
-                                        }
-                                    />
-                                    <ViewTab
-                                        testid="connector-connections-view-cards"
-                                        label="Cards"
-                                        active={view === 'cards'}
-                                        onClick={() => setView('cards')}
-                                        icon={
-                                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                                <rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" />
-                                                <rect x="8.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" />
-                                                <rect x="1.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" />
-                                                <rect x="8.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" />
-                                            </svg>
-                                        }
-                                    />
+                                    {(['all', 'sources', 'api', 'mcp'] as const).map((kind) => (
+                                        <ConnectionKindTab
+                                            key={kind}
+                                            kind={kind}
+                                            active={connectionKind === kind}
+                                            onClick={() => setConnectionKind(kind)}
+                                        />
+                                    ))}
                                 </div>
-                                <button
-                                    type="button"
-                                    data-testid="connector-connections-sync-all"
-                                    className="focus-ring"
-                                    disabled={!canSyncAll}
-                                    onClick={handleSyncAll}
-                                    style={{
-                                        fontSize: 12.5,
-                                        fontWeight: 600,
-                                        padding: '7px 12px',
-                                        borderRadius: 8,
-                                        border: '1px solid var(--hairline)',
-                                        background: 'var(--bg-1)',
-                                        color: canSyncAll ? 'var(--fg-0)' : 'var(--fg-3)',
-                                        cursor: canSyncAll ? 'pointer' : 'not-allowed',
-                                    }}
-                                >
-                                    Sync all
-                                </button>
+                                <div style={{ flex: 1, minWidth: 12 }} />
+                                {(connectionKind === 'all' || connectionKind === 'sources') && (
+                                    <>
+                                        <input
+                                            data-testid="connector-connections-search"
+                                            type="search"
+                                            aria-label={translateInterface("Search connections")}
+                                            placeholder={translateInterface("Search source accounts…")}
+                                            value={query}
+                                            onChange={(e) => setQuery(e.target.value)}
+                                            className="focus-ring"
+                                            style={{
+                                                fontSize: 13,
+                                                padding: '6px 10px',
+                                                borderRadius: 8,
+                                                border: '1px solid var(--hairline)',
+                                                background: 'var(--bg-1)',
+                                                color: 'var(--fg-0)',
+                                                minWidth: 180,
+                                            }}
+                                        />
+                                        <div
+                                            role="group"
+                                            aria-label={translateInterface("Connections view mode")}
+                                            style={{ display: 'flex', gap: 4, background: 'var(--bg-2)', borderRadius: 9, padding: 3 }}
+                                        >
+                                            <ViewTab
+                                                testid="connector-connections-view-table"
+                                                label={translateInterface("Table")}
+                                                active={view === 'table'}
+                                                onClick={() => setView('table')}
+                                                icon={<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" /><path d="M1.5 6.5h13M6 6.5v7" stroke="currentColor" /></svg>}
+                                            />
+                                            <ViewTab
+                                                testid="connector-connections-view-cards"
+                                                label={translateInterface("Cards")}
+                                                active={view === 'cards'}
+                                                onClick={() => setView('cards')}
+                                                icon={<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" /><rect x="8.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" /><rect x="1.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" /><rect x="8.5" y="8.5" width="6" height="6" rx="1" stroke="currentColor" /></svg>}
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            data-testid="connector-connections-sync-all"
+                                            className="focus-ring"
+                                            disabled={!canSyncAll}
+                                            onClick={handleSyncAll}
+                                            style={{
+                                                fontSize: 12.5,
+                                                fontWeight: 600,
+                                                padding: '7px 12px',
+                                                borderRadius: 8,
+                                                border: '1px solid var(--hairline)',
+                                                background: 'var(--bg-1)',
+                                                color: canSyncAll ? 'var(--fg-0)' : 'var(--fg-3)',
+                                                cursor: canSyncAll ? 'pointer' : 'not-allowed',
+                                            }}
+                                        >
+                                            {translateInterface("Sync all")}</button>
+                                    </>
+                                )}
                             </div>
 
-                            {visible.length === 0 ? (
-                                <div
-                                    data-testid="connector-connections-empty"
-                                    role="status"
-                                    style={{
-                                        padding: 24,
-                                        textAlign: 'center',
-                                        color: 'var(--fg-3)',
-                                        border: '1px dashed var(--hairline)',
-                                        borderRadius: 10,
-                                        fontSize: 13,
-                                    }}
-                                >
-                                    {connections.length === 0
-                                        ? 'No connections yet — add an account from a source above.'
-                                        : 'No connections match your search.'}
+                            {(connectionKind === 'all' || connectionKind === 'sources') && (
+                                <div style={connectionGroupStyle}>
+                                    <div style={connectionGroupHeadingStyle}>
+                                        <span>{translateInterface("Source accounts")}</span>
+                                        <span data-testid="connector-connections-count" style={connectionCountStyle}>{visible.length}</span>
+                                    </div>
+                                    {visible.length === 0 ? (
+                                        <div
+                                            data-testid="connector-connections-empty"
+                                            role="status"
+                                            style={{
+                                                padding: 24,
+                                                textAlign: 'center',
+                                                color: 'var(--fg-3)',
+                                                border: '1px dashed var(--hairline)',
+                                                borderRadius: 10,
+                                                fontSize: 13,
+                                            }}
+                                        >
+                                            {connections.length === 0
+                                                ? 'No source accounts yet — add one from the gallery above.'
+                                                : 'No source accounts match your search.'}
+                                        </div>
+                                    ) : view === 'table' ? (
+                                        <ConnectionsTable rows={visible} menuId={menuId} actions={actions} inflight={inflight} />
+                                    ) : (
+                                        <ConnectionsCards rows={visible} menuId={menuId} actions={actions} inflight={inflight} />
+                                    )}
                                 </div>
-                            ) : view === 'table' ? (
-                                <ConnectionsTable rows={visible} menuId={menuId} actions={actions} inflight={inflight} />
-                            ) : (
-                                <ConnectionsCards rows={visible} menuId={menuId} actions={actions} inflight={inflight} />
+                            )}
+
+                            {(connectionKind === 'all' || connectionKind === 'api') && (
+                                <div style={connectionGroupStyle}>
+                                    <ApiConnectionsSection createRequest={apiCreateRequest} embedded />
+                                </div>
+                            )}
+
+                            {(connectionKind === 'all' || connectionKind === 'mcp') && (
+                                <div style={connectionGroupStyle}>
+                                    <McpConnectionsPanel
+                                        scope="shared"
+                                        projects={projects}
+                                        projectsLoading={projectsQuery.isLoading}
+                                        projectsError={projectsQuery.isError}
+                                        createRequest={mcpCreateRequest}
+                                        embedded
+                                    />
+                                </div>
                             )}
                         </section>
                     </div>
                 )}
-
-                {/* API connections — a distinct paradigm (endpoints → live chat
-                    tools). Created + listed here; deep route/auth/relation/test
-                    management drills into the dedicated page via "Manage". */}
-                <ApiConnectionsSection />
             </div>
 
             {modal?.kind === 'credential-add' && (
@@ -949,6 +958,69 @@ const sectionHeadingStyle: React.CSSProperties = {
     letterSpacing: '.06em',
     color: 'var(--fg-3)',
 };
+
+const connectionsHubStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    padding: 16,
+    border: '1px solid var(--hairline)',
+    borderRadius: 14,
+    background: 'color-mix(in srgb, var(--bg-1) 72%, transparent)',
+};
+
+const connectionGroupStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    paddingTop: 13,
+    borderTop: '1px solid var(--hairline)',
+};
+
+const connectionGroupHeadingStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    color: 'var(--fg-3)',
+    fontSize: 12,
+    fontWeight: 650,
+    textTransform: 'uppercase',
+    letterSpacing: '.055em',
+};
+
+const connectionCountStyle: React.CSSProperties = {
+    borderRadius: 999,
+    padding: '1px 7px',
+    color: 'var(--fg-2)',
+    background: 'var(--bg-2)',
+    fontSize: 10.5,
+    fontWeight: 600,
+};
+
+function ConnectionKindTab({ kind, active, onClick }: { kind: ConnectionKindFilter; active: boolean; onClick: () => void }) {
+    const labels: Record<ConnectionKindFilter, string> = { all: 'All', sources: 'Sources', api: 'API', mcp: 'MCP' };
+    return (
+        <button
+            type="button"
+            data-testid={`connector-kind-${kind}`}
+            className="focus-ring"
+            aria-pressed={active}
+            onClick={onClick}
+            style={{
+                border: 0,
+                borderRadius: 7,
+                padding: '5px 9px',
+                background: active ? 'var(--bg-3)' : 'transparent',
+                color: active ? 'var(--fg-0)' : 'var(--fg-3)',
+                fontSize: 11.5,
+                fontWeight: 650,
+                cursor: 'pointer',
+            }}
+        >
+            {labels[kind]}
+        </button>
+    );
+}
 
 function ViewTab({
     testid,

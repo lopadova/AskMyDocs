@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { Upload } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { ConnectorImportModal } from '../api-connectors/ConnectorImportModal';
 import { ConnectorForm } from '../api-connectors/ConnectorForm';
 import {
     useApiConnectors,
@@ -29,6 +33,7 @@ import { ApiConnectionTile } from './ApiConnectionTile';
  */
 
 type ApiModal =
+    | { kind: 'import' }
     | { kind: 'create' }
     | { kind: 'edit'; connector: ApiConnector }
     | { kind: 'remove'; connector: ApiConnector }
@@ -43,7 +48,8 @@ const headingStyle: React.CSSProperties = {
     color: 'var(--fg-3)',
 };
 
-export function ApiConnectionsSection() {
+export function ApiConnectionsSection({ createRequest = 0, embedded = false }: { createRequest?: number; embedded?: boolean }) {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const navigate = useNavigate();
     const { teamHash } = useParams({ strict: false }) as { teamHash?: string };
@@ -57,6 +63,7 @@ export function ApiConnectionsSection() {
     const [modal, setModal] = useState<ApiModal>(null);
     const [modalError, setModalError] = useState<string | null>(null);
     const [modalFieldErrors, setModalFieldErrors] = useState<Record<string, string>>({});
+    const previousCreateRequest = useRef(createRequest);
 
     const connectors = listQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
@@ -68,6 +75,12 @@ export function ApiConnectionsSection() {
           : connectors.length === 0
             ? 'empty'
             : 'ready';
+
+    useEffect(() => {
+        if (createRequest === previousCreateRequest.current) return;
+        previousCreateRequest.current = createRequest;
+        openModal({ kind: 'create' });
+    }, [createRequest]);
 
     function openModal(next: ApiModal) {
         setModalError(null);
@@ -131,25 +144,20 @@ export function ApiConnectionsSection() {
                 >
                     {connectors.length}
                 </span>
-                <div style={{ flex: 1, minWidth: 12 }} />
-                <button
-                    type="button"
-                    data-testid="api-connector-gallery-create"
-                    className="focus-ring"
-                    onClick={() => openModal({ kind: 'create' })}
-                    style={{
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        padding: '7px 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--hairline)',
-                        background: 'var(--bg-2)',
-                        color: 'var(--fg-0)',
-                        cursor: 'pointer',
-                    }}
-                >
-                    + New API connection
-                </button>
+                <Button data-testid="api-connector-gallery-import" leadingIcon={<Upload size={16} />}
+                    onClick={() => openModal({ kind: 'import' })}>Import API</Button>
+                {!embedded && (
+                    <>
+                        <div style={{ flex: 1, minWidth: 12 }} />
+                        <Button
+                            type="button"
+                            data-testid="api-connector-gallery-create"
+                            onClick={() => openModal({ kind: 'create' })}
+                        >
+                            + New API connection
+                        </Button>
+                    </>
+                )}
             </div>
 
             {state === 'loading' && (
@@ -182,14 +190,13 @@ export function ApiConnectionsSection() {
                             cursor: 'pointer',
                         }}
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
             {state === 'empty' && (
                 <div data-testid="api-connections-empty" role="status" style={dashedBox()}>
-                    No API connections yet — turn any HTTP endpoint into a live chat tool.
+                    No API connections yet. Add one from the connection gallery above.
                 </div>
             )}
 
@@ -198,7 +205,7 @@ export function ApiConnectionsSection() {
                     data-testid="api-connections-grid"
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                        gridTemplateColumns: embedded ? '1fr' : 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',
                         gap: 12,
                     }}
                 >
@@ -206,6 +213,7 @@ export function ApiConnectionsSection() {
                         <ApiConnectionTile
                             key={c.id}
                             connector={c}
+                            compact={embedded}
                             onManage={goToManage}
                             onEdit={(conn) => openModal({ kind: 'edit', connector: conn })}
                             onRemove={(conn) => openModal({ kind: 'remove', connector: conn })}
@@ -213,6 +221,11 @@ export function ApiConnectionsSection() {
                     ))}
                 </div>
             )}
+
+            {modal?.kind === 'import' && <ConnectorImportModal onClose={() => setModal(null)} onImported={() => {
+                setModal(null);
+                toast.success('API connector imported with all endpoints.', 'toast-api-connector-imported');
+            }} />}
 
             {(modal?.kind === 'create' || modal?.kind === 'edit') && (
                 <ConnectorForm
@@ -230,15 +243,12 @@ export function ApiConnectionsSection() {
             {modal?.kind === 'remove' && (
                 <div
                     data-testid="api-connection-remove-backdrop"
-                    onClick={(e) => {
-                        if (e.target === e.currentTarget) setModal(null);
-                    }}
                     style={modalBackdropStyle()}
                 >
                     <div role="dialog" aria-modal="true" data-testid="api-connection-remove-modal" style={modalPanelStyle(380)}>
                         <h2 style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>Remove API connection</h2>
                         <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: '4px 0 0', lineHeight: 1.5 }}>
-                            Remove <strong>{modal.connector.name}</strong> and all its routes, auth profiles and
+                            {translateInterface("Remove") + " "}<strong>{modal.connector.name}</strong> and all its routes, auth profiles and
                             relations? This cannot be undone.
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
@@ -258,8 +268,7 @@ export function ApiConnectionsSection() {
                                     cursor: 'pointer',
                                 }}
                             >
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                             <button
                                 type="button"
                                 data-testid="api-connection-remove-confirm"
@@ -277,7 +286,7 @@ export function ApiConnectionsSection() {
                                     cursor: 'pointer',
                                 }}
                             >
-                                {deleteConnector.isPending ? 'Removing…' : 'Remove'}
+                                {deleteConnector.isPending ? 'Removing…' : translateInterface("Remove")}
                             </button>
                         </div>
                     </div>

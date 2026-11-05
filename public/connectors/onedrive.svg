@@ -1,9 +1,53 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Microsoft OneDrive">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <!-- Source: https://msicons.com/icons/apps/OneDrive.svg (2025 cloud mark). -->
   <title>Microsoft OneDrive</title>
-  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
-  <g transform="translate(6, 18)">
-    <path d="M16 6 C19 4 23 4 26 6 C27 4 30 3 33 4 C37 5 40 8 40 12 C44 12 48 15 48 19 C48 23 45 26 41 26 L9 26 C5 26 2 23 2 19 C2 15 5 12 9 12 C9 9 12 6 16 6 Z"
-          fill="#0078d4" stroke="#005a9e" stroke-width="0.8" stroke-linejoin="round"/>
-  </g>
+  <svg x="9" y="8" width="46" height="46" viewBox="0 0 17 17">
+<path d="M4.96377 4.85547C2.50261 4.85554 0.662912 6.86757 0.524414 9.10899C0.610149 9.59195 0.891947 10.5457 1.33325 10.4967C1.88487 10.4355 3.27414 10.4967 4.45909 8.35425C5.32471 6.78919 7.10537 4.85543 4.96377 4.85547Z" fill="url(#paint0_radial_1967_29286)"/>
+<path d="M4.39441 5.69213C3.5671 7.00028 2.45349 8.87472 2.07764 9.46456C1.63088 10.1657 0.447698 9.86783 0.545715 8.86284C0.536053 8.94442 0.528629 9.02667 0.523513 9.10948C0.361654 11.7242 2.43745 13.8956 5.02053 13.8956C7.86743 13.8956 14.657 10.3531 13.9699 6.80363C13.2457 4.71721 11.2101 3.2207 8.90328 3.2207C6.59641 3.2207 5.11794 4.54803 4.39441 5.69213Z" fill="url(#paint1_radial_1967_29286)"/>
+<path d="M4.39441 5.69213C3.5671 7.00028 2.45349 8.87472 2.07764 9.46456C1.63088 10.1657 0.447698 9.86783 0.545715 8.86284C0.536053 8.94442 0.528629 9.02667 0.523513 9.10948C0.361654 11.7242 2.43745 13.8956 5.02053 13.8956C7.86743 13.8956 14.657 10.3531 13.9699 6.80363C13.2457 4.71721 11.2101 3.2207 8.90328 3.2207C6.59641 3.2207 5.11794 4.54803 4.39441 5.69213Z" fill="url(#paint2_radial_1967_29286)" fill-opacity="0.4"/>
+<path d="M4.39441 5.69213C3.5671 7.00028 2.45349 8.87472 2.07764 9.46456C1.63088 10.1657 0.447698 9.86783 0.545715 8.86284C0.536053 8.94442 0.528629 9.02667 0.523513 9.10948C0.361654 11.7242 2.43745 13.8956 5.02053 13.8956C7.86743 13.8956 14.657 10.3531 13.9699 6.80363C13.2457 4.71721 11.2101 3.2207 8.90328 3.2207C6.59641 3.2207 5.11794 4.54803 4.39441 5.69213Z" fill="url(#paint3_radial_1967_29286)"/>
+<path d="M4.39441 5.69213C3.5671 7.00028 2.45349 8.87472 2.07764 9.46456C1.63088 10.1657 0.447698 9.86783 0.545715 8.86284C0.536053 8.94442 0.528629 9.02667 0.523513 9.10948C0.361654 11.7242 2.43745 13.8956 5.02053 13.8956C7.86743 13.8956 14.657 10.3531 13.9699 6.80363C13.2457 4.71721 11.2101 3.2207 8.90328 3.2207C6.59641 3.2207 5.11794 4.54803 4.39441 5.69213Z" fill="url(#paint4_radial_1967_29286)" fill-opacity="0.6"/>
+<path d="M4.39441 5.69213C3.5671 7.00028 2.45349 8.87472 2.07764 9.46456C1.63088 10.1657 0.447698 9.86783 0.545715 8.86284C0.536053 8.94442 0.528629 9.02667 0.523513 9.10948C0.361654 11.7242 2.43745 13.8956 5.02053 13.8956C7.86743 13.8956 14.657 10.3531 13.9699 6.80363C13.2457 4.71721 11.2101 3.2207 8.90328 3.2207C6.59641 3.2207 5.11794 4.54803 4.39441 5.69213Z" fill="url(#paint5_radial_1967_29286)" fill-opacity="0.9"/>
+<path d="M4.97949 13.8975C4.97949 13.8975 11.7771 13.9109 12.9301 13.9109C15.0225 13.9109 16.6135 12.2048 16.6135 10.214C16.6135 8.2231 14.9906 6.52734 12.9301 6.52734C10.8696 6.52734 9.68299 8.06687 8.79174 9.74733C7.7474 11.7165 6.41515 13.8739 4.97949 13.8975Z" fill="url(#paint6_linear_1967_29286)"/>
+<path d="M4.97949 13.8975C4.97949 13.8975 11.7771 13.9109 12.9301 13.9109C15.0225 13.9109 16.6135 12.2048 16.6135 10.214C16.6135 8.2231 14.9906 6.52734 12.9301 6.52734C10.8696 6.52734 9.68299 8.06687 8.79174 9.74733C7.7474 11.7165 6.41515 13.8739 4.97949 13.8975Z" fill="url(#paint7_radial_1967_29286)" fill-opacity="0.4"/>
+<path d="M4.97949 13.8975C4.97949 13.8975 11.7771 13.9109 12.9301 13.9109C15.0225 13.9109 16.6135 12.2048 16.6135 10.214C16.6135 8.2231 14.9906 6.52734 12.9301 6.52734C10.8696 6.52734 9.68299 8.06687 8.79174 9.74733C7.7474 11.7165 6.41515 13.8739 4.97949 13.8975Z" fill="url(#paint8_radial_1967_29286)" fill-opacity="0.9"/>
+<defs>
+<radialGradient id="paint0_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(3.25108 3.89046 -6.46143 5.38553 0.829648 5.44293)" gradientUnits="userSpaceOnUse">
+<stop stop-color="#4894FE"/>
+<stop offset="0.695072" stop-color="#0934B3"/>
+</radialGradient>
+<radialGradient id="paint1_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(-14.292 16.4643 -12.216 -10.5767 14.4505 -0.391302)" gradientUnits="userSpaceOnUse">
+<stop offset="0.165327" stop-color="#23C0FE"/>
+<stop offset="0.534" stop-color="#1C91FF"/>
+</radialGradient>
+<radialGradient id="paint2_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(-3.39737 -2.84845 6.52918 -7.76723 4.12178 5.73143)" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="0.660528" stop-color="#ADC0FF" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="paint3_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(-3.81685 -3.22541 4.90484 -5.78919 8.94524 10.9675)" gradientUnits="userSpaceOnUse">
+<stop stop-color="#033ACC"/>
+<stop offset="1" stop-color="#368EFF" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="paint4_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(4.36209 10.0533 -10.8672 4.70302 3.82817 2.88298)" gradientUnits="userSpaceOnUse">
+<stop offset="0.592618" stop-color="#3464E3" stop-opacity="0"/>
+<stop offset="1" stop-color="#033ACC"/>
+</radialGradient>
+<radialGradient id="paint5_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(-11.4112 11.3964 -17.8774 -17.8543 14.2746 0.746646)" gradientUnits="userSpaceOnUse">
+<stop stop-color="#4BFDE8"/>
+<stop offset="0.543937" stop-color="#4BFDE8" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="paint6_linear_1967_29286" x1="10.8001" y1="13.9034" x2="10.8001" y2="6.61491" gradientUnits="userSpaceOnUse">
+<stop stop-color="#0086FF"/>
+<stop offset="0.49" stop-color="#00BBFF"/>
+</linearGradient>
+<radialGradient id="paint7_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(6.79761 2.69232 -5.10496 12.8557 6.98653 7.39567)" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="0.785262" stop-color="white" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="paint8_radial_1967_29286" cx="0" cy="0" r="1" gradientTransform="matrix(-7.59413 6.53665 -6.56732 -7.60999 16.3861 5.95507)" gradientUnits="userSpaceOnUse">
+<stop stop-color="#4BFDE8"/>
+<stop offset="0.584724" stop-color="#4BFDE8" stop-opacity="0"/>
+</radialGradient>
+</defs>
+</svg>
 </svg>

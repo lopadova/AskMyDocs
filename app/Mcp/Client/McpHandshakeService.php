@@ -7,6 +7,7 @@ namespace App\Mcp\Client;
 use App\Mcp\Adapters\McpServerAdapter;
 use App\Models\McpServer;
 use Padosoft\AskMyDocsMcpPack\Exceptions\McpException;
+use Padosoft\AskMyDocsMcpPack\Exceptions\McpTransportException;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 
 /**

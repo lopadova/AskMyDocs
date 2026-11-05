@@ -40,6 +40,13 @@ final class PumpImapBackfillJob implements ShouldQueue
             $hostTenant->set($this->tenantId);
             $packageTenant->set($this->tenantId);
             $windowId = DB::transaction(function (): ?int {
+                // Match start/cancel lock order: installation, campaign, window.
+                $installationId = ImapBackfill::query()->forTenant($this->tenantId)
+                    ->whereKey($this->backfillId)->value('connector_installation_id');
+                if ($installationId === null || ConnectorInstallation::query()->forTenant($this->tenantId)
+                    ->lockForUpdate()->find($installationId) === null) {
+                    return null;
+                }
                 $backfill = ImapBackfill::query()
                     ->forTenant($this->tenantId)
                     ->where('id', $this->backfillId)

@@ -1,10 +1,12 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Google Drive">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <!-- Source: Hand-drawn six-colour Drive geometry; https://developers.google.com/drive/api/guides/branding. -->
   <title>Google Drive</title>
-  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
-  <g transform="translate(8, 10)">
-    <path d="M16 4 L32 4 L48 32 L40 44 L24 44 L8 16 Z" fill="#1FA463"/>
-    <path d="M16 4 L8 16 L0 32 L8 44 L24 44 L16 32 Z" fill="#FFCF63"/>
-    <path d="M32 4 L48 32 L24 44 L40 44 Z" fill="#4688F1"/>
+  <g transform="translate(10 10) scale(1.833333)">
+    <path d="M8 2h8l-4 7z" fill="#188038"/>
+    <path d="m16 2 8 14h-8L12 9z" fill="#FBBC04"/>
+    <path d="m24 16-4 7-4-7z" fill="#EA4335"/>
+    <path d="M20 23H4l4-7h8z" fill="#4285F4"/>
+    <path d="m4 23-4-7h8z" fill="#1967D2"/>
+    <path d="M0 16 8 2l4 7-4 7z" fill="#34A853"/>
   </g>
 </svg>
