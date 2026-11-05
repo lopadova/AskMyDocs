@@ -9,6 +9,33 @@ This guide is for engineers writing new connectors against the
 AskMyDocs connector framework. Read `app/Connectors/ConnectorInterface.php`
 alongside this document — the interface contract is the source of truth.
 
+## Current package extension points
+
+The current contracts live in `padosoft/askmydocs-connector-base`, namespace
+`Padosoft\AskMyDocsConnectorBase`. The old `App\Connectors` examples below describe
+the historical v4.5 host implementation; use the installed package signatures
+and [ADR 0009](../adr/0009-v46-connector-package-extraction.md) for new libraries.
+`SupportsConnectionSettings` and `SupportsFolderDiscovery` provide the common
+settings/discovery surfaces for credential and OAuth accounts.
+
+Gmail and Microsoft Mail use the [email API developer contract](EMAIL-API.md),
+including synchronous preregistration, native mailbox/message identity and
+revision-scoped body/attachment receipts. The host owns the shared triage,
+assistant and campaigns; connector packages acquire read-only source data.
+
+Since 2026-10-16, both email API packages ship published `v1.0.0` releases and are
+standard production dependencies (`^1.0`). Their Composer names remain
+`padosoft/askmydocs-connector-gmail` and
+`padosoft/askmydocs-connector-microsoft-mail`; their VCS repositories are
+[Gmail API](https://github.com/padosoft/askmydocs-connector-gmail-api) and
+[Outlook API](https://github.com/padosoft/askmydocs-connector-outlook-api).
+Use the committed lockfile with `composer install`, then run
+`php artisan package:discover --ansi` and `php artisan migrate`.
+The [installation and OAuth guide](EMAIL-API.md#standard-versioned-installation)
+lists the server variables, HTTPS Herd callbacks and provider setup. Isolated
+local Composer manifests remain an optional workflow for package development.
+
+
 ---
 
 ## 1. What a connector is
@@ -431,3 +458,11 @@ All endpoints behind `auth:sanctum` + `can:manageConnectors`
 - `tests/Feature/Connectors/` — feature test pack
 - `tests/Architecture/ConnectorRegistryTest.php` — R23 architecture
   test
+
+See [email API verification](EMAIL-API-VERIFICATION.md) for reproducible fixture and local package checks.
+
+## Portable API connector packages
+
+See the [versioned contract, schema and example](api-packages/README.md) and the
+[external agent handoff](../handoff/api-connector-packages.md) to author API
+connectors as JSON or ZIP files and use **Import API** / **Export API**.

@@ -1,0 +1,23 @@
+{
+  "reference": "https://www.nencinisport.it/it",
+  "observedAt": "2026-10-13",
+  "logoSource": "https://static.nencinisport.it/upload/box/20220720170700-nencinisport.svg",
+  "logoOriginalPreserved": true,
+  "websiteFont": "Spartan",
+  "nativeKeynoteFont": "Avenir Next",
+  "nativeFontReason": "Native geometric substitute for portable Keynote use; no custom font installation needed.",
+  "colors": {
+    "blue": "#153D8A",
+    "red": "#CD1719",
+    "text": "#212529",
+    "secondaryText": "#5A5A5A",
+    "white": "#FFFFFF"
+  },
+  "editorialStyle": [
+    "Uppercase bold geometric headings",
+    "White backgrounds and generous spacing",
+    "Blue editorial sections",
+    "Red status accents",
+    "Original logo on white header"
+  ]
+}

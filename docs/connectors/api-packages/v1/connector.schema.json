@@ -1,0 +1,634 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:askmydocs:api-connector-config:1",
+  "title": "AskMyDocs API connector configuration v1",
+  "$comment": "Canonical JSON shape. See ../README.md and ../../../handoff/api-connector-packages.md for semantic checks, limits and legacy identity normalization.",
+  "type": "object",
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "askmydocs.api-connector-config"
+        },
+        "version": {
+          "const": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "format",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "connector": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 100
+        },
+        "base_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "secret_headers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "is_active": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "default_auth_profile_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "auth_profiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/authProfile"
+      },
+      "maxItems": 100
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      },
+      "maxItems": 1000
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relation"
+      },
+      "maxItems": 1000
+    }
+  },
+  "required": [
+    "_meta",
+    "connector",
+    "auth_profiles",
+    "routes",
+    "relations"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "location": {
+          "enum": [
+            "path",
+            "query",
+            "header",
+            "body"
+          ]
+        },
+        "source": {
+          "enum": [
+            "llm",
+            "fixed",
+            "secret"
+          ]
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secret_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sort_order": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "location",
+        "source",
+        "type",
+        "required",
+        "sort_order"
+      ],
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "slug": {
+          "type": "string",
+          "maxLength": 96,
+          "pattern": "^[a-zA-Z0-9_]+$"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http_method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "tool",
+            "ingest",
+            "both"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "tested",
+            "active",
+            "disabled"
+          ]
+        },
+        "endpoint_type": {
+          "enum": [
+            "unknown",
+            "list",
+            "detail"
+          ]
+        },
+        "endpoint_type_locked": {
+          "type": "boolean"
+        },
+        "items_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 255
+        },
+        "auth_profile_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter"
+          },
+          "maxItems": 500
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "cache_ttl_s": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rate_limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        },
+        "output_schema": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        },
+        "param_mapping": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        },
+        "tool_definition": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 96
+                },
+                "description": {
+                  "type": "string"
+                },
+                "input_schema": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "name",
+                "description",
+                "input_schema"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_transform": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "include": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "maxItems": 500
+                },
+                "exclude": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "maxItems": 500
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        },
+        "pagination": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "name",
+        "slug",
+        "http_method",
+        "url",
+        "mode",
+        "status",
+        "endpoint_type",
+        "endpoint_type_locked",
+        "parameters"
+      ],
+      "additionalProperties": false
+    },
+    "authProfile": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^auth-[a-zA-Z0-9_-]+$",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "none",
+            "api_key",
+            "bearer",
+            "basic",
+            "custom",
+            "oauth2_cc"
+          ]
+        },
+        "config": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "in": {
+                  "enum": [
+                    "header",
+                    "query",
+                    null
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 128
+                },
+                "header_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 128
+                },
+                "token_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 2048
+                },
+                "scope": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 4096
+                },
+                "auth_style": {
+                  "enum": [
+                    "body",
+                    "basic",
+                    null
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        },
+        "public_credentials": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "username": {
+                  "type": "string"
+                },
+                "client_id": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            {
+              "type": "array",
+              "maxItems": 0
+            }
+          ]
+        },
+        "secret_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "maxItems": 100
+        },
+        "secret_headers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "ref",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "relation": {
+      "type": "object",
+      "properties": {
+        "list_route_ref": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "detail_route_ref": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sort_order": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "field_map": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              "to_param": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              "to_location": {
+                "enum": [
+                  "path",
+                  "query",
+                  "header",
+                  "body",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "to_param"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "list_route_ref",
+        "detail_route_ref",
+        "field_map"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

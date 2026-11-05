@@ -1,0 +1,427 @@
+# Collaudare la chat sul server via API
+
+Il client `scripts/qa/chat-api.py` usa le stesse conversazioni, lo stesso
+`AgentMessageController`, la stessa coda e lo stesso worker della chat web.
+Non avvia una seconda pipeline e non richiede accesso al pannello Laravel Cloud
+per ciascun test. Le risposte rimangono visibili anche nella chat dell'utente
+che possiede il token.
+
+## Attivazione una tantum
+
+1. Pubblicare questo branch e distribuire il codice nell'ambiente di sviluppo.
+2. Un operatore esegue sul server, per un utente attivo già membro del tenant:
+
+   ```sh
+   php artisan chat:issue-api-token EMAIL_UTENTE --tenant=autry --hours=168 --debug
+   ```
+
+   Il comando restituisce **una credenziale segreta in JSON**, una sola volta.
+   `--debug` richiede il ruolo admin o super-admin. Ometterlo per un normale
+   utente: invio, risposte, citazioni, strumenti ed eventi rimangono disponibili.
+   La durata predefinita è 24 ore, il massimo 168. Non vengono creati utenti o
+   modificati ruoli.
+3. Conservare quel JSON sul computer in un file privato fuori dalla repository,
+   ad esempio `/private/tmp/askmydocs-chat-token.json`, con permessi `600`.
+   Non inviarlo in chat. Se il comando gira da shell locale con accesso al
+   server, usare `umask 077` prima della redirezione verso il file.
+4. Importare e verificare il profilo locale:
+
+   ```sh
+   python3 scripts/qa/chat-api.py init \
+     --base-url https://ask-my-docs-develop-5oikgu.laravel.cloud \
+     --project autry --token-file /private/tmp/askmydocs-chat-token.json
+   python3 scripts/qa/chat-api.py check
+   ```
+
+Il profilo predefinito è `~/.config/askmydocs/chat-api.json`, privato, con il token.
+Per più ambienti usare `--profile PERCORSO` prima del sottocomando, oppure
+`ASKMYDOCS_CHAT_PROFILE`. Il client legge il token dal file, non dagli argomenti
+visibili del processo. Il token è limitato a un tenant e alla superficie
+`/api/chat/*`; resta soggetto alle appartenenze, ai progetti e ai ruoli correnti.
+Un token scaduto o revocato deve essere riemesso dall'operatore.
+
+La creazione del profilo non contatta il server. `check` verifica invece
+l'autenticazione reale, il tenant, i progetti e la scadenza senza chiamare un
+modello. Questa repository non contiene token di un server reale.
+
+## Eseguire una domanda e un seguito
+
+```sh
+python3 scripts/qa/chat-api.py ask \
+  --question 'Incrocia U858724, U858798 e RU106083 e confronta i due ordini.' \
+  --output /private/tmp/askmydocs-qa/caso-255 --debug
+```
+
+Il riepilogo stampa `conversation_id` e `run_id`. Per un seguito nella stessa
+conversazione:
+
+```sh
+python3 scripts/qa/chat-api.py ask --conversation ID_CONVERSAZIONE \
+  --question 'Quali informazioni mancano ancora?' \
+  --output /private/tmp/askmydocs-qa/caso-255-seguito --debug
+```
+
+`--input-json FILE` aggiunge gli stessi input della chat: `depth`, `filters`,
+`live_sources`, `mcp_app_id` e `selection`. Per esempio:
+
+```json
+{
+  "depth": 3,
+  "filters": {"languages": ["it"]},
+  "live_sources": {"api": ["api:gescat"], "mcp": []}
+}
+```
+
+Gli identificativi delle sorgenti vanno letti dal catalogo reale con `sources`;
+`api:gescat` sopra è solo un esempio. Omettere `live_sources` mantiene la scelta
+predefinita della chat. `selection` contiene il `message_id` della risposta
+con tabella e il `row_key` restituito dal server: non si inventano ID o record.
+Le chiamate usano modelli, autorizzazioni e limiti reali dell'utente e possono
+consumare credito AI e chiamare i connettori abilitati.
+
+Ogni directory contiene:
+
+- `submission.json`: input e ricevuta con gli ID; scritto prima dell'invio.
+- `run.json`: ultimo stato, contatori, strumenti e diagnostica se autorizzata.
+- `events.json`: tutti gli eventi persistiti, letti a pagine con cursore.
+- `messages.json`: risposta completa con metadati, citazioni, tabelle,
+  riferimenti agli strumenti e attività, tramite lo stesso controller della UI.
+- `debug.json`: export diagnostico completo della conversazione se autorizzato.
+- `summary.json`: esito e identificativi. Tutti i file sono privati (`600`).
+
+Il client non ripete automaticamente POST che potrebbero essere già arrivati al
+server. Una directory che contiene una submission non può inviare una seconda
+volta. Se la conferma di invio è andata persa, ispezionare `submission.json`,
+`conversations` e `messages --conversation ID`; non reinviare alla cieca.
+Il limite `--wait` riguarda l'osservazione locale: alla scadenza il job sul server
+non viene annullato. Si può riprendere:
+
+```sh
+python3 scripts/qa/chat-api.py watch --run UUID_RUN \
+  --output /private/tmp/askmydocs-qa/caso-255 --debug
+```
+
+Codici di uscita: `0` completata o parziale, `1` fallita/annullata,
+`2` errore client/HTTP, `3` serve un'interazione, `124` attesa locale scaduta.
+Una risposta parziale non è un test funzionale riuscito: verificare contenuto,
+fonti, completezza e risultato atteso nei file salvati.
+
+## Casi demo conversazionali: almeno tre turni
+
+Ogni caso demo richiede almeno tre domande dell'utente nella **stessa
+conversazione**, quindi almeno trenta turni per una tornata di dieci casi.
+La prima domanda resta quella originale del caso, per confrontare il risultato
+con le tornate precedenti. Le domande successive si scelgono dopo aver letto la
+risposta precedente: non sono una sequenza di prompt prefissata né tre richieste
+indipendenti in chat nuove.
+
+Chi conduce il collaudo assume due prospettive:
+
+- **Utente che approfondisce:** formula ogni seguito usando soltanto la domanda
+  iniziale e ciò che è già emerso nella chat. Non anticipa fatti, date, codici,
+  nomi o risposte mancanti appresi dalle fonti di verifica, dagli export o da
+  prove precedenti. Un'affermazione della chat resta da verificare: non diventa
+  vera perché viene ripresa in una domanda.
+- **Verificatore:** confronta le risposte con documenti, risultati API e
+  diagnostica autorizzati. Registra errori, omissioni e contraddizioni anche
+  quando un seguito ottiene una risposta migliore.
+
+Per il secondo turno scegliere un dubbio concreto emerso nella prima risposta:
+un riferimento ambiguo, una differenza tra documenti e gestionale, un passaggio
+temporale o un'affermazione senza prova. Per il terzo approfondire un altro
+aspetto in base alle prime due risposte, per esempio la prova di un esito, un
+collegamento tra ordini o le informazioni ancora necessarie all'operatore.
+Se un aspetto è già chiarito, cambiare direzione invece di ripetere la domanda.
+Una risposta negativa documentata è valida; non insistere finché il sistema
+produce il risultato atteso.
+
+Prima di ogni seguito salvare in un file privato `follow-up-decision.json`:
+numero del turno, ID della risposta precedente, breve passaggio che ha motivato
+la scelta, aspetto da approfondire, domanda effettiva e motivazione. La domanda
+deve avere senso per un utente che ha letto soltanto quella conversazione.
+Le fonti di verifica e i risultati attesi restano separati dagli input inviati.
+
+Usare `--conversation ID` per i seguiti e directory distinte, per esempio
+`TORNATA/DEMO-01/turn-01`, `turn-02` e `turn-03`. Attendere la chiusura della run
+precedente e ispezionare la risposta prima del prossimo invio. Non contare tre
+subdomande nello stesso messaggio come tre turni. Non sostituire una chat
+fallita con una nuova conversazione per presentare il caso come riuscito:
+registrare l'impedimento ed eventuali turni mancanti. Un invio incerto richiede
+la normale riconciliazione in lettura, senza reinviare automaticamente.
+
+Il report conserva per ciascun turno domanda, motivo del seguito, chat/run,
+risposta, fonti, strumenti, tempi ed esito verificato. Valuta anche la continuità
+del contesto: clienti e ordini non scambiati, riferimenti impliciti risolti,
+fatti già emersi conservati, contraddizioni e dati nuovi attribuiti alle fonti.
+Distinguere la copertura al primo turno dalla copertura dopo approfondimento:
+un recupero al terzo turno non cancella un'omissione iniziale. Riportare sia i
+turni effettivamente eseguiti sia i casi con almeno tre turni completati.
+
+Completare tutti e dieci i dialoghi prima dei fix applicativi, accorpare i
+malfunzionamenti e poi ripetere la tornata dopo commit e deploy. Nei confronti
+fra deploy il primo prompt resta uguale; i seguiti restano adattivi e il report
+deve evidenziare le differenze, senza dichiararli una ripetizione identica.
+
+## Ispezione e interazioni
+
+```sh
+python3 scripts/qa/chat-api.py sources
+python3 scripts/qa/chat-api.py snapshot --run UUID_RUN
+python3 scripts/qa/chat-api.py messages --conversation ID
+python3 scripts/qa/chat-api.py debug --conversation ID
+python3 scripts/qa/chat-api.py document --id ID_DOCUMENTO
+python3 scripts/qa/chat-api.py tool-source --conversation ID --message ID --execution ID
+python3 scripts/qa/chat-api.py cancel --run UUID_RUN
+python3 scripts/qa/chat-api.py continue --run UUID_RUN --logical 5 --physical 20
+python3 scripts/qa/chat-api.py reconcile --run UUID_RUN
+python3 scripts/qa/chat-api.py revoke
+```
+
+Il client si ferma su conferme, selezioni o handoff MCP/API. Non concede
+estensioni di budget automaticamente. `continue` usa il contratto di conferma
+budget della chat; selezioni di righe passano come input del prossimo turno.
+Le interazioni MCP che richiedono azioni dell'utente rimangono handoff espliciti;
+questo client non automatizza OAuth o approvazioni di strumenti.
+
+`reconcile` è una riparazione esplicita per run già terminali, riservata ad
+admin/super-admin con `chat:debug` e accesso alla propria chat. Chiude strumenti
+rimasti aperti ed emette gli eventi mancanti, marcando l'esito fisico come
+sconosciuto. È idempotente, non cambia la risposta e non riesegue richieste.
+Una run attiva viene rifiutata con `409`.
+
+## Contratto HTTP
+
+Tutte le richieste richiedono `Authorization: Bearer TOKEN`, `X-Tenant-Id` e
+`Accept: application/json`. I POST mandano JSON. Non servono cookie o CSRF.
+
+| Metodo e percorso | Risultato |
+| --- | --- |
+| GET `/api/chat/me` | Autenticazione, tenant, progetti, scadenza |
+| GET/POST `/api/chat/conversations` | Elenco/creazione chat dell'utente |
+| GET `/api/chat/live-sources?project_key=...` | Catalogo API/MCP autorizzato |
+| POST `/api/chat/conversations/{id}/messages` | `202`, run reale accodata |
+| GET `/api/chat/conversations/{id}/messages` | Stessi messaggi della UI |
+| GET `/api/chat/runs/{uuid}?after=N` | Stato e fino a 100 eventi, `next_after`, `has_more` |
+| GET `/api/chat/runs/{uuid}/events` | Stream SSE esistente, ripresa con `after` |
+| POST `/api/chat/runs/{uuid}/cancel` | Annullamento tramite il controllo standard |
+| POST `/api/chat/runs/{uuid}/continue` | Estensione confermata dei budget |
+| POST `/api/chat/runs/{uuid}/reconcile` | Riparazione admin di strumenti aperti in una run terminale |
+| GET `/api/chat/conversations/{id}/debug-transcript` | Export admin, richiede `chat:debug` |
+| GET `/api/chat/documents/{id}/preview` | Testo fonte autorizzato |
+| GET `/api/chat/conversations/{id}/messages/{message}/tool-sources/{execution}` | Risultato strumento registrato |
+| DELETE `/api/chat/token` | Revoca della credenziale corrente |
+
+Anche una run terminale può avere altre pagine di eventi: consumare `has_more`
+prima di considerare completo il log. `diagnostics` nello snapshot è disponibile
+con `chat:debug` e ruolo amministrativo, anche durante l'esecuzione. Non è una
+sonda OS: log del container, OOM e traffico mai persistito non sono ricostruibili
+tramite queste API.
+
+## Budget del worker e riprova
+
+Nel worker ogni richiesta testuale usa il tempo rimasto della sua invocazione,
+con un massimo predefinito di 60 secondi e una riserva di 10 secondi per verifica
+e chiusura, oltre al margine finale. Il timeout arriva sia ai provider HTTP sia
+al percorso SDK. Le decisioni Jev rispettano il tempo residuo e non eseguono
+retry nascosti dentro la stessa invocazione. Fuori da questo contesto i retry
+ordinari rimangono invariati.
+
+`AGENT_TEXT_REQUEST_TIMEOUT_SECONDS` e `AGENT_TEXT_REASONING_EFFORT` configurano
+il default testuale (`60`, `low`): OpenRouter invia l'effort soltanto ai modelli
+che ne dichiarano il supporto. `AGENT_WAVE_PROCESS_CONCURRENCY=2` limita i
+bootstrap PHP simultanei indipendentemente dalla larghezza logica della wave.
+La diagnostica distingue `wave_concurrency` e `wave_process_concurrency`.
+
+Quando manca ancora la prima osservazione, una stima di pianificazione più
+lunga del tempo residuo non ferma da sola la ricerca. Il planner usa un budget
+condiviso e decrescente per richiesta e correzione, lasciando il minimo previsto
+per la wave e la riserva esistente per la sintesi. Dopo la prima raccolta resta
+il controllo conservativo prima di pianificare altre wave.
+
+Per i thread lunghi verificare `DECISION_MAX_STATE_BYTES=131072`: un override
+esplicito precedente a 32.768 continua a prevalere. Controllare nel nuovo export
+il limite effettivo e la concorrenza dei processi prima di confrontare le due
+tornate. Usare conversazioni nuove e gli stessi prompt; conservare gli export
+precedenti senza sovrascriverli.
+
+Se il contesto complessivo supera quel limite, grounding e copertura usano
+richieste separate: `shared_sources_batched_v1`, `logical_state_bytes` e
+`batches` distinguono dimensione complessiva e dimensione effettiva massima.
+Ogni confronto conserva la propria fonte primaria completa e passa su tutte
+le alternative pertinenti. Un conflitto o un risultato mancante impedisce
+l'approvazione del claim; il controllo di copertura prende la probabilità
+minima fra i blocchi. Una singola fonte/confronto indivisibile ancora troppo
+grande resta `state_limit`, senza tagli o esclusioni silenziose.
+
+`requested_source_coverage_required` identifica invece un piano che cerca solo
+documenti quando la richiesta esige anche dati di una sorgente live selezionata.
+Il planner riceve questo errore prima dell'esecuzione e corregge la proposta.
+Non è una conferma dei dati né un'autorizzazione a operazioni di scrittura.
+
+## Verifica locale
+
+I test HTTP usano token Sanctum reali, lo stack delle rotte e l'handler del
+worker. Provider e retrieval sono fixture; non contattano servizi esterni.
+Il client ha test per ripresa delle pagine, file privati, credenziali,
+invio incerto senza duplicazione e scadenza dell'osservazione senza annullamento.
+Il funzionamento sul server va verificato dopo deploy e provisioning del token.
+
+Gli export distinguono anche il componente in cui l'interpretazione si ferma
+(`failure_details.component`). Un errore del contratto di focus conserva un
+codice chiuso in `contract_error`, riusato dal solo tentativo di correzione
+previsto. Non vengono copiati corpi HTTP, header o messaggi arbitrari del provider.
+Un'identità già selezionata dal modello e presente esattamente nel registro
+della stessa chat può completare la sola dichiarazione `resolved_references`
+omessa in un seguito. Non vengono indovinati o registrati nuovi ID, né ereditati
+soggetti per richieste dichiarate nuove. Errori di forma e identità restano
+distinti; una normalizzazione puramente dichiarativa non cambia il piano.
+
+Per i seguiti, la navigazione conserva nomi e valori dei soli campi identità
+dichiarati dal connettore, con tool e percorso del record. Gli estratti di
+affermazioni mostrate nella chat (al massimo dieci da 240 caratteri per risposta)
+servono soltanto a capire riferimenti come «le due registrazioni». Sono ammessi
+solo da fonti ancora autorizzate e selezionate e non sostituiscono rilettura,
+aggiornamento, timestamp o verifica del supporto dei fatti.
+
+`requires_composition` distingue la copertura dei fatti dalla presentazione
+richiesta. Una tabella, traduzione o riscrittura può usare fonti già verificate
+senza aggiornarle, ma passa comunque dalla composizione della risposta: non
+viene sostituita dalla concatenazione letterale dei fatti in memoria. Il flag
+resta separato da `requires_research` e non approva nuovi fatti.
+
+Nei seguiti con identità risolte vengono inoltre riletti i documenti già trovati
+nella stessa chat, anche se non avevano prodotto un'affermazione pubblicata.
+Sono nuovi accessi alle fonti originali con permessi e filtri correnti: non
+riusano la prosa dell'assistente, non approvano fatti e non aggiornano i dati
+delle API. `context_document_reread` registra numero di documenti e limiti;
+un passaggio troppo grande viene escluso interamente con una segnalazione.
+Questo impedisce che il solo sottoinsieme scelto dalla memoria diventi l'unica
+base per negare una conferma presente in un altro messaggio già trovato.
+
+Le nuove bozze selezionano un intero `source_choice` offerto nel prompt. Il
+server lo converte immediatamente nell'identità completa della fonte e del
+record, prima di salvare o unire le bozze. Gli indici non vengono reinterpretati
+in un altro elenco. Le vecchie `source_ref` restano leggibili; indici sconosciuti,
+identità esplicite in conflitto, hash, permessi e appartenenza al record restano
+controllati separatamente.
+
+Nelle bozze, un solo paragrafo finale `requested_speech_act` può contenere la
+richiesta cortese esplicitamente chiesta dall'utente. Non ha riferimenti a fatti:
+due controlli distinti verificano che sia richiesta e che non affermi stati,
+promesse o operazioni eseguite. I fatti aziendali mantengono la normale verifica
+delle fonti. Questo testo rimane una bozza e non autorizza l'invio di messaggi.
+
+La copertura controlla anche ogni domanda interpretata separatamente: un
+giudizio globale positivo non compensa un aspetto mancante. Le fonti restano
+complete e, quando serve, ripartite; anche i criteri sono divisi in gruppi entro
+i limiti di numero e dimensione. La copertura può richiedere una nuova bozza,
+ma non approva fatti né sostituisce i controlli di provenienza.
+
+`requires_research=true` può indicare una consultazione soltanto API/MCP:
+`kb_queries=[]` è valido e non elimina la ricerca né i controlli delle capacità.
+Non serve inventare una ricerca documentale per rendere valido quel compito.
+Per `invalid_research_question`, `failure_details.research_contract` indica
+posizione, indice del compito e regola violata senza salvare il testo rifiutato.
+
+Se una riscrittura viene respinta, una richiesta cortese verificata separatamente
+può restare accanto ai fatti originali invariati. Per le tabelle, un raggruppamento
+di fatti già validato può essere reso con intestazioni neutre e testi originali,
+senza usare parole, valori o conclusioni della riscrittura respinta. La traccia
+riporta `accepted_request_only` o `literal_table_fallback`; non sono approvazioni
+di nuovi fatti. Gruppi misti, riferimenti ignoti e fatti mancanti restano esclusi.
+
+I codici alfanumerici maiuscoli devono comparire letteralmente nella fonte o nel
+record selezionato; non basta che un altro record della risposta contenga il
+codice. Nel testo finale i placeholder di redazione sono presentati come dati
+mascherati, senza ricostruire valori né modificare gli originali diagnostici.
+
+Per fonti divise in partizioni, la copertura registra anche la loro pertinenza
+alla domanda corrente. Soltanto una partizione giudicata con sufficiente certezza
+estranea non introduce un obbligo di copertura; tutte le fonti sono conservate.
+Un dettaglio richiesto ma omesso o una pertinenza incerta continua a bloccare la
+copertura. `coverage_validation.checks` conserva punteggi per compito e documenti
+per guidare l'unico tentativo di correzione, senza abbassare la soglia fattuale.
+
+Nei controlli di pertinenza, un giudizio incerto sullo stato condiviso può avere
+un solo controllo isolato sullo stesso fatto e sulla domanda corrente completa.
+Un rifiuto netto, una fonte non valida o un errore del provider non vengono
+aggirati. `isolated_checks` conserva il nuovo giudizio con costo e latenza;
+la soglia resta invariata.
+
+`cross_claim_consistency` confronta le affermazioni già verificate per impedire
+che una negazione globale contraddica una conferma dello stesso evento nella
+risposta. Non confonde una situazione precedente con un aggiornamento successivo,
+né ritiro con consegna o rimborso. Una negazione non verificata non viene approvata.
+
+La sintesi può proporre `requested_speech_act` separatamente da `claims`: una
+nuova domanda al destinatario non richiede una citazione storica. Il presenter
+verifica richiesta e assenza di affermazioni fattuali prima di aggiungerla; può
+conservarla anche se la riscrittura dei fatti non riesce. Non compare tra i fatti
+per citazioni o memoria, non può unire casi distinti e non autorizza un invio.
+
+Se una correzione incompleta recupera un fatto verificato ma ha copertura globale
+inferiore, `verified_repair_additions` può conservarne solo il materiale richiesto
+che manca nell'originale. Tutti i fatti originari devono sopravvivere al controllo
+di coerenza; restano il limite di dieci affermazioni e una valutazione separata
+della copertura combinata. Lo stato della correzione è `augmented`: non significa
+che la risposta sia completa. Le tabelle originali già verificate vengono rese
+come tabelle, senza annidarle in una cella del fallback.
+
+Gli errori strutturali del presenter espongono `failure_rule`, un codice chiuso
+come `unknown_or_repeated_fact`, `mixed_task_groups`, `incomplete_or_oversized`
+o `invalid_relation_extraction`. Non contengono il testo della bozza o la risposta
+grezza del provider; una semplice classe di eccezione non identifica la regola.
+
+### Controlli dopo la decima tornata a tre turni
+
+Il controllo di coerenza classifica prima le negazioni di eventi. Le sole
+osservazioni positive già verificate alla fonte non vengono scartate perché
+un'altra frase nega l'evento. Negazioni e classificazioni incerte richiedono il
+controllo indipendente di compatibilità; una verifica non disponibile non
+approva una negazione. Quantità zero dell'articolo atteso e ricezione di un
+articolo diverso sono proposizioni distinte.
+
+`source_support_reassessment` riguarda solo un risultato documentale il cui
+esito prevalente è `supported_relevant`, ma ancora sotto soglia. Una sola
+valutazione del supporto legge la fonte integrale e tutte le alternative, entro
+il budget di stato e la scadenza. Restano i controlli successivi di pertinenza e
+coerenza. Rifiuti netti, conflitti, errori del provider, fonti non valide e record
+strutturati non seguono questa via; le probabilità originali restano in traccia.
+Se un testo API fallisce soltanto il controllo dei riferimenti letterali, il
+record già vincolato può fornire esclusivamente i campi richiesti e dichiarati:
+la proiezione ripassa il validatore, senza approvare il confronto scartato.
+
+La memoria distingue il budget del prompt dalla verifica dei fatti selezionati.
+Un record ricco di campi non può rendere indisponibile un fatto selezionato da
+un'altra fonte: ID, campi correlati e conflitti vengono ricontrollati nel
+perimetro originale. Il prompt privilegia gli enunciati già verificati e ammette
+al massimo dieci fatti per osservazione, entro i limiti globali. I collegamenti
+verificati caso/record possono selezionare il contesto API associato. Nessun
+riuso rinnova acquisizione, scadenza, autorizzazioni o hash della fonte.
+
+`linked_paragraphs_v6` permette di distribuire un fatto composto su più blocchi.
+Ogni blocco deve essere fedele ai propri fatti; una verifica separata deve
+ritrovare **tutto** il fatto nell'insieme dei blocchi collegati. Restano vietati
+ID inesistenti, duplicati nello stesso blocco, gruppi mescolati, identificativi
+alterati e relazioni causali non supportate. Una richiesta esplicita di tabelle
+separate conserva i confini anche quando le intestazioni sono identiche.
+
+Se una proposta `requested_speech_act` non supera entrambi i controlli, può
+essere riscritta una sola volta come domanda priva di affermazioni. La nuova
+proposta deve superare gli stessi due controlli in uno slot distinto e durevole.
+`draft_request` e `draft_request_repair` includono il candidato limitato a 500
+caratteri nella diagnostica amministrativa, insieme al giudizio: non compare
+come fatto, citazione o permesso di invio.
+
+Il client riprova al massimo tre volte esclusivamente GET interrotti da errori
+transitori DNS/rete, entro un'unica scadenza. Nessun tentativo automatico per
+POST, DELETE, errori HTTP, autenticazione, redirect o verifica del certificato.
+Un invio dall'esito incerto richiede sempre di riprendere l'osservazione della
+run già accettata, senza duplicare il messaggio.
+
+La decima tornata ha completato 30 domande in 10 chat: 18 risposte coperte,
+12 parziali, nessuna inutilizzabile; due dialoghi interamente coperti. Tutti gli 88
+strumenti erano terminali. Questi esiti precedono i fix di questa sezione e non
+ne dimostrano il risultato sul server. Le omissioni e lo stato tecnico `partial`
+vanno verificati nuovamente dopo il deploy, senza modificare i vecchi export o
+abbassare soglie per ottenere un esito verde. Nessuna nuova migrazione.
