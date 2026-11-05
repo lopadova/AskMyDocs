@@ -182,6 +182,33 @@ php artisan queue:retry all       # re-dispatch failed jobs
 transient provider error self-heals; a persistent one lands in `failed_jobs`
 (visible in the admin log viewer's Failed Jobs tab).
 
+## A code file is "unsupported" or "skipped"
+
+**Symptom:** `kb:ingest-folder --pattern=php` reports `unsupported_extension: php`,
+`POST /api/kb/ingest` answers `422 Unsupported mime_type "text/x-php"`, or files
+come back `status: "skipped"`.
+
+**Cause:** respectively — `KB_CODE_INGESTION_ENABLED` is still `false` (the shipped
+default; the response is the same as before the feature existed); or the admission
+policy refused the file. The `reason` says which: `denied_path` (a `vendor/`,
+`node_modules/`, `.env*`, lockfile, key…), `too_large` (over `KB_CODE_MAX_FILE_BYTES`),
+`generated_file` (a `@generated` / `DO NOT EDIT` header), `binary_content`.
+
+**Fix:** enable the flag and pass the extensions explicitly (the default
+`--pattern` never includes code). The deny-list cannot be turned off; to add to it
+use `KB_CODE_EXTRA_DENY`. See [Ingesting source code](/ingesting-source-code).
+
+## Code chunks all say `chunker: heuristic`
+
+**Cause:** the tree-sitter helper is not installed on the ingestion worker, or Node
+is missing — `KB_CODE_CHUNKER_DRIVER=auto` fell back silently *by design*, and the
+health check reports `code_chunker_ok: degraded` with a `reason`
+(`helper_missing`, `helper_dependencies_missing`, `node_unavailable`).
+
+**Fix:** `npm install --prefix tools/code-chunker` on the worker, then
+`KB_CODE_CHUNKER_DRIVER=tree_sitter` if you would rather a missing helper fail the
+ingest than degrade. Re-ingest to re-chunk existing files.
+
 ## "My setting did nothing"
 
 **Cause:** a cached config. Production should `config:cache`, but that means

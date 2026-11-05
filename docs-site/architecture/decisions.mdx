@@ -157,6 +157,26 @@ flowchart LR
   No versions table is added: the family *is* the version model, and the
   narrower gap the audit found is closed without rebuilding what v8.7 shipped.
 
+## The retrieval-quality arc: explainable, contextual, cross-encoded, code-aware
+
+- **[ADR 0035](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0035-v841-retrieval-quality-cycle.md) — Retrieval quality: explain, contextual embeddings, cross-encoder, expansion, code.**
+  One decision record, seven decisions, ordered *measurement first*. **D1** ships a
+  harder benchmark (v2: seven query classes, a per-class scorecard, a regression
+  gate) and a per-result ranking trace *before* anything is tuned, so every later
+  change is judged by a number that can fail. **D2** embeds `title | section | text`
+  instead of the bare chunk and records an `embedding_fingerprint` so a recipe
+  change is visible and `kb:reembed-stale` re-embeds exactly what drifted. **D3**
+  adds a position-aware cross-encoder stage whose blend never rewrites
+  `rerank_score`/`vector_score` — the refusal gate keeps reading what it always
+  read. **D4** adds typed query expansion with a strong-signal skip; **D5** gives
+  agents facets, line-range reads, did-you-mean and admin-authored path contexts;
+  **D6** makes source code a content class: syntax-aware chunking in an
+  out-of-process Node helper, a non-overridable deny-list, and credentials
+  redacted before anything is stored or embedded. The cycle's rule is the one
+  the earlier arcs drew: every behaviour ships **default-OFF**, tested in both
+  flag states, and is promoted only on benchmark evidence — which is why no
+  default changed in the cycle that built the machinery to justify one.
+
 ## Decision rationale (meta)
 
 - **Why keep ADRs at all?** A wrong fact in a quick-reference propagates into

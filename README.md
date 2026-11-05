@@ -1495,6 +1495,15 @@ citations / graph / rejected-injection / refusal end-to-end, and produces a
 dated scorecard you can re-run after any retrieval change (or at a milestone
 close) to catch regressions.
 
+> **Benchmark v2 (ADR 0035, v8.41).** `php artisan kb:benchmark --suite=v2` runs 90 labelled
+> queries over a 42-document corpus in seven classes (paraphrase, hard negative, identifier,
+> context-dependent, short/ambiguous, code, refusal), prints a per-class table, reports
+> classes whose feature is off under `skipped_queries` (never as a false zero) and, with
+> `--gate`, fails below committed floors (`kb.benchmark.v2.threshold_*`). `BenchmarkV2Test`
+> runs the gate on every PHPUnit run. Every retrieval flag of the cycle is meant to be promoted
+> only after a LIVE before/after on this suite — see the
+> [rollout runbook](docs/runbooks/retrieval-quality-rollout.md).
+
 **1. Deterministic (no key, runs anywhere — CI-safe):**
 
 ```bash
