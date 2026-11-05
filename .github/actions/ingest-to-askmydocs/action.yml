@@ -151,9 +151,21 @@ runs:
             #   3. Extract the old path of every rename (field 2 of
             #      --name-status "R<sim>\told\tnew") and append it to
             #      DELETED, so the old source_path is purged as well.
-            mapfile -t FILES < <(git diff --name-only --diff-filter=AMR "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei "\\.(md|markdown${CODE_REGEX})\$" || true)
-            mapfile -t DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei "\\.(md|markdown${CODE_REGEX})\$" || true)
-            mapfile -t RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei "\\.(md|markdown${CODE_REGEX})\$" || true)
+            mapfile -t FILES < <(git diff --name-only --diff-filter=AMR "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
+            mapfile -t DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
+            mapfile -t RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei '\.(md|markdown)$' || true)
+            # v8.45 — code extensions (opt-in via code_globs): the same AMR /
+            # D / R sets, appended to the markdown ones. The markdown filters
+            # above stay byte-identical (R5 lock-step with full-sync).
+            if [ -n "$CODE_REGEX" ]; then
+              CODE_PAT="\\.(${CODE_REGEX#|})\$"
+              mapfile -t CODE_FILES < <(git diff --name-only --diff-filter=AMR "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei "$CODE_PAT" || true)
+              mapfile -t CODE_DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei "$CODE_PAT" || true)
+              mapfile -t CODE_RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei "$CODE_PAT" || true)
+              [ "${#CODE_FILES[@]}" -gt 0 ] && FILES+=("${CODE_FILES[@]}")
+              [ "${#CODE_DELETED[@]}" -gt 0 ] && DELETED+=("${CODE_DELETED[@]}")
+              [ "${#CODE_RENAMED_OLD[@]}" -gt 0 ] && RENAMED_OLD+=("${CODE_RENAMED_OLD[@]}")
+            fi
             if [ "${#RENAMED_OLD[@]}" -gt 0 ]; then
               DELETED+=("${RENAMED_OLD[@]}")
             fi

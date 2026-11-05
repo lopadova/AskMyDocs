@@ -108,7 +108,13 @@ class ChatRetrievalService
     private function pathContextChains(\Illuminate\Support\Collection $chunks): array
     {
         $service = app(PathContextService::class);
-        if (! $service->enabled()) {
+        try {
+            $enabled = $service->enabled();
+        } catch (\Throwable) {
+            // No booted container (plain unit tests): the feature is simply off.
+            $enabled = false;
+        }
+        if (! $enabled) {
             return [];
         }
 

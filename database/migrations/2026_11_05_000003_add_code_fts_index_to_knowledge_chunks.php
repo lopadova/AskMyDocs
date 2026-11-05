@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
  * carry `metadata.language` (set exclusively by CodeAstChunker). Prose rows are
  * not indexed twice and the index stays empty — zero cost — until code
  * ingestion is used. The predicate here must stay textually identical to the
- * one KbSearchService::fullTextSearchOnce() adds, or the planner will not
+ * one KbSearchService::fullTextSearch() adds, or the planner will not
  * choose the index.
  *
  * `IF NOT EXISTS` keeps it re-runnable; no-op on non-PostgreSQL connections

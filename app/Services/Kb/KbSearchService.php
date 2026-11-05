@@ -1018,44 +1018,20 @@ class KbSearchService
      */
     /**
      * Full-text branch. v8.45/W5 (ADR 0035 D7): with code ingestion ON, a second
-     * pass searches the CODE chunks only, with the `simple` configuration (a
-     * language stemmer mangles identifiers: `calculateVatRounding` must not be
-     * stemmed as Italian prose) through the partial expression index
-     * `idx_chunks_fts_code`, and the two result sets are merged by chunk id
-     * (best score wins). With the flag OFF this is exactly the single prose
-     * query it has always been (R43).
+     * pass (`$codeOnly`) searches the CODE chunks only, with the `simple`
+     * configuration (a language stemmer mangles identifiers: `calculateVatRounding`
+     * must not be stemmed as Italian prose) through the partial expression index
+     * `idx_chunks_fts_code`, and the two result sets are merged by chunk id (best
+     * score wins). With the flag OFF this is exactly the single prose query it has
+     * always been (R43).
      */
-    private function fullTextSearch(
+    protected function fullTextSearch(
         string $query,
         ?string $projectKey,
         int $limit,
         string $tenantId,
         ?RetrievalFilters $filters = null,
-    ): Collection {
-        $prose = $this->fullTextSearchOnce($query, $projectKey, $limit, $tenantId, $filters, false);
-        if (! (bool) config('kb.code.ingestion_enabled', false)) {
-            return $prose;
-        }
-        $code = $this->fullTextSearchOnce($query, $projectKey, $limit, $tenantId, $filters, true);
-        if ($code->isEmpty()) {
-            return $prose;
-        }
-
-        return $prose->concat($code)
-            ->groupBy('id')
-            ->map(static fn (Collection $group) => $group->sortByDesc(static fn ($c): float => (float) ($c->fts_score ?? 0.0))->first())
-            ->sortByDesc(static fn ($c): float => (float) ($c->fts_score ?? 0.0))
-            ->take($limit)
-            ->values();
-    }
-
-    protected function fullTextSearchOnce(
-        string $query,
-        ?string $projectKey,
-        int $limit,
-        string $tenantId,
-        ?RetrievalFilters $filters,
-        bool $codeOnly,
+        bool $codeOnly = false,
     ): Collection {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             return collect();
@@ -1122,7 +1098,39 @@ class KbSearchService
             $this->applyFilters($builder, $filters);
         }
 
-        return $builder->limit($limit)->get();
+        $prose = $builder->limit($limit)->get();
+        if ($codeOnly || ! (bool) config('kb.code.ingestion_enabled', false)) {
+            return $prose;
+        }
+
+        return $this->mergeFtsPasses(
+            $prose,
+            $this->fullTextSearch($query, $projectKey, $limit, $tenantId, $filters, true),
+            $limit,
+        );
+    }
+
+    /**
+     * Merge the prose and the code-only full-text passes by chunk id, best
+     * `fts_score` wins, ordered by score and cut to `$limit`.
+     *
+     * @param  Collection<int, KnowledgeChunk>  $prose  already ordered by score
+     * @param  Collection<int, KnowledgeChunk>  $code
+     * @return Collection<int, KnowledgeChunk>
+     */
+    protected function mergeFtsPasses(Collection $prose, Collection $code, int $limit): Collection
+    {
+        if ($code->isEmpty()) {
+            return $prose;
+        }
+        $score = static fn ($c): float => (float) ($c->fts_score ?? 0.0);
+
+        return $prose->concat($code)
+            ->groupBy('id')
+            ->map(static fn (Collection $group) => $group->sortByDesc($score)->first())
+            ->sortByDesc($score)
+            ->take($limit)
+            ->values();
     }
 
     /**
