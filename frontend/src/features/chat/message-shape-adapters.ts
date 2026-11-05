@@ -1,5 +1,14 @@
 import type { UIMessage } from 'ai';
-import type { CounterfactualPanel, Message as AppMessage, MessageCitation, RunnerUpChunk } from './chat.api';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
+import type {
+    AgentSelectionMetadata,
+    AgentTableArtifact,
+    CounterfactualPanel,
+    Message as AppMessage,
+    MessageCitation,
+    RunnerUpChunk,
+    ToolSource,
+} from './chat.api';
 
 /**
  * v4.0/W3.2 — shape adapters that let the chat renderer consume BOTH
@@ -37,6 +46,21 @@ import type { CounterfactualPanel, Message as AppMessage, MessageCitation, Runne
 
 export type RenderableMessage = AppMessage | UIMessage;
 
+/** Cited sources and recorded external calls, independently of activity badges. */
+export function getToolSources(message: RenderableMessage): ToolSource[] {
+    const metadata = message.metadata && typeof message.metadata === 'object' ? message.metadata as Record<string, unknown> : {};
+    const sources = [...(Array.isArray(metadata.tool_sources) ? metadata.tool_sources : []),
+        ...(Array.isArray(metadata.tool_references) ? metadata.tool_references : [])];
+    const seen = new Set<number>();
+    return sources.filter((source): source is ToolSource => {
+        if (!source || typeof source !== 'object' || !Number.isSafeInteger(source.execution_id)
+            || source.execution_id <= 0 || typeof source.tool !== 'string'
+            || !['api', 'mcp'].includes(source.kind) || seen.has(source.execution_id)) return false;
+        seen.add(source.execution_id);
+        return true;
+    });
+}
+
 /**
  * Discriminator. The SDK's `UIMessage` mandates `parts`; the legacy
  * `Message` does not. We use this property's PRESENCE — not the
@@ -47,7 +71,7 @@ export function isUiMessage(m: RenderableMessage): m is UIMessage {
     return 'parts' in m && Array.isArray((m as UIMessage).parts);
 }
 
-const VALID_REFUSAL_REASONS = ['no_relevant_context', 'llm_self_refusal'] as const;
+const VALID_REFUSAL_REASONS = ['no_relevant_context', 'llm_self_refusal', 'retrieval_profile_required'] as const;
 type KnownRefusalReason = typeof VALID_REFUSAL_REASONS[number];
 // Open the union with `(string & {})` so future BE-emitted reasons
 // don't silently degrade to `null` while still keeping
@@ -309,12 +333,23 @@ export function getConfidence(m: RenderableMessage): number | null {
 export interface RenderableToolCall {
     id: string;
     name: string;
-    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied';
+    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied' | 'confirmation_required' | 'input_required' | 'task_accepted';
     server_name?: string | null;
     server_id?: number | null;
     arguments?: Record<string, unknown> | null;
     result?: Record<string, unknown> | null;
     error?: string | null;
+    pending_interaction_id?: string | null;
+    prompt?: Record<string, unknown> | null;
+    task_id?: string | null;
+    task?: Record<string, unknown> | null;
+    app?: RenderableMcpApp | null;
+}
+
+export interface RenderableMcpApp {
+    id: string;
+    resource_uri?: string;
+    fallback?: string;
 }
 
 export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
@@ -349,8 +384,11 @@ export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
 function normalizeToolCall(raw: unknown): RenderableToolCall {
     const record = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     const status = String(record.status ?? 'ok');
-    const validStatus: RenderableToolCall['status'] = ['pending', 'ok', 'error', 'timeout', 'denied'].includes(status)
-        ? (status as RenderableToolCall['status'])
+    const mappedStatus = status === 'completed' ? 'ok' : status;
+    const validStatus: RenderableToolCall['status'] = [
+        'pending', 'ok', 'error', 'timeout', 'denied', 'confirmation_required', 'input_required', 'task_accepted',
+    ].includes(mappedStatus)
+        ? (mappedStatus as RenderableToolCall['status'])
         : 'ok';
     return {
         id: String(record.id ?? ''),
@@ -367,6 +405,27 @@ function normalizeToolCall(raw: unknown): RenderableToolCall {
                 ? (record.result as Record<string, unknown>)
                 : null,
         error: typeof record.error === 'string' ? record.error : null,
+        pending_interaction_id: typeof record.pending_interaction_id === 'string' ? record.pending_interaction_id : null,
+        prompt: record.prompt && typeof record.prompt === 'object' && !Array.isArray(record.prompt)
+            ? (record.prompt as Record<string, unknown>)
+            : null,
+        task_id: typeof record.task_id === 'string' ? record.task_id : null,
+        task: record.task && typeof record.task === 'object' && !Array.isArray(record.task)
+            ? (record.task as Record<string, unknown>)
+            : null,
+        app: normalizeMcpApp(record.app),
+    };
+}
+
+function normalizeMcpApp(raw: unknown): RenderableMcpApp | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const record = raw as Record<string, unknown>;
+    if (typeof record.id !== 'string' || record.id.length === 0) return null;
+
+    return {
+        id: record.id,
+        resource_uri: typeof record.resource_uri === 'string' ? record.resource_uri : undefined,
+        fallback: typeof record.fallback === 'string' ? record.fallback : undefined,
     };
 }
 
@@ -410,6 +469,69 @@ export function getCounterfactual(m: RenderableMessage): CounterfactualPanel[] {
     }
     const rows = m.metadata?.counterfactual;
     return Array.isArray(rows) ? rows : [];
+}
+
+export function getAgentArtifact(m: RenderableMessage): AgentTableArtifact | null {
+    if (isUiMessage(m)) {
+        return null;
+    }
+    const artifact = m.metadata?.agent_artifact;
+    if (
+        !artifact
+        || artifact.component_type !== 'ui-data-table'
+        || !Array.isArray(artifact.columns)
+        || !Array.isArray(artifact.rows)
+    ) {
+        return null;
+    }
+
+    return artifact;
+}
+
+/**
+ * Structured receipt for an artifact row selected by the user. The raw row
+ * stays in message metadata for the agent; MessageBubble uses this adapter to
+ * render a human-readable receipt instead of the model-facing JSON content.
+ */
+export function getAgentSelection(m: RenderableMessage): AgentSelectionMetadata | null {
+    if (isUiMessage(m)) {
+        return null;
+    }
+    const selection = m.metadata?.agent_selection;
+    if (
+        !selection
+        || typeof selection.row_key !== 'string'
+        || typeof selection.label !== 'string'
+        || typeof selection.record !== 'object'
+        || selection.record === null
+        || Array.isArray(selection.record)
+    ) {
+        return null;
+    }
+
+    return selection;
+}
+
+export function getAgentRunId(m: RenderableMessage): string | null {
+    if (isUiMessage(m)) return null;
+    const value = m.metadata?.agent_run_id;
+
+    return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+export function getAgentActivity(m: RenderableMessage): AgentRunEvent[] {
+    if (isUiMessage(m)) return [];
+    const events = m.metadata?.agent_activity;
+    if (!Array.isArray(events)) return [];
+
+    return events.filter((event) => (
+        event !== null
+        && typeof event === 'object'
+        && typeof event.run_id === 'string'
+        && Number.isInteger(event.sequence)
+        && typeof event.type === 'string'
+        && typeof event.locale === 'string'
+    ));
 }
 
 /**

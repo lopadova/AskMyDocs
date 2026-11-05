@@ -5,6 +5,7 @@ import { TenantWelcomeView } from './TenantWelcomeView';
 
 describe('TenantWelcomeView', () => {
     it('announces the assigned company and continues on explicit confirmation', async () => {
+        localStorage.setItem('amd-ui-locale', 'it');
         const user = userEvent.setup();
         const onContinue = vi.fn();
 

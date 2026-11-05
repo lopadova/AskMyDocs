@@ -1,0 +1,324 @@
+{
+  "title": "AskMyDocs per Nencini Sport",
+  "date": "2026-10-13",
+  "plannedDurationSeconds": 530,
+  "context": "Demo con il solo Freshdesk. Regole operative attive. Documentazione interna, Gescat ed email sono collegamenti ulteriori da configurare per Nencini Sport. Le schede Freshdesk dei casi risolti sono implementate e in test. La produzione prevista userà Regolo e i controlli applicabili all'intero percorso AI. Schermate reali fornite da Marco: connettori, API, configurazione triage tramite prompt e opzioni Freshdesk. Le schermate di test non documentano nuove connessioni attive per Nencini Sport.",
+  "slides": [
+    {
+      "title": "AskMyDocs per Nencini Sport",
+      "durationSeconds": 30,
+      "range": "0:00–0:30",
+      "cues": [
+        "Una domanda sulle vostre informazioni",
+        "Demo: Freshdesk già collegato",
+        "Poi: documenti interni e Gescat"
+      ],
+      "speech": "AskMyDocs permette di fare domande sulle informazioni della vostra azienda e ottenere risposte con fonti verificabili. Per Nencini Sport il punto di partenza è il servizio clienti. Oggi mostriamo Freshdesk, già collegato. Il percorso successivo è unire lo storico dei ticket alle vostre regole interne e ai dati di Gescat, il software con cui gestite l’e-commerce. Così una domanda può trovare riscontro in più fonti, ciascuna con il proprio ruolo.",
+      "action": "Aprire la copertina. Pronunciare Gescat come nome del gestionale, senza attribuirgli un collegamento già attivo.",
+      "sources": [
+        "Contesto confermato da Marco nella conversazione del 13 ottobre 2026",
+        "docs-site/introduction.mdx",
+        "docs/connectors/FRESHDESK.md"
+      ]
+    },
+    {
+      "title": "Dove trova le risposte",
+      "durationSeconds": 45,
+      "range": "0:30–1:15",
+      "cues": [
+        "Freshdesk: ticket e conversazioni",
+        "Documenti: regole e procedure",
+        "Gescat: clienti, ordini, spedizioni",
+        "Regole operative e fonti sono due elementi distinti"
+      ],
+      "speech": "Da dove prende i dati? Nella demo, da Freshdesk: ticket, conversazioni e informazioni importate. Le regole operative sono attive e guidano l’organizzazione e l’interpretazione. La documentazione interna è un’ulteriore fonte da collegare: contiene le procedure approvate, le regole di gestione e i documenti aziendali. Gescat fornisce invece il riscontro sui clienti, sugli ordini e sulle spedizioni. Collegare una fonte significa decidere quali dati leggere, come organizzarli e chi può consultarli. Un ticket storico e una procedura attuale hanno ruoli diversi.",
+      "action": "Indicare le tre colonne. Freshdesk è la fonte della demo. Documentazione interna e Gescat sono i collegamenti successivi.",
+      "sources": [
+        "Contesto confermato da Marco",
+        "docs-site/connectors.mdx",
+        "docs-site/connectors-api.mdx",
+        "docs-site/core-concepts.mdx"
+      ]
+    },
+    {
+      "title": "Freshdesk e Gescat insieme",
+      "durationSeconds": 45,
+      "range": "1:15–2:00",
+      "cues": [
+        "Scenario futuro, senza risultati inventati",
+        "Freshdesk: che cosa ha segnalato il cliente",
+        "Gescat: che cosa risulta su ordine e spedizione",
+        "Documenti: quale procedura applicare"
+      ],
+      "speech": "Immaginiamo una domanda: il cliente segnala una consegna mancante, che cosa è successo e come dobbiamo intervenire? Freshdesk racconta la segnalazione e i contatti precedenti. Gescat permette di verificare il cliente, l’ordine e le informazioni di spedizione che rende disponibili. I documenti interni indicano la procedura da seguire. AskMyDocs può mettere insieme questi riscontri nella stessa conversazione, citando le fonti. È lo scenario previsto dopo il collegamento a Gescat. Per dati che cambiano rapidamente, come lo stato di un ordine, va interrogata la fonte aggiornata attraverso l’integrazione predisposta.",
+      "action": "Presentare il caso come scenario futuro. Non mostrare stati ordine o dati clienti inventati. Spiegare che il riscontro dipende dai dati e dalle interfacce rese disponibili da Gescat.",
+      "sources": [
+        "Contesto confermato da Marco",
+        "docs-site/connectors-api.mdx",
+        "app/Ai/Tools/Sources/FreshdeskChatToolSource.php"
+      ]
+    },
+    {
+      "title": "Triage intelligente delle email",
+      "durationSeconds": 45,
+      "range": "2:00–2:45",
+      "cues": [
+        "Le regole definiscono le categorie utili al team",
+        "L’AI interpreta il significato del messaggio",
+        "La classificazione diventa ricercabile",
+        "Esempio illustrativo: reclamo e spedizione smarrita"
+      ],
+      "speech": "Quando colleghiamo le email, possiamo definire un triage con le vostre regole. Il sistema legge il contenuto e interpreta se c’è una lamentela, quale problema viene segnalato e l’urgenza, secondo i criteri configurati. Per esempio, una persona può raccontare che il corriere non trova il pacco senza usare la parola smarrimento. Il messaggio può comunque essere classificato come segnalazione di spedizione smarrita. Le categorie e i tag aiutano a ritrovare insieme messaggi scritti in modi diversi. Una classificazione incerta può restare non determinabile. Per Nencini Sport, la casella e le regole specifiche vanno configurate.",
+      "action": "Il messaggio a sinistra è un esempio illustrativo. A destra si vede l’assistente di configurazione del triage, tramite una schermata reale in ambiente di test. Distinguere una segnalazione del cliente dalla conferma effettiva di una spedizione persa.",
+      "sources": [
+        "Contesto confermato da Marco",
+        "app/Services/EmailTriage/TriageEngine.php",
+        "app/Services/EmailTriage/TriageExamples.php",
+        "app/Services/EmailTriage/TriageProfiles.php",
+        "Schermata del triage fornita da Marco",
+        "frontend/src/features/admin/connectors/TriageConfigurationAssistant.tsx"
+      ]
+    },
+    {
+      "title": "Regole complesse, configurazione tramite prompt",
+      "cues": [
+        "Criteri, categorie, tag e soglie dietro la configurazione",
+        "Descrivi l’obiettivo con un prompt",
+        "L’AI propone una bozza da controllare",
+        "Applica la bozza e salva dopo la revisione"
+      ],
+      "speech": "La configurazione del triage può essere articolata: criteri di riconoscimento, categorie, livelli di urgenza, tag e soglie di affidabilità. L’assistente aiuta a prepararla attraverso un prompt. Qui chiediamo di riconoscere i clienti insoddisfatti. Il sistema propone una regola che distingue la presenza e l’assenza di una lamentela e associa il tag utile alla ricerca. Prima di applicarla possiamo leggere i criteri e modificarli. Il pulsante Usa questa bozza prepara la configurazione; poi la salviamo dal pannello. Anche una configurazione più dettagliata parte da una richiesta in linguaggio naturale, mantenendo il controllo sulle regole.",
+      "action": "Mostrare i due ritagli: richiesta Clienti insoddisfatti e proposta con il tag lamentela. Spiegare che applicare una bozza non equivale a salvarla né ad avviare il recupero storico. Le schermate sono dell’ambiente di test e illustrano la configurazione, non una connessione Nencini Sport già attiva.",
+      "sources": [
+        "Schermate fornite da Marco nella conversazione",
+        "frontend/src/features/admin/connectors/TriageConfigurationAssistant.tsx",
+        "frontend/src/features/admin/connectors/EmailTriagePanel.tsx",
+        "app/Services/EmailTriage/TriageConfigurationAssistant.php"
+      ],
+      "durationSeconds": 50,
+      "range": "2:45–3:35"
+    },
+    {
+      "title": "Le altre fonti aziendali",
+      "durationSeconds": 35,
+      "range": "3:35–4:10",
+      "cues": [
+        "Drive e documenti",
+        "Email, API e server MCP",
+        "Archivi FTP tramite integrazione",
+        "Mapping e accessi secondo le vostre necessità"
+      ],
+      "speech": "Il perimetro può comprendere anche Drive, caselle email, API e server MCP, oltre ad archivi FTP attraverso un’integrazione dedicata. Le fonti si possono affiancare. Per ciascuna scegliamo i contenuti utili, i campi da mappare, le categorie e gli accessi. Non serve portare tutto indistintamente nella stessa raccolta. L’obiettivo è organizzare le informazioni secondo il vostro modo di lavorare, mantenendo la provenienza dei dati. Le integrazioni ulteriori dipendono dalle interfacce e dai permessi disponibili.",
+      "action": "Mostrare la schermata dei connettori realmente disponibili. FTP e Gescat richiedono integrazioni dedicate. Le fonti ulteriori non sono ancora attive nella demo Nencini Sport.",
+      "sources": [
+        "docs-site/connectors.mdx",
+        "docs-site/connectors-api.mdx",
+        "docs-site/connectors-credential.mdx",
+        "README.md",
+        "Contesto confermato da Marco per FTP e Gescat",
+        "Schermata connettori fornita da Marco"
+      ]
+    },
+    {
+      "title": "Dati del gestionale via API",
+      "cues": [
+        "Esempio reale dell’interfaccia API in test",
+        "Dati e funzioni vengono definiti secondo il gestionale",
+        "Per Nencini Sport: Gescat da collegare e mappare",
+        "La stessa conversazione può unire ticket e riscontri del gestionale"
+      ],
+      "speech": "Questa è un’interfaccia reale di configurazione API, mostrata su un ambiente di test. Nell’esempio ci sono funzioni per consultare ordini, utenti e resi. Per Nencini Sport si definisce il collegamento a Gescat: quali dati leggere, con quali autorizzazioni e come presentarli al sistema. Così AskMyDocs può affiancare il ticket Freshdesk al riscontro del gestionale. Il collegamento per Nencini Sport resta da predisporre; la schermata illustra il modo in cui si organizzano queste integrazioni.",
+      "action": "La schermata originale appartiene a un altro ambiente di test. Il ritaglio mostra le funzioni API, escludendo intestazione e indirizzo del progetto. Non presentarla come un collegamento Nencini Sport già attivo. Distinguere le funzioni in bozza da quelle attive, se viene chiesto.",
+      "sources": [
+        "Schermata API del gestionale fornita da Marco",
+        "docs-site/connectors-api.mdx",
+        "Contesto confermato da Marco su Gescat"
+      ],
+      "durationSeconds": 35,
+      "range": "4:10–4:45"
+    },
+    {
+      "title": "Il catalogo dei casi risolti",
+      "durationSeconds": 45,
+      "range": "4:45–5:30",
+      "cues": [
+        "Connettore Freshdesk nato per questa demo",
+        "Schede: problema, causa, intervento, esito",
+        "Esito verificato nelle conversazioni",
+        "Implementato, ancora in test"
+      ],
+      "speech": "Il connettore Freshdesk è stato preparato per questa demo circa tre giorni prima. Una delle funzioni aggiuntive è già implementata e ora in test: costruire schede dei casi a partire dai ticket. La scheda racconta il problema, la causa quando è documentata, l’intervento eseguito e l’esito. Per usare un caso come esempio riuscito occorre trovare nelle conversazioni il riscontro della soluzione. Lo stato chiuso, da solo, non basta. Quando un operatore incontra un problema simile, può ritrovare quel caso e vedere come è stato affrontato. Lo storico diventa un catalogo di esperienza consultabile.",
+      "action": "Il ritaglio mostra le opzioni Freshdesk di importazione, consultazione live e schede dei casi. Mostrare la dicitura implementato, in test. La schermata delle opzioni non dimostra da sola il successo di una sincronizzazione. Durante la demo si può aprire una scheda verificata disponibile nell’ambiente di test.",
+      "sources": [
+        "Contesto e stato dei test confermati da Marco",
+        "app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php",
+        "vendor/padosoft/askmydocs-connector-freshdesk/src/CaseStudies/CaseStudyResult.php",
+        "vendor/padosoft/askmydocs-connector-freshdesk/src/CaseStudies/CaseStudyManager.php",
+        "Schermata impostazioni Freshdesk fornita da Marco"
+      ]
+    },
+    {
+      "title": "La demo con Freshdesk",
+      "durationSeconds": 80,
+      "range": "5:30–6:50",
+      "cues": [
+        "Una domanda su un tema presente nei ticket",
+        "Aprire il ticket di origine",
+        "Mostrare una scheda in test, se disponibile",
+        "Tornare alle slide entro 6:15"
+      ],
+      "speech": "Ora lo vediamo su Freshdesk. Chiediamo di cercare casi di cambio taglia e di mostrare il problema, l’intervento e l’esito documentato. Apriamo un riferimento per controllare che il riepilogo corrisponda al ticket. Se nell’ambiente di test è disponibile la scheda del caso, mostriamo anche quella: è la funzione nuova che stiamo collaudando. La risposta e la scheda aiutano l’operatore a ragionare su un precedente. La procedura attuale resta il riferimento da verificare prima di rispondere al cliente.",
+      "action": "Usare un tema realmente presente nello storico. Chat e apertura di una fonte: circa 45 secondi. Scheda in test: circa 20 secondi. Tenere 15 secondi per rientrare nella presentazione. Comandare le slide dall’iPhone; per la chat live usare il Mac.",
+      "prompt": "Cerca nei ticket Freshdesk casi di cambio taglia. Riassumi il problema, l’intervento effettivamente eseguito e l’esito documentato. Cita i ticket di origine. Distingui i casi risolti con successo da quelli senza un esito verificabile. Se disponibili, includi le schede dei casi in test. Non trasformare un caso storico in una procedura attuale.",
+      "followup": "Prepara una bozza breve di risposta per un caso simile, basata soltanto sui fatti documentati. Ometti dati personali e indica le condizioni da verificare nella procedura aziendale attuale.",
+      "sources": [
+        "docs/connectors/FRESHDESK.md",
+        "app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php",
+        "docs-site/chat-and-retrieval.mdx"
+      ]
+    },
+    {
+      "title": "Regolo: modelli e AI in Italia",
+      "durationSeconds": 45,
+      "range": "6:50–7:35",
+      "cues": [
+        "Produzione prevista con Regolo",
+        "Il modello si sceglie sul caso d’uso",
+        "Elaborazione nei data center italiani dichiarati",
+        "Verificare anche triage e generazione delle schede"
+      ],
+      "speech": "Per la produzione prevediamo Regolo.ai, che dichiara di eseguire l’AI nei data center italiani di Seeweb. Il modello si può scegliere tra quelli disponibili, come Qwen, Mistral e GPT OSS, oppure valutare un modello compatibile su risorse dedicate. La scelta dipende dalla qualità sui vostri casi e dalle funzioni necessarie. Regolo dichiara inoltre di non conservare i contenuti delle richieste e delle risposte e di non usarli per addestrare i modelli. L’assetto finale deve comprendere tutto il percorso AI, anche il triage delle email, il suo assistente di configurazione e la generazione delle schede.",
+      "action": "Distinguere il provider di produzione dal test attuale. Chat, ricerca, triage, assistente di configurazione, estrazioni, schede e fallback vanno configurati e collaudati nel perimetro concordato.",
+      "sources": [
+        "https://regolo.ai/eu-data-residency-and-gdpr-for-ai-vendors-from-checkbox-to-product-feature/",
+        "https://regolo.ai/zero-data-retention/",
+        "https://regolo.ai/models/",
+        "https://docs.regolo.ai/models/custom-models/",
+        "Catalogo pubblico Regolo verificato il 13 ottobre 2026",
+        "app/Services/EmailTriage/TriageProfiles.php",
+        "app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php",
+        "app/Services/EmailTriage/TriageConfigurationAssistant.php"
+      ]
+    },
+    {
+      "title": "Protezione dei dati e AI Act",
+      "durationSeconds": 45,
+      "range": "7:35–8:20",
+      "cues": [
+        "Regole operative attive nella demo",
+        "Produzione: controlli applicabili da completare",
+        "Accessi, dati personali, audit e revisione",
+        "Italia: verificare anche hosting, backup e fonti"
+      ],
+      "speech": "Le regole operative che organizzano i contenuti sono distinte dai controlli per l’uso in produzione. La demo mostra Freshdesk e le sue informazioni. L’assetto operativo comprende autorizzazioni, protezione dei dati personali, tracciabilità e revisione umana, insieme ai moduli di governance applicabili. La conformità all’AI Act dipende dall’uso concreto, dalle responsabilità e dalle procedure aziendali. Regolo sostiene il percorso di produzione, che va verificato integralmente. Per affermare che tutto il flusso rimane in Italia occorre confermare anche hosting, backup, servizi accessori e residenza delle fonti, comprese Freshdesk e Gescat.",
+      "action": "Non dire che il test è già una certificazione. Le regole operative attive non equivalgono a una verifica completa di conformità. Non attribuire a Regolo la residenza delle altre piattaforme.",
+      "sources": [
+        "Contesto confermato da Marco",
+        "docs-site/pii-and-compliance.mdx",
+        "docs-site/architecture/security-and-threat-model.mdx",
+        "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai",
+        "https://digital-strategy.ec.europa.eu/en/policies/guidelines-ai-transparency-obligations"
+      ]
+    },
+    {
+      "title": "Il percorso per Nencini Sport",
+      "durationSeconds": 30,
+      "range": "8:20–8:50",
+      "cues": [
+        "Collaudare Freshdesk e schede dei casi",
+        "Collegare documenti interni e Gescat",
+        "Configurare email e classificazioni utili",
+        "Misurare la qualità con gli operatori"
+      ],
+      "speech": "Per Nencini Sport il percorso è concreto: completare il collaudo di Freshdesk e delle schede dei casi, collegare la documentazione interna e Gescat, poi configurare le email e le categorie utili al team. Gli operatori ci aiutano a verificare le risposte su casi rappresentativi e a misurare il tempo necessario per trovare una soluzione. AskMyDocs mette in relazione l’esperienza dell’assistenza, le regole aziendali e i dati del gestionale, mantenendo le fonti controllabili. È il valore che vogliamo costruire insieme.",
+      "action": "Chiudere entro 8:50. Rimangono 70 secondi per eventuali attese nella demo o una breve domanda, entro il limite di dieci minuti.",
+      "sources": [
+        "Contesto e percorso confermati da Marco"
+      ]
+    }
+  ],
+  "extraPrompts": [
+    {
+      "use": "Freshdesk, utilizzabile nella demo",
+      "prompt": "Trova ticket che documentano una spedizione segnalata come smarrita. Riassumi richiesta, azioni effettuate ed esito verificato, citando le conversazioni originali. Non dedurre lo stato attuale della spedizione."
+    },
+    {
+      "use": "Freshdesk, schede dei casi in test",
+      "prompt": "Quali casi mostrano un problema simile risolto con successo? Per ogni scheda indica problema, causa documentata, intervento ed esito, con la fonte di ciascuna informazione."
+    },
+    {
+      "use": "Scenario dopo collegamento Gescat e documenti interni",
+      "prompt": "Per l’ordine selezionato confronta lo storico del ticket Freshdesk con i dati aggiornati di Gescat su cliente, ordine e spedizione. Indica la procedura interna applicabile, cita le fonti e segnala eventuali dati discordanti o non disponibili."
+    },
+    {
+      "use": "Scenario email dopo configurazione della casella e delle regole",
+      "prompt": "Mostra le email classificate come reclami o segnalazioni di spedizioni smarrite, anche quando il mittente usa espressioni diverse. Distingui la classificazione automatica dai fatti verificati e cita i messaggi."
+    },
+    {
+      "use": "Documentazione interna dopo collegamento",
+      "prompt": "Qual è la procedura approvata più recente per questo caso? Cita il documento e la data quando disponibili. Se hai soltanto ticket storici, segnala che non bastano a stabilire la regola attuale."
+    }
+  ],
+  "remoteGuide": [
+    "Sul Mac e sull’iPhone: Keynote installato e Wi-Fi attivo.",
+    "Mac: Keynote > Impostazioni > Telecomandi > Abilita.",
+    "iPhone: nella schermata dei documenti apri Keynote Remote e tocca Continua. Consenti l’accesso alla rete locale, se richiesto.",
+    "Mac: Abbina accanto all’iPhone. Confronta il codice sui due dispositivi e conferma.",
+    "iPhone: Riproduci. In Opzioni layout scegli una vista con la diapositiva e le note del presentatore. Regola la dimensione del testo per leggere i promemoria.",
+    "Avanza con un tap o uno scorrimento a sinistra. Torna indietro scorrendo a destra. Le transizioni sono al clic.",
+    "Il Mac proietta le slide. Per la parte di demo nella chat AskMyDocs passa al Mac. Keynote Remote controlla la presentazione, non la chat.",
+    "Se la connessione è instabile, collega Mac e iPhone alla stessa rete Wi-Fi. Fai una prova prima dell’incontro.",
+    "Abbinamento e prova con l’iPhone restano da eseguire sul dispositivo personale."
+  ],
+  "remoteSources": [
+    "https://support.apple.com/it-it/119886",
+    "https://support.apple.com/it-it/guide/keynote-iphone/tan9e9970a4/ios"
+  ],
+  "preparation": [
+    "Scegliere un tema realmente presente nei ticket importati e aprire prima una fonte verificabile.",
+    "Preparare una scheda Freshdesk disponibile nell’ambiente di test e verificarne le evidenze. Se non è disponibile, presentare soltanto la funzione e lo stato di collaudo.",
+    "Per Gescat, documentazione interna ed email presentare gli scenari come collegamenti successivi, senza inventare dati o risultati.",
+    "Tenere fuori dalla proiezione dati personali, credenziali e note riservate.",
+    "Le schede storiche non diventano automaticamente procedure approvate. Uno stato chiuso non dimostra, da solo, la soluzione del problema.",
+    "La produzione con Regolo richiede il collaudo di tutti i percorsi AI, inclusi triage, assistente di configurazione, schede, ricerca, OCR, pre-elaborazioni e fallback. Confermare anche la residenza dei servizi e le politiche di conservazione.",
+    "Le schermate mostrano funzioni e impostazioni in ambiente di test. Non usarle come prova di esecuzione o di una connessione Nencini Sport già attiva."
+  ],
+  "screenshots": [
+    {
+      "source": "codex-clipboard-ff4373b8-42d7-4140-8954-f3e2b2b4f07e.png",
+      "buildAsset": "freshdesk-impostazioni.png",
+      "sha256": "2d16b7624bc6831cd1a376221bb4db00c490b758073d3d06dbd254fa3fd24af6",
+      "provenance": "Screenshot fornito dall’utente; ambiente di test"
+    },
+    {
+      "source": "codex-clipboard-af2e082e-54b3-4b0b-9482-20c7e2a409ee.png",
+      "buildAsset": "connettori.png",
+      "sha256": "ac4148b272d2e040d64cf19694396b21b5606009a494391c10e4bd515c92db61",
+      "provenance": "Screenshot fornito dall’utente; ambiente di test"
+    },
+    {
+      "source": "codex-clipboard-2f653d13-a768-4e08-91d9-5cdc690fb022.png",
+      "buildAsset": "triage-vuoto.png",
+      "sha256": "3588f9fe78a85e420e331dba5e9002313c326ff72406e247d1021bf6b6578c00",
+      "provenance": "Screenshot fornito dall’utente; ambiente di test"
+    },
+    {
+      "source": "codex-clipboard-7c1e2a7e-8974-412a-b5bb-f7fa862130ea.png",
+      "buildAsset": "triage-prompt.png",
+      "sha256": "822c26069962d10e73a609488eaa41cd0615cbba7cea365d7d13e2edce89f1df",
+      "provenance": "Screenshot fornito dall’utente; ambiente di test"
+    },
+    {
+      "source": "codex-clipboard-b3018569-bb1f-46d6-8f1f-cec0e7335b0d.png",
+      "buildAsset": "triage-proposta.png",
+      "sha256": "d6b38fee127df02031e2922554513051a582035861cfd55c42af46992162eb97",
+      "provenance": "Screenshot fornito dall’utente; ambiente di test"
+    },
+    {
+      "source": "codex-clipboard-843ad9b0-1eb3-4c74-bbd1-ae3b1b8066dd.png",
+      "buildAsset": "api-gestionale.png",
+      "sha256": "5e67903c57fc84d3499607c21f0d67863854636dd7a77997fed6df743d2a9201",
+      "provenance": "Screenshot fornito dall’utente; ambiente di test"
+    }
+  ]
+}

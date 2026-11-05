@@ -55,7 +55,9 @@ return [
         'X-Content-Type-Options' => 'nosniff',
         'X-Frame-Options' => 'DENY',
         'Referrer-Policy' => 'strict-origin-when-cross-origin',
-        'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), browsing-topics=()',
+        // Realtime voice needs the top-level AskMyDocs origin to capture audio.
+        // Keep microphone access unavailable to every cross-origin embed.
+        'Permissions-Policy' => 'camera=(), microphone=(self), geolocation=(), browsing-topics=()',
     ],
 
     // Correlation id echoed on every response (request-correlation control).

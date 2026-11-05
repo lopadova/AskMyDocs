@@ -2,6 +2,7 @@
 
 $providers = [
     App\Providers\AppServiceProvider::class,
+    App\Providers\OAuthServiceProvider::class,
     App\Providers\AiServiceProvider::class,
     App\Providers\ChatLogServiceProvider::class,
     // v8.9 — UI drag-and-drop upload progress wiring: KnowledgeDocument
@@ -41,6 +42,7 @@ $providers = [
     // also wires the FlowRunRecord::creating() hook that stamps
     // tenant_id from the active TenantContext (R30/R31).
     App\Providers\FlowServiceProvider::class,
+    App\Providers\ApiToolServiceProvider::class,
     // v4.2/W4 sub-PR 5 — PII Redactor Admin SPA. Listed explicitly for
     // the same reason as PiiRedactor / LaravelFlow above (auto-discovery
     // is brittle on Windows + Herd). Required so config + migrations
@@ -92,6 +94,12 @@ $providers = [
     // AppServiceProvider so ChatRetrievalService is bound for
     // SearchKnowledgeBaseTool.
     App\Providers\WidgetServiceProvider::class,
+    // Realtime Agent core. Listed explicitly because package discovery is not
+    // a reliable bootstrap boundary in this application (the same posture used
+    // for the other Padosoft packages above). Host-specific authorization,
+    // tenancy, compliance and usage projection are registered by
+    // AppServiceProvider after this provider has bound the vendor runtime.
+    AgentsFullDuplex\RealtimeAgent\RealtimeAgentServiceProvider::class,
     // v4.6 — Connector framework SP (padosoft/askmydocs-connector-base
     // v1.1.1). Listed explicitly for the same auto-discovery
     // brittleness rationale as the siblings above. Required to

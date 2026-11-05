@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // app(TenantContext::class)->current(). Defaults to 'default'
         // when no header / claim is present (R31 backward-compat with v3).
         $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
+        $middleware->prepend(\App\Http\Middleware\RestrictChatApiToken::class);
 
         // Security response headers (SEC-CSP-001 / SEC-TLS-001 / response-headers
         // / csp-nonce-cache / request-correlation). Appended so it runs LAST on
@@ -213,6 +214,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // ("Too many simultaneous connections"). Same sweep/cadence.
         (new \App\Connectors\Scheduling\SerializedSyncScheduler)->registerSchedules($schedule);
         (new \App\Connectors\Scheduling\ImapBackfillScheduler)->registerSchedules($schedule);
+        $schedule->command('email-triage:pump')->everyMinute()->withoutOverlapping();
+        $schedule->command('mcp-connectors:shadow')
+            ->everySixHours()
+            ->withoutOverlapping();
 
         // v4.3/W3 — Nightly eval-harness regression run. Two gates,
         // BOTH must be true for the cron to fire:

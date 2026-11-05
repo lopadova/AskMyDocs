@@ -19,6 +19,8 @@ import { type ReactNode } from 'react';
  * Two refusal reasons surface from the BE:
  *   - 'no_relevant_context'  — retrieval came up empty (T3.3)
  *   - 'llm_self_refusal'     — LLM emitted the sentinel (T3.4)
+ *   - 'retrieval_profile_required' — an administrator must define the
+ *     company retrieval context before this project can be searched.
  *
  * The reason is exposed as `data-reason` so Playwright can assert which
  * path triggered without parsing the body.
@@ -39,6 +41,7 @@ export interface RefusalNoticeProps {
 const HINT_BY_REASON: Record<string, string> = {
     no_relevant_context: 'Try refining your question, broadening filters, or adding more documents.',
     llm_self_refusal: 'Try rephrasing the question or providing more context.',
+    retrieval_profile_required: 'Ask an administrator to configure the project retrieval profile, then try again.',
 };
 
 const FALLBACK_HINT = 'Try refining your question or providing more context.';

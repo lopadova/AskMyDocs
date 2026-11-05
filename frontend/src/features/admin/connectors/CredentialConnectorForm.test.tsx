@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
@@ -124,12 +125,10 @@ describe('CredentialConnectorForm', () => {
         expect(screen.queryByTestId('connector-imap-form-xoauth2_provider')).toBeNull();
     });
 
-    it('honours showIf: switching to xoauth2 hides host/password and reveals the provider', () => {
+    it('honours showIf: switching to xoauth2 hides host/password and reveals the provider', async () => {
         render(<CredentialConnectorForm entry={makeEntry()} {...NOOP} />);
 
-        fireEvent.change(screen.getByTestId('connector-imap-form-auth_mode'), {
-            target: { value: 'xoauth2' },
-        });
+        await chooseSelectOption(screen.getByTestId('connector-imap-form-auth_mode'), 'xoauth2');
 
         expect(screen.queryByTestId('connector-imap-form-host')).toBeNull();
         expect(screen.queryByTestId('connector-imap-form-password')).toBeNull();
@@ -171,14 +170,12 @@ describe('CredentialConnectorForm', () => {
         expect(payload).not.toHaveProperty('project_key');
     });
 
-    it('injects the selected project_key into the payload', () => {
+    it('injects the selected project_key into the payload', async () => {
         const onSubmit = vi.fn();
         render(<CredentialConnectorForm entry={makeEntry()} onSubmit={onSubmit} onClose={vi.fn()} projects={PROJECTS} />);
 
         fireEvent.change(screen.getByTestId('connector-imap-form-label'), { target: { value: 'Support' } });
-        fireEvent.change(screen.getByTestId('connector-imap-form-project_key'), {
-            target: { value: 'acme-hr' },
-        });
+        await chooseSelectOption(screen.getByTestId('connector-imap-form-project_key'), 'acme-hr');
         fireEvent.change(screen.getByTestId('connector-imap-form-host'), { target: { value: 'imap.example.com' } });
         fireEvent.change(screen.getByTestId('connector-imap-form-username'), { target: { value: 'a@b.c' } });
         fireEvent.change(screen.getByTestId('connector-imap-form-password'), { target: { value: 'pw' } });
@@ -373,7 +370,7 @@ describe('CredentialConnectorForm', () => {
         expect(screen.getByTestId('connector-imap-form-submit')).toBeDisabled();
     });
 
-    it('does not gate Connect in xoauth2 mode (no synchronous test)', () => {
+    it('does not gate Connect in xoauth2 mode (no synchronous test)', async () => {
         const onTest = vi.fn();
         render(
             <CredentialConnectorForm
@@ -385,7 +382,7 @@ describe('CredentialConnectorForm', () => {
             />,
         );
 
-        fireEvent.change(screen.getByTestId('connector-imap-form-auth_mode'), { target: { value: 'xoauth2' } });
+        await chooseSelectOption(screen.getByTestId('connector-imap-form-auth_mode'), 'xoauth2');
 
         // xoauth2 is verified by the provider round-trip → no Test button, Connect
         // is not gated (the old flow), and no test hint is shown.

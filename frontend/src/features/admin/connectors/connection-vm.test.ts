@@ -170,3 +170,13 @@ describe('syncableIds', () => {
         expect(syncableIds(rows).sort()).toEqual([1, 2]);
     });
 });
+
+
+it('excludes accounts with ingestion disabled from Sync all', () => {
+    const rows = buildConnections([entry('freshdesk', 'Freshdesk', [
+        installation(1, 'live only', 'active', { settings: { ingestion: { enabled: false } } }),
+        installation(2, 'indexed', 'active', { settings: { ingestion: { enabled: true } } }),
+        installation(3, 'defaults', 'active'),
+    ])]);
+    expect(syncableIds(rows).sort()).toEqual([2, 3]);
+});

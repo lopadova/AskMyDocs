@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { BookOpen, ExternalLink, Info, Sparkles } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -92,43 +93,31 @@ MARKUP TO ANNOTATE
  * filling and navigation. R11 testids, R15 a11y.
  */
 export function WidgetIntegrationGuideView() {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <section data-testid="admin-widget-guide-view" className="grid gap-5">
             <header>
                 <h1 className="m-0 flex items-center gap-2 text-[22px] font-semibold">
                     <BookOpen aria-hidden className="size-5 text-[var(--accent-a)]" />
-                    Make KITT smarter on your page
-                </h1>
+                    {translateInterface("Make KITT smarter on your page")}</h1>
                 <p className="text-muted-foreground mt-1.5 text-sm">
-                    KITT can fill forms and navigate for the visitor. It works out of the box,
-                    but it shines when the host page declares its structure with{' '}
-                    <code className="font-mono">data-kitt-*</code> attributes. Hand the command
-                    below to an AI agent and let it annotate the DOM for you.
-                </p>
+                    {translateInterface("KITT can fill forms and navigate for the visitor. It works out of the box, but it shines when the host page declares its structure with")}{' '}
+                    <code className="font-mono">data-kitt-*</code> {" " + translateInterface("attributes. Hand the command below to an AI agent and let it annotate the DOM for you.")}</p>
             </header>
 
             {/* The three tiers — annotate vs improvise */}
             <Alert variant="info">
                 <Info aria-hidden />
-                <AlertTitle>How KITT reads a page (annotate → it knows; skip → it improvises)</AlertTitle>
+                <AlertTitle>{translateInterface("How KITT reads a page (annotate → it knows; skip → it improvises)")}</AlertTitle>
                 <AlertDescription>
                     <ol className="list-decimal space-y-0.5 pl-4">
                         <li>
-                            <strong>Annotated</strong> — elements marked with{' '}
-                            <code className="font-mono">data-kitt-*</code> give KITT a precise
-                            map: fields, required flags, options, steps, actions. Form filling is
-                            reliable.
-                        </li>
+                            <strong>{translateInterface("Annotated")}</strong> {" " + translateInterface("— elements marked with")}{' '}
+                            <code className="font-mono">data-kitt-*</code> {" " + translateInterface("give KITT a precise map: fields, required flags, options, steps, actions. Form filling is reliable.")}</li>
                         <li>
-                            <strong>Auto-annotated</strong> — the assistant skill can inject the
-                            attributes via CSS rules, so common patterns are covered without
-                            touching the host HTML.
-                        </li>
+                            <strong>{translateInterface("Auto-annotated")}</strong> {" " + translateInterface("— the assistant skill can inject the attributes via CSS rules, so common patterns are covered without touching the host HTML.")}</li>
                         <li>
-                            <strong>Heuristic</strong> — with no annotations, KITT still reads a
-                            rough outline (headings, buttons, inputs) and improvises. It works,
-                            but it guesses.
-                        </li>
+                            <strong>{translateInterface("Heuristic")}</strong> {" " + translateInterface("— with no annotations, KITT still reads a rough outline (headings, buttons, inputs) and improvises. It works, but it guesses.")}</li>
                     </ol>
                 </AlertDescription>
             </Alert>
@@ -138,26 +127,20 @@ export function WidgetIntegrationGuideView() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                         <Sparkles aria-hidden className="size-4 text-[var(--accent-a)]" />
-                        Hand-off command for an AI agent
-                        <Badge variant="muted">copy &amp; paste</Badge>
+                        {translateInterface("Hand-off command for an AI agent")}<Badge variant="muted">{translateInterface("copy &amp; paste")}</Badge>
                     </CardTitle>
                     <CardDescription>
-                        Open your page (or component) in Claude Code, GitHub Copilot, Cursor, or
-                        any coding agent, paste this prompt, and append the markup to annotate at
-                        the bottom. Review the diff: it must only <em>add</em> attributes — never
-                        change structure or logic.
-                    </CardDescription>
+                        {translateInterface("Open your page (or component) in Claude Code, GitHub Copilot, Cursor, or any coding agent, paste this prompt, and append the markup to annotate at the bottom. Review the diff: it must only") + " "}<em>{translateInterface("add")}</em> {" " + translateInterface("attributes — never change structure or logic.")}</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3">
                     <div className="overflow-hidden rounded-md border border-border">
                         <div className="bg-muted flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3">
                             <span className="text-muted-foreground font-mono text-[10px] font-semibold tracking-widest uppercase">
-                                Agent prompt
-                            </span>
+                                {translateInterface("Agent prompt")}</span>
                             <CopyButton
                                 value={HANDOFF_PROMPT}
                                 testId="admin-widget-guide-handoff-copy"
-                                label="Copy command"
+                                label={translateInterface("Copy command")}
                             />
                         </div>
                         <pre
@@ -173,36 +156,34 @@ export function WidgetIntegrationGuideView() {
             {/* Attribute cheat-sheet */}
             <Card data-testid="admin-widget-guide-cheatsheet">
                 <CardHeader>
-                    <CardTitle className="text-base">The attributes KITT reads</CardTitle>
+                    <CardTitle className="text-base">{translateInterface("The attributes KITT reads")}</CardTitle>
                     <CardDescription>
-                        The full vocabulary — nothing else is interpreted.
-                    </CardDescription>
+                        {translateInterface("The full vocabulary — nothing else is interpreted.")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="overflow-x-auto rounded-lg border border-border">
                         <table className="w-full border-collapse text-[13px]">
                             <thead>
                                 <tr className="text-muted-foreground border-b border-border text-left [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">
-                                    <th>Attribute</th>
-                                    <th>Put it on</th>
-                                    <th>What it does</th>
+                                    <th>{translateInterface("Attribute")}</th>
+                                    <th>{translateInterface("Put it on")}</th>
+                                    <th>{translateInterface("What it does")}</th>
                                 </tr>
                             </thead>
                             <tbody className="[&>tr]:border-b [&>tr]:border-border last:[&>tr]:border-0 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top">
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-region</td>
-                                    <td>section / step wrapper</td>
+                                    <td>{translateInterface("section / step wrapper")}</td>
                                     <td>
-                                        Declares a section. Add{' '}
+                                        {translateInterface("Declares a section. Add")}{' '}
                                         <code className="font-mono">data-kitt-active="true"</code>{' '}
-                                        on the visible one.
-                                    </td>
+                                        {translateInterface("on the visible one.")}</td>
                                 </tr>
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-field</td>
-                                    <td>input wrapper</td>
+                                    <td>{translateInterface("input wrapper")}</td>
                                     <td>
-                                        A form field. Combine with{' '}
+                                        {translateInterface("A form field. Combine with")}{' '}
                                         <code className="font-mono">data-kitt-required</code> /{' '}
                                         <code className="font-mono">data-kitt-sensitive</code> /{' '}
                                         <code className="font-mono">data-kitt-help</code>.
@@ -210,41 +191,39 @@ export function WidgetIntegrationGuideView() {
                                 </tr>
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-input</td>
-                                    <td>the real input</td>
+                                    <td>{translateInterface("the real input")}</td>
                                     <td>
-                                        Marks the actual{' '}
+                                        {translateInterface("Marks the actual")}{' '}
                                         <code className="font-mono">
                                             &lt;input&gt;/&lt;select&gt;/&lt;textarea&gt;
                                         </code>{' '}
-                                        inside the wrapper.
-                                    </td>
+                                        {translateInterface("inside the wrapper.")}</td>
                                 </tr>
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-action</td>
-                                    <td>button / link</td>
+                                    <td>{translateInterface("button / link")}</td>
                                     <td>
-                                        A clickable action with a stable verb. Add{' '}
+                                        {translateInterface("A clickable action with a stable verb. Add")}{' '}
                                         <code className="font-mono">data-kitt-reason-disabled</code>{' '}
-                                        when it can be disabled.
-                                    </td>
+                                        {translateInterface("when it can be disabled.")}</td>
                                 </tr>
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-message</td>
-                                    <td>banner / alert</td>
+                                    <td>{translateInterface("banner / alert")}</td>
                                     <td>
-                                        Validation / status text KITT reads.{' '}
+                                        {translateInterface("Validation / status text KITT reads.")}{' '}
                                         <code className="font-mono">error|warning|info</code>.
                                     </td>
                                 </tr>
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-locale</td>
-                                    <td>language switch</td>
-                                    <td>An available locale; mark the active one.</td>
+                                    <td>{translateInterface("language switch")}</td>
+                                    <td>{translateInterface("An available locale; mark the active one.")}</td>
                                 </tr>
                                 <tr>
                                     <td className="font-mono text-xs">data-kitt-skip</td>
-                                    <td>any subtree</td>
-                                    <td>Hides that subtree from KITT entirely.</td>
+                                    <td>{translateInterface("any subtree")}</td>
+                                    <td>{translateInterface("Hides that subtree from KITT entirely.")}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -262,8 +241,7 @@ export function WidgetIntegrationGuideView() {
                     data-testid="admin-widget-guide-example-link"
                 >
                     <ExternalLink aria-hidden className="size-3" />
-                    Golden reference: a fully annotated multi-step form
-                </a>
+                    {translateInterface("Golden reference: a fully annotated multi-step form")}</a>
                 <a
                     href={`${DOCS_BASE}/agent-annotation-prompt.md`}
                     target="_blank"
@@ -272,8 +250,7 @@ export function WidgetIntegrationGuideView() {
                     data-testid="admin-widget-guide-prompt-link"
                 >
                     <ExternalLink aria-hidden className="size-3" />
-                    Full hand-off prompt &amp; checklist
-                </a>
+                    {translateInterface("Full hand-off prompt &amp; checklist")}</a>
             </div>
         </section>
     );

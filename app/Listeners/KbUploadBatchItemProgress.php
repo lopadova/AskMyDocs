@@ -6,6 +6,7 @@ namespace App\Listeners;
 
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbIngestBatchItem;
+use App\Models\KnowledgeDocument;
 use App\Services\Kb\Upload\KbUploadStagingService;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
@@ -49,11 +50,37 @@ final class KbUploadBatchItemProgress
             return;
         }
 
+        // A new document is linked by KnowledgeDocumentUploadObserver. An
+        // identical re-ingest deliberately reuses its existing version, so
+        // it emits no created event and would otherwise leave this batch item
+        // succeeded but without a document link for the UI. Resolve the live
+        // version from the job's tenant-scoped source identity instead.
+        $this->linkExistingDocument($item, $this->resolveIngestJob($event));
+
         // JobProcessed fires when handle() returned without throwing — the
         // reliable success signal, even on an idempotent no-op re-ingest where
         // no KnowledgeDocument::created event happens.
         if (in_array($item->status, [KbIngestBatchItem::STATUS_QUEUED, KbIngestBatchItem::STATUS_PROCESSING], true)) {
             $this->service->transitionItem($item, KbIngestBatchItem::STATUS_SUCCEEDED);
+        }
+    }
+
+    private function linkExistingDocument(KbIngestBatchItem $item, ?IngestDocumentJob $job): void
+    {
+        if ($item->knowledge_document_id !== null || $job === null) {
+            return;
+        }
+
+        $document = KnowledgeDocument::query()
+            ->forTenant($job->tenantId)
+            ->where('project_key', $job->projectKey)
+            ->where('source_path', $job->relativePath)
+            ->where('status', 'active')
+            ->latest('id')
+            ->first();
+
+        if ($document !== null) {
+            $item->forceFill(['knowledge_document_id' => $document->id])->save();
         }
     }
 

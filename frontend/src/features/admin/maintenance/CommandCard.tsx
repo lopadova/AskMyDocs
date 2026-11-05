@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { CatalogueEntry } from './maintenance.api';
 
 export interface CommandCardProps {
@@ -11,6 +12,7 @@ export interface CommandCardProps {
  * the CommandWizard; destructive commands are visually flagged.
  */
 export function CommandCard({ command, spec, onRun }: CommandCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`maintenance-card-${command}`}
@@ -49,8 +51,7 @@ export function CommandCard({ command, spec, onRun }: CommandCardProps) {
                             letterSpacing: '0.05em',
                         }}
                     >
-                        destructive
-                    </span>
+                        {translateInterface("destructive")}</span>
                 ) : null}
             </div>
             <p
@@ -78,8 +79,7 @@ export function CommandCard({ command, spec, onRun }: CommandCardProps) {
                         cursor: 'pointer',
                     }}
                 >
-                    Run…
-                </button>
+                    {translateInterface("Run…")}</button>
             </div>
         </div>
     );

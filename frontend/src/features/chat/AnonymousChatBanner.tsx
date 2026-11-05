@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { type ReactNode } from 'react';
 
 /**
@@ -16,6 +17,7 @@ import { type ReactNode } from 'react';
  * mount. R11 testid, R15 a11y.
  */
 export function AnonymousChatBanner(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid="anonymous-chat-banner"
@@ -65,7 +67,7 @@ export function AnonymousChatBanner(): ReactNode {
                 </svg>
             </span>
             <span data-testid="anonymous-chat-banner-body">
-                <strong>Anonymous chat</strong> — this conversation is not saved and is lost on
+                <strong>{translateInterface("Anonymous chat")}</strong> — this conversation is not saved and is lost on
                 refresh. The server still redacts PII from your question before it is used for
                 retrieval, sent to the AI model, or logged.
             </span>

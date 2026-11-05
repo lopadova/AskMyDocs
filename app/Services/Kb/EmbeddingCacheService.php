@@ -78,6 +78,17 @@ class EmbeddingCacheService
             ->get()
             ->keyBy('text_hash');
 
+        // LRU bookkeeping needs one touch per batch, not a separate UPDATE
+        // for each cached vector. Use the rows actually read so other
+        // provider/model entries and unused texts remain untouched.
+        $touchAt = now();
+        $touchIds = $cached->filter(fn (EmbeddingCache $entry): bool =>
+            $entry->fill(['last_used_at' => $touchAt])->isDirty('last_used_at'))->modelKeys();
+        if ($touchIds !== []) {
+            EmbeddingCache::query()->whereKey($touchIds)
+                ->update(['last_used_at' => $touchAt]);
+        }
+
         // Separate hits and misses. Critical: DEDUPE misses by hash within
         // the batch. The same text can legitimately appear 2+ times in one
         // generate() call (repeated boilerplate chunks). Embedding each
@@ -94,9 +105,6 @@ class EmbeddingCacheService
         foreach ($hashes as $i => $hash) {
             if ($cached->has($hash)) {
                 $results[$i] = $cached->get($hash)->embedding;
-
-                // Touch last_used_at (LRU bookkeeping).
-                $cached->get($hash)->update(['last_used_at' => now()]);
 
                 continue;
             }

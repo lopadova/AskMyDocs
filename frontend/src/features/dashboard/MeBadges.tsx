@@ -1,6 +1,13 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
+import type { Artwork } from '../../components/shell/navigation';
 import { meDashboardApi, ME_BADGES_QUERY_KEY } from './me-dashboard.api';
+import './editorial-dashboard.css';
+
+const badgeArtwork: Artwork[] = ['knowledge', 'community', 'connections', 'archive', 'processes'];
 
 /**
  * v8.15/W5 — the gamification badges section on the "My KB" dashboard.
@@ -10,6 +17,7 @@ import { meDashboardApi, ME_BADGES_QUERY_KEY } from './me-dashboard.api';
  * show progress toward their threshold. R11 testids per badge.
  */
 export function MeBadges(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: ME_BADGES_QUERY_KEY,
         queryFn: () => meDashboardApi.badges(),
@@ -20,9 +28,9 @@ export function MeBadges(): ReactNode {
     // Surface a real backend/API failure instead of swallowing it (R14).
     if (query.isError) {
         return (
-            <section data-testid="me-badges" data-state="error" role="alert" style={{ marginTop: 20 }}>
+            <section data-testid="me-badges" data-state="error" role="alert" className="personal-dashboard-notice">
                 Could not load your badges.{' '}
-                <button type="button" data-testid="me-badges-retry" onClick={() => void query.refetch()}>Retry</button>
+                <Button size="sm" data-testid="me-badges-retry" onClick={() => void query.refetch()} busy={query.isFetching}>{translateInterface("Retry")}</Button>
             </section>
         );
     }
@@ -33,29 +41,28 @@ export function MeBadges(): ReactNode {
     }
 
     return (
-        <section data-testid="me-badges" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
-            <h3>Your badges</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                {query.data.badges.map((b) => (
+        <section data-testid="me-badges" data-state="ready" aria-busy={query.isFetching} className="personal-badges">
+            <h3>{translateInterface("Your badges")}</h3>
+            <div className="personal-badge-grid">
+                {query.data.badges.map((b, index) => (
                     <div
                         key={b.key}
                         data-testid={`me-badge-${b.key}`}
                         data-earned={b.earned ? 'true' : 'false'}
-                        title={b.earned ? 'Earned' : `${b.progress}/${b.threshold}`}
-                        style={{
-                            border: '1px solid var(--hairline)',
-                            borderRadius: 12,
-                            padding: '10px 14px',
-                            opacity: b.earned ? 1 : 0.45,
-                            minWidth: 120,
-                            textAlign: 'center',
-                        }}
+                        title={b.earned ? translateInterface('Earned') : `${b.progress}/${b.threshold}`}
+                        className="personal-badge editorial-surface"
                     >
-                        <div style={{ fontSize: 24 }} aria-hidden="true">{b.icon}</div>
-                        <div style={{ fontWeight: 600 }}>{b.label}</div>
-                        <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>
-                            {b.earned ? 'Earned' : `${b.progress}/${b.threshold}`}
+                        <EditorialArtwork artwork={badgeArtwork[index % badgeArtwork.length]} className="editorial-surface-art" resolution="small" />
+                        <div className="personal-badge-label">{translateInterface(b.label)}</div>
+                        <div className="personal-badge-status">
+                            {b.earned ? translateInterface('Earned') : `${b.progress}/${b.threshold}`}
                         </div>
+                        <progress
+                            className="personal-badge-progress"
+                            aria-label={translateInterface(b.label)}
+                            max={Math.max(1, b.threshold)}
+                            value={b.earned ? Math.max(1, b.threshold) : Math.min(Math.max(0, b.progress), Math.max(1, b.threshold))}
+                        />
                     </div>
                 ))}
             </div>

@@ -20,9 +20,10 @@ import { useKbRaw } from './kb-document.api';
 export interface PreviewTabProps {
     documentId: number;
     project: string | null;
+    showFrontmatter?: boolean;
 }
 
-export function PreviewTab({ documentId, project }: PreviewTabProps) {
+export function PreviewTab({ documentId, project, showFrontmatter = true }: PreviewTabProps) {
     const query = useKbRaw(documentId);
 
     const { pills, body } = useMemo(() => {
@@ -53,7 +54,7 @@ export function PreviewTab({ documentId, project }: PreviewTabProps) {
 
     return (
         <div data-testid="kb-preview" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {pills.length > 0 ? (
+            {showFrontmatter && pills.length > 0 ? (
                 <div
                     data-testid="frontmatter-pills"
                     style={{

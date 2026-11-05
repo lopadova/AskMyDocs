@@ -77,6 +77,11 @@ A line-based, fence-aware finite-state machine (no external markdown library):
   as a heading. Token sizing is approximated as `strlen / 4`; the hard cap
   (`KB_CHUNK_HARD_CAP_TOKENS`) gates oversize splits (target
   `KB_CHUNK_TARGET_TOKENS=512`, overlap `KB_CHUNK_OVERLAP_TOKENS=64`).
+- **Oversized single blocks:** long table rows, paragraphs and unbroken values
+  also split under the approximate byte budget. The shared splitter prefers
+  word boundaries and preserves UTF-8 and all input bytes; it never relies on
+  the embedding provider truncating the input. `PdfPageChunker` uses the same
+  splitter while retaining each piece's original page citation.
 
 #### Chunk overlap (`KB_CHUNK_OVERLAP_TOKENS`, since v8.18)
 

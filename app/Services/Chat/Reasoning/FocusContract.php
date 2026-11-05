@@ -1,0 +1,184 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Chat\Reasoning;
+
+use App\Services\Chat\QuestionContextMode;
+
+/** Strict model output is still untrusted. Context references must be server-known. */
+final class FocusContract
+{
+    public static function schema(): array
+    {
+        $strings = ['type' => 'array', 'maxItems' => 12, 'items' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120]];
+        $focus = ['type' => 'object', 'additionalProperties' => false,
+            'required' => ['topic', 'identifiers', 'aspect', 'fields'], 'properties' => [
+                'topic' => ['type' => 'string', 'maxLength' => 300], 'identifiers' => $strings,
+                'aspect' => ['type' => 'string', 'maxLength' => 300, 'description' => 'Use the exact machine key next_steps for an operational assessment, advice or recommendation about what to do. Never translate this reserved key. Other aspects describe the requested facts.'], 'fields' => $strings + ['description' => 'Use ["*"] for general information/all details. For a specific attribute use canonical machine keys such as status, trackingCode, name; do not translate keys or invent extra attributes. Use [] for next_steps and when no structured attribute is requested.'],
+            ]];
+        $subquestion = $focus;
+        $subquestion['required'] = [...$focus['required'], 'question', 'kb_queries', 'context_mode', 'requires_research'];
+        $subquestion['properties'] += [
+            'context_mode' => QuestionContextMode::schema(),
+            'requires_research' => ['type' => 'boolean'],
+            'question' => ['type' => 'string', 'maxLength' => 500, 'description' => 'A standalone question in the user language for ONLY this request, with resolved references.'],
+            'kb_queries' => ['type' => 'array', 'maxItems' => 3, 'items' => ['type' => 'string', 'maxLength' => 500],
+                'description' => 'Empty when requires_research=false or this task needs only API/MCP research. Otherwise up to 3 independent KB searches serving ONLY this question. Research is not restricted to the KB.'],
+        ];
+        return [
+            'transition' => ['type' => 'string', 'enum' => ['new', 'continue', 'switch', 'correct', 'recap', 'provenance']],
+            'focus' => $focus,
+            'subquestions' => ['type' => 'array', 'maxItems' => 10, 'items' => $subquestion, 'description' => 'Decompose unrelated requests into separate standalone questions. Include the EXACT focus topic, identifiers, aspect and fields in one subquestion, without adding a paraphrased duplicate of that request. Keep dependent steps for one request together: one case history and its corresponding live API lookup form one task. Never copy previous subquestions.'],
+            'resolved_references' => $strings + ['description' => 'Every identifier used in focus or subquestions but not literally typed now MUST be listed here, and MUST be in known_identifiers.'],
+            'needs_clarification' => ['type' => 'boolean'],
+            'clarification' => ['type' => 'string', 'maxLength' => 500],
+        ];
+    }
+
+    public static function validate(array $data, array $known, array $literal): array
+    {
+        $conversation = in_array($data['action'] ?? null, ['greeting', 'capabilities'], true);
+        if (! in_array($data['transition'] ?? null, self::schema()['transition']['enum'], true)
+            || ! is_bool($data['needs_clarification'] ?? null) || ! is_string($data['clarification'] ?? null)
+            || mb_strlen($data['clarification']) > 500 || ! is_array($data['subquestions'] ?? null)
+            || ! array_is_list($data['subquestions']) || (! $conversation && count($data['subquestions']) < 1) || count($data['subquestions']) > 10) {
+            throw new \UnexpectedValueException('Invalid focus contract.');
+        }
+        $resolved = self::strings($data['resolved_references'] ?? null);
+        if (array_diff($resolved, $known) !== []) {
+            throw new \UnexpectedValueException('Unregistered context reference.');
+        }
+        foreach ([$data['focus'], ...$data['subquestions']] as $focus) {
+            if (! is_array($focus) || ! in_array(count($focus), [4, 6, 8], true) || ! is_string($focus['topic'] ?? null)
+                || ! is_string($focus['aspect'] ?? null) || mb_strlen($focus['topic']) > 300 || mb_strlen($focus['aspect']) > 300) {
+                throw new \UnexpectedValueException('Invalid focus shape.');
+            }
+            $missing = array_diff(self::strings($focus['identifiers'] ?? null), [...$literal, ...$resolved]);
+            if ($missing !== []) {
+                // Selecting a registered entity and listing that exact entity
+                // as a context reference are one deterministic consistency
+                // operation. Never infer or register an unknown identifier.
+                if (($data['references_previous_turn'] ?? false) !== true || array_diff($missing, $known) !== []) {
+                    throw new \UnexpectedValueException('Invalid focus reference.');
+                }
+                $resolved = self::strings(array_values(array_unique([...$resolved, ...$missing])));
+            }
+            self::strings($focus['fields'] ?? null);
+            if (count($focus) === 8 && (! is_string($focus['context_mode'] ?? null)
+                || QuestionContextMode::tryFrom($focus['context_mode']) === null
+                || ! is_bool($focus['requires_research'] ?? null))) {
+                throw new \UnexpectedValueException('Invalid task information route.');
+            }
+
+            if (count($focus) >= 6 && self::researchIssue($focus) !== null) {
+                throw new \UnexpectedValueException('Invalid research question.');
+            }
+        }
+        $data['resolved_references'] = $resolved;
+        if ($conversation) {
+            if ($data['subquestions'] !== [] || $data['kb_queries'] !== [] || $resolved !== []
+                || $data['needs_clarification'] || $data['clarification'] !== '' || $data['transition'] !== 'new'
+                || $data['focus']['identifiers'] !== [] || $data['focus']['fields'] !== []
+                || $data['focus']['aspect'] !== $data['action'] || trim($data['focus']['topic']) === '') {
+                throw new \UnexpectedValueException('Invalid assistant conversation focus.');
+            }
+            return array_intersect_key($data, self::schema());
+        }
+        $data['subquestions'] = self::activeSubquestions($data['focus'], $data['subquestions']);
+        if (count($data['subquestions']) > 10) {
+            throw new \UnexpectedValueException('Too many active subquestions.');
+        }
+        // Older snapshots (and a restored primary focus omitted by the model)
+        // still need a standalone task. Reuse only already-validated searches
+        // for this entity, never the combined parent intent or a sibling's query.
+        $allIds = array_merge(...array_column($data['subquestions'], 'identifiers'));
+        foreach ($data['subquestions'] as &$sub) {
+            if (isset($sub['question'], $sub['kb_queries'])) {
+                continue;
+            }
+            $ids = $sub['identifiers'];
+            $otherIds = array_diff($allIds, $ids);
+            $queries = $ids === [] ? [] : array_values(array_filter($data['kb_queries'] ?? [], fn ($query) => self::safeQuery($query)
+                && ! array_filter($ids, fn ($id) => ! EvidenceProjector::contains($query, $id))
+                && ! array_filter($otherIds, fn ($id) => EvidenceProjector::contains($query, $id))));
+            $sub['question'] = $queries[0] ?? trim(implode(' ', [$sub['topic'], implode(' ', $ids), $sub['aspect']]));
+            $sub['kb_queries'] = ($data['requires_research'] ?? true) ? array_slice($queries ?: [$sub['question']], 0, 3) : [];
+            if (isset($data['context_mode'])) {
+                if ($data['context_mode'] === 'mixed') {
+                    throw new \UnexpectedValueException('Missing primary task information route.');
+                }
+                $sub['context_mode'] = $data['context_mode'];
+                $sub['requires_research'] = $data['requires_research'];
+            }
+        }
+        unset($sub);
+        if (isset($data['requires_research']) && array_filter($data['subquestions'], fn ($sub) => isset($sub['requires_research'])) !== []
+            && $data['requires_research'] !== (array_filter($data['subquestions'], fn ($sub) => $sub['requires_research'] ?? true) !== [])) {
+            throw new \UnexpectedValueException('Inconsistent task research route.');
+        }
+        $modes = array_values(array_unique(array_column($data['subquestions'], 'context_mode')));
+        if (isset($data['context_mode']) && $modes !== [] && $data['context_mode'] !== (count($modes) > 1 ? 'mixed' : $modes[0])) {
+            throw new \UnexpectedValueException('Inconsistent task context route.');
+        }
+        return array_intersect_key($data, self::schema());
+    }
+
+    private static function safeQuery(mixed $query): bool
+    {
+        return is_string($query) && trim($query) !== '' && mb_strlen($query) <= 500
+            && ! preg_match('~https?://|\bcurl\b|\b(?:call|invoke|execute|chiama|esegui)\s+(?:an?\s+|un\s+)?(?:mcp|api|tool|strumento)\b~iu', $query);
+    }
+
+    /** Closed diagnostic codes only; never return provider text or query values. */
+    public static function researchFailureDetails(array $data): array
+    {
+        foreach ([$data['focus'] ?? [], ...(is_array($data['subquestions'] ?? null) ? $data['subquestions'] : [])] as $index => $focus) {
+            if (is_array($focus) && count($focus) >= 6 && ($rule = self::researchIssue($focus)) !== null) {
+                return ['location' => $index === 0 ? 'focus' : 'subquestion',
+                    'task_index' => $index === 0 ? null : $index - 1, 'rule' => $rule];
+            }
+        }
+        return [];
+    }
+
+    private static function researchIssue(array $focus): ?string
+    {
+        $question = $focus['question'] ?? null;
+        if (! is_string($question) || trim($question) === '') return 'missing_task_question';
+        if (mb_strlen($question) > 500) return 'task_question_too_long';
+        if (! self::safeQuery($question)) return 'unsafe_task_question';
+        $queries = $focus['kb_queries'] ?? null;
+        if (! is_array($queries) || ! array_is_list($queries)) return 'invalid_query_list';
+        if (count($queries) > 3) return 'too_many_queries';
+        if (($focus['requires_research'] ?? null) === false && $queries !== []) return 'queries_without_research';
+        if (array_filter($queries, fn ($query) => ! self::safeQuery($query))) return 'unsafe_kb_query';
+        return null;
+    }
+
+    /** The primary focus is a request too, not merely a heading for secondary requests. */
+    public static function activeSubquestions(array $focus, array $subquestions): array
+    {
+        if ($focus === []) {
+            return $subquestions;
+        }
+        foreach ($subquestions as $subquestion) {
+            $focusIds = $focus['identifiers'] ?? [];
+            $subIds = $subquestion['identifiers'] ?? [];
+            if ($focusIds == $subIds && ($focus['topic'] ?? '') === ($subquestion['topic'] ?? '')
+                && ($focus['aspect'] ?? '') === ($subquestion['aspect'] ?? '')) {
+                return $subquestions;
+            }
+        }
+        return [$focus, ...$subquestions];
+    }
+
+    private static function strings(mixed $value): array
+    {
+        if (! is_array($value) || ! array_is_list($value) || count($value) > 12
+            || array_filter($value, fn ($v) => ! is_string($v) || $v === '' || mb_strlen($v) > 120)) {
+            throw new \UnexpectedValueException('Invalid focus list.');
+        }
+        return $value;
+    }
+}

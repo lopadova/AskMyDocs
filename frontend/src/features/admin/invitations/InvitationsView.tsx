@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { useAuthStore } from '../../../lib/auth-store';
@@ -61,6 +62,7 @@ function syncTabUrl(tab: InvTab) {
 }
 
 export function InvitationsView() {
+    const { t: translateInterface } = useUiTranslation();
     const initial = useMemo(parseInitialTab, []);
     const [tab, setTab] = useState<InvTab>(initial);
     const panelEnabled = useAuthStore((s) => s.features.invitations_admin === true);
@@ -79,12 +81,9 @@ export function InvitationsView() {
                 <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                         <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 2px', letterSpacing: '-0.02em', color: 'var(--fg-0)' }}>
-                            Invitations
-                        </h1>
+                            {translateInterface("Invitations")}</h1>
                         <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                            Invite funnel, code inventory, referrals, rewards, waitlist and anti-abuse — read from the
-                            core invitations API, scoped to the active team.
-                        </p>
+                            {translateInterface("Invite funnel, code inventory, referrals, rewards, waitlist and anti-abuse — read from the core invitations API, scoped to the active team.")}</p>
                     </div>
                     <span style={{ flex: 1 }} />
                     {panelEnabled && (
@@ -108,15 +107,14 @@ export function InvitationsView() {
                                 whiteSpace: 'nowrap',
                             }}
                         >
-                            Advanced panel
-                            <Icon.Share size={12} />
+                            {translateInterface("Advanced panel")}<Icon.Share size={12} />
                         </a>
                     )}
                 </header>
 
                 <div
                     role="tablist"
-                    aria-label="Invitations sections"
+                    aria-label={translateInterface("Invitations sections")}
                     style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--hairline, rgba(255,255,255,.08))', flexWrap: 'wrap' }}
                 >
                     {TABS.map((entry) => {

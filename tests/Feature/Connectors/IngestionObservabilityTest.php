@@ -271,6 +271,33 @@ final class IngestionObservabilityTest extends TestCase
             ->getJson('/api/admin/ingestion/queue')->assertStatus(403);
     }
 
+    public function test_cancel_import_endpoint_is_scoped_authorized_and_idempotent(): void
+    {
+        Queue::fake();
+        $admin = $this->superAdmin();
+        $tenant = app(TenantContext::class)->current();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => $tenant, 'connector_name' => 'imap', 'label' => 'Autry',
+            'status' => ConnectorInstallation::STATUS_ACTIVE, 'created_by' => $admin->id,
+        ]);
+        $backfill = ImapBackfill::create([
+            'tenant_id' => $tenant, 'connector_installation_id' => $installation->id,
+            'status' => ImapBackfill::STATUS_RUNNING, 'cutoff_at' => now()->subHour(), 'processed_messages' => 23,
+        ]);
+        $url = "/api/admin/connectors/{$installation->id}/imap-backfill/{$backfill->id}/cancel";
+        $this->postJson($url)->assertUnauthorized();
+        $this->actingAs($this->viewer())->postJson($url)->assertForbidden();
+        $this->assertSame(ImapBackfill::STATUS_RUNNING, $backfill->fresh()->status);
+        $this->actingAs($admin)->postJson($url)->assertOk()
+            ->assertJsonPath('data.backfill.status', ImapBackfill::STATUS_CANCELLED)
+            ->assertJsonPath('data.backfill.processed_messages', 23);
+        $this->postJson($url)->assertOk()->assertJsonPath('data.backfill.id', $backfill->id);
+        Queue::assertNothingPushed();
+
+        $installation->forceFill(['tenant_id' => 'another-tenant'])->save();
+        $this->postJson($url)->assertNotFound();
+    }
+
     public function test_ingestion_status_command_renders_runs(): void
     {
         $this->makeRun('default', 1, 'support');

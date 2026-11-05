@@ -56,6 +56,7 @@ class InitCaseStudiesCommand extends Command
         {--generate-email-dataset : Genera atomicamente il profilo prima del preflight}
         {--resume : Riprende i checkpoint email invece di purgare la dataset version}
         {--email-confirm-token= : Token monouso ottenuto dal preview di mail:seed-imap}
+        {--local-fixture-email-reset : Auto-conferma solo la fixture email gold/demo locale completa}
         {--email-actor= : Identità operatore usata nel preview e nell’audit email}
         {--ingest-emails : Dopo l\'APPEND installa il connettore e ingerisce le e-mail in KB}';
 
@@ -93,6 +94,7 @@ class InitCaseStudiesCommand extends Command
         if ($exitCode !== self::SUCCESS) {
             return $exitCode;
         }
+        $this->renderLocalLoginCredentials();
 
         // 2) DOCUMENTI
         if (! (bool) $this->option('skip-docs')) {
@@ -158,6 +160,9 @@ class InitCaseStudiesCommand extends Command
                 if ($confirmToken !== '') {
                     $seedArgs['--confirm-token'] = $confirmToken;
                 }
+                if ((bool) $this->option('local-fixture-email-reset')) {
+                    $seedArgs['--local-fixture-reset'] = true;
+                }
                 $actor = trim((string) $this->option('email-actor'));
                 if ($actor !== '') {
                     $seedArgs['--actor'] = $actor;
@@ -179,9 +184,15 @@ class InitCaseStudiesCommand extends Command
                 }
 
                 if ((bool) $this->option('ingest-emails')) {
-                    $this->components->warn(
-                        'I sync email sono stati accodati: il comando non attende il drenaggio dei worker.',
-                    );
+                    if (config('queue.default') === 'sync') {
+                        $this->components->info(
+                            'I sync email sono stati eseguiti inline: nessuna coda condivisa è stata avviata.',
+                        );
+                    } else {
+                        $this->components->warn(
+                            'I sync email sono stati accodati: il comando non attende il drenaggio dei worker.',
+                        );
+                    }
                 }
             } else {
                 $this->components->warn(
@@ -202,11 +213,35 @@ class InitCaseStudiesCommand extends Command
 
         $this->components->info(
             (bool) $this->option('ingest-emails') && ! (bool) $this->option('skip-emails')
-                ? 'Inizializzazione completata; verifica il drenaggio dei sync email accodati.'
+                ? (config('queue.default') === 'sync'
+                    ? 'Inizializzazione completata; i sync email sono stati eseguiti inline.'
+                    : 'Inizializzazione completata; verifica il drenaggio dei sync email accodati.')
                 : 'Inizializzazione completata.',
         );
 
         return self::SUCCESS;
+    }
+
+    private function renderLocalLoginCredentials(): void
+    {
+        $this->newLine();
+        $this->components->info('Credenziali locali create (solo ambiente di sviluppo):');
+        $this->table(
+            ['Tenant', 'Azienda', 'Utente', 'Username / e-mail', 'Ruolo', 'Password'],
+            array_map(
+                static fn (array $credential): array => [
+                    $credential['tenant'],
+                    $credential['company'],
+                    $credential['name'],
+                    $credential['email'],
+                    $credential['role'],
+                    $credential['password'],
+                ],
+                CaseStudyUsersSeeder::localLoginCredentials(),
+            ),
+        );
+        $this->line('  Usa l’e-mail come username per accedere a https://askmydocsdev.test.');
+        $this->newLine();
     }
 
     /**

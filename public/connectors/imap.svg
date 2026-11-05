@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <!-- Source: Original AskMyDocs envelope, MIT. -->
+  <title>Email (IMAP)</title>
+  <defs>
+    <linearGradient id="imap-ink" x1="12" y1="16" x2="52" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#818CF8"/><stop offset="1" stop-color="#4F46E5"/></linearGradient>
+  </defs>
+  <rect x="11" y="17" width="42" height="31" rx="6" fill="url(#imap-ink)"/>
+  <path d="m13 20 16.1 12.2a4.8 4.8 0 0 0 5.8 0L51 20" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m13 45 12-10m26 10L39 35" stroke="#fff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
 use App\Models\ProjectMembership;
+use App\Models\RealtimeAgentSessionLink;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
@@ -86,6 +87,12 @@ final class UserTenantResolver
             ->pluck('tenant_id')
             ->all();
 
+        $realtimeAgentTenants = RealtimeAgentSessionLink::query()
+            ->where('user_id', $userId)
+            ->distinct()
+            ->pluck('tenant_id')
+            ->all();
+
         $mcpActors = $this->mcpActorsForUser($userId, $userEmail);
         $mcpAuditTenants = McpToolCallAudit::query()
             ->where(function ($q) use ($userId, $mcpActors): void {
@@ -116,6 +123,7 @@ final class UserTenantResolver
             ...$conversationTenants,
             ...$chatLogTenants,
             ...$connectorTenants,
+            ...$realtimeAgentTenants,
             ...$mcpAuditTenants,
             ...$canonicalAuditTenants,
             $active,

@@ -67,3 +67,18 @@ export function useStartImapBackfill() {
         },
     });
 }
+
+export function useCancelImapBackfill() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ installationId, backfillId }: { installationId: number; backfillId: number }) =>
+            adminIngestionApi.cancelImapBackfill(installationId, backfillId),
+        onMutate: ({ installationId }) => queryClient.cancelQueries({
+            queryKey: [...INGESTION_KEY, 'imap-backfill', installationId],
+        }),
+        onSuccess: (data, { installationId }) => {
+            queryClient.setQueryData([...INGESTION_KEY, 'imap-backfill', installationId], data);
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'connectors'] });
+        },
+    });
+}

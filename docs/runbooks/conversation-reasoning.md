@@ -1,0 +1,731 @@
+# Focus, memoria delle evidenze e validazione selettiva
+
+Con `CHAT_VERIFIED_SESSION_MEMORY_ENABLED=true`, la politica corrente è descritta
+in [Memoria verificata di sessione](verified-session-memory.md): i fatti verificati
+sono riutilizzabili per 300 secondi dall'acquisizione originale. Le descrizioni
+«memoria come navigazione» e «refresh live per ogni nuova domanda» qui sotto
+descrivono il percorso precedente, conservato dal flag di rollback.
+
+## Contratto
+
+Ogni nuovo messaggio ha una sola interpretazione strict, salvata sul messaggio utente
+(`metadata.reasoning`) o sullo step widget (`args_json.reasoning`). I retry riusano
+lo snapshot. Non si reinterpreta una continuazione di tool.
+
+### Azione conversazionale interpretata dal modello
+
+Ogni nuova interpretazione richiede anche `action`, enum chiuso:
+`research`, `refine`, `read_source`, `provenance`, `recap`, `recheck`, `clarify`.
+Il preprocessore decide l'azione usando messaggio e contesto; PHP non cerca parole
+come "leggere", "show" o "ok" per decidere cosa intende l'utente. Le offerte generate
+dal server sono memorizzate in `grounding.offered_actions` e passate come atti del
+dialogo, senza reinserire il testo fattuale delle vecchie risposte. Con più offerte o
+bersagli plausibili una semplice accettazione richiede chiarimento.
+
+L'azione è salvata in `reasoning.understanding.action`, esportata nel debug e riusata
+nei retry e nei rami di ricerca. Pianificatore, sintetizzatore, KB sincrona/streaming
+e widget ricevono lo stesso contratto. La voce eredita l'interpretazione dell'agente.
+Un output privo di azione, non valido o incoerente con transizione/chiarimento degrada
+alla domanda esplicita: nessuna regex tenta una seconda interpretazione. I vecchi
+snapshot restano leggibili: solo le transizioni tipizzate `recap` e `provenance`
+vengono migrate; non si indovina una lettura dal vecchio campo `intent`.
+
+`read_source` abilita la lettura deterministica nell'agente solo quando è disponibile
+una singola fonte adatta nel pacchetto di evidenze e passano i controlli esistenti.
+Non autorizza fonti e non risolve da solo riferimenti MCP verso email.
+Restano deterministici schema, limiti, menzioni letterali, identità, hash e permessi;
+le regex tecniche su formati/identificativi non interpretano il linguaggio dell'utente.
+
+### Recupero delle email dopo un risultato MCP/API
+
+La ricerca ricorsiva affianca alla similarità una ricerca locale per identificativi
+completi già estratti dal preprocessore o risolti dalla memoria autorizzata. Questo
+permette di passare da un tracking noto a un'email indicizzata che lo contiene, anche
+se la query semantica non produce candidati. Funziona anche con codici senza cifre;
+non usa il testo di una vecchia risposta come fonte e non inventa punteggi di similarità.
+Il lookup è limitato a 12 identificativi e 64 chunk candidati; una lista vuota o
+incompleta non dimostra l'assenza del dato. I candidati passano ancora da filtri,
+`KbSourceReader` (tenant, progetto, attore, ACL) e valutazione LLM di pertinenza.
+
+Una ricerca vuota o un suggerimento già eseguito non esauriscono automaticamente il
+turno: si provano le query alternative della stessa interpretazione entro la profondità
+configurata (massimo 5 round). Non viene effettuato un secondo preprocessing. Nell'agente
+un risultato KB vuoto lascia proseguire la pianificazione sugli strumenti autorizzati;
+profilo obbligatorio mancante e focus ambiguo restano blocchi anche dopo una ripresa.
+
+Il debug del run contiene `result_json.knowledge_investigation`, con query tentate,
+numero di candidati semantici/esatti, fonti leggibili, documenti selezionati ed esito di
+ciascun tentativo. Assenza di evidenze, mancata pertinenza ed errore tecnico sono distinti;
+nessuno di questi esiti autorizza l'affermazione «l'email non esiste».
+
+Questa modifica non richiede migrazioni o build frontend. Riavviare i worker con
+`php artisan queue:restart` dopo il deploy; testare con un nuovo messaggio, perché
+un retry del turno precedente deve conservare la sua interpretazione originale.
+
+`conversations.reasoning_state` e `widget_sessions.reasoning_state` sono JSON scritti
+esclusivamente dal server, non mass-assignable e nascosti nelle normali risorse Eloquent.
+La memoria è della singola conversazione: nessun riuso automatico tra chat.
+
+Il flusso principale è:
+
+```text
+Messaggio → prepare / interpretazione strict → focus e sottodomande
+    → rilettura fonti autorizzate / chiamate live → evidenze normalizzate
+    → proposta di fatti atomici
+    → controlli PHP per fatto → una richiesta JEV con massimo 10 choice
+    → fatti approvati / campi strutturati di fallback / esclusioni
+    → composizione senza riscrittura libera → salvataggio → finish / memoria
+```
+
+KB sincrona, streaming e widget condividono focus, riferimenti e gestione del turno;
+la voce eredita il percorso agente. La valutazione JEV resta nell'agente, non viene
+aggiunta alle altre chat KB. Il recap narrativo storico resta memorizzato ma, con il
+nuovo percorso attivo, non viene reiniettato come fonte nel prompt di risposta.
+
+## Componenti
+
+- `ConversationReasoning`: prepara il turno, riconvalida la memoria, finalizza atomicamente
+  lo stato. Lock per interpretazione dello stesso turno; lock DB durante gli aggiornamenti.
+  Nessuna transazione rimane aperta durante una chiamata LLM.
+- `QuestionUnderstanding` / `FocusContract`: focus, sottodomande, transizione,
+  chiarimento, menzioni letterali e riferimenti contestuali separati. Un riferimento
+  contestuale deve già essere noto al server; non può creare relazioni aziendali.
+- `ResearchFanout`: esegue i task in processi PHP isolati, con concorrenza e timeout
+  limitati. Un processo fallito o scaduto non fa perdere i risultati degli altri.
+- `AgentResearchCoordinator`: un run interno per task, con strumenti, checkpoint,
+  fonti e budget distinti. Solo il run padre salva la risposta e aggiorna la memoria.
+- `KbSourceReader`: rilettura con tenant, progetto, attore, ACL e filtri correnti.
+- `AgentEvidenceAccess`: ricontrolla checkpoint e osservazioni prima della pianificazione
+  e della sintesi. Fonte revocata/modificata o connettore non più disponibile non entra
+  nel contesto. I payload storici delle azioni non sono una seconda fonte nascosta.
+- `EvidenceProjector`: proiezione dei record senza duplicare wrapper e testo MCP.
+  Conserva hash esterno e percorso del record. Il match usa l'identità del record,
+  non il testo della query né un codice presente in `emailEvidence`.
+- `FocusedClaimEvaluator`: controlli indipendenti e allocazione round-robin delle dieci
+  decisioni tra sottodomande. Le citazioni sono associate dal server al passo originale.
+- `DecisionOnce`: marcatore persistente di invio su `agent_runs.result_json.focused_decision`.
+  Un retry con lo stesso stato riusa il risultato; un timeout o uno stato diverso non
+  provoca un secondo invio automatico. È una garanzia *al massimo una chiamata*, non
+  di consegna esattamente una volta in presenza di crash.
+
+Lo stato distingue menzioni dell'utente, riferimenti trovati, fatti verificati e testi
+effettivamente comunicati. Le relazioni strutturate conservano l'esecuzione che le
+attesta; servono per navigare verso una nuova lettura, non per attestare lo stato live.
+Il testo libero delle chat KB viene marcato `reported_text / not_claim_validated`:
+è solo un ausilio antiripetizione, mai un'evidenza. I suggerimenti testuali di memoria
+sono esposti solo se le fonti associate sono ancora autorizzate e il passo è invariato.
+
+Una risposta tardiva può aggiungere evidenze ma non sostituisce il focus più recente.
+La finalizzazione è idempotente per turno, anche dopo l'espulsione dal buffer in memoria,
+grazie al marcatore sul messaggio salvato. I preamboli dei tool widget non finalizzano il turno.
+
+Limiti iniziali: 100 riferimenti, 64 KiB, 100 elementi nelle liste di fatti/entità/turni,
+20 sottodomande. Si eliminano prima riferimenti vecchi fuori dal focus. Non si copiano
+interi payload nella memoria; restano nei run originali. Eliminando la conversazione o
+sessione si elimina automaticamente anche il relativo campo di memoria.
+
+## Dati live, incertezza e rollback
+
+Per una nuova domanda i precedenti valori MCP/API non sono evidenza corrente: il planner
+riceve riferimenti per richiamare gli strumenti. Solo `transition=recap`, derivata da una
+richiesta esplicita, può recuperare snapshot autorizzati; la data di acquisizione resta
+visibile e il prompt impone di presentarli come storici. Un errore di aggiornamento
+non ripristina silenziosamente il valore precedente.
+
+Le cinque categorie JEV sono `supported_relevant`, `supported_off_topic`, `unsupported`,
+`conflicting`, `insufficient_context`. Solo la prima, con probabilità almeno 0,80,
+ammette la resa narrativa. Un no affidabile non può essere aggirato. La distribuzione
+deve essere valida, sommare a uno entro tolleranza e concordare con la categoria selezionata.
+
+Con provider indisponibile o decisione incerta, si possono rendere deterministicamente
+solo campi scalari esplicitamente richiesti di un record con identità verificata.
+Una citazione documentale letterale non salva una parafrasi incerta. Se un passaggio
+necessario supera il budget viene escluso interamente, senza tagliarlo per ottenere
+artificialmente un'approvazione. Le tabelle usano record originali filtrati per ambito e identità.
+
+I messaggi distinguono assenza di risultati, aggiornamento/verifica indisponibile,
+evidenza non verificabile, conflitto e chiarimento. Una parte valida sopravvive al
+fallimento delle altre; la risposta parziale esplicita il limite.
+
+Configurazione (`config/reasoning.php`):
+
+```dotenv
+CHAT_REASONING_ENABLED=true
+CHAT_REASONING_MAX_EVIDENCE=100
+CHAT_REASONING_MAX_STATE_BYTES=65536
+CHAT_PARALLEL_RESEARCH_ENABLED=true
+CHAT_RESEARCH_CONCURRENCY=4
+CHAT_RESEARCH_TIMEOUT_SECONDS=90
+AGENT_SELECTIVE_VALIDATION_ENABLED=true
+AGENT_SELECTIVE_VALIDATION_THRESHOLD=0.8
+```
+
+I flag sono indipendenti. Disabilitare `AGENT_SELECTIVE_VALIDATION_ENABLED` ripristina
+il validatore precedente senza eliminare memoria o fonti. Per un rollback completamente
+deterministico disattivare anche `AGENT_BATCH_SEMANTIC_GROUNDING_ENABLED` e
+`AGENT_SEMANTIC_GROUNDING_ENABLED` (definiti in `config/agent.php`). I controlli
+fonte/citazione rimangono; anche l'interruttore
+di grounding disattivato conserva un sottoinsieme verificabile con testo e fonti,
+anziché azzerare le affermazioni. Verificare sempre la configurazione effettiva dopo il deploy.
+
+## Installazione e riavvio
+
+Migrazione **additiva**, nessun reset, seed o ingest:
+
+```sh
+php artisan migrate --path=database/migrations/2026_09_29_180000_add_reasoning_state_to_chat_owners.php --force
+php artisan config:clear
+php artisan queue:restart
+```
+
+In produzione usare la normale procedura `migrate --force` e ricostruire `config:cache`.
+`queue:restart` fa terminare i worker dopo il job corrente: Supervisor/Horizon o il
+process manager devono riavviarli. Con un worker manuale rilanciare il comando esistente,
+per esempio `php artisan queue:work redis --queue=agent,kb-ingest,default --sleep=1 --tries=3`.
+Riavviare Horizon tramite la procedura del deploy se presente. Non avviare `artisan serve`:
+in locale il sito resta servito da Herd su `https://askmydocsdev.test`.
+
+Per le ricerche multiple, configurare **prima del riavvio** anche i tempi della coda:
+
+```dotenv
+AGENT_JOB_TIMEOUT=900
+REDIS_QUEUE_RETRY_AFTER=4200
+# Se si usa invece la coda database:
+DB_QUEUE_RETRY_AFTER=4200
+```
+
+Il timeout del job deve essere inferiore al `retry_after` della connessione. La
+configurazione storica locale aveva retry dopo 90 secondi: troppo presto per un turno
+con più indagini. Senza `AGENT_JOB_TIMEOUT` rimane il timeout storico di 120 secondi.
+La raccolta delle evidenze rispetta anche il tempo del worker: il suo limite è
+il minore tra il budget di ricerca (scalato per profondità) e
+`AGENT_JOB_TIMEOUT - AGENT_SYNTHESIS_TIME_RESERVE_SECONDS` (riserva predefinita:
+60 secondi). Prima di ogni piano si richiede inoltre tempo per il planner:
+il maggiore tra `AGENT_PLANNER_TIME_RESERVE_SECONDS` (30 secondi) e la durata
+dell'ultimo piano. Quando manca questo margine si passa alla sintesi parziale
+con le fonti già raccolte. La riserva non è un timeout delle singole chiamate
+AI: una chiamata più lenta del previsto può comunque consumarla.
+
+Anche la finalizzazione usa il tempo residuo del tentativo corrente, vincolato
+all'ingresso del job e al suo timeout; una consegna duplicata non rinnova il
+tempo del worker già in esecuzione. In assenza di un job attivo usa lo span
+`worker.execute` più recente come riferimento diagnostico. Con
+meno di 45 secondi disponibili salta riparazione e riscrittura di presentazione;
+mantiene un margine di sicurezza di 5 secondi. I valori sono in
+`agent.finalization`; gli span `finalization.skipped` riportano operazione,
+tempo disponibile e tempo richiesto. Le verifiche necessarie per approvare un
+fatto restano obbligatorie. Con meno di 5 secondi disponibili salta anche la
+valutazione facoltativa della copertura e marca la risposta come parziale.
+
+Dopo l'approvazione dei claim, prima delle rifiniture, salva un
+`verified_answer_checkpoint` durevole. Se una rifinitura fallisce o scade il
+worker, il recupero rilegge le fonti con i permessi correnti, controlla contesto,
+domanda e contenuto e pubblica soltanto i claim ancora validi come risposta
+`partial`. Il recupero non chiama modelli e non ripete strumenti esterni.
+Fonti cambiate o revocate vengono escluse anche dalle citazioni e dai metadati;
+senza claim recuperabili resta il
+normale fallimento. Un risultato terminale o un annullamento non viene sostituito.
+La finalizzazione normale salva stato, messaggio del canale ed evento terminale
+nella stessa transazione, così un errore di proiezione può ancora recuperare
+il checkpoint invece di lasciare un run completato senza risposta.
+
+Anche le query `search_knowledge_base` proposte dal planner attraversano una
+singola iterazione dell'indagine KB: mantengono obiettivo e identificativi del
+turno, includono i candidati da ricerca letterale, leggono le fonti autorizzate
+e importano soltanto quelle selezionate dal valutatore. Non importano contesto
+ausiliario o candidati grezzi quando la valutazione fallisce. Il risultato dello
+strumento conserva la traccia in `stats.investigation`. Il contatore delle
+ricerche improduttive si azzera soltanto se cambia il contenuto delle evidenze
+selezionate, anche se il documento era già noto. Il rollback esplicito
+`KB_RECURSIVE_RETRIEVAL_ENABLED=false` mantiene il percorso storico anche per
+le query successive.
+
+Il timeout per processo di ricerca è distinto: 90 secondi per ramo, con al massimo
+quattro processi contemporanei. Cambiare concorrenza o numero di task richiede di
+ricontrollare il budget complessivo. I lock impediscono a una riconsegna concorrente
+del padre di risalvare un risultato mentre i figli stanno ancora lavorando.
+
+Questa estensione **non richiede un'altra migrazione**, né reset, seed, ingest,
+refresh dei connettori o build frontend. Estende i JSON di stato già presenti.
+
+Le chat esistenti iniziano con stato vuoto e recuperano riferimenti storici su richiesta,
+sempre dopo riconvalida. Nessuna reinterpretazione o migrazione massiva della cronologia.
+Non fare rollback della migrazione durante il rollback dei flag: il JSON inutilizzato è innocuo.
+
+### Risultati progressivi verificati
+
+Con `AGENT_PROGRESSIVE_ANSWERS_ENABLED=true` (predefinito), ogni iterazione KB
+può proporre fino a cinque affermazioni brevi, ciascuna con documento e citazione
+letterale. Prima di pubblicarle il server rilegge la fonte nel tenant, progetto,
+filtri e permessi correnti, verifica identità e citazione, poi chiede a Jev una
+decisione indipendente per affermazione, rispetto al testo completo e alla
+domanda originale. Si applica la soglia `reasoning.threshold` già configurata;
+incertezza, errori e contesto troppo grande non rilasciano testo. L'accesso e
+il contenuto vengono ricontrollati dopo la decisione. Questa verifica non
+certifica un evento commerciale: le affermazioni devono conservare autore,
+data e condizioni della fonte.
+
+Gli eventi durevoli `research.findings` contengono soltanto blocchi approvati
+e citazioni, fino a 24 per turno. I candidati grezzi non entrano nel canale
+pubblico. Le decisioni hanno slot idempotenti e diagnostica del provider;
+riconnessioni e riprese non duplicano i blocchi. Anche i rami registrati possono
+pubblicare nel turno padre. La stessa raccolta completa di evidenze alimenta
+la sintesi finale: i blocchi intermedi non diventano memoria o nuove prove.
+I checkpoint della raccolta conservano gli slot `progressive_decision_<sha256>`.
+`progressive_audit` conserva gli ultimi 50 esiti dei candidati, con soli hash e
+stati tecnici, per distinguere rifiuto, incertezza, fonte modificata, errore di
+decisione o pubblicazione. Il conteggio delle risposte del provider non indica
+quanti candidati siano stati approvati.
+
+Chat e widget mostrano i risultati durante ricerca e consolidamento; la risposta
+finale li sostituisce quando arriva. Nella chat, i risultati di un turno fallito
+o annullato sono recuperabili anche dalla cronologia dopo una ricarica. Il widget
+li conserva nella vista del turno interrotto; il ripristino della cronologia del
+widget continua a usare i suoi messaggi finali. Le anteprime progressive riguardano
+le fonti documentali KB; i risultati strutturati API/MCP continuano a essere
+consolidati e validati nella risposta finale. Il passaggio aggiunge una decisione
+Jev per gruppo di nuovi candidati, senza rigenerare tutta la risposta a ogni fonte.
+Il rilascio include la normale build frontend e il riavvio dei worker; non servono
+migrazioni. Per un rollback disabilitare il flag e riavviare i worker.
+
+### Ricerca lenta, timeout del worker e chat in attesa
+
+La correzione del 22 ottobre 2026 aggiunge la migrazione
+`2026_10_22_000002_add_literal_lookup_trigram_indexes.php`: su PostgreSQL crea
+`pg_trgm` e due indici GIN su `LOWER(chunk_text)` e `LOWER(title)`. Gli indici
+FTS esistenti non coprono `LIKE '%identificativo%'`. Il build è concorrente,
+fuori transazione; un indice invalido lasciato da un build interrotto viene
+ricreato al retry. Il rollback rimuove soltanto i due indici. Va inclusa nel
+normale deploy, senza reset o ingest. Non è stata applicata a database remoti.
+
+Il lookup separa corpo e titolo per consentire l'uso degli indici. Con un solo
+identificativo distinto salta il conteggio globale e il ranking di rarità,
+che assegnerebbero lo stesso peso a tutti i risultati. Le ricerche con più
+identificativi conservano il ranking e i vincoli di tenant, progetto e fonte.
+
+Anche la query vettoriale primaria e quella dei candidati esclusi devono ordinare
+direttamente per `embedding <=> query ASC`: `ORDER BY vector_score DESC`, con
+`vector_score = 1 - distanza`, impedisce l'uso dell'indice HNSW esistente.
+Con pgvector >= 0.8 si abilita `hnsw.iterative_scan = strict_order` nella sola
+transazione di ricerca, per continuare oltre i vicini esclusi dai filtri.
+La soglia numerica di similarità si applica ai candidati ordinati; i filtri
+di popolazione restano nel database. HNSW è approssimato e mantiene i limiti
+di scansione dell'estensione. Versioni precedenti conservano la ricerca esatta:
+per beneficiare di questa ottimizzazione occorre aggiornare pgvector.
+Riferimenti: [uso degli indici](https://github.com/pgvector/pgvector#why-isnt-a-query-using-an-index)
+e [scansioni iterative](https://github.com/pgvector/pgvector#iterative-index-scans).
+
+`ExecuteAgentRunJob` usa un tentativo e un timeout configurato da
+`AGENT_JOB_TIMEOUT` (fallback 120 secondi). Il timeout dei processi figli è
+separato: 90 secondi per ramo nella configurazione del dump. Laravel può
+interrompere il worker per timeout e il gestore processi lo riavvia; questo
+non dimostra un OOM. La callback definitiva `failed()` tenta prima il recupero
+del checkpoint verificato e pubblica `run.partial` se ci sono claim ancora
+validi. Altrimenti finalizza atomicamente i run queued/running e pubblica
+`run.failed`, anche quando il
+fallimento avviene prima di `handle()`. Non sostituisce risultati terminali
+o attese di interazione. Distingue un'eccezione di timeout osservata da un
+semplice esaurimento dei tentativi, senza inferire il primo dal secondo.
+Un SIGKILL/OOM o un database indisponibile possono impedire la callback.
+
+Su Redis/database il lease deve superare il timeout; controllare i valori
+effettivi del worker. Con `QUEUE_CONNECTION=cloud`, `retry_after = null` nel
+debug non significa 90 secondi: [Laravel Cloud](https://laravel.com/cloud/docs/queues#job-processing)
+gestisce la visibilità e la estende durante l'esecuzione. Non modificare
+tentativi, lease o timeout per compensare una query che non usa gli indici.
+
+Nel dump della conversazione 80 il run `6f0f6e56-af32-4ba4-b03b-705f99198d79`
+ha due lookup letterali aperti da circa 58 secondi all'esportazione, prima
+dei timeout configurati; non contiene un evento finale. Lo stack separato
+`TimeoutExceededException` localizza invece l'interruzione nella query
+vettoriale, ma non include timestamp o run ID per attribuirlo allo stesso run.
+Il payload fornito successivamente identifica il job Cloud
+`1ca25ec5-0df4-4f9b-9d8e-9cf508d7bf92`: `agentRunId=186`, lo stesso span
+di attesa coda e `createdAt=1792682471` (15:21:11 UTC) lo collegano esattamente
+al dump. La coda è `default`, `timeout=120`, `maxTries=1`, `retryUntil=null`.
+Questi valori del payload prevalgono sui default del comando worker; cambiare
+la configurazione per i nuovi job non aggiorna questo messaggio già accodato.
+`failOnTimeout=false` non impedisce il fallimento per timeout: sul primo
+tentativo è già esaurito `maxTries=1`. Laravel registra il fallimento e
+interrompe il worker. Il termine atteso, dal ricevimento alle 15:21:12 UTC,
+è circa le 15:23:12 UTC, dopo l'esportazione. Il payload non riporta il
+contatore effettivo delle consegne né prova il numero di riavvii.
+
+Per ricostruire l'ordine server restano necessari gli eventi Cloud di questo
+job/pod, il numero di tentativo e gli orari degli errori: cercare fra le 15:21
+e le 15:24 UTC del 22 ottobre (17:21–17:24 Europe/Rome), inclusi exit code,
+motivo del riavvio e metriche memoria. Non dedurre un crash o una riconsegna
+anticipata dal solo messaggio sui tentativi.
+
+## Debug e valutazione
+
+### Stile delle risposte per argomento
+
+La sintesi può proporre `section_title`, un'etichetta editoriale breve e neutra
+nella lingua della risposta. Per i task indipendenti il server la rende come
+titolo `##`, separato dai fatti, invece di usare `subquestions[].question`.
+Titoli interrogativi, copie della domanda, markup, più righe o più di 100 caratteri
+vengono sostituiti con un'etichetta deterministica dell'aspetto e gli identificativi
+del focus. Il campo è facoltativo per compatibilità con checkpoint e provider
+precedenti. Se nessun fatto del task è conservato, si usa sempre il titolo neutro
+del server, non un possibile titolo-conclusione della bozza.
+
+Le istruzioni richiedono titoli nominali per argomento, paragrafi brevi, elenchi
+per condizioni parallele, numerazione solo per sequenze, enfasi contenuta e valori
+tecnici esatti in codice inline. Vietano di ripetere la domanda, introdurre ogni
+frase con lo stesso identificativo o aggiungere riepiloghi ridondanti. Una sezione
+sulle regole deve iniziare dalle condizioni operative, non ripetere il profilo
+dell'entità. I fatti restano atomici: il compositore conserva i testi approvati e
+le citazioni, senza una nuova chiamata di riscrittura o valutazione.
+
+Questa modifica riguarda la presentazione: non modifica budget, soglie, selezione
+delle evidenze o rifiuti JEV. Il campo resta nel payload della bozza e nel debug;
+retry e continuazioni non generano una nuova bozza solo per ottenere un titolo.
+Per il rilascio basta riavviare i worker; non servono build frontend o migrazioni.
+
+### Riferimenti incompleti e budget JEV nelle domande multiple
+
+Il prompt di sintesi contiene `claim_source` con le tre proprietà JSON da copiare:
+`document_id`, `tool_execution_id`, `evidence_hash`. Se il modello omette entrambe
+le identità canoniche (ad esempio genera una chiave errata `document_id=null,`),
+il server può ricostruirle **solo** quando l'hash corrisponde a una sola fonte
+nell'envelope autorizzato della stessa sottodomanda. Non interpreta chiavi errate,
+non sovrascrive identità esplicite e non cerca altre fonti nel database.
+Scope, hash, record, codici e citazione originale devono comunque superare tutti
+i controlli successivi. Un hash ambiguo non viene risolto automaticamente.
+
+La richiesta JEV usa `state.sources`, un dizionario di testi originali senza
+duplicati. Ogni coppia contiene `source_ref`, gli eventuali riferimenti alle altre
+evidenze pertinenti e `subquestion_id`. I passi non vengono tagliati e le fonti
+contraddittorie non vengono eliminate per far entrare più candidati. Una coppia
+che supera ancora il limite resta non valutata; la sua aggiunta non consuma spazio
+per le coppie successive. Provenienza e autorizzazione restano distinte anche se
+due esecuzioni hanno restituito lo stesso testo.
+
+Il debug `response.grounding.semantic_validation[]` espone `state_layout`,
+`state_bytes`, `state_max_bytes`, `pair_count`, `source_count` e, nei controlli
+recuperati, `source_resolution.method=unique_evidence_hash`. Da questa correzione
+`state_byte_encoding=sanitized_json_utf8` indica che i byte sono misurati **dopo**
+la stessa mascheratura di segreti/PII applicata dal servizio Decisions. I debug
+precedenti senza questo campo misuravano lo stato prima della mascheratura.
+
+Il limite applicativo predefinito passa da 16.000 a **32.768 byte**
+(`DECISION_MAX_STATE_BYTES=32768`). Il margine fisso di 1.000 byte viene eliminato:
+un payload che rientra nel limite effettivo non perde più un intero fatto a causa
+di quella riserva. Non cambia il limite separato di 12.000 byte sulle domande.
+Non cambiano soglia 0,80, massimo di dieci coppie, singola chiamata JEV e gestione
+degli esiti incerti. È un limite di dimensione, non un criterio di approvazione.
+
+`state_limit_count` e `claim_limit_count` indicano i candidati non valutati per
+ciascun limite; un controllo con `reason=state_limit` contiene anche
+`state_bytes_with_candidate` e `state_overflow_bytes`. Non si tratta di un no di
+JEV né di un'assenza della fonte. Un candidato oltre budget non entra nella
+richiesta e non consuma spazio a danno dei candidati successivi. Nessuna fonte
+necessaria o contraddittoria viene accorciata per aggirare il limite.
+
+La finestra JEV documentata è 32.000 **token** per stato e domande insieme, non
+32.000 byte. Il limite locale non sostituisce quello del provider: prima di
+aumentarlo ancora misurare token complessivi, costo e latenza anche su testi
+multilingua. I dettagli del contratto sono in `docs/decision-models.md`.
+
+Regressione anonimizzata: `tests/Fixtures/Agent/multi-question-source-validation.json`,
+derivata dalla chat 37. Comprende quattro domande, nove affermazioni, tre documenti
+e due risultati MCP. Con esiti simulati positivi tutte e nove arrivano alla
+valutazione e conservano le citazioni originali. Nel diagnostico reale del
+30 settembre 2026, JEV `typesafe/jev-1.13-20260917` ha valutato nove coppie in una
+chiamata: sette approvate, due incerte (0,51 e 0,76), tutte e quattro le domande
+con almeno un fatto approvato. Stato: 11.798 byte, quattro testi originali unici;
+latenza provider circa 619 ms, costo riportato 0,000306516 USD. Nessuna approvazione
+implicita per i due fatti incerti. È una prova diagnostica, non una calibrazione
+statistica del modello né una garanzia sul prossimo output generativo.
+
+Seconda regressione: `tests/Fixtures/Agent/multi-question-state-budget.json`,
+anonimizzata dalla chat 39, contiene nove fatti e undici testi diversi, anche
+sovrapposti. Nel replay locale del JSON originale lo stato completo occupa
+16.538 byte: tutti i nove candidati ora arrivano in un'unica richiesta, senza
+`state_limit`. Le risposte di questo replay sono simulate per verificare
+confezionamento e limiti, **non** per attestare approvazione semantica reale.
+I test coprono anche budget esatto, un byte oltre limite, mascheratura che
+modifica la dimensione, Unicode e conservazione delle fonti contraddittorie.
+
+Se l'ambiente ha un override esplicito a 16.000 byte, aggiornarlo a 32.768.
+
+### Collaudo Autry del 1 novembre 2026: thread completi più lunghi
+
+La suite remota DEMO-01–DEMO-10 ha mostrato che 32.768 byte non bastano per
+alcuni casi misti: nel caso 05 quattro email originali occupano circa 66 KB,
+prima del record gestionale e delle domande. Il default applicativo corrente
+è **131.072 byte** (`DECISION_MAX_STATE_BYTES=131072`). Un override esplicito
+più basso continua a prevalere: verificarlo nel deploy di sviluppo prima di
+ripetere la suite.
+
+Il limite riguarda il JSON UTF-8 già sanificato e continua a essere verificato
+prima dell'invio. Non vengono tagliate fonti originali o contraddizioni, né
+modificate le soglie di accettazione, le verifiche ACL o gli hash. Anche il
+controllo di copertura esporta ora `state_bytes`, `state_max_bytes` e l'errore
+contrattuale privo di contenuti e credenziali. I record live mantengono il nome
+host della sorgente, così il controllo di pertinenza può distinguere il
+gestionale da un riferimento presente nelle email.
+
+Jev supporta contesti più lunghi, ma il provider segnala prestazioni e accuratezza
+diverse oltre la modalità breve: il nuovo default deve essere verificato anche
+sulle risposte reali, separando approvazioni scorrette e astensioni. La suite
+demo confronta le risposte con fonti e limiti documentali, non solo con lo stato
+terminale della run. Vedi la [documentazione OpenRouter di Jev](https://openrouter.ai/docs/guides/community/jev).
+Eseguire `php artisan config:clear` (o ricostruire la cache in produzione), poi
+il riavvio graduale dei worker. In locale senza override vale il nuovo default.
+
+Rilascio di questa correzione: `php artisan queue:restart`, verificando il riavvio
+dei worker tramite il process manager. Nessuna migrazione, reset, seed, ingest o
+build frontend. Per provarla inviare una **nuova richiesta**: le risposte già salvate
+e le decisioni dei run conclusi non vengono riscritte o rivalutate automaticamente.
+
+### Integrità e interruzione dello stream eventi
+
+I publisher delle ricerche parallele condividono un contatore sotto lock del run.
+L'append prende il massimo tra contatore e log persistito: un vecchio contatore
+arretrato non può provocare un duplicato. L'istanza chiamante sincronizza soltanto
+`last_sequence` come già salvato, senza marcarlo dirty: salvare un checkpoint dopo
+un observer non deve riscrivere un numero precedente.
+
+Lo stream scarica tutto il log, anche oltre 100 eventi e con un contatore storico
+arretrato. Se il run è fallito/annullato ma manca l'evento terminale, restituisce uno
+snapshot di trasporto (`data.status_snapshot=true`), localizzato e senza diagnostica
+privata. La lettura non modifica il DB né ripete ricerche. I tentativi di riconnessione
+su EOF vuoto sono distanziati e annullabili. Un collegamento interrotto senza risposta
+salvata o conferma terminale non viene più visualizzato come «Risultato pronto».
+
+Per le richieste già fallite occorre inviare una nuova domanda dopo il rilascio;
+non vengono riavviate automaticamente. Nessuna migrazione o ripopolamento dati.
+
+Verifica della correzione: 97 test backend e 650 frontend superati, build completa
+SPA/widget. Prova reale su Herd della domanda hub/spedizione: 27 eventi con contatore
+coerente, risposta parziale salvata e visibile, nessun errore di stream. La parte
+spedizione resta non verificata semanticamente: il ripristino del trasporto non
+aggira il validatore e non equivale a confermare tutte le informazioni trovate.
+
+### Richieste vocali: avanzamento e serializzazione
+
+Il turno vocale esegue la ricerca nella richiesta HTTP. Il suo limite PHP viene
+esteso al budget `AGENT_JOB_TIMEOUT` quando quello iniziale è inferiore, poi
+ripristinato anche in caso di errore. Un limite già superiore o illimitato resta
+invariato. Questo evita che PHP-FPM interrompa dopo 30 secondi una ricerca che
+il worker testuale può eseguire per il budget agente configurato.
+
+La voce continua a usare lo stesso turno canonico della chat. Durante la chiamata
+`askmydocs.chat_turn`, il client cerca il run appena creato tramite la ricevuta
+`GET /conversations/{conversation}/realtime-agent/{session}/run?call_id=...`
+(polling ogni 750 ms, solo finché la chiamata è pendente). La ricevuta è di sola
+lettura e controlla tenant, proprietario, conversazione, sessione attiva e call ID.
+Appena disponibile, il client apre lo stream eventi esistente: domanda, lista dei
+task e avanzamento sono visibili senza attendere la risposta vocale finale.
+Il fallimento dell'osservazione UI non impedisce di consegnare la risposta al provider.
+La stessa ricevuta espone `result` soltanto quando la chiamata vocale ha salvato
+il proprio risultato completo. Se il POST del tool perde la connessione o riceve
+HTTP 502/503/504 dal proxy, Live recupera quel risultato con GET autenticati ogni
+750 ms, senza ripetere il POST o avviare altre ricerche. Questo copre il timeout
+FastCGI di Herd a 60 secondi: PHP può completare e salvare la risposta dopo che
+il proxy ha chiuso la richiesta. Il recupero resta entro il budget del job più
+30 secondi; chiusura di Live, sessione scaduta, accesso negato o chiamata fallita
+lo interrompono. Un risultato con un call ID diverso viene ignorato. Le risposte
+HTML del proxy conservano il codice HTTP, senza mostrare errori di parsing JSON.
+La prova Herd con audio sintetico ha confermato il recupero di una chiamata
+completata dopo 65 secondi, con HTTP 504 reale dal proxy: un solo POST al tool,
+risposta canonica visibile e un solo risultato inviato sul canale Live. Questa
+verifica copre la consegna del risultato; la riproduzione vocale finale resta
+da verificare con audio reale.
+La chiusura di Live interrompe il polling e ignora i callback tardivi; non annulla
+automaticamente la ricerca canonica già avviata.
+
+Su OpenAI Live, una ricerca lunga riceve brevi aggiornamenti vocali tramite
+[`session.commentary.append`](https://developers.openai.com/api/docs/guides/live-delegation#send-the-right-kind-of-update)
+sullo stesso canale WebRTC. Il primo intervento arriva dopo 8 secondi, e soltanto
+dopo che la ricevuta autenticata ha confermato un run avviato. I successivi
+sono distanziati di almeno 15 secondi e rinviati finché non ci sono 6 secondi senza
+nuove trascrizioni. Il catalogo italiano contiene 52 frasi sobrie, scelte per fase
+senza battute o intercalari buffi; le varianti ruotano per
+evitare ripetizioni immediate. Le altre lingue ricevono brevi aggiornamenti che
+Live rende nella lingua dell'utente. Le fonti trovate vengono contate soltanto
+dall'evento `retrieval.completed`; le domande approfondite provengono dai task
+pubblici. Non vengono letti contenuti dei documenti, payload degli strumenti o
+ragionamenti privati. Gli intercalari non diventano domande, non avviano altri tool
+e non vengono aggiunti alla risposta canonica o alla memoria della chat.
+Il ritorno del tool, un evento terminale del run principale, un errore, il passaggio
+al testo o la chiusura di Live fermano il timer. La consegna degli intercalari è
+indipendente da quella della risposta finale; una sua interruzione non blocca il
+turno. Il provider Fake ne registra l'invio nei test; ElevenLabs conserva il suo
+comportamento esistente, senza questi aggiornamenti parlati.
+
+Il bootstrap OpenAI deve consentire `session.commentary.append` tra gli eventi
+client e `session.commentary.appended` tra gli eventi server del data channel.
+La lista predefinita del pacchetto non li include: il provider rifiuterebbe il
+primo intercalare con `event_not_allowed`, fermando gli aggiornamenti vocali.
+`OpenAILiveSessionRequest` aggiunge soltanto questa coppia alla richiesta WebRTC
+di AskMyDocs, tramite un client HTTP dedicato al provider; non modifica `vendor/`
+o gli altri client HTTP dell'applicazione. `session.update` e le istruzioni
+arbitrarie dal browser restano escluse.
+
+Un evento terminale completato/parziale libera subito il turno UI, anche se la
+ricarica dello storico è lenta. Uno snapshot arrivato dopo l'avvio della domanda
+successiva viene ignorato. Live riceve anche lo stato confermato del run: una
+risposta parziale conclude la richiesta corrente, e una nuova domanda sostanziale
+richiede una nuova delega. Può annunciare una ricerca in corso soltanto dopo la
+conferma di un run avviato. Regressioni: handshake OpenAI, storico in ritardo e due
+richieste consecutive nella stessa connessione dopo una risposta parziale.
+
+Una conversazione può avere un solo turno agente principale non terminale. Il browser
+respinge subito la seconda chiamata; il server applica la stessa regola sotto lock
+della conversazione, anche da un'altra scheda o sessione vocale. Il risultato voce
+è `busy=true, retry=false` con il messaggio «Un attimo, una cosa alla volta. Sto ancora
+completando la richiesta precedente.» (localizzato). Un invio testuale concorrente
+riceve HTTP 409. Non si creano messaggi o run aggiuntivi e non si sostituisce il primo.
+I task paralleli **dentro la stessa richiesta** restano consentiti. Anche un turno
+che attende conferma rimane occupato finché viene continuato, annullato o concluso.
+Il vincolo riguarda l'esecuzione della richiesta, non la durata della riproduzione audio.
+
+Per distribuire questa modifica: `bun run build`, normale pulizia/ricostruzione
+delle cache del deploy e `php artisan queue:restart`. Non servono migrazioni o seed.
+Ricaricare la pagina e chiudere/riaprire Live, perché le istruzioni vocali sono fissate
+all'apertura della sessione. Regressioni automatiche: `RealtimeAgentIntegrationTest`,
+`use-realtime-agent.test.tsx`, `use-agent-chat.test.tsx` e `voice-chat-activity.test.tsx`
+(provider Fake, con tool pendente e stream eventi reale del client). Smoke locale
+OpenAI eseguito su Herd con l'account fixture: evento `session.started`, sessione
+stabile durante gli aggiornamenti UI e chiusura pulita. L'ingresso audio era silenzioso
+e sintetico: riconoscimento e riproduzione della voce reale restano da provare manualmente.
+
+Nel download JSON della chat:
+
+- `conversation.reasoning_state`: stato compatto corrente;
+- messaggio utente `metadata.reasoning`: focus precedente e interpretazione del turno;
+- risposta `metadata.reasoning`: revisione, focus dopo il salvataggio e riferimenti registrati;
+- run `question_understanding`, azioni con `purpose`, `response.grounding.semantic_validation`:
+  candidato stabile, fonte, controlli PHP, categoria/probabilità, fallback, esclusioni,
+  ripetizioni, modello, costo e latenza;
+- `focused_decision`: invio/risultato durevole, riutilizzato nei retry.
+- `reasoning_state.objective` e `subquestions`: obiettivo aggiornato e task persistenti;
+- `research_kb_flows`: query e risultati KB distinti per task;
+- `research_runs` / `research_flows`: run figli registrati dal server, stato, motivo
+  di arresto e ID delle esecuzioni; gli eventi dei figli arrivano allo stream del padre
+  con `research_flow_id`;
+- `research_drafts`: bozza di ogni task, firma delle evidenze e stato di generazione.
+
+Il JSON resta un export amministrativo autenticato e tenant-scoped; non è un endpoint
+pubblico della memoria. Valgono le protezioni già presenti su credenziali e PII.
+
+```sh
+# Mostra i casi anonimizzati, senza chiamate remote.
+php artisan decision:reasoning-eval --json
+# Valutazione reale: comporta il piccolo consumo AI mostrato nel risultato.
+php artisan decision:reasoning-eval --live --json
+```
+
+Il comando non legge né modifica dati aziendali. Le fixture riproducono gli errori
+ordine/spedizione, cambio di focus hub → spedizione, supporto parziale, conflitto,
+codice cliente senza cifre e ripetizione. I test includono isolamento, fonti revocate,
+documenti modificati, riapertura, turni fuori ordine, limiti e retry.
+
+Verifica della prima consegna: **124 test mirati, 645 asserzioni**, tutti passati (memoria,
+preprocessore, agente, KB, widget, voce, debug e dominio Decisions). Lint PHP e
+`git diff --check` superati. È una suite mirata, non l'intera suite del repository.
+Il formatter Pint non è installato nel progetto; non sono state aggiunte dipendenze.
+
+Rilevazione diagnostica locale del 30/09/2026 su 7 casi, JEV `typesafe/jev-1.13-20260917`:
+zero false approvazioni, zero rifiuti errati ad alta confidenza, tre astensioni
+(una su un caso corretto: probabilità 0,77), zero ripetizioni, costo totale
+0,000208068 USD, latenza cumulativa 2683,93 ms. Non è una calibrazione statistica:
+ampliare il campione etichettato prima di cambiare soglia o modello.
+
+Verificato anche il preprocessore reale `openai/gpt-4o-mini`: con una relazione
+registrata spedizione → cliente, “Who is the customer?” produce focus `customer`,
+`mentions=[]`, riferimento contestuale al cliente e campo richiesto `name`.
+Il prompt distingue esplicitamente il focus precedente da quello richiesto ora;
+uno schema senza sottodomande attive viene rifiutato anziché riusare il vecchio focus.
+
+Nota sul worktree: il diff preesistente in `AgentClaimBatchEvaluator.php` è stato
+preservato, non incorporato nella modifica. Tre test legacy falliscono con quel diff;
+la stessa suite del vecchio evaluator caricata dalla versione HEAD passa (12 test).
+Il nuovo percorso usa `FocusedClaimEvaluator`, separato dal file locale preesistente.
+
+## Obiettivi contestuali e domande indipendenti (30/09/2026)
+
+L'interprete strict riceve l'ultimo messaggio, l'obiettivo persistente, i task precedenti,
+i riferimenti autorizzati e gli ultimi dodici atti del dialogo in ordine. I messaggi
+futuri non sono visibili. Del bot passano stato della risposta, domande affrontate e
+chiarimenti: la sua precedente prosa aziendale non diventa una nuova fonte.
+
+Ogni sottodomanda include `question` (domanda autonoma, riformulata nella lingua
+dell'utente) e `kb_queries` (da una a tre ricerche solo per quel task). Ci possono
+essere fino a dieci task; quattro richieste non vengono più rifiutate perché producono
+più di tre query globali. Il focus principale deve comparire anche tra i task: se il
+modello lo omette, il server lo recupera usando esclusivamente query già validate per
+quell'identificativo, senza includere i codici degli altri task.
+
+Esempi:
+
+- «parlmi dell'hub X e cercami l'ordine Y» → due indagini autonome, senza assumere
+  una relazione tra X e Y;
+- «quindi?» dopo una domanda su ORDER-A → una domanda contestuale esplicita su ORDER-A
+  oppure un chiarimento, mai la query letterale `quindi` se l'interpretazione riesce;
+- «ora parti dall'hub» → solo il task hub, non la vecchia lista di richieste.
+
+Se il modello confonde un codice letteralmente presente con un riferimento contestuale,
+il server può correggere **solo** questa distinzione con un confronto testuale esatto.
+Un codice inventato resta rifiutato. Fallimento del preprocessore conserva la memoria
+e il fallback sulla domanda esplicita; non ricostruisce arbitrariamente riferimenti.
+
+Ogni ramo KB recupera e valuta le proprie fonti. Nel percorso agente, ogni ramo
+pianifica separatamente le chiamate live, poi produce una bozza con soltanto le fonti
+di quel ramo. Il budget di chiamate del padre è ripartito, non moltiplicato per i figli.
+Le fonti restano vincolate a tenant, progetto, utente, connettore e hash. Un risultato
+di un altro run non è valido solo perché appartiene alla stessa conversazione: deve
+essere un figlio registrato del padre oppure uno snapshot autorizzato per un recap.
+
+La sintesi dell'agente concatena sezioni verificate, senza un'ulteriore riscrittura
+globale. JEV riceve una sola richiesta con decisioni legate alle rispettive domande;
+il server non sposta un'affermazione da un ramo a un altro per farla passare. Il limite
+resta dieci decisioni totali, distribuite tra i task. Per più record, ogni affermazione
+resta associata a un singolo record originale; i campi possono essere resi in tabelle
+Markdown nella sezione, e una raccolta che eccede il budget viene dichiarata parziale.
+Le tabelle interattive delle richieste singole restano invariate. Una conferma/input
+MCP necessario interrompe quel ramo: non viene autorizzato automaticamente.
+
+`CHAT_PARALLEL_RESEARCH_ENABLED=false` disattiva la separazione in processi e ripristina
+il pianificatore unico, mantenendo lo stato della conversazione. È separato dai flag
+di memoria e di validazione. Non svuotare lo stato per fare rollback.
+
+Verifiche aggiuntive: quattro domande con errori ortografici e «quindi?» provati anche
+con il preprocessore reale `openai/gpt-4o-mini`; processi realmente sovrapposti e
+timeout di un singolo ramo; test di query/prompt isolati, ruolo autenticato ripristinato,
+esclusione di fonti di altri task, retry, fallimento di una bozza e una sola chiamata JEV.
+
+Verifica finale di questa estensione: **171 test mirati, 888 asserzioni**, tutti passati
+(Chat unit/feature, Agent, KB Investigation, WidgetAgentRun, RealtimeAgentIntegration,
+FocusedClaimEvaluator e SelectiveSynthesis). Include la conservazione dei riferimenti
+ai task durante deduplicazione e riuso storico esplicito. Lint PHP e `git diff --check`
+superati. Non è un'esecuzione dell'intera suite del repository.
+
+Diagnostica JEV reale su due fatti sintetici indipendenti: il record della spedizione
+è stato approvato a 0,99; la frase documentale corretta sull'hub è risultata incerta
+a 0,51 e non è stata ammessa come risposta narrativa. Una richiesta, 477,93 ms,
+0,00005124 USD. La separazione dei task non risolve da sola la calibrazione del
+giudice semantico; la soglia 0,80 è rimasta invariata, senza approvazioni implicite.
+
+### Lista delle richieste nell'interfaccia
+
+Il riquadro attività della chat mostra, prima dei dettagli operativi, le domande
+autonome individuate quando ce ne sono almeno due. `research.planned` pubblica la
+lista subito dopo l'interpretazione, prima della ricerca documentale; `research.task`
+aggiorna la singola riga tramite `research_flow_id`. I processi figli scrivono nello
+stream del padre: il numero della richiesta compare anche accanto alle chiamate.
+
+«Fonti raccolte» non significa «risposta verificata». Solo `research.finished`,
+prodotto dopo la sintesi e la validazione, espone l'esito di ogni domanda. Un esito
+globale `run.completed` non rende automaticamente verdi tutte le righe. Errori,
+interruzioni, conflitti e verifiche insufficienti rimangono distinguibili.
+
+Gli eventi conservano solo domande e stati pubblici, attraverso il mascheramento
+esistente, senza aggiungere ragionamenti interni o payload delle fonti. La stessa
+lista è ricostruita dagli eventi salvati nelle informazioni della risposta dopo la
+riapertura. Le chat precedenti prive di questi eventi mantengono l'interfaccia precedente.
+Per il rilascio servono il bundle frontend aggiornato e il riavvio dei worker, non
+migrazioni, seed o reset.

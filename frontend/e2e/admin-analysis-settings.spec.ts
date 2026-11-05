@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -28,19 +29,19 @@ test.describe('Admin Deep-Analysis Gate', () => {
             (r) => r.url().includes('/api/admin/kb/analysis-settings') && r.request().method() === 'PUT',
             { timeout: 15_000 },
         );
-        await wildcardEnabled.selectOption('off');
+        await chooseSelectOption(wildcardEnabled, 'off');
         const resp = await putResp;
         expect(resp.ok()).toBeTruthy();
 
         // After the refetch the select reflects the persisted 'off'.
-        await expect(page.getByTestId('admin-analysis-setting-*-enabled')).toHaveValue('off', { timeout: 15_000 });
+        await expect(page.getByTestId('admin-analysis-setting-*-enabled')).toHaveAttribute('data-value', 'off', { timeout: 15_000 });
 
         // Restore to inherit so the scenario leaves no cross-test residue.
         const restoreResp = page.waitForResponse(
             (r) => r.url().includes('/api/admin/kb/analysis-settings') && r.request().method() === 'PUT',
             { timeout: 15_000 },
         );
-        await page.getByTestId('admin-analysis-setting-*-enabled').selectOption('inherit');
+        await chooseSelectOption(page.getByTestId('admin-analysis-setting-*-enabled'), 'inherit');
         await restoreResp;
     });
 

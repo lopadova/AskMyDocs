@@ -47,6 +47,11 @@ final class TenantIdMandatoryTest extends TestCase
      * `tenant_id` (R30).
      */
     private const TENANT_AWARE_MODELS = [
+        \App\ApiTools\Models\ApiTool::class,
+        \App\ApiTools\Models\ApiToolRevision::class,
+        \App\ApiTools\Models\ApiToolRun::class,
+        \App\ApiTools\Models\ApiToolStep::class,
+        \App\ApiTools\Models\ApiToolVerification::class,
         \App\Models\KnowledgeDocument::class,
         \App\Models\KnowledgeChunk::class,
         // EmbeddingCache is intentionally NOT tenant-aware — the cache is
@@ -58,11 +63,17 @@ final class TenantIdMandatoryTest extends TestCase
         // Copilot review.
         \App\Models\ChatLog::class,
         \App\Models\Conversation::class,
+        // v8.x — user-created folders grouping chat sessions in the
+        // Sessions workspace. Private per (tenant, user); the composite
+        // unique starts with tenant_id so two tenants may reuse a name.
+        \App\Models\ChatFolder::class,
         \App\Models\Message::class,
         \App\Models\KbNode::class,
         \App\Models\KbEdge::class,
         \App\Models\KbCanonicalAudit::class,
         \App\Models\ProjectMembership::class,
+        \App\Models\OAuthAccessToken::class,
+        \App\Models\OAuthAuthorizationCode::class,
         // v8.9 — first-class project registry (admin Projects page).
         \App\Models\Project::class,
         \App\Models\KbTag::class,
@@ -81,6 +92,11 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\AdminCommandAudit::class,
         \App\Models\AdminCommandNonce::class,
         \App\Models\EmailDatasetOperationNonce::class,
+        \App\Models\EmailTriageProfile::class,
+        \App\Models\EmailTriageMessage::class,
+        \App\Models\EmailTriageEvaluation::class,
+        \App\Models\EmailTriageCampaign::class,
+        \App\Models\EmailTriageCampaignItem::class,
         \App\Models\AdminInsightsSnapshot::class,
         // v8.15/W1 — engagement & intelligence suite.
         \App\Models\KbContributionEvent::class,
@@ -130,6 +146,9 @@ final class TenantIdMandatoryTest extends TestCase
         // v8.0/W4 — decision-debt health snapshot + tier-2 scheduler overrides.
         \App\Models\KbCanonicalHealthSnapshot::class,
         \App\Models\TenantSchedulerOverride::class,
+        \App\Models\TenantBranding::class,
+        \App\Models\McpConnectorShadowReport::class,
+        \App\Models\AgentPlannerShadowReport::class,
         // v8.0/W5.1 — Living Collections foundation schema.
         \App\Models\KbCollection::class,
         \App\Models\KbCollectionMember::class,

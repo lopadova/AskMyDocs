@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { KbDocument } from '../admin.api';
 import { useDocumentAiSuggestions } from '../insights/insights.api';
 
@@ -20,6 +21,7 @@ export interface MetaTabProps {
 }
 
 export function MetaTab({ doc }: MetaTabProps) {
+    const { t: translateInterface } = useUiTranslation();
     const rows: Array<{ label: string; value: React.ReactNode; testId?: string }> = [
         { label: 'Project', value: doc.project_key, testId: 'kb-meta-project' },
         { label: 'Slug', value: doc.slug ?? '—', testId: 'kb-meta-slug' },
@@ -125,15 +127,13 @@ export function MetaTab({ doc }: MetaTabProps) {
                         marginBottom: 6,
                     }}
                 >
-                    Tags
-                </div>
+                    {translateInterface("Tags")}</div>
                 {uniqueTags.length === 0 ? (
                     <div
                         data-testid="kb-meta-tags-empty"
                         style={{ fontSize: 12, color: 'var(--fg-3)' }}
                     >
-                        No tags.
-                    </div>
+                        {translateInterface("No tags.")}</div>
                 ) : (
                     <div
                         data-testid="kb-meta-tags"

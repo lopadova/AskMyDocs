@@ -30,11 +30,15 @@ sequenceDiagram
     Q-->>UI: run.completed o run.partial + risposta e provenienza
 ```
 
-Il planner può creare azioni indipendenti o sequenziali. Per esempio, alla
+Il planner può creare azioni indipendenti o sequenziali. Prima del piano, un
+router semantico seleziona al massimo otto capacità fra Knowledge Base, API e
+MCP usando un manifest strutturale privo di istruzioni remote. Per esempio, alla
 domanda «dammi gli ordini di Mario Rossi» può prima chiamare `find_customer`,
 poi usare l'identificativo restituito in `list_orders`. I riferimenti tra azioni
-hanno la forma chiusa `{"$from":"find_customer","path":"items.0.id"}`: non
-vengono valutate espressioni o path arbitrari. Dopo ogni gruppo di azioni il
+hanno la forma chiusa `{"$from":"find_customer","path":"items.0.id"}` e il
+path deve essere dichiarato dallo schema di output; quando lo schema non è noto,
+il planner esegue il primo passo e ripianifica sul risultato reale. Non vengono
+valutate espressioni o path arbitrari. Dopo ogni gruppo di azioni il
 planner riceve soltanto il riepilogo delle evidenze e decide se rispondere,
 chiamare altri tool oppure fermarsi per dati insufficienti.
 
@@ -66,6 +70,95 @@ Le lingue abilitate sono definite da `AGENT_SUPPORTED_LOCALES`; il fallback è
 `APP_LOCALE`. Aggiungere una lingua richiede anche il catalogo
 `lang/<lingua>/agent.php`.
 
+## Referenze API nelle risposte
+
+Le referenze delle risposte chat comprendono anche le esecuzioni API/MCP citate
+e le altre chiamate effettivamente eseguite durante la ricerca del turno,
+distinguendo quelle usate nella risposta. L'elenco è ricostruito anche per i
+messaggi precedenti, senza modificare la cronologia persistente.
+Il chip apre una modale con argomenti e risultato registrato, senza richiamare
+il servizio esterno. Le nuove esecuzioni di endpoint API conservano anche una
+fotografia della richiesta iniziale (metodo, URL, query e body); credenziali e
+header di autenticazione sono esclusi. Le chiamate storiche senza questa
+fotografia mostrano esplicitamente i soli argomenti registrati. Il risultato
+è quello restituito all'agente, con filtri e limiti dell'endpoint applicati.
+La lettura richiede proprietà della conversazione, tenant ed esecuzione coerenti,
+citazione nel messaggio o appartenenza alla sua ricerca e accesso attuale al progetto; la risposta HTTP usa
+`Cache-Control: private, no-store`.
+
+## Follow-up operativi e istruzioni dell'agente
+
+Le istruzioni dell'organizzazione si configurano da **Sistema / Configurazione**,
+con l'organizzazione interessata attiva e **Project scope** vuoto. La riga
+**Tenant assistant operating instructions** (`agent.tenant_instructions`) si
+salva a livello di tenant e viene letta da interpretazione, planner e sintesi.
+La pagina richiede il ruolo super-admin.
+
+Un follow-up può mantenere l'entità cambiando operazione: dopo la ricerca delle
+email di un ordine, «Dobbiamo fare qualcosa?» richiede di valutare le azioni
+pendenti. L'interpretazione usa `aspect=next_steps` e `fields=[]`; quando basta
+analizzare le fonti già individuate, queste vengono rilette con i permessi
+correnti senza ripetere una ricerca globale. La verifica dello stato attuale o
+di procedure ancora mancanti richiede invece nuove evidenze.
+
+I vecchi grafi di domande restano nella memoria persistente, ma vengono esclusi
+dai prompt del turno attuale. Se l'interprete copia una precedente domanda
+autonoma in un follow-up, il controllo semantico verifica che corrisponda ancora
+all'operazione richiesta. Un esito negativo o incerto permette una sola
+riformulazione; un guasto del provider non autorizza il piano copiato. Il normale
+riuso della stessa domanda per una ripetizione o verifica resta consentito.
+
+Negli approfondimenti (`action=refine`), un aspetto descrittivo come «azioni
+necessarie» non deve aggirare il contratto operativo. Una classificazione
+semantica circoscritta al compito attuale normalizza richieste di consiglio e
+valutazione in `next_steps`, con `fields=[]`, prima di sintesi e validazione.
+I dettagli fattuali restano tali; identificativi, modalità di ricerca e permessi
+non sono modificati. Se il tipo di risposta resta incerto, il compito già
+validato usa `source_assessment`, con `fields=[]`: resta disponibile soltanto
+la risposta testuale verificata sulle fonti, senza proiezione letterale API
+automatica. Non è un'approvazione dei fatti o un consiglio operativo assunto
+come certo. Errori di risposta/provider restano fallimenti espliciti; nessuna
+soglia è abbassata.
+
+La sintesi deve distinguere una segnalazione ancora aperta da una successiva
+correzione, nominare autore e data dell'aggiornamento e limitare la conclusione
+al problema documentato. La disponibilità di un barcode non conferma ricezione,
+rimborso o chiusura di un reso. Restano attivi i controlli su fonti, hash, entità,
+pertinenza e supporto delle singole affermazioni.
+
+## Provenienza verificata tra chiamate API
+
+Una ricerca dipendente usa riferimenti espliciti `{"$from":"step_id","path":"percorso.esatto"}`.
+Prima di eseguire la chiamata, l'host salva in `argument_bindings` il riferimento
+all'esecuzione padre, l'hash completo della sua risposta, i percorsi del campo
+origine e del parametro destinazione e l'hash del valore scalare osservato.
+Il metadata viene conservato nelle wave, nel percorso sequenziale e nelle riprese
+asincrone. Alla ripresa viene riletto dall'esecuzione host; una dichiarazione
+nella risposta remota o nel checkpoint non può creare una relazione.
+
+Il verificatore può collegare il risultato dipendente al soggetto richiesto quando
+il valore del parametro corrisponde a un'identità dichiarata del record restituito.
+Il padre e tutti gli altri elementi della catena devono essere ancora disponibili
+nell'evidenza autorizzata, con hash, tenant e progetto coerenti. Un'identità di un
+altro elemento della stessa lista non vale per l'elemento selezionato. Restano
+rifiutati risultati ambigui, semplici echo dei parametri, dipendenze letterali non
+registrate, wildcard e riferimenti circolari o a esecuzioni successive.
+
+La catena fornisce contesto di identità, non valori operativi: quantità, stati e
+date devono restare sostenuti dal record finale scelto. Il modello semantico vede
+le fonti originali e la relazione, mantenendo le soglie esistenti. L'export di
+validazione distingue `dependency_identity` dal normale controllo diretto.
+
+Il contratto dell'endpoint resta necessario: `identity_fields` contiene i nomi dei
+campi identificativi del singolo record, anche se proprietari. Non vengono indovinati
+dal nome del tool o da campi stranieri. Gli identificativi interi sono riconosciuti
+come osservazioni; gli zeri iniziali delle stringhe non sono eliminati. La gestione
+non contiene nomi di gestionali, endpoint, prodotti o campi specifici del caso.
+
+Le catene sono limitate a otto livelli e a un numero finito di collegamenti. I vecchi
+turni senza provenienza registrata non vengono promossi retroattivamente: la prova
+viene raccolta eseguendo un nuovo turno con il codice aggiornato.
+
 ## Budget adattivi e grandi collezioni
 
 I limiti predefiniti distinguono chiamate logiche ai tool da richieste HTTP
@@ -83,6 +176,14 @@ fisiche prodotte da retry, paginazione o fan-out:
 | Tempo interattivo / bulk | 60 s / 90 s | produce un risultato parziale |
 | Evidenze accumulate | 512 KiB | evita crescita incontrollata del contesto |
 
+Ogni pianificazione, anche dopo aver raccolto evidenze, può usare un timeout
+ridotto rispetto alla stima di 30 secondi quando il tempo residuo lo richiede.
+Il budget effettivo include eventuali correzioni del piano e lascia spazio per
+una wave utile, la sintesi e la finalizzazione. Se non entrano il minimo di
+pianificazione e quello di dispatch, la ricerca si ferma mantenendo le evidenze
+già raccolte. Il tempo viene verificato di nuovo prima di emettere le chiamate;
+non vengono aumentati i timeout del worker o sottratte le riserve della risposta.
+
 Una lista di 50 ordini non consuma necessariamente 50 chiamate logiche: una
 singola azione può scorrere fino a 100 pagine e produrre più richieste fisiche.
 Il frontend mostra conteggio completato, stima minima/probabile/massima ed ETA.
@@ -95,7 +196,25 @@ Le estensioni massime sono controllate da
 Per cambiare i default vedere il blocco `AGENT_*` in `.env.example`. In
 produzione lasciare sempre limiti finiti. Il pannello **Admin → API Connectors**
 mostra la policy effettiva, le metriche tenant-scoped delle ultime 24 ore e i
-run recenti senza prompt, risultati, argomenti o segreti.
+run recenti senza prompt, risultati, argomenti o segreti. Lo stesso pannello
+mostra confronti, divergenze, correzioni e fallback del capability planner.
+
+## Rollout del capability planner
+
+La chiave governabile `agent.planner.mode` può essere impostata per tenant o
+progetto e accetta:
+
+- `classic`: esegue soltanto il planner attuale;
+- `shadow`: esegue il piano classico e genera un piano capability non eseguito;
+- `capability`: esegue il nuovo router e planner, con fallback automatico al
+  classico in caso di errore.
+
+In shadow non vengono duplicate chiamate API/MCP. Il confronto mascherato viene
+salvato per iterazione in `agent_planner_shadow_reports`. La prima release
+espone al loop soltanto tool read-only che non richiedono conferma. Per avviare
+il collaudo, lasciare `AGENT_PLANNER_MODE=classic` come default globale e
+impostare `shadow` tramite App Settings sul tenant/progetto pilota; passare a
+`capability` soltanto dopo la revisione delle metriche.
 
 ## Protocollo tra backend e frontend
 
@@ -134,6 +253,9 @@ Gli eventi principali sono `run.started`, `retrieval.started`,
 `tool.started`, `tool.progress`, `tool.completed`, `tool.failed`,
 `budget.extended`, `synthesis.started` e i terminali `run.completed`,
 `run.partial`, `run.failed`, `run.cancelled`, `run.awaiting_confirmation`.
+Le risposte MCP interattive emettono `run.mcp_interaction_required` e sospendono
+il run in `awaiting_mcp_confirmation`, `awaiting_mcp_input` o
+`waiting_mcp_task`, senza eseguire ulteriori azioni del piano.
 Il client deduplica tramite `sequence` e si riconnette dopo una chiusura pulita
 dello stream. La UI presenta l'attività in una barra separata dai messaggi, sia
 nella chat sia nel widget. Il widget mantiene il vecchio flusso DOM/RAG quando
@@ -185,6 +307,11 @@ proteggere gli indirizzi esplicitamente vietati: non disabilitare
   conversazione/sessione, widget key e identità.
 - Prompt, evidenze, eventi, checkpoint e metadati delle esecuzioni passano dal
   masking PII prima della persistenza o dell'invio al client.
+  Codici brevi ordine/reso affiancati restano distinti, senza diventare un unico
+  falso IBAN: l'eccezione richiede prefissi alfabetici e segmenti sotto la
+  lunghezza minima IBAN, esclude contesti bancari e checksum IBAN validi.
+  Anche i riferimenti logistici esplicitamente etichettati richiedono un
+  checksum IBAN non valido per essere conservati. Conti e carte restano mascherati.
 - Gli output del tool sono byte-capped; retry e cache sono configurabili per
   route. I `4xx` non vengono ritentati come errori transitori.
 - Un `401/403/404` inatteso richiede di verificare membership, progetto, chiave
@@ -193,3 +320,182 @@ proteggere gli indirizzi esplicitamente vietati: non disabilitare
   tool e il loop può usare le altre evidenze.
 - Se la UI sembra ferma, verificare prima il worker `agent`, poi lo stream SSE e
   il suo ultimo `sequence`; il client deve ripartire da quel valore, non da zero.
+
+## Identificativi nei risultati API
+
+Le proprietà scalari dello schema di output possono dichiarare `"x-identity": true`
+per identificare il record restituito quando l'API usa nomi diversi da `id` o
+`code`. Per esempio, una collezione `order` può dichiarare `ord_ID` e
+`ord_codiceweb`; la chiave esterna del cliente non va marcata come identità
+dell'ordine. Il catalogo delle capacità conserva questa dichiarazione nelle
+evidenze e il controllo delle risposte la usa per associare ogni affermazione
+al record corretto. Restano obbligatori scope, hash e corrispondenza del record;
+un filtro di ricerca o una chiave esterna non certificano l'identità.
+
+La sintesi selettiva riceve un `source_ref` distinto per ogni record originale,
+allineato a `record_sources`. Il server risolve riferimento, hash, esecuzione e
+`record_path`: il generatore non può emettere percorsi di articoli annidati.
+Le risposte senza record non offrono riferimenti fattuali. I riferimenti legacy
+restano leggibili per le affermazioni già persistite, con gli stessi controlli.
+
+Le conclusioni di assenza devono confrontare tutte le fonti disponibili dello
+stesso caso. Un evento storico confermato non diventa assente perché una risposta
+successiva non ripete il codice o manca lo stato corrente del gestionale.
+Sintesi e verifica tengono separati il fatto documentato, un collegamento ancora
+incerto e l'eventuale mancanza di conferma di un altro evento. Queste istruzioni
+non sostituiscono i controlli di identità, supporto e confidenza.
+
+La pertinenza conserva l'aspetto richiesto della singola affermazione e la voce
+originale di una citazione inoltrata; una risposta a una domanda secondaria non
+deve rispondere anche alla primaria. La sintesi distingue la condizione posta
+da un attore dalla richiesta di verifica di un altro, preservando le decisioni
+successive. Nei confronti tra dato previsto e osservato riporta entrambi i valori
+richiesti; una quantità rientrata zero non identifica il sostituto fisico.
+
+Le stesse proprietà scalari possono dichiarare `"x-field": "status"` oppure
+`"x-field": ["total", "orderTotal"]` per associare il nome fisico del campo
+ai ruoli della domanda interpretata. Per esempio, `stato_ordine` può essere
+`status`, `ord_prezzotot` può essere `total`/`orderTotal` e `valute_codice`
+può essere `currency`. Se un ruolo è dichiarato da più proprietà viene ignorato
+perché ambiguo. In caso di giudizio semantico inconcludente, il fallback può
+mostrare soltanto i valori letterali richiesti del record già verificato,
+conservando identità, hash e valuta; non autorizza inferenze o altri record.
+
+Per dettagli generici (`fields=["*"]`), il fallback usa i ruoli aziendali
+dichiarati e l'identità del record, evitando un dump di tutti gli scalari interni.
+Senza ruoli usa soltanto un insieme ristretto di campi convenzionali. I campi
+esplicitamente richiesti restano selezionabili se presenti nella fonte. Le
+etichette dei ruoli noti sono tradotte; valori e nomi dei campi nella proiezione
+diagnostica restano esatti. La migrazione del servizio ordini Autry dichiara
+riferimento, stato, totale, valuta e data senza sovrascrivere ruoli manuali.
+
+Una collezione annidata viene mostrata nel fallback soltanto se il contratto
+dichiara `x-field=items` sull'array e ruoli scalari sui suoi campi. Il renderer
+proietta esclusivamente quei campi dal record padre già verificato, fino a 20
+righe con conteggio esplicito delle righe ulteriori. Non espone gli altri
+array o campi interni, non sposta l'identità su un figlio e conserva l'originale
+completo per la verifica. `fields=[]` continua a escludere ogni proiezione.
+La migrazione Autry dichiara codice, descrizione, variante e quantità delle
+righe Gescat solo per il tenant e il servizio noti, preservando ruoli manuali.
+
+Le ricerche esatte di codici conservano 64 candidati ordinati per corrispondenza;
+quando il pool è pieno aggiungono al massimo 64 ancore da documenti distinti.
+Se la stessa ricerca include codici opachi e nomi di attori o sistemi, i codici
+ancorano i candidati; i nomi contribuiscono al ranking dentro quel perimetro.
+La menzione di un corriere non aggiunge quindi tutti i suoi documenti al caso.
+Le ricerche indipendenti contenenti soltanto un nome restano disponibili.
+La selezione usa la data registrata della fonte per gli aggiornamenti, apre
+l'inizio della risposta recente e conserva una finestra pertinente ai termini
+non identificativi della query. Il punteggio lessicale favorisce termini
+discriminanti nel pool dei documenti esatti: serve solo alla navigazione, non
+approva fatti. Le due finestre possono appartenere allo stesso thread; gli altri
+slot privilegiano documenti distinti prima di ulteriori finestre ripetute.
+L'ordine di arrivo entra solo nel pool di ricerca,
+mai come data dell'evento. ACL, tenant, progetto e rilettura autorizzata restano
+obbligatori; un insieme limitato di risultati non prova un'assenza globale.
+
+## API di lettura che restituiscono XML
+
+Configurare prima il formato documentato dal servizio, per esempio un parametro
+query fisso `type=json`. Se una route legacy continua a rispondere XML, è
+possibile abilitare esplicitamente la normalizzazione nel suo `output_transform`:
+
+```json
+{
+  "response_format": "xml",
+  "xml_root": "resi",
+  "xml_list_paths": ["resi.reso", "resi.reso.articoli.articolo"],
+  "include": ["resi"]
+}
+```
+
+Il percorso della collezione sarà `resi.reso`. La normalizzazione è identica
+nei test della connessione e nell'esecuzione dei tool; nessun'altra route
+accetta XML implicitamente. I valori XML restano stringhe, conservando zeri
+iniziali e precisione dei decimali. I percorsi dichiarati restano liste anche
+con un solo record o una collezione vuota. Un documento malformato, un root
+diverso da quello atteso o una dichiarazione DTD/entity non sono evidenze valide,
+anche quando il server risponde HTTP 200.
+
+Finché il pacchetto connector-api beta.5 non incorpora questo supporto, gli hook
+Composer applicano `scripts/composer/patch-api-connector-structured-responses.php`.
+Con installazioni `--no-scripts`, eseguire il patcher esplicitamente. Il patcher
+è idempotente e rifiuta sorgenti inattese prima di modificarli.
+
+### Risposta HTTP 200 non utilizzabile
+
+HTTP 200 da solo non rende valida una risposta. Se il corpo non rispetta il
+formato strutturato configurato, il risultato riporta
+`error_code=api_response_format_mismatch`, `retryable=false` e
+`response_diagnostics`: formato atteso, forma rilevata (`xml`, `html`,
+`invalid_json`, `text` o `empty`), media type e dimensione in byte. La forma
+rilevata è un indizio diagnostico; non certifica un documento XML valido.
+Il corpo remoto e i parametri degli header non vengono conservati in questa
+diagnostica. Questi metadati sono disponibili anche nel log della chiamata API.
+
+Il planner conserva l'errore operativo anche dopo la rivalidazione delle prove.
+Non può ripetere la stessa chiamata non ritentabile con gli stessi argomenti;
+può correggere parametri documentati o usare un'altra fonte autorizzata.
+I fallimenti transitori restano soggetti ai tentativi limitati dal budget.
+Se le fonti valide non consentono una risposta, il messaggio finale segnala
+il problema della sorgente esterna anziché nasconderlo dietro un rifiuto
+generico sulla pertinenza. Gli errori non diventano fatti o citazioni.
+
+Per la chat 96 (`Dammi gli ultimi 10 ordini`, 27 ottobre 2026) il debug storico
+registra tre errori non JSON con HTTP 200 senza conservare il corpo. La verifica
+live successiva del servizio Autry ha riprodotto la causa con le stesse opzioni:
+`orderBy=created_at desc` restituisce `text/xml` e questo errore applicativo:
+
+```xml
+<result>
+  <ack>KO</ack>
+  <error_message><![CDATA[Il parametro "orderBy" impone l'Ordinamento dati. Valori accettati: "num_fattura" (ordina per numero doc ASC), se lasciato vuoto ordina per Data DESC]]></error_message>
+</result>
+```
+
+Con le credenziali e i filtri fissi già configurati, gli argomenti corretti sono:
+
+```json
+{"limit": 10, "orderBy": "data"}
+```
+
+La GET a `https://www.autry-usa.com/api/admin/ws/ws_orders`, con `type=json`,
+ha restituito HTTP 200, `application/json; charset=utf-8`, una collezione
+`order` con esattamente 10 record e `ord_datetime` in ordine decrescente.
+`data` è la chiave del servizio per la creazione decrescente; `num_fattura`
+ordina per progressivo crescente. Il nome fisico della colonna SQL non è un
+argomento valido. La risposta corretta resta JSON: non occorre abilitare XML
+come formato dei dati. Non sono stati modificati ordini sul servizio remoto.
+
+La migration `2026_10_27_150000_fix_gescat_orders_sort_contract` corregge soltanto
+la GET `gescat_cerca_ordini` sul servizio Autry verificato: aggiunge enum,
+pattern, default `data` e descrizione coerente negli schemi della route e del
+tool. Non modifica stato di attivazione, credenziali, proiezione o altri filtri.
+Gli indici negativi dell'ordinamento dei campi vengono rinumerati mantenendo
+l'ordine relativo: il vecchio `type=json` a posizione `-1` bloccava la validazione
+del pulsante «Testa chiamata», che accetta indici non negativi.
+L'esecuzione locale è stata verificata; in altri ambienti la correzione si applica
+con le normali migration del deploy. È una riparazione dati che il rollback non
+annulla automaticamente. Il test connessione conserva i vincoli scalari dei
+parametri ancora presenti e dello stesso tipo, evitando di perdere enum e
+pattern quando rigenera il tool.
+
+Un envelope XML `result/ack=KO/error_message` già rifiutato dal decoder è ora
+classificato come `api_application_error`; il messaggio di validazione osservato
+per `orderBy` diventa `api_parameter_rejected`. La diagnostica e il planner
+ricevono solo codici host, nome del parametro e valori ammessi dal contratto.
+Il testo remoto non diventa un'istruzione o una prova e non è copiato nei log
+runtime; il test amministrativo conserva la risposta per l'ispezione autorizzata.
+DTD, entity, XML malformati o envelope diversi non passano come errori riconosciuti.
+Email storiche su singoli ordini non dimostrano quali siano gli ultimi dieci
+ordini nel gestionale.
+
+## Rilettura delle email con scheda di triage
+
+Il lettore verifica l'hash dell'originale immutabile prima di esporlo come
+`verified_email_original`. Se l'estratto indicizzato include una scheda derivata
+o una formattazione differente, il controllo finale scarta quell'estratto e
+acquisisce il testo originale come nuova evidenza con un nuovo hash. Le frasi
+della scheda e le vecchie verifiche non vengono trasferite. Un originale con
+hash diverso, una fonte revocata o un documento di un altro progetto restano
+esclusi; il recupero non vale per documenti ordinari modificati.

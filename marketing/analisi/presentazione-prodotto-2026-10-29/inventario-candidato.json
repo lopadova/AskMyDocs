@@ -1,0 +1,2204 @@
+{
+  "product": "AskMyDocs",
+  "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+  "scope": "Presentazione prodotto completa, con casi dimostrativi e appendice per sezioni",
+  "features": [
+    {
+      "id": "F-001",
+      "name": "Domande alla conoscenza con fonti",
+      "status": "active",
+      "summary": "La chat interroga la base documentale, interpreta domanda e contesto, produce risposte con riferimenti e rende consultabili documenti e chiamate usate come prove.",
+      "evidence": [
+        {
+          "path": "app/Agent/AgentLoop.php",
+          "symbol": "AgentLoop",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Agent/AgentAnswerSynthesizer.php",
+          "symbol": "AgentAnswerSynthesizer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/chat/ToolSourceModal.tsx",
+          "symbol": "ToolSourceModal",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Riunisce ricerca e consultazione delle prove nello stesso percorso.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [
+        "Fonti indicizzate e autorizzate; provider AI/embedding configurati."
+      ],
+      "activation": "implemented",
+      "limits": [
+        "Una risposta può essere parziale o insufficiente quando le fonti non bastano.",
+        "Citazione e controllo riducono errori ma non costituiscono una garanzia di correttezza assoluta."
+      ],
+      "section_ids": [
+        "chat"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-002",
+      "name": "Ricerca per ondate e risultati progressivi",
+      "status": "active",
+      "summary": "Un planner coordina documenti, route API e MCP; le attività indipendenti possono procedere in parallelo. La chat pubblica risultati intermedi verificati mentre la ricerca prosegue.",
+      "evidence": [
+        {
+          "path": "app/Agent/Waves/AgentWaveCoordinator.php",
+          "symbol": "AgentWaveCoordinator",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Agent/ProgressiveAnswerPublisher.php",
+          "symbol": "ProgressiveAnswerPublisher",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/handoff/agent-research-waves.md",
+          "symbol": "agent-research-waves",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Collega archivio e informazioni live conservando prove già raccolte e limiti delle singole fonti.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "waves e progressive answers attivi per default nel codice, configurabili",
+      "limits": [
+        "Budget, deadline, concorrenza e fonti disponibili limitano la ricerca.",
+        "Non dimostra riduzioni di tempo o costo per ogni richiesta."
+      ],
+      "section_ids": [
+        "chat"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-003",
+      "name": "Sessioni e continuità del lavoro",
+      "status": "active",
+      "summary": "Conversazioni personali organizzabili in cartelle, fissabili, archiviabili e marcabili per importanza. Le ricerche possono continuare in background; stato e lettura persistono ai riavvii.",
+      "evidence": [
+        {
+          "path": "docs-site/chat-sessions-workspace.mdx",
+          "symbol": "chat-sessions-workspace",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Models/Conversation.php",
+          "symbol": "Conversation",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/chat/sessions/SessionsView.tsx",
+          "symbol": "SessionsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Permette di riprendere più ricerche e conservarne il contesto.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Cartelle e sessioni sono di proprietà del singolo utente; non sono un workspace collaborativo condiviso.",
+        "Il desktop mantiene una storia locale distinta dalle sessioni web."
+      ],
+      "section_ids": [
+        "sessions"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-004",
+      "name": "Esplorazione della base per il lettore",
+      "status": "active",
+      "summary": "Browse KB offre albero dei contenuti, apertura dei documenti e navigazione delle fonti nell’ambito consentito al lettore.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/kb-browse/KnowledgeBrowseView.tsx",
+          "symbol": "KnowledgeBrowseView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/KbDocumentPreviewController.php",
+          "symbol": "KbDocumentPreviewController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Si può consultare direttamente la conoscenza oltre a chiedere una sintesi alla chat.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Visibilità dipendente da tenant, membership, permessi e configurazione della project isolation."
+      ],
+      "section_ids": [
+        "kb-browse"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-005",
+      "name": "Ingestione e conversione documentale",
+      "status": "active",
+      "summary": "Upload e ingestione da API, cartella o connettore trasformano Markdown, testo, PDF con testo e DOCX in documenti e porzioni ricercabili; versioni identiche sono trattate in modo idempotente.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/Upload/KbUploadStagingService.php",
+          "symbol": "KbUploadStagingService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/DocumentIngestor.php",
+          "symbol": "DocumentIngestor",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Pipeline/PipelineRegistry.php",
+          "symbol": "PipelineRegistry",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Porta fonti di formati diversi nel medesimo percorso di ricerca.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [
+        "Filesystem e worker di ingestione; provider embedding."
+      ],
+      "activation": "implemented",
+      "limits": [
+        "Non dichiarare supporto generalizzato a fogli Excel, slide o qualsiasi formato.",
+        "Dimensioni, code, convertitori e policy possono rifiutare singoli file."
+      ],
+      "section_ids": [
+        "ingestion",
+        "kb"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-006",
+      "name": "OCR per scansioni e immagini",
+      "status": "active",
+      "summary": "Un servizio OCR selezionabile per driver ricava testo, pagine, eventuali figure e metadati di confidenza da scansioni, foto e PDF senza un livello testuale utilizzabile.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/Ocr/OcrService.php",
+          "symbol": "OcrService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Converters/OcrConverter.php",
+          "symbol": "OcrConverter",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/documents-and-ocr.mdx",
+          "symbol": "documents-and-ocr",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/kb.php",
+          "symbol": "kb",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende consultabili fonti che altrimenti rimarrebbero solo immagini.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "opzionale, default OFF",
+      "limits": [
+        "KB_OCR_ENABLED=false per default.",
+        "Driver locali richiedono runtime/strumenti; driver remoti richiedono consenso configurativo all’uscita dei bytes e costi.",
+        "Il risultato OCR è un’interpretazione da verificare."
+      ],
+      "section_ids": [
+        "kb",
+        "ingestion"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-007",
+      "name": "Revisione umana della digitalizzazione",
+      "status": "active",
+      "summary": "Revisione per pagina, riepilogo e approvazione del documento controllano il passaggio da testo macchina a testo di cui una persona risponde. Correzioni proposte possono essere approvate o rifiutate.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/Review/KbReviewService.php",
+          "symbol": "KbReviewService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/digitization-review.mdx",
+          "symbol": "digitization-review",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/kb.php",
+          "symbol": "kb",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/kb/ReviewTab.tsx",
+          "symbol": "ReviewTab",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Conserva la distinzione fra testo estratto automaticamente e revisione umana.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "opzionale, default OFF",
+      "limits": [
+        "KB_DIGITIZATION_REVIEW_ENABLED=false per default.",
+        "Non promettere heat-map completa: la documentazione descrive parti visuali differite.",
+        "L’agente propone correzioni ma non si auto-approva la revisione."
+      ],
+      "section_ids": [
+        "kb"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-008",
+      "name": "Gestione editoriale dei documenti",
+      "status": "active",
+      "summary": "L’amministrazione KB mostra metadati, anteprima, contenuto, grafo e storia; consente modifica Markdown con validazione, download, stampa, ripristino e cancellazione secondo permessi.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbDocumentController.php",
+          "symbol": "KbDocumentController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/kb/KbView.tsx",
+          "symbol": "KbView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente di curare le fonti senza trattarle come un insieme opaco di file.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "PDF export richiede un motore configurato; le operazioni di scrittura sono soggette a ruolo."
+      ],
+      "section_ids": [
+        "kb"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-009",
+      "name": "Versioni e Time Machine",
+      "status": "active",
+      "summary": "Le versioni precedenti vengono archiviate; l’interfaccia può elencarle, confrontarle e avviare il ripristino di una versione con il relativo percorso di ingestione.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/Versioning/DocumentVersionService.php",
+          "symbol": "DocumentVersionService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbDocumentVersionController.php",
+          "symbol": "KbDocumentVersionController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/time-machine/TimeMachineView.tsx",
+          "symbol": "TimeMachineView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Conserva il contesto storico dei cambiamenti e permette di recuperare contenuti.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Ripristino soggetto a permessi e disponibilità dell’artefatto/versione; non è un backup completo dell’installazione."
+      ],
+      "section_ids": [
+        "kb"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-010",
+      "name": "Conoscenza canonica e approvazione",
+      "status": "active",
+      "summary": "Decisioni, runbook, standard, incidenti, integrazioni, concetti e approcci scartati hanno tipi, stati e relazioni espliciti. Il modello può proporre bozze; la promozione richiede un atto umano autorizzato.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/KbPromotionController.php",
+          "symbol": "KbPromotionController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Canonical/CanonicalParser.php",
+          "symbol": "CanonicalParser",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/canonical-and-promotion.mdx",
+          "symbol": "canonical-and-promotion",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Distingue contenuti ratificati da appunti e proposte della macchina.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "I testi devono essere strutturati e mantenuti dagli operatori.",
+        "Non equivale a certificazione della verità dei contenuti."
+      ],
+      "section_ids": [
+        "kb",
+        "wiki-explorer"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-011",
+      "name": "Grafo e memoria delle decisioni",
+      "status": "active",
+      "summary": "Il retrieval può espandere i vicini del grafo e richiamare approcci già scartati pertinenti alla domanda, mantenendo collegamenti e ragioni delle decisioni.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/Retrieval/GraphExpander.php",
+          "symbol": "GraphExpander",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Retrieval/RejectedApproachInjector.php",
+          "symbol": "RejectedApproachInjector",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Retrieval/RelatedGraphService.php",
+          "symbol": "RelatedGraphService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aiuta a recuperare il perché delle scelte, oltre al contenuto di una singola pagina.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Richiede documenti canonici e collegamenti appropriati; non ricostruisce automaticamente tutte le decisioni aziendali."
+      ],
+      "section_ids": [
+        "kb",
+        "chat",
+        "wiki-explorer"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-012",
+      "name": "Auto-Wiki assistita",
+      "status": "active",
+      "summary": "Compilatore, indici e sintesi dei concetti costruiscono un livello di conoscenza generato automaticamente, con lint, review e manutenzione; gli operatori possono promuovere o scartare pagine.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/AutoWiki/AutoWikiCompiler.php",
+          "symbol": "AutoWikiCompiler",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/AutoWiki/ConceptSynthesizer.php",
+          "symbol": "ConceptSynthesizer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/AutoWiki/WikiExplorerService.php",
+          "symbol": "WikiExplorerService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/AutoWiki/WikiMaintainer.php",
+          "symbol": "WikiMaintainer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Organizza e collega il corpus, mantenendo distinguibile la conoscenza automatica.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "master e componenti principali default ON ma governabili per ambito",
+      "limits": [
+        "Provider AI, scheduler e policy di progetto necessari.",
+        "Le pagine auto non diventano automaticamente decisioni umane accettate."
+      ],
+      "section_ids": [
+        "wiki-health",
+        "wiki-indices",
+        "wiki-explorer",
+        "autowiki-settings"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-013",
+      "name": "Salute, indici ed esplorazione Wiki",
+      "status": "active",
+      "summary": "Pagine dedicate mostrano problemi di struttura, indici per progetto, pagine canoniche/auto e azioni di ricostruzione, revisione, promozione o scarto autorizzate.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/AutoWiki/WikiLinter.php",
+          "symbol": "WikiLinter",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/AutoWiki/WikiIndexBuilder.php",
+          "symbol": "WikiIndexBuilder",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbWikiExplorerController.php",
+          "symbol": "KbWikiExplorerController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Trasforma la manutenzione della conoscenza in una coda leggibile di interventi.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Le metriche descrivono struttura e stato dei contenuti, non la correttezza universale delle risposte."
+      ],
+      "section_ids": [
+        "wiki-health",
+        "wiki-indices",
+        "wiki-explorer"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-014",
+      "name": "Collezioni manuali e semantiche",
+      "status": "active",
+      "summary": "Le collezioni raggruppano documenti tramite criteri e prompt semantici; aggiunta manuale ed esclusioni restano esplicite e possono essere riviste.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbCollectionController.php",
+          "symbol": "KbCollectionController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Models/KbCollection.php",
+          "symbol": "KbCollection",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Models/KbCollectionMember.php",
+          "symbol": "KbCollectionMember",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente di costruire insiemi trasversali di documenti utili a uno specifico lavoro.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Appartenenza semantica è una valutazione con soglia, non una tassonomia infallibile."
+      ],
+      "section_ids": [
+        "collections"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-015",
+      "name": "Sinonimi, ricerca semantica e ibrida",
+      "status": "active",
+      "summary": "Espansioni del glossario e ranking combinano segnali disponibili; la ricerca vettoriale può essere affiancata da full-text con configurazione dedicata.",
+      "evidence": [
+        {
+          "path": "app/Services/Kb/KbSearchService.php",
+          "symbol": "KbSearchService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/SynonymController.php",
+          "symbol": "SynonymController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/kb.php",
+          "symbol": "kb",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Collega il lessico degli utenti al linguaggio effettivo dei documenti.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Ricerca ibrida e language detection FTS sono default OFF; non dire che ogni query usa FTS.",
+        "Embedding, dati e soglie determinano la qualità del recupero."
+      ],
+      "section_ids": [
+        "synonyms",
+        "retrieval-profiles"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-016",
+      "name": "Analisi documentale e impatto delle modifiche",
+      "status": "active",
+      "summary": "Le analisi asincrone propongono miglioramenti, collegamenti e documenti potenzialmente impattati da un aggiornamento o da una cancellazione. Analysis Gate controlla l’attivazione per tenant/progetto e tipologia.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbDocAnalysisController.php",
+          "symbol": "KbDocAnalysisController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbAnalysisSettingController.php",
+          "symbol": "KbAnalysisSettingController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Analysis/ChangeAnalysisGate.php",
+          "symbol": "ChangeAnalysisGate",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aiuta i curatori a individuare contenuti correlati da rivedere.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Analisi suggest-only salvo specifica attivazione autoapply, default OFF.",
+        "Provider AI e code richiesti; una segnalazione non dimostra obsolescenza."
+      ],
+      "section_ids": [
+        "kb-insights",
+        "analysis-settings"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-017",
+      "name": "Domande senza copertura",
+      "status": "active",
+      "summary": "Content Gaps raccoglie e ordina domande a cui il corpus non ha saputo rispondere, con filtri e risoluzione del caso da parte dei curatori.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbContentGapController.php",
+          "symbol": "KbContentGapController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/content-gaps/ContentGapsView.tsx",
+          "symbol": "ContentGapsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Fa emergere cosa manca nell’archivio a partire dalle richieste reali.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Dipende da eventi/risposte registrati; non è un censimento esaustivo di tutti i bisogni."
+      ],
+      "section_ids": [
+        "content-gaps"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-018",
+      "name": "Profili di ricerca per progetto",
+      "status": "active",
+      "summary": "Il profilo fornisce contesto aziendale, glossario, entità, fatti attesi e tipi di fonti preferiti alla ricerca ricorsiva e all’agente.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbRetrievalProfileController.php",
+          "symbol": "KbRetrievalProfileController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Models/KbRetrievalProfile.php",
+          "symbol": "KbRetrievalProfile",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende esplicito il contesto operativo che il motore di ricerca deve interpretare.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Richiede configurazione affidabile da amministratori; non viene ricavato da fonti esterne non fidate."
+      ],
+      "section_ids": [
+        "retrieval-profiles"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-019",
+      "name": "Report documentali in matrice",
+      "status": "active",
+      "summary": "Tabular Reviews confronta documenti tramite colonne definite, sintesi, flag, spiegazioni e citazioni per cella; alcune colonne leggono metriche del grafo e altre fanno una verifica aggiuntiva.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/TabularReviewController.php",
+          "symbol": "TabularReviewController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/TabularReview/TabularReviewExtractor.php",
+          "symbol": "TabularReviewExtractor",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/TabularReview/GovernanceColumnResolver.php",
+          "symbol": "GovernanceColumnResolver",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente di leggere un insieme di documenti con la stessa griglia di domande.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Colonne generative richiedono AI e possono avere copertura insufficiente.",
+        "Le metriche grafo e le estrazioni AI sono meccanismi distinti."
+      ],
+      "section_ids": [
+        "tabular-reviews"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-020",
+      "name": "Workflow di analisi riutilizzabili",
+      "status": "active",
+      "summary": "I workflow sono preset di lavoro documentale, condivisibili con colleghi, modificabili secondo diritti e nascondibili dalla vista personale. È disponibile una generazione assistita da proposte.",
+      "evidence": [
+        {
+          "path": "app/Services/Workflow/WorkflowService.php",
+          "symbol": "WorkflowService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/WorkflowController.php",
+          "symbol": "WorkflowController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende riutilizzabile una griglia di analisi o una procedura di consultazione.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Distinguere questi preset dal motore di esecuzione Flow.",
+        "La condivisione non allarga l’accesso alle fonti sottostanti."
+      ],
+      "section_ids": [
+        "workflows"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-021",
+      "name": "Connettori alle fonti di lavoro",
+      "status": "active",
+      "summary": "La libreria installata include Google Drive, OneDrive, Notion, Evernote, Fabric, Confluence, Jira, IMAP, Gmail, Microsoft Mail, Freshdesk e MCP, oltre al connettore API dedicato.",
+      "evidence": [
+        {
+          "path": "composer.lock",
+          "symbol": "composer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/ConnectorAdminController.php",
+          "symbol": "ConnectorAdminController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/connectors.mdx",
+          "symbol": "connectors",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Riduce la necessità di spostare manualmente ogni fonte in un archivio separato.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Ciascuna fonte richiede proprie credenziali/consenso, formati e limiti API.",
+        "MCP è un accesso a tool/contenuti remoti; API live non implica ingestione di tutto il sistema.",
+        "Zendesk non è nel lockfile dello snapshot."
+      ],
+      "section_ids": [
+        "connectors"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-022",
+      "name": "Connessioni email e storico",
+      "status": "active",
+      "summary": "IMAP, Gmail API e Microsoft Graph Mail recuperano mail e allegati nel perimetro scelto, con sincronizzazione e checkpoint. IMAP offre import storico durevole e cancellazione che conserva il già scaricato.",
+      "evidence": [
+        {
+          "path": "docs/connectors/EMAIL-API.md",
+          "symbol": "EMAIL-API",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/operations/imap-lock-diagnostics.md",
+          "symbol": "imap-lock-diagnostics",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/IngestionController.php",
+          "symbol": "IngestionController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Permette di cercare nella corrispondenza aziendale e recuperare contesto storico.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Gmail e Microsoft richiedono app OAuth e collaudo sul tenant reale.",
+        "Le policy determinano mail, cartelle ed allegati importabili.",
+        "I connettori descritti non inviano email."
+      ],
+      "section_ids": [
+        "connectors",
+        "ingestion"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-023",
+      "name": "Triage email e campagne sullo storico",
+      "status": "active",
+      "summary": "Regole versionate e decisioni Jev classificano caratteristiche delle email prima dell’indicizzazione del corpo; campagne retrospettive permettono pause, riprese e retry. Un assistente propone regole da un prompt.",
+      "evidence": [
+        {
+          "path": "docs/email-triage.md",
+          "symbol": "email-triage",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/EmailTriage/TriageEngine.php",
+          "symbol": "TriageEngine",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/EmailTriage/TriageCampaigns.php",
+          "symbol": "TriageCampaigns",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aggiunge segnali di ricerca e classificazioni leggibili a un corpus di corrispondenza.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "opzionale per account e campagne esplicite",
+      "limits": [
+        "Opt-in, inizialmente disattivo per ogni account.",
+        "Decisioni AI a pagamento con limiti di copertura; un tag non è una dichiarazione del mittente.",
+        "Le campagne non sono invii di marketing: analizzano email già acquisite."
+      ],
+      "section_ids": [
+        "connectors"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-024",
+      "name": "Assistenza e casi Freshdesk",
+      "status": "active",
+      "summary": "Freshdesk importa ticket, conversazioni, articoli e allegati compatibili e offre strumenti live per ticket, richiedenti, agenti e articoli. Il codice host predispone schede collegate alle prove originali.",
+      "evidence": [
+        {
+          "path": "composer.lock",
+          "symbol": "composer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php",
+          "symbol": "OpenRouterCaseStudyGenerator",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/case-studies/README.md",
+          "symbol": "README",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Collega lo stato operativo dell’assistenza alla memoria dei casi già documentati.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Il lockfile fissa il pacchetto Freshdesk 1.0.0; estensioni successive del checkout non sono automaticamente consumate.",
+        "Verificare la revisione installata prima di presentare schede avanzate e interruttori come flusso end-to-end.",
+        "La chiusura del ticket non prova l’esito positivo."
+      ],
+      "section_ids": [
+        "connectors"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-025",
+      "name": "API aziendali come strumenti live",
+      "status": "active",
+      "summary": "Ogni route configurata può diventare uno strumento server-side: l’agente compila i parametri ammessi e consulta dati correnti, mentre URL, autenticazione e segreti restano nel backend.",
+      "evidence": [
+        {
+          "path": "app/Agent/Tools/ApiToolCollector.php",
+          "symbol": "ApiToolCollector",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/runbooks/agentic-api-retrieval.md",
+          "symbol": "agentic-api-retrieval",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/api-connectors/ApiConnectorsView.tsx",
+          "symbol": "ApiConnectorsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente domande che combinano procedure documentate e dati operativi aggiornati.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Richiede endpoint configurati, autorizzati, raggiungibili e schemi coerenti.",
+        "Non promettere scrittura/transazioni generali: la presentazione deve concentrarsi sulla consultazione implementata."
+      ],
+      "section_ids": [
+        "api-connectors"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-026",
+      "name": "Pacchetti API importabili ed esportabili",
+      "status": "active",
+      "summary": "Configurazioni API si trasferiscono in JSON o ZIP validati, con anteprima e riferimenti controllati. Segreti e header privati devono essere reinseriti nel destinatario.",
+      "evidence": [
+        {
+          "path": "app/ApiConnectors/ConnectorPackageService.php",
+          "symbol": "ConnectorPackageService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/ApiConnectors/ConnectorConfigTransferService.php",
+          "symbol": "ConnectorConfigTransferService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/connectors/api-packages/verification-2026-10-21.md",
+          "symbol": "verification-2026-10-21",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Riutilizza definizioni tra installazioni senza trasferire intenzionalmente le credenziali.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "L’import non certifica raggiungibilità o correttezza dell’API.",
+        "ZIP inerte: non esegue script."
+      ],
+      "section_ids": [
+        "api-connectors"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-027",
+      "name": "Tool API composti",
+      "status": "active",
+      "summary": "Definizioni tipizzate, mapping e trasformazioni descrivono grafi di chiamate di lettura, versionati e verificati, con runtime in coda, controlli di pubblicazione e diagnostica per chiamata.",
+      "evidence": [
+        {
+          "path": "app/ApiTools/ToolRuntime.php",
+          "symbol": "ToolRuntime",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/ApiTools/ToolVerificationService.php",
+          "symbol": "ToolVerificationService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/handoff/composed-api-tools.md",
+          "symbol": "composed-api-tools",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/api-tools.php",
+          "symbol": "api-tools",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Trasforma una sequenza ricorrente di consultazione in uno strumento riutilizzabile.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "opzionale, default OFF",
+      "limits": [
+        "API_TOOLS_ENABLED=false per default; richiede migrazioni e worker dedicati.",
+        "La configurazione conversazionale avanzata resta fuori develop.",
+        "Non dichiarare risparmio di token o latenza senza misure confrontabili."
+      ],
+      "section_ids": [
+        "api-tools"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-028",
+      "name": "MCP server e catalogo strumenti",
+      "status": "active",
+      "summary": "La conoscenza e capacità amministrative selezionate sono esposte tramite server MCP, con strumenti, risorse e confini di autorizzazione; l’amministrazione gestisce server, tool e audit.",
+      "evidence": [
+        {
+          "path": "app/Mcp/Servers/KnowledgeBaseServer.php",
+          "symbol": "KnowledgeBaseServer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/McpServersAdminController.php",
+          "symbol": "McpServersAdminController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/mcp-server.mdx",
+          "symbol": "mcp-server",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende utilizzabile la base anche da client e assistenti esterni compatibili.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Permessi, token e compatibilità del client vanno configurati; non ogni funzione è una mutazione consentita via MCP."
+      ],
+      "section_ids": [
+        "mcp-tools"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-029",
+      "name": "Connessioni OAuth vincolate al progetto",
+      "status": "active",
+      "summary": "Connected Apps guida il collegamento con client come Codex, Claude e Cursor tramite consenso, progetto scelto, refresh e revoca. Import documentale MCP usa staging e conferma utente sul set esatto di file.",
+      "evidence": [
+        {
+          "path": "app/Services/Mcp/McpDocumentImportService.php",
+          "symbol": "McpDocumentImportService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Auth/McpOAuthService.php",
+          "symbol": "McpOAuthService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/security/mcp-project-oauth-boundaries.md",
+          "symbol": "mcp-project-oauth-boundaries",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Porta la stessa base nei flussi degli assistenti, mantenendo un’autorizzazione esplicita.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Richiede client/provider e dominio deploy appropriati; un plugin locale non equivale a pubblicazione in directory.",
+        "L’agente non può approvare da solo l’importazione."
+      ],
+      "section_ids": [
+        "connected-apps",
+        "mcp-tokens"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-030",
+      "name": "Gestione dei token MCP",
+      "status": "active",
+      "summary": "L’amministrazione crea e revoca token, guida scelta degli scope e mostra connessioni OAuth, con audit e controlli sul tenant selezionato.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/mcp-tokens/McpTokensView.tsx",
+          "symbol": "McpTokensView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/McpTenantTokenController.php",
+          "symbol": "McpTenantTokenController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente di rendere l’accesso degli assistenti gestibile e revocabile.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "I token sono credenziali; il ruolo e gli scope limitano le operazioni disponibili."
+      ],
+      "section_ids": [
+        "mcp-tokens"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-031",
+      "name": "Widget KITT integrabile nei siti",
+      "status": "active",
+      "summary": "Un widget helper, inline o fullscreen porta domande con fonti nel sito ospite, con tema e contenuto di benvenuto, restrizioni di origine, identità opzionale e strumenti pagina esplicitamente abilitati.",
+      "evidence": [
+        {
+          "path": "docs-site/kitt-widget.mdx",
+          "symbol": "kitt-widget",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/WidgetKeyAdminController.php",
+          "symbol": "WidgetKeyAdminController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Widget/WidgetIntroService.php",
+          "symbol": "WidgetIntroService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Offre l’assistenza contestuale dove l’utente sta lavorando.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Richiede integrazione del sito, chiave e origini configurate.",
+        "Azioni DOM dipendono da skill, annotazioni, permessi e host_tools_enabled.",
+        "Non promettere controllo universale di qualsiasi applicazione."
+      ],
+      "section_ids": [
+        "widget"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-032",
+      "name": "Conversazione vocale realtime",
+      "status": "active",
+      "summary": "La chat web integra sessioni vocali realtime, inoltra strumenti al backend, narra progressi confermati e può recuperare risultati salvati dopo errori di gateway.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/RealtimeAgentSessionController.php",
+          "symbol": "RealtimeAgentSessionController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/chat/use-realtime-agent.ts",
+          "symbol": "use-realtime-agent",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/chat/realtime-research-narrator.ts",
+          "symbol": "realtime-research-narrator",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Permette un’interazione vocale sullo stesso lavoro documentale e di ricerca.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Provider, dispositivi, permesso microfono e costi audio richiedono configurazione.",
+        "Non attribuire tutte le novità dei checkout bridge alla revisione bloccata del consumer."
+      ],
+      "section_ids": [
+        "chat"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-033",
+      "name": "Client desktop Tauri",
+      "status": "active",
+      "summary": "Il client nativo dispone di accesso, scelta workspace, chat, ricerca e consultazione della knowledge base con tema editoriale e organizzazione locale delle sessioni.",
+      "evidence": [
+        {
+          "path": "desktop/README.md",
+          "symbol": "README",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "desktop/UI-VERIFICATION.md",
+          "symbol": "UI-VERIFICATION",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "desktop/src/screens/KnowledgeScreen.tsx",
+          "symbol": "KnowledgeScreen",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Offre un punto di accesso dedicato oltre al browser.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "client implementato; distribuzione nativa dipendente da piattaforma",
+      "limits": [
+        "Storia locale distinta dalle sessioni web; refresh non include voce e sessioni agentiche web.",
+        "iOS: sviluppo e rendering login verificati, nuova distribuzione TestFlight non pronta/verificata; QA mobile incompleto."
+      ],
+      "section_ids": [],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-034",
+      "name": "Organizzazioni e cambio contesto",
+      "status": "active",
+      "summary": "L’utente può scegliere tra aziende/tenant di cui possiede membership. Teams amministra creazione e nome delle aziende consentite, mantenendo separato il controllo globale della piattaforma.",
+      "evidence": [
+        {
+          "path": "app/Services/Admin/TeamRegistryService.php",
+          "symbol": "TeamRegistryService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/team-management.mdx",
+          "symbol": "team-management",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/team-switcher.mdx",
+          "symbol": "team-switcher",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente a una persona di lavorare in più organizzazioni con un contesto esplicito.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Un ruolo elevato applicativo non concede automaticamente accesso a ogni tenant."
+      ],
+      "section_ids": [
+        "teams"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-035",
+      "name": "Registro progetti e membership",
+      "status": "active",
+      "summary": "Progetti con chiave stabile, nome e descrizione raggruppano contenuti e accessi; membership possono restringere cartelle/tag. La chiave di progetto rimane stabile durante le modifiche editoriali.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/ProjectController.php",
+          "symbol": "ProjectController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/projects-registry.mdx",
+          "symbol": "projects-registry",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/kb.php",
+          "symbol": "kb",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Separa aree di lavoro e consente di amministrarne i membri e il perimetro.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "KB_PROJECT_ISOLATION_ENABLED=false per default: non promettere segregazione per progetto attiva senza configurazione.",
+        "I permessi e le membership devono essere progettati per l’installazione."
+      ],
+      "section_ids": [
+        "projects"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-036",
+      "name": "Utenti, ruoli e responsabilità",
+      "status": "active",
+      "summary": "L’amministrazione gestisce utenti, ruoli e permessi con controlli sul perimetro del tenant e ruoli protetti per le funzioni sensibili.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/users/UsersView.tsx",
+          "symbol": "UsersView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/roles/RolesView.tsx",
+          "symbol": "RolesView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Providers/AppServiceProvider.php",
+          "symbol": "AppServiceProvider",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Assegna lettura, cura, amministrazione e responsabilità DPO a figure diverse.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "I controlli vanno configurati; non è una prova di conformità legale dell’organizzazione."
+      ],
+      "section_ids": [
+        "users",
+        "roles"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-037",
+      "name": "Permessi delle fonti e triage delle identità esterne",
+      "status": "active",
+      "summary": "Le ACL documentali e i mapping dei soggetti delle fonti controllano il perimetro dei contenuti. Le identità esterne non mappate hanno una coda di triage; decidere sul triage non equivale ad assegnare accesso.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/KbSourceAclController.php",
+          "symbol": "KbSourceAclController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Access/SourceAclTriageService.php",
+          "symbol": "SourceAclTriageService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/source-permissions.mdx",
+          "symbol": "source-permissions",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende leggibili problemi di corrispondenza tra accessi della fonte e identità interne.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "La fedeltà dipende da ACL e metadata forniti dal connettore e da mapping configurati."
+      ],
+      "section_ids": [
+        "source-acl"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-038",
+      "name": "Inviti e onboarding governato",
+      "status": "active",
+      "summary": "Campagne, codici e inviti possono attribuire ruolo e membership nei tenant/progetti indicati; la UI include funnel, codici, referral, premi e lista d’attesa previsti dal modulo.",
+      "evidence": [
+        {
+          "path": "docs-site/invitations.mdx",
+          "symbol": "invitations",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/invitations/InvitationsView.tsx",
+          "symbol": "InvitationsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Providers/AppServiceProvider.php",
+          "symbol": "AppServiceProvider",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende riutilizzabile e tracciabile l’ingresso di persone nel giusto contesto.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Canali email e policy di registrazione devono essere configurati.",
+        "Il sistema non concede ruoli protetti attraverso i codici ordinari.",
+        "Non promettere risultati di crescita o conversione."
+      ],
+      "section_ids": [
+        "invitations"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-039",
+      "name": "Controllo globale della piattaforma",
+      "status": "active",
+      "summary": "Gli amministratori di sistema possono elencare tenant, ispezionare accessi, creare azienda/progetto/utente iniziale e gestire ciclo di vita con conferme e audit. La gestione dei superadmin resta separata.",
+      "evidence": [
+        {
+          "path": "docs-site/system-administration.mdx",
+          "symbol": "system-administration",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Admin/SystemAdminTenantService.php",
+          "symbol": "SystemAdminTenantService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Admin/TenantProvisioningService.php",
+          "symbol": "TenantProvisioningService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Fornisce agli operatori un punto di controllo per più installazioni organizzative.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Riservato alla piattaforma tramite platform.admin; distinto dal superadmin di tenant."
+      ],
+      "section_ids": [
+        "tenant-control",
+        "super-admins"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-040",
+      "name": "Aspetto dell’installazione e identità editoriale",
+      "status": "active",
+      "summary": "Tema chiaro/scuro, raccolte editoriali e mondi illustrati danno coerenza all’installazione; gli amministratori autorizzati scelgono l’aspetto e il marchio resta condiviso fra landing e app.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/system-admin/appearance/AppearanceView.tsx",
+          "symbol": "AppearanceView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "public/editorial/themes/worlds-manifest.json",
+          "symbol": "worlds-manifest",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/brand/README.md",
+          "symbol": "README",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende riconoscibile l’esperienza senza cambiare il contenuto della conoscenza.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Funzione di presentazione, non evidenza di qualità dei dati."
+      ],
+      "section_ids": [
+        "appearance"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-041",
+      "name": "Dashboard di amministrazione",
+      "status": "active",
+      "summary": "Dashboard riunisce indicatori della base documentale, attività e stato operativo, con accesso alle aree di gestione secondo ruolo.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/dashboard/DashboardView.tsx",
+          "symbol": "DashboardView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/admin-panel.mdx",
+          "symbol": "admin-panel",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Offre una vista iniziale sul patrimonio di conoscenza e sulle attività da seguire.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Le metriche dipendono dai dati effettivamente raccolti; valori vuoti non sono risultati dimostrati."
+      ],
+      "section_ids": [
+        "dashboard"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-042",
+      "name": "Engagement e salute della conoscenza",
+      "status": "active",
+      "summary": "Metriche e serie mostrano contributi, copertura, tasso di risposta e stato della base; classifiche e coaching possono aiutare a individuare attenzione e manutenzione necessarie.",
+      "evidence": [
+        {
+          "path": "app/Services/Engagement/EngagementMetricsService.php",
+          "symbol": "EngagementMetricsService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Engagement/GamificationInsightsService.php",
+          "symbol": "GamificationInsightsService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/EngagementController.php",
+          "symbol": "EngagementController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aiuta i responsabili a orientare il lavoro dei curatori e vedere i segnali del corpus.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Non misura automaticamente produttività o valore economico del personale.",
+        "Narrative AI e badge richiedono dati/policy e configurazione."
+      ],
+      "section_ids": [
+        "engagement"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-043",
+      "name": "My KB personale",
+      "status": "active",
+      "summary": "Il cruscotto personale mostra contributi, impatto delle citazioni, attività e documenti da rivedere; i badge opzionali usano metriche registrate dalla piattaforma.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/engagement/GamificationInsightsPanel.tsx",
+          "symbol": "GamificationInsightsPanel",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/dashboards.mdx",
+          "symbol": "dashboards",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Engagement/GamificationService.php",
+          "symbol": "GamificationService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Fa capire a ciascun contributore cosa sta mantenendo utile e cosa richiede attenzione.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Il punteggio non è una valutazione complessiva della persona; dipende dai contributi registrati."
+      ],
+      "section_ids": [
+        "my-kb"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-044",
+      "name": "Digest, notifiche e preferenze",
+      "status": "active",
+      "summary": "Digest e feed riuniscono cambiamenti, promozioni, richieste di attenzione e domande senza risposta. Notifiche e preferenze governano i canali configurati, fra app, email e canali collaborativi.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/DigestFeedController.php",
+          "symbol": "DigestFeedController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/NotificationsController.php",
+          "symbol": "NotificationsController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Providers/NotificationServiceProvider.php",
+          "symbol": "NotificationServiceProvider",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/digests.mdx",
+          "symbol": "digests",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Porta aggiornamenti della conoscenza al lettore senza richiedere controlli manuali continui.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Invii esterni richiedono canali, credenziali e preferenze attivati.",
+        "La presenza del modulo non prova la consegna effettiva di una notifica."
+      ],
+      "section_ids": [
+        "digest"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-045",
+      "name": "AI Insights amministrativi",
+      "status": "active",
+      "summary": "Un pannello riunisce snapshot e suggerimenti AI sullo stato della base e dell’attività, con dettagli e storico secondo disponibilità.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/insights/InsightsView.tsx",
+          "symbol": "InsightsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Http/Controllers/Api/Admin/AdminInsightsController.php",
+          "symbol": "AdminInsightsController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aiuta a scegliere dove approfondire la manutenzione del patrimonio documentale.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Suggerimenti generati, non diagnosi certa; richiesti scheduler, provider e fonti."
+      ],
+      "section_ids": [
+        "insights"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-046",
+      "name": "FinOps: consumo e budget AI",
+      "status": "active",
+      "summary": "Un ledger attribuisce chiamate, provider, token e costi agli ambiti dell’installazione; moduli e API possono esporre dashboard, budget, regole, previsioni e avvisi.",
+      "evidence": [
+        {
+          "path": "config/ai-finops.php",
+          "symbol": "ai-finops",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/ai-finops-admin.php",
+          "symbol": "ai-finops-admin",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Mcp/Tools/FinOpsSpendSummaryTool.php",
+          "symbol": "FinOpsSpendSummaryTool",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/ai-finops.mdx",
+          "symbol": "ai-finops",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende osservabile la spesa AI e permette politiche di controllo configurabili.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "metering attivo nel default; enforcement/pannello da attivare",
+      "limits": [
+        "Metering ON di default; enforcement hard-budget OFF; pannello admin opt-in.",
+        "Prezzi, dati usage e percorsi coperti vanno verificati; costi mancanti non diventano risparmi stimati.",
+        "Non ogni chiamata legacy può essere bloccata prima dell’esecuzione."
+      ],
+      "section_ids": [],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-047",
+      "name": "Guardrails e confini dei tool",
+      "status": "active",
+      "summary": "Screening degli input e trattamento degli output integrano controlli di policy; il firewall di provenienza distingue contenuto esterno da istruzioni autorevoli per l’uso degli strumenti.",
+      "evidence": [
+        {
+          "path": "config/ai-guardrails.php",
+          "symbol": "ai-guardrails",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/ai-guardrails-admin.php",
+          "symbol": "ai-guardrails-admin",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Kb/Provenance/ProvenanceToolFirewall.php",
+          "symbol": "ProvenanceToolFirewall",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/tool-firewall.mdx",
+          "symbol": "tool-firewall",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aggiunge controlli per trattare diversamente una fonte da citare e un’istruzione da eseguire.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "I guardrails non garantiscono assenza di prompt injection o di ogni abuso.",
+        "Pannello guardrails default OFF; controlli chat e pannello sono distinti.",
+        "Non confondere la provenienza esterna con lo stato di revisione umana."
+      ],
+      "section_ids": [],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-048",
+      "name": "Redazione PII e policy dei dati",
+      "status": "active",
+      "summary": "Masking, tokenizzazione e policy di ingestione possono proteggere i punti di persistenza configurati; detokenizzazione ed erasure hanno permessi e audit dedicati.",
+      "evidence": [
+        {
+          "path": "config/kb.php",
+          "symbol": "kb",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Providers/PiiBoundaryCoverageServiceProvider.php",
+          "symbol": "PiiBoundaryCoverageServiceProvider",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/pii-and-compliance.mdx",
+          "symbol": "pii-and-compliance",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Permette di configurare il trattamento dei dati identificativi lungo la pipeline.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "opzionale, default OFF per i touch-point host",
+      "limits": [
+        "Master e touch-point sono default OFF.",
+        "La tokenizzazione richiede vault persistente e salt; non è anonimizzazione automatica.",
+        "Nessuna promessa di conformità GDPR o cancellazione totale da ogni backup/provider."
+      ],
+      "section_ids": [
+        "pii-redactor"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-049",
+      "name": "Strumenti per AI Act e gestione della conformità",
+      "status": "active",
+      "summary": "Il modulo di governance offre registri del rischio, processi DSAR, monitoraggio bias, disclosure, incidenti e revisioni umane secondo le funzioni del pacchetto e i contratti host.",
+      "evidence": [
+        {
+          "path": "config/ai-act-compliance.php",
+          "symbol": "ai-act-compliance",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/pii-and-compliance.mdx",
+          "symbol": "pii-and-compliance",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/ai-act-compliance/AiActComplianceView.tsx",
+          "symbol": "AiActComplianceView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Supporta raccolta di evidenze e processi organizzativi di governo dell’AI.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "È supporto operativo, non certificazione legale o sostituzione del DPO/consulente.",
+        "Richiede configurazione, valutazioni e dati dell’organizzazione."
+      ],
+      "section_ids": [
+        "ai-act-compliance"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-050",
+      "name": "Report di conformità",
+      "status": "active",
+      "summary": "Una sezione gestisce report di governance esportabili e la relativa cronologia per rendere consultabili le evidenze disponibili.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/compliance/ComplianceReportsView.tsx",
+          "symbol": "ComplianceReportsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Models/ComplianceReport.php",
+          "symbol": "ComplianceReport",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Prepara una vista documentata delle verifiche disponibili nel sistema.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Un report non prova conformità dell’intero servizio né copre fatti non registrati."
+      ],
+      "section_ids": [
+        "compliance-reports"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-051",
+      "name": "Evidence & Risk Review",
+      "status": "active",
+      "summary": "Il motore valuta affermazioni e fonti con esiti come mantenere, attenuare, segnalare a revisione o rimuovere, conservando un registro per tenant e budget di verifica.",
+      "evidence": [
+        {
+          "path": "config/evidence-risk-review.php",
+          "symbol": "evidence-risk-review",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/evidence-risk-review.mdx",
+          "symbol": "evidence-risk-review",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/evidence-risk-review/EvidenceRiskReviewView.tsx",
+          "symbol": "EvidenceRiskReviewView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Espone un livello aggiuntivo di valutazione e revisione della forza delle prove.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "opzionale, default OFF",
+      "limits": [
+        "Admin e passaggio semantico AI sono default OFF.",
+        "Verdetti di rischio sono valutazioni, non certificazioni della verità."
+      ],
+      "section_ids": [
+        "evidence-risk-review"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-052",
+      "name": "Flow: pipeline e approvazioni operative",
+      "status": "active",
+      "summary": "Il motore orchestra ingestione, promozione, cancellazione, ricostruzione e manutenzione tramite passaggi, compensazioni e approvazioni quando previste, con cronologia delle run.",
+      "evidence": [
+        {
+          "path": "app/Providers/FlowServiceProvider.php",
+          "symbol": "FlowServiceProvider",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/flows/FlowsView.tsx",
+          "symbol": "FlowsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/flow-orchestration.mdx",
+          "symbol": "flow-orchestration",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende visibile l’esecuzione di procedure a più passaggi e i relativi recuperi.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Non è un editor universale di processi aziendali: i flussi eseguibili dipendono dalle definizioni registrate."
+      ],
+      "section_ids": [
+        "flows"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-053",
+      "name": "Eval Harness e regressioni della ricerca",
+      "status": "active",
+      "summary": "Dataset, baseline e metriche di retrieval/grounding supportano verifiche ripetibili e confronti; un’interfaccia amministrativa integra report e funzioni del pacchetto.",
+      "evidence": [
+        {
+          "path": "config/eval-harness.php",
+          "symbol": "eval-harness",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Providers/EvalHarnessUiIntegrationServiceProvider.php",
+          "symbol": "EvalHarnessUiIntegrationServiceProvider",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/eval-harness/EvalHarnessView.tsx",
+          "symbol": "EvalHarnessView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Permette di misurare variazioni della qualità su domande e fonti di riferimento.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Test e baseline non dimostrano correttezza per ogni domanda possibile.",
+        "Percorsi API/live/nightly sono opzionali; eventuale AI implica costi."
+      ],
+      "section_ids": [
+        "eval-harness"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-054",
+      "name": "Monitoraggio di ingestione e sincronizzazione",
+      "status": "active",
+      "summary": "Ingestion & Sync espone code, run e stato degli import; azioni dedicate gestiscono backfill IMAP, cancellazione e recuperi previsti.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/IngestionController.php",
+          "symbol": "IngestionController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Admin/IngestionObservabilityService.php",
+          "symbol": "IngestionObservabilityService",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/ingestion/IngestionView.tsx",
+          "symbol": "IngestionView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Aiuta a distinguere acquisizione, indicizzazione e fallimento di singoli elementi.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Richiede worker, scheduler e cache coerenti; completare il download non prova completata l’indicizzazione."
+      ],
+      "section_ids": [
+        "ingestion"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-055",
+      "name": "Log e diagnostica delle sessioni",
+      "status": "active",
+      "summary": "Log Viewer e export diagnostici espongono chiamate, errori, run e fasi; span durevoli distinguono coda, modello, retrieval e attese per analizzare i problemi.",
+      "evidence": [
+        {
+          "path": "frontend/src/features/admin/logs/LogsView.tsx",
+          "symbol": "LogsView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Agent/Debug/RunDiagnostics.php",
+          "symbol": "RunDiagnostics",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs/handoff/agent-cloud-followup-queue.md",
+          "symbol": "agent-cloud-followup-queue",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Rende analizzabile una risposta lenta o incompleta con il suo percorso di esecuzione.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Accesso ai log richiede ruoli appropriati; la redazione configurata non riconosce ogni segreto arbitrario."
+      ],
+      "section_ids": [
+        "logs"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-056",
+      "name": "Manutenzione controllata",
+      "status": "active",
+      "summary": "Un catalogo limitato di comandi offre anteprima, esecuzione autorizzata, storico e stato dello scheduler. Le operazioni sensibili rispettano conferme e audit previsti.",
+      "evidence": [
+        {
+          "path": "app/Http/Controllers/Api/Admin/MaintenanceCommandController.php",
+          "symbol": "MaintenanceCommandController",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "frontend/src/features/admin/maintenance/MaintenanceView.tsx",
+          "symbol": "MaintenanceView",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Dà agli operatori strumenti ripetibili per la cura dell’installazione.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Non consente shell arbitraria dall’app; l’allowlist è una scelta tecnica del deploy."
+      ],
+      "section_ids": [
+        "maintenance"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-057",
+      "name": "Configurazione guidata di modelli e regole",
+      "status": "active",
+      "summary": "Le impostazioni ammesse sono governate per tenant o progetto; un assistente propone valori da rivedere, mentre cataloghi live mostrano modelli, disponibilità e prezzi con fonte/data.",
+      "evidence": [
+        {
+          "path": "docs/runbooks/runtime-configuration.md",
+          "symbol": "runtime-configuration",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Admin/AppSettingsResolver.php",
+          "symbol": "AppSettingsResolver",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Admin/AiModelCatalog.php",
+          "symbol": "AiModelCatalog",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Services/Admin/AppSettingsAssistant.php",
+          "symbol": "AppSettingsAssistant",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Consente di adattare il comportamento del prodotto al lavoro dell’organizzazione.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Il generatore non salva o cambia permessi e rollout da solo.",
+        "I segreti non sono campi configurabili generici; impostazioni pericolose restano deploy-managed."
+      ],
+      "section_ids": [
+        "app-settings"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-058",
+      "name": "Provider AI e distribuzione controllabile",
+      "status": "active",
+      "summary": "L’host supporta provider AI configurati, localizzazione italiano/inglese e installazione su infrastruttura gestita dall’organizzazione, con storage locale o S3 previsto dai contratti.",
+      "evidence": [
+        {
+          "path": "composer.json",
+          "symbol": "composer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "app/Ai/AiManager.php",
+          "symbol": "AiManager",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/filesystems.php",
+          "symbol": "filesystems",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "docs-site/self-hosting.mdx",
+          "symbol": "self-hosting",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Permette di scegliere e governare componenti e perimetro di esecuzione della piattaforma.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "implemented",
+      "limits": [
+        "Self-hosting non significa che le chiamate a provider remoti restino sul server.",
+        "Costi, residenza e condizioni dei provider vanno verificati nell’installazione; nessuna comparazione commerciale non verificata."
+      ],
+      "section_ids": [
+        "app-settings"
+      ],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-059",
+      "name": "PACT: autorizzazione predisposta, delega non disponibile su develop",
+      "status": "planned",
+      "summary": "Il ramo analizzato prepara l’autorizzazione PactAuth vincolata al progetto ma dichiara il trasporto di delega indisponibile. Il simulatore realizzato in altro ramo non è parte dello snapshot.",
+      "evidence": [
+        {
+          "path": "docs/runbooks/pact-auth-sorgente.md",
+          "symbol": "pact-auth-sorgente",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        },
+        {
+          "path": "config/pact-auth.php",
+          "symbol": "pact-auth",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Base per integrazioni future, da non presentare come delega attiva.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "auth opzionale default OFF; transport unavailable",
+      "limits": [
+        "Fuori dal perimetro delle capacità operative da promettere nella presentazione."
+      ],
+      "section_ids": [],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    },
+    {
+      "id": "F-060",
+      "name": "Zendesk: pacchetto autonomo non integrato nello snapshot",
+      "status": "planned",
+      "summary": "Il lavoro locale del connettore Zendesk non compare nel composer.lock analizzato; non va incluso nella galleria dei connettori già installati dell’host.",
+      "evidence": [
+        {
+          "path": "composer.lock",
+          "symbol": "composer",
+          "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+        }
+      ],
+      "benefits": {
+        "practical": "Indica un confine di disponibilità per evitare promesse premature.",
+        "emotional": "Maggiore leggibilità e controllo del lavoro; beneficio qualitativo plausibile, non risultato misurato."
+      },
+      "prerequisites": [],
+      "activation": "non installato nel consumer",
+      "limits": [
+        "Mostrabile soltanto come lavoro separato, non come funzione disponibile dell’host."
+      ],
+      "section_ids": [],
+      "verification": "Codice e documentazione versionata riletti; nessun test applicativo o collaudo live eseguito in questa analisi."
+    }
+  ]
+}

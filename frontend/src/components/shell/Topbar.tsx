@@ -1,113 +1,51 @@
 import { Fragment } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { Icon } from '../Icons';
+import { Button } from '../Button';
 import { TeamSwitcher } from './TeamSwitcher';
 import { Tooltip } from './Tooltip';
 import { UserMenu } from './UserMenu';
+import { LanguagePicker } from './LanguagePicker';
 import { NotificationBell } from '../../features/notifications/NotificationBell';
+import { useAuthStore } from '../../lib/auth-store';
+import { useUiTranslation } from '../../lib/ui-locale';
 import type { Team } from '../../lib/team-store';
 import type { Theme } from './hooks';
 
+export type BreadcrumbItem = string | { label: string; onClick?: () => void };
 export type TopbarProps = {
-    team: Team | null;
-    teams: Team[];
-    onTeamChange: (t: Team) => void;
-    theme: Theme;
-    setTheme: (t: Theme) => void;
-    onToggleTweaks: () => void;
-    crumbs?: string[];
+    team: Team | null; teams: Team[]; onTeamChange: (team: Team) => void;
+    theme: Theme; setTheme: (theme: Theme) => void;
+    crumbs?: BreadcrumbItem[]; onOpenNav?: () => void; navOpen?: boolean;
+    sidebarCollapsed?: boolean; onToggleSidebar?: () => void;
 };
 
-export function Topbar({
-    team,
-    teams,
-    onTeamChange,
-    theme,
-    setTheme,
-    onToggleTweaks,
-    crumbs = [],
-}: TopbarProps) {
-    return (
-        <header
-            style={{
-                height: 52,
-                flex: '0 0 52px',
-                borderBottom: '1px solid var(--hairline)',
-                background: 'var(--bg-1)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '0 16px',
-                position: 'relative',
-                zIndex: 5,
-            }}
-        >
-            {team !== null && teams.length > 0 && (
-                <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />
-            )}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    color: 'var(--fg-3)',
-                    fontSize: 12,
-                }}
-            >
-                {crumbs.map((c, i) => (
-                    <Fragment key={`${c}-${i}`}>
-                        <Icon.Chevron size={12} />
-                        <span style={{ color: i === crumbs.length - 1 ? 'var(--fg-1)' : 'var(--fg-3)' }}>{c}</span>
-                    </Fragment>
-                ))}
+export function Topbar({ team, teams, onTeamChange, theme, setTheme, crumbs = [], onOpenNav, navOpen = false, sidebarCollapsed = false, onToggleSidebar }: TopbarProps) {
+    const { t } = useUiTranslation();
+    const roles = useAuthStore((state) => state.roles);
+    const canCheckHealth = roles.some((role) => role === 'admin' || role === 'super-admin');
+    return <header className="app-topbar" data-testid="app-topbar">
+        <div className="app-topbar-leading">
+            {onToggleSidebar && <Tooltip label={t(sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}><Button variant="quiet" size="sm" iconOnly className="desktop-navigation-trigger" aria-label={t(sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')} aria-expanded={!sidebarCollapsed} aria-controls="app-desktop-navigation" onClick={onToggleSidebar}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</Button></Tooltip>}
+            {onOpenNav && <Button variant="quiet" size="sm" iconOnly id="app-navigation-trigger" className="mobile-navigation-trigger" aria-label={t('Open navigation')} aria-expanded={navOpen} aria-haspopup="dialog" onClick={onOpenNav}><Icon.Menu size={20} /></Button>}
+            {team !== null && teams.length > 0 && <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />}
+            <nav className="app-topbar-crumbs" aria-label={t('Breadcrumb')}>
+                {crumbs.map((crumb, index) => {
+                    const label = typeof crumb === 'string' ? crumb : crumb.label;
+                    const action = typeof crumb === 'string' ? undefined : crumb.onClick;
+                    return <Fragment key={index}><Icon.Chevron size={12} />{action && index !== crumbs.length - 1 ? <button type="button" onClick={action}>{label}</button> : <span data-current={index === crumbs.length - 1 ? 'true' : 'false'}>{label}</span>}</Fragment>;
+                })}
+            </nav>
+        </div>
+        <div className="app-topbar-actions">
+            {team && canCheckHealth && <Link className="app-service-link" to="/app/$teamHash/admin" params={{ teamHash: team.hash }} title={t('Service status')}><Icon.Activity size={15} /><span>{t('Service status')}</span></Link>}
+            <div className="app-topbar-tools" aria-label={t('Workspace tools')}>
+                <LanguagePicker />
+                {team !== null && <NotificationBell />}
+                <Tooltip label={t(theme === 'dark' ? "Light mode" : "Dark mode")}><Button variant="quiet" size="sm" iconOnly className="app-topbar-icon-button" aria-label={t('Toggle theme')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}</Button></Tooltip>
             </div>
-            <div style={{ flex: 1 }} />
-            {team !== null && (
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '4px 10px',
-                        background: 'var(--bg-2)',
-                        border: '1px solid var(--panel-border)',
-                        borderRadius: 9,
-                        fontSize: 11.5,
-                        color: 'var(--fg-2)',
-                    }}
-                >
-                    <span className="pulse-dot" style={{ width: 6, height: 6 }} />
-                    <span className="mono">All systems operational</span>
-                </div>
-            )}
-            {/* v8.0/W1.4 — real notification bell wired to
-              * `/api/notifications/unread-count` (30s polling) and
-              * the per-user dropdown. Replaces the previous static
-              * mockup. */}
-            {team !== null && <NotificationBell />}
-            <Tooltip label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-                <button
-                    type="button"
-                    className="btn icon ghost"
-                    aria-label="Toggle theme"
-                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                >
-                    {theme === 'dark' ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}
-                </button>
-            </Tooltip>
-            <Tooltip label="Tweaks">
-                <button
-                    type="button"
-                    className="btn icon ghost"
-                    aria-label="Open tweaks panel"
-                    onClick={onToggleTweaks}
-                >
-                    <Icon.Sliders size={15} />
-                </button>
-            </Tooltip>
-            {/* The account menu — and the ONLY way to sign out. The
-              * logout transport existed end-to-end but was never wired
-              * to any control; this is that control. */}
             <UserMenu />
-        </header>
-    );
+        </div>
+    </header>;
 }

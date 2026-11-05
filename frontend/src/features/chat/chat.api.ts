@@ -1,4 +1,5 @@
 import { api } from '../../lib/api';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
 
 /*
  * Chat HTTP layer. Thin typed wrappers over the existing Laravel
@@ -49,6 +50,28 @@ export interface FilterState {
     languages?: string[];
 }
 
+export type LiveSourceKind = 'api' | 'mcp';
+
+export interface LiveSourceOption {
+    key: string;
+    kind: LiveSourceKind;
+    name: string;
+    description: string | null;
+    project_key: string | null;
+    tool_count: number;
+}
+
+export interface LiveSourceCatalog {
+    api: LiveSourceOption[];
+    mcp: LiveSourceOption[];
+}
+
+/** Explicit per-turn allowlist. Empty arrays disable that live-source kind. */
+export interface LiveSourceSelection {
+    api: string[];
+    mcp: string[];
+}
+
 /**
  * Returns true when EVERY filter dimension is empty / undefined.
  * Used by the composer to skip the `filters` payload key entirely
@@ -93,12 +116,44 @@ export function countSelectedFilters(f: FilterState): number {
     ].filter(Boolean).length;
 }
 
+/**
+ * How much a session matters to its owner. The machine-readable value
+ * is stable and never localized — the BE sends the label separately
+ * when one is needed (R24).
+ */
+export type ConversationImportance = 'normal' | 'high' | 'critical';
+
 export interface Conversation {
     id: number;
     title: string | null;
     project_key: string | null;
+    /** Null = unfiled, which is also what deleting a folder leaves behind. */
+    chat_folder_id: number | null;
+    /**
+     * Pin and archive are TIMESTAMPS on the way back but BOOLEANS on the
+     * way in (see `organizeConversation`). The client must never invent a
+     * date — it asks for the state and reads back when it happened.
+     */
+    pinned_at: string | null;
+    archived_at: string | null;
+    importance: ConversationImportance;
     created_at: string;
     updated_at: string;
+}
+
+/**
+ * Which slice of the session list to fetch. Archived threads are
+ * excluded server-side by default, so the plain list needs no flag.
+ */
+export type ConversationArchiveScope = 'active' | 'archived' | 'all';
+
+/** Partial organisation change. Omitted fields are left untouched. */
+export interface ConversationOrganizePayload {
+    title?: string;
+    chat_folder_id?: number | null;
+    pinned?: boolean;
+    archived?: boolean;
+    importance?: ConversationImportance;
 }
 
 export interface MessageCitation {
@@ -114,6 +169,17 @@ export interface MessageCitation {
     headings?: string[];
     chunks_used?: number;
     origin?: 'primary' | 'related' | 'rejected';
+    chunks?: Array<{
+        chunk_id?: string | number | null;
+        heading?: string | null;
+        snippet?: string | null;
+        evidence_hash?: string | null;
+    }>;
+    claims?: Array<{
+        text: string;
+        quote: string;
+        evidence_hash: string;
+    }>;
 }
 
 /**
@@ -161,7 +227,8 @@ export interface MessageMetadata {
     confidence?: number | null;
     // T3.3/T3.4 — refusal taxonomy tag. Stays English regardless of
     // user locale (machine-readable identifier the dashboard rolls up).
-    // Possible values: 'no_relevant_context' | 'llm_self_refusal' | null.
+    // Possible values: 'no_relevant_context' | 'llm_self_refusal' |
+    // 'retrieval_profile_required' | null.
     refusal_reason?: string | null;
     // v5.0/W2 — legacy AppMessage tool-call array (pre-SDK v6 wire
     // format). `message-shape-adapters.ts::getToolCalls()` normalises
@@ -169,10 +236,92 @@ export interface MessageMetadata {
     // open shape (LLM-providers diverge on field naming), so `unknown`
     // forces every reader through the normaliser.
     tool_calls?: unknown[];
+    tool_sources?: ToolSource[];
+    tool_references?: ToolSource[];
     retrieval_runner_up?: RunnerUpChunk[];
     runner_up_count?: number;
     counterfactual?: CounterfactualPanel[];
     counterfactual_count?: number;
+    agent_artifact?: AgentTableArtifact | null;
+    agent_selection?: AgentSelectionMetadata | null;
+    agent_run_id?: string | null;
+    agent_activity?: AgentRunEvent[];
+    requires_selection?: boolean;
+    locale?: string;
+    /**
+     * How many KB searches / MCP+API tool calls this agent run actually
+     * attempted over its whole lifetime — see AgentResultProjector::
+     * searchStats(). Rendered by SearchStatsBadge. Absent on non-agent
+     * (legacy sync/stream) messages.
+     */
+    search_stats?: { kb_searches: number; tool_calls: number } | null;
+}
+
+export interface ToolSource {
+    execution_id: number;
+    tool: string;
+    display_name?: string | null;
+    kind?: string | null;
+    retrieved_at?: string | null;
+}
+
+export interface ToolSourceDetail extends ToolSource {
+    status: string;
+    used_in_answer?: boolean;
+    arguments: Record<string, unknown>;
+    request: { method: string; url: string; query: Record<string, unknown>; headers: Record<string, unknown>; body: unknown } | null;
+    response: unknown;
+    complete: boolean | null;
+    stop_reason: string | null;
+    physical_requests: number;
+    latency_ms: number | null;
+}
+
+export interface AgentSelectionDisplayField {
+    key: string;
+    label: string;
+    value: string | number | boolean | null;
+}
+
+export interface AgentSelectionMetadata {
+    source_message_id?: number | null;
+    source_execution_id?: number | null;
+    tool?: string | null;
+    row_key: string;
+    label: string;
+    record: Record<string, unknown>;
+    display?: {
+        title?: string | null;
+        fields?: AgentSelectionDisplayField[];
+    } | null;
+}
+
+export interface AgentTableArtifactColumn {
+    key: string;
+    label: string;
+}
+
+export interface AgentTableArtifactRow {
+    key: string;
+    label: string;
+    values: Record<string, string | number | boolean | null>;
+}
+
+export interface AgentTableArtifact {
+    component_type: 'ui-data-table';
+    interaction_mode: 'view' | 'selection';
+    source_execution_id: number | null;
+    tool: string | null;
+    title: string;
+    columns: AgentTableArtifactColumn[];
+    rows: AgentTableArtifactRow[];
+    total_rows: number;
+    truncated: boolean;
+}
+
+export interface AgentSelectionRequest {
+    message_id: number;
+    row_key: string;
 }
 
 export interface Message {
@@ -198,14 +347,37 @@ export interface AgentRunLink {
     continue_url: string;
 }
 
-export interface AgentTurnStarted {
+export interface AgentRunReference {
     run_id: string;
     status: string;
     locale: string;
     events_url: string;
     cancel_url: string;
     continue_url: string;
+}
+
+export interface AgentTurnStarted extends AgentRunReference {
     user_message: Message;
+}
+
+export interface ConversationActivity {
+    conversation_id: number;
+    last_read_message_id: number;
+    latest_reply: { message_id: number; created_at: string } | null;
+    run: (AgentRunReference & { confirmation: { physicalExtension: number; logicalExtension: number } | null }) | null;
+}
+
+export interface RealtimeAgentConnection {
+    session_id: string;
+    provider: string;
+    connection: Record<string, unknown>;
+    state: Record<string, unknown> & {
+        session: Record<string, unknown> & { id: string; revision: number; status: string };
+    };
+    conversation_id: number;
+    busy_message?: string;
+    tool_timeout_seconds?: number;
+    expires_at: string;
 }
 
 export interface RunnerUpChunk {
@@ -233,9 +405,61 @@ export interface ChatCollectionOption {
     name: string;
 }
 
+export interface ConversationDebugTranscriptDownload {
+    blob: Blob;
+    filename: string;
+}
+
+function filenameFromContentDisposition(header: string | undefined, fallback: string): string {
+    const match = header?.match(/filename\*?=(?:UTF-8''|\")?([^;\"]+)/i);
+    if (!match?.[1]) {
+        return fallback;
+    }
+
+    try {
+        return decodeURIComponent(match[1].trim());
+    } catch {
+        return match[1].trim();
+    }
+}
+
 export const chatApi = {
-    async listConversations(): Promise<Conversation[]> {
-        const { data } = await api.get<Conversation[]>('/conversations');
+    async listActivity(tenantId: string): Promise<ConversationActivity[]> {
+        const { data } = await api.get<ConversationActivity[]>('/conversations/activity', {
+            headers: { 'X-Tenant-Id': tenantId },
+        });
+        return data;
+    },
+
+    async markConversationRead(conversationId: number, messageId: number, tenantId?: string): Promise<{ last_read_message_id: number }> {
+        const { data } = await api.post<{ last_read_message_id: number }>(`/conversations/${conversationId}/read`,
+            { message_id: messageId }, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
+        return data;
+    },
+    async listConversations(
+        scope: ConversationArchiveScope = 'active',
+    ): Promise<Conversation[]> {
+        const { data } = await api.get<Conversation[]>('/conversations', {
+            // `active` is the server default, so the plain list stays a
+            // bare GET and the existing cache entry is unchanged.
+            params: scope === 'active' ? undefined : { archived: scope === 'all' ? 'all' : 1 },
+        });
+        return data;
+    },
+
+    /**
+     * Apply a partial organisation change: file/unfile, pin, archive,
+     * flag importance, rename.
+     *
+     * One endpoint rather than five, because the BE applies whichever
+     * fields are present — and an EMPTY payload is a 422 there, not a
+     * silent no-op, so callers must send something.
+     */
+    async organizeConversation(
+        id: number,
+        payload: ConversationOrganizePayload,
+    ): Promise<Conversation> {
+        const { data } = await api.patch<Conversation>(`/conversations/${id}`, payload);
         return data;
     },
 
@@ -260,8 +484,37 @@ export const chatApi = {
         return data;
     },
 
-    async listMessages(conversationId: number): Promise<Message[]> {
-        const { data } = await api.get<Message[]>(`/conversations/${conversationId}/messages`);
+    /**
+     * Super-admin-only forensic export for the active conversation. The API
+     * returns a JSON attachment rather than a browser navigation so the SPA's
+     * authenticated Axios client keeps the active tenant header on the call.
+     */
+    async downloadDebugTranscript(conversationId: number): Promise<ConversationDebugTranscriptDownload> {
+        const response = await api.get(
+            `/api/admin/conversations/${conversationId}/debug-transcript`,
+            { responseType: 'blob' },
+        );
+        const fallback = `chat-debug-${conversationId}.json`;
+
+        return {
+            blob: response.data as Blob,
+            filename: filenameFromContentDisposition(
+                response.headers['content-disposition'],
+                fallback,
+            ),
+        };
+    },
+
+    async listMessages(conversationId: number, tenantId?: string): Promise<Message[]> {
+        const { data } = await api.get<Message[]>(`/conversations/${conversationId}/messages`, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
+        return data;
+    },
+
+    async fetchToolSource(conversationId: number, messageId: number, executionId: number, tenantId?: string | null): Promise<ToolSourceDetail> {
+        const { data } = await api.get<ToolSourceDetail>(
+            `/conversations/${conversationId}/messages/${messageId}/tool-sources/${executionId}`,
+            tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined,
+        );
         return data;
     },
 
@@ -284,31 +537,77 @@ export const chatApi = {
         conversationId: number,
         content: string,
         filters?: FilterState,
+        mcpAppId?: string,
+        selection?: AgentSelectionRequest,
+        liveSources?: LiveSourceSelection,
+        depth?: number,
+        tenantId?: string,
     ): Promise<AgentTurnStarted> {
-        const payload = filters && !isFilterStateEmpty(filters)
-            ? { content, filters }
-            : { content };
+        const payload: { content: string; filters?: FilterState; mcp_app_id?: string; selection?: AgentSelectionRequest; live_sources?: LiveSourceSelection; depth?: number } = { content };
+        if (filters && !isFilterStateEmpty(filters)) {
+            payload.filters = filters;
+        }
+        if (mcpAppId && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(mcpAppId)) {
+            payload.mcp_app_id = mcpAppId;
+        }
+        if (selection) {
+            payload.selection = selection;
+        }
+        if (liveSources) {
+            payload.live_sources = liveSources;
+        }
+        // "Investigation depth" (1-5). Omitted when it's the server default
+        // (3) so a client that never touches the control sends a payload
+        // byte-identical to before this knob existed.
+        if (depth !== undefined && depth !== 3) {
+            payload.depth = depth;
+        }
         const { data } = await api.post<AgentTurnStarted>(
             `/conversations/${conversationId}/messages/agent`,
+            payload,
+            tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined,
+        );
+
+        return data;
+    },
+
+    async startRealtimeAgent(
+        conversationId: number,
+        filters?: FilterState,
+        liveSources?: LiveSourceSelection,
+    ): Promise<RealtimeAgentConnection> {
+        const payload: { filters?: FilterState; live_sources?: LiveSourceSelection } = {};
+        if (filters && !isFilterStateEmpty(filters)) payload.filters = filters;
+        if (liveSources) payload.live_sources = liveSources;
+        const { data } = await api.post<RealtimeAgentConnection>(
+            `/conversations/${conversationId}/realtime-agent`,
             payload,
         );
 
         return data;
     },
 
-    async cancelAgentRun(url: string): Promise<void> {
-        await api.post(url);
+    async listLiveSources(projectKey?: string | null): Promise<LiveSourceCatalog> {
+        const { data } = await api.get<{ data: LiveSourceCatalog }>('/api/chat/live-sources', {
+            params: projectKey ? { project_key: projectKey } : undefined,
+        });
+        return data.data;
+    },
+
+    async cancelAgentRun(url: string, tenantId?: string): Promise<void> {
+        await api.post(url, undefined, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
     },
 
     async continueAgentRun(
         url: string,
         physicalExtension: number,
         logicalExtension = 0,
+        tenantId?: string,
     ): Promise<void> {
         await api.post(url, {
             physical_extension: physicalExtension,
             logical_extension: logicalExtension,
-        });
+        }, tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : undefined);
     },
 
     async listCollections(): Promise<ChatCollectionOption[]> {

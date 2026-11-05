@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -147,7 +148,7 @@ describe('KbInsightsView', () => {
         mockGet.mockResolvedValue(page([COMPLETED]));
         render(withQueryClient(<KbInsightsView />));
         await waitFor(() => expect(screen.getByTestId('admin-kb-insight-1')).toBeVisible());
-        await userEvent.selectOptions(screen.getByTestId('admin-kb-insights-status-filter'), 'failed');
+        await chooseSelectOption(screen.getByTestId('admin-kb-insights-status-filter'), 'failed');
         await waitFor(() => {
             expect(mockGet).toHaveBeenLastCalledWith('/api/admin/kb/analyses?status=failed');
         });

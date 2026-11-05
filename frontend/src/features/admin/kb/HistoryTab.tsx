@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useKbHistory } from './kb-document.api';
 
@@ -16,6 +17,7 @@ export interface HistoryTabProps {
 }
 
 export function HistoryTab({ documentId }: HistoryTabProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [page, setPage] = useState(1);
     const query = useKbHistory(documentId, page);
 
@@ -147,7 +149,7 @@ export function HistoryTab({ documentId }: HistoryTabProps) {
                 }}
             >
                 <span>
-                    Page {meta.current_page} of {meta.last_page} · {meta.total} events
+                    {translateInterface("Page") + " "}{meta.current_page} {" " + translateInterface("of") + " "}{meta.last_page} · {meta.total} events
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
                     <button
@@ -166,8 +168,7 @@ export function HistoryTab({ documentId }: HistoryTabProps) {
                         disabled={meta.current_page >= meta.last_page}
                         style={pagerBtnStyle(meta.current_page >= meta.last_page)}
                     >
-                        Next
-                    </button>
+                        {translateInterface("Next")}</button>
                 </div>
             </div>
         </div>

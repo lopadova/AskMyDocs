@@ -1,0 +1,1430 @@
+{
+  "schema_version": 1,
+  "artifact": {
+    "id": "askmydocs-product-presentation-slides",
+    "title": "AskMyDocs. Il sapere che entra nel lavoro.",
+    "language": "it",
+    "audience": "Responsabili e team di assistenza, operations, conoscenza e sistemi informativi",
+    "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+    "source_pdf": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+    "source_pdf_sha256": "3460aad4c593e874685e13e38295ee4f150c9cbc9ed92f6633690900ef08fcfb",
+    "source_editorial": "/Users/marco/www/AskMyDocsDev/marketing/pdf/sorgenti/presentazione-prodotto/contenuti_prodotto.py",
+    "catalog_path": "/Users/marco/www/AskMyDocsDev/marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+    "source_registry": "/Users/marco/www/AskMyDocsDev/marketing/analisi/presentazione-prodotto-2026-10-29/fonti.json",
+    "status": "validated_structure_and_copy",
+    "deliverable_target": "Presentazione PowerPoint locale modificabile; authoring PPTX affidato a un agente distinto.",
+    "duration_seconds": 1045,
+    "format": {
+      "aspect_ratio": "16:9",
+      "width_inches": 13.333333,
+      "height_inches": 7.5
+    }
+  },
+  "design": {
+    "fonts": {
+      "display": "Georgia",
+      "body": "Arial"
+    },
+    "palette": {
+      "paper": "#fbf8f1",
+      "cream": "#f4f0e7",
+      "forest": "#224c40",
+      "rust": "#a35539",
+      "ink": "#23312d",
+      "muted": "#647168",
+      "pale_green": "#e5ebdf"
+    },
+    "line": "Umanistica editoriale identica alla brochure: carta calda, verde profondo, titoli serif, testi operativi sobri, scene umane dipinte.",
+    "default_footer": "ASKMYDOCS / IL SAPERE CHE ENTRA NEL LAVORO",
+    "no_new_territorial_or_fashion_content": true
+  },
+  "coverage": {
+    "feature_ids": [
+      "F-001",
+      "F-002",
+      "F-003",
+      "F-004",
+      "F-005",
+      "F-006",
+      "F-007",
+      "F-008",
+      "F-009",
+      "F-010",
+      "F-011",
+      "F-012",
+      "F-013",
+      "F-014",
+      "F-015",
+      "F-016",
+      "F-017",
+      "F-018",
+      "F-019",
+      "F-020",
+      "F-021",
+      "F-022",
+      "F-023",
+      "F-024",
+      "F-025",
+      "F-026",
+      "F-027",
+      "F-028",
+      "F-029",
+      "F-030",
+      "F-031",
+      "F-032",
+      "F-033",
+      "F-034",
+      "F-035",
+      "F-036",
+      "F-037",
+      "F-038",
+      "F-039",
+      "F-040",
+      "F-041",
+      "F-042",
+      "F-043",
+      "F-044",
+      "F-045",
+      "F-046",
+      "F-047",
+      "F-048",
+      "F-049",
+      "F-050",
+      "F-051",
+      "F-052",
+      "F-053",
+      "F-054",
+      "F-055",
+      "F-056",
+      "F-057",
+      "F-058"
+    ],
+    "implemented_feature_count": 58,
+    "demonstrative_cases": [
+      "UC-01",
+      "UC-02",
+      "UC-03",
+      "UC-04",
+      "UC-05"
+    ],
+    "excluded_not_operational_features": [
+      "F-059",
+      "F-060"
+    ],
+    "notes": "Copertura per gruppi e note del relatore, non una riproduzione di tutte le voci menu sul canvas."
+  },
+  "slides": [
+    {
+      "id": "SL-01",
+      "number": 1,
+      "kicker": "ASKMYDOCS / PRESENTAZIONE DEL PRODOTTO",
+      "title": "Il sapere che entra nel lavoro.",
+      "purpose": "Presentare AskMyDocs come accesso utilizzabile alla conoscenza dell’organizzazione.",
+      "main_message": "Presentare AskMyDocs come accesso utilizzabile alla conoscenza dell’organizzazione.",
+      "visible": {
+        "subtitle": "Documenti, conversazioni e dati aziendali diventano una base da interrogare, consultare e curare. Una risposta apre il percorso verso le sue fonti."
+      },
+      "visible_word_count": 28,
+      "timing_seconds": 20,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          1,
+          2,
+          32
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-010",
+          "F-021",
+          "F-025"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-026",
+          "P-027",
+          "P-056",
+          "P-057",
+          "P-067",
+          "P-068"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Aprire con il nome del prodotto e una situazione concreta: la risposta a una domanda di lavoro può essere distribuita fra manuali, email e sistemi. AskMyDocs rende utilizzabile quel patrimonio in un contesto autorizzato. Questa presentazione riprende la brochure, semplificata per il racconto orale: prima valore e cinque casi d’uso, poi i gruppi funzionali e un possibile primo progetto. Non anticipare percentuali di risparmio o affermazioni di accuratezza assoluta. Le immagini accompagnano il racconto e non sono schermate del prodotto. Passaggio: partire da ciò che la persona deve riuscire a fare.\n\nRiferimenti redazionali: PDF pp. 1, 2, 32. Funzionalità: F-001, F-010, F-021, F-025. Fonti: P-001, P-002, P-026, P-027, P-056, P-057, P-067, P-068.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "cover_split",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/knowledge-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Testo nel 43% sinistro, illustrazione a tutta altezza nel 57% destro.",
+          "Logo originale in alto a sinistra; nessuna fascia nera o sfumatura.",
+          "Titolo Georgia grande su tre righe al massimo."
+        ]
+      }
+    },
+    {
+      "id": "SL-02",
+      "number": 2,
+      "kicker": "IL VALORE / TRE AZIONI",
+      "title": "Riunire. Chiedere. Ritrovare.",
+      "purpose": "Le funzioni diventano utili quando collegano fonti, domanda e prove.",
+      "main_message": "Le funzioni diventano utili quando collegano fonti, domanda e prove.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Riunire",
+            "text": "Fonti selezionate, documenti e dati correnti."
+          },
+          {
+            "heading": "Chiedere",
+            "text": "Una domanda nel contesto del lavoro."
+          },
+          {
+            "heading": "Ritrovare",
+            "text": "Risposte con riferimenti da aprire e verificare."
+          }
+        ],
+        "callout": "Il patrimonio rimane curabile dal team."
+      },
+      "visible_word_count": 31,
+      "timing_seconds": 40,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          2,
+          3
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-008",
+          "F-010",
+          "F-021",
+          "F-025",
+          "F-029"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-021",
+          "P-022",
+          "P-026",
+          "P-027",
+          "P-056",
+          "P-057",
+          "P-067",
+          "P-068",
+          "P-080",
+          "P-081"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "I tre verbi descrivono il percorso, non tre prodotti separati. Riunire significa scegliere quali fonti importare e quali sistemi consultare al momento. Chiedere significa interpretare una domanda nel suo progetto e nella sua conversazione. Ritrovare significa poter passare dalla sintesi ai documenti o alle chiamate che la sostengono. Il team può aggiornare e approvare il patrimonio. Non dire che collegare una fonte la renda automaticamente completa o che il sistema conosca tutto ciò che esiste nell’organizzazione. Passaggio: mostrare il percorso concreto dalla domanda alla risposta.\n\nRiferimenti redazionali: PDF pp. 2, 3. Funzionalità: F-001, F-008, F-010, F-021, F-025, F-029. Fonti: P-001, P-002, P-021, P-022, P-026, P-027, P-056, P-057, P-067, P-068, P-080, P-081.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "three_verbs",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre colonne larghe con verbo serif in verde, breve testo sotto.",
+          "Sottile riga verde a sinistra del richiamo conclusivo; ampio bianco."
+        ]
+      }
+    },
+    {
+      "id": "SL-03",
+      "number": 3,
+      "kicker": "IL PERCORSO / DALLA DOMANDA ALLE FONTI",
+      "title": "Una domanda apre un percorso verificabile.",
+      "purpose": "La ricerca mantiene il rapporto fra contesto, fonti e risposta.",
+      "main_message": "La ricerca mantiene il rapporto fra contesto, fonti e risposta.",
+      "visible": {
+        "steps": [
+          {
+            "heading": "Contesto",
+            "text": "Progetto e fonti ammesse"
+          },
+          {
+            "heading": "Domanda",
+            "text": "Intento e aspetti richiesti"
+          },
+          {
+            "heading": "Ricerca",
+            "text": "Documenti e strumenti abilitati"
+          },
+          {
+            "heading": "Verifica",
+            "text": "Confronto delle prove raccolte"
+          },
+          {
+            "heading": "Risposta",
+            "text": "Riferimenti e limiti visibili"
+          }
+        ]
+      },
+      "visible_word_count": 31,
+      "timing_seconds": 55,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          4
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-002",
+          "F-018",
+          "F-025"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-004",
+          "P-005",
+          "P-049",
+          "P-050",
+          "P-067",
+          "P-068"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Spiegare i passaggi in circa un minuto, seguendo la direzione del diagramma. Il profilo del progetto e le autorizzazioni configurate delimitano il lavoro. Il sistema può coordinare fonti documentali e strumenti live, anche in parallelo quando le attività sono indipendenti. La risposta conserva attribuzione, cronologia e riferimenti. Se le prove non bastano, può restare parziale. Il processo non elimina ogni errore e non va descritto come una certificazione della risposta. La persona può aprire la fonte e valutare il contenuto. Passaggio: chiarire chi usa, cura e governa questo percorso.\n\nRiferimenti redazionali: PDF pp. 4. Funzionalità: F-001, F-002, F-018, F-025. Fonti: P-001, P-002, P-004, P-005, P-049, P-050, P-067, P-068.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "five_step_journey",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Cinque tappe con rettangoli e collegamenti nativi modificabili.",
+          "Numerazione piccola ruggine 01-05, parole principali Georgia.",
+          "Le frecce sono connettori PowerPoint, non caratteri o immagini."
+        ]
+      }
+    },
+    {
+      "id": "SL-04",
+      "number": 4,
+      "kicker": "LE PERSONE / COMPITI DIVERSI",
+      "title": "Chi cerca, chi cura, chi governa.",
+      "purpose": "La conoscenza rimane un lavoro delle persone, con ruoli distinti.",
+      "main_message": "La conoscenza rimane un lavoro delle persone, con ruoli distinti.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Chi cerca",
+            "text": "Ritrova una risposta e apre le fonti."
+          },
+          {
+            "heading": "Chi cura",
+            "text": "Aggiorna documenti e riconosce ciò che approva."
+          },
+          {
+            "heading": "Chi governa",
+            "text": "Definisce accessi, strumenti e responsabilità."
+          }
+        ],
+        "callout": "Un patrimonio comune, con regole da configurare."
+      },
+      "visible_word_count": 38,
+      "timing_seconds": 40,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          5,
+          6
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-008",
+          "F-034",
+          "F-035",
+          "F-036",
+          "F-037",
+          "F-049"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-021",
+          "P-022",
+          "P-094",
+          "P-095",
+          "P-097",
+          "P-098",
+          "P-099",
+          "P-100",
+          "P-102",
+          "P-103",
+          "P-136",
+          "P-137"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Presentare tre responsabilità, non un sistema di ruoli rigido per ogni cliente. Il lettore usa il patrimonio; il curatore mantiene documenti, stati e collegamenti; chi governa configura l’ambiente, i modelli e l’accesso. Organizzazioni, progetti e fonti permettono confini diversi, da predisporre e verificare. Non dare per attivo l’isolamento per progetto su una nuova installazione. I moduli di protezione e governance sostengono i processi organizzativi ma non costituiscono conformità automatica. Passaggio: i cinque scenari seguenti mostrano questi compiti al lavoro.\n\nRiferimenti redazionali: PDF pp. 5, 6. Funzionalità: F-001, F-008, F-034, F-035, F-036, F-037, F-049. Fonti: P-001, P-002, P-021, P-022, P-094, P-095, P-097, P-098, P-099, P-100, P-102, P-103, P-136, P-137.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "people_roles",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/community-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Illustrazione nel terzo sinistro; tre righe a destra con titoli brevi.",
+          "Evitare icone di persone sintetiche: il visual è già umano e narrativo."
+        ]
+      }
+    },
+    {
+      "id": "SL-05",
+      "number": 5,
+      "kicker": "CASO 1 / SCENARIO DIMOSTRATIVO",
+      "title": "Il ticket di oggi incontra l’esperienza di ieri.",
+      "purpose": "Assistenza: usare il precedente documentato insieme al caso corrente.",
+      "main_message": "Assistenza: usare il precedente documentato insieme al caso corrente.",
+      "visible": {
+        "quote": "«Abbiamo già affrontato un problema simile?»",
+        "body": [
+          "Storico importato, procedure e ticket corrente aiutano a ricostruire gli interventi documentati.",
+          "Le fonti restano apribili. Un ticket chiuso non prova da solo l’esito positivo."
+        ]
+      },
+      "visible_word_count": 39,
+      "timing_seconds": 65,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          7
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-011",
+          "F-024",
+          "F-025"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-029",
+          "P-030",
+          "P-056",
+          "P-065",
+          "P-067",
+          "P-068"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Scenario dimostrativo, non una testimonianza cliente. Un operatore riceve una segnalazione già incontrata: la ricerca può collegare procedure del progetto e casi precedenti, mentre i tool Freshdesk leggono il ticket corrente. Il risultato mantiene distinti il passato, la regola e lo stato osservato adesso. Le eventuali schede problema-causa-intervento-esito richiedono generatore, opzioni e versione compatibile del pacchetto: non ogni installazione le offre. Nessun messaggio viene inviato al cliente e nessun ticket viene aggiornato automaticamente dal percorso descritto. Passaggio: la stessa distinzione fra regola e dato corrente torna nelle operations.\n\nRiferimenti redazionali: PDF pp. 7. Funzionalità: F-001, F-011, F-024, F-025. Fonti: P-001, P-002, P-029, P-030, P-056, P-065, P-067, P-068.",
+      "condition_for_presenter": "Presentare sempre come scenario. Import, tool live ed eventuali schede devono essere predisposti.",
+      "visual": {
+        "layout": "case_image_left",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/marketing/immagini/presentazione-prodotto/assistenza-memoria.png",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Immagine 56% a sinistra; titolo e domanda sul 40% destro.",
+          "Due frasi visibili, con l’ultima in riquadro verde pallido.",
+          "Etichetta scenario dimostrativo sempre leggibile nel kicker."
+        ]
+      }
+    },
+    {
+      "id": "SL-06",
+      "number": 6,
+      "kicker": "CASO 2 / SCENARIO DIMOSTRATIVO",
+      "title": "La regola incontra il dato di adesso.",
+      "purpose": "Operations: leggere una procedura insieme al riscontro del gestionale.",
+      "main_message": "Operations: leggere una procedura insieme al riscontro del gestionale.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "La procedura",
+            "text": "Spiega quale passaggio si applica."
+          },
+          {
+            "heading": "Il gestionale",
+            "text": "Restituisce lo stato osservato dell’ordine."
+          }
+        ],
+        "callout": "Una conversazione collega i due riscontri e mantiene visibili le rispettive fonti."
+      },
+      "visible_word_count": 33,
+      "timing_seconds": 65,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          8
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-025",
+          "F-026",
+          "F-027"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-067",
+          "P-068",
+          "P-070",
+          "P-071",
+          "P-073",
+          "P-074"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Il manuale non aggiorna lo stato dell’ordine; il gestionale non spiega necessariamente il criterio aziendale da applicare. Una domanda può richiamare entrambi attraverso le API di lettura configurate per il progetto. Identificativi, mapping e dipendenze devono essere verificati. Il riferimento API rende ispezionabile la chiamata e il momento dell’osservazione. Un collegamento a GESCAT o a un altro gestionale è un’integrazione specifica, non un connettore universale già pronto. I tool composti sono opzionali e di sola lettura nella consegna descritta. Passaggio: una pratica può avere altrettanta dispersione nel suo archivio email.\n\nRiferimenti redazionali: PDF pp. 8. Funzionalità: F-001, F-025, F-026, F-027. Fonti: P-001, P-002, P-067, P-068, P-070, P-071, P-073, P-074.",
+      "condition_for_presenter": "Servono endpoint di lettura raggiungibili, credenziali e mapping. Nessuna azione su ordini promessa.",
+      "visual": {
+        "layout": "case_rule_and_live",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/marketing/immagini/presentazione-prodotto/conoscenza-operazioni.png",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Titolo in alto; due brevi colonne per regola e dato.",
+          "Illustrazione panoramica nella metà inferiore, senza testo sovrapposto all’attività umana."
+        ]
+      }
+    },
+    {
+      "id": "SL-07",
+      "number": 7,
+      "kicker": "CASO 3 / SCENARIO DIMOSTRATIVO",
+      "title": "Una pratica ritrova il suo filo.",
+      "purpose": "La ricerca ricostruisce conversazioni senza confondere testo e classificazioni automatiche.",
+      "main_message": "La ricerca ricostruisce conversazioni senza confondere testo e classificazioni automatiche.",
+      "visible": {
+        "body": [
+          "Messaggi, risposte e allegati compongono la storia della pratica.",
+          "Categorie e tag possono aiutare a cercarla. La risposta torna agli originali e distingue ciò che resta da chiarire."
+        ]
+      },
+      "visible_word_count": 34,
+      "timing_seconds": 65,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          9
+        ],
+        "feature_ids": [
+          "F-022",
+          "F-023"
+        ],
+        "source_ids": [
+          "P-059",
+          "P-060",
+          "P-062",
+          "P-063"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "L’amministratore decide quali mailbox e cartelle o etichette importare. IMAP, Gmail e Microsoft Mail hanno sincronizzazioni e policy proprie. Il triage è un’opzione: regole, revisione, salvataggio e attivazione sono momenti distinti, e l’account nasce disattivato. Le campagne possono applicare un profilo allo storico selezionato, con pause e riprese. Nella risposta il sistema riapre gli originali verificati; un tag o una scheda generata non diventa una frase del mittente. Gli allegati esclusi o non disponibili rimangono un limite di copertura. Passaggio: ricostruire il filo serve anche a chi entra in un team.\n\nRiferimenti redazionali: PDF pp. 9. Funzionalità: F-022, F-023. Fonti: P-059, P-060, P-062, P-063.",
+      "condition_for_presenter": "Mailbox autorizzata e importata; il triage richiede attivazione. Il percorso non invia email.",
+      "visual": {
+        "layout": "case_archive_steps",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/archive-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Crop verticale dell’archivio sul 44% sinistro.",
+          "Sul lato destro due blocchi testuali con sottili segnalibri ruggine."
+        ]
+      }
+    },
+    {
+      "id": "SL-08",
+      "number": 8,
+      "kicker": "CASO 4 / SCENARIO DIMOSTRATIVO",
+      "title": "Chi entra trova anche il perché.",
+      "purpose": "Onboarding: trasferire il modo di lavorare insieme al contesto delle scelte.",
+      "main_message": "Onboarding: trasferire il modo di lavorare insieme al contesto delle scelte.",
+      "visible": {
+        "quote": "«Qual è la procedura vigente, e perché è stata scelta?»",
+        "body": [
+          "Runbook, decisioni, incidenti e alternative scartate possono restare collegati.",
+          "Le sintesi automatiche aiutano a orientarsi; il team cura ciò che riconosce come proprio."
+        ]
+      },
+      "visible_word_count": 39,
+      "timing_seconds": 65,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          10
+        ],
+        "feature_ids": [
+          "F-010",
+          "F-011",
+          "F-012"
+        ],
+        "source_ids": [
+          "P-026",
+          "P-027",
+          "P-029",
+          "P-030",
+          "P-032",
+          "P-033"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Il nuovo collega ha bisogno sia della procedura sia delle ragioni. Il livello canonico conserva tipi, stati e relazioni: decisioni, runbook, standard, incidenti e approcci scartati. Quando le funzioni del grafo sono abilitate e le fonti sono pertinenti, il contesto correlato può entrare nella ricerca. Auto-Wiki produce un livello derivato distinto dal materiale approvato; il sistema non inventa le decisioni mancanti né rende attuale una procedura per il solo fatto di citarla. La qualità dipende dal lavoro editoriale del team. Passaggio: lo stesso patrimonio può accompagnare un lavoro già aperto in un client AI.\n\nRiferimenti redazionali: PDF pp. 10. Funzionalità: F-010, F-011, F-012. Fonti: P-026, P-027, P-029, P-030, P-032, P-033.",
+      "condition_for_presenter": "Documenti, stati editoriali e collegamenti devono essere curati. Nessuna approvazione autonoma dell’AI.",
+      "visual": {
+        "layout": "case_memory_right",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/community-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Immagine a destra, testo a sinistra; invertire il ritmo rispetto al caso precedente.",
+          "Domanda in Georgia Italic nel richiamo, non come screenshot di chat."
+        ]
+      }
+    },
+    {
+      "id": "SL-09",
+      "number": 9,
+      "kicker": "CASO 5 / SCENARIO DIMOSTRATIVO",
+      "title": "Il progetto accompagna il lavoro.",
+      "purpose": "MCP: usare fonti autorizzate del progetto nel client AI compatibile.",
+      "main_message": "MCP: usare fonti autorizzate del progetto nel client AI compatibile.",
+      "visible": {
+        "body": [
+          "Una connessione MCP porta ricerca e lettura nei client AI compatibili.",
+          "Azienda, progetto e consenso mantengono il perimetro riconoscibile. Aggiungere documenti richiede la conferma sul set di file preparato."
+        ]
+      },
+      "visible_word_count": 34,
+      "timing_seconds": 65,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          11
+        ],
+        "feature_ids": [
+          "F-028",
+          "F-029",
+          "F-030"
+        ],
+        "source_ids": [
+          "P-077",
+          "P-078",
+          "P-080",
+          "P-081",
+          "P-083",
+          "P-084"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "La persona sta preparando una proposta, un intervento o una modifica in un altro strumento. Una connessione autorizzata può rendere consultabile il progetto da client come Codex, Claude e Cursor. Occorrono origine raggiungibile, compatibilità del client e configurazione OAuth. Il grant non autorizza tutta l’organizzazione indistintamente ed è soggetto agli accessi correnti. Per importare documenti, il sistema prepara un set privato che l’utente rivede e approva nel browser. Non promettere una directory pubblica, la compatibilità con qualsiasi client o una delega PACT attiva. Passaggio: rivedere i gruppi funzionali che sostengono questi scenari.\n\nRiferimenti redazionali: PDF pp. 11. Funzionalità: F-028, F-029, F-030. Fonti: P-077, P-078, P-080, P-081, P-083, P-084.",
+      "condition_for_presenter": "Client compatibile, origine raggiungibile e consenso. Non presentare PACT come parte di questo percorso.",
+      "visual": {
+        "layout": "case_bridge_panorama",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/connections-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Panorama dei ponti a destra e in basso; pannello avorio per il testo nella parte sinistra.",
+          "Nessun logo di client terzo necessario: i nomi restano nelle note."
+        ]
+      }
+    },
+    {
+      "id": "SL-10",
+      "number": 10,
+      "kicker": "FUNZIONALITÀ / FONTI E DOCUMENTI",
+      "title": "Ogni fonte entra con identità e storia.",
+      "purpose": "Una pipeline comune trasforma le fonti scelte in contenuti consultabili.",
+      "main_message": "Una pipeline comune trasforma le fonti scelte in contenuti consultabili.",
+      "visible": {
+        "steps": [
+          {
+            "heading": "Acquisire",
+            "text": "File e contenuti selezionati"
+          },
+          {
+            "heading": "Preparare",
+            "text": "Conversione e indicizzazione"
+          },
+          {
+            "heading": "Curare",
+            "text": "Versioni, metadati e revisioni"
+          }
+        ],
+        "callout": "Scansioni e revisione OCR sono capacità opzionali, da attivare nell’installazione."
+      },
+      "visible_word_count": 31,
+      "timing_seconds": 50,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          15,
+          20,
+          21,
+          24
+        ],
+        "feature_ids": [
+          "F-005",
+          "F-006",
+          "F-007",
+          "F-008",
+          "F-009",
+          "F-021",
+          "F-022",
+          "F-024",
+          "F-054"
+        ],
+        "source_ids": [
+          "P-012",
+          "P-013",
+          "P-015",
+          "P-016",
+          "P-019",
+          "P-020",
+          "P-021",
+          "P-022",
+          "P-023",
+          "P-024",
+          "P-056",
+          "P-057",
+          "P-059",
+          "P-060",
+          "P-061",
+          "P-065",
+          "P-150"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "La base standard tratta Markdown, testo, PDF con testo e DOCX, da upload, cartella, API e connettori. Le fonti supportate comprendono archivi collaborativi, email e helpdesk; ogni connessione ha limiti e permessi propri. Una versione identica è riconosciuta; gli aggiornamenti mantengono una storia. Gli operatori autorizzati possono modificare, confrontare o ripristinare documenti. OCR e revisione della digitalizzazione richiedono attivazione e driver appropriati. Distinguere il download dall’indicizzazione completata: code, worker e stato degli import fanno parte del processo. Passaggio: il contenuto consultabile può avere livelli diversi di cura e autorità.\n\nRiferimenti redazionali: PDF pp. 15, 20, 21, 24. Funzionalità: F-005, F-006, F-007, F-008, F-009, F-021, F-022, F-024, F-054. Fonti: P-012, P-013, P-015, P-016, P-019, P-020, P-021, P-022, P-023, P-024, P-056, P-057, P-059, P-060, P-061, P-065, P-150.",
+      "condition_for_presenter": "Non dichiarare supporto a qualsiasi formato o scansione senza prerequisiti.",
+      "visual": {
+        "layout": "document_pipeline",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/processes-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre passaggi nativi sopra una striscia illustrata bassa.",
+          "Oggetti documentali astratti, senza dati o risultati inventati."
+        ]
+      }
+    },
+    {
+      "id": "SL-11",
+      "number": 11,
+      "kicker": "FUNZIONALITÀ / CONOSCENZA CURATA",
+      "title": "L’autorevolezza conserva una storia.",
+      "purpose": "Il prodotto distingue fonti, contenuti automatici e decisioni riconosciute dal team.",
+      "main_message": "Il prodotto distingue fonti, contenuti automatici e decisioni riconosciute dal team.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Documenti",
+            "text": "Fonti con identità, stato e relazioni."
+          },
+          {
+            "heading": "Auto-Wiki",
+            "text": "Indici e sintesi generati dalle fonti."
+          },
+          {
+            "heading": "Conoscenza approvata",
+            "text": "Il team valuta ciò che promuove e mantiene."
+          }
+        ],
+        "callout": "L’AI propone. Le persone riconoscono le decisioni."
+      },
+      "visible_word_count": 35,
+      "timing_seconds": 55,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          16,
+          18
+        ],
+        "feature_ids": [
+          "F-010",
+          "F-011",
+          "F-012",
+          "F-013"
+        ],
+        "source_ids": [
+          "P-026",
+          "P-027",
+          "P-029",
+          "P-030",
+          "P-032",
+          "P-033",
+          "P-036",
+          "P-037"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Spiegare che questi sono livelli leggibili del patrimonio, non un automatismo che porta ogni testo al grado successivo. I documenti canonici hanno tipi e stati; grafo e memoria degli approcci scartati possono aggiungere contesto alle risposte. Auto-Wiki compila pagine e indici, con strumenti di salute, revisione e manutenzione. Gli operatori possono promuovere o scartare pagine. L’approvazione non elimina l’eventuale provenienza esterna e non prova che un documento sia sempre aggiornato. La cura umana resta parte del servizio. Passaggio: anche le domande possono essere rese ripetibili su molti documenti.\n\nRiferimenti redazionali: PDF pp. 16, 18. Funzionalità: F-010, F-011, F-012, F-013. Fonti: P-026, P-027, P-029, P-030, P-032, P-033, P-036, P-037.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "three_knowledge_layers",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre colonne su carta, ciascuna con barra superiore verde/ruggine/grigio.",
+          "Nessuna freccia che suggerisca promozione automatica.",
+          "Solo la terza colonna ha un sottile bordo verde, non un bollino di certificazione."
+        ]
+      }
+    },
+    {
+      "id": "SL-12",
+      "number": 12,
+      "kicker": "FUNZIONALITÀ / RICERCA E REPORT",
+      "title": "La stessa domanda attraversa più documenti.",
+      "purpose": "Report e strumenti di cura rendono confrontabile la lettura del corpus.",
+      "main_message": "Report e strumenti di cura rendono confrontabile la lettura del corpus.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Cercare",
+            "text": "Collezioni, glossario e profili del progetto."
+          },
+          {
+            "heading": "Confrontare",
+            "text": "Matrici con sintesi, motivazioni e citazioni."
+          },
+          {
+            "heading": "Migliorare",
+            "text": "Analisi, contenuti mancanti e workflow riutilizzabili."
+          }
+        ]
+      },
+      "visible_word_count": 27,
+      "timing_seconds": 55,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          17,
+          19
+        ],
+        "feature_ids": [
+          "F-014",
+          "F-015",
+          "F-016",
+          "F-017",
+          "F-018",
+          "F-019",
+          "F-020"
+        ],
+        "source_ids": [
+          "P-039",
+          "P-040",
+          "P-042",
+          "P-043",
+          "P-044",
+          "P-045",
+          "P-047",
+          "P-048",
+          "P-049",
+          "P-050",
+          "P-051",
+          "P-052",
+          "P-054",
+          "P-055"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "La ricerca può essere contestualizzata con profili, sinonimi e collezioni. La modalità ibrida full-text è una configurazione aggiuntiva, non il comportamento universale da promettere. Tabular Reviews applica una griglia ai documenti: le celle possono contenere sintesi, flag, ragioni e citazioni. Le colonne di estrazione, quelle deterministiche del grafo e le verifiche aggiuntive hanno significati e costi diversi. I workflow riusano configurazioni e possono essere condivisi secondo diritti. Doc Insights, Analysis Gate e Content Gaps aiutano il curatore a scegliere cosa rivedere. Passaggio: mostrare dove le persone seguono questo lavoro.\n\nRiferimenti redazionali: PDF pp. 17, 19. Funzionalità: F-014, F-015, F-016, F-017, F-018, F-019, F-020. Fonti: P-039, P-040, P-042, P-043, P-044, P-045, P-047, P-048, P-049, P-050, P-051, P-052, P-054, P-055.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "research_to_matrix",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre blocchi nativi con spazio centrale per una griglia astratta modificabile.",
+          "La griglia non deve contenere valori di valutazione o KPI simulati: usare solo etichette neutre come Documento / Aspetto / Fonte.",
+          "Se non c’è spazio, privilegiare i tre blocchi e omettere la griglia decorativa."
+        ]
+      }
+    },
+    {
+      "id": "SL-13",
+      "number": 13,
+      "kicker": "FUNZIONALITÀ / WORKSPACE E CANALI",
+      "title": "Il canale segue il contesto.",
+      "purpose": "Le persone possono accedere al patrimonio da superfici adatte al loro lavoro.",
+      "main_message": "Le persone possono accedere al patrimonio da superfici adatte al loro lavoro.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Web",
+            "text": "Sessioni, documenti e fonti da consultare."
+          },
+          {
+            "heading": "Widget",
+            "text": "Assistenza contestuale nel sito ospite."
+          },
+          {
+            "heading": "Voce",
+            "text": "Conversazione realtime quando configurata."
+          },
+          {
+            "heading": "Desktop",
+            "text": "Un accesso dedicato, con storia locale."
+          }
+        ]
+      },
+      "visible_word_count": 30,
+      "timing_seconds": 55,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          14,
+          25
+        ],
+        "feature_ids": [
+          "F-003",
+          "F-004",
+          "F-031",
+          "F-032",
+          "F-033"
+        ],
+        "source_ids": [
+          "P-007",
+          "P-008",
+          "P-010",
+          "P-011",
+          "P-085",
+          "P-086",
+          "P-088",
+          "P-089",
+          "P-091",
+          "P-092"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Nel web le sessioni personali possono essere organizzate, archiviate e riprese, anche con ricerche in background e non letti. Browse KB permette di aprire direttamente i documenti. Il widget KITT si integra come helper, inline o fullscreen; identità, origini e strumenti pagina richiedono configurazione. La voce dipende dal provider e dal microfono, mantenendo i tool nel backend. Il desktop ha una propria storia locale e non va equiparato alle sessioni web agentiche e vocali. Il lavoro mobile documentato non è una nuova beta pronta: piattaforma, QA e distribuzione restano da completare. Passaggio: distinguere i modi in cui le fonti e gli strumenti si collegano.\n\nRiferimenti redazionali: PDF pp. 14, 25. Funzionalità: F-003, F-004, F-031, F-032, F-033. Fonti: P-007, P-008, P-010, P-011, P-085, P-086, P-088, P-089, P-091, P-092.",
+      "condition_for_presenter": "Non presentare tutte le superfici come equivalenti o universalmente attive; mobile non pronto da promettere.",
+      "visual": {
+        "layout": "four_channels",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/dialogue-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Quattro riquadri 2x2 sul 62% sinistro, immagine sul 34% destro.",
+          "Niente icone di piattaforma non necessarie; i nomi dei canali bastano."
+        ]
+      }
+    },
+    {
+      "id": "SL-14",
+      "number": 14,
+      "kicker": "FUNZIONALITÀ / CONNESSIONI",
+      "title": "Ogni collegamento ha un compito.",
+      "purpose": "Connettori, API e MCP svolgono lavori diversi sullo stesso patrimonio.",
+      "main_message": "Connettori, API e MCP svolgono lavori diversi sullo stesso patrimonio.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Connettori",
+            "text": "Importano le fonti selezionate."
+          },
+          {
+            "heading": "API aziendali",
+            "text": "Consultano dati correnti dai sistemi configurati."
+          },
+          {
+            "heading": "MCP",
+            "text": "Rende accessibili capacità autorizzate ai client compatibili."
+          }
+        ],
+        "callout": "Configurazioni, credenziali e copertura vanno preparate per ciascuna integrazione."
+      },
+      "visible_word_count": 35,
+      "timing_seconds": 50,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          20,
+          22,
+          23
+        ],
+        "feature_ids": [
+          "F-021",
+          "F-025",
+          "F-026",
+          "F-027",
+          "F-028",
+          "F-029",
+          "F-030"
+        ],
+        "source_ids": [
+          "P-056",
+          "P-057",
+          "P-067",
+          "P-068",
+          "P-070",
+          "P-071",
+          "P-073",
+          "P-074",
+          "P-077",
+          "P-078",
+          "P-080",
+          "P-081",
+          "P-083",
+          "P-084"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Riepilogare tre ruoli, senza presentare un accesso universale a ogni sistema. I connettori portano nel corpus i contenuti scelti; il connettore MCP remoto può anche accedere a capacità del server configurato, da distinguere dal server MCP in uscita. Le route API preparano strumenti live; i pacchetti JSON/ZIP trasferiscono configurazioni senza portare intenzionalmente i segreti. I tool API composti organizzano sequenze di lettura, con versioni, verifiche, code e attivazione esplicita. Il server MCP e OAuth gestiscono accesso dei client al progetto. Token, revoca e audit fanno parte della gestione. Passaggio: le connessioni hanno bisogno di confini e responsabilità.\n\nRiferimenti redazionali: PDF pp. 20, 22, 23. Funzionalità: F-021, F-025, F-026, F-027, F-028, F-029, F-030. Fonti: P-056, P-057, P-067, P-068, P-070, P-071, P-073, P-074, P-077, P-078, P-080, P-081, P-083, P-084.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "connection_roles",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/connections-night.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre fasce orizzontali native con nome breve e descrizione.",
+          "Panorama notturno in una fascia inferiore o sulla destra; testo sempre su fondo uniforme avorio."
+        ]
+      }
+    },
+    {
+      "id": "SL-15",
+      "number": 15,
+      "kicker": "FUNZIONALITÀ / ACCESSI E DATI",
+      "title": "Definire chi può vedere e governare.",
+      "purpose": "Gli strumenti di governo permettono scelte esplicite su accessi e trattamento dei dati.",
+      "main_message": "Gli strumenti di governo permettono scelte esplicite su accessi e trattamento dei dati.",
+      "visible": {
+        "body": [
+          "Organizzazioni, progetti, ruoli e permessi delle fonti delimitano il lavoro secondo le policy configurate.",
+          "Protezione dei dati, registri e revisione delle evidenze sostengono i processi del team."
+        ],
+        "callout": "Le funzioni non costituiscono una conformità legale automatica."
+      },
+      "visible_word_count": 41,
+      "timing_seconds": 60,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          6,
+          27
+        ],
+        "feature_ids": [
+          "F-034",
+          "F-035",
+          "F-036",
+          "F-037",
+          "F-047",
+          "F-048",
+          "F-049",
+          "F-050",
+          "F-051"
+        ],
+        "source_ids": [
+          "P-018",
+          "P-094",
+          "P-095",
+          "P-097",
+          "P-098",
+          "P-099",
+          "P-100",
+          "P-102",
+          "P-103",
+          "P-131",
+          "P-132",
+          "P-135",
+          "P-136",
+          "P-137",
+          "P-139",
+          "P-140",
+          "P-141",
+          "P-142"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Le organizzazioni hanno un contesto separato; le restrizioni per progetto e fonte devono essere impostate e verificate. Source Permissions offre anche il triage delle identità esterne senza concedere accesso automaticamente. PII consente masking e tokenizzazione su percorsi attivati; non è anonimizzazione automatica. Guardrails e firewall di provenienza distinguono fonti da citare e istruzioni per gli strumenti. AI Act, Compliance ed Evidence & Risk offrono registrazioni, processi e giudizi sulle prove, con moduli e attivazioni specifiche. Non promettere certificazioni, eliminazione di ogni rischio o adempimenti legali completi. Passaggio: il patrimonio richiede anche contributi e segnali di attenzione.\n\nRiferimenti redazionali: PDF pp. 6, 27. Funzionalità: F-034, F-035, F-036, F-037, F-047, F-048, F-049, F-050, F-051. Fonti: P-018, P-094, P-095, P-097, P-098, P-099, P-100, P-102, P-103, P-131, P-132, P-135, P-136, P-137, P-139, P-140, P-141, P-142.",
+      "condition_for_presenter": "Project isolation, PII ed Evidence & Risk non vanno presentati come attivi nel default.",
+      "visual": {
+        "layout": "governance_boundaries",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/trust-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Titolo e due frasi sul 58% sinistro, illustrazione sul 37% destro.",
+          "Richiamo legale piccolo ma leggibile nel box verde pallido.",
+          "Evitare scudi/certificazioni o lucchetti che suggeriscano garanzie assolute."
+        ]
+      }
+    },
+    {
+      "id": "SL-16",
+      "number": 16,
+      "kicker": "FUNZIONALITÀ / ORGANIZZAZIONE E PARTECIPAZIONE",
+      "title": "Il patrimonio vive nel contributo del team.",
+      "purpose": "Partecipazione e indicatori aiutano a decidere dove curare la conoscenza.",
+      "main_message": "Partecipazione e indicatori aiutano a decidere dove curare la conoscenza.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Accogliere",
+            "text": "Inviti e accessi nel contesto previsto."
+          },
+          {
+            "heading": "Contribuire",
+            "text": "Documenti, revisioni e conoscenza condivisa."
+          },
+          {
+            "heading": "Dare attenzione",
+            "text": "My KB, digest, notifiche e indicatori del patrimonio."
+          }
+        ],
+        "callout": "I segnali orientano il lavoro dei curatori."
+      },
+      "visible_word_count": 37,
+      "timing_seconds": 45,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          14,
+          26
+        ],
+        "feature_ids": [
+          "F-038",
+          "F-041",
+          "F-042",
+          "F-043",
+          "F-044",
+          "F-045"
+        ],
+        "source_ids": [
+          "P-105",
+          "P-106",
+          "P-113",
+          "P-114",
+          "P-115",
+          "P-116",
+          "P-118",
+          "P-119",
+          "P-121",
+          "P-122",
+          "P-125",
+          "P-126"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "L’amministrazione organizza aziende, progetti e persone; inviti e codici possono attribuire gli accessi previsti, con campagne e funzioni di onboarding configurate. Dashboard ed Engagement leggono i contributi e lo stato della conoscenza; My KB mostra il contesto personale. Digest e notifiche portano aggiornamenti e richieste di attenzione nei canali predisposti. AI Insights e coaching possono proporre approfondimenti. Queste metriche non misurano il valore delle persone o una produttività economica complessiva; dipendono dai dati registrati e dalle definizioni usate. Passaggio: governo dell’installazione comprende anche la scelta e il costo dell’AI.\n\nRiferimenti redazionali: PDF pp. 14, 26. Funzionalità: F-038, F-041, F-042, F-043, F-044, F-045. Fonti: P-105, P-106, P-113, P-114, P-115, P-116, P-118, P-119, P-121, P-122, P-125, P-126.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "participation_loop",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre tappe disposte a triangolo aperto o tre colonne, tutte native e modificabili.",
+          "Connettori sottili senza suggerire un processo automatico obbligato."
+        ]
+      }
+    },
+    {
+      "id": "SL-17",
+      "number": 17,
+      "kicker": "FUNZIONALITÀ / MODELLI E COSTI",
+      "title": "Scegliere l’intelligenza, osservarne il consumo.",
+      "purpose": "Configurazione e misurazione permettono di valutare il servizio nel suo ambiente.",
+      "main_message": "Configurazione e misurazione permettono di valutare il servizio nel suo ambiente.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Configurare",
+            "text": "Provider, modelli e istruzioni per gli ambiti ammessi."
+          },
+          {
+            "heading": "Valutare",
+            "text": "Cataloghi con disponibilità, prezzo, fonte e data."
+          },
+          {
+            "heading": "Osservare",
+            "text": "Chiamate, token e costi nei percorsi coperti."
+          }
+        ],
+        "callout": "Misurare i consumi e bloccare un budget sono scelte distinte."
+      },
+      "visible_word_count": 40,
+      "timing_seconds": 50,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          28
+        ],
+        "feature_ids": [
+          "F-046",
+          "F-057",
+          "F-058"
+        ],
+        "source_ids": [
+          "P-127",
+          "P-128",
+          "P-157",
+          "P-158",
+          "P-161",
+          "P-162"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "La configurazione governata offre impostazioni ammesse per tenant e progetto; i segreti restano in percorsi dedicati. L’assistente può proporre una bozza che l’operatore rivede e salva. I cataloghi interrogano il provider, distinguendo prezzi mancanti e dati obsoleti. FinOps registra usage e costi nei percorsi coperti e può esporre budget, previsioni e avvisi. Il metering è diverso dall’enforcement, che va attivato deliberatamente; alcune chiamate legacy sono misurate dopo l’esecuzione. Listino del modello e costo totale del servizio non coincidono. Installazione controllata non implica che i contenuti inviati a provider remoti rimangano sul server. Passaggio: osservare il sistema che rende queste funzioni disponibili.\n\nRiferimenti redazionali: PDF pp. 28. Funzionalità: F-046, F-057, F-058. Fonti: P-127, P-128, P-157, P-158, P-161, P-162.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "models_and_costs",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Titolo alto, tre colonne essenziali e richiamo basso.",
+          "Nessun numero di prezzo, grafico economico o risparmio inventato."
+        ]
+      }
+    },
+    {
+      "id": "SL-18",
+      "number": 18,
+      "kicker": "FUNZIONALITÀ / QUALITÀ E OPERAZIONI",
+      "title": "Sapere come sta il sistema che risponde.",
+      "purpose": "Log, valutazioni e manutenzione rendono leggibili processi e interventi consentiti.",
+      "main_message": "Log, valutazioni e manutenzione rendono leggibili processi e interventi consentiti.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Osservare",
+            "text": "Log, diagnostica, code e sincronizzazioni."
+          },
+          {
+            "heading": "Verificare",
+            "text": "Domande di riferimento, baseline e metriche."
+          },
+          {
+            "heading": "Intervenire",
+            "text": "Pipeline, manutenzione e amministrazione autorizzata."
+          }
+        ],
+        "callout": "Stato e cronologia accompagnano il lavoro dalla fonte alla risposta."
+      },
+      "visible_word_count": 36,
+      "timing_seconds": 45,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          24,
+          29
+        ],
+        "feature_ids": [
+          "F-039",
+          "F-040",
+          "F-052",
+          "F-053",
+          "F-054",
+          "F-055",
+          "F-056"
+        ],
+        "source_ids": [
+          "P-061",
+          "P-107",
+          "P-108",
+          "P-110",
+          "P-111",
+          "P-144",
+          "P-145",
+          "P-147",
+          "P-148",
+          "P-150",
+          "P-152",
+          "P-153",
+          "P-155",
+          "P-156"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Flows segue pipeline e stati delle run, comprese approvazioni o compensazioni quando previste. Ingestion & Sync distingue acquisizione e indicizzazione. Log ed export aiutano a capire attese, errori e fasi. Eval Harness usa dataset, baseline e metriche per verifiche ripetibili: un test riuscito non prova tutte le domande future. Maintenance offre operazioni limitate e autorizzate, non una shell arbitraria. L’amministrazione di sistema governa tenant e ciclo di vita, distinta dal singolo tenant; Appearance dà coerenza alla presentazione dell’installazione. Tutto richiede servizi operativi, code e configurazioni adeguati. Passaggio: riassumere cosa va preparato prima di una prova.\n\nRiferimenti redazionali: PDF pp. 24, 29. Funzionalità: F-039, F-040, F-052, F-053, F-054, F-055, F-056. Fonti: P-061, P-107, P-108, P-110, P-111, P-144, P-145, P-147, P-148, P-150, P-152, P-153, P-155, P-156.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "operations_triptych",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/observatory-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre colonne sopra una fascia illustrata molto bassa.",
+          "Nessun cruscotto numerico simulato; i tre compiti sono il visual principale."
+        ]
+      }
+    },
+    {
+      "id": "SL-19",
+      "number": 19,
+      "kicker": "DAL PRODOTTO ALL’INSTALLAZIONE",
+      "title": "Ogni capacità ha le sue condizioni.",
+      "purpose": "Una presentazione corretta mantiene visibili prerequisiti e attivazioni.",
+      "main_message": "Una presentazione corretta mantiene visibili prerequisiti e attivazioni.",
+      "visible": {
+        "cards": [
+          {
+            "heading": "Da preparare",
+            "text": "Fonti, accessi, provider e integrazioni."
+          },
+          {
+            "heading": "Da attivare",
+            "text": "OCR, triage, tool composti e controlli opzionali."
+          },
+          {
+            "heading": "Da verificare",
+            "text": "Copertura, compatibilità, piattaforma e qualità delle risposte."
+          }
+        ],
+        "callout": "La disponibilità effettiva dipende dall’ambiente destinatario."
+      },
+      "visible_word_count": 37,
+      "timing_seconds": 50,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          30,
+          31
+        ],
+        "feature_ids": [
+          "F-006",
+          "F-007",
+          "F-015",
+          "F-023",
+          "F-027",
+          "F-033",
+          "F-046",
+          "F-047",
+          "F-048",
+          "F-051"
+        ],
+        "source_ids": [
+          "P-015",
+          "P-016",
+          "P-018",
+          "P-019",
+          "P-020",
+          "P-042",
+          "P-043",
+          "P-062",
+          "P-063",
+          "P-073",
+          "P-074",
+          "P-091",
+          "P-092",
+          "P-127",
+          "P-128",
+          "P-131",
+          "P-132",
+          "P-135",
+          "P-141",
+          "P-142"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "Questa slide mantiene il perimetro della brochure senza trasformarsi in un elenco tecnico. Ricordare che il triage parte disattivato per account; OCR e revisione, full-text aggiuntivo, tool composti e alcuni controlli o console richiedono opzioni dedicate. Le schede Freshdesk richiedono versione compatibile. PII, Evidence & Risk e budget non si attivano per la sola presenza del codice. Mobile e client nativi richiedono verifiche e distribuzione per piattaforma; non promettere una nuova beta pronta. Il livello della prova va concordato nell’ambiente destinatario. Passaggio: chiudere con un progetto piccolo, concreto e valutabile.\n\nRiferimenti redazionali: PDF pp. 30, 31. Funzionalità: F-006, F-007, F-015, F-023, F-027, F-033, F-046, F-047, F-048, F-051. Fonti: P-015, P-016, P-018, P-019, P-020, P-042, P-043, P-062, P-063, P-073, P-074, P-091, P-092, P-127, P-128, P-131, P-132, P-135, P-141, P-142.",
+      "condition_for_presenter": "Non trasformare questa slide in una check-list di sicurezza astratta: parlare delle condizioni concrete del progetto.",
+      "visual": {
+        "layout": "availability_three_columns",
+        "asset_path": null,
+        "asset_role": "Testo e forme native PowerPoint; nessuna schermata inventata.",
+        "crop_mode": null,
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Tre colonne con intestazioni ruggine e testo breve; nessuna tabella fitta.",
+          "Uso di sole forme native, nessuna immagine necessaria."
+        ]
+      }
+    },
+    {
+      "id": "SL-20",
+      "number": 20,
+      "kicker": "IL PRIMO PROGETTO / UNA PROVA CONCRETA",
+      "title": "Partiamo da una domanda che conta.",
+      "purpose": "Proporre un pilot circoscritto valutabile fino alla fonte.",
+      "main_message": "Proporre un pilot circoscritto valutabile fino alla fonte.",
+      "visible": {
+        "steps": [
+          {
+            "heading": "Un compito ricorrente",
+            "text": "Le domande che il team riconosce."
+          },
+          {
+            "heading": "Un corpus curato",
+            "text": "Fonti ammesse e persone responsabili."
+          },
+          {
+            "heading": "Una prova osservabile",
+            "text": "Risposta, citazioni e punti da migliorare."
+          }
+        ],
+        "callout": "Apriamo una fonte. Valutiamo insieme ciò che sostiene la risposta."
+      },
+      "visible_word_count": 42,
+      "timing_seconds": 50,
+      "source": {
+        "pdf_path": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+        "pdf_pages": [
+          12,
+          32
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-017",
+          "F-021",
+          "F-035",
+          "F-037",
+          "F-053"
+        ],
+        "source_ids": [
+          "P-001",
+          "P-002",
+          "P-047",
+          "P-048",
+          "P-056",
+          "P-057",
+          "P-097",
+          "P-098",
+          "P-102",
+          "P-103",
+          "P-147",
+          "P-148"
+        ],
+        "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "speaker_notes": "La proposta conclusiva è un pilot, non un acquisto o una prova gratuita inventata. Scegliere un processo e un piccolo corpus; chiarire chi prepara le fonti e chi valuta le risposte. Raccogliere domande reali e distinguere conoscenza documentale e dati live. Dimostrare domanda, citazione e confronto con l’originale; aggiungere una API di test soltanto se pronta. Valutare pertinenza, copertura, attribuzione, accessi e limiti, registrando le domande non coperte. Il prossimo passo è definire questo perimetro con il referente, senza promettere tempi o ritorni numerici non misurati. Lasciare spazio alle domande del pubblico.\n\nRiferimenti redazionali: PDF pp. 12, 32. Funzionalità: F-001, F-017, F-021, F-035, F-037, F-053. Fonti: P-001, P-002, P-047, P-048, P-056, P-057, P-097, P-098, P-102, P-103, P-147, P-148.",
+      "condition_for_presenter": null,
+      "visual": {
+        "layout": "closing_pilot",
+        "asset_path": "/Users/marco/www/AskMyDocsDev/public/editorial/connections-day.webp",
+        "asset_role": "Illustrazione narrativa già usata nella brochure; non UI, prova runtime o testimonianza.",
+        "crop_mode": "cover",
+        "background": "#fbf8f1",
+        "layout_notes": [
+          "Grande titolo Georgia nella metà superiore; tre passi brevi al centro.",
+          "Panorama basso riprende i ponti dell’apertura, con fascia verde di chiusura e logo.",
+          "Il richiamo conclusivo è testo editabile, non una CTA con link o contatto inventato."
+        ]
+      }
+    }
+  ]
+}

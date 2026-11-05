@@ -1,0 +1,334 @@
+<?php
+
+namespace Tests\Feature\Chat;
+
+use App\Ai\AiManager;
+use App\Ai\AiResponse;
+use App\Models\Conversation;
+use App\Models\User;
+use App\Services\Chat\Reasoning\ConversationReasoning;
+use App\Support\TenantContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Mockery;
+use Tests\TestCase;
+
+class ConversationReasoningTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        app(TenantContext::class)->set('default');
+        config(['reasoning.enabled' => true]);
+        Cache::flush();
+    }
+
+    private function conversation(): Conversation
+    {
+        $user = User::create(['name' => 'Tester', 'email' => uniqid().'@example.test', 'password' => bcrypt('test')]);
+        return Conversation::create(['user_id' => $user->id, 'project_key' => 'demo']);
+    }
+
+    private function interpretation(string $identifier, bool $followup = false): array
+    {
+        $focus = ['topic' => 'shipment', 'identifiers' => [$identifier], 'aspect' => 'status', 'fields' => ['status']];
+        return ['language' => 'it', 'intent' => 'Stato della spedizione '.$identifier, 'action' => 'research', 'kb_queries' => [$identifier],
+            'mentions' => $followup ? [] : [['text' => $identifier, 'type' => 'identifier']], 'references_previous_turn' => $followup,
+            'transition' => $followup ? 'continue' : 'new', 'focus' => $focus, 'subquestions' => [$focus],
+            'resolved_references' => $followup ? [$identifier] : [], 'needs_clarification' => false, 'clarification' => ''];
+    }
+
+    private function ai(array ...$replies): void
+    {
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->times(count($replies))->andReturn(...array_map(fn ($data) => new AiResponse(
+            content: json_encode($data), provider: 'openrouter', model: 'test', promptTokens: 10, completionTokens: 10,
+        ), $replies));
+        $this->app->instance(AiManager::class, $ai);
+    }
+
+    public function test_reopening_and_retry_use_one_interpretation_and_keep_resolved_references_separate(): void
+    {
+        $this->ai($this->interpretation('TRACK-55'), $this->interpretation('TRACK-55', true));
+        $conversation = $this->conversation();
+        $first = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-55']);
+        $memory = app(ConversationReasoning::class);
+        $one = $memory->prepare($conversation, $first, 'TRACK-55');
+        $this->assertTrue($one->available);
+        $memory->prepare($conversation, $first, 'TRACK-55');
+        $next = $conversation->messages()->create(['role' => 'user', 'content' => 'ora la spedizione']);
+        $two = $memory->prepare($conversation->fresh(), $next, 'ora la spedizione');
+        $this->assertSame([], $two->mentions);
+        $this->assertSame(['TRACK-55'], $two->resolvedReferences);
+        $this->assertSame(['TRACK-55'], $conversation->fresh()->reasoning_state['focus']['identifiers']);
+    }
+
+    public function test_invented_context_reference_leaves_previous_focus_unchanged(): void
+    {
+        $this->ai($this->interpretation('TRACK-55'), $this->interpretation('INVENTED', true), $this->interpretation('INVENTED', true));
+        $conversation = $this->conversation();
+        $memory = app(ConversationReasoning::class);
+        $turn = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-55']);
+        $memory->prepare($conversation, $turn, 'TRACK-55');
+        $next = $conversation->messages()->create(['role' => 'user', 'content' => 'dettagli']);
+        $result = $memory->prepare($conversation, $next, 'dettagli');
+        $this->assertFalse($result->available);
+        $this->assertSame(['TRACK-55'], $conversation->fresh()->reasoning_state['focus']['identifiers']);
+    }
+
+    public function test_order_then_email_then_pending_actions_updates_the_task_and_caches_only_the_repaired_turn(): void
+    {
+        config(['reasoning.selective_validation' => true, 'ai.providers.openrouter.key' => 'test']);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response([
+            'model' => 'jev-test', 'answers' => ['matches' => ['type' => 'noul', 'noul' => .02]],
+        ])]);
+        $interpretation = static function (string $aspect, string $question, bool $context, bool $research): array {
+            $focus = ['topic' => 'ordine', 'identifiers' => ['U532638'], 'aspect' => $aspect, 'fields' => $aspect === 'next_steps' ? [] : ['*']];
+            $queries = $research ? ['U532638 '.$aspect] : [];
+            return ['language' => 'it', 'intent' => $question, 'action' => $aspect === 'next_steps' ? 'refine' : 'research',
+                'kb_queries' => $queries, 'mentions' => $context ? [] : [['text' => 'U532638', 'type' => 'identifier']],
+                'references_previous_turn' => $context, 'context_mode' => $context ? 'conversation' : 'new', 'requires_research' => $research,
+                'transition' => $context ? 'continue' : 'new', 'focus' => $focus,
+                'subquestions' => [[...$focus, 'question' => $question, 'kb_queries' => $queries,
+                    'context_mode' => $context ? 'conversation' : 'new', 'requires_research' => $research]],
+                'resolved_references' => $context ? ['U532638'] : [], 'needs_clarification' => false, 'clarification' => ''];
+        };
+        $order = $interpretation('dettagli', 'Cerca informazioni su ORDINE U532638', false, true);
+        $emails = $interpretation('email', "Qualche email a riguardo per l'ordine U532638?", true, true);
+        $nextSteps = $interpretation('next_steps', 'Valutare quali azioni restano da fare per U532638 secondo le email consultate', true, false);
+        $this->ai($order, $emails, $emails, $nextSteps);
+        $conversation = $this->conversation();
+        $memory = app(ConversationReasoning::class);
+        foreach (['Cerca informazioni su ORDINE U532638', 'qualche email a riguardo?'] as $question) {
+            $turn = $conversation->messages()->create(['role' => 'user', 'content' => $question]);
+            $understanding = $memory->prepare($conversation, $turn, $question);
+            $answer = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Previous answer is not evidence.']);
+            $memory->finish($conversation, $turn, $answer, [], [], array_map(fn ($sub) => [...$sub, 'status' => 'answered'], $understanding->subquestions));
+        }
+        $turn = $conversation->messages()->create(['role' => 'user', 'content' => 'Dobbiamo fare qualcosa?']);
+        $result = $memory->prepare($conversation, $turn, $turn->content);
+        $this->assertTrue($result->available);
+        $this->assertSame('next_steps', $conversation->fresh()->reasoning_state['focus']['aspect']);
+        $this->assertSame(['U532638'], $result->targetIdentifiers());
+        $this->assertSame([], $result->kbQueries);
+        $this->assertFalse($result->needsResearch());
+        $this->assertSame($nextSteps['intent'], $conversation->fresh()->reasoning_state['objective']);
+        $reopened = $memory->prepare($conversation->fresh(), $turn->fresh(), $turn->content);
+        $this->assertSame($result->toArray(), $reopened->toArray());
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_source_action_and_server_offers_survive_reopening_without_reinterpreting_or_copying_answer_text(): void
+    {
+        $conversation = $this->conversation();
+        $conversation->messages()->create(['role' => 'assistant', 'content' => 'PRIVATE-FACT not navigation context.',
+            'metadata' => ['grounding' => ['offered_actions' => ['read_source', 'not_a_valid_action']]]]);
+        $turn = $conversation->messages()->create(['role' => 'user', 'content' => 'Aprila']);
+        $interpretation = $this->interpretation('TRACK-55');
+        $interpretation['action'] = 'read_source';
+        $interpretation['mentions'] = [];
+        $interpretation['focus']['identifiers'] = [];
+        $interpretation['subquestions'][0]['identifiers'] = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->withArgs(function ($provider, $prompt, $messages) {
+            $ctx = json_decode($messages[0]['content'], true)['reasoning_context'];
+            $this->assertSame(['read_source'], $ctx['dialogue'][0]['offered_actions']);
+            $this->assertStringNotContainsString('PRIVATE-FACT', json_encode($ctx));
+            return true;
+        })->andReturn(new AiResponse(json_encode($interpretation), 'fake', 'test'));
+        $this->app->instance(AiManager::class, $ai);
+        $memory = app(ConversationReasoning::class);
+        $this->assertTrue($memory->prepare($conversation, $turn, 'Aprila')->asksToReadSource());
+        $this->assertTrue($memory->prepare($conversation->fresh(), $turn->fresh(), 'Aprila')->asksToReadSource());
+        $this->assertSame('read_source', data_get($turn->fresh()->metadata, 'reasoning.understanding.action'));
+    }
+
+    public function test_late_turn_cannot_overwrite_new_focus_and_finish_is_idempotent(): void
+    {
+        $this->ai($this->interpretation('TRACK-NEW'), $this->interpretation('TRACK-OLD'));
+        $conversation = $this->conversation();
+        $old = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-OLD']);
+        $new = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-NEW']);
+        $memory = app(ConversationReasoning::class);
+        $memory->prepare($conversation, $new, 'TRACK-NEW');
+        $memory->prepare($conversation, $old, 'TRACK-OLD');
+        $answer = $conversation->messages()->create(['role' => 'assistant', 'content' => 'A fact.']);
+        $claim = ['text' => 'A fact.', 'evidence_hash' => 'h', 'fact_id' => 'fact'];
+        $memory->finish($conversation, $old, $answer, [], [$claim]);
+        $revision = $conversation->reasoning_state['revision'];
+        $memory->finish($conversation, $old, $answer, [], [$claim]);
+        $this->assertSame($revision, $conversation->fresh()->reasoning_state['revision']);
+        $this->assertSame(['TRACK-NEW'], $conversation->reasoning_state['focus']['identifiers']);
+        $this->assertCount(1, $conversation->reasoning_state['communicated']);
+    }
+
+    public function test_other_conversation_cannot_supply_turn_or_memory(): void
+    {
+        $one = $this->conversation();
+        $two = $this->conversation();
+        $turn = $one->messages()->create(['role' => 'user', 'content' => 'private']);
+        $this->expectException(\DomainException::class);
+        app(ConversationReasoning::class)->prepare($two, $turn, 'private');
+    }
+
+    public function test_source_read_dialogue_remembers_authorized_target_without_copying_business_prose(): void
+    {
+        $conversation = $this->conversation();
+        $document = \App\Models\KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'source_type' => 'text', 'title' => 'Richiesta accesso GestiClaim di Valentina Rinaldi',
+            'source_path' => 'mail/context-source', 'mime_type' => 'text/plain', 'status' => 'active',
+            'document_hash' => 'doc-hash', 'version_hash' => 'version-hash']);
+        $chunk = \App\Models\KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0, 'chunk_hash' => 'chunk-hash',
+            'chunk_text' => 'PRIVATE-BUSINESS-FACT: portal credentials are available.']);
+        $memory = app(ConversationReasoning::class);
+        $refs = $memory->references($conversation, ['documents' => [['document_id' => $document->id,
+            'evidence' => [['chunk_id' => $chunk->id, 'evidence_hash' => 'chunk-hash']]]]]);
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $refs]])->save();
+        $conversation->messages()->create(['role' => 'assistant', 'content' => $chunk->chunk_text, 'metadata' => [
+            'completeness' => 'complete', 'grounding' => ['action' => 'read_source'],
+            'citations' => [['document_id' => $document->id, 'title' => $document->title]],
+        ]]);
+        $context = $memory->context($conversation);
+        $this->assertSame('read_source', $context['dialogue'][0]['action']);
+        $this->assertSame($document->title, $context['dialogue'][0]['sources_shown'][0]['title']);
+        $this->assertStringNotContainsString('PRIVATE-BUSINESS-FACT', json_encode($context));
+        $document->delete();
+        $revoked = $memory->context($conversation);
+        $this->assertSame([], $revoked['dialogue'][0]['sources_shown']);
+        $this->assertStringNotContainsString($document->title, json_encode($revoked));
+    }
+
+    public function test_custom_record_identity_keeps_field_roles_without_copying_other_record_values(): void
+    {
+        $conversation = $this->conversation();
+        $references = app(ConversationReasoning::class)->references($conversation, ['api_tools' => [[
+            'execution_id' => 42, 'tool' => 'erp_orders', 'evidence_hash' => 'h',
+            'presentation' => ['collection_path' => 'orders', 'identity_fields' => ['erp_reference', 'erp_id']],
+            'result' => ['orders' => [['erp_reference' => 'ORDER-A', 'erp_id' => 123, 'customerId' => 'CUSTOMER-B', 'total' => 195]]],
+        ]]]);
+        $reference = array_values($references)[0];
+        $this->assertSame(['ORDER-A', '123', 'CUSTOMER-B'], $reference['identifiers']);
+        $this->assertSame(['erp_reference' => 'ORDER-A', 'erp_id' => 123], $reference['identifier_fields']);
+        $this->assertSame('orders.0', $reference['record_path']);
+        $this->assertArrayNotHasKey('total', $reference['identifier_fields']);
+    }
+
+    public function test_only_visible_verified_claims_from_still_authorized_sources_resolve_answer_references(): void
+    {
+        $conversation = $this->conversation();
+        $document = \App\Models\KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'source_type' => 'text', 'title' => 'CASE-A', 'source_path' => 'mail/quoted-context', 'status' => 'active', 'document_hash' => 'd']);
+        $chunk = \App\Models\KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0, 'chunk_hash' => 'h',
+            'chunk_text' => 'PRIVATE-SOURCE-BODY. CASE-A contains two entries.']);
+        $memory = app(ConversationReasoning::class);
+        $refs = $memory->references($conversation, ['documents' => [['document_id' => $document->id,
+            'evidence' => [['chunk_id' => $chunk->id, 'evidence_hash' => 'h']]]]]);
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $refs]])->save();
+        $visible = 'CASE-A contains two entries.';
+        $conversation->messages()->create(['role' => 'assistant', 'content' => $visible, 'metadata' => ['grounding' => ['claims' => [
+            ['text' => $visible, 'document_id' => $document->id, 'evidence_hash' => 'h'],
+            ['text' => 'NOT-RENDERED-CANDIDATE', 'document_id' => $document->id, 'evidence_hash' => 'h'],
+            ['text' => $visible, 'document_id' => $document->id, 'evidence_hash' => 'wrong'],
+            'legacy malformed claim',
+        ]]]]);
+        $context = $memory->context($conversation);
+        $quotes = $context['dialogue'][0]['quoted_claims_for_reference_only'];
+        $this->assertCount(1, $quotes);
+        $this->assertSame($visible, $quotes[0]['quoted_text']);
+        $this->assertSame($document->id, $quotes[0]['source_navigation']['document_id']);
+        $this->assertStringNotContainsString('PRIVATE-SOURCE-BODY', json_encode($context));
+        $this->assertStringNotContainsString('NOT-RENDERED-CANDIDATE', json_encode($context));
+        $document->delete();
+        $revoked = $memory->context($conversation);
+        $this->assertSame([], $revoked['dialogue'][0]['quoted_claims_for_reference_only']);
+        $this->assertStringNotContainsString($visible, json_encode($revoked));
+    }
+
+    public function test_a_greeting_preserves_the_current_business_focus(): void
+    {
+        $greeting = ['language' => 'it', 'intent' => 'Salutare', 'action' => 'greeting', 'kb_queries' => [], 'mentions' => [],
+            'references_previous_turn' => false, 'transition' => 'new',
+            'focus' => ['topic' => 'assistant', 'identifiers' => [], 'aspect' => 'greeting', 'fields' => []],
+            'subquestions' => [], 'resolved_references' => [], 'needs_clarification' => false, 'clarification' => ''];
+        $this->ai($this->interpretation('TRACK-55'), $greeting);
+        $conversation = $this->conversation();
+        $memory = app(ConversationReasoning::class);
+        $initial = $conversation->messages()->create(['role' => 'user', 'content' => 'TRACK-55']);
+        $memory->prepare($conversation, $initial, 'TRACK-55');
+        $next = $conversation->messages()->create(['role' => 'user', 'content' => 'Ciao']);
+        $this->assertTrue($memory->prepare($conversation, $next, 'Ciao')->isAssistantConversation());
+        $this->assertSame(['TRACK-55'], $conversation->fresh()->reasoning_state['focus']['identifiers']);
+    }
+
+    public function test_state_is_not_mass_assignable_and_revoked_references_are_not_exposed(): void
+    {
+        $conversation = $this->conversation();
+        $conversation->fill(['reasoning_state' => ['focus' => 'forged']]);
+        $this->assertNull($conversation->reasoning_state);
+        $conversation->forceFill(['reasoning_state' => ['evidence' => [['kind' => 'document', 'document_id' => 999999, 'chunk_id' => 99,
+            'identifiers' => ['SECRET'], 'relations' => [['to' => 'SECRET']]]]]])->save();
+        $context = app(ConversationReasoning::class)->context($conversation);
+        $this->assertSame([], $context['known_identifiers']);
+        $this->assertSame([], $context['verified_relations']);
+    }
+
+    public function test_widget_uses_the_same_state_and_tool_continuation_reuses_user_step(): void
+    {
+        $this->ai($this->interpretation('TRACK-55'));
+        $key = \App\Models\WidgetKey::create(['tenant_id' => 'default', 'project_key' => 'demo', 'public_key' => 'pk_reasoning',
+            'allowed_origins' => ['https://example.test'], 'rate_limit' => 100, 'skill' => 'askmydocs-assistant@1', 'is_active' => true]);
+        $session = \App\Models\WidgetSession::create(['tenant_id' => 'default', 'widget_key_id' => $key->id, 'project_key' => 'demo',
+            'public_session_id' => (string) \Illuminate\Support\Str::uuid(), 'status' => 'active', 'skill' => 'askmydocs-assistant@1', 'locale' => 'it']);
+        $turn = $session->steps()->create(['step_index' => 0, 'kind' => 'user_message', 'args_json' => ['content' => 'TRACK-55']]);
+        $memory = app(ConversationReasoning::class);
+        $memory->prepare($session, $turn, 'TRACK-55');
+        $memory->prepare($session->fresh(), $turn->fresh(), 'TRACK-55');
+        $answer = $session->steps()->create(['step_index' => 1, 'kind' => 'bot_message', 'args_json' => ['content' => 'Done']]);
+        $memory->finish($session, $turn, $answer, []);
+        $this->assertSame(['TRACK-55'], $session->fresh()->reasoning_state['focus']['identifiers']);
+        $this->assertNotNull(data_get($answer->fresh()->args_json, 'reasoning.turn'));
+        $this->assertSame(['user', 'assistant'], array_column($memory->context($session)['dialogue'], 'role'));
+        $this->assertSame('Stato della spedizione TRACK-55', $session->fresh()->reasoning_state['objective']);
+    }
+
+    public function test_real_goal_and_ordered_tasks_are_persisted_and_followup_uses_only_earlier_dialogue(): void
+    {
+        $conversation = $this->conversation();
+        $first = $conversation->messages()->create(['role' => 'user', 'content' => 'spedizone TRACK-55 detagli']);
+        $initial = $this->interpretation('TRACK-55');
+        $initial['subquestions'][0] += ['question' => 'Quali sono i dettagli della spedizione TRACK-55?', 'kb_queries' => ['TRACK-55 dettagli']];
+        $followup = $this->interpretation('TRACK-55', true);
+        $followup['subquestions'][0] += ['question' => 'Quali ulteriori dettagli sono disponibili sulla spedizione TRACK-55?', 'kb_queries' => ['TRACK-55 dettagli aggiuntivi']];
+        $ai = Mockery::mock(AiManager::class);
+        $calls = 0;
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturnUsing(function ($provider, $system, $messages) use (&$calls, $initial, $followup) {
+            if ($calls++ === 1) {
+                $ctx = json_decode($messages[0]['content'], true)['reasoning_context'];
+                $this->assertSame('Stato della spedizione TRACK-55', $ctx['previous_objective']);
+                $this->assertArrayNotHasKey('objective', $ctx);
+                $this->assertSame(['user', 'assistant'], array_column($ctx['dialogue'], 'role'));
+                $this->assertSame('spedizone TRACK-55 detagli', $ctx['dialogue'][0]['text']);
+                $this->assertStringNotContainsString('FUTURE-SECRET', json_encode($ctx));
+                $this->assertStringNotContainsString('untrusted assistant factual text', json_encode($ctx));
+            }
+            return new AiResponse(json_encode($calls === 1 ? $initial : $followup), 'fake', 'test');
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $memory = app(ConversationReasoning::class);
+        $memory->prepare($conversation, $first, $first->content);
+        $conversation->messages()->create(['role' => 'assistant', 'content' => 'untrusted assistant factual text', 'metadata' => ['completeness' => 'partial']]);
+        $next = $conversation->messages()->create(['role' => 'user', 'content' => 'quindi?']);
+        $conversation->messages()->create(['role' => 'user', 'content' => 'FUTURE-SECRET']);
+        $result = $memory->prepare($conversation->fresh(), $next, 'quindi?');
+        $this->assertTrue($result->available);
+        $this->assertSame(['TRACK-55 dettagli aggiuntivi'], $result->forSubquestion(0)->kbQueries);
+        $this->assertSame([], $result->mentions);
+        $this->assertSame(['TRACK-55'], $result->resolvedReferences);
+        $this->assertSame($followup['subquestions'][0]['question'], $result->forSubquestion(0)->intent);
+    }
+}

@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { beforeEach } from 'vitest';
 
 /*
  * jsdom polyfills for Radix UI primitives (Dialog, Tabs, …) used by the
@@ -95,3 +96,6 @@ if (!ambientLocalStorageWorks()) {
         }
     }
 }
+
+// Existing feature fixtures use the English catalogue. Locale-specific suites opt in explicitly.
+beforeEach(() => { localStorage.setItem('amd-ui-locale', 'en'); });

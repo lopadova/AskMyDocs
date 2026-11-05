@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { AdminUser } from '../admin.api';
 import { UsersTableRow } from './UsersTableRow';
 
@@ -25,6 +26,7 @@ export function UsersTable({
     onRestore,
     onDelete,
 }: UsersTableProps) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid="users-table"
@@ -45,11 +47,11 @@ export function UsersTable({
             >
                 <thead>
                     <tr style={{ background: 'var(--bg-0)' }}>
-                        <th style={thStyle}>Name</th>
+                        <th style={thStyle}>{translateInterface("Name")}</th>
                         <th style={thStyle}>Email</th>
-                        <th style={thStyle}>Roles</th>
-                        <th style={thStyle}>Status</th>
-                        <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+                        <th style={thStyle}>{translateInterface("Roles")}</th>
+                        <th style={thStyle}>{translateInterface("Status")}</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                     </tr>
                 </thead>
                 <tbody>

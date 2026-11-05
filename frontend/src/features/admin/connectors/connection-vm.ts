@@ -102,10 +102,15 @@ export function filterConnections(rows: ConnectionVM[], query: string): Connecti
 }
 
 /**
- * The ids eligible for a "Sync all" sweep — active or errored accounts only
- * (a paused/disabled account is intentionally left paused; a pending one has no
- * verified credentials yet).
+ * Sync eligibility shared by the row/card buttons and the "Sync all" sweep.
+ * Active or errored accounts with ingestion enabled; disabled and pending
+ * accounts remain excluded.
  */
+export function canSync(row: ConnectionVM): boolean {
+    const ingestion = row.installation.settings?.ingestion as { enabled?: boolean } | undefined;
+    return (row.status === 'active' || row.status === 'errored') && ingestion?.enabled !== false;
+}
+
 export function syncableIds(rows: ConnectionVM[]): number[] {
-    return rows.filter((r) => r.status === 'active' || r.status === 'errored').map((r) => r.id);
+    return rows.filter(canSync).map((r) => r.id);
 }

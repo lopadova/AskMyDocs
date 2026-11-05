@@ -49,6 +49,18 @@ class SecurityHeaders
 
         $response = $next($request);
 
+        // The MCP Apps sandbox proxy is the only frameable HTML response in
+        // the application. Its package controller emits a stricter dedicated
+        // CSP and marks the response so this global baseline does not replace
+        // `frame-ancestors` with DENY. User input cannot set response headers.
+        if ($response->headers->get('X-AskMyDocs-MCP-App-Sandbox') === '1') {
+            $response->headers->remove('X-AskMyDocs-MCP-App-Sandbox');
+            $this->applyHsts($request, $response);
+            $this->applyRequestId($response, $requestId);
+
+            return $response;
+        }
+
         $this->applyStaticHeaders($response);
         $this->applyHsts($request, $response);
         if ($nonce !== null) {
@@ -81,6 +93,11 @@ class SecurityHeaders
         /** @var array<string, string|null> $headers */
         $headers = (array) config('security-headers.headers', []);
         foreach ($headers as $name => $value) {
+            // OAuth consent/token responses prohibit referrers entirely so
+            // authorization handles cannot leak through same-origin requests.
+            if (strcasecmp($name, 'Referrer-Policy') === 0 && $response->headers->get($name) === 'no-referrer') {
+                continue;
+            }
             if ($value !== null && $value !== '') {
                 $response->headers->set($name, $value);
             }

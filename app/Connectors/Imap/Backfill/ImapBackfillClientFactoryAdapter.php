@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Connectors\Imap\Backfill;
 
+use App\Connectors\Imap\ImapSyncBudget;
+use App\Connectors\Imap\MemoryBoundedImapClient;
+use App\Connectors\Imap\ReadOnlyWebklexClient;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactory;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
 use Padosoft\AskMyDocsConnectorImap\Imap\WebklexImapClient;
@@ -20,10 +24,24 @@ final class ImapBackfillClientFactoryAdapter implements ImapClientFactoryInterfa
 
     public function make(array $connection, string $secret, string $authMode): ImapClientInterface
     {
+        if ($this->inner instanceof ImapClientFactory) {
+            $raw = $this->rawClient($connection, $secret, $authMode);
+            $client = new WebklexImapClient($raw);
+
+            return new MemoryBoundedImapClient($client, new ImapBackfillMailboxClient($raw, $client));
+        }
+
         return $this->inner->make($connection, $secret, $authMode);
     }
 
     public function makeBackfill(array $connection, string $secret, string $authMode): ImapBackfillClient
+    {
+        $raw = $this->rawClient($connection, $secret, $authMode);
+
+        return new ImapBackfillMailboxClient($raw, new WebklexImapClient($raw));
+    }
+
+    private function rawClient(array $connection, string $secret, string $authMode): ReadOnlyWebklexClient
     {
         $raw = (new ClientManager)->make([
             'host' => (string) ($connection['host'] ?? ''),
@@ -38,6 +56,6 @@ final class ImapBackfillClientFactoryAdapter implements ImapClientFactoryInterfa
                 : null,
         ]);
 
-        return new ImapBackfillMailboxClient($raw, new WebklexImapClient($raw));
+        return new ReadOnlyWebklexClient($raw->getConfig(), app(ImapSyncBudget::class));
     }
 }

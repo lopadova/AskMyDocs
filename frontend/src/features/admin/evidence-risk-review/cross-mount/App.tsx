@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../../lib/ui-locale";
 /*
  * EvidenceRiskReviewApp — native AskMyDocs admin SPA for the
  * padosoft/laravel-evidence-risk-review core package (v8.13 / P11).
@@ -113,6 +115,7 @@ function useProfiles(): { profiles: ProfileMetadata[]; error: string | null; loa
 }
 
 function ReviewsTab() {
+    const { t: translateInterface } = useUiTranslation();
     const { profiles } = useProfiles();
     const [profile, setProfile] = useState('');
     const [minVerdict, setMinVerdict] = useState<RiskVerdict | ''>('');
@@ -148,40 +151,40 @@ function ReviewsTab() {
             <div className="err-filterbar">
                 <label htmlFor="err-reviews-profile">
                     Profile
-                    <select
+                    <SelectField
                         id="err-reviews-profile"
                         value={profile}
-                        onChange={(event) => {
-                            setProfile(event.target.value);
+                        onValueChange={(nextValue) => {
+                            setProfile(nextValue);
                             setPage(1);
                         }}
                         data-testid="admin-evidence-risk-review-reviews-profile"
                     >
-                        <option value="">All profiles</option>
+                        <SelectOption value="">All profiles</SelectOption>
                         {profiles.map((item) => (
-                            <option key={item.key} value={item.key}>
+                            <SelectOption key={item.key} value={item.key}>
                                 {item.label}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label htmlFor="err-reviews-verdict">
                     Minimum verdict
-                    <select
+                    <SelectField
                         id="err-reviews-verdict"
                         value={minVerdict}
-                        onChange={(event) => {
-                            setMinVerdict(event.target.value as RiskVerdict | '');
+                        onValueChange={(nextValue) => {
+                            setMinVerdict(nextValue as RiskVerdict | '');
                             setPage(1);
                         }}
                         data-testid="admin-evidence-risk-review-reviews-verdict"
                     >
                         {VERDICT_FILTERS.map((item) => (
-                            <option key={item.value || 'any'} value={item.value}>
+                            <SelectOption key={item.value || 'any'} value={item.value}>
                                 {item.label}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
             </div>
 
@@ -202,7 +205,7 @@ function ReviewsTab() {
                     <table className="err-table" data-testid="admin-evidence-risk-review-reviews-table">
                         <thead>
                             <tr>
-                                <th scope="col">Review</th>
+                                <th scope="col">{translateInterface("Review")}</th>
                                 <th scope="col">Artifact</th>
                                 <th scope="col">Profile</th>
                                 <th scope="col">Max verdict</th>
@@ -239,19 +242,16 @@ function ReviewsTab() {
                             onClick={() => setPage((current) => Math.max(1, current - 1))}
                             data-testid="admin-evidence-risk-review-reviews-prev"
                         >
-                            Previous
-                        </button>
+                            {translateInterface("Previous")}</button>
                         <span>
-                            Page {data.current_page} of {data.last_page} · {data.total} total
-                        </span>
+                            {translateInterface("Page") + " "}{data.current_page} {" " + translateInterface("of") + " "}{data.last_page} · {data.total} {" " + translateInterface("total")}</span>
                         <button
                             type="button"
                             disabled={data.current_page >= data.last_page}
                             onClick={() => setPage((current) => current + 1)}
                             data-testid="admin-evidence-risk-review-reviews-next"
                         >
-                            Next
-                        </button>
+                            {translateInterface("Next")}</button>
                     </div>
                 </>
             )}
@@ -262,6 +262,7 @@ function ReviewsTab() {
 }
 
 function ReviewDetail({ reviewId, onClose }: { reviewId: string; onClose: () => void }) {
+    const { t: translateInterface } = useUiTranslation();
     const [result, setResult] = useState<ReviewResult | null>(null);
     const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
     const [error, setError] = useState<string | null>(null);
@@ -295,7 +296,7 @@ function ReviewDetail({ reviewId, onClose }: { reviewId: string; onClose: () => 
             data-state={state}
         >
             <header className="err-detail-head">
-                <h3>Review {reviewId.slice(0, 12)}…</h3>
+                <h3>{translateInterface("Review") + " "}{reviewId.slice(0, 12)}…</h3>
                 <button type="button" aria-label="Close review detail" onClick={onClose} data-testid="admin-evidence-risk-review-detail-close">
                     ✕
                 </button>
@@ -377,6 +378,7 @@ function ProfilesTab() {
 }
 
 function TaxonomyTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
     const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
     const [error, setError] = useState<string | null>(null);
@@ -416,7 +418,7 @@ function TaxonomyTab() {
                             <tr>
                                 <th scope="col">Rank</th>
                                 <th scope="col">Key</th>
-                                <th scope="col">Label</th>
+                                <th scope="col">{translateInterface("Label")}</th>
                                 <th scope="col">Built-in</th>
                             </tr>
                         </thead>
@@ -503,19 +505,19 @@ function TryTab() {
             <div className="err-filterbar">
                 <label htmlFor="err-try-profile">
                     Profile
-                    <select
+                    <SelectField
                         id="err-try-profile"
                         value={profile}
-                        onChange={(event) => setProfile(event.target.value)}
+                        onValueChange={(nextValue) => setProfile(nextValue)}
                         data-testid="admin-evidence-risk-review-try-profile"
                     >
-                        <option value="">Default</option>
+                        <SelectOption value="">Default</SelectOption>
                         {profiles.map((item) => (
-                            <option key={item.key} value={item.key}>
+                            <SelectOption key={item.key} value={item.key}>
                                 {item.label}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label className="err-checkbox">
                     <input

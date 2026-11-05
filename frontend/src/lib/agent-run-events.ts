@@ -54,6 +54,7 @@ export interface ConsumeAgentRunOptions {
     signal?: AbortSignal;
     maxConnections?: number;
     initialSequence?: number;
+    reconnectDelayMs?: number;
 }
 
 const STOP_EVENTS: Record<string, AgentRunStopReason> = {
@@ -80,9 +81,11 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
 
     let lastSequence = Math.max(0, options.initialSequence ?? 0);
     const maxConnections = Math.max(1, options.maxConnections ?? 100);
+    let idleConnections = 0;
     try {
         for (let connection = 0; connection < maxConnections; connection++) {
             throwIfAborted(controller.signal);
+            const openingSequence = lastSequence;
             const response = await options.open(lastSequence, controller.signal);
             if (!response.ok) {
                 throw await responseError(response);
@@ -112,7 +115,14 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
                     break;
                 }
             }
+            throwIfAborted(controller.signal);
             if (stopped) return stopped;
+            idleConnections = lastSequence > openingSequence ? 0 : idleConnections + 1;
+            if (connection + 1 < maxConnections) {
+                // An immediate empty EOF must not create a hot loop against PHP.
+                // Retry the SAME run/cursor, never start another agent request.
+                await reconnectDelay(Math.min(5000, (options.reconnectDelayMs ?? 250) * 2 ** Math.min(5, idleConnections)), controller.signal);
+            }
         }
 
         throw new AgentRunStreamError(
@@ -133,6 +143,8 @@ interface SseFrame {
 
 async function* parseSse(stream: ReadableStream<Uint8Array>, signal: AbortSignal): AsyncGenerator<SseFrame> {
     const reader = stream.getReader();
+    const abortRead = () => { void reader.cancel().catch(() => undefined); };
+    signal.addEventListener('abort', abortRead, { once: true });
     const decoder = new TextDecoder();
     let buffer = '';
     try {
@@ -153,9 +165,21 @@ async function* parseSse(stream: ReadableStream<Uint8Array>, signal: AbortSignal
         const trailing = parseFrame(buffer);
         if (trailing) yield trailing;
     } finally {
+        signal.removeEventListener('abort', abortRead);
         await reader.cancel().catch(() => undefined);
         reader.releaseLock();
     }
+}
+
+async function reconnectDelay(ms: number, signal: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    if (ms <= 0) return;
+    await new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
+        const timer = setTimeout(done, ms);
+        signal.addEventListener('abort', done, { once: true });
+    });
+    throwIfAborted(signal);
 }
 
 function parseFrame(raw: string): SseFrame | null {

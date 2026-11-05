@@ -1,10 +1,11 @@
-import { useEffect, type ReactNode } from 'react';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import type { ReactNode } from 'react';
 import { Icon } from '../../../components/Icons';
 
 /*
  * Shared slide-over drawer chrome for the invitations admin forms (campaign
- * editor, send invitation). role="dialog" + aria-modal, Escape closes,
- * click-on-scrim closes. Field is the labelled input wrapper with an inline
+ * editor, send invitation). role="dialog" + aria-modal, explicit close controls only.
+ * Field is the labelled input wrapper with an inline
  * error slot (R15: bound <label htmlFor>; R14: error visible next to the field).
  */
 
@@ -16,23 +17,13 @@ export interface DrawerProps {
 }
 
 export function Drawer({ title, testid, onClose, children }: DrawerProps) {
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={testid}
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', justifyContent: 'flex-end', zIndex: 50 }}
         >
             <div
@@ -51,7 +42,7 @@ export function Drawer({ title, testid, onClose, children }: DrawerProps) {
                 <header style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <h2 style={{ margin: 0, fontSize: 16, color: 'var(--fg-0)' }}>{title}</h2>
                     <span style={{ flex: 1 }} />
-                    <button type="button" data-testid={`${testid}-close`} aria-label="Close" onClick={onClose} style={drawerIconBtn}>
+                    <button type="button" data-testid={`${testid}-close`} aria-label={translateInterface("Close")} onClick={onClose} style={drawerIconBtn}>
                         <Icon.Close size={15} />
                     </button>
                 </header>

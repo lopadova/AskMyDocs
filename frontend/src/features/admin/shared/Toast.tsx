@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 /*
  * Minimal transient toast surface for admin flows. No external lib —
@@ -70,18 +71,23 @@ export function ToastHost() {
         return <div data-testid="toast-host" style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }} />;
     }
 
-    return (
+    // Keep feedback outside route stacking contexts and clear of the topbar.
+    return createPortal(
         <div
             data-testid="toast-host"
             style={{
                 position: 'fixed',
-                top: 16,
-                right: 16,
+                bottom: 'max(16px, env(safe-area-inset-bottom))',
+                right: 'max(16px, env(safe-area-inset-right))',
+                width: 'min(360px, calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)))',
+                maxHeight: 'calc(100dvh - 112px - env(safe-area-inset-bottom))',
+                overflowY: 'auto',
+                overscrollBehavior: 'contain',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 8,
                 zIndex: 60,
-                pointerEvents: 'none',
+                pointerEvents: 'auto',
             }}
         >
             {list.map((entry) => (
@@ -91,34 +97,25 @@ export function ToastHost() {
                     data-kind={entry.kind}
                     role="status"
                     style={{
-                        pointerEvents: 'auto',
-                        minWidth: 220,
-                        maxWidth: 360,
+                        flexShrink: 0,
+                        overflowWrap: 'anywhere',
                         padding: '10px 14px',
                         borderRadius: 10,
                         fontSize: 13,
                         lineHeight: 1.45,
-                        background:
-                            entry.kind === 'error'
-                                ? 'rgba(239,68,68,0.16)'
-                                : entry.kind === 'success'
-                                  ? 'rgba(16,185,129,0.16)'
-                                  : 'rgba(59,130,246,0.16)',
+                        background: 'var(--panel-solid)',
                         border:
                             '1px solid ' +
-                            (entry.kind === 'error'
-                                ? 'rgba(239,68,68,0.45)'
-                                : entry.kind === 'success'
-                                  ? 'rgba(16,185,129,0.45)'
-                                  : 'rgba(59,130,246,0.45)'),
+                            `color-mix(in srgb, var(${entry.kind === 'error' ? '--err' : entry.kind === 'success' ? '--ok' : '--info'}) 45%, var(--panel-solid))`,
                         color: 'var(--fg-0)',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                        boxShadow: 'var(--shadow)',
                         fontFamily: 'var(--font-sans)',
                     }}
                 >
                     {entry.message}
                 </div>
             ))}
-        </div>
+        </div>,
+        document.body,
     );
 }

@@ -1,5 +1,9 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { Download, Printer, FileOutput, Trash2, RotateCcw } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { DocumentSidebar } from './DocumentSidebar';
+import './kb-reader.css';
 import { useState } from 'react';
-import { Icon } from '../../../components/Icons';
 import { adminKbDocumentApi, type KbDocument } from '../admin.api';
 import {
     useDeleteKbDocument,
@@ -48,6 +52,7 @@ export interface DocumentDetailProps {
 }
 
 export function DocumentDetail(props: DocumentDetailProps) {
+    const { t: translateInterface } = useUiTranslation();
     const { documentId, activeTab, onTabChange, onDeleted, onDocumentReplaced } = props;
 
     const query = useKbDocument(documentId);
@@ -72,7 +77,7 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 aria-busy="true"
                 style={{ padding: 16, color: 'var(--fg-3)' }}
             >
-                <div data-testid="kb-detail-loading">Loading document…</div>
+                <div data-testid="kb-detail-loading">{translateInterface("Loading document…")}</div>
             </div>
         );
     }
@@ -163,41 +168,44 @@ export function DocumentDetail(props: DocumentDetailProps) {
             data-state="ready"
             data-doc-id={doc.id}
             aria-busy={isBusy ? 'true' : 'false'}
-            style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}
+            className="kb-document-layout"
         >
-            <DocHeader
-                doc={doc}
-                onRestore={handleRestore}
-                onAskDelete={(mode) => setConfirm({ mode })}
-                onExportPdf={handleExportPdf}
-                isRestoring={restoreMut.isPending}
-                isExporting={exportMut.isPending}
-            />
+            <div className="kb-document-main">
+                <DocHeader
+                    doc={doc}
+                    onExportPdf={handleExportPdf}
+                    isExporting={exportMut.isPending}
+                />
 
-            <TabStrip activeTab={activeTab} onTabChange={onTabChange} />
+                <TabStrip activeTab={activeTab} onTabChange={onTabChange} />
 
-            <div
-                style={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: 'auto',
-                    padding: 14,
-                    border: '1px solid var(--hairline)',
-                    borderRadius: 10,
-                    background: 'var(--bg-1)',
-                }}
-            >
-                {activeTab === 'preview' ? (
-                    <PreviewTab documentId={doc.id} project={doc.project_key} />
-                ) : null}
-                {activeTab === 'source' ? <SourceTab documentId={doc.id} /> : null}
-                {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
-                {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
-                {activeTab === 'graph' ? <GraphTab documentId={doc.id} /> : null}
-                {activeTab === 'review' ? (
-                    <ReviewTab documentId={doc.id} onDocumentReplaced={onDocumentReplaced} />
-                ) : null}
+                <div
+                    className="kb-document-panel"
+                >
+                    {activeTab === 'preview' ? (
+                        <PreviewTab documentId={doc.id} project={doc.project_key} showFrontmatter={false} />
+                    ) : null}
+                    {activeTab === 'source' ? <SourceTab documentId={doc.id} /> : null}
+                    {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
+                    {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
+                    {activeTab === 'graph' ? <GraphTab documentId={doc.id} /> : null}
+                    {activeTab === 'review' ? (
+                        <ReviewTab documentId={doc.id} onDocumentReplaced={onDocumentReplaced} />
+                    ) : null}
+                </div>
+
             </div>
+            <DocumentSidebar doc={doc}>
+                {doc.deleted_at !== null ? (
+                    <Button size="sm" data-testid="kb-action-restore" onClick={handleRestore} busy={restoreMut.isPending} leadingIcon={<RotateCcw size={15} />}>
+                        {translateInterface("Restore")}</Button>
+                ) : (
+                    <Button size="sm" variant="quiet" className="kb-document-delete" data-testid="kb-action-delete" onClick={() => setConfirm({ mode: 'soft' })} leadingIcon={<Trash2 size={15} />}>
+                        {translateInterface("Delete")}</Button>
+                )}
+                <Button size="sm" variant="quiet" className="kb-document-delete" data-testid="kb-action-force-delete" onClick={() => setConfirm({ mode: 'force' })} leadingIcon={<Trash2 size={15} />}>
+                    {translateInterface("Force delete")}</Button>
+            </DocumentSidebar>
 
             {confirm !== null ? (
                 <ConfirmDialog
@@ -213,32 +221,19 @@ export function DocumentDetail(props: DocumentDetailProps) {
 
 function DocHeader({
     doc,
-    onRestore,
-    onAskDelete,
     onExportPdf,
-    isRestoring,
     isExporting,
 }: {
     doc: KbDocument;
-    onRestore: () => void;
-    onAskDelete: (mode: 'soft' | 'force') => void;
     onExportPdf: () => void;
-    isRestoring: boolean;
     isExporting: boolean;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const trashed = doc.deleted_at !== null;
     return (
         <div
             data-testid="kb-detail-header"
-            style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                padding: 14,
-                border: '1px solid var(--hairline)',
-                borderRadius: 10,
-                background: 'var(--bg-1)',
-            }}
+            className="kb-document-header"
         >
             <div
                 style={{
@@ -291,42 +286,22 @@ function DocHeader({
                 <HeaderLink
                     testId="kb-action-download"
                     href={adminKbDocumentApi.downloadUrl(doc.id)}
-                    label="Download"
-                    icon={<Icon.File size={13} />}
+                    label={translateInterface("Download")}
+                    icon={<Download size={15} aria-hidden />}
                 />
                 <HeaderLink
                     testId="kb-action-print"
                     href={adminKbDocumentApi.printUrl(doc.id)}
-                    label="Print"
-                    icon={<Icon.File size={13} />}
+                    label={translateInterface("Print")}
+                    icon={<Printer size={15} aria-hidden />}
                 />
                 <HeaderButton
                     testId="kb-action-export-pdf"
-                    label={isExporting ? 'Exporting…' : 'Export PDF'}
+                    label={isExporting ? 'Exporting…' : translateInterface("Export PDF")}
                     onClick={onExportPdf}
                     disabled={isExporting}
                 />
-                {trashed ? (
-                    <HeaderButton
-                        testId="kb-action-restore"
-                        label={isRestoring ? 'Restoring…' : 'Restore'}
-                        onClick={onRestore}
-                        disabled={isRestoring}
-                    />
-                ) : (
-                    <HeaderButton
-                        testId="kb-action-delete"
-                        label="Delete"
-                        onClick={() => onAskDelete('soft')}
-                        variant="soft-danger"
-                    />
-                )}
-                <HeaderButton
-                    testId="kb-action-force-delete"
-                    label="Force delete"
-                    onClick={() => onAskDelete('force')}
-                    variant="danger"
-                />
+
             </div>
         </div>
     );
@@ -351,15 +326,7 @@ function TabStrip({
         <div
             data-testid="kb-tabs"
             role="tablist"
-            style={{
-                display: 'flex',
-                gap: 4,
-                padding: 4,
-                border: '1px solid var(--hairline)',
-                borderRadius: 10,
-                background: 'var(--bg-1)',
-                width: 'fit-content',
-            }}
+            className="kb-document-tabs"
         >
             {tabs.map((tab) => {
                 const active = tab.key === activeTab;
@@ -372,16 +339,7 @@ function TabStrip({
                         data-testid={`kb-tab-${tab.key}`}
                         data-active={active ? 'true' : 'false'}
                         onClick={() => onTabChange(tab.key)}
-                        style={{
-                            padding: '6px 14px',
-                            fontSize: 12.5,
-                            fontWeight: active ? 600 : 400,
-                            border: '1px solid ' + (active ? 'var(--accent)' : 'transparent'),
-                            background: active ? 'var(--grad-accent-soft)' : 'transparent',
-                            color: active ? 'var(--fg-0)' : 'var(--fg-2)',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                        }}
+
                     >
                         {tab.label}
                     </button>
@@ -455,18 +413,7 @@ function HeaderLink({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 10px',
-                fontSize: 12,
-                textDecoration: 'none',
-                color: 'var(--fg-1)',
-                background: 'var(--bg-0)',
-                border: '1px solid var(--hairline)',
-                borderRadius: 6,
-            }}
+            className="ui-button" data-variant="secondary" data-size="sm"
         >
             {icon}
             {label}
@@ -487,43 +434,11 @@ function HeaderButton({
     disabled?: boolean;
     variant?: 'danger' | 'soft-danger';
 }) {
-    const palette =
-        variant === 'danger'
-            ? {
-                  bg: 'var(--danger-soft, rgba(220, 38, 38, 0.12))',
-                  fg: 'var(--danger-fg, #b91c1c)',
-                  border: 'var(--danger-fg, #b91c1c)',
-              }
-            : variant === 'soft-danger'
-              ? {
-                    bg: 'var(--bg-0)',
-                    fg: 'var(--danger-fg, #b91c1c)',
-                    border: 'var(--hairline)',
-                }
-              : {
-                    bg: 'var(--bg-0)',
-                    fg: 'var(--fg-1)',
-                    border: 'var(--hairline)',
-                };
     return (
-        <button
-            type="button"
-            data-testid={testId}
-            onClick={onClick}
-            disabled={disabled}
-            style={{
-                padding: '5px 10px',
-                fontSize: 12,
-                border: '1px solid ' + palette.border,
-                background: palette.bg,
-                color: palette.fg,
-                borderRadius: 6,
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.6 : 1,
-            }}
-        >
+        <Button size="sm" variant={variant ? 'danger' : 'secondary'} data-testid={testId}
+            onClick={onClick} disabled={disabled} leadingIcon={testId === 'kb-action-export-pdf' ? <FileOutput size={15} /> : undefined}>
             {label}
-        </button>
+        </Button>
     );
 }
 
@@ -538,6 +453,7 @@ function ConfirmDialog({
     onCancel: () => void;
     onConfirm: () => void;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const title = mode === 'force' ? 'Force delete document?' : 'Delete document?';
     const body =
         mode === 'force'
@@ -590,8 +506,7 @@ function ConfirmDialog({
                             cursor: 'pointer',
                         }}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="button"
                         data-testid="kb-detail-confirm-submit"
@@ -608,7 +523,7 @@ function ConfirmDialog({
                             opacity: isSubmitting ? 0.6 : 1,
                         }}
                     >
-                        {isSubmitting ? 'Working…' : mode === 'force' ? 'Force delete' : 'Delete'}
+                        {isSubmitting ? 'Working…' : mode === 'force' ? translateInterface("Force delete") : translateInterface("Delete")}
                     </button>
                 </div>
             </div>

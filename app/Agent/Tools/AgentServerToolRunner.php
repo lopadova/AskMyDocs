@@ -6,15 +6,19 @@ namespace App\Agent\Tools;
 
 use App\Agent\AgentExecutionContext;
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\McpToolInvocationFailed;
 use App\Mcp\Client\ToolInvoker;
 use App\Models\AgentRun;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteStatus;
+use Padosoft\AskMyDocsConnectorFreshdesk\Tools\FreshdeskTools;
+use Padosoft\AskMyDocsConnectorMcp\Exceptions\McpInvocationException;
 
 /** Executes server-side API and MCP tools after a final scope revalidation. */
 final readonly class AgentServerToolRunner
@@ -23,11 +27,13 @@ final readonly class AgentServerToolRunner
         private ApiToolCollector $api,
         private ToolInvoker $mcp,
         private McpToolAuthorizer $mcpAuthorizer,
+        private McpConnectorChatToolSource $connectorMcp,
+        private AgentDocumentCatalogService $catalog,
     ) {}
 
     /**
-     * @param array<string,mixed> $arguments
-     * @param null|callable(array<string,mixed>):void $progress
+     * @param  array<string,mixed>  $arguments
+     * @param  null|callable(array<string,mixed>):void  $progress
      */
     public function execute(
         AgentToolDefinition $tool,
@@ -36,10 +42,12 @@ final readonly class AgentServerToolRunner
         AgentRun $run,
         AgentBudgetTracker $budget,
         ?callable $progress = null,
+        ?array $waveHandoff = null,
     ): AgentToolActionResult {
         return match ($tool->kind) {
-            'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress),
+            'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress, $waveHandoff),
             'mcp' => $this->executeMcp($tool, $arguments, $context, $run, $budget),
+            'catalog' => $this->executeCatalog($arguments, $context, $budget),
             'client' => new AgentToolActionResult(
                 ['error' => 'client_tool_requires_handoff'],
                 0,
@@ -50,6 +58,27 @@ final readonly class AgentServerToolRunner
         };
     }
 
+    /**
+     * The document-catalog lookup (list_knowledge_documents). A local DB
+     * read, same zero-physical-cost shape as the knowledge tool — no
+     * external network call, so it never touches canIssuePhysical().
+     *
+     * @param  array<string,mixed>  $arguments
+     */
+    private function executeCatalog(
+        array $arguments,
+        AgentExecutionContext $context,
+        AgentBudgetTracker $budget,
+    ): AgentToolActionResult {
+        $query = is_string($arguments['query'] ?? null) ? $arguments['query'] : null;
+        $limit = is_numeric($arguments['limit'] ?? null) ? (int) $arguments['limit'] : null;
+
+        $body = $this->catalog->list($context, $query, $limit);
+        $budget->recordResult(0, $this->bytes($body), true);
+
+        return new AgentToolActionResult($body, 0);
+    }
+
     /** @param array<string,mixed> $arguments @param null|callable(array<string,mixed>):void $progress */
     private function executeApi(
         AgentToolDefinition $tool,
@@ -57,7 +86,21 @@ final readonly class AgentServerToolRunner
         AgentExecutionContext $context,
         AgentBudgetTracker $budget,
         ?callable $progress,
+        ?array $waveHandoff = null,
     ): AgentToolActionResult {
+        if (($tool->metadata['source_runtime'] ?? null) === 'freshdesk') {
+            return $this->executeFreshdesk($tool, $arguments, $context, $budget);
+        }
+        if (($tool->metadata['source_runtime'] ?? null) === 'api_tool') {
+            $preset = \App\ApiTools\Models\ApiTool::query()->forTenant($context->tenantId)->findOrFail((int) substr((string) $tool->executorReference, 9));
+            $remaining = max(0, (int) $budget->snapshot()['physical_hard'] - (int) $budget->snapshot()['physical_calls']);
+            if ($remaining === 0) { return new AgentToolActionResult(['error'=>'physical_hard_limit'], 0, false, 'physical_hard_limit'); }
+            $continuation = ['request_limit' => $remaining];
+            if ($waveHandoff !== null) { $continuation['agent_wave_handoff'] = $waveHandoff; }
+            $pending = app(\App\ApiTools\ToolRuntime::class)->start($preset, $arguments, $context, continuation: $continuation);
+            return new AgentToolActionResult(['_api_tool_pending' => $pending->id], 0, false, stats: ['api_tool_run_id' => $pending->id]);
+        }
+
         $scopes = $context->projectKey === null || $context->projectKey === ''
             ? ['']
             : ['', $context->projectKey];
@@ -81,8 +124,56 @@ final readonly class AgentServerToolRunner
         );
     }
 
+    private function executeFreshdesk(AgentToolDefinition $tool, array $arguments, AgentExecutionContext $context, AgentBudgetTracker $budget): AgentToolActionResult
+    {
+        $user = User::query()->find($context->actorId);
+        if ($context->channel === 'widget' || $user === null || $context->projectKey === null
+            || $context->tenantId !== app(\Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->current()
+            || $context->tenantId !== app(TenantContext::class)->current()
+            || ! ($user->canReadAllProjects() || in_array($context->projectKey, $user->allowedProjects(), true))) {
+            throw new \DomainException('freshdesk_tool_scope_mismatch');
+        }
+        $requests = 0;
+        try {
+            $result = app(FreshdeskTools::class)->execute(
+                $tool->name, $arguments, $context->projectKey,
+                function () use ($budget, &$requests): void {
+                    if (! $budget->canIssuePhysical($requests + 1)->allowed()) {
+                        throw new \DomainException('physical_hard_limit');
+                    }
+                    $requests++;
+                },
+            );
+            $body = $result['data'] ?? ['error' => $result['error'] ?? 'Freshdesk request failed.'];
+            $success = ! isset($result['error']);
+            $budget->recordResult($requests, $this->bytes($body), $success);
+
+            return new AgentToolActionResult($body, $requests, $success, stopReason: $result['error'] ?? null, stats: ['freshdesk' => $result['provenance']]);
+        } catch (\Throwable $exception) {
+            $body = ['error' => $exception->getMessage()];
+            $budget->recordResult($requests, $this->bytes($body), false);
+
+            return new AgentToolActionResult($body, $requests, false, $exception->getMessage());
+        }
+    }
+
     /** @param array<string,mixed> $arguments */
     private function executeMcp(
+        AgentToolDefinition $tool,
+        array $arguments,
+        AgentExecutionContext $context,
+        AgentRun $run,
+        AgentBudgetTracker $budget,
+    ): AgentToolActionResult {
+        if (($tool->metadata['mcp_runtime'] ?? null) === 'connector') {
+            return $this->executeConnectorMcp($tool, $arguments, $context, $run, $budget);
+        }
+
+        return $this->executeLegacyMcp($tool, $arguments, $context, $run, $budget);
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function executeLegacyMcp(
         AgentToolDefinition $tool,
         array $arguments,
         AgentExecutionContext $context,
@@ -129,6 +220,82 @@ final readonly class AgentServerToolRunner
             $budget->recordResult($physical, $this->bytes($body), false);
 
             return new AgentToolActionResult($body, $physical, false, 'mcp_tool_error');
+        }
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function executeConnectorMcp(
+        AgentToolDefinition $tool,
+        array $arguments,
+        AgentExecutionContext $context,
+        AgentRun $run,
+        AgentBudgetTracker $budget,
+    ): AgentToolActionResult {
+        $capacity = $budget->canIssuePhysical();
+        if (! $capacity->allowed()) {
+            return new AgentToolActionResult(['error' => $capacity->reason], 0, false, $capacity->reason);
+        }
+
+        $user = $run->user;
+        if (! $user instanceof User || $run->conversation_id === null) {
+            throw new \DomainException('mcp_tool_scope_mismatch');
+        }
+
+        try {
+            $outcome = $this->connectorMcp->invoke(
+                ['name' => $tool->name],
+                $arguments,
+                $user,
+                [
+                    'conversation_id' => (string) $run->conversation_id,
+                    'project_key' => $context->projectKey,
+                    'locale' => $context->locale,
+                    'agent_run_id' => $run->id,
+                ],
+            );
+            $body = is_array($outcome->payload)
+                ? $outcome->payload
+                : ['result' => $outcome->payload];
+            $structured = data_get($body, 'artifact.structuredContent');
+            if (is_array($structured) && ! array_is_list($structured)) {
+                // Keep the protocol envelope for UI/artifact consumers while
+                // exposing structured fields at the root for stable planner
+                // references declared by the MCP outputSchema.
+                $body += $structured;
+            }
+            $physicalRequests = $outcome->status === 'confirmation_required'
+                ? 0
+                : max(1, (int) ($outcome->metadata['physical_request_count'] ?? 1));
+            $success = $outcome->status !== 'error' && $outcome->error === null;
+            if (! $success) {
+                $body = [
+                    'error' => $outcome->error ?? 'MCP tool returned an error.',
+                    'outcome' => $body,
+                ];
+            }
+            $budget->recordResult($physicalRequests, $this->bytes($body), $success);
+
+            return new AgentToolActionResult(
+                body: $body,
+                physicalRequests: $physicalRequests,
+                complete: ! $outcome->requiresInteraction(),
+                stopReason: $outcome->requiresInteraction() ? 'mcp_'.$outcome->status : null,
+                stats: ['mcp' => $outcome->metadata + ['status' => $outcome->status]],
+            );
+        } catch (\Throwable $exception) {
+            $body = ['error' => $exception->getMessage()];
+            $physicalRequests = $exception instanceof McpInvocationException
+                ? max(0, (int) ($exception->provenance['physical_request_count'] ?? 0))
+                : 1;
+            $budget->recordResult($physicalRequests, $this->bytes($body), false);
+
+            return new AgentToolActionResult(
+                $body,
+                $physicalRequests,
+                false,
+                $exception instanceof McpInvocationException ? $exception->failureCode : 'mcp_tool_error',
+                $exception instanceof McpInvocationException ? ['mcp' => $exception->provenance] : [],
+            );
         }
     }
 

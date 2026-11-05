@@ -49,13 +49,24 @@ describe('api X-Tenant-Id request interceptor', () => {
         expect(captured[0]?.headers?.['X-Tenant-Id']).toBe('acme');
     });
 
-    it.each(['/api/auth/me', '/api/system-admin/tenants', '/sanctum/csrf-cookie', '/testing/reset'])(
+    it('retains the owning team on background chat requests after a team switch', async () => {
+        await api.get('/conversations/7/messages', { headers: { 'X-Tenant-Id': 'globex' } });
+        expect(captured[0]?.headers?.['X-Tenant-Id']).toBe('globex');
+    });
+
+    it.each(['/api/auth/me', '/api/oauth/connections', '/api/oauth/authorization/request', '/api/system-admin/tenants', '/api/system/appearance', '/sanctum/csrf-cookie', '/testing/reset'])(
         'leaves %s tenant-free so a stale team can never lock the bootstrap out',
         async (url) => {
             await api.get(url).catch(() => undefined);
             expect(captured[0]?.headers?.['X-Tenant-Id']).toBeUndefined();
         },
     );
+
+    it('saves installation appearance without sending the active tenant', async () => {
+        await api.put('/api/system/appearance', { theme: 'tech-pro' });
+        expect(captured[0]?.headers?.['X-Tenant-Id']).toBeUndefined();
+        expect(JSON.parse(String(captured[0]?.data))).toEqual({ theme: 'tech-pro' });
+    });
 
     it('sends no header before the first team sync', async () => {
         useTeamStore.setState({ teams: [], currentTeam: null, userId: null });
@@ -101,6 +112,14 @@ describe('api tenant_forbidden response interceptor', () => {
 
         await expect(api.get('/api/admin/users')).rejects.toThrow();
         expect(useTeamStore.getState().currentTeam).toBe('acme');
+        expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not reset the foreground team when a background run loses access to its own tenant', async () => {
+        respondWith = { status: 403, data: { error: 'tenant_forbidden' } };
+        useTeamStore.setState({ currentTeam: 'globex' });
+        await expect(api.get('/conversations/7/messages', { headers: { 'X-Tenant-Id': 'acme' } })).rejects.toThrow();
+        expect(useTeamStore.getState().currentTeam).toBe('globex');
         expect(assignSpy).not.toHaveBeenCalled();
     });
 });

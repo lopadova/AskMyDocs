@@ -12,6 +12,7 @@ use Padosoft\AskMyDocsConnectorFabric\FabricConnector;
 use Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveConnector;
 use Padosoft\AskMyDocsConnectorImap\ImapConnector;
 use Padosoft\AskMyDocsConnectorJira\JiraConnector;
+use Padosoft\AskMyDocsConnectorMcp\McpConnector;
 use Padosoft\AskMyDocsConnectorNotion\NotionConnector;
 use Padosoft\AskMyDocsConnectorOneDrive\OneDriveConnector;
 use Tests\TestCase;
@@ -37,8 +38,8 @@ use Tests\TestCase;
 final class ConnectorRegistryTest extends TestCase
 {
     /**
-     * The seven connector FQCNs shipped as standalone composer packages
-     * in v4.6. Keep this in lock-step with `composer.json::require`
+     * Connector FQCNs shipped as standalone composer packages. Keep this in
+     * lock-step with `composer.json::require`
      * and every package's own `extra.askmydocs.connectors`. Adding a
      * new connector package? Append it here AND in the host README +
      * v4.6 sister-packages row.
@@ -55,6 +56,7 @@ final class ConnectorRegistryTest extends TestCase
         JiraConnector::class,
         // v8.17 — first credential-based connector (IMAP).
         ImapConnector::class,
+        McpConnector::class,
     ];
 
     public function test_every_shipped_connector_implements_connector_interface(): void
@@ -96,6 +98,7 @@ final class ConnectorRegistryTest extends TestCase
                 'confluence',
                 'jira',
                 'imap',
+                'mcp',
             ] as $expectedKey
         ) {
             $this->assertTrue(

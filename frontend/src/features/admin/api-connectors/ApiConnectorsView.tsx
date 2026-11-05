@@ -1,5 +1,11 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useRef, useState } from 'react';
+import { Upload } from 'lucide-react';
+import { Button } from '../../../components/Button';
+import { ConnectorExportButton } from './ConnectorExportButton';
+import { ConnectorImportModal } from './ConnectorImportModal';
 import { AdminShell } from '../shell/AdminShell';
+import { SourceAvatar } from '../connectors/SourceAvatar';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import type {
@@ -60,6 +66,7 @@ import { AgentRuntimeOverview } from './AgentRuntimeOverview';
  */
 
 type Modal =
+    | { kind: 'connector-import' }
     | { kind: 'connector-create' }
     | { kind: 'connector-edit'; connector: ApiConnector }
     | { kind: 'auth-create'; connector: ApiConnector }
@@ -73,6 +80,7 @@ type Modal =
     | null;
 
 export function ApiConnectorsView() {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const connectorsQuery = useApiConnectors();
     const projectsQuery = useProjectOptions();
@@ -109,6 +117,8 @@ export function ApiConnectorsView() {
     // Relation editor: full routes fetched on select to power the field pickers.
     const [relationListRoute, setRelationListRoute] = useState<ApiRoute | null>(null);
     const [relationDetailRoute, setRelationDetailRoute] = useState<ApiRoute | null>(null);
+    const [relationRouteErrors, setRelationRouteErrors] = useState<{ list: string | null; detail: string | null }>({ list: null, detail: null });
+    const relationRouteRequests = useRef({ list: 0, detail: 0 });
     const [drillResult, setDrillResult] = useState<DrillResult | null>(null);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
@@ -334,6 +344,9 @@ export function ApiConnectorsView() {
     // --- relations (List → Detail) ---
 
     function openRelationEditor(connector: ApiConnector, relation: ApiRouteRelation | null) {
+        relationRouteRequests.current.list += 1;
+        relationRouteRequests.current.detail += 1;
+        setRelationRouteErrors({ list: null, detail: null });
         setRelationListRoute(null);
         setRelationDetailRoute(null);
         if (relation) {
@@ -347,19 +360,19 @@ export function ApiConnectorsView() {
     }
 
     async function selectRelationRoute(side: 'list' | 'detail', routeId: number | null) {
-        if (routeId === null) {
-            if (side === 'list') setRelationListRoute(null);
-            else setRelationDetailRoute(null);
-            return;
-        }
+        const request = ++relationRouteRequests.current[side];
+        setRelationRouteErrors((previous) => ({ ...previous, [side]: null }));
+        if (side === 'list') setRelationListRoute(null);
+        else setRelationDetailRoute(null);
+        if (routeId === null) return;
         try {
             const route = await apiConnectorsApi.showRoute(routeId);
+            if (request !== relationRouteRequests.current[side]) return;
             if (side === 'list') setRelationListRoute(route);
             else setRelationDetailRoute(route);
-        } catch {
-            // Suggestions are a nice-to-have; a fetch failure just means no datalist.
-            if (side === 'list') setRelationListRoute(null);
-            else setRelationDetailRoute(null);
+        } catch (error) {
+            if (request !== relationRouteRequests.current[side]) return;
+            setRelationRouteErrors((previous) => ({ ...previous, [side]: toAdminError(error).message }));
         }
     }
 
@@ -422,7 +435,7 @@ export function ApiConnectorsView() {
                 data-state={state}
                 style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div className="api-config-transfer-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                         <h1
                             style={{
@@ -433,30 +446,26 @@ export function ApiConnectorsView() {
                                 color: 'var(--fg-0)',
                             }}
                         >
-                            API Connectors
-                        </h1>
+                            {translateInterface("API Connectors")}</h1>
                         <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                            Wrap any HTTP API as one or more LLM tools — define routes, test them live,
-                            then activate the ones the chat may call.
-                        </p>
+                            {translateInterface("Wrap any HTTP API as one or more LLM tools — define routes, test them live, then activate the ones the chat may call.")}</p>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button
+                    <div className="api-config-transfer-actions">
+                        <Button data-testid="api-connector-import" leadingIcon={<Upload size={16} />}
+                            onClick={() => openModalReset({ kind: 'connector-import' })}>Import API</Button>
+                        <Button
                             type="button"
                             data-testid="api-connector-probe"
                             onClick={openProbe}
-                            style={buttonStyle('secondary', false)}
                         >
-                            Probe endpoint
-                        </button>
-                        <button
+                            {translateInterface("Probe endpoint")}</Button>
+                        <Button
                             type="button"
                             data-testid="api-connector-create"
                             onClick={() => openModalReset({ kind: 'connector-create' })}
-                            style={buttonStyle('primary', false)}
+                            variant="primary"
                         >
-                            + New API connector
-                        </button>
+                            {translateInterface("+ New API connector")}</Button>
                     </div>
                 </div>
 
@@ -469,8 +478,7 @@ export function ApiConnectorsView() {
                         aria-busy="true"
                         style={emptyBlockStyle()}
                     >
-                        Loading API connectors…
-                    </div>
+                        {translateInterface("Loading API connectors…")}</div>
                 )}
 
                 {state === 'error' && (
@@ -486,7 +494,7 @@ export function ApiConnectorsView() {
                             fontSize: 13,
                         }}
                     >
-                        Could not load API connectors.{' '}
+                        {translateInterface("Could not load API connectors.")}{' '}
                         <button
                             type="button"
                             data-testid="api-connectors-retry"
@@ -502,15 +510,13 @@ export function ApiConnectorsView() {
                                 cursor: 'pointer',
                             }}
                         >
-                            Retry
-                        </button>
+                            {translateInterface("Retry")}</button>
                     </div>
                 )}
 
                 {state === 'empty' && (
                     <div data-testid="api-connectors-empty" role="status" style={emptyBlockStyle()}>
-                        No API connectors yet. Create one to expose an external API as chat tools.
-                    </div>
+                        {translateInterface("No API connectors yet. Create one to expose an external API as chat tools.")}</div>
                 )}
 
                 {state === 'ready' && (
@@ -546,6 +552,11 @@ export function ApiConnectorsView() {
                     </div>
                 )}
             </div>
+
+            {modal?.kind === 'connector-import' && <ConnectorImportModal onClose={closeModal} onImported={() => {
+                closeModal();
+                toast.success('API connector imported with all endpoints.', 'toast-api-connector-imported');
+            }} />}
 
             {(modal?.kind === 'connector-create' || modal?.kind === 'connector-edit') && (
                 <ConnectorForm
@@ -612,6 +623,8 @@ export function ApiConnectorsView() {
                     relation={modal.kind === 'relation-edit' ? modal.relation : null}
                     listRouteFull={relationListRoute}
                     detailRouteFull={relationDetailRoute}
+                    listRouteError={relationRouteErrors.list}
+                    detailRouteError={relationRouteErrors.detail}
                     onSelectListRoute={(id) => void selectRelationRoute('list', id)}
                     onSelectDetailRoute={(id) => void selectRelationRoute('detail', id)}
                     onSubmit={handleRelationSubmit}
@@ -691,6 +704,7 @@ function ConnectorCard({
     onDrillRelation,
     onDeleteRelation,
 }: ConnectorCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const routes = connector.routes ?? [];
     const authProfiles = connector.auth_profiles ?? [];
     const relations = connector.relations ?? [];
@@ -709,12 +723,13 @@ function ConnectorCard({
                 gap: 10,
             }}
         >
-            <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-                <div>
+            <header className="api-config-transfer-heading" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <SourceAvatar connectorKey="api" displayName="API" />
+                <div style={{ flex: 1, minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 15, color: 'var(--fg-0)' }}>
                         {connector.name}
                         {!connector.is_active && (
-                            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--fg-3)' }}>(inactive)</span>
+                            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--fg-3)' }}>{translateInterface("(inactive)")}</span>
                         )}
                     </h2>
                     {connector.description && (
@@ -727,33 +742,30 @@ function ConnectorCard({
                         {connector.project_key ? `project ${connector.project_key}` : 'tenant default'}
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                    <button
+                <div className="api-config-transfer-actions">
+                    <ConnectorExportButton connector={connector} testId={`api-connector-${connector.id}-export`} />
+                    <Button
                         type="button"
                         data-testid={`api-connector-${connector.id}-edit`}
                         onClick={onEditConnector}
-                        style={buttonStyle('secondary', false)}
                     >
-                        Edit
-                    </button>
-                    <button
+                        {translateInterface("Edit")}</Button>
+                    <Button
                         type="button"
                         data-testid={`api-connector-${connector.id}-delete`}
                         onClick={onDeleteConnector}
-                        style={buttonStyle('danger', false)}
+                        variant="danger"
                     >
-                        Remove
-                    </button>
+                        {translateInterface("Remove")}</Button>
                 </div>
             </header>
 
             {/* Auth profiles */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Auth profiles:</span>
+                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{translateInterface("Auth profiles:")}</span>
                 {authProfiles.length === 0 && (
                     <span data-testid={`api-connector-${connector.id}-auth-empty`} style={{ fontSize: 11, color: 'var(--fg-3)' }}>
-                        none
-                    </span>
+                        {translateInterface("none")}</span>
                 )}
                 {authProfiles.map((profile) => (
                     <button
@@ -790,14 +802,13 @@ function ConnectorCard({
                         cursor: 'pointer',
                     }}
                 >
-                    + Auth profile
-                </button>
+                    {translateInterface("+ Auth profile")}</button>
             </div>
 
             {/* Routes */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>
-                    Routes ({routes.length})
+                    {translateInterface("Routes (")}{routes.length})
                 </span>
                 <button
                     type="button"
@@ -805,14 +816,12 @@ function ConnectorCard({
                     onClick={onAddRoute}
                     style={buttonStyle('secondary', false)}
                 >
-                    + Add route
-                </button>
+                    {translateInterface("+ Add route")}</button>
             </div>
 
             {routes.length === 0 && (
                 <p data-testid={`api-connector-${connector.id}-routes-empty`} style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)' }}>
-                    No routes yet.
-                </p>
+                    {translateInterface("No routes yet.")}</p>
             )}
 
             {routes.map((route) => (
@@ -834,7 +843,7 @@ function ConnectorCard({
             {/* Relations (List → Detail) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>
-                    Relations ({relations.length})
+                    {translateInterface("Relations (")}{relations.length})
                 </span>
                 <button
                     type="button"
@@ -842,14 +851,12 @@ function ConnectorCard({
                     onClick={onAddRelation}
                     style={buttonStyle('secondary', false)}
                 >
-                    + Add relation
-                </button>
+                    {translateInterface("+ Add relation")}</button>
             </div>
 
             {relations.length === 0 && (
                 <p data-testid={`api-connector-${connector.id}-relations-empty`} style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)' }}>
-                    No list → detail relations yet.
-                </p>
+                    {translateInterface("No list → detail relations yet.")}</p>
             )}
 
             {relations.map((relation) => (
@@ -872,7 +879,7 @@ function ConnectorCard({
                         {relation.detail_route?.slug ?? `#${relation.detail_route_id}`}
                     </code>
                     <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
-                        {relation.field_map.length} map{relation.field_map.length === 1 ? '' : 's'}
+                        {relation.field_map.length} {" " + translateInterface("map")}{relation.field_map.length === 1 ? '' : 's'}
                     </span>
                     <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
                         <button
@@ -881,24 +888,21 @@ function ConnectorCard({
                             onClick={() => onDrillRelation(relation)}
                             style={buttonStyle('secondary', false)}
                         >
-                            Drill-test
-                        </button>
+                            {translateInterface("Drill-test")}</button>
                         <button
                             type="button"
                             data-testid={`api-connector-${connector.id}-relation-${relation.id}-edit`}
                             onClick={() => onEditRelation(relation)}
                             style={buttonStyle('secondary', false)}
                         >
-                            Edit
-                        </button>
+                            {translateInterface("Edit")}</button>
                         <button
                             type="button"
                             data-testid={`api-connector-${connector.id}-relation-${relation.id}-remove`}
                             onClick={() => onDeleteRelation(relation.id)}
                             style={buttonStyle('danger', false)}
                         >
-                            Remove
-                        </button>
+                            {translateInterface("Remove")}</button>
                     </div>
                 </div>
             ))}
@@ -935,6 +939,7 @@ function RouteRow({
     onDisable,
     onRegenerate,
 }: RouteRowProps) {
+    const { t: translateInterface } = useUiTranslation();
     const badge = routeStatusBadge(route.status);
     const typeBadge = endpointTypeBadge(route.endpoint_type);
     const base = `api-connector-${connectorId}-route-${route.id}`;
@@ -989,7 +994,7 @@ function RouteRow({
             <span
                 data-testid={`${base}-endpoint-type`}
                 data-endpoint-type={route.endpoint_type}
-                title="Endpoint type (list / detail)"
+                title={translateInterface("Endpoint type (list / detail)")}
                 style={{
                     fontSize: 10.5,
                     fontWeight: 600,
@@ -1006,7 +1011,7 @@ function RouteRow({
                 data-testid={`${base}-mode`}
                 style={{ fontSize: 10.5, color: 'var(--fg-3)' }}
             >
-                mode: {route.mode}
+                {translateInterface("mode:") + " "}{route.mode}
             </span>
 
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -1017,7 +1022,7 @@ function RouteRow({
                     disabled={loading}
                     style={buttonStyle('secondary', loading)}
                 >
-                    {loading ? 'Loading…' : 'Test'}
+                    {loading ? translateInterface("Loading…") : 'Test'}
                 </button>
                 <button
                     type="button"
@@ -1027,16 +1032,14 @@ function RouteRow({
                     title={canTry ? undefined : 'Test the route first'}
                     style={buttonStyle('secondary', loading || !canTry)}
                 >
-                    Try
-                </button>
+                    {translateInterface("Try")}</button>
                 <button
                     type="button"
                     data-testid={`${base}-regenerate`}
                     onClick={onRegenerate}
                     style={buttonStyle('secondary', false)}
                 >
-                    Regenerate
-                </button>
+                    {translateInterface("Regenerate")}</button>
                 {canActivate && (
                     <button
                         type="button"
@@ -1044,8 +1047,7 @@ function RouteRow({
                         onClick={onActivate}
                         style={buttonStyle('primary', false)}
                     >
-                        Activate
-                    </button>
+                        {translateInterface("Activate")}</button>
                 )}
                 {canDisable && (
                     <button
@@ -1054,8 +1056,7 @@ function RouteRow({
                         onClick={onDisable}
                         style={buttonStyle('secondary', false)}
                     >
-                        Disable
-                    </button>
+                        {translateInterface("Disable")}</button>
                 )}
                 <button
                     type="button"
@@ -1064,16 +1065,14 @@ function RouteRow({
                     disabled={loading}
                     style={buttonStyle('secondary', loading)}
                 >
-                    Edit
-                </button>
+                    {translateInterface("Edit")}</button>
                 <button
                     type="button"
                     data-testid={`${base}-delete`}
                     onClick={onDelete}
                     style={buttonStyle('danger', false)}
                 >
-                    Remove
-                </button>
+                    {translateInterface("Remove")}</button>
             </div>
         </div>
     );

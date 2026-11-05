@@ -2,14 +2,17 @@
 
 namespace App\Compliance;
 
+use AgentsFullDuplex\RealtimeAgent\Models\AgentSessionRecord;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
+use App\Models\RealtimeAgentSessionLink;
 use App\Services\Kb\Pii\SubjectErasureService;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
@@ -49,6 +52,11 @@ class AskMyDocsUserDataExporter
             'kb_canonical_audit' => [],
             'connector_installations' => [],
             'mcp_tool_call_audit' => [],
+            'realtime_agent_sessions' => [],
+            'realtime_agent_events' => [],
+            'realtime_agent_messages' => [],
+            'realtime_agent_tool_calls' => [],
+            'realtime_agent_usage' => [],
             'pii_vault' => [],
         ];
 
@@ -87,6 +95,11 @@ class AskMyDocsUserDataExporter
             ->forTenant($tenantId)
             ->select('id')
             ->where('user_id', $userId);
+
+        $realtimeSessionIds = RealtimeAgentSessionLink::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->pluck('session_id');
 
         return [
             'conversations' => Conversation::query()
@@ -132,6 +145,14 @@ class AskMyDocsUserDataExporter
                 })
                 ->get()
                 ->toArray(),
+            'realtime_agent_sessions' => AgentSessionRecord::query()
+                ->whereIn('id', $realtimeSessionIds)
+                ->get()
+                ->toArray(),
+            'realtime_agent_events' => $this->realtimeRows('realtime_agent_events', $realtimeSessionIds),
+            'realtime_agent_messages' => $this->realtimeRows('realtime_agent_messages', $realtimeSessionIds),
+            'realtime_agent_tool_calls' => $this->realtimeRows('realtime_agent_tool_calls', $realtimeSessionIds),
+            'realtime_agent_usage' => $this->realtimeRows('realtime_agent_usage', $realtimeSessionIds),
             // v8.23 (Ciclo 4) — the reversible token-vault entries the system can
             // still re-identify to the subject's PII (keyed by their email).
             // Tenant-scoped (R30). Returning the subject their OWN PII is the
@@ -140,6 +161,17 @@ class AskMyDocsUserDataExporter
                 ? $this->eraser->snapshotValues($tenantId, [$userEmail])
                 : [],
         ];
+    }
+
+    /** @param iterable<int,string> $sessionIds @return array<int,array<string,mixed>> */
+    private function realtimeRows(string $table, iterable $sessionIds): array
+    {
+        return DB::table($table)
+            ->whereIn('session_id', $sessionIds)
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (object $row): array => (array) $row)
+            ->all();
     }
 
     private function resolveUserId(object $user): int

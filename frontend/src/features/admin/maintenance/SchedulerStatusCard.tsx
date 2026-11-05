@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useSchedulerStatus } from './maintenance.api';
 
 /*
@@ -7,6 +8,7 @@ import { useSchedulerStatus } from './maintenance.api';
  * "next run" should check their cron output.
  */
 export function SchedulerStatusCard() {
+    const { t: translateInterface } = useUiTranslation();
     const q = useSchedulerStatus();
 
     const state: 'loading' | 'ready' | 'error' = q.isLoading
@@ -30,16 +32,15 @@ export function SchedulerStatusCard() {
             }}
         >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <h3 style={{ fontSize: 13, margin: 0, fontWeight: 600 }}>Scheduled maintenance</h3>
-                <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>daily</span>
+                <h3 style={{ fontSize: 13, margin: 0, fontWeight: 600 }}>{translateInterface("Scheduled maintenance")}</h3>
+                <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{translateInterface("daily")}</span>
             </div>
             {state === 'loading' ? (
-                <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>Loading…</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</div>
             ) : null}
             {state === 'error' ? (
                 <div style={{ fontSize: 12, color: 'var(--danger-fg, #b91c1c)' }}>
-                    Unable to load schedule.
-                </div>
+                    {translateInterface("Unable to load schedule.")}</div>
             ) : null}
             {state === 'ready' ? (
                 <ul

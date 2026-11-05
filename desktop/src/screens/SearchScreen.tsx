@@ -29,6 +29,8 @@ export function SearchScreen({ token, tenantId, projectKey }: Props) {
       return;
     }
 
+    setResults([]);
+    setError("");
     setState("loading");
     let cancelled = false;
     const handle = setTimeout(async () => {
@@ -60,7 +62,8 @@ export function SearchScreen({ token, tenantId, projectKey }: Props) {
 
   return (
     <div className="search" data-testid="search-screen" data-state={state}>
-      <div className="search-bar">
+      <header className="page-heading"><p className="workspace-eyebrow">{projectKey}</p><h1>Find your next answer</h1><p className="muted">Search document titles and paths in this project.</p></header>
+      <label className="search-bar"><span className="field-label">Search documents</span>
         <input
           type="search"
           className="search-input"
@@ -70,7 +73,7 @@ export function SearchScreen({ token, tenantId, projectKey }: Props) {
           aria-label="Search documents"
           data-testid="search-input"
         />
-      </div>
+      </label>
 
       {state === "error" && (
         <p className="error banner" role="alert" data-testid="search-error">

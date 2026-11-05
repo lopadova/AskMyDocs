@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useActivityLogs, type ActivityLogsQuery } from './logs.api';
 
@@ -12,6 +13,7 @@ import { useActivityLogs, type ActivityLogsQuery } from './logs.api';
  */
 
 export function ActivityTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [subjectType, setSubjectType] = useState('');
     const [subjectId, setSubjectId] = useState('');
     const [causerId, setCauserId] = useState('');
@@ -69,7 +71,7 @@ export function ActivityTab() {
                         Activity log not installed
                     </div>
                     <div>
-                        Run <code>composer require spatie/laravel-activitylog</code> and{' '}
+                        Run <code>composer require spatie/laravel-activitylog</code> {" " + translateInterface("and")}{' '}
                         <code>php artisan migrate</code> to enable this tab.
                     </div>
                 </div>
@@ -138,10 +140,10 @@ export function ActivityTab() {
                         <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
                             <Th>#</Th>
                             <Th>Log</Th>
-                            <Th>Description</Th>
+                            <Th>{translateInterface("Description")}</Th>
                             <Th>Subject</Th>
                             <Th>Event</Th>
-                            <Th>When</Th>
+                            <Th>{translateInterface("When")}</Th>
                         </tr>
                     </thead>
                     <tbody>
@@ -186,6 +188,7 @@ function Pagination({
     onPage: (p: number) => void;
     testidPrefix: string;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`${testidPrefix}-pagination`}
@@ -201,7 +204,7 @@ function Pagination({
                 ← Prev
             </button>
             <span>
-                Page {meta.current_page} / {meta.last_page} ({meta.total} rows)
+                {translateInterface("Page") + " "}{meta.current_page} / {meta.last_page} ({meta.total} rows)
             </span>
             <button
                 type="button"
@@ -209,8 +212,7 @@ function Pagination({
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >
-                Next →
-            </button>
+                {translateInterface("Next →")}</button>
         </div>
     );
 }

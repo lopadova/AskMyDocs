@@ -1,0 +1,887 @@
+{
+  "revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+  "sidebar_items": 47,
+  "sections": [
+    {
+      "id": "chat",
+      "label": "Chat",
+      "route": "/app/$teamHash/chat",
+      "group_id": "workspace",
+      "group_label": "Workspace",
+      "feature_ids": [
+        "F-001",
+        "F-002",
+        "F-011",
+        "F-032"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "sessions",
+      "label": "Sessions",
+      "route": "/app/$teamHash/sessions",
+      "group_id": "workspace",
+      "group_label": "Workspace",
+      "feature_ids": [
+        "F-003"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "kb-browse",
+      "label": "Browse KB",
+      "route": "/app/$teamHash/knowledge",
+      "group_id": "workspace",
+      "group_label": "Workspace",
+      "feature_ids": [
+        "F-004"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "my-kb",
+      "label": "My KB",
+      "route": "/app/me",
+      "group_id": "workspace",
+      "group_label": "Workspace",
+      "feature_ids": [
+        "F-043"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "connected-apps",
+      "label": "Connected Apps",
+      "route": "/app/connected-apps",
+      "group_id": "workspace",
+      "group_label": "Workspace",
+      "feature_ids": [
+        "F-029"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "digest",
+      "label": "Digest",
+      "route": "/app/digest",
+      "group_id": "workspace",
+      "group_label": "Workspace",
+      "feature_ids": [
+        "F-044"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "tenant-control",
+      "label": "Tenants",
+      "route": "/app/system/tenants",
+      "group_id": "system-administration",
+      "group_label": "System administration",
+      "feature_ids": [
+        "F-039"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": "system_admin"
+    },
+    {
+      "id": "super-admins",
+      "label": "Super Admins",
+      "route": "/app/system/super-admins",
+      "group_id": "system-administration",
+      "group_label": "System administration",
+      "feature_ids": [
+        "F-039"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": "system_admin"
+    },
+    {
+      "id": "appearance",
+      "label": "Appearance",
+      "route": "/app/system/appearance",
+      "group_id": "system-administration",
+      "group_label": "System administration",
+      "feature_ids": [
+        "F-040"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": [
+        "super-admin"
+      ],
+      "ui_feature": null
+    },
+    {
+      "id": "dashboard",
+      "label": "Dashboard",
+      "route": "/app/$teamHash/admin",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-041"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "engagement",
+      "label": "Engagement",
+      "route": "/app/$teamHash/admin/engagement",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-042"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "insights",
+      "label": "AI Insights",
+      "route": "/app/$teamHash/admin/insights",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-045"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "projects",
+      "label": "Projects",
+      "route": "/app/$teamHash/admin/projects",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-035"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "teams",
+      "label": "Teams",
+      "route": "/app/$teamHash/admin/teams",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-034"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "users",
+      "label": "Users",
+      "route": "/app/$teamHash/admin/users",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-036"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "roles",
+      "label": "Roles",
+      "route": "/app/$teamHash/admin/roles",
+      "group_id": "tenant-administration",
+      "group_label": "Tenant administration",
+      "feature_ids": [
+        "F-036"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "kb",
+      "label": "Knowledge Base",
+      "route": "/app/$teamHash/admin/kb",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-005",
+        "F-006",
+        "F-007",
+        "F-008",
+        "F-009",
+        "F-010",
+        "F-011"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "collections",
+      "label": "Collections",
+      "route": "/app/$teamHash/admin/collections",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-014"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "synonyms",
+      "label": "Synonyms",
+      "route": "/app/$teamHash/admin/kb/synonyms",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-015"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "kb-insights",
+      "label": "Doc Insights",
+      "route": "/app/$teamHash/admin/kb/insights",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-016"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "analysis-settings",
+      "label": "Analysis Gate",
+      "route": "/app/$teamHash/admin/kb/analysis-settings",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-016"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "content-gaps",
+      "label": "Content Gaps",
+      "route": "/app/$teamHash/admin/kb/content-gaps",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-017"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "source-acl",
+      "label": "Source Permissions",
+      "route": "/app/$teamHash/admin/kb/source-acl",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-037"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "wiki-health",
+      "label": "Wiki Health",
+      "route": "/app/$teamHash/admin/kb/wiki-health",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-012",
+        "F-013"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "wiki-indices",
+      "label": "Wiki Indices",
+      "route": "/app/$teamHash/admin/kb/wiki-indices",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-012",
+        "F-013"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "wiki-explorer",
+      "label": "Wiki Explorer",
+      "route": "/app/$teamHash/admin/kb/wiki-explorer",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-010",
+        "F-011",
+        "F-012",
+        "F-013"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "autowiki-settings",
+      "label": "Auto-Wiki Settings",
+      "route": "/app/$teamHash/admin/kb/autowiki-settings",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-012"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "retrieval-profiles",
+      "label": "Retrieval profiles",
+      "route": "/app/$teamHash/admin/kb/retrieval-profiles",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-015",
+        "F-018"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "tabular-reviews",
+      "label": "Tabular Reviews",
+      "route": "/app/$teamHash/admin/tabular-reviews",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-019"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "workflows",
+      "label": "Workflows",
+      "route": "/app/$teamHash/admin/workflows",
+      "group_id": "knowledge",
+      "group_label": "Knowledge",
+      "feature_ids": [
+        "F-020"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "ai-act-compliance",
+      "label": "AI Act",
+      "route": "/app/$teamHash/admin/ai-act-compliance",
+      "group_id": "compliance",
+      "group_label": "Compliance",
+      "feature_ids": [
+        "F-049"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "compliance-reports",
+      "label": "Compliance",
+      "route": "/app/$teamHash/admin/compliance/reports",
+      "group_id": "compliance",
+      "group_label": "Compliance",
+      "feature_ids": [
+        "F-050"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "evidence-risk-review",
+      "label": "Evidence & Risk",
+      "route": "/app/$teamHash/admin/evidence-risk-review",
+      "group_id": "compliance",
+      "group_label": "Compliance",
+      "feature_ids": [
+        "F-051"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "pii-redactor",
+      "label": "PII Redactor",
+      "route": "/app/$teamHash/admin/pii-redactor",
+      "group_id": "compliance",
+      "group_label": "Compliance",
+      "feature_ids": [
+        "F-048"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "connectors",
+      "label": "Connectors",
+      "route": "/app/$teamHash/admin/connectors",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-021",
+        "F-022",
+        "F-023",
+        "F-024"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "api-connectors",
+      "label": "API Connectors",
+      "route": "/app/$teamHash/admin/api-connectors",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-025",
+        "F-026"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "api-tools",
+      "label": "Tool API",
+      "route": "/app/$teamHash/admin/api-tools",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-027"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "ingestion",
+      "label": "Ingestion & Sync",
+      "route": "/app/$teamHash/admin/ingestion",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-005",
+        "F-006",
+        "F-022",
+        "F-054"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "invitations",
+      "label": "Invitations",
+      "route": "/app/$teamHash/admin/invitations",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-038"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "flows",
+      "label": "Flows",
+      "route": "/app/$teamHash/admin/flows",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-052"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "eval-harness",
+      "label": "Eval Harness",
+      "route": "/app/$teamHash/admin/eval-harness",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-053"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "mcp-tools",
+      "label": "MCP Tools",
+      "route": "/app/$teamHash/admin/mcp-tools",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-028"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "mcp-tokens",
+      "label": "MCP Tokens",
+      "route": "/app/$teamHash/admin/mcp/tokens",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-029",
+        "F-030"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "widget",
+      "label": "Widget",
+      "route": "/app/$teamHash/admin/widget",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-031"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "logs",
+      "label": "Logs",
+      "route": "/app/$teamHash/admin/logs",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-055"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "maintenance",
+      "label": "Maintenance",
+      "route": "/app/$teamHash/admin/maintenance",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-056"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    },
+    {
+      "id": "app-settings",
+      "label": "Configuration",
+      "route": "/app/$teamHash/admin/app-settings",
+      "group_id": "operations",
+      "group_label": "Operations",
+      "feature_ids": [
+        "F-057",
+        "F-058"
+      ],
+      "access_note": "Visibilità UI non equivale ad autorizzazione: API e ruoli controllano le operazioni.",
+      "evidence": {
+        "path": "frontend/src/components/shell/nav-config.ts",
+        "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+      },
+      "ui_roles": null,
+      "ui_feature": null
+    }
+  ],
+  "additional_surfaces": [
+    {
+      "name": "FinOps",
+      "feature_ids": [
+        "F-046"
+      ],
+      "route": "/admin/ai-finops",
+      "note": "Pannello pacchetto dedicato, attivazione opt-in."
+    },
+    {
+      "name": "AI Guardrails",
+      "feature_ids": [
+        "F-047"
+      ],
+      "route": "/admin/ai-guardrails",
+      "note": "Pannello pacchetto dedicato, attivazione opt-in."
+    },
+    {
+      "name": "Notifiche e preferenze",
+      "feature_ids": [
+        "F-044"
+      ],
+      "route": "sottoroute admin/notifications, admin/notifications/preferences e defaults; accesso dalla topbar",
+      "note": "Raggiungibile dalla campanella/topbar, non voce di nav-config."
+    },
+    {
+      "name": "Time Machine, tag, graph, digitization review",
+      "feature_ids": [
+        "F-007",
+        "F-008",
+        "F-009",
+        "F-011"
+      ],
+      "route": "dettaglio documento e sottoroute KB",
+      "note": "Funzioni annidate nella cura dei documenti, non voci principali del menu."
+    },
+    {
+      "name": "Client desktop e voce realtime",
+      "feature_ids": [
+        "F-032",
+        "F-033"
+      ],
+      "route": "client nativo e chat web",
+      "note": "Superfici ulteriori rispetto alle voci del menu."
+    },
+    {
+      "name": "KB Health e Tags",
+      "feature_ids": [
+        "F-008",
+        "F-013",
+        "F-041"
+      ],
+      "route": "sottoroute admin/kb/health e admin/kb/tags",
+      "note": "Pagine dedicate raggiungibili nel contesto KB, non presenti come voci principali nel nav-config."
+    }
+  ]
+}

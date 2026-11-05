@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -55,26 +56,31 @@ final class AgentRunTransportTest extends TestCase
         $user = $this->user('worker-context@example.com');
         $run = $this->completedRun($user);
         $tenants = app(TenantContext::class);
+        $packageTenants = app(PackageTenantContext::class);
         $tenants->reset();
+        $packageTenants->reset();
         $resetTenant = $tenants->current();
+        $resetPackageTenant = $packageTenants->current();
         App::setLocale('en');
         date_default_timezone_set('UTC');
 
         $handler = \Mockery::mock(AgentRunHandler::class);
         $handler->shouldReceive('handle')
             ->once()
-            ->withArgs(function (AgentRun $handled) use ($run, $tenants): bool {
+            ->withArgs(function (AgentRun $handled) use ($run, $tenants, $packageTenants): bool {
                 $this->assertSame($run->id, $handled->id);
                 $this->assertSame('test-tenant', $tenants->current());
+                $this->assertSame('test-tenant', $packageTenants->current());
                 $this->assertSame('it', App::currentLocale());
                 $this->assertSame('Europe/Rome', date_default_timezone_get());
 
                 return true;
             });
 
-        (new ExecuteAgentRunJob($run->id, 'test-tenant'))->handle($handler, $tenants);
+        (new ExecuteAgentRunJob($run->id, 'test-tenant'))->handle($handler, $tenants, $packageTenants);
 
         $this->assertSame($resetTenant, $tenants->current());
+        $this->assertSame($resetPackageTenant, $packageTenants->current());
         $this->assertSame('en', App::currentLocale());
         $this->assertSame('UTC', date_default_timezone_get());
     }
@@ -89,7 +95,11 @@ final class AgentRunTransportTest extends TestCase
         $this->expectException(ModelNotFoundException::class);
 
         (new ExecuteAgentRunJob($run->id, 'other-tenant'))
-            ->handle($handler, app(TenantContext::class));
+            ->handle(
+                $handler,
+                app(TenantContext::class),
+                app(PackageTenantContext::class),
+            );
     }
 
     public function test_sse_replays_only_events_after_the_cursor_and_is_no_store(): void
@@ -122,6 +132,47 @@ final class AgentRunTransportTest extends TestCase
         $this->actingAs($intruder)
             ->get('/test-agent-runs/'.$run->run_id.'/events')
             ->assertNotFound();
+    }
+
+    public function test_failed_run_without_terminal_event_emits_a_read_only_status_snapshot(): void
+    {
+        config()->set('agent.events.stream_seconds', 0);
+        $user = $this->user('failed-stream@example.com');
+        $run = $this->completedRun($user);
+        $publisher = app(AgentEventPublisher::class);
+        $publisher->publish($run, 'run.started', 'run.started');
+        $publisher->publish($run, 'research.planned');
+        // Reproduce the production failure: status was saved, but the error
+        // event could not be appended because the stored cursor was stale.
+        $run->forceFill(['status' => AgentRun::STATUS_FAILED, 'last_sequence' => 1,
+            'result_json' => ['private_diagnostic' => 'must-not-leak']])->save();
+        $response = $this->actingAs($user)->get('/test-agent-runs/'.$run->run_id.'/events?after=2');
+        $response->assertOk();
+        $body = $response->streamedContent();
+        $this->assertStringContainsString("id: 3\nevent: run.failed", $body);
+        $this->assertStringContainsString('"status_snapshot":true', $body);
+        $this->assertStringContainsString('Non sono riuscito a completare la ricerca.', $body);
+        $this->assertStringNotContainsString('must-not-leak', $body);
+        $this->assertSame(2, $run->events()->count());
+        $this->assertSame(1, $run->fresh()->last_sequence);
+    }
+
+    public function test_terminal_stream_drains_more_than_one_page_even_with_a_stale_counter(): void
+    {
+        config(['agent.events.stream_seconds' => 1, 'agent.events.poll_ms' => 10]);
+        $user = $this->user('paged-stream@example.com');
+        $run = $this->completedRun($user);
+        $publisher = app(AgentEventPublisher::class);
+        for ($index = 0; $index < 105; $index++) {
+            $publisher->publish($run, 'tool.progress');
+        }
+        $publisher->publish($run, 'run.failed', 'run.failed', canCancel: false);
+        $run->forceFill(['status' => AgentRun::STATUS_FAILED, 'last_sequence' => 2])->save();
+        $response = $this->actingAs($user)->get('/test-agent-runs/'.$run->run_id.'/events');
+        $body = $response->streamedContent();
+        $this->assertStringContainsString("id: 106\nevent: run.failed", $body);
+        $this->assertSame(1, substr_count($body, 'event: run.failed'));
+        $this->assertStringNotContainsString('status_snapshot', $body);
     }
 
     private function completedRun(User $user): AgentRun

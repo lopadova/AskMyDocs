@@ -1,3 +1,5 @@
+import { Button } from "../components/Button";
+import { Icon } from "../components/Icon";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, chat } from "../lib/api";
 import { DocumentModal, type DocumentRef } from "../components/DocumentModal";
@@ -39,14 +41,37 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [copied, setCopied] = useState<number | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   // Mobile only: the thread list is an off-canvas drawer (CSS-gated under the
   // 640px breakpoint). On desktop the toggle is hidden so this stays false.
   const [drawerOpen, setDrawerOpen] = useState(false);
   // The cited document open in the fullpage MD viewer (null = closed).
   const [openDoc, setOpenDoc] = useState<DocumentRef | null>(null);
+  const drawerToggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    sidebarRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") { setDrawerOpen(false); drawerToggleRef.current?.focus(); }
+      if (event.key === "Tab" && sidebarRef.current) {
+        const controls = [...sidebarRef.current.querySelectorAll<HTMLElement>("button:not(:disabled), input")];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   // Conversation history is isolated by the selected workspace. This avoids
   // showing a tenant/project's local messages after the user switches context.
@@ -55,12 +80,15 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
     setLoaded(false);
     setThreads([]);
     setActiveId(null);
-    loadThreads(tenantId, projectKey).then((stored) => {
-      if (cancelled) {
+    loadThreads(tenantId, projectKey).catch(() => {
+      if (!cancelled) setError("Could not load local conversations. Reopen the workspace to retry.");
+      return null;
+    }).then((stored) => {
+      if (cancelled || !stored) {
         return;
       }
       setThreads(stored);
-      setActiveId(stored.length > 0 ? stored[0].id : null);
+      setActiveId(stored.find(t => !t.archived)?.id ?? null);
       setLoaded(true);
     });
     return () => {
@@ -72,17 +100,33 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
   // clobber stored threads with the empty bootstrap state.
   useEffect(() => {
     if (loaded) {
-      void saveThreads(tenantId, projectKey, threads);
+      void saveThreads(tenantId, projectKey, threads).catch(() => setError("Could not save conversations on this device. Keep the app open and check available storage."));
     }
   }, [threads, loaded, tenantId, projectKey]);
 
   const active = threads.find((t) => t.id === activeId) ?? null;
+  const visibleThreads = threads.filter(t => Boolean(t.archived) === showArchived && t.title.toLowerCase().includes(filter.toLowerCase()))
+    .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.createdAt - a.createdAt);
+
+  function updateThread(id: string, patch: Partial<Thread>) {
+    setThreads(previous => previous.map(thread => thread.id === id ? { ...thread, ...patch } : thread));
+  }
+
+  async function copyAnswer(content: string, index: number) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(index);
+    } catch { setError("Could not copy the answer. Select the text to copy it manually."); }
+  }
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    endRef.current?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, [active?.messages.length, sending]);
 
   function startThread() {
+    if (!loaded || sending) return;
+    setShowArchived(false);
+    setFilter("");
     setError("");
     const thread: Thread = {
       id: newId(),
@@ -98,11 +142,13 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
 
   function openThread(id: string) {
     setActiveId(id);
+    setCopied(null);
     setError("");
     setDrawerOpen(false);
   }
 
   function deleteThread(id: string) {
+    if (!window.confirm("Delete this conversation from this device? This cannot be undone.")) return;
     const next = threads.filter((t) => t.id !== id);
     setThreads(next);
     if (id === activeId) {
@@ -113,7 +159,7 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
   async function send(event: FormEvent) {
     event.preventDefault();
     const question = draft.trim();
-    if (question === "" || sending) {
+    if (question === "" || sending || !loaded) {
       return;
     }
     setError("");
@@ -141,6 +187,7 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
     setActiveId(target.id);
     setDraft("");
     setSending(true);
+    setSendingId(target.id);
 
     try {
       const res = await chat(token, question, tenantId, projectKey);
@@ -160,6 +207,7 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
         ),
       );
     } catch (err) {
+      setDraft(current => current || question);
       setError(
         err instanceof ApiError
           ? `${err.message} (HTTP ${err.status})`
@@ -167,6 +215,7 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
       );
     } finally {
       setSending(false);
+      setSendingId(null);
     }
   }
 
@@ -182,24 +231,33 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
         />
       )}
       <aside
+        ref={sidebarRef}
         className={drawerOpen ? "chat-sidebar open" : "chat-sidebar"}
         aria-label="Conversations"
+        id="conversation-sidebar"
       >
-        <button
+        <Button
           type="button"
-          className="btn primary block"
+          variant="primary" className="block"
           onClick={startThread}
+          disabled={!loaded || sending}
           data-testid="chat-new-thread"
         >
-          + New chat
-        </button>
+          <Icon name="plus" /> New chat
+        </Button>
+        <p className="workspace-eyebrow rail-eyebrow">On this device</p>
+        <label className="thread-search"><span className="visually-hidden">Filter conversations</span><Icon name="search" /><input type="search" aria-label="Filter conversations" placeholder="Find a conversation" value={filter} onChange={e => setFilter(e.target.value)} /></label>
+        <div className="ui-button-group thread-filters" aria-label="Conversation filter">
+          <Button variant="quiet" size="sm" aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>Recent</Button>
+          <Button variant="quiet" size="sm" aria-pressed={showArchived} onClick={() => setShowArchived(true)}>Archived</Button>
+        </div>
         <ul className="thread-list" data-testid="chat-thread-list">
-          {threads.length === 0 && (
+          {visibleThreads.length === 0 && (
             <li className="muted small thread-empty" data-testid="chat-thread-empty">
-              No conversations yet
+              {loaded ? "No conversations here yet" : "Loading conversations…"}
             </li>
           )}
-          {threads.map((thread) => (
+          {visibleThreads.map((thread) => (
             <li
               key={thread.id}
               className={
@@ -213,17 +271,9 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
                 aria-current={thread.id === activeId}
                 data-testid={`chat-thread-${thread.id}-open`}
               >
-                {thread.title}
+                {thread.pinned && <Icon name="pin" />} {thread.title}
               </button>
-              <button
-                type="button"
-                className="thread-delete"
-                onClick={() => deleteThread(thread.id)}
-                aria-label={`Delete conversation ${thread.title}`}
-                data-testid={`chat-thread-${thread.id}-delete`}
-              >
-                ×
-              </button>
+
             </li>
           ))}
         </ul>
@@ -231,33 +281,47 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
 
       <section className="chat-main">
         <div className="chat-mobilebar">
-          <button
+          <Button
             type="button"
-            className="btn ghost chat-drawer-toggle"
+            ref={drawerToggleRef}
+            variant="quiet" className="chat-drawer-toggle"
             onClick={() => setDrawerOpen(true)}
             aria-label="Show conversations"
             aria-expanded={drawerOpen}
+            aria-controls="conversation-sidebar"
             data-testid="chat-drawer-toggle"
           >
-            ☰ Chats
-          </button>
+            <Icon name="menu" /> Chats
+          </Button>
           <span className="chat-mobilebar-title muted small">
             {active ? active.title : "New chat"}
           </span>
         </div>
 
+        {active && <header className="session-toolbar">
+          <label className="session-title"><span className="visually-hidden">Conversation title</span><input aria-label="Conversation title" value={active.title} maxLength={120} onChange={e => updateThread(active.id, { title: e.target.value })} /></label>
+          <div className="session-actions">
+            <Button variant="quiet" iconOnly aria-label={active.pinned ? "Unpin conversation" : "Pin conversation"} title={active.pinned ? "Unpin conversation" : "Pin conversation"} aria-pressed={Boolean(active.pinned)} onClick={() => updateThread(active.id, { pinned: !active.pinned })}><Icon name="pin" /></Button>
+            <Button variant="quiet" iconOnly disabled={sending} aria-label={active.archived ? "Restore conversation" : "Archive conversation"} title={active.archived ? "Restore conversation" : "Archive conversation"} onClick={() => { updateThread(active.id, { archived: !active.archived }); setActiveId(null); }}><Icon name="archive" /></Button>
+            <Button variant="quiet" iconOnly disabled={sending} aria-label="Delete conversation" title="Delete conversation" onClick={() => deleteThread(active.id)}><Icon name="close" /></Button>
+          </div>
+        </header>}
         <div
           className="message-list"
           data-testid="chat-messages"
           data-state={sending ? "loading" : "ready"}
           aria-live="polite"
         >
-          {!active && (
+          {(!active || active.messages.length === 0) && (
             <div className="placeholder" data-testid="chat-placeholder">
-              <p>Ask a question grounded in your knowledge base.</p>
+              <span className="empty-emblem"><Icon name="book" width="30" height="30" /></span>
+              <p className="workspace-eyebrow">Your project, in focus</p>
+              <h1>Good questions.<br /><em>Grounded answers.</em></h1>
+              <p className="muted">Explore what your team knows, with sources you can open and verify.</p>
               <p className="muted small">
-                Each answer cites its sources. Conversations are stored locally.
+                Conversations stay on this device. Each question is sent independently.
               </p>
+              <div className="suggestions">{["What are the key decisions in this project?", "Summarize the available documentation.", "Which questions still need an answer?"].map(question => <Button key={question} disabled={!loaded || sending} onClick={() => { setDraft(question); composerRef.current?.focus(); }}>{question}<Icon name="arrow" /></Button>)}</div>
             </div>
           )}
 
@@ -276,6 +340,7 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
                 <div className="bubble-body">{message.content}</div>
               )}
 
+              {message.role === "assistant" && <Button variant="quiet" size="sm" leadingIcon={<Icon name="copy" />} onClick={() => void copyAnswer(message.content, index)}>{copied === index ? "Copied" : "Copy answer"}</Button>}
               {message.role === "assistant" &&
                 typeof message.confidence === "number" && (
                   <div className="badge-row">
@@ -334,7 +399,7 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
             </article>
           ))}
 
-          {sending && (
+          {sending && activeId === sendingId && (
             <article className="bubble assistant pending" data-testid="chat-pending">
               <div className="bubble-body muted">Thinking…</div>
             </article>
@@ -350,11 +415,12 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
 
         <form className="composer" onSubmit={send}>
           <textarea
+            ref={composerRef}
             className="composer-input"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 void send(e as unknown as FormEvent);
               }
@@ -364,14 +430,14 @@ export function ChatScreen({ token, tenantId, projectKey }: Props) {
             aria-label="Message"
             data-testid="chat-input"
           />
-          <button
+          <Button
             type="submit"
-            className="btn primary"
-            disabled={sending || draft.trim() === ""}
+            variant="primary"
+            disabled={!loaded || sending || draft.trim() === ""}
             data-testid="chat-send"
           >
-            Send
-          </button>
+            <Icon name="arrow" /> Send
+          </Button>
         </form>
       </section>
 

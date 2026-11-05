@@ -1,6 +1,16 @@
 <?php
 
+$kbFilesystemDisk = env('KB_FILESYSTEM_DISK');
+
+// Laravel Cloud registers its bucket under the disk name exposed by
+// FILESYSTEM_DISK. Prefer an explicit KB override everywhere else, while
+// allowing Cloud to provide the actual configured disk name automatically.
+$kbFilesystemDisk ??= env('LARAVEL_CLOUD_DISK_CONFIG') !== null
+    ? env('FILESYSTEM_DISK', 'kb')
+    : 'kb';
+
 return [
+    'freshdesk_case_studies' => ['enabled' => env('CONNECTOR_FRESHDESK_CASE_STUDIES_ENABLED', true)],
     'embeddings_dimensions' => env('KB_EMBEDDINGS_DIMENSIONS', 1536),
     'default_min_similarity' => env('KB_MIN_SIMILARITY', 0.30),
     'default_limit' => env('KB_DEFAULT_LIMIT', 8),
@@ -777,6 +787,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Conversation session recap
+    |--------------------------------------------------------------------------
+    |
+    | Rolling, INCREMENTAL summary of a conversation, injected into the RAG
+    | system prompt (prompts/kb_rag.blade.php, "Session Recap" block) so the
+    | assistant keeps a compact sense of what has been discussed without
+    | re-reading the full message history on every turn. Updated by an async
+    | job (UpdateConversationRecapJob, dispatched from MessageController /
+    | MessageStreamController right after the assistant message is saved) —
+    | never on the request path, so a slow/failed update never adds latency
+    | to, or breaks, the turn the user is waiting on.
+    |
+    | The update itself is incremental: ConversationRecapService feeds the
+    | LLM the PREVIOUS recap + only the last `window_messages` messages —
+    | never the whole conversation — so the cost of keeping it fresh stays
+    | constant regardless of how long the conversation grows.
+    |
+    | `update_every_n_messages` = 1 (default) updates after every turn; a
+    | higher value trades recap freshness for fewer LLM calls on long,
+    | chatty conversations. Stateless (KbChatController) has no conversation
+    | to attach a recap to and is unaffected by this feature.
+    |
+    */
+    'session_recap' => [
+        'enabled' => (bool) env('KB_SESSION_RECAP_ENABLED', true),
+        'update_every_n_messages' => (int) env('KB_SESSION_RECAP_EVERY_N_MESSAGES', 1),
+        'window_messages' => (int) env('KB_SESSION_RECAP_WINDOW_MESSAGES', 6),
+        'queue' => env('KB_SESSION_RECAP_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cloud Time Machine — archived-version retention (v8.7/W5)
     |--------------------------------------------------------------------------
     |
@@ -1107,7 +1149,7 @@ return [
         | Change to 's3' (and provide AWS_* env) to serve docs from S3.
         | See config/filesystems.php for the disk definitions.
         */
-        'disk' => env('KB_FILESYSTEM_DISK', 'kb'),
+        'disk' => $kbFilesystemDisk,
 
         /*
         | Optional path prefix applied to every ingested path. Useful when
@@ -1326,7 +1368,7 @@ return [
     | holds promoted markdown ready for indexing.
     */
     'raw_disk' => env('KB_RAW_DISK', 'kb-raw'),
-    'canonical_disk' => env('KB_FILESYSTEM_DISK', 'kb'),
+    'canonical_disk' => $kbFilesystemDisk,
 
     /*
     |--------------------------------------------------------------------------
@@ -1594,5 +1636,24 @@ return [
             */
             'enabled' => (bool) env('KB_PROVENANCE_TOOL_FIREWALL', true),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recursive, profile-guided retrieval
+    |--------------------------------------------------------------------------
+    |
+    | This controls how much of a source can be read AFTER vector retrieval
+    | has found a candidate. It does not widen the search scope: tenant,
+    | project and ACL filters are enforced by KbSearchService first.
+    */
+    'investigation' => [
+        // Emergency operational rollback only. The shipped default requires a
+        // profile and never sends the raw user message to vector retrieval.
+        'enabled' => (bool) env('KB_RECURSIVE_RETRIEVAL_ENABLED', true),
+        'max_sources_per_round' => (int) env('KB_INVESTIGATION_MAX_SOURCES_PER_ROUND', 5),
+        'full_source_max_chars' => (int) env('KB_INVESTIGATION_FULL_SOURCE_MAX_CHARS', 24000),
+        'long_source_neighbor_radius' => (int) env('KB_INVESTIGATION_LONG_SOURCE_NEIGHBOR_RADIUS', 1),
+        'long_source_max_chars' => (int) env('KB_INVESTIGATION_LONG_SOURCE_MAX_CHARS', 9000),
     ],
 ];

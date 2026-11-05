@@ -1,18 +1,31 @@
 <?php
 
-use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\ChatController;
-use App\Http\Controllers\SpaController;
-use App\Http\Controllers\TestingController;
+use App\Http\Controllers\Api\AgentLiveSourceController;
 use App\Http\Controllers\Api\AgentMessageController;
+use App\Http\Controllers\Api\RealtimeAgentSessionController;
+use App\Http\Controllers\Api\AgentRunControlController;
+use App\Http\Controllers\Api\AgentRunEventController;
 use App\Http\Controllers\Api\ChatExtrasController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MessageStreamController;
-use App\Http\Controllers\Api\AgentRunEventController;
-use App\Http\Controllers\Api\AgentRunControlController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\SpaController;
+use App\Http\Controllers\TestingController;
 use Illuminate\Support\Facades\Route;
+
+// One catalog route serves both the SPA session and tenant-bound automation.
+// Registering this URL again inside the web-only auth group shadows the API route.
+Route::get('/api/chat/live-sources', AgentLiveSourceController::class)
+    ->middleware(['auth:sanctum', 'tenant.authorize', \App\Http\Middleware\ChatApiTokenAccess::class.':session'])
+    ->name('api.chat.live-sources');
+
+// Render one source so the public language control shares the application's Select.
+Route::get('/landing', fn () => view('landing'))
+    ->name('landing');
+Route::get('/landing/index.html', fn (\Illuminate\Http\Request $request) => redirect('/landing'.($request->getQueryString() ? '?'.$request->getQueryString() : ''), 301));
 
 /*
 |--------------------------------------------------------------------------
@@ -101,15 +114,23 @@ Route::middleware('auth')->group(function () {
     // routes/api.php, which already carry the guard; the conversation
     // surface (the SPA's real chat path) was the gap.
     Route::prefix('conversations')->middleware('tenant.authorize')->group(function () use ($chatPostMiddleware) {
+        Route::get('/activity', [\App\Http\Controllers\Api\ConversationActivityController::class, 'index']);
+        Route::post('/{conversation}/read', [\App\Http\Controllers\Api\ConversationActivityController::class, 'read']);
         Route::get('/', [ConversationController::class, 'index']);
         Route::post('/', [ConversationController::class, 'store']);
         Route::patch('/{conversation}', [ConversationController::class, 'update']);
         Route::delete('/{conversation}', [ConversationController::class, 'destroy']);
         Route::get('/{conversation}/messages', [MessageController::class, 'index']);
+        Route::get('/{conversation}/messages/{message}/tool-sources/{execution}', \App\Http\Controllers\Api\ChatToolSourceController::class)
+            ->whereNumber(['message', 'execution']);
         Route::post('/{conversation}/messages', [MessageController::class, 'store'])
             ->middleware($chatPostMiddleware);
         Route::post('/{conversation}/messages/agent', [AgentMessageController::class, 'store'])
             ->middleware($chatPostMiddleware);
+        Route::post('/{conversation}/realtime-agent', [RealtimeAgentSessionController::class, 'store'])
+            ->middleware($chatPostMiddleware)
+            ->name('conversations.realtime-agent.store');
+        Route::get('/{conversation}/realtime-agent/{session}/run', [RealtimeAgentSessionController::class, 'run']);
         Route::post('/{conversation}/generate-title', [ConversationController::class, 'generateTitle']);
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
 
@@ -182,6 +203,14 @@ Route::post('/agent-runs/{run}/continue', [AgentRunControlController::class, 're
 |
 */
 
+// This operational surface is intentionally served only by a local Laravel
+// process. Register it before the generic SPA fallback so a deployed app
+// cannot reach the client route by guessing its URL.
+Route::get('/app/{teamHash}/developer/local-integrations', function () {
+    abort_unless(app()->environment('local'), 404);
+
+    return app(SpaController::class)();
+})->name('developer.local-integrations');
 Route::get('/app/{any?}', SpaController::class)
     ->where('any', '.*')
     ->name('spa');

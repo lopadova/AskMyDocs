@@ -324,6 +324,18 @@ body {
   background: rgba(91, 140, 255, 0.16);
   color: var(--accent);
 }
+.workspace-logo {
+  width: 72px;
+  height: 46px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.workspace-tenant-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 .workspace-option-copy {
   min-width: 0;
   display: flex;
@@ -383,6 +395,25 @@ body {
 .brand {
   font-weight: 700;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.topbar-logo {
+  width: 34px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.tenant-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(91, 140, 255, 0.16);
+  border: 1px solid rgba(91, 140, 255, 0.35);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
 }
 .tabs {
   display: flex;

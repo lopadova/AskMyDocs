@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { sourceAvatar } from './source-visuals';
+import { isPublishedSourceIcon, sourceMark } from './source-marks';
+import './SourceAvatar.css';
 
 /*
- * A connector source's icon: renders the connector's real `icon_url` image and,
- * if that is missing or fails to load, falls back to a brand-coloured letter
- * avatar (see source-visuals.ts). This keeps the real provider logos when they
- * resolve while still giving every tile/row a polished, deterministic mark.
+ * Shared source identity for gallery tiles, accounts and modal headers.
+ * Known sources use the bundled mark unless an explicit custom icon is supplied.
+ * A failed custom image falls back to the bundled mark, then the letter avatar.
  *
  * R15 — decorative: the source NAME is always rendered as adjacent text, so the
  * image carries an empty alt and the avatar is `aria-hidden` (announcing the
@@ -31,43 +32,45 @@ export function SourceAvatar({
     radius = 9,
     testid,
 }: SourceAvatarProps) {
-    const [broken, setBroken] = useState(false);
-    // Re-arm the image when the URL changes — a once-failed icon must not pin the
-    // letter-avatar fallback after the server starts returning a working URL (R17).
-    useEffect(() => {
-        setBroken(false);
-    }, [iconUrl]);
+    const mark = sourceMark(connectorKey);
+    const customIcon = iconUrl && !isPublishedSourceIcon(connectorKey, iconUrl) ? iconUrl : null;
+    const primary = customIcon || mark?.src || iconUrl;
+    // Key failures by source and URL: changing either immediately re-arms loading.
+    const identity = `${connectorKey}:${primary}`;
+    const [failure, setFailure] = useState<{ identity: string; count: number } | null>(null);
+    const failures = failure?.identity === identity ? failure.count : 0;
+    const src = failures === 0 ? primary : failures === 1 && customIcon ? mark?.src : null;
     const { letter, bg, fg } = sourceAvatar(connectorKey, displayName);
-    const showImage = !!iconUrl && !broken;
+    const showImage = !!src;
+    const bundled = showImage && src === mark?.src;
 
     return (
         <div
             aria-hidden="true"
             data-testid={testid}
+            className="amd-source-avatar"
+            data-source={connectorKey}
+            data-monochrome={bundled && !!mark?.monochrome}
+            data-tile={bundled && !!mark?.tile}
             style={{
-                flex: 'none',
+                '--source-accent': mark?.accent ?? bg,
                 width: size,
                 height: size,
                 borderRadius: radius,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
                 fontWeight: 700,
                 fontSize: Math.round(size * 0.42),
                 lineHeight: 1,
-                background: showImage ? 'var(--bg-2)' : bg,
+                background: showImage ? undefined : bg,
                 color: fg,
-            }}
+            } as CSSProperties}
         >
             {showImage ? (
                 <img
-                    src={iconUrl ?? undefined}
+                    src={src ?? undefined}
                     alt=""
                     width={size}
                     height={size}
-                    onError={() => setBroken(true)}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    onError={() => setFailure({ identity, count: failures + 1 })}
                 />
             ) : (
                 letter

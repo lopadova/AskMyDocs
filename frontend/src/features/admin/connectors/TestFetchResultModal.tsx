@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import type { ReactNode } from 'react';
 import type { ConnectorInstallationDto, TestFetchResponse } from './connectors.api';
 
 /**
@@ -9,8 +10,8 @@ import type { ConnectorInstallationDto, TestFetchResponse } from './connectors.a
  * does not open the modal.
  *
  * R11/R29: stable testids `connector-test-fetch-*`.
- * R15: role=dialog + aria-modal + labelled title; Esc + backdrop + a labelled
- *      close button all dismiss.
+ * R15: role=dialog + aria-modal + labelled title; only explicit close controls
+ *      dismiss the modal.
  */
 
 export interface TestFetchResultModalProps {
@@ -20,23 +21,13 @@ export interface TestFetchResultModalProps {
 }
 
 export function TestFetchResultModal({ account, result, onClose }: TestFetchResultModalProps): ReactNode {
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
-
+    const { t: translateInterface } = useUiTranslation();
     const titleId = 'connector-test-fetch-title';
     const message = result.message;
 
     return (
         <div
             data-testid="connector-test-fetch-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -83,7 +74,7 @@ export function TestFetchResultModal({ account, result, onClose }: TestFetchResu
                     >
                         <Field label="Subject" testid="connector-test-fetch-subject" value={message.subject} />
                         <Field
-                            label="From"
+                            label={translateInterface("From")}
                             testid="connector-test-fetch-from"
                             value={
                                 message.from_name
@@ -102,7 +93,7 @@ export function TestFetchResultModal({ account, result, onClose }: TestFetchResu
                             value={`${message.to_count} recipient${message.to_count === 1 ? '' : 's'} · ${message.attachments_count} attachment${message.attachments_count === 1 ? '' : 's'}`}
                         />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <dt style={labelStyle()}>Preview</dt>
+                            <dt style={labelStyle()}>{translateInterface("Preview")}</dt>
                             <dd
                                 data-testid="connector-test-fetch-snippet"
                                 style={{
@@ -149,8 +140,7 @@ export function TestFetchResultModal({ account, result, onClose }: TestFetchResu
                             cursor: 'pointer',
                         }}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

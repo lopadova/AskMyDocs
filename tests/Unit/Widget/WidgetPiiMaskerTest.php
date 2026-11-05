@@ -106,6 +106,32 @@ final class WidgetPiiMaskerTest extends TestCase
         );
     }
 
+    public function test_labelled_logistics_reference_is_not_an_iban_but_payment_data_stays_masked(): void
+    {
+        $reference = 'DE123456789012345678901234567890';
+        $this->assertSame('Packlink reference '.$reference, $this->masker->maskString('Packlink reference '.$reference));
+        $this->assertSame('Tracking '.$reference, $this->masker->maskString('Tracking '.$reference));
+        $this->assertSame('Packlink **IT2026COM0000488340**', $this->masker->maskString('Packlink **IT2026COM0000488340**'));
+        $this->assertSame('Packlink *IT2026COM0000488340*', $this->masker->maskString('Packlink *IT2026COM0000488340*'));
+        $this->assertSame('Packlink [IBAN]', $this->masker->maskString('Packlink IT60X0542811101000000123456'));
+        $this->assertSame('IBAN Packlink [IBAN]', $this->masker->maskString('IBAN Packlink '.$reference));
+        $this->assertSame('[IBAN]', $this->masker->maskString($reference)); // Unlabelled values remain protected.
+        $this->assertSame('Packlink reference '.$reference."\nCard [CARD]", $this->masker->maskString('Packlink reference '.$reference."\nCard 4111111111111111"));
+    }
+
+    public function test_adjacent_short_order_and_return_codes_survive_without_exempting_bank_accounts(): void
+    {
+        $query = 'RU85199 U726180 U726256 confronto codici articolo e taglie nel reso anomalo';
+        $this->assertSame($query, $this->masker->maskString($query));
+        $this->assertSame('U780557 RU93257 stesso AWB', $this->masker->maskString('U780557 RU93257 stesso AWB'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('IT60 X054 2811 1010 0000 0123 456'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('DE89370400440532013000'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('DE89370400440532013000 U726180'));
+        $this->assertSame('[IBAN]', $this->masker->maskString('FR86123456 AB123456 CD123456'));
+        $this->assertSame('IBAN [IBAN]', $this->masker->maskString('IBAN RU85199 U726180 U726256'));
+        $this->assertSame($query."\nCarta [CARD]", $this->masker->maskString($query."\nCarta 4111111111111111"));
+    }
+
     // ─── maskString: carta ──────────────────────────────────────────
 
     public function test_masks_card_number(): void
@@ -114,6 +140,16 @@ final class WidgetPiiMaskerTest extends TestCase
             'Carta [CARD]',
             $this->masker->maskString('Carta 4111 1111 1111 1111'),
         );
+    }
+
+    public function test_valid_product_barcodes_survive_without_exempting_payment_fields(): void
+    {
+        $line = 'Articolo Barcode Quantità: sneakers 8057807017689 1; sneakers 8057807017696 1';
+        $this->assertSame($line, $this->masker->maskString($line));
+        $this->assertSame('[CARD]', $this->masker->maskString('8057807017696'));
+        $this->assertSame('Barcode errato [CARD]', $this->masker->maskString('Barcode errato 8057807017697'));
+        $this->assertSame('Carta [CARD] Barcode [CARD]',
+            $this->masker->maskString('Carta 4111 1111 1111 1111 Barcode 8057807017696'));
     }
 
     // ─── maskString: token/secret ───────────────────────────────────
@@ -258,5 +294,17 @@ final class WidgetPiiMaskerTest extends TestCase
         $this->assertStringContainsString('[PHONE]', $result);
         $this->assertStringContainsString('[IBAN]', $result);
         $this->assertStringContainsString('[CARD]', $result);
+    }
+
+    public function test_chat_display_marks_redacted_references_as_unavailable_without_changing_source_redaction(): void
+    {
+        $source = 'Packlink: [IBAN]; tracking UPS: 1Z12345; contact: user@example.com';
+        $display = $this->masker->maskForDisplay($source, 'it');
+        $this->assertStringContainsString('Packlink: (dato mascherato)', $display);
+        $this->assertStringContainsString('tracking UPS: 1Z12345', $display);
+        $this->assertStringContainsString('contact: (dato mascherato)', $display);
+        $this->assertStringNotContainsString('user@example.com', $display);
+        $this->assertStringContainsString('[IBAN]', $this->masker->maskString($source));
+        $this->assertSame('Reference: (redacted value)', $this->masker->maskForDisplay('Reference: [IBAN]', 'en'));
     }
 }

@@ -1,4 +1,7 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
+import { Icon } from '../../components/Icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     chatFilterPresetsApi,
@@ -36,6 +39,7 @@ export interface FilterPresetsDropdownProps {
 }
 
 export function FilterPresetsDropdown({ filters, onLoad }: FilterPresetsDropdownProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const [savePromptOpen, setSavePromptOpen] = useState(false);
     const [name, setName] = useState('');
@@ -106,30 +110,19 @@ export function FilterPresetsDropdown({ filters, onLoad }: FilterPresetsDropdown
 
     return (
         <div ref={dropdownRef} style={{ position: 'relative' }}>
-            <button
-                type="button"
+            <Button
+                variant="quiet"
+                size="sm"
+                leadingIcon={<Icon.Book size={13} />}
                 data-testid="chat-filter-presets-trigger"
-                aria-label="Saved filter presets"
+                className="chat-filter-preset-trigger"
+                aria-label={translateInterface('Saved filter presets')}
                 aria-expanded={open}
                 aria-haspopup="menu"
                 onClick={() => setOpen((v) => !v)}
-                style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '3px 9px',
-                    border: '1px solid var(--panel-border, rgba(255,255,255,.30))',
-                    borderRadius: 99,
-                    background: 'transparent',
-                    color: 'var(--fg-2)',
-                    cursor: 'pointer',
-                    fontSize: 11.5,
-                    lineHeight: 1.4,
-                }}
             >
-                <span aria-hidden="true">★</span>
-                Presets
-            </button>
+                {translateInterface('Presets')}
+            </Button>
 
             {open && (
                 <div
@@ -181,8 +174,7 @@ export function FilterPresetsDropdown({ filters, onLoad }: FilterPresetsDropdown
                                         data-testid="chat-filter-presets-loading"
                                         style={{ padding: '8px 12px', color: 'var(--fg-3)', fontSize: 11.5 }}
                                     >
-                                        Loading…
-                                    </li>
+                                        {translateInterface("Loading…")}</li>
                                 )}
                                 {!presetsQuery.isLoading && presets.length === 0 && (
                                     <li
@@ -265,7 +257,7 @@ export function FilterPresetsDropdown({ filters, onLoad }: FilterPresetsDropdown
                                         opacity: name.trim() === '' ? 0.5 : 1,
                                     }}
                                 >
-                                    {createMutation.isPending ? 'Saving…' : 'Save'}
+                                    {createMutation.isPending ? 'Saving…' : translateInterface("Save")}
                                 </button>
                                 <button
                                     type="button"
@@ -285,8 +277,7 @@ export function FilterPresetsDropdown({ filters, onLoad }: FilterPresetsDropdown
                                         cursor: 'pointer',
                                     }}
                                 >
-                                    Cancel
-                                </button>
+                                    {translateInterface("Cancel")}</button>
                             </div>
                         </div>
                     )}
@@ -303,6 +294,7 @@ interface PresetRowProps {
 }
 
 function PresetRow({ preset, onLoad, onDelete }: PresetRowProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [confirming, setConfirming] = useState(false);
 
     return (
@@ -376,8 +368,7 @@ function PresetRow({ preset, onLoad, onDelete }: PresetRowProps): ReactNode {
                             borderRadius: 4,
                         }}
                     >
-                        Delete
-                    </button>
+                        {translateInterface("Delete")}</button>
                     <button
                         type="button"
                         data-testid={`chat-filter-preset-${preset.id}-delete-cancel`}
@@ -392,8 +383,7 @@ function PresetRow({ preset, onLoad, onDelete }: PresetRowProps): ReactNode {
                             borderRadius: 4,
                         }}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                 </>
             )}
         </li>

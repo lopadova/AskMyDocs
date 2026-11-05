@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import type { AdminPermissionCatalogue, AdminRole } from '../admin.api';
@@ -23,6 +24,7 @@ const PROTECTED_ROLE_NAMES = new Set(['super-admin', 'admin']);
  * mirror the backend's 409 guard.
  */
 export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [name, setName] = useState('');
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [nameError, setNameError] = useState<string | undefined>(undefined);
@@ -115,18 +117,13 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                 justifyContent: 'center',
             }}
         >
-            <button
-                type="button"
-                aria-label="Close dialog"
+            <div
+                aria-hidden="true"
                 data-testid="role-dialog-backdrop"
-                onClick={onClose}
                 style={{
                     position: 'absolute',
                     inset: 0,
                     background: 'rgba(0,0,0,0.45)',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
                 }}
             />
             <div
@@ -163,7 +160,7 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                         className="focus-ring"
                         data-testid="role-dialog-close"
                         onClick={onClose}
-                        aria-label="Close"
+                        aria-label={translateInterface("Close")}
                         style={iconCloseStyle}
                     >
                         <Icon.Close size={14} />
@@ -171,7 +168,7 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                 </div>
 
                 <div>
-                    <div style={labelStyle}>Name</div>
+                    <div style={labelStyle}>{translateInterface("Name")}</div>
                     <input
                         data-testid="role-dialog-name"
                         value={name}
@@ -198,7 +195,7 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                 </div>
 
                 <div>
-                    <div style={labelStyle}>Permissions</div>
+                    <div style={labelStyle}>{translateInterface("Permissions")}</div>
                     {!catalogue ? (
                         <div style={mutedStyle}>Loading permission catalogue…</div>
                     ) : domains.length === 0 ? (
@@ -316,8 +313,7 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                         onClick={onClose}
                         style={secondaryButtonStyle}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="button"
                         className="focus-ring"
@@ -329,7 +325,7 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                             opacity: submitting ? 0.6 : 1,
                         }}
                     >
-                        {submitting ? 'Saving…' : mode === 'create' ? 'Create role' : 'Save changes'}
+                        {submitting ? 'Saving…' : mode === 'create' ? 'Create role' : translateInterface("Save changes")}
                     </button>
                 </div>
             </div>

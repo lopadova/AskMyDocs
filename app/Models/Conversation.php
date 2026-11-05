@@ -3,20 +3,56 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Chat\ConversationImportance;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Conversation extends Model
 {
     use BelongsToTenant;
+
+    protected $hidden = ['reasoning_state'];
 
     protected $fillable = [
         'tenant_id',
         'user_id',
         'title',
         'project_key',
+        'chat_folder_id',
+        'pinned_at',
+        'archived_at',
+        'importance',
+    ];
+
+    protected $casts = [
+        'pinned_at' => 'datetime',
+        'archived_at' => 'datetime',
+        'importance' => ConversationImportance::class,
+        // System-written only (ConversationRecapService) — deliberately NOT
+        // in $fillable so a mass-assignment from an HTTP request can never
+        // forge it.
+        'session_recap' => 'array',
+        'reasoning_state' => 'array', // Server owned; deliberately not mass assignable.
+        'last_read_message_id' => 'integer', // Only the explicit read endpoint may advance this.
+    ];
+
+    /**
+     * Mirror the column default on the MODEL, not just in the schema.
+     *
+     * `importance` has a DB default, so a row is always valid — but a
+     * freshly `create()`d instance that never sent the column has the
+     * attribute ABSENT, and the enum cast then yields null. Anything
+     * reading `$conversation->importance->value` on that instance blows
+     * up with "property value on null", which is exactly how POST
+     * /conversations started answering 500 once it began returning the
+     * full resource. Defaulting here keeps a new instance coherent
+     * without a re-read.
+     */
+    protected $attributes = [
+        'importance' => 'normal',
     ];
 
     /**
@@ -42,6 +78,16 @@ class Conversation extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * The folder this session is filed under, if any. Null = "unfiled",
+     * which is the default and also what a folder delete leaves behind
+     * (nullOnDelete — never a cascade).
+     */
+    public function folder(): BelongsTo
+    {
+        return $this->belongsTo(ChatFolder::class, 'chat_folder_id');
+    }
+
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
@@ -50,5 +96,17 @@ class Conversation extends Model
     public function latestMessage(): HasMany
     {
         return $this->hasMany(Message::class)->latest('id')->limit(1);
+    }
+
+    public function latestAssistantMessage(): HasOne
+    {
+        return $this->hasOne(Message::class)->ofMany(['id' => 'max'],
+            fn ($query) => $query->where('role', 'assistant'));
+    }
+
+    public function latestAgentRun(): HasOne
+    {
+        return $this->hasOne(AgentRun::class)->ofMany(['id' => 'max'],
+            fn ($query) => $query->whereNull('input_json->research_parent_id'));
     }
 }

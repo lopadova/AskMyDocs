@@ -277,6 +277,11 @@ final class UpdateConnectorInstallationRequest extends FormRequest
             // default (the UI sends null when a number field is emptied).
             'number' => [$key => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000']],
             'checkbox' => [$key => ['sometimes', 'boolean']],
+            'date' => [$key => array_values(array_filter([
+                'sometimes', 'nullable', 'date_format:Y-m-d',
+                isset($field['min']) ? 'after_or_equal:'.$field['min'] : null,
+                isset($field['max']) ? 'before_or_equal:'.$field['max'] : null,
+            ]))],
             // nullable: an empty value (UI/CLI clear → null via middleware) reverts
             // the override to the connector default instead of 422-ing on Rule::in.
             'select' => [$key => ['sometimes', 'nullable', Rule::in(array_keys((array) ($field['options'] ?? [])))]],

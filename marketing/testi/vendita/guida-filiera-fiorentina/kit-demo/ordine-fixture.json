@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "not_for_production": true,
+  "disclaimer": "DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.",
+  "data_mode": "OFFLINE_FIXTURE",
+  "live_api": false,
+  "api_response_observed": false,
+  "purpose": "Mostrare il formato di un record inventato, senza collegamento a un gestionale.",
+  "order": {
+    "order_id": "ORD-DEMO-042",
+    "customer_ref": "CLIENTE-DEMO-A",
+    "article_code": "TESS-DEMO-014",
+    "document_revision": "B",
+    "status_label": "BOZZA_DOCUMENTALE_DEMO"
+  },
+  "observed_at": null,
+  "limitations": [
+    "Non è lo stato corrente di un ordine reale.",
+    "Non prova raggiungibilità, autenticazione o funzionamento di alcuna API.",
+    "Il caricamento di un JSON come documento non è presunto: la presente fixture va mostrata offline.",
+    "Un futuro mock o endpoint richiede configurazione, autorizzazione e collaudo separati."
+  ],
+  "missing_fields": {
+    "current_stock": null,
+    "delivery_date": null,
+    "price": null,
+    "care_instructions": null
+  },
+  "missing_fields_note": "null significa dato non fornito nella fixture, non zero, assenza certa nel mondo reale o risposta negativa."
+}

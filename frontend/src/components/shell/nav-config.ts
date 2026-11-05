@@ -15,12 +15,16 @@ import type { AuthFeatures } from '../../lib/auth-store';
 
 export type SidebarSection =
     | 'chat'
+    | 'sessions'
+    | 'kb-browse'
     | 'dashboard'
+    | 'ai-usage'
     | 'insights'
     | 'projects'
     | 'teams'
     | 'tenant-control'
     | 'super-admins'
+    | 'appearance'
     | 'users'
     | 'roles'
     | 'kb'
@@ -34,6 +38,7 @@ export type SidebarSection =
     | 'wiki-indices'
     | 'wiki-explorer'
     | 'autowiki-settings'
+    | 'retrieval-profiles'
     | 'tabular-reviews'
     | 'workflows'
     | 'ai-act-compliance'
@@ -42,6 +47,7 @@ export type SidebarSection =
     | 'pii-redactor'
     | 'connectors'
     | 'api-connectors'
+    | 'api-tools'
     | 'ingestion'
     | 'invitations'
     | 'flows'
@@ -54,6 +60,7 @@ export type SidebarSection =
     | 'app-settings'
     | 'digest'
     | 'my-kb'
+    | 'connected-apps'
     | 'engagement';
 
 export interface NavItem {
@@ -82,8 +89,16 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Workspace',
         items: [
             { id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/$teamHash/chat' },
+            // v8.x — ChatGPT-style workspace: KB access plus sessions
+            // organised into folders, pinned, archived and flagged.
+            // Ungated like Chat: the boundary is per-user ownership, not role.
+            { id: 'sessions', label: 'Sessions', icon: 'Chat', route: '/app/$teamHash/sessions' },
+            // Reader-side KB explorer. NOT the `kb` id (that one is the
+            // admin explorer in the Knowledge group) and NOT the `kb` path.
+            { id: 'kb-browse', label: 'Browse KB', icon: 'Book', route: '/app/$teamHash/knowledge' },
             // v8.15/W4.2 — personal "your KB" dashboard; any authenticated user.
             { id: 'my-kb', label: 'My KB', icon: 'Sparkles', route: '/app/me' },
+            { id: 'connected-apps', label: 'Connected Apps', icon: 'Link', route: '/app/connected-apps' },
             // v8.15/W3.2 — per-user digest (feed + preferences); any authenticated user.
             { id: 'digest', label: 'Digest', icon: 'Calendar', route: '/app/digest' },
         ],
@@ -108,6 +123,14 @@ export const NAV_GROUPS: NavGroup[] = [
                 feature: 'system_admin',
                 scope: 'system',
             },
+            {
+                id: 'appearance',
+                label: 'Appearance',
+                icon: 'Sliders',
+                route: '/app/system/appearance',
+                roles: ['super-admin'],
+                scope: 'system',
+            },
         ],
     },
     {
@@ -115,6 +138,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Tenant administration',
         items: [
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/$teamHash/admin' },
+            { id: 'ai-usage', label: 'AI usage', icon: 'Activity', route: '/app/$teamHash/admin/ai-usage', roles: ['admin', 'super-admin'] },
             { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/$teamHash/admin/engagement' },
             { id: 'insights', label: 'AI Insights', icon: 'Sparkles', route: '/app/$teamHash/admin/insights' },
             { id: 'projects', label: 'Projects', icon: 'Cube', route: '/app/$teamHash/admin/projects' },
@@ -138,6 +162,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'wiki-indices', label: 'Wiki Indices', icon: 'Book', route: '/app/$teamHash/admin/kb/wiki-indices' },
             { id: 'wiki-explorer', label: 'Wiki Explorer', icon: 'Folder', route: '/app/$teamHash/admin/kb/wiki-explorer' },
             { id: 'autowiki-settings', label: 'Auto-Wiki Settings', icon: 'Sliders', route: '/app/$teamHash/admin/kb/autowiki-settings' },
+            { id: 'retrieval-profiles', label: 'Retrieval profiles', icon: 'Brain', route: '/app/$teamHash/admin/kb/retrieval-profiles' },
             { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', route: '/app/$teamHash/admin/tabular-reviews' },
             { id: 'workflows', label: 'Workflows', icon: 'Branch', route: '/app/$teamHash/admin/workflows' },
         ],
@@ -158,6 +183,7 @@ export const NAV_GROUPS: NavGroup[] = [
         items: [
             { id: 'connectors', label: 'Connectors', icon: 'Link', route: '/app/$teamHash/admin/connectors' },
             { id: 'api-connectors', label: 'API Connectors', icon: 'Globe', route: '/app/$teamHash/admin/api-connectors' },
+            { id: 'api-tools', label: 'Tool API', icon: 'Bolt', route: '/app/$teamHash/admin/api-tools' },
             { id: 'ingestion', label: 'Ingestion & Sync', icon: 'Activity', route: '/app/$teamHash/admin/ingestion' },
             { id: 'invitations', label: 'Invitations', icon: 'Users', route: '/app/$teamHash/admin/invitations' },
             { id: 'flows', label: 'Flows', icon: 'Bolt', route: '/app/$teamHash/admin/flows' },

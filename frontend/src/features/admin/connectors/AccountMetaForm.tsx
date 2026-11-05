@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { ModalSourceHeader } from './ModalSourceHeader';
 
@@ -15,7 +17,7 @@ import { ModalSourceHeader } from './ModalSourceHeader';
  *
  * R11/R29: stable testids `connector-{key}-account-form-{field}`.
  * R15: every control has a bound `<label htmlFor>`; dialog is role=dialog +
- *      aria-modal; Esc closes.
+ *      aria-modal; explicit close controls only.
  */
 
 export interface AccountMetaFormValues {
@@ -75,16 +77,9 @@ export function AccountMetaForm({
     source,
     subtitle,
 }: AccountMetaFormProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [label, setLabel] = useState(initialLabel);
     const [projectKey, setProjectKey] = useState(initialProjectKey ?? '');
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -173,20 +168,20 @@ export function AccountMetaForm({
 
             <label htmlFor={projectId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
-                <select
+                <SelectField
                     id={projectId}
                     data-testid={projectId}
                     value={projectKey}
-                    onChange={(e) => setProjectKey(e.target.value)}
+                    onValueChange={(selectedValue) => setProjectKey(selectedValue)}
                     style={inputStyle()}
                 >
-                    <option value="">Global (tenant default)</option>
+                    <SelectOption value="">Global (tenant default)</SelectOption>
                     {projects.map((p) => (
-                        <option key={p.project_key} value={p.project_key}>
+                        <SelectOption key={p.project_key} value={p.project_key}>
                             {p.name} ({p.project_key})
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
                 {fieldErrors?.project_key && (
                     <span
                         data-testid={`${projectId}-error`}
@@ -217,8 +212,7 @@ export function AccountMetaForm({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid={`connector-${connectorKey}-account-form-submit`}
@@ -239,9 +233,6 @@ export function AccountMetaForm({
     return (
         <div
             data-testid={`connector-${connectorKey}-account-form-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,

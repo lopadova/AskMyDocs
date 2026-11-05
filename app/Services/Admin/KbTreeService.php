@@ -95,6 +95,37 @@ class KbTreeService
         ];
     }
 
+    /** Bounded keyset page: never hydrate the entire archive for the explorer. */
+    public function page(?string $projectKey, string $mode, bool $withTrashed, string $search, int $after, int $limit): array
+    {
+        $query = $this->baseQuery($projectKey, $mode, $withTrashed);
+        if ($search !== '') {
+            $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($search));
+            $query->whereRaw("LOWER(source_path) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+        }
+        $counts = [
+            'docs' => (clone $query)->count(),
+            'canonical' => (clone $query)->canonical()->count(),
+            'trashed' => (clone $query)->whereNotNull('deleted_at')->count(),
+        ];
+        $docs = $query->select(['id', 'source_path', 'project_key', 'slug', 'canonical_type',
+            'canonical_status', 'is_canonical', 'indexed_at', 'deleted_at', 'source_type', 'mime_type'])
+            ->where('id', '>', $after)->orderBy('id')->limit($limit + 1)->get();
+        $hasMore = $docs->count() > $limit;
+        $page = $docs->take($limit);
+        $root = [];
+        foreach ($page as $doc) {
+            $this->insertDoc($root, $doc);
+        }
+
+        return [
+            'tree' => $this->finaliseTree($root),
+            'counts' => $counts,
+            'pagination' => ['has_more' => $hasMore, 'next_cursor' => $hasMore ? $page->last()->id : null,
+                'loaded' => $page->count(), 'limit' => $limit],
+        ];
+    }
+
     /**
      * Seed the Eloquent query with the mode + trashed + project filters.
      * Uses the dedicated scopes on KnowledgeDocument (R10) — `canonical()`
@@ -183,6 +214,8 @@ class KbTreeService
     {
         return [
             'id' => $doc->id,
+            'source_type' => $doc->source_type,
+            'mime_type' => $doc->mime_type,
             'project_key' => $doc->project_key,
             'slug' => $doc->slug,
             'canonical_type' => $doc->canonical_type,

@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import type { Page } from '@playwright/test';
 import { test as baseTest, expect } from '@playwright/test';
 import { resetAndLoginWidgetSuperAdmin } from './helpers/widget-super-admin';
@@ -37,8 +38,8 @@ async function createKey(page: Page, label: string): Promise<number> {
     await page.getByTestId('admin-widget-keys-label').fill(label);
     const project = page.getByTestId('admin-widget-keys-project');
     await expect(project).toBeEnabled({ timeout: 15_000 });
-    await project.selectOption('hr-portal');
-    await expect(project).toHaveValue('hr-portal');
+    await chooseSelectOption(project, 'hr-portal');
+    await expect(project).toHaveAttribute('data-value', 'hr-portal');
 
     const createPost = page.waitForResponse(
         (r) => r.url().endsWith('/api/admin/widget-keys') && r.request().method() === 'POST',

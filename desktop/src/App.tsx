@@ -1,3 +1,5 @@
+import { Icon } from "./components/Icon";
+import { Button } from "./components/Button";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, fetchMe, logout as apiLogout } from "./lib/api";
 import {
@@ -9,14 +11,17 @@ import {
   type Session,
 } from "./lib/store";
 import type { MePayload, Team } from "./lib/types";
+import { TenantLogo } from "./components/TenantLogo";
 import { ChatScreen } from "./screens/ChatScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { RegisterScreen } from "./screens/RegisterScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen";
 import "./App.css";
+import "./editorial.css";
+import { KnowledgeScreen } from "./screens/KnowledgeScreen";
 
-type Tab = "chat" | "search";
+type Tab = "chat" | "search" | "knowledge";
 type AuthView = "login" | "register";
 
 // Mirror the SPA's primary-role pick (highest-privilege wins) for the badge.
@@ -31,6 +36,14 @@ function primaryRole(roles: string[]): string {
 }
 
 function App() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("askmydocs-theme");
+    return saved === "light" || saved === "dark" ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("askmydocs-theme", theme);
+  }, [theme]);
   const [session, setSession] = useState<Session | null>(null);
   const [booting, setBooting] = useState(true);
   const [authView, setAuthView] = useState<AuthView>("login");
@@ -44,7 +57,7 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    loadSession().then((stored) => {
+    loadSession().catch(() => null).then((stored) => {
       if (cancelled) {
         return;
       }
@@ -184,9 +197,9 @@ function App() {
       <div className="workspace-screen" data-testid="profile-error-screen">
         <header className="workspace-header">
           <div className="brand">AskMyDocs</div>
-          <button type="button" className="btn ghost" onClick={handleLogout}>
+          <Button type="button" variant="quiet" onClick={handleLogout}>
             Sign out
-          </button>
+          </Button>
         </header>
         <main className="workspace-main">
           <section className="workspace-card workspace-error-card">
@@ -195,14 +208,14 @@ function App() {
             <p className="error" role="alert" data-testid="me-error">
               {meError || "Could not load your profile."}
             </p>
-            <button
+            <Button
               type="button"
-              className="btn primary"
+              variant="primary"
               onClick={() => setProfileAttempt((attempt) => attempt + 1)}
               data-testid="profile-retry"
             >
               Try again
-            </button>
+            </Button>
           </section>
         </main>
       </div>
@@ -219,6 +232,7 @@ function App() {
   if (!activeTeam || !activeProject) {
     return (
       <WorkspaceScreen
+        token={session.token}
         user={session.user}
         teams={me.teams}
         initialTenantId={activeTeam?.tenant_id ?? null}
@@ -233,7 +247,15 @@ function App() {
   return (
     <div className="shell" data-testid="app-shell">
       <header className="topbar">
-        <div className="brand">AskMyDocs</div>
+        <div className="brand" data-testid="active-tenant-brand">
+          <TenantLogo
+            token={session.token}
+            tenantName={activeTeam.name}
+            logoUrl={activeTeam.logo_url}
+            className="topbar-logo"
+          />
+          <span>{activeTeam.name}</span>
+        </div>
         <nav className="tabs" aria-label="Sections">
           <button
             type="button"
@@ -242,7 +264,7 @@ function App() {
             aria-current={tab === "chat"}
             data-testid="tab-chat"
           >
-            Chat
+            <Icon name="chat" /> Sessions
           </button>
           <button
             type="button"
@@ -251,10 +273,12 @@ function App() {
             aria-current={tab === "search"}
             data-testid="tab-search"
           >
-            Search
+            <Icon name="search" /> Search
           </button>
+          <button type="button" className={tab === "knowledge" ? "tab active" : "tab"} onClick={() => setTab("knowledge")} aria-current={tab === "knowledge"} data-testid="tab-knowledge"><Icon name="book" /> Knowledge</button>
         </nav>
         <div className="topbar-end">
+          <Button variant="quiet" iconOnly aria-label={`Use ${theme === "dark" ? "light" : "dark"} theme`} title={`Use ${theme === "dark" ? "light" : "dark"} theme`} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}><Icon name={theme === "dark" ? "sun" : "moon"} /></Button>
           {me.teams.length > 0 && (
             <label className="team-switch context-switch">
               <span className="visually-hidden">Active team</span>
@@ -295,14 +319,14 @@ function App() {
           <span className="user" data-testid="app-user" title={session.user.email}>
             {session.user.name}
           </span>
-          <button
+          <Button
             type="button"
-            className="btn ghost"
+            variant="quiet"
             onClick={handleLogout}
             data-testid="app-logout"
           >
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -326,20 +350,24 @@ function App() {
       </div>
 
       <main className="content">
-        {tab === "chat" ? (
+        <div className="workspace-panel" hidden={tab !== "chat"}>
           <ChatScreen
             key={`${activeTeam.tenant_id}:${activeProject.project_key}`}
             token={session.token}
             tenantId={activeTeam.tenant_id}
             projectKey={activeProject.project_key}
           />
-        ) : (
+        </div>
+        {tab === "knowledge" ? (
+          <KnowledgeScreen key={`${activeTeam.tenant_id}:${activeProject.project_key}`} token={session.token} tenantId={activeTeam.tenant_id} projectKey={activeProject.project_key} />
+        ) : tab === "search" ? (
           <SearchScreen
+            key={`${activeTeam.tenant_id}:${activeProject.project_key}`}
             token={session.token}
             tenantId={activeTeam.tenant_id}
             projectKey={activeProject.project_key}
           />
-        )}
+        ) : null}
       </main>
     </div>
   );

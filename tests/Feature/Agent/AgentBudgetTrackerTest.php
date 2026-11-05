@@ -14,6 +14,45 @@ final class AgentBudgetTrackerTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_elapsed_time_stops_both_planning_and_tools(): void
+    {
+        $this->freezeTime();
+        $run = $this->makeRun();
+        $this->travel(61)->seconds();
+        $tracker = new AgentBudgetTracker($run);
+
+        $this->assertSame('time_limit', $tracker->beginIteration()->reason);
+        $this->assertSame('time_limit', $tracker->reserve($this->tool(), [])->reason);
+        $this->assertSame(0, $run->fresh()->counters_json['iterations'] ?? 0);
+        $this->travelBack();
+    }
+
+    public function test_deep_bulk_collection_still_leaves_time_for_synthesis_before_worker_timeout(): void
+    {
+        config(['agent.job_timeout_seconds' => 120, 'agent.synthesis.time_reserve_seconds' => 60,
+            'agent.depth.multipliers' => [5 => 3.0]]);
+        $this->freezeTime();
+        $run = $this->makeRun(['physical_calls' => 2], depth: 5);
+        $this->travel(61)->seconds();
+        $tracker = new AgentBudgetTracker($run);
+
+        $this->assertSame(60, $tracker->snapshot()['time_limit_seconds']);
+        $this->assertSame('time_limit', $tracker->beginIteration()->reason);
+        $this->travelBack();
+    }
+
+    public function test_a_planning_round_is_not_started_when_its_expected_duration_exhausts_collection_time(): void
+    {
+        $this->freezeTime();
+        $run = $this->makeRun();
+        $this->travel(42)->seconds();
+        $tracker = new AgentBudgetTracker($run);
+
+        $this->assertSame('time_limit', $tracker->beginIteration(26)->reason);
+        $this->assertTrue($tracker->reserve($this->tool(), [])->allowed());
+        $this->travelBack();
+    }
+
     public function test_safe_read_only_calls_extend_automatically_after_the_soft_limit(): void
     {
         $run = $this->makeRun(['logical_calls' => 12]);
@@ -68,8 +107,127 @@ final class AgentBudgetTrackerTest extends TestCase
         $this->assertSame('consecutive_error_limit', $tracker->reserve($this->tool(), ['id' => 8])->reason);
     }
 
+    public function test_depth_3_is_the_unscaled_default_when_no_depth_was_set(): void
+    {
+        // Reach the DEFAULT (unscaled) logical_soft limit of 12 exactly —
+        // a run with no `depth` in input_json must behave byte-identically
+        // to before this feature existed.
+        $run = $this->makeRun(['logical_calls' => 12]);
+        $decision = (new AgentBudgetTracker($run))->reserve($this->tool(), [], 1);
+
+        $this->assertTrue($decision->allowed());
+        $this->assertTrue($decision->autoExtended);
+    }
+
+    public function test_depth_1_halves_the_logical_soft_limit(): void
+    {
+        config()->set('agent.depth.multipliers', [1 => 0.5, 2 => 0.75, 3 => 1.0, 4 => 2.0, 5 => 3.0]);
+        // Default logical_soft is 12; depth 1 -> round(12 * 0.5) = 6. A call
+        // that would push logical_calls to 7 must already require
+        // confirmation for an unsafe tool, where depth 3 (default) would not.
+        $run = $this->makeRun(['logical_calls' => 6], depth: 1);
+        $decision = (new AgentBudgetTracker($run))->reserve($this->tool(readOnly: false), [], 1);
+
+        $this->assertTrue($decision->requiresConfirmation());
+        $this->assertSame('logical_soft_limit', $decision->reason);
+    }
+
+    public function test_depth_5_triples_the_iteration_limit(): void
+    {
+        config()->set('agent.depth.multipliers', [1 => 0.5, 2 => 0.75, 3 => 1.0, 4 => 2.0, 5 => 3.0]);
+        // Default iterations is 8; depth 5 -> round(8 * 3.0) = 24. A run
+        // that already ran 20 iterations must still be ALLOWED to begin a
+        // 21st, where the unscaled default (8) would already have stopped
+        // it 12 iterations earlier.
+        $run = $this->makeRun(['iterations' => 20], depth: 5);
+        $decision = (new AgentBudgetTracker($run))->beginIteration();
+
+        $this->assertTrue($decision->allowed());
+    }
+
+    public function test_depth_never_scales_the_loop_safety_guards(): void
+    {
+        config()->set('agent.depth.multipliers', [1 => 0.5, 2 => 0.75, 3 => 1.0, 4 => 2.0, 5 => 3.0]);
+        // consecutive_errors / duplicate_calls must stop the loop at the
+        // SAME thresholds regardless of depth — they guard against a
+        // runaway loop, not against "not enough depth".
+        $run = $this->makeRun(depth: 5);
+        $tracker = new AgentBudgetTracker($run);
+        $this->assertTrue($tracker->reserve($this->tool(), ['id' => 7])->allowed());
+        $this->assertTrue($tracker->reserve($this->tool(), ['id' => 7])->allowed());
+        $this->assertSame('duplicate_call_limit', $tracker->reserve($this->tool(), ['id' => 7])->reason);
+    }
+
+    public function test_an_out_of_range_depth_is_clamped_to_1_to_5(): void
+    {
+        config()->set('agent.depth.multipliers', [1 => 0.5, 2 => 0.75, 3 => 1.0, 4 => 2.0, 5 => 3.0]);
+
+        // Clamped to depth 5 (3.0x) -> logical_soft = round(12 * 3.0) = 36.
+        $run = $this->makeRun(['logical_calls' => 30], depth: 99);
+        $decision = (new AgentBudgetTracker($run))->reserve($this->tool(readOnly: false), [], 1);
+
+        $this->assertTrue($decision->allowed());
+    }
+
+    public function test_knowledge_tool_stops_after_the_configured_run_of_unproductive_searches(): void
+    {
+        config()->set('agent.limits.consecutive_unproductive_searches', 3);
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 3]);
+
+        $decision = (new AgentBudgetTracker($run))->reserve($this->knowledgeTool(), ['query' => 'anything']);
+
+        $this->assertFalse($decision->allowed());
+        $this->assertSame('unproductive_search_limit', $decision->reason);
+    }
+
+    public function test_the_unproductive_search_brake_does_not_block_other_tool_kinds(): void
+    {
+        config()->set('agent.limits.consecutive_unproductive_searches', 3);
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 3]);
+
+        // Same run, same exhausted counter, but a DIFFERENT (api) tool — the
+        // planner pivoting away from knowledge search must still be allowed.
+        $decision = (new AgentBudgetTracker($run))->reserve($this->tool(), []);
+
+        $this->assertTrue($decision->allowed());
+    }
+
+    public function test_recording_a_productive_search_resets_the_unproductive_counter(): void
+    {
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 2]);
+        $tracker = new AgentBudgetTracker($run);
+
+        $tracker->recordKnowledgeSearchResult(true);
+
+        $this->assertSame(0, $tracker->snapshot()['consecutive_unproductive_searches']);
+    }
+
+    public function test_recording_an_unproductive_search_increments_the_counter(): void
+    {
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 1]);
+        $tracker = new AgentBudgetTracker($run);
+
+        $tracker->recordKnowledgeSearchResult(false);
+
+        $this->assertSame(2, $tracker->snapshot()['consecutive_unproductive_searches']);
+    }
+
+    public function test_unproductive_search_limit_is_not_scaled_by_depth(): void
+    {
+        config()->set('agent.depth.multipliers', [1 => 0.5, 2 => 0.75, 3 => 1.0, 4 => 2.0, 5 => 3.0]);
+        config()->set('agent.limits.consecutive_unproductive_searches', 3);
+        // Depth 5 (3.0x) scales iterations/logical/physical/time/evidence —
+        // it must NOT also raise this threshold to 9.
+        $run = $this->makeRun(['consecutive_unproductive_searches' => 3], depth: 5);
+
+        $decision = (new AgentBudgetTracker($run))->reserve($this->knowledgeTool(), ['query' => 'anything']);
+
+        $this->assertFalse($decision->allowed());
+        $this->assertSame('unproductive_search_limit', $decision->reason);
+    }
+
     /** @param array<string,mixed> $counters */
-    private function makeRun(array $counters = []): AgentRun
+    private function makeRun(array $counters = [], ?int $depth = null): AgentRun
     {
         return AgentRun::create([
             'run_id' => \Illuminate\Support\Str::uuid()->toString(),
@@ -80,6 +238,7 @@ final class AgentBudgetTrackerTest extends TestCase
             'timezone' => 'Europe/Rome',
             'status' => AgentRun::STATUS_RUNNING,
             'started_at' => now(),
+            'input_json' => $depth === null ? [] : ['depth' => $depth],
             'counters_json' => $counters,
             'budget_json' => [],
         ]);
@@ -98,6 +257,22 @@ final class AgentBudgetTrackerTest extends TestCase
             physicalMinimum: 1,
             physicalLikely: 1,
             physicalMaximum: $physicalMaximum,
+        );
+    }
+
+    private function knowledgeTool(): AgentToolDefinition
+    {
+        return new AgentToolDefinition(
+            name: 'search_knowledge_base',
+            displayName: 'Knowledge base',
+            description: 'Search',
+            kind: 'knowledge',
+            inputSchema: ['type' => 'object'],
+            readOnly: true,
+            idempotent: true,
+            physicalMinimum: 0,
+            physicalLikely: 0,
+            physicalMaximum: 0,
         );
     }
 }

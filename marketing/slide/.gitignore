@@ -1,0 +1,7 @@
+/*.pptx
+/*.pdf
+/render/
+/consegna-pptx.json
+/sorgenti/**/.build/
+/sorgenti/**/.validated/
+/sorgenti/**/__pycache__/

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { AxiosError } from 'axios';
@@ -51,6 +52,7 @@ async function fetchWikilink(project: string | undefined, slug: string): Promise
  * the popover that mirrors the Claude Design chat reference.
  */
 export function WikiLink({ slug, label, project }: WikiLinkProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [hover, setHover] = useState(false);
 
     const { data, isLoading, isError } = useQuery<WikilinkPayload | null>({
@@ -124,7 +126,7 @@ export function WikiLink({ slug, label, project }: WikiLinkProps): ReactNode {
                             </span>
                         )}
                     </div>
-                    {isLoading && <div style={{ color: 'var(--fg-3)' }}>Loading…</div>}
+                    {isLoading && <div style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</div>}
                     {isError && <div data-testid="wikilink-preview-error" style={{ color: 'var(--fg-3)' }}>Preview unavailable.</div>}
                     {!isLoading && !isError && !resolved && (
                         <div style={{ color: 'var(--fg-3)' }}>No canonical document found for this slug yet.</div>

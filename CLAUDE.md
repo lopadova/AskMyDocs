@@ -94,11 +94,16 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 | HTTP entrypoints | `app/Http/Controllers/Api/*.php` |
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` + `app/Models/ChatLog.php` |
+| Conversation session recap | Rolling, INCREMENTAL per-conversation summary (`conversations.session_recap` JSON) injected into `prompts/kb_rag.blade.php`'s "Session Recap" block. `app/Services/Chat/ConversationRecapService.php` feeds the LLM the PREVIOUS recap + only the last `kb.session_recap.window_messages` messages (never the full history, via `prompts/kb_session_recap.blade.php`) — cost stays flat as a conversation grows. Updated by `app/Jobs/UpdateConversationRecapJob.php`, dispatched by `MessageController`/`MessageStreamController` right after the assistant message is saved (skipped on every refusal path), never on the request path. Config-gated `kb.session_recap.*` (`KB_SESSION_RECAP_ENABLED`, default ON; `KB_SESSION_RECAP_EVERY_N_MESSAGES` cadence, default 1 = every message). Only the two persisted conversation surfaces have a recap — the stateless `/api/kb/chat` has no conversation to attach one to. |
+| Agent investigation depth ("livello di approfondimento") | 1-5 per-run knob, chat composer's `chat-depth-picker` select (`frontend/src/features/chat/Composer.tsx`), lifted in `use-chat-session.ts` and threaded through `useAgentChat` → `chatApi.startAgentTurn()`. `AgentMessageController` validates it (`between:1,5`, default `agent.depth.default`=3) and stamps it onto `AgentRun.input_json.depth`. Two independent effects, both required — a budget ceiling alone does nothing if the planner never wants to use it: (1) `App\Agent\Budget\AgentBudgetTracker::limit()` applies a config-driven multiplier (`agent.depth.multipliers`, `AGENT_DEPTH_MULTIPLIER_1..5`) to the depth-eligible entries in `agent.limits.*` — iterations, logical_soft/hard, physical_hard, both time budgets, evidence_bytes (never `consecutive_errors`/`duplicate_calls`, the loop-safety guards); (2) `App\Agent\Planning\AgentPlanner::depthInstruction()` — resolved from the same `input_json.depth` by `AgentPlanningCoordinator::depthFor()` — adds a depth-tiered paragraph to the classic planner's prompt, moving the bar for "evidence is sufficient" and, at depth 4-5, explicitly asking it to enumerate follow-up sub-questions and issue a `search_knowledge_base` action for each before answering — the actual mechanism that makes the loop DO more cascading searches. Level 3 = 1.0x / today's unparameterized wording, so an omitted/default depth is byte-identical to before this knob existed. `AgentResultProjector::searchStats()` counts every KB search + MCP/API call the run attempted (not just the ones cited) into `Message.metadata.search_stats`, rendered as a `SearchStatsBadge` in the chat footer so the depth's effect is visible, not just configured. `AgentBudgetTracker::recordKnowledgeSearchResult()` stops the knowledge tool after `agent.limits.consecutive_unproductive_searches` (default 3) DIFFERENT queries in a row that added no new evidence — deliberately NOT depth-scaled, so higher depth means "search more when it's working," never "search blindly longer once it demonstrably isn't." |
+| Agent document catalog tool | `list_knowledge_documents` (kind `catalog`, `App\Agent\Tools\AgentDocumentCatalogService`) — lists documents by TITLE (optional keyword filter, LikeEscaper-escaped per R19), covering both canonical and non-canonical/auto-tier documents, scoped to tenant+project. Exists alongside `search_knowledge_base` (single-query semantic content search) because a catalog/overview question ("che manuali abbiamo", "elenca i moduli") has no query string that means "everything" — before this tool the planner could only guess plausible document names and search_knowledge_base each blindly. Executed via `AgentServerToolRunner::executeCatalog()`, flowing through the same `tool_execution_id` evidence/claim-grounding path as every api/mcp tool. |
+| Sessions workspace (v8.x — "Sessioni") | A SECOND chat shell in the ChatGPT/Claude mould at `/app/{teamHash}/sessions[/{conversationId}]`, coexisting with `/chat`. **Renders OUTSIDE `AppShell`**: `TeamGate` picks the chrome via `isStandaloneSurface(pathname)` (`STANDALONE_SEGMENTS` = `sessions`, `knowledge`) and mounts `frontend/src/components/shell/StandaloneShell.tsx` — no primary sidebar, no breadcrumbs, no command palette; only a back control, the `TeamSwitcher` (swapping the hash IN PLACE so a team switch does not eject the user) and the theme toggle. The session rail is the ONLY sidebar by design; a new full-screen surface must be added to `STANDALONE_SEGMENTS` (`frontend/src/routes/standalone-surface.test.ts` pins both directions). Zero duplication by construction: ALL turn orchestration lives in the shared headless hook `frontend/src/features/chat/use-chat-session.ts` (URL→id derivation, project scope, `effectiveFilters`, the deferred-send queue, auto-title, branch/edit/regenerate, realtime) which BOTH `ChatView` and `frontend/src/features/chat/sessions/SessionsView.tsx` consume — only navigation is per-surface (TanStack `to` is a typed literal, injected via `ChatSessionNavigator`). New presentation only: `sessions/{SessionSidebar,SessionRow,SessionRowMenu,SessionNavigation,NameDialog}.tsx`. Organisation core: `app/Services/Chat/{ConversationOrganizerService,ChatFolderService}.php` + `app/Support/Chat/{ConversationImportance,ConversationArchiveScope}.php` + `app/Models/ChatFolder.php`; HTTP `ConversationController@index/@update` (additive, bare-array preserved per R27, via `app/Http/Resources/Chat/ConversationResource.php` with `$wrap = null`) + `app/Http/Controllers/Api/ChatFolderController.php` (`/api/chat-folders`). Organisation writes run with `timestamps = false` — `updated_at` is the recency key AND "last activity", so a pin must not reorder the list. Folder delete is `nullOnDelete` (unfiles; NEVER cascades). **R44 exception, documented**: PHP + HTTP only, no MCP tool — per-user UI state changes nothing an agent can retrieve or ground on (precedents: `ChatFilterPresetController`, `KbDocumentPreviewController`, `Admin\ProjectController`). |
+| Reader KB browse (v8.x) | `/app/{teamHash}/knowledge` — read-only KB explorer for EVERY authenticated role (the admin explorer stays `role:admin|super-admin`). `app/Http/Controllers/Api/KbTreeReaderController.php` (`GET /api/kb/tree`) is a SECOND HTTP surface over the SAME `app/Services/Admin/KbTreeService` core, with `with_trashed` neither accepted nor forwarded (R2) and enforcement by the model's global `AccessScopeScope` (R33, not a policy). FE `frontend/src/features/kb-browse/*` reuses `features/admin/kb/TreeView.tsx` unchanged via one additive `allowTrashedToggle` prop. NOTE the visibility posture: with `kb.project_isolation.enabled=false` (default) `viewer` holds `kb.read.any`, so the scope short-circuits and a reader sees every live doc in the tenant — the PRE-EXISTING retrieval posture (same as chat citations + `/preview`); both flag states are pinned by `tests/Feature/Api/KbTreeReaderTest.php` (R43). `/app/{teamHash}/kb` is a LEGACY alias redirecting to `/admin/kb` — do NOT repurpose it (`frontend/e2e/admin-sidebar-nav.spec.ts` asserts that redirect). |
 | MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (retrieval + canonical/promote + auto-wiki + engagement + the v8.16/W4 AI FinOps read surfaces `FinOps{SpendSummary,TopModels,BudgetStatus}Tool` + the v8.18/W4 AI gamification read surface `KbGamificationInsightsTool` + the v8.19/W4 Agentic Knowledge Reports read surface `KbRunReportTool` + the v8.20 multi-account connectors read surface `ConnectorInstallationsTool` + the v8.21 ingestion/sync observability read surface `KbIngestionStatusTool` + the durable windowed IMAP backfill control surface `KbImapBackfillTool` + the v8.22 runtime config governance read surface `AppSettingsTool` + the v8.23 PII tri-surface `Kb{PiiPolicy,Detokenize,EraseSubject,ReembedProject}Tool` + the v8.25 connector sync-settings read surface `ConnectorSettingsTool` + the v8.27 API-connector read surface `ApiConnectorsTool` + the Flow run-health read surface `FlowRunStatusTool` (read-only by construction; it reads through the SAME `FlowDashboardReadModel` the cockpit uses, so the host `TenantScopedDashboardReads` scope applies without being re-derived) + the widget welcome read surface `WidgetIntroConfigTool` + the v8.39/W5 Auto-Wiki maintenance routine read surface `KbWikiRoutineStatusTool` (no MCP `run` tool — documented R44 exception, ADR 0033 §8) + the `padosoft/laravel-invitations` tri-surface `Invite{ValidateCode,GenerateCodes,Metrics}Tool` (vendor-namespaced, registered on the host server); the roster is whatever lives in that directory plus the vendor tools, and is DERIVED rather than counted by `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php`: it compares the registered `App\Mcp\Tools\*` classes against the FILES in `app/Mcp/Tools/`, so adding a tool without registering it fails and vice versa. The vendor-namespaced invitations tools are listed explicitly there because no file in this repository corresponds to them. A hard-coded total used to guard this and repeatedly went stale -- 47 outlived a 48-tool roster and kept `main` red for four days, `develop` for six, and blocked fifteen Dependabot PRs) |
 | API connector (`padosoft/askmydocs-connector-api`, v8.27 — "Connettore API") | A NEW connector paradigm: instead of ingesting, each configured HTTP **endpoint (Rotta)** becomes a **live LLM tool** callable during chat (RAG + fresh API data in parallel). Package distributed from `padosoft/askmydocs-connector-api`: 5 tenant-aware tables (`api_connectors`, `api_auth_profiles` [`credentials` `encrypted:array`], `api_routes`, `api_route_parameters`, `api_tool_call_logs`), services `UrlGuard` (SSRF — the host's only outbound-URL guard), `ApiRouteTester`, `SchemaInferrer`, `ToolDefinitionGenerator` (+ host-bound `ToolDescriptionAssistant`), `ApiToolExecutor` (retry/cache/rate-limit/output-cap/sanitised log), `ApiToolRegistry`, auth strategies (none/api_key/bearer/basic/custom/oauth2_cc), and the admin HTTP surface. **Host integration**: `McpToolCallingService::buildToolIndex()` merges API tools (kind=api, gated by `connector-api.chat_tools.enabled`, R43) and dispatches them to `ApiToolExecutor`; routes mounted with the authenticated admin stack via `config/connector-api.php` (`can:manageConnectors`, R32 matrix row). Tri-surface (R44): artisan `api-connector:list`/`:test` + HTTP `/api/admin/api-connectors/*` + MCP `ApiConnectorsTool`, all over `ConnectorAdminService`. Fase 2 (ingest) is reserved via the `mode` column. |
 | Auto-Wiki maintenance as a routine (`padosoft/laravel-routines` + `-contracts`, v8.39/W5 — ADR 0033) | `kb:wiki-maintain`'s existing nightly cron gets an OPTIONAL routine identity: `app/Routines/WikiMaintenanceRoutineTarget.php` (`implements RoutineTarget`, thin adapter over the unchanged `WikiMaintainer` core), `app/Routines/WikiRoutineService.php` (the one core behind the tri-surface — status/run/auto-provision), `app/Routines/WikiMaintenanceRoutineGate.php` (the "no double run, no orphaned run" scheduler decision — DB check wrapped in `try/catch`, fails safe to "keep the cron" on any error). Both packages are `require` dependencies (not runtime-optional — same convention as every other `padosoft/*` package here; the ADR corrects the plan's original "optional dependency" framing). `padosoft/laravel-routines`' own generic admin API (`config/routines.php`, `api/routines/v1`) is deliberately OFF (`ROUTINES_API_ENABLED=false`) — it has no tenant concept and defaults to cross-tenant read access; AskMyDocs' own tenant-scoped R30/RBAC-gated tri-surface is the only sanctioned surface. Tenant scoping lives entirely in `WikiRoutineService` via the package's generic `organization_id` column (the package has no `tenant_id`). Default OFF (`KB_WIKI_ROUTINE_ENABLED`, R43): read surfaces always answer, `run` requires the flag. **Documented gap (ADR 0033 §7)**: no mandate/consent-grant flow is wired this cycle — the routine runs as the application (same authority the cron already had), so the `MandateExceeded`/pause-and-ask machinery is real but currently unreachable. Tri-surface (R44): `kb:wiki-routine {status\|run}` · `GET /api/admin/kb/wiki-routine` + `POST .../run` (`role:admin\|super-admin`) · MCP `KbWikiRoutineStatusTool` (read-only — no MCP `run` tool, documented R44 exception). |
 | Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
-| Team (tenant) management (v8.28 — "Teams") | A "team" = a tenant (a `tenant_id`/`slug` string); its editable display **name** lives on the OPTIONAL vendor `tenants` row (`Padosoft\AiActCompliance\MultiTenancy\Models\Tenant` — `slug`, `name`, `status`), the same table `UserTeamsResolver` reads for the topbar switcher. Core: `app/Services/Admin/TeamRegistryService.php` (single shared core — `manageableTeams` / `create` [tenants row + initial project + membership for the acting user, atomic, `TenantContext` swapped around the writes; NO new user — that stays `company:create`] / `rename` [updates `tenants.name`, authorizes the TARGET team by explicit membership independently of the request `X-Tenant-Id`, 404 IDOR-safe]; `default` is reserved, non-operational and never selectable/creatable/renamable). Tri-surface **minus MCP by design (R44 exception, mirrors `ProjectController`)**: HTTP `app/Http/Controllers/Api/Admin/TeamController.php` (`GET/POST /api/admin/teams`, `PATCH /api/admin/teams/{slug}`, in the `role:admin|super-admin` group, R32 matrix row) + Artisan `CreateTeamCommand`/`RenameTeamCommand` (`team:create`/`team:rename`). OFF-path (R14/R43): `tenants` table absent → `TeamRegistryUnavailableException` → **503**, never a 500. FE `frontend/src/features/admin/teams/*` (route `admin/teams`, nav `Teams`); create/rename refetch `/api/auth/me` → `useAuthStore.setMe` to re-sync the switcher. |
+| Team (tenant) management (v8.28 — "Teams") | A "team" = a tenant (a `tenant_id`/`slug` string); its editable display **name** lives on the OPTIONAL vendor `tenants` row (`Padosoft\AiActCompliance\MultiTenancy\Models\Tenant` — `slug`, `name`, `status`), the same table `UserTeamsResolver` reads for the topbar switcher. Core: `app/Services/Admin/TeamRegistryService.php` (single shared core — `manageableTeams` / `create` [tenants row + initial project + membership for the acting user, atomic, `TenantContext` swapped around the writes; NO new user — that stays `company:create`] / `rename` [updates `tenants.name`, authorizes the TARGET team by explicit membership independently of the request `X-Tenant-Id`, 404 IDOR-safe]; `default` is reserved, non-operational and never selectable/creatable/renamable). Tenant branding is stored privately through `TenantBrandingService`/`TenantBranding` on the `tenant-logos` disk; admins upload/delete it at `/api/admin/teams/{slug}/logo`, and authenticated members stream it from `/api/tenant-logos/{slug}`. Tri-surface **minus MCP by design (R44 exception, mirrors `ProjectController`)**: HTTP `app/Http/Controllers/Api/Admin/TeamController.php` (`GET/POST /api/admin/teams`, `PATCH /api/admin/teams/{slug}`, in the `role:admin|super-admin` group, R32 matrix row) + Artisan `CreateTeamCommand`/`RenameTeamCommand` (`team:create`/`team:rename`). OFF-path (R14/R43): `tenants` table absent → `TeamRegistryUnavailableException` → **503**, never a 500. FE `frontend/src/features/admin/teams/*` (route `admin/teams`, nav `Teams`); create/rename/logo changes refetch `/api/auth/me` → `useAuthStore.setMe` to re-sync the switcher. |
 | System administration (v8.30) | `system-admin` is the global platform role; `super-admin` is only the highest tenant role and still requires membership. `platform.admin` gates `/api/system-admin/tenants` and the read-only `/api/system-admin/super-admins`; no role bypasses tenant membership. Every system-admin also carries companion `super-admin` for existing tenant route compatibility when a membership exists. Core: `app/Services/Admin/SystemAdminTenantService.php`, `SystemAdminSuperAdminService.php` + `TenantProvisioningService.php`; HTTP: `app/Http/Controllers/Api/SystemAdmin/{TenantControlController,SuperAdminController}.php`; UI: `/app/system/{tenants,super-admins}` in `frontend/src/features/system-admin/*`, deliberately outside team routes and exempt from `X-Tenant-Id`. Protected grant/revoke is CLI-only (`system-admin:grant|revoke {email} --yes`) through `SystemAdminAccessService`; Users CRUD, generic `auth:grant`, invitations and tenant provisioning cannot mint the role. Tenant role demotion, user deletion and project-membership deletion all refuse to remove the final membership-bearing Super Admin of the active tenant. Tenant lifecycle changes require a DB-backed, single-use transition token and all successful mutations commit with `admin_command_audit`. No MCP write surface: explicit R44 exception because autonomous global privilege or tenant-lifecycle mutation is outside the agent trust boundary (ADR 0023/0024). |
 | Invitations (`padosoft/laravel-invitations`) | `config/invitations.php` (host route middleware + `manageInvitations` gate, `INVITE_REQUIRED` default-false R43), `app/Invitations/ProjectMembershipProvisioner.php` (GRANT-never-REVOKE project membership from a `TenantGrant`), `App\Models\User` (implements `InvitedAccount`), `AppServiceProvider::registerInvitationsIntegration()` (TenantResolver→TenantContext + provisioner tag) + `registerInvitationsGates()`; MCP `Invite{ValidateCode,GenerateCodes,Metrics}Tool` on `KnowledgeBaseServer`; routes auto-mount at `/api/{admin/}invitations/*`. The 9 invite tables are package-owned + tenant-aware (R30/R31 in the package's CI). **Public registration intents (v8.30):** globally unique codes are resolved by `RegistrationCodeResolver`. `registration-invite:create` stores public codes in the reserved, non-operational `system-registration` namespace: omit `--tenant` for `company_bootstrap`, or pass `--tenant` + one/more `--project` for `tenant_join`. A bootstrap code creates no membership and forces the resumable `POST /api/auth/onboarding/company` flow; onboarding atomically creates tenant + initial project + owner membership and grants tenant `super-admin`. A tenant-linked code provisions its explicit membership, skips onboarding and opens the named-company `/app/welcome/{teamHash}` handoff before chat. `RegistrationAccountCompletionService` verifies the grant transactionally and persists `users.registration_completed_at`; a consumed code with incomplete provisioning returns 503 and resumes from its immutable redemption on the next login, while later intentional membership removal is never auto-reversed. `default` is never a public registration fallback. **Invite-only SPA sign-up (v8.26):** `app/Http/Controllers/Api/Auth/RegisterController.php` redeems OUTSIDE a DB txn, force-deletes on the exhausted-between-checks race, and floors at `viewer`; `POST /api/auth/register` is throttled 6/min/IP and `invite_code` is ALWAYS required regardless of `INVITE_REQUIRED`. **Native admin (v8.26):** in-app tabbed page `frontend/src/features/admin/invitations/*` over `/api/admin/invitations/*`; the standalone `-admin` panel is an optional "Advanced" launcher shown only when `INVITATIONS_ADMIN_ENABLED=true`, surfaced via `features.invitations_admin` on `/api/auth/me`. All guest auth routes render the SPA shell via `SpaController`. |
 | Admin metrics + health | `app/Services/Admin/AdminMetricsService.php`, `HealthCheckService.php`, `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` |
@@ -953,7 +958,8 @@ knowledge_documents, knowledge_chunks,
 chat_logs, conversations, messages, kb_nodes, kb_edges,
 kb_canonical_audit, project_memberships, kb_tags,
 knowledge_document_tags, knowledge_document_acl, admin_command_audit,
-admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
+admin_command_nonces, admin_insights_snapshots, chat_filter_presets,
+chat_folders.
 **`embedding_cache` is intentionally NOT tenant-aware** — a cross-tenant reuse
 layer keyed `UNIQUE(text_hash, provider, model)` (same text+provider+model embeds once
 across tenants); `TenantIdMandatoryTest` documents the exclusion. (`User` is likewise
@@ -1052,35 +1058,29 @@ bug one arm later — a member scoped to `hr/policies/**` still received
 the same omission, found two audits apart.
 → See `app/Support/ScopeAllowlistSql.php` + `tests/Feature/Kb/RetrievalScopeAllowlistTest.php`.
 
-### R37 — Branching strategy: `feature/v4.x` integration branches → main
-For AskMyDocs, `main` holds the **stable production release** (v3 today,
-v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
-release works in its own integration branch:
+### R37 — GitFlow permanente: `develop` integra, `main` rilascia
 
-- `main` ← stable production
-- `feature/v4.0` ← integration branch for entire v4.0 cycle (8 weeks)
-- `feature/v4.0/W1.B` ← sub-branch per sottotask, PR target = `feature/v4.0`
-- `feature/v4.1` ← integration branch for v4.1, PR sub-branches target it
-- ... and so on for v4.2, v4.3, v4.4
+AskMyDocs usa due branch permanenti protetti. `main` rappresenta la produzione;
+`develop` integra il lavoro della prossima release e deve contenere la storia di
+`main`.
 
-**Merge to main happens ONCE per major release**, when:
-- All sub-branches merged into `feature/v4.x`
-- All tests + CI green on `feature/v4.x`
-- RC1/RC2 acceptance criteria passed
-- Then: `feature/v4.x` → `main` → tag `v4.x.0`
+- `feature/*`, `fix/*` e `chore/*` partono da `origin/develop`, aprono PR verso
+  `develop` e usano squash merge.
+- `release/X.Y.Z` parte da `origin/develop`, accetta solo stabilizzazione e
+  documentazione, apre la PR verso `main` e usa merge commit.
+- `hotfix/X.Y.Z` parte da `origin/main`, confluisce in `main` con merge commit e
+  viene riportato immediatamente in `develop`.
+- Dependabot apre tutte le PR verso `develop`.
+- I tag finali vengono creati sulla `main` pubblicata; feature e fix non vanno
+  direttamente su `main` o sui branch di release.
 
-**Why not merge sub-branches direct to main**:
-- v3 must stay stable on main for hotfixes during 6-month v4 development
-- Half-merged v4 features on main would break v3 production users
-- Single merge per release = single review surface, single deploy event
+Entrambi i branch vietano cancellazione e force-push e richiedono PR, CI verde,
+conversazioni risolte e ciclo Copilot concluso. Non è obbligatoria
+un'approvazione umana, per non bloccare il maintainer unico.
 
-**For new repos** (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, etc.,
-created fresh for v4): PRs target `main` directly — no stable code to
-preserve; main and develop converge from day 1.
-
-Lorenzo decided this on 2026-04-28 during W1.B PR #78. Existing PR #78
-re-targeted from main to feature/v4.0.
-→ See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
+Prima di ricostruire un ramo condiviso, preservalo con branch di backup e bundle
+Git; non riscrivere la sorgente durante il recupero.
+→ See `docs/GITFLOW.md` and `.agents/skills/manage-gitflow/SKILL.md`.
 
 ### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
 **The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
@@ -1251,65 +1251,26 @@ cross-feature memorisation isn't required when convention holds.
 Stateless components (`FilterBar`, `TagsList`) take `(value, onChange)`
 controlled props — state lifts to the lowest common parent.
 
-### R39 — Tag `vX.Y.0-rcN` at the end of every Wn milestone
-Standing convention from 2026-05-02. R37 says "merge to main once per
-major release"; R39 fills the gap by giving every weekly milestone a
-visible release-candidate tag. After each Wn closure on
-`feature/vX.Y` (every sub-task PR merged + CI green + closure status
-doc shipped under `docs/v4-platform/STATUS-{date}-week{N}.md`):
+### R39 — Release candidate solo su `release/X.Y.Z` congelata
 
-1. Open a small docs PR refreshing **`README.md`** — specifically the
-   `### Key Features` and `## Changelog` sections (AskMyDocs keeps the
-   changelog inline in the main README; there is no separate
-   `CHANGELOG.md` file). Add a new entry under `## Changelog` with the
-   `vX.Y.0-rcN` heading + bullet list of Wn deliverables, and refresh
-   `### Key Features` so the freshly-shipped capabilities surface above
-   the fold for prospective consumers.
-2. **Capture the closure-commit SHA before the docs PR merges**, then
-   tag at that exact SHA — never against the moving `feature/vX.Y` ref,
-   because another PR landing between `gh release create` and the docs
-   PR merge would silently shift the rc to the new HEAD:
-   ```bash
-   CLOSURE_SHA=$(git rev-parse origin/feature/vX.Y)
-   gh release create vX.Y.0-rcN \
-     --repo lopadova/AskMyDocs \
-     --target "$CLOSURE_SHA" \
-     --title "vX.Y.0-rcN — Wn milestone" \
-     --prerelease \
-     --notes "..."
-   ```
-3. Increment `N` once per Wn closure: rc1 after W4, rc2 after W5, etc.
-   The final `vX.Y.0` GA tag fires only when the LAST Wn closes (W8
-   for v4.0) and the integration branch merges into `main` per R37.
+Un tag `vX.Y.Z-rcN` si prepara soltanto quando viene richiesto esplicitamente e
+solo su uno SHA verificato di `release/X.Y.Z`, creato da `origin/develop` dopo
+il feature freeze. Non esiste più il tag RC automatico a ogni milestone
+settimanale e i branch `feature/vX.Y` non sono branch di integrazione correnti.
 
-Why a release-candidate and not a final tag at every Wn:
-- Composer / Packagist semver: `^X.Y` resolution skips RC builds by
-  default. Consumers explicitly opt in via `^X.Y@beta` or
-  `^X.Y.0-rcN` if they want the milestone preview. The stable channel
-  remains the previous major until the GA ships.
-- Each rc is a checkpoint. If something regresses between Wn and
-  Wn+1, the rc tag is a known-good rollback target.
-- Audit + community visibility: tagging publicly demonstrates progress
-  every week without committing to a final API contract — and gives
-  Patent Box auditors a clean per-week artefact to point at.
+Prima del tag:
 
-Anti-patterns:
-- ❌ Tagging the rc on `main` — rejected by R37.
-- ❌ Skipping the README + CHANGELOG refresh — leaves consumers staring
-  at a stale "Roadmap" claiming the freshly-shipped feature is still
-  pending.
-- ❌ Tagging mid-Wn (between sub-task merges) — wait for the closure
-  status doc to land first.
-- ❌ Re-tagging the same `rcN` after subsequent commits — bump to
-  `rcN+1` instead.
+1. completa CI, test, documentazione e release notes sul commit candidato;
+2. cattura lo SHA immutabile e verifica che sia ancora la revisione approvata;
+3. incrementa `N`, senza spostare o riutilizzare un tag esistente;
+4. pubblica tag o release soltanto con autorizzazione esplicita.
 
-Scope: applies to AskMyDocs (`lopadova/AskMyDocs`) integration-branch
-cycles. Standalone `padosoft/*` packages tag their own normal-semver
-`v0.1.0` final at the end of their respective Wn (already established
-for `padosoft/laravel-patent-box-tracker` after W4). Those follow
-plain SemVer, NOT the RC convention.
+La release finale passa da `release/X.Y.Z` a `main` con merge commit; il tag
+stabile punta alla `main` risultante e `main` viene riportato immediatamente in
+`develop`. I package indipendenti mantengono il proprio normale ciclo SemVer.
 
-→ See `.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
+→ See `docs/GITFLOW.md` and
+`.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
 
 ### R40 — Local critic loop (copilot-cli) BEFORE every push (v8.0+)
 

@@ -37,6 +37,9 @@ class KbTreeController extends Controller
             'project' => ['nullable', 'string', 'max:120'],
             'mode' => ['nullable', 'in:canonical,raw,all'],
             'with_trashed' => ['nullable'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:200'],
+            'after' => ['sometimes', 'integer', 'min:0'],
+            'q' => ['nullable', 'string', 'max:200'],
         ]);
 
         $project = isset($validated['project']) && trim((string) $validated['project']) !== ''
@@ -46,11 +49,12 @@ class KbTreeController extends Controller
         $mode = $validated['mode'] ?? KbTreeService::MODE_ALL;
         $withTrashed = $request->boolean('with_trashed');
 
-        $result = $this->tree->build($project, $mode, $withTrashed);
+        $result = isset($validated['limit'])
+            ? $this->tree->page($project, $mode, $withTrashed, trim($validated['q'] ?? ''), (int) ($validated['after'] ?? 0), (int) $validated['limit'])
+            : $this->tree->build($project, $mode, $withTrashed);
 
         return response()->json([
-            'tree' => $result['tree'],
-            'counts' => $result['counts'],
+            ...$result,
             'generated_at' => Carbon::now()->toIso8601String(),
         ]);
     }

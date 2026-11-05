@@ -1,11 +1,25 @@
-import { useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../lib/ui-locale";
+import {
+    useEffect,
+    useRef,
+    useState,
+    type ChangeEvent,
+    type KeyboardEvent,
+    type ReactNode,
+} from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
+import { Alert, AlertDescription, AlertIcon, AlertTitle } from '../../components/ui/alert';
 import { FilterBar } from './FilterBar';
 import { MentionPopover } from './MentionPopover';
 import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
+import { LiveSourcesControl } from './LiveSourcesControl';
+import { RealtimeVoiceControl } from './RealtimeVoiceControl';
+import type { UseRealtimeAgentResult, RealtimeAgentFeatureStatus } from './use-realtime-agent';
 import type { MentionResult } from './use-mention-search';
-import type { FilterState } from './chat.api';
+import type { FilterState, LiveSourceCatalog, LiveSourceKind, LiveSourceSelection } from './chat.api';
 import type { ChatCollectionOption } from './chat.api';
 
 export interface ComposerProps {
@@ -43,6 +57,16 @@ export interface ComposerProps {
     filters: FilterState;
     onFiltersChange: (next: FilterState | ((prev: FilterState) => FilterState)) => void;
     /**
+     * "Investigation depth" (1-5, default 3) — how many cascading
+     * plan->act->observe cycles the agent is allowed before it must
+     * synthesize a final answer. Controlled, same pattern as `filters`.
+     */
+    depth: number;
+    onDepthChange: (next: number) => void;
+    liveSources?: LiveSourceCatalog;
+    liveSourceSelection?: LiveSourceSelection;
+    onLiveSourcesChange?: (kind: LiveSourceKind, enabledKeys: string[]) => void;
+    /**
      * Send handler. ChatView wraps `useChatStream().sendMessage()`
      * (with the conversation-creation flow if `conversationId` is
      * null) and passes it through. Returns once the request is in
@@ -62,6 +86,9 @@ export interface ComposerProps {
      * 'streaming'`). Disables the textarea + flips Send → Stop.
      */
     isStreaming: boolean;
+    realtime?: Pick<UseRealtimeAgentResult, 'status' | 'error' | 'active' | 'start' | 'stop'> & {
+        availability?: RealtimeAgentFeatureStatus;
+    };
     /**
      * Surface from `useChatStream().error`. Renders the
      * chat-composer-error inline when set.
@@ -80,9 +107,7 @@ export interface ComposerProps {
  */
 export function Composer({
     conversationId,
-    projectLabel,
     projectKey,
-    modelLabel,
     onRequireConversation,
     availableProjects = [],
     availableCollections = [],
@@ -90,11 +115,18 @@ export function Composer({
     docLabels = {},
     filters,
     onFiltersChange,
+    depth,
+    onDepthChange,
+    liveSources,
+    liveSourceSelection,
+    onLiveSourcesChange,
     onSend,
     onStop,
     isStreaming,
+    realtime,
     error,
 }: ComposerProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const draft = useChatStore((s) => s.draft);
     const setDraft = useChatStore((s) => s.setDraft);
     const appendToDraft = useChatStore((s) => s.appendToDraft);
@@ -103,13 +135,22 @@ export function Composer({
     const [localError, setLocalError] = useState<string | null>(null);
     // Re-entrancy guard for the submit action itself. `isStreaming`
     // catches the SDK's stream-in-flight state, but there's a brief
-    // window between `send()`'s entry and the SDK setting status to
+    // window between `send()`'s entry and the agent setting status to
     // 'submitted' (especially on the FIRST message where we await
     // onRequireConversation first). Without this ref a fast
     // double-click / double-Enter would queue two POSTs back-to-back
     // before isStreaming flips. Ref (not state) so we don't trigger
-    // an extra render when toggling.
-    const isSubmittingRef = useRef(false);
+    // an extra render when toggling. Track each conversation separately
+    // so a background request cannot lock another session's composer.
+    const submissionsRef = useRef(new Set<number | null>());
+    const currentConversationRef = useRef(conversationId);
+    currentConversationRef.current = conversationId;
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+    useEffect(() => { setLocalError(null); }, [conversationId]);
     // T2.8 — @mention popover state. `mentionQuery` is the chars after
     // the most recent unmatched `@` (truncated to next whitespace). It
     // drives use-mention-search via MentionPopover. `mentionAnchor` is
@@ -122,15 +163,17 @@ export function Composer({
     // mention, so the FilterBar can show "Doc: HR Policy v2" instead of
     // "#42". Survives across turns inside the same composer mount.
     const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
+    const realtimeVoiceActive = realtime?.active === true && realtime.status !== 'paused';
+    const composerDisabled = isStreaming || realtimeVoiceActive;
 
     const send = async () => {
         // Re-entrancy + concurrency guard. `isStreaming` catches the
-        // mid-stream window; `isSubmittingRef` catches the brief
+        // mid-stream window; `submissionsRef` catches the brief
         // pre-stream window (between submit and the SDK's status
         // transition to 'submitted'). Together they reject every
         // double-fire path — Enter spam, click spam, programmatic
         // form-submit + Enter combo.
-        if (isStreaming || isSubmittingRef.current) {
+        if (composerDisabled || submissionsRef.current.has(conversationId)) {
             return;
         }
         const trimmed = draft.trim();
@@ -138,7 +181,8 @@ export function Composer({
             setLocalError('Message is required.');
             return;
         }
-        isSubmittingRef.current = true;
+        let submissionId = conversationId;
+        submissionsRef.current.add(submissionId);
         try {
             let targetId = conversationId;
             if (targetId === null && onRequireConversation) {
@@ -148,12 +192,20 @@ export function Composer({
                 setLocalError('Could not start a new conversation.');
                 return;
             }
+            if (targetId !== submissionId) {
+                submissionsRef.current.delete(submissionId);
+                submissionId = targetId;
+                submissionsRef.current.add(submissionId);
+            }
             setLocalError(null);
             const content = trimmed;
             clearDraft();
             try {
                 await onSend(content);
             } catch (err) {
+                // A background failure must not replace the draft or error
+                // belonging to the conversation now open in this composer.
+                if (!mountedRef.current || currentConversationRef.current !== targetId) return;
                 // Restore the draft so the user doesn't lose their typed
                 // message on transport / 419 / network failure. The error
                 // surface (chat-composer-error) renders via the `error`
@@ -163,7 +215,7 @@ export function Composer({
                 setLocalError(err instanceof Error ? err.message : 'Failed to send message.');
             }
         } finally {
-            isSubmittingRef.current = false;
+            submissionsRef.current.delete(submissionId);
         }
     };
 
@@ -242,139 +294,161 @@ export function Composer({
     };
 
     const serverError = error ? (error.message ?? 'Provider returned an error.') : null;
+    const visibleLocalError = localError?.trim() === serverError?.trim() ? null : localError;
 
     return (
-        <div className="chat-composer-shell" style={{ padding: '12px 24px 18px' }}>
-            <form
-                data-testid="chat-composer"
-                aria-label="Message composer"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    void send();
-                }}
-                className={`glow-frame ${focused ? 'on' : ''}`}
-                style={{
-                    background: 'var(--panel-solid)',
-                    border: '1px solid var(--panel-border-strong)',
-                    borderRadius: 14,
-                    boxShadow: focused ? 'var(--glow)' : 'var(--shadow)',
-                    transition: 'box-shadow .25s',
-                }}
-            >
-                {/*
-                  * T2.7 — FilterBar renders ABOVE the legacy context-chip
-                  * row. Together they form the "what's constraining this
-                  * answer" surface. The legacy chips (project label,
-                  * canonical-only, model) stay visible because they show
-                  * conversation-level config the user can't directly
-                  * change here; the FilterBar owns the per-turn filters.
-                  */}
-                <FilterBar
-                    filters={filters}
-                    onChange={onFiltersChange}
-                    availableProjects={availableProjects}
-                    availableTags={availableTags}
-                    docLabels={docLabelMap}
-                />
-                <div style={{ display: 'flex', gap: 6, padding: '10px 12px 2px', flexWrap: 'wrap' }}>
-                    {projectLabel && <ContextChip icon="Folder" label={projectLabel} />}
-                    <label style={{ fontSize: 11, color: 'var(--fg-2)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span>Scope</span>
-                        <select
-                            data-testid="chat-collection-picker"
-                            value={filters.collection_id ?? ''}
-                            onChange={(e) => {
-                                const raw = e.target.value;
-                                onFiltersChange((prev) => ({
-                                    ...prev,
-                                    collection_id: raw === '' ? null : Number(raw),
-                                }));
-                            }}
-                            style={{ borderRadius: 8, border: '1px solid var(--panel-border)', background: 'var(--bg-3)', color: 'var(--fg-0)', padding: '2px 6px' }}
-                        >
-                            <option value="">All documents</option>
-                            {availableCollections.map((row) => (
-                                <option key={row.id} value={row.id}>
-                                    {row.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <ContextChip icon="Book" label="canonical only" />
-                    {modelLabel && <ContextChip icon="Brain" label={modelLabel} />}
-                    <span style={{ flex: 1 }} />
-                    <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', padding: 4 }}>
-                        Shift+⏎ for new line
-                    </span>
-                </div>
+        <div className="chat-composer-shell">
+            <div className="chat-composer-inner">
+                <form
+                    data-testid="chat-composer"
+                    aria-label={translateInterface("Message composer")}
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        void send();
+                    }}
+                    className={`chat-composer ${focused ? 'is-focused' : ''}`}
+                >
                 {/*
                   * T2.8 — wrapper provides positioning context for the
                   * MentionPopover, which uses position:absolute / bottom:100%
                   * to render ABOVE the textarea. The popover is conditional
                   * on `mentionQuery !== null`, so when no @-token is
                   * active under the cursor the popover doesn't even mount.
-                  */}
-                <div style={{ position: 'relative' }}>
-                <textarea
-                    name="message"
-                    data-testid="chat-composer-input"
-                    aria-label="Your message"
-                    aria-invalid={Boolean(localError)}
-                    aria-autocomplete={mentionQuery !== null ? 'list' : undefined}
-                    aria-expanded={mentionQuery !== null}
-                    aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
-                    ref={textareaRef}
-                    value={draft}
-                    disabled={isStreaming}
-                    onChange={onChange}
-                    onFocus={() => setFocused(true)}
-                    onBlur={() => setFocused(false)}
-                    onKeyDown={onKeyDown}
-                    placeholder="Ask anything grounded in your knowledge base…"
-                    rows={2}
-                    style={{
-                        width: '100%',
-                        padding: '6px 14px 10px',
-                        background: 'transparent',
-                        border: 0,
-                        outline: 'none',
-                        color: 'var(--fg-0)',
-                        fontSize: 14,
-                        fontFamily: 'var(--font-sans)',
-                        resize: 'none',
-                        lineHeight: 1.5,
-                    }}
-                />
-                {mentionQuery !== null && (
-                    <MentionPopover
-                        query={mentionQuery}
-                        projectKeys={projectKey ? [projectKey] : undefined}
-                        excludeIds={filters.doc_ids ?? []}
-                        open={mentionQuery !== null}
-                        onSelect={onMentionSelect}
-                        onClose={() => {
-                            setMentionQuery(null);
-                            mentionAnchorRef.current = null;
-                        }}
+                */}
+                <div className="chat-composer-input-wrap">
+                    <textarea
+                        name="message"
+                        data-testid="chat-composer-input"
+                        aria-label={translateInterface("Your message")}
+                        aria-invalid={Boolean(localError)}
+                        aria-autocomplete={mentionQuery !== null ? 'list' : undefined}
+                        aria-expanded={mentionQuery !== null}
+                        aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
+                        ref={textareaRef}
+                        className="chat-composer-input"
+                        value={draft}
+                        disabled={composerDisabled}
+                        onChange={onChange}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
+                        onKeyDown={onKeyDown}
+                        placeholder={translateInterface("Ask anything grounded in your knowledge base…")}
+                        rows={2}
                     />
-                )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 10px' }}>
-                    <button
-                        type="button"
-                        className="btn icon sm ghost"
-                        data-testid="chat-composer-attach"
-                        aria-label="Attach file"
-                    >
-                        <Icon.Plus size={13} />
-                    </button>
-                    {!isStreaming && (
-                        <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
+                    {mentionQuery !== null && (
+                        <MentionPopover
+                            query={mentionQuery}
+                            projectKeys={projectKey ? [projectKey] : undefined}
+                            excludeIds={filters.doc_ids ?? []}
+                            open={mentionQuery !== null}
+                            onSelect={onMentionSelect}
+                            onClose={() => {
+                                setMentionQuery(null);
+                                mentionAnchorRef.current = null;
+                            }}
+                        />
                     )}
+                </div>
+                <fieldset
+                    className="chat-composer-options"
+                    aria-label={translateInterface("Sources and filters")}
+                    disabled={isStreaming || realtime?.active === true}
+                >
+                    <FilterBar
+                        filters={filters}
+                        onChange={onFiltersChange}
+                        availableProjects={availableProjects}
+                        availableTags={availableTags}
+                        docLabels={docLabelMap}
+                    />
+                    <div className="chat-composer-context">
+                        <div className="chat-composer-scope">
+                            <span aria-hidden="true"><Icon.Database size={12} /></span>
+                            <SelectField
+                                data-testid="chat-collection-picker"
+                                value={filters.collection_id ?? ''}
+                                onValueChange={(value) => {
+                                    const raw = value;
+                                    onFiltersChange((prev) => ({
+                                        ...prev,
+                                        collection_id: raw === '' ? null : Number(raw),
+                                    }));
+                                }}
+                                aria-label={translateInterface("Knowledge base scope")}
+                            >
+                                <SelectOption value="">{translateInterface("All documents")}</SelectOption>
+                                {availableCollections.map((row) => (
+                                    <SelectOption key={row.id} value={row.id}>
+                                        {row.name}
+                                    </SelectOption>
+                                ))}
+                            </SelectField>
+                        </div>
+                        <div className="chat-composer-scope" title={translateInterface("How many cascading searches the agent runs before answering")}>
+                            <span aria-hidden="true"><Icon.Sliders size={12} /></span>
+                            <SelectField
+                                data-testid="chat-depth-picker"
+                                value={depth}
+                                onValueChange={(value) => onDepthChange(Number(value))}
+                                aria-label={translateInterface("Investigation depth")}
+                            >
+                                <SelectOption value={1}>{translateInterface("Depth 1 · quick")}</SelectOption>
+                                <SelectOption value={2}>{translateInterface("Depth 2")}</SelectOption>
+                                <SelectOption value={3}>{translateInterface("Depth 3 · balanced")}</SelectOption>
+                                <SelectOption value={4}>{translateInterface("Depth 4")}</SelectOption>
+                                <SelectOption value={5}>{translateInterface("Depth 5 · thorough")}</SelectOption>
+                            </SelectField>
+                        </div>
+                        <ContextChip icon="Book" label={translateInterface("canonical only")} />
+                        {onLiveSourcesChange && (
+                            <LiveSourcesControl
+                                sources={liveSources}
+                                selection={liveSourceSelection}
+                                disabled={isStreaming || realtime?.active === true}
+                                onChange={onLiveSourcesChange}
+                            />
+                        )}
+                    </div>
+                </fieldset>
+                <div className="chat-composer-actions">
+                    <div className="chat-composer-tools" aria-label={translateInterface("Message tools")}>
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
+                            className="chat-composer-tool-button"
+                            data-testid="chat-composer-attach"
+                            aria-label={translateInterface("Attach file")}
+                            title={translateInterface("Attach file")}
+                            disabled={isStreaming || realtime?.active === true}
+                        >
+                            <Icon.Plus size={13} />
+                        </Button>
+                        {!isStreaming && !realtimeVoiceActive && (
+                            <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
+                        )}
+                        {realtime && (
+                            <RealtimeVoiceControl
+                                availability={realtime.availability}
+                                status={realtime.status}
+                                error={realtime.error}
+                                active={realtime.active}
+                                disabled={isStreaming}
+                                onStart={realtime.start}
+                                onStop={realtime.stop}
+                            />
+                        )}
+                    </div>
+                    <span className="chat-composer-shortcut">{translateInterface("Shift+⏎ for a new line")}</span>
                     <span style={{ flex: 1 }} />
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}
                     </span>
+                    <ComposerErrorControl
+                        error={serverError ?? visibleLocalError}
+                        testId={serverError ? 'chat-composer-error' : 'message-error'}
+                        autoOpen={serverError === null && visibleLocalError !== null}
+                    />
                     {/*
                       * v4.0/W3.2 — Send / Stop morph: while a stream
                       * is in flight (`isStreaming`), render
@@ -388,66 +462,101 @@ export function Composer({
                       * button so Enter still works pre-stream;
                       * `chat-composer-stop` is `type="button"` so it
                       * doesn't accidentally fire form submit.
-                      */}
+                    */}
                     {isStreaming ? (
-                        <button
-                            type="button"
-                            className="btn primary sm"
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             data-testid="chat-composer-stop"
                             onClick={() => onStop?.()}
-                            aria-label="Stop streaming"
+                            aria-label={translateInterface("Stop streaming")}
+                            leadingIcon={<Icon.Close size={12} />}
                         >
-                            <Icon.Close size={12} />
-                            Stop
-                        </button>
+                            {translateInterface("Stop")}</Button>
                     ) : (
-                        <button
+                        <Button
                             type="submit"
-                            className="btn primary sm"
+                            variant="primary"
+                            size="sm"
                             data-testid="chat-composer-send"
-                            style={{ gap: 7 }}
+                            leadingIcon={<Icon.Send size={12} />}
+                            disabled={composerDisabled}
                         >
-                            <Icon.Send size={12} />
-                            Send
-                            {/*
-                              * Enter-key affordance. A flat, faded glyph
-                              * behind a hairline divider — NOT the boxed
-                              * `.kbd` keycap, which on the bright primary
-                              * gradient reads as a second, separate button.
-                              */}
-                            <span
-                                aria-hidden="true"
-                                style={{
-                                    paddingLeft: 7,
-                                    borderLeft: '1px solid rgba(10,10,20,.18)',
-                                    fontSize: 11,
-                                    lineHeight: 1,
-                                    color: 'rgba(10,10,20,.5)',
-                                    fontFamily: 'var(--font-mono)',
-                                }}
-                            >
-                                ⏎
-                            </span>
-                        </button>
+                            {translateInterface("Send")}</Button>
                     )}
                 </div>
-            </form>
-            {localError && (
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function ComposerErrorControl({
+    error,
+    testId,
+    autoOpen,
+}: {
+    error: string | null;
+    testId: 'chat-composer-error' | 'message-error';
+    autoOpen: boolean;
+}): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        setOpen(Boolean(error && autoOpen));
+    }, [autoOpen, error]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        const onPointerDown = (event: MouseEvent) => {
+            if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('mousedown', onPointerDown, true);
+
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+            document.removeEventListener('mousedown', onPointerDown, true);
+        };
+    }, [open]);
+
+    if (!error) return null;
+
+    return (
+        <div className="chat-composer-error-control" ref={rootRef}>
+            <Button
+                variant="quiet"
+                size="sm"
+                className="chat-composer-error-trigger"
+                data-testid={`${testId}-trigger`}
+                aria-label={translateInterface("Show error details")}
+                aria-expanded={open}
+                aria-haspopup="dialog"
+                title={translateInterface("Show error details")}
+                leadingIcon={<Icon.Alert size={13} />}
+                onClick={() => setOpen((current) => !current)}
+            >
+                {translateInterface("Issue")}</Button>
+            {open && (
                 <div
-                    data-testid="message-error"
-                    role="alert"
-                    style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
+                    className="chat-composer-error-popover"
+                    data-testid={testId}
+                    role="dialog"
+                    aria-label={translateInterface("Request error details")}
                 >
-                    {localError}
-                </div>
-            )}
-            {serverError && (
-                <div
-                    data-testid="chat-composer-error"
-                    role="alert"
-                    style={{ marginTop: 8, fontSize: 12, color: 'var(--err)' }}
-                >
-                    {serverError}
+                    <Alert variant="destructive">
+                        <AlertIcon>
+                            <Icon.Alert size={15} />
+                        </AlertIcon>
+                        <AlertTitle>{translateInterface("Request not completed")}</AlertTitle>
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
                 </div>
             )}
         </div>
@@ -457,19 +566,7 @@ export function Composer({
 function ContextChip({ icon, label }: { icon: 'Folder' | 'Book' | 'Brain'; label: string }): ReactNode {
     const Ico = Icon[icon];
     return (
-        <span
-            style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '3px 8px',
-                background: 'var(--bg-3)',
-                border: '1px solid var(--panel-border)',
-                borderRadius: 99,
-                fontSize: 11,
-                color: 'var(--fg-1)',
-            }}
-        >
+        <span className="chat-composer-context-chip">
             <Ico size={11} style={{ color: 'var(--fg-2)' }} />
             <span>{label}</span>
         </span>

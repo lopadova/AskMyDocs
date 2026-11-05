@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -73,14 +74,14 @@ test.describe('Admin KB Tree', () => {
 
         // Scope to hr-portal so the Engineering runbook doesn't skew
         // the counts.
-        await page.getByTestId('kb-project-select').selectOption('hr-portal');
+        await chooseSelectOption(page.getByTestId('kb-project-select'), 'hr-portal');
         await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });
 
         // Flip to canonical-only mode. The non-canonical draft (if it
         // ingested) must not appear; the seeded canonical policy must.
-        await page.getByTestId('kb-tree-mode').selectOption('canonical');
+        await chooseSelectOption(page.getByTestId('kb-tree-mode'), 'canonical');
         await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });

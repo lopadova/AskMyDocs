@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { SourceAvatar } from './SourceAvatar';
 
@@ -30,6 +31,7 @@ export function ModalSourceHeader({
     subtitle,
     onClose,
 }: ModalSourceHeaderProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <SourceAvatar connectorKey={connectorKey} displayName={displayName} iconUrl={iconUrl} size={38} radius={10} />
@@ -43,7 +45,7 @@ export function ModalSourceHeader({
             </div>
             <button
                 type="button"
-                aria-label="Close"
+                aria-label={translateInterface("Close")}
                 className="amd-cn-menu-btn focus-ring"
                 onClick={onClose}
                 style={{

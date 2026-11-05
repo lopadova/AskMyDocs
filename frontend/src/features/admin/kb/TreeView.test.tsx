@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TreeView } from './TreeView';
@@ -101,11 +102,11 @@ describe('TreeView', () => {
         expect(node?.type).toBe('doc');
     });
 
-    it('fires onModeChange when filter dropdown changes (drives query key)', () => {
+    it('fires onModeChange when filter dropdown changes (drives query key)', async () => {
         const onModeChange = vi.fn();
         renderTree({ onModeChange });
 
-        fireEvent.change(screen.getByTestId('kb-tree-mode'), { target: { value: 'canonical' } });
+        await chooseSelectOption(screen.getByTestId('kb-tree-mode'), "canonical");
 
         expect(onModeChange).toHaveBeenCalledWith('canonical');
     });

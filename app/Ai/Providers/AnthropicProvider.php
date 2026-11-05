@@ -134,7 +134,7 @@ final class AnthropicProvider implements AiProviderInterface
             'anthropic-version' => $this->config['api_version'] ?? '2023-06-01',
             'content-type' => 'application/json',
         ])
-            ->timeout($this->config['timeout'] ?? 120)
+            ->timeout(min($this->config['timeout'] ?? 120, $options['timeout'] ?? 120))
             ->post("{$baseUrl}/messages", $payload);
 
         $response->throw();

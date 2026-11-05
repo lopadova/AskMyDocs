@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "artifact_id": "askmydocs-product-presentation-slides",
+  "status": "ready_for_local_pptx_authoring",
+  "mandate": "Produrre un PowerPoint locale modificabile dal presente contenuto. Nessuna scrittura o modifica dei materiali di un altro PDF commerciale.",
+  "output": {
+    "path": "/Users/marco/www/AskMyDocsDev/marketing/slide/presentazione.pptx",
+    "editable": true,
+    "slide_count": 20,
+    "aspect_ratio": "16:9",
+    "speaking_time": "17 minuti e 25 secondi indicativi, più domande"
+  },
+  "inputs": {
+    "slides": "/Users/marco/www/AskMyDocsDev/marketing/slide/sorgenti/presentazione-prodotto/contenuti-slide.json",
+    "source_pdf": "/Users/marco/www/AskMyDocsDev/marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+    "source_pdf_pages": 32,
+    "product_revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+    "feature_catalog": "/Users/marco/www/AskMyDocsDev/marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+    "source_registry": "/Users/marco/www/AskMyDocsDev/marketing/analisi/presentazione-prodotto-2026-10-29/fonti.json",
+    "image_registry": "/Users/marco/www/AskMyDocsDev/marketing/immagini/presentazione-prodotto/registro.json",
+    "visual_line": "/Users/marco/www/AskMyDocsDev/marketing/immagini/linea-editoriale-askmydocs.json"
+  },
+  "design_system": {
+    "fonts": {
+      "display": "Georgia",
+      "body": "Arial"
+    },
+    "palette": {
+      "paper": "#fbf8f1",
+      "cream": "#f4f0e7",
+      "forest": "#224c40",
+      "rust": "#a35539",
+      "ink": "#23312d",
+      "muted": "#647168",
+      "pale_green": "#e5ebdf"
+    },
+    "line": "Umanistica editoriale identica alla brochure: carta calda, verde profondo, titoli serif, testi operativi sobri, scene umane dipinte.",
+    "default_footer": "ASKMYDOCS / IL SAPERE CHE ENTRA NEL LAVORO",
+    "no_new_territorial_or_fashion_content": true
+  },
+  "production": {
+    "authoring": "Usare la skill Presentations esistente e instradare a PPTX locale. Il produttore deve essere distinto dall’autore di questa struttura.",
+    "native_elements": "Tutti i titoli, testi, riquadri, diagrammi e connettori devono restare elementi PowerPoint modificabili. Solo illustrazioni e marchi sono raster/vector asset.",
+    "do_not_rasterize_slides": true,
+    "speaker_notes": "Inserire speaker_notes nelle note della singola slide, inclusi riferimenti PDF/feature/fonti; non sul canvas.",
+    "typography": {
+      "title_points": "32-40, Georgia; copertina fino a 46 se il titolo rimane su tre righe",
+      "body_points": "21-25, Arial",
+      "short_labels_points": "17-20, Arial o Georgia",
+      "footer_points": "9-10, Arial; unico elemento volutamente piccolo",
+      "max_visible_words": "20-45 indicativi; il sorgente conta title e visible, esclude kicker e footer ricorrenti."
+    },
+    "grid": {
+      "margin_inches": 0.52,
+      "column_gap_inches": 0.35,
+      "footer_y_inches": 7.13,
+      "content_bottom_limit_inches": 6.8,
+      "rules": "Allineamenti regolari, ampio respiro, sfondi uniformi dietro al testo, nessun paragrafo lungo o testo in margine a figure affollate."
+    },
+    "crop_rules": "Usare cover con fuoco sull’attività umana o sull’architettura principale. Non deformare le immagini. Evitare crop che taglino visi/mani o il documento confrontato. Le preferenze per slide sono nei layout_notes.",
+    "visual_variation": "Alternare copertina, verbi, percorso, persone, cinque casi, diagrammi leggeri, canali, governo e chiusura. Non uniformare tutte le slide a due colonne.",
+    "icons": "Nessun glifo Unicode decorativo. Se indispensabili, usare SVG coerenti; qui titoli, forme e illustrazioni bastano.",
+    "assets": [
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/marketing/immagini/presentazione-prodotto/assistenza-memoria.png",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/marketing/immagini/presentazione-prodotto/conoscenza-operazioni.png",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/brand/askmydocs-wordmark-dark.png",
+        "exists": true,
+        "usage": "Marchio"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/brand/askmydocs-wordmark-light.png",
+        "exists": true,
+        "usage": "Marchio"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/archive-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/community-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/connections-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/connections-night.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/dialogue-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/knowledge-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/observatory-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/processes-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      },
+      {
+        "path": "/Users/marco/www/AskMyDocsDev/public/editorial/trust-day.webp",
+        "exists": true,
+        "usage": "Illustrazione narrativa, non schermata o testimonianza"
+      }
+    ]
+  },
+  "claim_guards": [
+    "I cinque casi sono scenari dimostrativi e mantengono tale etichetta.",
+    "Nessun dato cliente, testimonianza, prezzo, percentuale di risparmio o benchmark inventato.",
+    "Default-off e moduli opzionali non diventano universali nella sintesi.",
+    "Non promettere distribuzione iOS/TestFlight pronta o equivalenza desktop-sessioni web.",
+    "Non inserire PACT o Zendesk tra le capacità integrate nello snapshot.",
+    "Non aggiungere riferimenti a territori, filiere della moda o casi verticali appartenenti ad altri documenti.",
+    "Nessuna certificazione di conformità automatica e nessuna garanzia di assenza di ogni errore."
+  ],
+  "acceptance": [
+    "Esattamente 20 slide, formato 16:9, titoli e corpi editabili.",
+    "Preservare i messaggi e le condizioni del sorgente; adattamenti minori di a-capo ammessi.",
+    "Le note del relatore sono presenti su tutte le slide.",
+    "Renderizzare e controllare tutte le slide: nessun overflow, sovrapposizione, testo tagliato o crop incoerente.",
+    "Controllare il ritmo a schermo e la leggibilità dei testi a distanza.",
+    "Verificare che gli asset siano incorporati nel PPTX e che i percorsi locali non diventino collegamenti immagine fragili.",
+    "Le slide restano una presentazione del prodotto, non un catalogo tecnico di flag."
+  ],
+  "ownership": "Questo incarico consegna struttura e copy. Non ha creato PPTX, modificato prodotto o altri documenti, né eseguito commit."
+}

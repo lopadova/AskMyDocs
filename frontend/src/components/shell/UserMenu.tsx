@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Icon } from '../Icons';
@@ -28,6 +29,7 @@ type Status = 'idle' | 'loading' | 'error';
  * server session is gone.
  */
 export function UserMenu() {
+    const { t: translateInterface } = useUiTranslation();
     const user = useAuthStore((s) => s.user);
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
@@ -105,40 +107,20 @@ export function UserMenu() {
     };
 
     return (
-        <div ref={ref} style={{ position: 'relative' }}>
+        <div ref={ref} className="shell-menu-anchor shell-user-menu">
             <button
                 ref={triggerRef}
                 type="button"
-                className="focus-ring"
+                className="focus-ring shell-user-trigger"
                 data-testid="user-menu-trigger"
                 onClick={() => (open ? close() : setOpen(true))}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
-                aria-label={`Account menu for ${user.name}`}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '4px 8px 4px 4px',
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 999,
-                    cursor: 'pointer',
-                    color: 'var(--fg-0)',
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                }}
+                aria-label={translateInterface('Account menu for {name}', { name: user.name })}
             >
-                <Avatar user={{ name: user.name }} size={24} />
-                <span
-                    style={{
-                        maxWidth: 140,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                    }}
-                >
+                <Avatar user={{ name: user.name }} size={26} />
+                <span className="shell-user-name">
                     {user.name}
                 </span>
                 <Icon.ChevronDown size={13} style={{ color: 'var(--fg-3)' }} />
@@ -239,7 +221,7 @@ export function UserMenu() {
                     >
                         <Icon.Logout size={15} style={{ color: 'var(--fg-2)' }} />
                         <span style={{ flex: 1 }}>
-                            {status === 'loading' ? 'Signing out…' : status === 'error' ? 'Retry sign out' : 'Sign out'}
+                            {status === 'loading' ? 'Signing out…' : status === 'error' ? 'Retry sign out' : translateInterface("Sign out")}
                         </span>
                     </button>
                 </div>

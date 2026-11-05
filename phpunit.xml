@@ -28,6 +28,14 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- Legacy transport fixtures opt out; dedicated reasoning tests explicitly enable these. -->
+        <env name="CHAT_REASONING_ENABLED" value="false"/>
+        <!-- Legacy fixtures retain the old policy; verified memory tests opt in. -->
+        <env name="CHAT_VERIFIED_SESSION_MEMORY_ENABLED" value="false"/>
+        <env name="AGENT_SELECTIVE_VALIDATION_ENABLED" value="false"/>
+        <env name="AGENT_SELECTIVE_REPAIR_ENABLED" value="false"/>
+        <!-- Dedicated presentation tests enable the extra generation and verification stage. -->
+        <env name="AGENT_PRESENTATION_ENABLED" value="false"/>
         <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
@@ -40,6 +48,21 @@
              doc; the dedicated AnalyzeDocumentChangeJob / KbChangeAnalyzer
              tests enable it explicitly via config()->set. -->
         <env name="KB_CHANGE_ANALYSIS_ENABLED" value="false"/>
+        <!-- Recursive profile-guided retrieval performs two deliberate LLM
+             stages. Keep legacy transport/controller fixtures deterministic;
+             its dedicated investigation and controller tests turn it on. -->
+        <env name="KB_RECURSIVE_RETRIEVAL_ENABLED" value="false"/>
+        <!-- Session recap defaults OFF in tests, same rationale as
+             KB_CHANGE_ANALYSIS_ENABLED above: MessageController /
+             MessageStreamController dispatch UpdateConversationRecapJob
+             synchronously here (queue.default is forced to 'sync' below),
+             so leaving it ON would fire a second, uncoordinated
+             AiManager::chat() call inside every existing chat-turn test
+             that hits the happy path — silently consuming/desyncing
+             whatever Http::fake() sequence that test set up for the
+             primary answer. The dedicated ConversationRecapServiceTest /
+             UpdateConversationRecapJobTest suites enable it explicitly. -->
+        <env name="KB_SESSION_RECAP_ENABLED" value="false"/>
         <!-- IMAP per-mailbox connection serialization OFF across the suite: the
              factory-decorator wrapper is single-process irrelevant and would wrap
              test-injected fake factories. The dedicated SerializingImapClient tests

@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useState, type ReactNode } from 'react';
 import type { ApiRouteRelation, DrillResult } from './api-connectors.api';
 import { prettyJson } from './pretty-json';
 import {
@@ -16,7 +17,7 @@ import {
  * the DETAIL route. Renders the mapped arguments + the raw detail response.
  *
  * Presentational — the parent owns the mutation and passes `result`/`error`.
- * R11/R29 testids `api-route-drill-*`. R15: bound labels, role=dialog, Esc closes.
+ * R11/R29 testids `api-route-drill-*`. R15: bound labels, role=dialog, explicit close controls only.
  * R14: a failed drill (missing field → 422, or a failed detail call) surfaces.
  */
 
@@ -37,17 +38,10 @@ export function DrillTestPanel({
     isDrilling,
     error,
 }: DrillTestPanelProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [itemIndex, setItemIndex] = useState('0');
     const [itemJson, setItemJson] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     function runByIndex() {
         setJsonError(null);
@@ -85,9 +79,6 @@ export function DrillTestPanel({
     return (
         <div
             data-testid="api-route-drill-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <div
@@ -200,7 +191,7 @@ export function DrillTestPanel({
                                         color: detail.ok ? '#34d399' : '#fca5a5',
                                     }}
                                 >
-                                    {detail.ok ? 'OK' : 'Failed'}
+                                    {detail.ok ? 'OK' : translateInterface("Failed")}
                                     {detail.status != null && ` — HTTP ${detail.status}`}
                                 </span>
                                 {detail.error && (
@@ -223,8 +214,7 @@ export function DrillTestPanel({
                         onClick={onClose}
                         style={buttonStyle('secondary', false)}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

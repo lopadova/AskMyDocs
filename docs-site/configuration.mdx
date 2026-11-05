@@ -48,6 +48,8 @@ Configuration is split by concern. The files you will touch most:
 | File | Owns |
 |---|---|
 | `config/ai.php` | Chat + embeddings providers, models, cost rates, agentic/MCP tool-calling |
+| `config/agent.php` | Planner mode, router/catalog bounds, loop and evidence budgets |
+| `config/connector-mcp.php` | MCP runtime rollout, OAuth, SSRF allow-list, sync and MCP App limits |
 | `config/kb.php` | Retrieval, chunking, reranking, canonical, graph, refusal gate, soft-delete, embedding cache |
 | `config/askmydocs.php` | Scheduler slots (cron + enable toggles), composite gates |
 | `config/admin.php` | Maintenance command allow-list, confirm-token TTL, audit retention |
@@ -127,6 +129,26 @@ KB_REFUSAL_MIN_CHUNKS=1           # min number of qualifying chunks
 
 See the [anti-hallucination firewall](/anti-hallucination-firewall) page for
 why the refusal is modelled as a *status*, not an error.
+
+## Agent planner and MCP runtime
+
+The planner and MCP connector have independent rollout switches:
+
+```bash
+AGENT_PLANNER_MODE=classic          # classic | shadow | capability
+AGENT_ROUTER_CATALOG_LIMIT=40
+AGENT_PLANNER_CANDIDATE_LIMIT=8
+
+MCP_CONNECTOR_ENABLED=false         # deployment-wide hard switch
+MCP_CONNECTOR_RUNTIME_MODE=off      # off | shadow | active, tenant-overridable
+```
+
+`classic` is intentionally the unchanged legacy planner path. In `shadow`, only
+classic actions execute and the capability planner writes a masked comparison.
+`capability` executes a read-only, schema-validated plan. See the
+[agent capability planner](/architecture/agent-capability-planner) for routing,
+validation, selection continuity and promotion gates. MCP connector rollout and
+rollback are documented in the repository runbook `docs/mcp-connector-rollout.md`.
 
 ## Graph expansion & rejected-approach injection
 

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Icon } from '../../../components/Icons';
 import type { AdminUser } from '../admin.api';
 
@@ -21,6 +22,7 @@ export function UsersTableRow({
     onRestore,
     onDelete,
 }: UsersTableRowProps) {
+    const { t: translateInterface } = useUiTranslation();
     const trashed = user.deleted_at !== null;
 
     return (
@@ -111,8 +113,7 @@ export function UsersTableRow({
                             title="Restore user"
                             style={iconButtonStyle}
                         >
-                            <Icon.Check size={14} /> Restore
-                        </button>
+                            <Icon.Check size={14} /> {" " + translateInterface("Restore")}</button>
                     ) : (
                         <>
                             <button
@@ -120,7 +121,7 @@ export function UsersTableRow({
                                 className="focus-ring"
                                 data-testid={`users-row-${user.id}-toggle-active`}
                                 onClick={() => onToggleActive(user)}
-                                title={user.is_active ? 'Deactivate' : 'Activate'}
+                                title={user.is_active ? 'Deactivate' : translateInterface("Activate")}
                                 style={iconButtonStyle}
                             >
                                 <Icon.Bolt size={14} />
@@ -130,7 +131,7 @@ export function UsersTableRow({
                                 className="focus-ring"
                                 data-testid={`users-row-${user.id}-edit`}
                                 onClick={() => onOpen(user)}
-                                title="Edit"
+                                title={translateInterface("Edit")}
                                 style={iconButtonStyle}
                             >
                                 <Icon.Edit size={14} />
@@ -140,7 +141,7 @@ export function UsersTableRow({
                                 className="focus-ring"
                                 data-testid={`users-row-${user.id}-delete`}
                                 onClick={() => onDelete(user)}
-                                title="Delete"
+                                title={translateInterface("Delete")}
                                 style={{ ...iconButtonStyle, color: '#fca5a5' }}
                             >
                                 <Icon.Trash size={14} />

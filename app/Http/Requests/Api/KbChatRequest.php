@@ -54,6 +54,10 @@ final class KbChatRequest extends FormRequest
 
         return [
             'question' => ['required', 'string', 'max:10000'],
+            // Same recursive-investigation budget as conversation sync and
+            // streaming chat: level 1 = initial search only, 2-5 allow one
+            // through four justified KB follow-ups.
+            'depth' => ['nullable', 'integer', 'min:1', 'max:5'],
 
             // v8.8.3 — opt into an anonymous turn: still fully guarded (tenant /
             // RBAC / PII redaction / AI-Act / grounding) but NOT persisted as a

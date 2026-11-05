@@ -1,0 +1,22 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+NOTA DI APPROVAZIONE DOCUMENTALE SIMULATA / CASO CF-01
+Documento: APP-DEMO-014-B
+Data fittizia: 2026-10-18.
+Ruolo fittizio di approvazione: Ufficio prodotto DEMO.
+Nessuna identità personale o firma reale.
+
+OGGETTO ESATTO
+La nota APP-DEMO-014-B identifica come approvata nello scenario la scheda
+SCHEDA-DEMO-014-B, articolo TESS-DEMO-014, revisione B.
+La revisione A è superata e rimane solo come confronto storico.
+
+AMBITO DELL'ATTO SIMULATO
+L'approvazione riguarda l'uso della revisione B nella ricostruzione documentale
+inventata della demo. Non è una prova fisica sul tessuto, un esito di laboratorio,
+un'attestazione di conformità o un'autorizzazione alla produzione.
+La nota non aggiunge istruzioni di lavaggio o altri dati assenti nella scheda.
+
+RIFERIMENTI
+- Scheda approvata nello scenario: SCHEDA-DEMO-014-B.
+- Rapporto documentale riferito a B: RD-DEMO-014-B.
+- Documento storico: SCHEDA-DEMO-014-A.

@@ -1,0 +1,309 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Libre+Baskerville:wght@400;700&family=Lora:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap');
+
+/* Visual worlds change imagery, palette and typography only. Root rules never
+ * set radius, padding or density: existing Humanistic component geometry wins.
+ * The repeated root attribute also survives Vite CSS chunk ordering. */
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='cartographic'] {
+    --font-stack-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Fraunces', Georgia, serif;
+    --bg-0: #1b2427; --bg-1: #222f32; --bg-2: #29383b; --bg-3: #33464a; --bg-4: #40565b;
+    --panel: #29383b; --panel-solid: #29383b; --panel-border: #475657; --panel-border-strong: #869590; --hairline: #404f50;
+    --fg-0: #f4ecd8; --fg-1: #ded7c4; --fg-2: #bcc4bc; --fg-3: #a8b7b0; --fg-4: #899e96;
+    --accent-a: #eeab83; --accent-b: #b5c7a3; --accent-mid: #d7b58a; --accent-glow: 238 171 131;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #1a2829;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='cartographic'][data-theme='light'] {
+    --bg-0: #f4ebd5; --bg-1: #ebe0c6; --bg-2: #fffaed; --bg-3: #e3d7bc; --bg-4: #d4c5a5;
+    --panel: #fffaed; --panel-solid: #fffaed; --panel-border: #dcdbd1; --panel-border-strong: #6e7978; --hairline: #e5e3d8;
+    --fg-0: #25333a; --fg-1: #384750; --fg-2: #506064; --fg-3: #516061; --fg-4: #71817e;
+    --accent-a: #92482d; --accent-b: #2b6470; --accent-mid: #8c6d3d; --accent-glow: 146 72 45;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fff9eb;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='polar'] {
+    --font-stack-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Space Grotesk', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --bg-0: #121a2b; --bg-1: #18243a; --bg-2: #1d2c44; --bg-3: #293b57; --bg-4: #3a4d6a;
+    --panel: #1d2c44; --panel-solid: #1d2c44; --panel-border: #3d4e67; --panel-border-strong: #7589a3; --hairline: #35465e;
+    --fg-0: #edf4ff; --fg-1: #dce6f5; --fg-2: #b4c6de; --fg-3: #a4bad6; --fg-4: #879ebf;
+    --accent-a: #acb8ff; --accent-b: #8ad8ef; --accent-mid: #9fc9f6; --accent-glow: 172 184 255;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #17233c;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='polar'][data-theme='light'] {
+    --bg-0: #f1f6fa; --bg-1: #ffffff; --bg-2: #f9fcff; --bg-3: #e0e9f2; --bg-4: #cfdce9;
+    --panel: #f9fcff; --panel-solid: #f9fcff; --panel-border: #d7dfe7; --panel-border-strong: #6f839b; --hairline: #e0e6ed;
+    --fg-0: #1b304b; --fg-1: #2d4665; --fg-2: #4b627e; --fg-3: #516985; --fg-4: #6b809a;
+    --accent-a: #4a58a6; --accent-b: #215d80; --accent-mid: #596a91; --accent-glow: 74 88 166;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #ffffff;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='orbital'] {
+    --font-stack-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Sora', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --bg-0: #100e28; --bg-1: #181536; --bg-2: #211c44; --bg-3: #2c2657; --bg-4: #3b346d;
+    --panel: #211c44; --panel-solid: #211c44; --panel-border: #453f66; --panel-border-strong: #7d749a; --hairline: #3c365e;
+    --fg-0: #f6f0ff; --fg-1: #e3d8f4; --fg-2: #c7b9df; --fg-3: #b8acd2; --fg-4: #998cb7;
+    --accent-a: #c4a3ff; --accent-b: #74ddec; --accent-mid: #a6b4f9; --accent-glow: 196 163 255;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #211238;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='orbital'][data-theme='light'] {
+    --bg-0: #f3f0fc; --bg-1: #ffffff; --bg-2: #fcfaff; --bg-3: #e8e1f7; --bg-4: #dcd2ef;
+    --panel: #fcfaff; --panel-solid: #fcfaff; --panel-border: #dedbe5; --panel-border-strong: #847b95; --hairline: #e6e3ec;
+    --fg-0: #252141; --fg-1: #393257; --fg-2: #5e5277; --fg-3: #685e7d; --fg-4: #7b728d;
+    --accent-a: #6244a4; --accent-b: #076a7e; --accent-mid: #694d94; --accent-glow: 98 68 164;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #ffffff;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='botanical'] {
+    --font-stack-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Lora', Georgia, serif;
+    --bg-0: #142019; --bg-1: #1c2a20; --bg-2: #233429; --bg-3: #304536; --bg-4: #405745;
+    --panel: #233429; --panel-solid: #233429; --panel-border: #455646; --panel-border-strong: #81947b; --hairline: #3c4e3f;
+    --fg-0: #f2f3df; --fg-1: #dce4cc; --fg-2: #bccbb1; --fg-3: #afc2a3; --fg-4: #8fa587;
+    --accent-a: #a8cf96; --accent-b: #dfbf74; --accent-mid: #bdd19b; --accent-glow: 168 207 150;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #1c2d1e;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='botanical'][data-theme='light'] {
+    --bg-0: #f7f3e7; --bg-1: #eeeadc; --bg-2: #fffdf3; --bg-3: #e4e9d6; --bg-4: #d2ddc5;
+    --panel: #fffdf3; --panel-solid: #fffdf3; --panel-border: #dee0d3; --panel-border-strong: #77856f; --hairline: #e6e7db;
+    --fg-0: #233a2c; --fg-1: #354b3a; --fg-2: #52674e; --fg-3: #596b53; --fg-4: #788871;
+    --accent-a: #32643f; --accent-b: #84601e; --accent-mid: #526b35; --accent-glow: 50 100 63;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fffdf3;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='oceanic'] {
+    --font-stack-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Fraunces', Georgia, serif;
+    --bg-0: #0e2327; --bg-1: #143035; --bg-2: #1c3a3e; --bg-3: #2c4b4e; --bg-4: #3b5e5f;
+    --panel: #1c3a3e; --panel-solid: #1c3a3e; --panel-border: #3c5a5b; --panel-border-strong: #7e9b96; --hairline: #345254;
+    --fg-0: #eff8ef; --fg-1: #d4e7de; --fg-2: #adc9bf; --fg-3: #a2beb6; --fg-4: #83a49c;
+    --accent-a: #8ad5bf; --accent-b: #efa89b; --accent-mid: #b0c5b6; --accent-glow: 138 213 191;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #0d3031;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='oceanic'][data-theme='light'] {
+    --bg-0: #eef6f3; --bg-1: #ffffff; --bg-2: #f8fffc; --bg-3: #ddebe6; --bg-4: #c9dfd6;
+    --panel: #f8fffc; --panel-solid: #f8fffc; --panel-border: #d6e2df; --panel-border-strong: #6b8784; --hairline: #dee9e6;
+    --fg-0: #193a3b; --fg-1: #2b5152; --fg-2: #496c68; --fg-3: #4d6d6a; --fg-4: #6b8882;
+    --accent-a: #1d6764; --accent-b: #a43f3b; --accent-mid: #456d75; --accent-glow: 29 103 100;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fffdf8;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='newsroom'] {
+    --font-stack-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Libre Baskerville', Georgia, serif;
+    --bg-0: #191b1c; --bg-1: #232627; --bg-2: #2c3031; --bg-3: #3b4142; --bg-4: #4e5556;
+    --panel: #2c3031; --panel-solid: #2c3031; --panel-border: #4d5251; --panel-border-strong: #88908a; --hairline: #454a49;
+    --fg-0: #f6f2e7; --fg-1: #e3dfd3; --fg-2: #c4c8be; --fg-3: #b5beb5; --fg-4: #97a297;
+    --accent-a: #f2a1a5; --accent-b: #a7bfd9; --accent-mid: #d0afb7; --accent-glow: 242 161 165;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #38181d;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='newsroom'][data-theme='light'] {
+    --bg-0: #f6f4ee; --bg-1: #ffffff; --bg-2: #fffdf7; --bg-3: #e7e5de; --bg-4: #d8d5cc;
+    --panel: #fffdf7; --panel-solid: #fffdf7; --panel-border: #dfdfda; --panel-border-strong: #7b817d; --hairline: #e7e6e1;
+    --fg-0: #252727; --fg-1: #3c3f3e; --fg-2: #585e5b; --fg-3: #606764; --fg-4: #79817b;
+    --accent-a: #a42c35; --accent-b: #344f6b; --accent-mid: #794548; --accent-glow: 164 44 53;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fffdf7;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='archaeological'] {
+    --font-stack-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Cormorant Garamond', Georgia, serif;
+    --bg-0: #241d19; --bg-1: #2e261f; --bg-2: #3b3026; --bg-3: #4d3e30; --bg-4: #5f4e3e;
+    --panel: #3b3026; --panel-solid: #3b3026; --panel-border: #5c4f40; --panel-border-strong: #9b8d73; --hairline: #53483a;
+    --fg-0: #f7ecd5; --fg-1: #e8d9bd; --fg-2: #cebea1; --fg-3: #c3b393; --fg-4: #a69576;
+    --accent-a: #ddb888; --accent-b: #95c4bf; --accent-mid: #bbbda1; --accent-glow: 221 184 136;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #302116;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='archaeological'][data-theme='light'] {
+    --bg-0: #f4ead8; --bg-1: #ebddc4; --bg-2: #fff8e9; --bg-3: #e1d1b5; --bg-4: #cfbc99;
+    --panel: #fff8e9; --panel-solid: #fff8e9; --panel-border: #e1d8c8; --panel-border-strong: #7f715f; --hairline: #e8e0d0;
+    --fg-0: #382d23; --fg-1: #4d4032; --fg-2: #695642; --fg-3: #675745; --fg-4: #8b7a62;
+    --accent-a: #7d4f2c; --accent-b: #245f64; --accent-mid: #766439; --accent-glow: 125 79 44;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fff8e9;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='alpine'] {
+    --font-stack-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Lora', Georgia, serif;
+    --bg-0: #16231e; --bg-1: #1f2e27; --bg-2: #293b30; --bg-3: #354d3f; --bg-4: #46614f;
+    --panel: #293b30; --panel-solid: #293b30; --panel-border: #495a4c; --panel-border-strong: #8b9c87; --hairline: #415345;
+    --fg-0: #eff3e2; --fg-1: #dae3cc; --fg-2: #b8cbb1; --fg-3: #adbea6; --fg-4: #8da486;
+    --accent-a: #a4cdaf; --accent-b: #e4ac85; --accent-mid: #c4bd92; --accent-glow: 164 205 175;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #173022;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='alpine'][data-theme='light'] {
+    --bg-0: #f6f3eb; --bg-1: #eeebe1; --bg-2: #fffdf6; --bg-3: #e2e7dc; --bg-4: #d2dacb;
+    --panel: #fffdf6; --panel-solid: #fffdf6; --panel-border: #dde0d6; --panel-border-strong: #748474; --hairline: #e6e7de;
+    --fg-0: #203c31; --fg-1: #354f41; --fg-2: #526956; --fg-3: #566a58; --fg-4: #748a76;
+    --accent-a: #2e6147; --accent-b: #92452c; --accent-mid: #5b6843; --accent-glow: 46 97 71;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fffdf6;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='paper-world'] {
+    --font-stack-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Space Grotesk', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --bg-0: #1b1e27; --bg-1: #242936; --bg-2: #2d3342; --bg-3: #3b4254; --bg-4: #4d556b;
+    --panel: #2d3342; --panel-solid: #2d3342; --panel-border: #4e5463; --panel-border-strong: #8a91a0; --hairline: #464c5b;
+    --fg-0: #f7f2e5; --fg-1: #e0ded4; --fg-2: #c1c5ce; --fg-3: #b6bdcc; --fg-4: #969fb4;
+    --accent-a: #a2b9ff; --accent-b: #cfbdb0; --accent-mid: #babfda; --accent-glow: 162 185 255;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #172443;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='paper-world'][data-theme='light'] {
+    --bg-0: #f8f5eb; --bg-1: #fffdf7; --bg-2: #ffffff; --bg-3: #e8e7e1; --bg-4: #d9d8cf;
+    --panel: #ffffff; --panel-solid: #ffffff; --panel-border: #dfe1e3; --panel-border-strong: #7b818a; --hairline: #e7e8ea;
+    --fg-0: #292d32; --fg-1: #3e444c; --fg-2: #59626d; --fg-3: #5f6771; --fg-4: #7b858e;
+    --accent-a: #2e52b1; --accent-b: #5a596b; --accent-mid: #455a94; --accent-glow: 46 82 177;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #ffffff;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='blueprint'] {
+    --font-stack-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'IBM Plex Mono', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --bg-0: #10253d; --bg-1: #16314d; --bg-2: #1d3c59; --bg-3: #2d506e; --bg-4: #406584;
+    --panel: #1d3c59; --panel-solid: #1d3c59; --panel-border: #3f5c77; --panel-border-strong: #88a2b6; --hairline: #37546f;
+    --fg-0: #edf5f7; --fg-1: #d1e3ed; --fg-2: #b1ccdc; --fg-3: #abc3d5; --fg-4: #88a6bd;
+    --accent-a: #98c3f4; --accent-b: #f0b37a; --accent-mid: #b4c6e0; --accent-glow: 152 195 244;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #102c47;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='blueprint'][data-theme='light'] {
+    --bg-0: #f1f5f8; --bg-1: #ffffff; --bg-2: #fafdff; --bg-3: #dde7f0; --bg-4: #ccd9e6;
+    --panel: #fafdff; --panel-solid: #fafdff; --panel-border: #d9dfe5; --panel-border-strong: #708294; --hairline: #e1e7ec;
+    --fg-0: #1d354c; --fg-1: #304d67; --fg-2: #4f677f; --fg-3: #53687d; --fg-4: #70879a;
+    --accent-a: #215bb5; --accent-b: #9b4c19; --accent-mid: #426d96; --accent-glow: 33 91 181;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #ffffff;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='semantic-orbits'] {
+    --font-stack-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Sora', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --bg-0: #1c1c2b; --bg-1: #242437; --bg-2: #2e2d43; --bg-3: #3c3a55; --bg-4: #4d4a6a;
+    --panel: #2e2d43; --panel-solid: #2e2d43; --panel-border: #4f4c64; --panel-border-strong: #8d87a1; --hairline: #47455c;
+    --fg-0: #f6f0e8; --fg-1: #e4dded; --fg-2: #c8bfd9; --fg-3: #b9b0cc; --fg-4: #9c92af;
+    --accent-a: #c2b0f0; --accent-b: #f1aa9e; --accent-mid: #cdb5ce; --accent-glow: 194 176 240;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #251e37;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='semantic-orbits'][data-theme='light'] {
+    --bg-0: #f7f3ec; --bg-1: #fffdf8; --bg-2: #fffaf5; --bg-3: #e9e4ef; --bg-4: #dad3e5;
+    --panel: #fffaf5; --panel-solid: #fffaf5; --panel-border: #e1dcdc; --panel-border-strong: #857d90; --hairline: #e9e3e3;
+    --fg-0: #2d293b; --fg-1: #433d54; --fg-2: #645c72; --fg-3: #6b627a; --fg-4: #887e94;
+    --accent-a: #7050a4; --accent-b: #a84745; --accent-mid: #8e6b94; --accent-glow: 112 80 164;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fffdf8;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='prismatic-index'] {
+    --font-stack-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Space Grotesk', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --bg-0: #111b25; --bg-1: #192733; --bg-2: #21333f; --bg-3: #2a424f; --bg-4: #3a5663;
+    --panel: #21333f; --panel-solid: #21333f; --panel-border: #425661; --panel-border-strong: #7a909a; --hairline: #3a4d59;
+    --fg-0: #edf7f8; --fg-1: #d8e8ed; --fg-2: #b8cfd6; --fg-3: #acc3cd; --fg-4: #8da8b7;
+    --accent-a: #83d6e8; --accent-b: #f0a5d1; --accent-mid: #b2c1e8; --accent-glow: 131 214 232;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #112f3b;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='prismatic-index'][data-theme='light'] {
+    --bg-0: #f0f7f9; --bg-1: #ffffff; --bg-2: #f8fdff; --bg-3: #dfecf1; --bg-4: #ccdee7;
+    --panel: #f8fdff; --panel-solid: #f8fdff; --panel-border: #d7e0e4; --panel-border-strong: #738590; --hairline: #e0e7eb;
+    --fg-0: #23333b; --fg-1: #394b56; --fg-2: #536b79; --fg-3: #556b77; --fg-4: #778d98;
+    --accent-a: #086a7c; --accent-b: #9e357b; --accent-mid: #5e649c; --accent-glow: 8 106 124;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #ffffff;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='ink-flow'] {
+    --font-stack-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-stack-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-sans: var(--font-stack-sans); --font-mono: var(--font-stack-mono);
+    --font-editorial: 'Lora', Georgia, serif;
+    --bg-0: #1b2029; --bg-1: #232a36; --bg-2: #2b3442; --bg-3: #394657; --bg-4: #4b596e;
+    --panel: #2b3442; --panel-solid: #2b3442; --panel-border: #4b5563; --panel-border-strong: #8b95a3; --hairline: #434c5b;
+    --fg-0: #f5efdf; --fg-1: #e1dcd3; --fg-2: #c3c8d1; --fg-3: #b2bccb; --fg-4: #95a1b5;
+    --accent-a: #b0bfe8; --accent-b: #e1b286; --accent-mid: #c2bec5; --accent-glow: 176 191 232;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #202a42;
+}
+
+:is(:root[data-design-theme], .design-theme-preview)[data-design-theme='ink-flow'][data-theme='light'] {
+    --bg-0: #f7f3e9; --bg-1: #fffdf7; --bg-2: #fffaf0; --bg-3: #e6e5e3; --bg-4: #d6d8db;
+    --panel: #fffaf0; --panel-solid: #fffaf0; --panel-border: #dfdcd7; --panel-border-strong: #7a808b; --hairline: #e7e4de;
+    --fg-0: #252b38; --fg-1: #3d4555; --fg-2: #5c6577; --fg-3: #5d6675; --fg-4: #7f8799;
+    --accent-a: #3e5591; --accent-b: #945327; --accent-mid: #6a6184; --accent-glow: 62 85 145;
+    --design-primary-bg: var(--accent-a); --primary: var(--design-primary-bg); --primary-foreground: #fffdf7;
+}
+
+/* Only semantic color effects are shared with the app. Geometry stays in the
+ * established components, including inline fallbacks and density preferences. */
+:is(:root[data-design-theme], .design-theme-preview):is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) {
+    --grad-accent: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+    --grad-accent-soft: linear-gradient(135deg, color-mix(in srgb, var(--accent-a) 7%, transparent), color-mix(in srgb, var(--accent-b) 7%, transparent));
+    --accent: var(--bg-3); --danger: var(--err);
+    --destructive: #b02c3e; --destructive-foreground: #ffffff;
+    --ok: #a6cfad; --warn: #ecc887; --err: #f2aaa6; --info: var(--accent-b);
+    --glow: 0 0 0 1px color-mix(in srgb, var(--accent-a) 30%, transparent), 0 10px 40px -8px color-mix(in srgb, var(--accent-a) 22%, transparent);
+    --shadow-sm: 0 1px 2px #0006;
+    --shadow: 0 6px 20px -6px #0000008c, 0 1px 2px #0008;
+    --shadow-lg: 0 22px 60px -12px #000000b3, 0 2px 8px #0006;
+}
+:is(:root[data-design-theme], .design-theme-preview):is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow'])[data-theme='light'] {
+    --ok: #365f43; --warn: #81521e; --err: #a33540;
+    --shadow-sm: 0 1px 2px #14142814;
+    --shadow: 0 6px 16px -6px #1414281f, 0 1px 2px #1414280f;
+    --shadow-lg: 0 22px 50px -12px #1414282e;
+}
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) ::selection { background: color-mix(in srgb, var(--accent-a) 28%, var(--bg-2)); color: var(--fg-0); }
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) :is(.personal-dashboard, .digest-workspace) { --accent: var(--accent-a); }
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) :is(.editorial-hero h1, .editorial-auth-form > h1, .editorial-auth-caption h2, .collections-header h1, .chat-reader .chat-empty-state h2, .chat-conversation-sidebar-heading-copy strong, .digest-workspace-heading h1) { font-family: var(--font-editorial); }
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) :is(.ui-button[data-variant='primary'], .btn.primary) {
+    --button-bg: linear-gradient(180deg, color-mix(in srgb, var(--design-primary-bg) 96%, white), var(--design-primary-bg));
+    --button-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--design-primary-bg) 92%, white), var(--design-primary-bg));
+    --button-border: color-mix(in srgb, var(--design-primary-bg) 76%, var(--bg-0));
+    --button-color: var(--primary-foreground);
+}
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) .ui-button[data-variant='danger'] { --button-bg: #b02c3e; --button-bg-hover: #9e2334; --button-color: #ffffff; }
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) .editorial-action:not(.editorial-action--quiet) { background: var(--design-primary-bg); border-color: var(--design-primary-bg); color: var(--primary-foreground); }
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) .grid-bg { background-image: radial-gradient(circle at 10% -10%, color-mix(in srgb, var(--accent-a) 9%, transparent), transparent 40%), radial-gradient(circle at 90% 110%, color-mix(in srgb, var(--accent-b) 7%, transparent), transparent 40%), linear-gradient(var(--hairline) 1px, transparent 1px), linear-gradient(90deg, var(--hairline) 1px, transparent 1px); }
+:root[data-design-theme]:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) .glow-frame::before { background: conic-gradient(from var(--glow-angle), var(--accent-a), var(--accent-b), var(--accent-a)); }
+
+/* A nested world sample may sit inside any of the four geometric themes.
+ * Reset its local geometry to the Humanistic sample without touching the root. */
+.design-theme-preview:is([data-design-theme='cartographic'], [data-design-theme='polar'], [data-design-theme='orbital'], [data-design-theme='botanical'], [data-design-theme='oceanic'], [data-design-theme='newsroom'], [data-design-theme='archaeological'], [data-design-theme='alpine'], [data-design-theme='paper-world'], [data-design-theme='blueprint'], [data-design-theme='semantic-orbits'], [data-design-theme='prismatic-index'], [data-design-theme='ink-flow']) {
+    --radius-sm: 6px; --radius: 10px; --radius-lg: 14px; --radius-xl: 20px;
+    --design-control-radius: 8px; --design-card-radius: 12px; --design-hero-radius: 14px;
+    --design-page-gutter: clamp(20px, 3vw, 42px); --design-card-padding: 24px;
+    --design-sidebar-padding: 28px 18px 16px; --design-table-cell-padding: 10px 12px;
+    --design-button-padding: 17px; --design-heading-weight: 400; --design-heading-spacing: -.025em;
+    --design-hero-padding: 32px; --design-hero-compact-padding: 24px;
+}

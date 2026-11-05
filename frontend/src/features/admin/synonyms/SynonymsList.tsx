@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,6 +21,7 @@ import { SynonymFormDialog } from './SynonymFormDialog';
  * (Confirm | Cancel) on the row, not a modal-on-top-of-the-page.
  */
 export function SynonymsList(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [filter, setFilter] = useState('');
     const [editing, setEditing] = useState<AdminSynonym | null>(null);
@@ -88,18 +90,17 @@ export function SynonymsList(): ReactNode {
     return (
         <div data-testid="admin-synonyms-view" style={{ padding: 24 }}>
             <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Synonyms</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Synonyms")}</h1>
                 <span data-testid="admin-synonyms-count" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    {rows.length} total
-                </span>
+                    {rows.length} {" " + translateInterface("total")}</span>
                 <span style={{ flex: 1 }} />
                 <input
                     data-testid="admin-synonyms-filter"
                     type="text"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filter by project / term / synonym"
-                    aria-label="Filter synonym groups"
+                    placeholder={translateInterface("Filter by project / term / synonym")}
+                    aria-label={translateInterface("Filter synonym groups")}
                     style={{
                         padding: '5px 10px',
                         borderRadius: 6,
@@ -127,13 +128,10 @@ export function SynonymsList(): ReactNode {
                         cursor: 'pointer',
                     }}
                 >
-                    + New group
-                </button>
+                    {translateInterface("+ New group")}</button>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 640 }}>
-                A query mentioning any member of a group also searches every other member, so industry
-                jargon, acronyms, and product codenames connect to their plain-language equivalents.
-            </p>
+                {translateInterface("A query mentioning any member of a group also searches every other member, so industry jargon, acronyms, and product codenames connect to their plain-language equivalents.")}</p>
 
             {deleteError && (
                 <p data-testid="admin-synonyms-delete-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
@@ -143,8 +141,7 @@ export function SynonymsList(): ReactNode {
 
             {query.isLoading && (
                 <p data-testid="admin-synonyms-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
             {/* R14 — a failed list query must NOT render as the empty state;
                 a network error / 500 is visually distinct from "no groups yet". */}
@@ -155,7 +152,7 @@ export function SynonymsList(): ReactNode {
                     role="alert"
                     style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}
                 >
-                    Failed to load synonym groups.{' '}
+                    {translateInterface("Failed to load synonym groups.")}{' '}
                     {query.error instanceof Error ? query.error.message : 'Please retry.'}
                 </p>
             )}
@@ -171,13 +168,11 @@ export function SynonymsList(): ReactNode {
                         borderRadius: 8,
                     }}
                 >
-                    No synonym groups yet. Click <code>+ New group</code> to create one.
-                </p>
+                    {translateInterface("No synonym groups yet. Click") + " "}<code>{translateInterface("+ New group")}</code> {" " + translateInterface("to create one.")}</p>
             )}
             {!query.isLoading && rows.length > 0 && filtered.length === 0 && (
                 <p data-testid="admin-synonyms-no-match" style={{ color: 'var(--fg-3)' }}>
-                    No groups match the filter.
-                </p>
+                    {translateInterface("No groups match the filter.")}</p>
             )}
             {filtered.length > 0 && (
                 <table
@@ -187,11 +182,11 @@ export function SynonymsList(): ReactNode {
                 >
                     <thead>
                         <tr style={{ textAlign: 'left', color: 'var(--fg-2)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            <th style={cellStyle}>Project</th>
-                            <th style={cellStyle}>Term</th>
-                            <th style={cellStyle}>Synonyms</th>
-                            <th style={cellStyle}>Enabled</th>
-                            <th style={{ ...cellStyle, textAlign: 'right' }}>Actions</th>
+                            <th style={cellStyle}>{translateInterface("Project")}</th>
+                            <th style={cellStyle}>{translateInterface("Term")}</th>
+                            <th style={cellStyle}>{translateInterface("Synonyms")}</th>
+                            <th style={cellStyle}>{translateInterface("Enabled")}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -214,7 +209,7 @@ export function SynonymsList(): ReactNode {
                                             data-enabled={row.enabled ? 'true' : 'false'}
                                             style={{ color: row.enabled ? 'var(--ok, #3fb950)' : 'var(--fg-3)' }}
                                         >
-                                            {row.enabled ? 'On' : 'Off'}
+                                            {row.enabled ? translateInterface("On") : translateInterface("Off")}
                                         </span>
                                     </td>
                                     <td style={{ ...cellStyle, textAlign: 'right' }}>
@@ -230,8 +225,7 @@ export function SynonymsList(): ReactNode {
                                                     }}
                                                     style={iconButtonStyle()}
                                                 >
-                                                    Edit
-                                                </button>
+                                                    {translateInterface("Edit")}</button>
                                                 <button
                                                     type="button"
                                                     data-testid={`admin-synonym-row-${row.id}-delete`}
@@ -239,8 +233,7 @@ export function SynonymsList(): ReactNode {
                                                     onClick={() => setConfirmingDelete((prev) => ({ ...prev, [row.id]: true }))}
                                                     style={iconButtonStyle()}
                                                 >
-                                                    Delete
-                                                </button>
+                                                    {translateInterface("Delete")}</button>
                                             </>
                                         )}
                                         {isConfirming && (
@@ -254,16 +247,14 @@ export function SynonymsList(): ReactNode {
                                                     }}
                                                     style={confirmButtonStyle('danger')}
                                                 >
-                                                    Confirm
-                                                </button>
+                                                    {translateInterface("Confirm")}</button>
                                                 <button
                                                     type="button"
                                                     data-testid={`admin-synonym-row-${row.id}-delete-cancel`}
                                                     onClick={() => setConfirmingDelete((prev) => ({ ...prev, [row.id]: false }))}
                                                     style={confirmButtonStyle('neutral')}
                                                 >
-                                                    Cancel
-                                                </button>
+                                                    {translateInterface("Cancel")}</button>
                                             </>
                                         )}
                                     </td>

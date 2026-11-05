@@ -64,6 +64,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
         $matrix = [
             // ── Core admin API group — middleware role:admin|super-admin ──
             '/api/admin/metrics/overview' => ['admin', 'super-admin'],
+            '/api/admin/ai-usage' => ['admin', 'super-admin'],
             '/api/admin/users' => ['admin', 'super-admin'],
             '/api/admin/projects' => ['admin', 'super-admin'],
             // v8.28 — team (tenant) create + rename registry.
@@ -89,6 +90,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/analyses' => ['admin', 'super-admin'],
             '/api/admin/kb/analysis-settings' => ['admin', 'super-admin'],
             '/api/admin/kb/autowiki-settings' => ['admin', 'super-admin'],
+            '/api/admin/kb/retrieval-profiles' => ['admin', 'super-admin'],
             '/api/admin/kb/content-gaps' => ['admin', 'super-admin'],
             '/api/admin/kb/evidence-tiers' => ['admin', 'super-admin'],
             // v8.32 / ADR 0028 phase 1 — corpus provenance read-out.
@@ -121,7 +123,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // ── Gate-based groups — Gate::define() in AppServiceProvider ──
             '/api/admin/connectors' => ['admin', 'super-admin'],        // manageConnectors
             '/api/admin/api-connectors' => ['admin', 'super-admin'],    // manageConnectors (v8.27 Connettore API)
+            '/api/admin/api-connectors/1/export' => ['admin', 'super-admin'], // complete configuration transfer
             '/api/admin/api-connectors/1/relations' => ['admin', 'super-admin'], // manageConnectors (list→detail relations)
+            '/api/admin/connectors/mcp' => ['admin', 'super-admin'], // package controller → manageConnectors
+            '/api/admin/connectors/mcp/shadow-reports' => ['admin', 'super-admin'], // manageConnectors
             '/api/admin/agent-runs/overview' => ['admin', 'super-admin'], // manageConnectors (agent activity overview)
             '/api/admin/ingestion/queue' => ['admin', 'super-admin'],   // manageConnectors (v8.21 Ciclo 2)
             '/api/admin/mcp-servers' => ['super-admin'],                // manageMcpTools
@@ -142,6 +147,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
             // ── Role-middleware groups — `role:` middleware, not a Gate ──
             '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
+            '/api/developer/local-integrations' => ['admin', 'super-admin'], // local-only fixture console
             // Global tenant control plane — platform permission only, no
             // active-tenant scope.
             '/api/system-admin/tenants' => ['system-admin'],
@@ -150,6 +156,19 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
             '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions
+
+            // ── Authenticated reader surfaces — NO role gate by design ──
+            // Every authenticated member of the tenant may reach these; the
+            // allow-set is deliberately ALL roles, so the
+            // roles-not-in-the-allow-set loop is empty for them. They are
+            // listed anyway because the value of this matrix is that a new
+            // protected route cannot ship without declaring its audience:
+            // an omitted route is indistinguishable from an ungated one,
+            // which is exactly the v8.4 finding this file exists for.
+            // Per-user ownership (not role) is the real boundary and is
+            // covered by ChatFolderControllerTest.
+            '/api/chat-folders' => self::ALL_ROLES,
+            '/api/kb/tree' => self::ALL_ROLES,
         ];
 
         // A system administrator always carries the companion super-admin
@@ -175,6 +194,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('connector-mcp.enabled', true);
+        config()->set('connector-mcp.runtime_mode', 'active');
         $this->seed(RbacSeeder::class);
         Cache::flush();
         Tenant::query()->updateOrCreate(

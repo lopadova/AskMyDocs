@@ -1,0 +1,276 @@
+{
+  "description": "Anonymized regression derived from chat 37: four independent questions, missing source keys and repeated full passages exhausting the decision state.",
+  "question": "Dammi informazioni su HUB-NORD-01 e della spedizione TEST-TRACK-104 e poi voglio sapere di chi è la spedizione e se ci sono regole particolari per l'HUB.",
+  "tenant": "fixture-tenant",
+  "project": "fixture-project",
+  "understanding": {
+    "available": true,
+    "language": "it",
+    "focus": {
+      "topic": "hub",
+      "identifiers": [
+        "HUB-NORD-01"
+      ],
+      "aspect": "details",
+      "fields": [
+        "*"
+      ]
+    },
+    "subquestions": [
+      {
+        "topic": "hub",
+        "identifiers": [
+          "HUB-NORD-01"
+        ],
+        "aspect": "details",
+        "fields": [
+          "*"
+        ],
+        "question": "HUB-NORD-01 dettagli",
+        "kb_queries": [
+          "HUB-NORD-01 dettagli",
+          "regole per HUB-NORD-01"
+        ]
+      },
+      {
+        "topic": "shipment",
+        "identifiers": [
+          "TEST-TRACK-104"
+        ],
+        "aspect": "details",
+        "fields": [
+          "*"
+        ],
+        "question": "Qual è lo stato e il tracking della spedizione TEST-TRACK-104?",
+        "kb_queries": [
+          "TEST-TRACK-104 stato e tracking",
+          "TEST-TRACK-104 corriere coinvolto"
+        ]
+      },
+      {
+        "topic": "shipment",
+        "identifiers": [
+          "TEST-TRACK-104"
+        ],
+        "aspect": "identity",
+        "fields": [
+          "*"
+        ],
+        "question": "Di chi è la spedizione TEST-TRACK-104?",
+        "kb_queries": [
+          "proprietario spedizione TEST-TRACK-104"
+        ]
+      },
+      {
+        "topic": "hub",
+        "identifiers": [
+          "HUB-NORD-01"
+        ],
+        "aspect": "rules",
+        "fields": [],
+        "question": "Ci sono regole particolari per l'HUB-NORD-01?",
+        "kb_queries": [
+          "regole per HUB-NORD-01"
+        ]
+      }
+    ],
+    "independent_research": true,
+    "transition": "new",
+    "intent": "Informazioni su HUB-NORD-01 e spedizione TEST-TRACK-104, inclusi dettagli sulla spedizione e regole per l'HUB.",
+    "mentions": [
+      "HUB-NORD-01",
+      "TEST-TRACK-104"
+    ]
+  },
+  "evidence": {
+    "documents": [
+      {
+        "document_id": 31,
+        "tenant_id": "fixture-tenant",
+        "project_key": "fixture-project",
+        "title": "merci-pericolose-adr",
+        "evidence": [
+          {
+            "chunk_id": 310,
+            "content": "Fixture Logistics movimenta merci pericolose della **classe ADR 3**\n(liquidi infiammabili) esclusivamente attraverso un unico nodo di rete abilitato:\n**HUB-NORD-01** (Città di test).\n\nLa classe 3 ADR comprende liquidi infiammabili quali solventi, vernici, alcolici\ntecnici e profumeria con base alcolica. Tutte le altre classi ADR non sono\nattualmente in perimetro e non vengono accettate.\n\nHUB-NORD-01 è l'**unico hub abilitato** alla movimentazione ADR classe 3, in quanto\ndispone di:\n\n- area di stoccaggio **compartimentata** e ventilata;\n- sistemi di rilevazione e contenimento;\n- personale con **patentino ADR** e formazione antincendio.\n\nGli hub HUB-SUD-02 e HUB-CENTRO-03 **non** possono accettare merci classe 3: ogni\nspedizione ADR è instradata da OrbitaWMS verso HUB-NORD-01 (vedi\n[[rete-hub-magazzini]]).\n\n1. **Accettazione**: verifica della scheda di sicurezza e della corretta\n   etichettatura UN; rifiuto se la documentazione è incompleta.\n2. **Stoccaggio**: collocazione nell'area compartimentata, separata dal flusso\n   ordinario.\n3. **Trasporto**: instradamento con mezzi e documentazione ADR conformi; consegna\n   ultimo miglio solo tramite vettori autorizzati.\n\nIn caso di sversamento di liquido infiammabile classe 3 si attiva l'**Allerta Versamento ADR**:\nalla parola d'ordine **«ALLERTA TEST»** l'area viene isolata, si interrompono le possibili\nsorgenti di innesco e interviene **solo** il personale con patentino ADR e DPI idonei. La\nparola d'ordine è **riservata** e va conosciuta **a memoria** dagli addetti di HUB-NORD-01.\n\nIn caso di fermo hub, i colli ADR seguono una procedura rafforzata: restano\nnell'area compartimentata e monitorata. Durante il blackout del 14 marzo (vedi\n[[incidente-blackout-hub-mi-07]]) l'area ADR è rimasta sotto continuità elettrica\ndedicata e non ha registrato anomalie. La giacenza di merci classe 3 segue il\n[[runbook-gestione-giacenze]] con il vincolo di permanenza nell'area dedicata.\n\nI quantitativi accettati rispettano le soglie di esenzione e i limiti di stoccaggio\nautorizzati per il sito. Superate tali soglie, la spedizione è rifiutata in\naccettazione.",
+            "evidence_hash": "7279ae176d9b1a4315afb398ac1bcc3ae3c478f88e8c30c5b926c0c27db821a9",
+            "research_flow_ids": [
+              0,
+              3
+            ]
+          }
+        ]
+      },
+      {
+        "document_id": 32,
+        "tenant_id": "fixture-tenant",
+        "project_key": "fixture-project",
+        "title": "incidente-blackout-hub-mi-07",
+        "evidence": [
+          {
+            "chunk_id": 320,
+            "content": "Il **14 marzo** un **blackout elettrico** ha colpito **HUB-NORD-01** (Milano,\nPioltello), causando un **fermo operativo di 6 ore**. L'evento è stato gestito\napplicando il [[runbook-gestione-giacenze]] senza perdita di merci.\n\n| Ora | Evento |\n|---|---|\n| 08:10 | Interruzione fornitura elettrica all'intero sito |\n| 08:25 | Sistemi OrbitaWMS isolati; baie di carico ferme |\n| 08:40 | Attivazione runbook giacenze: colli in lavorazione congelati |\n| 11:30 | Verifica integrità area ADR classe 3 (nessuna anomalia) |\n| 14:10 | Ripristino fornitura e riavvio sistemi |\n| 14:20 | Ripresa smistamento con priorità ai colli Lampo 24h |\n\n- **Durata fermo**: 6 ore.\n- **Hub coinvolto**: solo HUB-NORD-01; HUB-SUD-02 e HUB-CENTRO-03 operativi.\n- **Colli**: tutti messi in giacenza temporanea e reinstradati a ripristino.\n- **Merci pericolose**: l'area ADR classe 3 è rimasta compartimentata e\n  monitorata; nessuna dispersione (vedi [[merci-pericolose-adr]]).\n\nGuasto alla cabina di trasformazione di zona, esterno al sito. Il gruppo di\ncontinuità ha coperto i soli sistemi critici (sicurezza e monitoraggio area ADR),\nnon l'intera movimentazione.\n\n1. Valutazione di un generatore di backup dimensionato per la movimentazione\n   essenziale, non solo per i sistemi di sicurezza.\n2. Test trimestrale di failover di OrbitaWMS.\n3. Procedura di notifica proattiva ai clienti tramite numero verde 800-FIXTURE per\n   le spedizioni Lampo 24h impattate.\n\nI colli urbani in coda hanno sforato la finestra delle 24h: per le spedizioni\nimpattate è stata applicata la gestione penali secondo [[sla-e-penali]], con\nriconoscimento ai clienti B2B coinvolti.\n\nIncidente **chiuso**. Le azioni correttive 1 e 2 sono in fase di implementazione.",
+            "evidence_hash": "f8498a1b287fbfc5495167e6bd672799bb6909092541f98f14ad6df5cc5ec24c",
+            "research_flow_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "document_id": 33,
+        "tenant_id": "fixture-tenant",
+        "project_key": "fixture-project",
+        "title": "rete-hub-magazzini",
+        "evidence": [
+          {
+            "chunk_id": 330,
+            "content": "La rete operativa di Fixture Logistics si articola su **tre hub regionali**,\nciascuno con una specializzazione che ne definisce il ruolo nello smistamento.\n\nÈ il polo nord e il nodo più critico della rete. È l'**unico hub abilitato alla\nmovimentazione di merci pericolose ADR classe 3** (liquidi infiammabili come\nsolventi, vernici, alcolici tecnici). Dispone di un'area di stoccaggio compartimentata\ne di personale con patentino ADR. La procedura dedicata è descritta in\n[[merci-pericolose-adr]].\n\nPolo sud e **unico sito con magazzino refrigerato** (catena del freddo 2–8 °C).\nGestisce spedizioni temperature-sensitive per food, farmaceutico leggero e\ncosmetica. Il refrigerato è una risorsa di rete: i colli refrigerati di altre\nzone transitano qui.\n\nPolo centrale, dedicato allo smistamento del centro-Italia e al bilanciamento\ndei flussi tra nord e sud. Non ha specializzazioni di stoccaggio particolari,\nma è il punto di consolidamento per le tratte interregionali.\n\n| Hub | Ruolo | Specializzazione | ADR cl. 3 | Refrigerato |\n|---|---|---|:---:|:---:|\n| HUB-NORD-01 | Polo nord | Merci pericolose | Sì | No |\n| HUB-SUD-02 | Polo sud | Catena del freddo | No | Sì |\n| HUB-CENTRO-03 | Polo centro | Consolidamento | No | No |\n\nOgni collo viene assegnato all'hub di competenza in fase di accettazione dal\ngestionale OrbitaWMS. Le merci ADR classe 3 sono instradate **esclusivamente**\nverso HUB-NORD-01; i colli refrigerati verso HUB-SUD-02, indipendentemente dalla\nzona di origine. Vedi [[wms-orbita-integrazione]] per la logica di routing.\n\nLa concentrazione di funzioni critiche su singoli hub richiede piani di\ncontinuità: l'evento del 14 marzo a HUB-NORD-01 (vedi [[incidente-blackout-hub-mi-07]])\nha confermato la necessità del runbook giacenze.\n\nOgni hub adotta la **Procedura di Evacuazione Totale**: alla diffusione della\nparola d'ordine **«EVACUAZIONE TEST»** dagli altoparlanti, tutto il personale\ninterrompe le attività, lascia i muletti in posizione di sicurezza e raggiunge il\npunto di raccolta esterno. La parola d'ordine è **riservata** e va conosciuta **a\nmemoria** da ogni operatore di hub: non è mai esposta nelle aree accessibili a\nvettori o visitatori.",
+            "evidence_hash": "b959ac44cad23f27d77328500c44c316339dd7d5b401e52f7d3092f4aa9fe254",
+            "research_flow_ids": [
+              0,
+              3
+            ]
+          }
+        ]
+      }
+    ],
+    "api_tools": [
+      {
+        "execution_id": 4101,
+        "tenant_id": "fixture-tenant",
+        "project_key": "fixture-project",
+        "evidence_hash": "661730ef63dca851adc19ebf70bb13de94e8afd685ebaf95ca0d9978a3aa6745",
+        "retrieved_at": "2026-01-01T09:00:00Z",
+        "result": {
+          "companyKey": "fixture-project",
+          "records": [
+            {
+              "id": "TEST-SHIP-104",
+              "trackingCode": "TEST-TRACK-104",
+              "status": "scheduled_for_dispatch",
+              "orderId": "TEST-ORDER-104",
+              "customerId": "TEST-CUSTOMER-A",
+              "productIds": [
+                "TEST-EXPRESS"
+              ],
+              "emailEvidence": [
+                {
+                  "mailboxKey": "fixture-project-1",
+                  "subject": "Re: Conferma spedizione ordine urgente di oggi",
+                  "reference": "TEST-SHIP-104"
+                }
+              ]
+            }
+          ]
+        },
+        "research_flow_ids": [
+          1
+        ]
+      },
+      {
+        "execution_id": 4102,
+        "tenant_id": "fixture-tenant",
+        "project_key": "fixture-project",
+        "evidence_hash": "cc824c2faa24b494cc10a2badb8b04440c3910e7ad7536e54df1612db16ba5e1",
+        "retrieved_at": "2026-01-01T09:00:00Z",
+        "result": {
+          "companyKey": "fixture-project",
+          "records": [
+            {
+              "id": "TEST-SHIP-104",
+              "trackingCode": "TEST-TRACK-104",
+              "status": "scheduled_for_dispatch",
+              "orderId": "TEST-ORDER-104",
+              "customerId": "TEST-CUSTOMER-A",
+              "productIds": [
+                "TEST-EXPRESS"
+              ],
+              "emailEvidence": [
+                {
+                  "mailboxKey": "fixture-project-1",
+                  "subject": "Re: Conferma spedizione ordine urgente di oggi",
+                  "reference": "TEST-SHIP-104"
+                }
+              ]
+            }
+          ]
+        },
+        "research_flow_ids": [
+          2
+        ]
+      }
+    ]
+  },
+  "claims": [
+    {
+      "text": "HUB-NORD-01 è l'unico hub abilitato alla movimentazione ADR classe 3, in quanto dispone di area di stoccaggio compartimentata e ventilata, sistemi di rilevazione e contenimento, e personale con patentino ADR e formazione antincendio.",
+      "quote": "HUB-NORD-01 è l'**unico hub abilitato** alla movimentazione ADR classe 3, in quanto dispone di: - area di stoccaggio **compartimentata** e ventilata; - sistemi di rilevazione e contenimento; - personale con **patentino ADR** e formazione antincendio.",
+      "document_id": 31,
+      "tool_execution_id": null,
+      "evidence_hash": "7279ae176d9b1a4315afb398ac1bcc3ae3c478f88e8c30c5b926c0c27db821a9",
+      "subquestion_id": 0
+    },
+    {
+      "text": "Le merci ADR classe 3 sono instradate esclusivamente verso HUB-NORD-01; gli hub HUB-SUD-02 e HUB-CENTRO-03 non possono accettare merci classe 3.",
+      "quote": "Le merci ADR classe 3 sono instradate **esclusivamente** verso HUB-NORD-01; i colli refrigerati verso HUB-SUD-02, indipendentemente dalla zona di origine.",
+      "document_id": 33,
+      "tool_execution_id": null,
+      "evidence_hash": "b959ac44cad23f27d77328500c44c316339dd7d5b401e52f7d3092f4aa9fe254",
+      "subquestion_id": 0
+    },
+    {
+      "text": "In caso di sversamento di liquido infiammabile classe 3 si attiva l'Allerta Versamento ADR; alla parola d'ordine «ALLERTA TEST» l'area viene isolata e interviene solo il personale con patentino ADR e DPI idonei.",
+      "quote": "In caso di sversamento di liquido infiammabile classe 3 si attiva l'**Allerta Versamento ADR**: alla parola d'ordine **«ALLERTA TEST»** l'area viene isolata, si interrompono le possibili sorgenti di innesco e interviene **solo** il personale con patentino ADR e DPI idonei.",
+      "document_id": 31,
+      "tool_execution_id": null,
+      "evidence_hash": "7279ae176d9b1a4315afb398ac1bcc3ae3c478f88e8c30c5b926c0c27db821a9",
+      "subquestion_id": 0
+    },
+    {
+      "text": "La spedizione con codice di tracciamento **TEST-TRACK-104** è attualmente nello stato di **scheduled_for_dispatch**.",
+      "quote": "status: scheduled_for_dispatch",
+      "document_id=null,": 4101,
+      "evidence_hash": "661730ef63dca851adc19ebf70bb13de94e8afd685ebaf95ca0d9978a3aa6745",
+      "subquestion_id": 1
+    },
+    {
+      "text": "La spedizione **TEST-TRACK-104** è associata all'ordine **TEST-ORDER-104** e al cliente **TEST-CUSTOMER-A**.",
+      "quote": "orderId: TEST-ORDER-104, customerId: TEST-CUSTOMER-A",
+      "document_id=null,": 4101,
+      "evidence_hash": "661730ef63dca851adc19ebf70bb13de94e8afd685ebaf95ca0d9978a3aa6745",
+      "subquestion_id": 1
+    },
+    {
+      "text": "Il prodotto associato alla spedizione **TEST-TRACK-104** è **TEST-EXPRESS**.",
+      "quote": "productIds: [TEST-EXPRESS]",
+      "document_id=null,": 4101,
+      "evidence_hash": "661730ef63dca851adc19ebf70bb13de94e8afd685ebaf95ca0d9978a3aa6745",
+      "subquestion_id": 1
+    },
+    {
+      "text": "La spedizione TEST-TRACK-104 è associata al cliente con ID **TEST-CUSTOMER-A**.",
+      "quote": "customerId\":\"TEST-CUSTOMER-A\"",
+      "document_id": null,
+      "tool_execution_id": 4102,
+      "evidence_hash": "cc824c2faa24b494cc10a2badb8b04440c3910e7ad7536e54df1612db16ba5e1",
+      "subquestion_id": 2
+    },
+    {
+      "text": "HUB-NORD-01 è l'unico hub abilitato alla movimentazione di merci pericolose ADR classe 3, che comprende liquidi infiammabili come solventi e vernici. Dispone di un'area di stoccaggio compartimentata e ventilata, sistemi di rilevazione e contenimento, e personale con patentino ADR e formazione antincendio.",
+      "quote": "HUB-NORD-01 è l'**unico hub abilitato** alla movimentazione ADR classe 3, in quanto dispone di:\n\n- area di stoccaggio **compartimentata** e ventilata;\n- sistemi di rilevazione e contenimento;\n- personale con **patentino ADR** e formazione antincendio.",
+      "document_id": 31,
+      "tool_execution_id": null,
+      "evidence_hash": "7279ae176d9b1a4315afb398ac1bcc3ae3c478f88e8c30c5b926c0c27db821a9",
+      "subquestion_id": 3
+    },
+    {
+      "text": "Le regole per l'accettazione delle merci pericolose presso HUB-NORD-01 includono la verifica della scheda di sicurezza e della corretta etichettatura UN, con rifiuto in caso di documentazione incompleta. Inoltre, le merci devono essere collocate nell'area compartimentata e separate dal flusso ordinario.",
+      "quote": "1. **Accettazione**: verifica della scheda di sicurezza e della corretta\n   etichettatura UN; rifiuto se la documentazione è incompleta.\n2. **Stoccaggio**: collocazione nell'area compartimentata, separata dal flusso\n   ordinario.",
+      "document_id": 31,
+      "tool_execution_id": null,
+      "evidence_hash": "7279ae176d9b1a4315afb398ac1bcc3ae3c478f88e8c30c5b926c0c27db821a9",
+      "subquestion_id": 3
+    }
+  ]
+}

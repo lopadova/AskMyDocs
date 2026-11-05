@@ -8,6 +8,7 @@ abstract class TestCase extends OrchestraTestCase
 {
     private const FALLBACK_TEST_TENANT = 'test-tenant';
 
+
     /**
      * Most feature tests exercise an operational route rather than the
      * no-membership boundary itself. Give those synthetic users an explicit
@@ -69,6 +70,10 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function getEnvironmentSetUp($app): void
     {
+        // Testbench does not load the application's agent.php config. Existing
+        // serial-contract fixtures explicitly exercise the rollback path; wave
+        // integration tests enable the new coordinator themselves.
+        $app['config']->set('agent.waves.enabled', false);
         // Manual registration (instead of getPackageProviders) avoids
         // ProviderRepository's is_writable() check that fails on Windows
         // for paths containing spaces.
@@ -183,6 +188,8 @@ abstract class TestCase extends OrchestraTestCase
         // HostIngestionBridge (overriding the package default
         // NullConnectorIngestionContract).
         $app->register(\Padosoft\AskMyDocsConnectorBase\ConnectorServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorApi\ApiConnectorServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorMcp\McpConnectorServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorNotion\NotionServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorEvernote\EvernoteServiceProvider::class);
@@ -194,12 +201,6 @@ abstract class TestCase extends OrchestraTestCase
         // ImapClientFactoryInterface → ImapClientFactory and merges the xoauth2
         // provider config, so the registry can instantiate ImapConnector.
         $app->register(\Padosoft\AskMyDocsConnectorImap\ImapServiceProvider::class);
-        // v8.27 — API connector (Connettore API). Turns configured HTTP
-        // endpoints into live LLM tools; the SP binds UrlGuard + the
-        // ToolDescriptionAssistant default + (host-overridable) admin routes,
-        // and its services are injected into McpToolCallingService so the chat
-        // tool loop can resolve in tests. Registered after the base SP.
-        $app->register(\Padosoft\AskMyDocsConnectorApi\ApiConnectorServiceProvider::class);
         // R32 — Testbench does NOT load the host config/, so set the SECURE admin
         // route middleware here (mirrors config/connector-api.php) so the
         // authorization matrix verifies the locked-down config, not the
@@ -211,8 +212,16 @@ abstract class TestCase extends OrchestraTestCase
             \Illuminate\Session\Middleware\StartSession::class,
             'auth:sanctum',
             'tenant.authorize',
+            \App\Http\Middleware\McpConnectionDiagnostics::class,
             'can:manageConnectors',
         ]);
+        // The MCP package also ships with permissive route defaults. Mirror the
+        // host middleware and ability before providers boot so authorization
+        // tests exercise production posture instead of package defaults.
+        $app['config']->set('connector-mcp', array_merge(
+            (array) $app['config']->get('connector-mcp', []),
+            require __DIR__.'/../config/connector-mcp.php',
+        ));
         // v8.13/P11 — Evidence Risk Review core package. Registered so its HTTP
         // API mounts (api.enabled=true via the host config loaded in
         // getEnvironmentSetUp) and the AdminAuthorizationMatrix can verify the
@@ -281,6 +290,10 @@ abstract class TestCase extends OrchestraTestCase
             require __DIR__.'/../config/routines.php',
         ));
 
+        // Agents Bridge. Testbench skips bootstrap/providers.php and the
+        // package intentionally leaves migration ownership to the host.
+        $app->register(\AgentsFullDuplex\RealtimeAgent\RealtimeAgentServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -311,10 +324,12 @@ abstract class TestCase extends OrchestraTestCase
         // tenant_id stamping hook. Registered after AppServiceProvider
         // because it depends on the TenantContext singleton it binds.
         $app->register(\App\Providers\FlowServiceProvider::class);
+        $app->register(\App\Providers\ApiToolServiceProvider::class);
         // Sanctum powers the JSON auth endpoints exercised by
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.
         $app->register(\Laravel\Sanctum\SanctumServiceProvider::class);
+        $app->register(\App\Providers\OAuthServiceProvider::class);
         // Spatie permissions — registered via the same manual pattern because
         // bootstrap/providers.php uses explicit registration (no package
         // discovery). Without this the Role / Permission models throw
@@ -330,6 +345,9 @@ abstract class TestCase extends OrchestraTestCase
         ]);
 
         $app['config']->set('ai', require __DIR__.'/../config/ai.php');
+        $app['config']->set('reasoning', require __DIR__.'/../config/reasoning.php');
+        $app['config']->set('decisions', require __DIR__.'/../config/decisions.php');
+        $app['config']->set('email-triage', require __DIR__.'/../config/email-triage.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
         // T1.4 — pluggable ingestion pipeline registry config. Without this,
         // PipelineRegistry boots with an empty converter/chunker list under
@@ -341,6 +359,7 @@ abstract class TestCase extends OrchestraTestCase
         // the disk or validate the config shape.
         $app['config']->set('filesystems', require __DIR__.'/../config/filesystems.php');
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
+        $app['config']->set('realtime-agent', require __DIR__.'/../config/realtime-agent.php');
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');
         // Security response headers (Testbench does not auto-load host config/).
@@ -528,6 +547,9 @@ abstract class TestCase extends OrchestraTestCase
                 \Padosoft\AskMyDocsConnectorJira\JiraConnector::class,
                 // v8.17 — first credential-based connector (IMAP).
                 \Padosoft\AskMyDocsConnectorImap\ImapConnector::class,
+                // MCP keeps its own connection UI, but implements the base
+                // connector contract so selected resources use the scheduler.
+                \Padosoft\AskMyDocsConnectorMcp\McpConnector::class,
             ],
         ), static fn (string $fqcn): bool => class_exists($fqcn)));
         // v8.17 — in production the IMAP package's ServiceProvider
@@ -607,6 +629,8 @@ abstract class TestCase extends OrchestraTestCase
         // class [tenant.authorize] does not exist". Keep in sync with
         // bootstrap/app.php.
         $router->aliasMiddleware('tenant.resolve', \App\Http\Middleware\ResolveTenant::class);
+        $app->make(\Illuminate\Contracts\Http\Kernel::class)
+            ->prependMiddleware(\App\Http\Middleware\RestrictChatApiToken::class);
         $router->aliasMiddleware('tenant.authorize', \App\Http\Middleware\AuthorizeTenantHeader::class);
         // Widget KITT public channel gate. Mirrors bootstrap/app.php
         // (Testbench does not execute that file). The global-prepended
@@ -714,6 +738,8 @@ abstract class TestCase extends OrchestraTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Existing unit fixtures target the legacy gate; batch-specific tests opt in.
+        config()->set('agent.grounding.batch.enabled', false);
 
         // Process-global "warned once" flags of the artifact store must not
         // leak between tests (R16: restore the global state you mutate).

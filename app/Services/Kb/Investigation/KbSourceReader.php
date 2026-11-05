@@ -1,0 +1,171 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Kb\Investigation;
+
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
+use App\Models\User;
+use App\Services\EmailTriage\EmailConnectorRegistry;
+use App\Support\TenantContext;
+
+/**
+ * Turns a vector candidate into bounded, readable source evidence.
+ *
+ * Short documents (including ordinary IMAP messages) are read in full. For a
+ * long source the reader opens only the matching chunk and neighbouring chunks;
+ * this prevents a distant manual chapter from leaking into a grounded answer.
+ */
+class KbSourceReader
+{
+    public function __construct(private readonly TenantContext $tenant)
+    {
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @return array<string, mixed>|null
+     */
+    public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters = null, ?\Closure $diagnostics = null): ?array
+    {
+        $documentId = (int) data_get($candidate, 'document.id', 0);
+        $chunkId = (int) data_get($candidate, 'chunk_id', 0);
+        if ($documentId < 1 || $chunkId < 1) {
+            return null;
+        }
+        if ($filters !== null && ! app(\App\Services\Kb\KbSearchService::class)->allowsMemoryCandidate($documentId, $chunkId, $filters)) {
+            return null;
+        }
+
+        // The model keeps the normal ACL global scope in HTTP. Queue workers
+        // have no authenticated principal, so cited-source re-reads also apply
+        // the explicit actor policy below. A guessed document id is never
+        // enough to open its adjacent chunks.
+        $document = KnowledgeDocument::query()
+            ->forTenant($this->tenant->current())
+            ->whereKey($documentId)
+            ->first();
+        if ($document === null || $document->status === 'archived') {
+            return null;
+        }
+        if (($projectKey !== null && $document->project_key !== $projectKey)
+            || ($actor === null && $projectKey !== null && $document->source_acl_enforced_at !== null)
+            || ($actor !== null && ! $actor->hasDocumentAccess($document, 'view'))) {
+            return null;
+        }
+
+        $anchor = KnowledgeChunk::query()
+            ->forTenant($this->tenant->current())
+            ->where('knowledge_document_id', $document->id)
+            ->whereKey($chunkId)
+            ->first(['id', 'chunk_order']);
+        if ($anchor === null) {
+            return null;
+        }
+
+        if ($document->source_type === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            $excerpt = app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->originalEvidence($document);
+            if ($excerpt === null || trim($excerpt) === '') {
+                return null;
+            }
+            return ['retrieved_at' => now()->toIso8601String(), 'document_id' => (int) $document->id, 'title' => (string) $document->title,
+                'source_path' => (string) $document->source_path, 'source_type' => (string) $document->source_type,
+                'excerpt' => $excerpt, 'complete_source' => false, 'chunk_ids' => [$chunkId], 'candidate' => $candidate,
+                'evidence_origin' => 'original_freshdesk_quotes'];
+        }
+
+        $chunks = KnowledgeChunk::query()
+            ->forTenant($this->tenant->current())
+            ->where('knowledge_document_id', $document->id)
+            ->orderBy('chunk_order')
+            ->get(['id', 'chunk_order', 'chunk_text']);
+        $totalChars = $chunks->sum(fn (KnowledgeChunk $chunk): int => mb_strlen((string) $chunk->chunk_text));
+        $fullLimit = (int) config('kb.investigation.full_source_max_chars', 24000);
+        $isShort = $totalChars <= $fullLimit;
+
+        $evidenceOrigin = null;
+        $connector = data_get($document->metadata, 'connector');
+        if (is_string($connector) && EmailConnectorRegistry::supportsKey($connector)
+            && data_get($document->metadata, 'attachment_filename') === null
+            && data_get($document->metadata, 'email_triage.evaluation_id')) {
+            try {
+                $readOriginal = fn () => app(\App\Services\EmailTriage\TriageCampaigns::class)->body($document);
+                $original = $diagnostics === null ? $readOriginal() : $diagnostics('kb.original_source_read', $readOriginal,
+                    ['wait_reason' => 'source_store_read', 'error_handled' => true]);
+                if (hash('sha256', $original) !== data_get($document->metadata, 'email_triage.original_hash')) {
+                    return null;
+                }
+            } catch (\Throwable) {
+                return null;
+            }
+            $evidenceOrigin = 'verified_email_original';
+            // Search tags locate the email; a generated classification is not
+            // the sender's evidence and must never become a literal quotation.
+            $isShort = mb_strlen($original) <= $fullLimit;
+            $usedChunks = $chunks;
+            if ($isShort) {
+                $excerpt = $original;
+            } else {
+                $anchorText = (string) $chunks->firstWhere('id', $chunkId)?->chunk_text;
+                $position = $anchorText === '' ? false : mb_strpos($original, trim($anchorText));
+                if ($position === false) {
+                    // The card separator can be assigned to the last original
+                    // chunk. Remove only that trailing Markdown rule, then
+                    // require an exact literal match in the verified original.
+                    $withoutSeparator = trim(preg_replace('/(?:\R[\t ]*)+---[\t ]*\z/u', '', trim($anchorText)) ?? '');
+                    if ($withoutSeparator !== '' && $withoutSeparator !== trim($anchorText)) {
+                        $position = mb_strpos($original, $withoutSeparator);
+                    }
+                }
+                if ($position === false) {
+                    return null;
+                }
+                $window = max(1, (int) config('kb.investigation.long_source_max_chars', 9000));
+                $start = max(0, $position - intdiv($window, 3));
+                if ($start > 0 && $window >= 600) {
+                    // Preserve the email identity and table column headings.
+                    // A middle-of-report row otherwise loses the labels that
+                    // explain adjacent values. Both portions remain literal;
+                    // the omission is explicit and never claims completeness.
+                    $headerSize = min(1000, intdiv($window, 6));
+                    $gap = "\n\n[... omitted source text ...]\n\n";
+                    $excerpt = mb_substr($original, 0, $headerSize).$gap
+                        .mb_substr($original, $start, $window - $headerSize - mb_strlen($gap));
+                } else {
+                    $excerpt = mb_substr($original, $start, $window);
+                }
+                $usedChunks = $chunks->where('id', $chunkId);
+            }
+        } elseif ($isShort) {
+            $excerpt = $chunks->pluck('chunk_text')->implode("\n\n");
+            $usedChunks = $chunks;
+        } else {
+            $radius = max(0, (int) config('kb.investigation.long_source_neighbor_radius', 1));
+            $usedChunks = $chunks
+                ->filter(fn (KnowledgeChunk $chunk): bool => $chunk->chunk_order >= $anchor->chunk_order - $radius
+                    && $chunk->chunk_order <= $anchor->chunk_order + $radius)
+                ->values();
+            $excerpt = $usedChunks->pluck('chunk_text')->implode("\n\n");
+            $excerpt = mb_substr($excerpt, 0, (int) config('kb.investigation.long_source_max_chars', 9000));
+        }
+
+        $excerpt = trim($excerpt);
+        if ($excerpt === '') {
+            return null;
+        }
+
+        return [
+            'document_id' => (int) $document->id,
+            'retrieved_at' => now()->toIso8601String(),
+            'title' => (string) $document->title,
+            'source_path' => (string) $document->source_path,
+            'source_type' => (string) $document->source_type,
+            'excerpt' => $excerpt,
+            'complete_source' => $isShort,
+            'chunk_ids' => $usedChunks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
+            'candidate' => $candidate,
+            ...$evidenceOrigin === null ? [] : ['evidence_origin' => $evidenceOrigin],
+        ];
+    }
+}

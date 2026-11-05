@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { AdminShell } from '../shell/AdminShell';
 import { ActivityFeedCard } from './ActivityFeedCard';
 import { ChatVolumeCard } from './ChatVolumeCard';
@@ -50,6 +51,7 @@ function rollupStates(states: ChartState[]): ChartState {
 }
 
 export function DashboardView() {
+    const { t: translateInterface } = useUiTranslation();
     const overview = useAdminOverview({ days: DAYS });
     const series = useAdminSeries({ days: DAYS });
     const health = useAdminHealth();
@@ -105,8 +107,7 @@ export function DashboardView() {
                             margin: 0,
                         }}
                     >
-                        Rolling {DAYS}-day view · refresh every 30 seconds
-                    </p>
+                        {translateInterface("Rolling") + " "}{DAYS}{translateInterface("-day view · refresh every 30 seconds")}</p>
                 </div>
                 <HealthStrip health={health.data ?? null} state={healthState} />
                 <KpiStrip

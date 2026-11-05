@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useState, type ReactNode } from 'react';
 import type { ApiRoute } from './api-connectors.api';
 import {
     buttonStyle,
@@ -16,7 +17,7 @@ import { prettyJson } from './pretty-json';
  * panel — `/try` runs the full tool executor (auth + transform + output), not a
  * raw probe.
  *
- * R11/R29: testids `api-tool-try-*`. R15: bound label, role=dialog, Esc closes.
+ * R11/R29: testids `api-tool-try-*`. R15: bound label, role=dialog, explicit close controls only.
  * R14: a failure surfaces loudly via `error`.
  */
 
@@ -40,16 +41,9 @@ export function TryToolModal({
     isRunning,
     error,
 }: TryToolModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [argsText, setArgsText] = useState('{}');
     const [argsError, setArgsError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     function handleRun() {
         setArgsError(null);
@@ -82,9 +76,6 @@ export function TryToolModal({
     return (
         <div
             data-testid="api-tool-try-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={modalBackdropStyle()}
         >
             <div
@@ -164,8 +155,7 @@ export function TryToolModal({
                         onClick={onClose}
                         style={buttonStyle('secondary', false)}
                     >
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
             </div>
         </div>

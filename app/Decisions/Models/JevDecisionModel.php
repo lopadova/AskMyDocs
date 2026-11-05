@@ -1,0 +1,173 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Decisions\Models;
+
+use App\Decisions\DecisionException;
+use App\Decisions\IndependentDecisionModel;
+use App\Decisions\DecisionResult;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+final class JevDecisionModel implements IndependentDecisionModel
+{
+    public function decide(array $state, array $questions): DecisionResult
+    {
+        return $this->request($state, $questions, false);
+    }
+
+    public function decideIndependently(array $state, array $questions): DecisionResult
+    {
+        return $this->request($state, $questions, true);
+    }
+
+    private function request(array $state, array $questions, bool $independent): DecisionResult
+    {
+        $key = config('ai.providers.openrouter.key');
+        if (! is_string($key) || $key === '') {
+            throw new DecisionException('OpenRouter API key is not configured.');
+        }
+        $started = microtime(true);
+        $timeout = (int) config('decisions.models.jev.timeout', 15);
+        $context = app(\App\Ai\AgentChatModelScope::class)->context();
+        $remaining = $context === null ? null : app(\App\Agent\AgentRunDeadline::class)->activeRemaining($context);
+        if ($remaining !== null) {
+            if ($remaining < 3) throw new DecisionException('Decision skipped at worker deadline.');
+            $timeout = min($timeout, max(1, (int) floor($remaining - 2)));
+        }
+        try {
+            $response = Http::withToken($key)
+                ->acceptJson()
+                ->timeout($timeout)
+                ->retry($remaining === null ? 3 : 1, fn (int $attempt): int => 750 * $attempt,
+                    fn (Throwable $error): bool => $error instanceof ConnectionException
+                        || ($error instanceof RequestException
+                            && ($error->response->status() === 429 || $error->response->serverError())),
+                    throw: false)
+                ->post('https://openrouter.ai/api/alpha/decisions', [
+                    'model' => config('decisions.models.jev.model'),
+                    'state' => $state,
+                    'questions' => $questions,
+                ]);
+        } catch (Throwable $exception) {
+            throw new DecisionException('Decision provider is unavailable.', previous: $exception);
+        }
+        if (! $response->successful()) {
+            throw new DecisionException('Decision provider returned HTTP '.$response->status().'.');
+        }
+        $data = $response->json();
+        if (! is_array($data) || ! is_array($data['answers'] ?? null)
+            || array_diff(array_keys($data['answers']), array_keys($questions)) !== []
+            || (! $independent && array_diff(array_keys($questions), array_keys($data['answers'])) !== [])
+            || ! is_string($data['model'] ?? null) || $data['model'] === '') {
+            throw new DecisionException('Decision provider returned a malformed response.');
+        }
+        $answers = $answerErrors = [];
+        foreach ($questions as $keyName => $question) {
+            try {
+                $answer = $data['answers'][$keyName] ?? null;
+                if (! is_array($answer) || ($answer['type'] ?? null) !== $question['type']) {
+                    throw new DecisionException('Decision provider returned an invalid answer type.');
+                }
+                $answers[$keyName] = match ($question['type']) {
+                    'noul' => $this->noul($answer),
+                    'choice' => $this->choice($answer, $question['criteria']),
+                    'score' => $this->score($answer, $question['criteria']),
+                };
+            } catch (DecisionException $exception) {
+                if (! $independent) {
+                    throw $exception;
+                }
+                $answerErrors[$keyName] = $exception->getMessage();
+            }
+        }
+        $usage = $data['usage'] ?? [];
+        if (! is_array($usage)) {
+            throw new DecisionException('Decision provider returned invalid usage.');
+        }
+        $usage = array_intersect_key($usage, array_flip(['cost', 'input_tokens', 'output_tokens', 'total_tokens']));
+        foreach (array_keys($usage) as $field) {
+            if (isset($usage[$field]) && (! is_numeric($usage[$field]) || ! is_finite((float) $usage[$field]) || (float) $usage[$field] < 0)) {
+                throw new DecisionException('Decision provider returned invalid usage.');
+            }
+        }
+        $latency = round((microtime(true) - $started) * 1000, 2);
+        Log::info('Decision model call completed.', [
+            'model' => $data['model'], 'question_count' => count($questions),
+            'cost' => $usage['cost'] ?? null, 'latency_ms' => $latency,
+        ]);
+
+        return new DecisionResult((string) ($data['id'] ?? ''), $data['model'], $answers, $usage, $latency, $answerErrors);
+    }
+
+    /** @param array<string,mixed> $answer @return array<string,mixed> */
+    private function noul(array $answer): array
+    {
+        $probability = $answer['noul'] ?? null;
+        $this->assertProbability($probability);
+
+        return ['type' => 'noul', 'probability_true' => (float) $probability];
+    }
+
+    /** @param array<string,mixed> $answer @param array<string,string> $criteria @return array<string,mixed> */
+    private function choice(array $answer, array $criteria): array
+    {
+        if (! is_string($answer['choice'] ?? null) || ! array_key_exists($answer['choice'], $criteria)
+            || ! is_array($answer['probabilities'] ?? null)
+            || array_diff(array_keys($criteria), array_keys($answer['probabilities'])) !== []
+            || array_diff(array_keys($answer['probabilities']), array_keys($criteria)) !== []) {
+            throw new DecisionException('Decision provider returned an invalid choice.');
+        }
+        foreach ($answer['probabilities'] as $probability) {
+            $this->assertProbability($probability);
+        }
+        if (round(abs(array_sum($answer['probabilities']) - 1.0), 12) > 0.01
+            || $answer['probabilities'][$answer['choice']] < max($answer['probabilities'])) {
+            throw new DecisionException('Decision provider returned an inconsistent choice distribution.');
+        }
+        $this->assertProbability($answer['confidence'] ?? null);
+
+        return ['type' => 'choice', 'choice' => $answer['choice'],
+            'probabilities' => $answer['probabilities'], 'confidence' => (float) $answer['confidence']];
+    }
+
+    /** @param array<string,mixed> $answer @param list<string> $criteria @return array<string,mixed> */
+    private function score(array $answer, array $criteria): array
+    {
+        $score = $answer['score'] ?? null;
+        if (! is_numeric($score) || ! is_finite((float) $score) || (float) $score < 0 || (float) $score > count($criteria) - 1
+            || ! is_array($answer['probabilities'] ?? null)
+            || count($answer['probabilities']) !== count($criteria)
+            || array_diff(array_keys($answer['probabilities']), range(0, count($criteria) - 1)) !== []) {
+            throw new DecisionException('Decision provider returned an invalid score.');
+        }
+        foreach (range(0, count($criteria) - 1) as $index) {
+            if (! array_key_exists((string) $index, $answer['probabilities'])) {
+                throw new DecisionException('Decision provider returned an invalid score distribution.');
+            }
+            $this->assertProbability($answer['probabilities'][(string) $index]);
+        }
+        $this->assertProbability($answer['confidence'] ?? null);
+
+        if (round(abs(array_sum($answer['probabilities']) - 1.0), 12) > 0.01) {
+            throw new DecisionException('Decision provider returned an inconsistent score distribution.');
+        }
+        return ['type' => 'score', 'score' => (float) $score,
+            'probabilities' => $answer['probabilities'], 'confidence' => (float) $answer['confidence'],
+            'criteria' => $criteria];
+    }
+
+    private function assertProbability(mixed $value): void
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            throw new DecisionException('Decision provider returned a non-numeric probability.');
+        }
+        if (! is_finite((float) $value) || $value < 0 || $value > 1) {
+            throw new DecisionException('Decision provider returned an out-of-range probability.');
+        }
+    }
+}

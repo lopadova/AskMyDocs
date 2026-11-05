@@ -21,6 +21,25 @@ use Tests\TestCase;
  */
 class OpenRouterProviderTest extends TestCase
 {
+    public function test_economical_routing_caps_reach_both_sdk_and_strict_http_requests(): void
+    {
+        $this->setupConfig();
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'economical/model', 'choices' => [['message' => ['role' => 'assistant', 'content' => '{}'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 2, 'completion_tokens' => 1, 'cost' => .000001],
+        ])]);
+        $routing = ['sort' => 'price', 'require_parameters' => true, 'max_price' => ['prompt' => .12, 'completion' => .60]];
+        foreach ([[], ['response_format' => ['type' => 'json_object']]] as $extra) {
+            $this->provider()->chat('Return JSON', 'question', ['model' => 'economical/model', 'provider' => $routing, ...$extra]);
+        }
+        $posts = Http::recorded(fn (Request $request) => $request->method() === 'POST');
+        $this->assertCount(2, $posts);
+        foreach ($posts as [$request]) {
+            $this->assertSame($routing, $request->data()['provider']);
+            $this->assertTrue($request->data()['usage']['include']);
+        }
+    }
+
     private function setupConfig(array $overrides = []): void
     {
         config()->set('ai.providers.openrouter', array_merge([
@@ -128,6 +147,108 @@ class OpenRouterProviderTest extends TestCase
                 && isset($body['tools'])
                 && $body['tool_choice'] === 'auto';
         });
+    }
+
+    public function test_strict_schema_request_requires_compatible_openrouter_routing(): void
+    {
+        $this->setupConfig();
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'openai/gpt-4o-mini',
+            'choices' => [['message' => ['role' => 'assistant', 'content' => '{"language":"it"}'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 12, 'completion_tokens' => 6, 'total_tokens' => 18],
+        ])]);
+        $format = ['type' => 'json_schema', 'json_schema' => [
+            'name' => 'test', 'strict' => true,
+            'schema' => ['type' => 'object', 'properties' => ['language' => ['type' => 'string']], 'required' => ['language'], 'additionalProperties' => false],
+        ]];
+
+        $response = $this->provider()->chatWithHistory('sys', [['role' => 'user', 'content' => 'ciao']], [
+            'model' => 'openai/gpt-4o-mini', 'response_format' => $format,
+        ]);
+
+        $this->assertSame('openai/gpt-4o-mini', $response->model);
+        Http::assertSent(static function (Request $request) use ($format): bool {
+            $body = $request->data();
+            return str_contains($request->url(), '/chat/completions') && $body['model'] === 'openai/gpt-4o-mini'
+                && $body['response_format'] === $format
+                && $body['provider']['require_parameters'] === true;
+        });
+    }
+
+    public function test_optional_sampling_uses_catalog_capabilities_without_weakening_required_schema(): void
+    {
+        $this->setupConfig();
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/models/vendor/native-sampling/endpoints' => Http::response(['data' => ['endpoints' => [
+                ['supported_parameters' => ['response_format', 'tools', 'tool_choice', 'max_tokens']],
+            ]]]),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => '{}']]]]),
+        ]);
+        $options = ['model' => 'vendor/native-sampling', 'temperature' => 0,
+            'response_format' => ['type' => 'json_schema'], 'tools' => [], 'tool_choice' => 'auto'];
+        $this->provider()->chat('sys', 'data', $options);
+        $this->provider()->chat('sys', 'data', $options);
+
+        Http::assertSentCount(3); // One cached public capability read, two actual turns.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/chat/completions')
+            && ! isset($request['temperature']) && $request['response_format'] === $options['response_format']
+            && $request['provider']['require_parameters'] === true && $request['tool_choice'] === 'auto');
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/models/')
+            && ! $request->hasHeader('Authorization'));
+    }
+
+    public function test_unknown_or_compatible_catalog_preserves_explicit_sampling(): void
+    {
+        $this->setupConfig();
+        Http::fake([
+            '*/models/vendor/compatible/endpoints' => Http::response(['data' => ['endpoints' => [
+                ['supported_parameters' => ['temperature']],
+            ]]]),
+            '*/models/vendor/unknown/endpoints' => Http::response([], 503),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => '{}']]]]),
+        ]);
+        foreach (['vendor/compatible', 'vendor/unknown'] as $model) {
+            $this->provider()->chat('sys', 'data', ['model' => $model, 'temperature' => .15, 'tools' => []]);
+            Http::assertSent(fn ($request) => str_contains($request->url(), '/chat/completions')
+                && $request['model'] === $model && $request['temperature'] === .15);
+        }
+    }
+
+    public function test_request_budget_reaches_http_and_sdk_and_reasoning_is_sent_only_when_advertised(): void
+    {
+        $this->setupConfig();
+        Http::preventStrayRequests();
+        $timeouts = [];
+        Http::fake(function (Request $request, array $options) use (&$timeouts) {
+            if (str_contains($request->url(), '/models/')) {
+                return Http::response(['data' => ['endpoints' => [['supported_parameters' => ['tools', 'temperature', 'reasoning']]]]]);
+            }
+            $timeouts[] = $options['timeout'];
+            return Http::response(['model' => 'vendor/bounded', 'choices' => [['message' => ['role' => 'assistant', 'content' => 'Done'], 'finish_reason' => 'stop']]]);
+        });
+        $provider = $this->provider();
+        foreach ([['tools' => []], []] as $extra) {
+            $provider->chat('sys', 'data', ['model' => 'vendor/bounded', 'timeout' => 4, 'reasoning' => ['effort' => 'low'], ...$extra]);
+        }
+        $this->assertCount(2, $timeouts);
+        foreach ($timeouts as $timeout) {
+            $this->assertGreaterThan(0, $timeout);
+            $this->assertLessThanOrEqual(4, $timeout);
+        }
+        Http::assertSent(fn ($request) => isset($request['tools']) && $request['reasoning'] === ['effort' => 'low']
+            && ! isset($request['timeout']));
+    }
+
+    public function test_optional_reasoning_is_omitted_when_the_model_does_not_advertise_it(): void
+    {
+        $this->setupConfig();
+        Http::fake([
+            '*/models/vendor/plain/endpoints' => Http::response(['data' => ['endpoints' => [['supported_parameters' => ['tools']]]]]),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => '{}']]]]),
+        ]);
+        $this->provider()->chat('sys', 'data', ['model' => 'vendor/plain', 'tools' => [], 'reasoning' => ['effort' => 'low']]);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/chat/completions') && ! isset($request['reasoning']));
     }
 
     public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http(): void

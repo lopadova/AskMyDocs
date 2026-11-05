@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Cinque domande pronte da copiare per provare il caso studio Rotta Sicura Logistics con knowledge base, email, API e mock MCP.">
+  <title>Rotta Sicura · 5 domande da provare</title>
+  <style>
+    :root {
+      --ink: #242236; --muted: #666479; --paper: #f6f5f9; --line: #e2dfeb;
+      --purple: #6550cc; --purple-dark: #5039b2; --purple-light: #eeeafa;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--sans); -webkit-text-size-adjust: 100%; }
+    a { color: var(--purple-dark); text-underline-offset: 4px; }
+    button, summary, a { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid var(--purple); outline-offset: 4px; }
+    .shell { width: min(1080px, calc(100% - 64px)); margin-inline: auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 26px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; }
+    .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #c9bfee; border-radius: 9px; color: var(--purple); background: var(--purple-light); }
+    .edition { font-size: 12px; color: var(--muted); }
+    .hero { display: grid; grid-template-columns: 1.45fr 1fr; gap: 56px; align-items: center; padding-block: 48px 34px; }
+    .eyebrow { margin: 0 0 15px; color: var(--purple-dark); font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(32px, 4.3vw, 49px); font-weight: 750; line-height: 1.08; letter-spacing: -.045em; }
+    .intro { max-width: 490px; margin: 20px 0 22px; color: var(--muted); font-size: 16px; line-height: 1.6; }
+    .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 17px; border: 1px solid #c9c6d5; border-radius: 8px; color: #393548; background: linear-gradient(#fff, #f0eef5); box-shadow: inset 0 0 0 1px #ffffffa8, 0 2px 4px #2422360b; font: 610 13px var(--sans); cursor: pointer; text-decoration: none; transition: background .15s, box-shadow .15s; }
+    .ui-button:hover { border-color: #a7a0bc; background: linear-gradient(#fff, #f7f5fc); box-shadow: inset 0 0 0 1px #fff, 0 2px 6px #24223615; }
+    .ui-button:active { transform: translateY(1px); box-shadow: inset 0 1px 3px #24223615; }
+    .ui-button:focus-visible { outline: 2px solid var(--purple); outline-offset: 3px; box-shadow: 0 0 0 2px #fff; }
+    .ui-button:disabled { cursor: wait; opacity: .65; box-shadow: none; }
+    .ui-button--primary { color: #fff; border-color: #5941ba; background: linear-gradient(#7963dc, #6550cc); box-shadow: inset 0 0 0 1px #ffffff35, 0 2px 4px #5039b225; }
+    .ui-button--primary:hover { border-color: #4f35b2; background: linear-gradient(#866fe7, #6b54d6); box-shadow: inset 0 0 0 1px #ffffff45, 0 2px 6px #5039b230; }
+    .icon { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .setup { padding: 26px 28px; border: 1px solid #39334d; border-radius: 16px; color: #fff; background: #282337; }
+    .setup h2 { margin: 0 0 18px; font-size: 16px; font-weight: 650; }
+    .setup dl { margin: 0; display: grid; gap: 13px; font-size: 13px; }
+    .setup dl div { display: grid; grid-template-columns: 90px 1fr; gap: 12px; }
+    .setup dt { color: #bab3cd; }
+    .setup dd { margin: 0; font-weight: 550; overflow-wrap: anywhere; }
+    .setup .hint { margin: 20px 0 0; padding-top: 17px; border-top: 1px solid #4a425d; color: #d4cee0; font-size: 12px; line-height: 1.6; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 18px 0 24px; }
+    .toolbar p { margin: 0; font-size: 13px; color: var(--muted); }
+    .toolbar strong { color: var(--ink); }
+    #copy-status { min-height: 20px; color: var(--purple-dark); font-weight: 550; }
+    .questions { display: grid; gap: 16px; }
+    .question { display: grid; grid-template-columns: 215px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
+    .question-heading { padding: 28px; border-right: 1px solid var(--line); background: #fbfaff; }
+    .number { display: inline-block; margin-bottom: 25px; color: #b1a5d8; font-size: 32px; font-weight: 400; letter-spacing: -.05em; }
+    .question h2 { margin: 0 0 12px; font-size: 18px; font-weight: 650; line-height: 1.3; letter-spacing: -.015em; }
+    .sources { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag { padding: 4px 7px; border: 1px solid #e4e0ef; border-radius: 5px; color: #655d79; background: #f4f1fa; font-size: 10px; font-weight: 650; letter-spacing: .025em; }
+    .question-body { min-width: 0; padding: 28px 30px 24px; }
+    .prompt { margin: 0; font-size: 16px; line-height: 1.7; overflow-wrap: anywhere; }
+    .question-footer { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; margin-top: 23px; }
+    .copy-button { min-width: 152px; }
+    details { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; }
+    summary { display: flex; align-items: center; gap: 8px; width: fit-content; min-height: 40px; cursor: pointer; color: #5c526f; list-style: none; font-weight: 550; }
+    summary::-webkit-details-marker { display: none; }
+    summary .icon { width: 14px; height: 14px; transition: transform .15s; }
+    details[open] summary .icon { transform: rotate(180deg); }
+    details p { margin: 10px 8px 0 0; max-width: 480px; line-height: 1.65; }
+    footer { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 30px 0 40px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    footer p { margin: 0; }
+    .skip-link { position: absolute; top: -100px; left: 16px; z-index: 2; padding: 12px; background: #fff; border: 1px solid var(--purple); border-radius: 8px; }
+    .skip-link:focus { top: 12px; }
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .copy-fallback { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; }
+    @media (max-width: 800px) {
+      .hero { gap: 26px; grid-template-columns: 1fr 1fr; }
+      .question { grid-template-columns: 180px minmax(0, 1fr); }
+      .question-heading { padding: 24px; }
+      .question-body { padding: 24px; }
+    }
+    @media (max-width: 640px) {
+      .shell { width: calc(100% - 32px); }
+      .topbar { padding-block: 20px; }
+      .edition { max-width: 92px; text-align: right; line-height: 1.5; }
+      .hero { grid-template-columns: 1fr; gap: 24px; padding-top: 32px; }
+      .intro { font-size: 15px; }
+      .setup { padding: 23px; }
+      .toolbar { padding-top: 0; }
+      .question { grid-template-columns: 1fr; }
+      .question-heading { padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .number { float: right; margin: -3px 0 0 16px; font-size: 30px; }
+      .question h2 { padding-right: 34px; font-size: 18px; }
+      .question-body { padding: 22px 20px; }
+      .prompt { font-size: 15px; }
+      .question-footer { flex-direction: column; gap: 12px; }
+      .question-footer details { width: 100%; }
+      .copy-button { width: 100%; }
+      .ui-button, summary { min-height: 48px; }
+      .question-footer .ui-button { order: -1; }
+      footer { padding-bottom: max(30px, env(safe-area-inset-bottom)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition: none !important; }
+      .ui-button:active { transform: none; }
+    }
+    @media print {
+      @page { margin: 16mm; }
+      body { background: #fff; font-size: 11pt; }
+      .shell { width: 100%; }
+      .actions, .question-footer, .skip-link, #copy-status { display: none; }
+      .topbar { padding: 0 0 14px; }
+      .hero { padding: 24px 0; gap: 24px; }
+      h1 { font-size: 30px; }
+      .setup { color: var(--ink); background: #fff; border-color: var(--line); padding: 18px; }
+      .setup dt, .setup .hint { color: var(--muted); }
+      .setup .hint { border-color: var(--line); }
+      .toolbar { padding: 0 0 18px; }
+      .questions { gap: 12px; }
+      .question { break-inside: avoid; grid-template-columns: 155px minmax(0, 1fr); }
+      .question-heading, .question-body { padding: 18px; }
+      .number { margin-bottom: 14px; font-size: 24px; }
+      .prompt { font-size: 12px; line-height: 1.6; }
+      .question h2 { font-size: 15px; }
+      footer { padding: 18px 0 0; }
+      footer a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-route" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><path d="M6 7v6a4 4 0 0 0 4 4h4a4 4 0 0 0 0-8h-3M18 17v-2"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="icon-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/><path d="M18 12h.01"/></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  </svg>
+  <a class="skip-link" href="#domande">Vai alle domande</a>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#icon-route"/></svg></span>Rotta Sicura Logistics</div>
+      <span class="edition">Caso studio · Mock locali</span>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">La tua traccia di prova</p>
+          <h1 id="page-title">Metti alla prova<br>Rotta Sicura.</h1>
+          <p class="intro">Cinque domande per verificare corrieri, spedizioni e reclami, incrociando documenti, email e servizi mock.</p>
+          <div class="actions">
+            <button class="ui-button ui-button--primary" id="copy-all" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span>Copia tutte le domande</span></button>
+            <button class="ui-button" id="print" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-print"/></svg>Stampa</button>
+          </div>
+        </div>
+        <aside class="setup" aria-labelledby="setup-title">
+          <h2 id="setup-title">Prima di iniziare</h2>
+          <dl>
+            <div><dt>Azienda</dt><dd>Rotta Sicura Logistics</dd></div>
+            <div><dt>Filtro progetto</dt><dd>rotta-logistics</dd></div>
+            <div><dt>Integrazioni</dt><dd>API e MCP abilitati</dd></div>
+            <div><dt>Profondità</dt><dd>3 · Equilibrato</dd></div>
+          </dl>
+          <p class="hint">Avvia i server mock dal monitor delle integrazioni locali. Usa una nuova chat per ogni domanda, così ogni prova parte dallo stesso contesto.</p>
+        </aside>
+      </section>
+      <div class="toolbar">
+        <p><strong>5 domande</strong> · Dalla ricerca semplice al confronto tra fonti</p>
+        <p id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p>
+      </div>
+      <section class="questions" id="domande" aria-label="Domande da copiare nella chat">
+        <article class="question" aria-labelledby="title-1">
+          <div class="question-heading"><span class="number" aria-hidden="true">01</span><h2 id="title-1">I nostri corrieri</h2><div class="sources"><span class="tag">KNOWLEDGE BASE</span></div></div>
+          <div class="question-body">
+            <p class="prompt" id="prompt-1">Quali sono i nostri corrieri?</p>
+            <div class="question-footer"><details><summary><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg>Cosa controllare</summary><p>La risposta elenca i corrieri di Rotta Sicura, associa correttamente i servizi e cita il documento di riferimento.</p></details><button class="ui-button copy-button" data-copy="1" type="button" aria-label="Copia la domanda 1"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span>Copia domanda</span></button></div>
+          </div>
+        </article>
+        <article class="question" aria-labelledby="title-2">
+          <div class="question-heading"><span class="number" aria-hidden="true">02</span><h2 id="title-2">Una consegna sbagliata</h2><div class="sources"><span class="tag">MCP</span><span class="tag">API</span><span class="tag">EMAIL</span></div></div>
+          <div class="question-body">
+            <p class="prompt" id="prompt-2">Che cosa è successo alla spedizione SPD-51230? Controlla il mock MCP per la spedizione e l’API dei reclami, incrociandoli con le email: qual era la destinazione prevista, dove risulta consegnata e chi ha segnalato il problema? Il reclamo risulta aperto oppure soltanto richiesto? Cita le fonti e indica le tre azioni operative prioritarie.</p>
+            <div class="question-footer"><details><summary><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg>Cosa controllare</summary><p>Destinazione prevista e consegna segnalata sono distinte. La risposta identifica chi ha segnalato il problema, verifica lo stato del reclamo e propone tre azioni sostenute dalle fonti.</p></details><button class="ui-button copy-button" data-copy="2" type="button" aria-label="Copia la domanda 2"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span>Copia domanda</span></button></div>
+          </div>
+        </article>
+        <article class="question" aria-labelledby="title-3">
+          <div class="question-heading"><span class="number" aria-hidden="true">03</span><h2 id="title-3">Un ordine, più spedizioni</h2><div class="sources"><span class="tag">MCP</span><span class="tag">EMAIL</span><span class="tag">KNOWLEDGE BASE</span></div></div>
+          <div class="question-body">
+            <p class="prompt" id="prompt-3">Per l’ordine ORD-4471, quante spedizioni risultano e quali sono i rispettivi tracking e corrieri? Controlla il mock MCP e le email, poi confronta il risultato con la procedura dei corrieri per Consegna Lampo 24h. Segnala eventuali divergenze senza inventare spiegazioni e cita le fonti.</p>
+            <div class="question-footer"><details><summary><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg>Cosa controllare</summary><p>Ogni spedizione ha il proprio tracking e corriere. Oltre alla tabella, la risposta confronta il servizio con la procedura e cita le fonti delle eventuali divergenze.</p></details><button class="ui-button copy-button" data-copy="3" type="button" aria-label="Copia la domanda 3"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span>Copia domanda</span></button></div>
+          </div>
+        </article>
+        <article class="question" aria-labelledby="title-4">
+          <div class="question-heading"><span class="number" aria-hidden="true">04</span><h2 id="title-4">Reclamo e rimborso</h2><div class="sources"><span class="tag">API</span><span class="tag">MCP</span><span class="tag">EMAIL</span><span class="tag">KNOWLEDGE BASE</span></div></div>
+          <div class="question-body">
+            <p class="prompt" id="prompt-4">Per l’ordine 88512 di Francesca Romano, il reclamo risulta aperto e conosciamo il numero della pratica? Verifica l’API dei reclami, il mock MCP e le email. Possiamo determinare l’importo di una penale o di un rimborso? Indica quali dati mancano e se le procedure disponibili sono applicabili alle date del caso. Cita le fonti, senza inventare importi.</p>
+            <div class="question-footer"><details><summary><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg>Cosa controllare</summary><p>La risposta distingue ciò che dichiara il cliente dai dati verificati. Non inventa numeri di pratica o importi; elenca i dati mancanti e valuta le date di validità delle procedure.</p></details><button class="ui-button copy-button" data-copy="4" type="button" aria-label="Copia la domanda 4"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span>Copia domanda</span></button></div>
+          </div>
+        </article>
+        <article class="question" aria-labelledby="title-5">
+          <div class="question-heading"><span class="number" aria-hidden="true">05</span><h2 id="title-5">Urgenza e cut-off</h2><div class="sources"><span class="tag">MCP</span><span class="tag">EMAIL</span><span class="tag">KNOWLEDGE BASE</span></div></div>
+          <div class="question-body">
+            <p class="prompt" id="prompt-5">Per l’ordine urgente PO-5582 di Veronica Longo, qual è la spedizione associata e qual è il tracking? La merce risulta già partita o soltanto programmata? Confronta il cut-off indicato nelle email con quello della procedura in knowledge base e segnala eventuali differenze, tenendo conto delle date delle fonti. Verifica il mock MCP e cita le fonti.</p>
+            <div class="question-footer"><details><summary><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg>Cosa controllare</summary><p>Ordine, spedizione e tracking sono collegati. Una partenza programmata resta distinta da una partenza avvenuta. Il confronto dei cut-off considera anche le date delle fonti.</p></details><button class="ui-button copy-button" data-copy="5" type="button" aria-label="Copia la domanda 5"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span>Copia domanda</span></button></div>
+          </div>
+        </article>
+      </section>
+    </main>
+    <footer><p>AskMyDocs · Dataset dimostrativo Rotta Sicura Logistics</p><p><a href="https://askmydocsdev.test/app/ae81d2a5e96a/sessions" target="_blank" rel="noopener">Apri le chat</a> · <a href="https://askmydocsdev.test/app/ae81d2a5e96a/developer/local-integrations" target="_blank" rel="noopener">Apri il monitor</a></p></footer>
+  </div>
+  <noscript><p class="shell">Per copiare una domanda, seleziona il testo e usa il comando Copia del browser.</p></noscript>
+  <script>
+    const status = document.getElementById('copy-status');
+    const copyButtons = document.querySelectorAll('[data-copy], #copy-all');
+    const resetTimers = new WeakMap();
+
+    function fallbackCopy(text) {
+      const focusedElement = document.activeElement;
+      const field = document.createElement('textarea');
+      field.value = text;
+      field.className = 'copy-fallback';
+      field.setAttribute('readonly', '');
+      field.setAttribute('aria-label', 'Testo da copiare');
+      document.body.append(field);
+      field.select();
+      let copied = false;
+      try { copied = document.execCommand('copy'); }
+      finally { field.remove(); focusedElement?.focus({ preventScroll: true }); }
+      if (!copied) throw new Error('Clipboard unavailable');
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(text); return; }
+        catch { /* Some browsers block the Clipboard API for local files. */ }
+      }
+      fallbackCopy(text);
+    }
+
+    for (const button of copyButtons) {
+      button.addEventListener('click', async () => {
+        const number = button.dataset.copy;
+        const label = button.querySelector('span');
+        const defaultLabel = number ? 'Copia domanda' : 'Copia tutte le domande';
+        const text = number
+          ? document.getElementById(`prompt-${number}`).textContent.trim()
+          : Array.from(document.querySelectorAll('.prompt'), (prompt, i) => `${i + 1}. ${prompt.textContent.trim()}`).join('\n\n');
+        clearTimeout(resetTimers.get(button));
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        label.textContent = defaultLabel;
+        try {
+          await copyText(text);
+          label.textContent = number ? 'Copiata' : 'Tutte copiate';
+          status.textContent = number ? `Domanda ${number} copiata. Incollala in una nuova chat.` : 'Le cinque domande sono state copiate.';
+        } catch {
+          status.textContent = 'Copia non disponibile: seleziona il testo della domanda e copialo manualmente.';
+        } finally {
+          button.disabled = false;
+          button.removeAttribute('aria-busy');
+          resetTimers.set(button, setTimeout(() => { label.textContent = defaultLabel; }, 2200));
+        }
+      });
+    }
+    document.getElementById('print').addEventListener('click', () => window.print());
+  </script>
+</body>
+</html>

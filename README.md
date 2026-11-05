@@ -1,5 +1,9 @@
 # AskMyDocs — AI Hub & Intelligent Agentic Platform for the Enterprise
 
+**MCP project connections for Codex, Claude and Cursor:** OAuth sign-in, one
+tenant/project per connection, distinct URLs, and document ingestion with preview and progress. See the
+[connection guide](docs-site/codex-project-connection.mdx).
+
 > **Enterprise RAG + Knowledge Graph + Agentic Tool Use, self-hostable, MIT licensed.**
 
 AskMyDocs is a self-hostable AI hub for enterprise knowledge. It fuses
@@ -198,6 +202,11 @@ tells buyers to demand:
   Tunable via `CONNECTOR_IMAP_SERIALIZE_CONNECTIONS` (default on; needs an atomic lock store / Redis)
   + `CONNECTOR_IMAP_MAILBOX_LOCK_*`. See the
   [doc-site](https://padosoft.mintlify.app/connectors-imap-serialization).
+  Diagnose blocked folder requests without Tinker using
+  `php artisan connectors:imap:diagnose <tenant>` (optionally add a backfill id):
+  discovers the IMAP installation and reports read-only queue/cache configuration
+  and separate mailbox/queue-overlap lock TTLs. Multiple accounts are listed for selection. See the
+  [operator guide](docs/operations/imap-lock-diagnostics.md).
   A **transient transport drop** on a live session (the classic *"fwrite(): SSL: Broken pipe"* /
   connection-reset / idle drop Gmail & Exchange trigger mid-sync) is **absorbed by one
   close-and-retry on a fresh connection** — nested **inside** the per-mailbox lock, so the retry
@@ -329,6 +338,49 @@ and hit Stop; click Regenerate; hover the assistant message and pick
 Branch (a new conversation forks from that point); pick a follow-up
 pill chip to chain into the next prompt; hover any code block for the
 Copy button.
+
+---
+
+## ✨ Sessions workspace — organised chat, KB on top
+
+**A second chat surface in the ChatGPT/Claude mould: the knowledge base above
+the rail, sessions grouped into your own folders, pinnable, archivable and
+flagged by importance — over the *same* chat engine, not a fork of it.**
+
+The original `/app/chat` panel lists threads reverse-chronologically and nothing
+more. That is fine at ten sessions and unusable at fifty: no way to say *this one
+matters*, *these three are the same issue*, or *put this away*. The knowledge
+base had the mirror-image gap — every KB screen was admin-gated, so a `viewer`
+could read a cited document but never browse the corpus.
+
+- **Free-form folders** — `chat_folders`, private per (tenant, user). A session
+  belongs to at most one; "unfiled" is the default, and deleting a folder
+  *unfiles* its sessions rather than deleting them (`nullOnDelete`, never a
+  cascade). Grouping by **project** already existed via `conversations.project_key`
+  and is unchanged — folders are the free axis on top of it.
+- **Pin, archive, importance** — `pinned_at` / `archived_at` are timestamps (so
+  "most recently pinned first" and an archived-on date come free); importance is a
+  3-level enum (`normal` / `high` / `critical`) ordered by explicit weights, never
+  alphabetically. Organisation writes deliberately do **not** bump `updated_at`,
+  so archiving and restoring never teleports an untouched thread to the top.
+- **Browse KB for every role** — `GET /api/kb/tree` serves the reader-side
+  explorer at `/app/{team}/knowledge` through the *same* `KbTreeService` as the
+  admin tree, with soft-deleted documents never returned and the SQL
+  `AccessScopeScope` doing the enforcement. Read-only: no editing, upload,
+  history, graph or PDF export.
+- **Zero duplication, by construction** — the whole turn engine (deferred-send
+  queue, auto-titling, retrieval-filter constraints, realtime voice,
+  branch/edit/regenerate) lives in one `useChatSession()` hook that both surfaces
+  consume; `ChatView` shrank from 794 lines to ~220. A dedicated E2E scenario
+  sends a real turn from the new panel to prove the two shells share one engine.
+
+**Try it.** Open `/app/{team}/sessions`. Create a folder, drop a session into it from
+the row menu, pin another, flag one critical, archive a fourth and reopen the
+Archived drawer. Click **Knowledge base** at the top of the rail to browse
+documents, then follow a citation from a chat answer straight into it.
+
+See the [Sessions workspace deep-dive](https://doc.askmydocs.padosoft.com/chat-sessions-workspace)
+for the architecture, the R44 MCP exception and the visibility posture.
 
 ---
 
@@ -1196,9 +1248,9 @@ The tenant-aware models — the authoritative list lives in `tests/Architecture/
 | **R30** | Every Eloquent query against a tenant-aware table MUST be scoped to the active tenant via `forTenant()` or explicit `where('tenant_id', $ctx->current())` — cross-tenant leak is a GDPR catastrophe |
 | **R31** | Every tenant-aware model MUST `use BelongsToTenant;` and list `'tenant_id'` in `$fillable`; `tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list and gates new entries on every CI run |
 | **R36** | Mandatory Copilot review + CI green loop on every PR — caught the v4 PR #98 regression where `embedding_cache` was wrongly tagged tenant-scoped |
-| **R37** | `feature/vX.Y` integration branch + once-per-major merge to main — preserves stable consumers from in-flight major work |
+| **R37** | GitFlow permanente: feature/fix/chore → `develop`; release/hotfix → `main`, poi riallineamento immediato di `develop` |
 | **R38** | Heavy work (`migrate:fresh`, big seeders) belongs in CLI workflow steps, not behind `php artisan serve` — keeps E2E reliable |
-| **R39** | Tag `vX.Y.0-rcN` at every Wn weekly milestone closure pinned to the exact closure SHA — gives auditors and downstream consumers serialised milestone visibility |
+| **R39** | RC solo quando richiesto, su SHA verificato di `release/X.Y.Z`; tag finale sulla `main` risultante |
 ---
 
 ### Team switcher (per-team SPA routing)
@@ -1987,6 +2039,11 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 
 ## Roadmap
 
+> **Nota storica sul workflow:** i nomi `feature/vX.Y` e i riferimenti a
+> R37/R39 nelle release già concluse descrivono la policy in vigore quando
+> quelle versioni furono pubblicate. Non sono istruzioni operative correnti;
+> per il nuovo lavoro fa fede [`docs/GITFLOW.md`](docs/GITFLOW.md).
+
 | Major | Status | Theme |
 |---|:---:|---|
 | **v4.0** | ✅ shipped 2026-05-02 | Enterprise platform foundation — multi-tenant + Vercel AI SDK streaming + canonical KB graph + admin shell + 5 sister packages on Packagist |
@@ -2177,9 +2234,9 @@ for the per-package timeline and locked composer constraints.
 Contributions welcome. Workflow:
 
 1. **Fork** the repository
-2. **Create** a feature branch (`feature/v4.x/<sub-task>` for v4.x work — R37)
+2. **Create** `feature/<description>` from the latest `origin/develop` (R37)
 3. **Commit** with conventional-style messages
-4. **Push** + open a PR with `--reviewer copilot-pull-request-reviewer` (R36)
+4. **Push** + open the PR toward `develop` with `--reviewer copilot-pull-request-reviewer` (R36)
 5. **Wait** for Copilot review + CI green; iterate until 0 outstanding must-fix
 6. **Merge** when both gates pass
 
@@ -2876,7 +2933,8 @@ a super-admin `POST .../regenerate`, and a new MCP tool `KbGamificationInsightsT
 (roster **31 → 32**) cover all three surfaces, with a React `CoachingCard` + admin
 `GamificationInsightsPanel` on the UI. Config lives under `kb.gamification.ai.*`
 (`KB_GAMIFICATION_AI_{ENABLED,PROVIDER,MODEL,MAX_TOKENS}`, default a free OpenRouter
-model). `feature/v8.18` merges to `main` as **v8.18.0** (R37) after the RC sequence.
+model). Nel workflow storico allora vigente, `feature/v8.18` confluisce in
+`main` come **v8.18.0** dopo la sequenza RC.
 
 **v8.17.0 — Credential-based connectors (IMAP) (GA, shipped 2026-06-20).** Adds the
 first **credential-based** connector (IMAP) to the connector framework, activatable
@@ -2944,7 +3002,8 @@ and table presence so a disabled deployment reads nothing over MCP. Plus a real-
 Playwright E2E over the package-served `/admin/ai-finops` admin SPA (admin reaches the
 shell; a viewer is denied **403** via the `viewAiFinOps` gate), with the package's
 prebuilt assets published + verified in CI; and a `docs-site` + CLAUDE.md parity pass
-(ADR 0015). `feature/v8.16` then merges to `main` as **v8.16.0** (R37).
+(ADR 0015). Nel workflow storico allora vigente, `feature/v8.16` confluisce in
+`main` come **v8.16.0**.
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor

@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { toAdminError } from '../shared/errors';
@@ -12,7 +14,7 @@ import { Drawer, Field, drawerInput, drawerPrimaryBtn } from './Drawer';
  * operator can hand them out before closing. 422 validation errors surface
  * inline next to the offending field (toAdminError flattens Laravel errors).
  *
- * Chrome (role="dialog" + aria-modal, Escape closes, scrim click closes) and
+ * Chrome (role="dialog" + aria-modal, explicit close controls only) and
  * the labelled <Field> wrapper come from the shared Drawer so dialog/close/
  * error semantics stay in lock-step with the other invitations forms (no
  * a11y/testid drift). R11/R29: testids under admin-invitations-codes-generate-*.
@@ -38,6 +40,7 @@ function buildCsv(codes: InviteCode[]): string {
 }
 
 export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerProps) {
+    const { t: translateInterface } = useUiTranslation();
     const toast = useToast();
     const generate = useGenerateCodes();
 
@@ -116,20 +119,20 @@ export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerP
                 // submit. The min/max attrs stay for spinner-stepping UX only.
                 <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <Field id="gen-campaign" label="Campaign (optional)" error={fieldErrors.campaign_id}>
-                        <select
+                        <SelectField
                             id="gen-campaign"
                             data-testid="admin-invitations-codes-generate-campaign"
                             value={campaignId}
-                            onChange={(e) => setCampaignId(e.target.value)}
+                            onValueChange={(selectedValue) => setCampaignId(selectedValue)}
                             style={drawerInput}
                         >
-                            <option value="">Standalone (no campaign)</option>
+                            <SelectOption value="">Standalone (no campaign)</SelectOption>
                             {campaigns.map((c) => (
-                                <option key={c.id} value={c.id}>
+                                <SelectOption key={c.id} value={c.id}>
                                     {c.name}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                     </Field>
 
                     <Field id="gen-count" label="Count (1–1000)" error={fieldErrors.count}>
@@ -233,8 +236,7 @@ export function CodeGeneratorDrawer({ campaigns, onClose }: CodeGeneratorDrawerP
                         ))}
                     </ul>
                     <button type="button" data-testid="admin-invitations-codes-generate-done" onClick={onClose} style={drawerPrimaryBtn}>
-                        Done
-                    </button>
+                        {translateInterface("Done")}</button>
                 </div>
             )}
         </Drawer>

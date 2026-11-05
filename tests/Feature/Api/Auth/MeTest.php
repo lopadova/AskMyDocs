@@ -71,6 +71,23 @@ class MeTest extends TestCase
             ->assertJsonPath('preferences.language', 'it-IT');
     }
 
+    public function test_me_exposes_configured_module_availability_without_changing_permissions(): void
+    {
+        config()->set('flow-admin.enabled', true);
+        config()->set('eval-harness-ui.enabled', false);
+        config()->set('evidence-risk-review.api.enabled', true);
+        config()->set('pii-redactor-admin.enabled', false);
+        $user = User::create(['name' => 'Module reader', 'email' => 'modules@example.com', 'password' => Hash::make('secret123')]);
+        $this->actingAsWithoutTenant($user);
+
+        $this->getJson('/api/auth/me')->assertOk()
+            ->assertJsonPath('features.modules.flows.enabled', true)
+            ->assertJsonPath('features.modules.eval-harness.enabled', false)
+            ->assertJsonPath('features.modules.evidence-risk-review.enabled', true)
+            ->assertJsonPath('features.modules.pii-redactor.enabled', false)
+            ->assertJsonPath('permissions', []);
+    }
+
     public function test_authenticated_me_with_role_and_membership_populates_rbac_arrays(): void
     {
         Permission::findOrCreate('kb.read.any', 'web');

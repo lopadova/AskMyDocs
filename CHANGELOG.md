@@ -11,6 +11,34 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### Unreleased — Sessions workspace (organised chat + reader KB browse)
+
+- New `/app/{team}/sessions` chat surface in the ChatGPT/Claude mould: the
+  knowledge base sits above the rail, sessions group into user-created folders
+  and can be pinned, archived or flagged `normal` / `high` / `critical`.
+  `/app/{team}/chat` is untouched and both remain.
+- Zero duplication by construction: `ChatView`'s ~350 lines of turn
+  orchestration moved into a shared headless `useChatSession()` hook that both
+  surfaces consume (`ChatView` 794 → ~220 lines). Only navigation is
+  per-surface, because TanStack's `to` is a typed literal.
+- New `chat_folders` table (tenant-aware, per-user unique name) plus four
+  additive `conversations` columns — `chat_folder_id` (nullOnDelete: a folder
+  delete unfiles, never cascades), `pinned_at`, `archived_at`, `importance`.
+  Organisation writes do not bump `updated_at`, so the recency order stays
+  honest.
+- `GET /conversations` gains `?archived=` and four additive response keys; the
+  bare-array shape is preserved (R27). `PATCH /conversations/{id}` accepts
+  folder / pinned / archived / importance alongside title, rejecting an empty
+  body with 422. New `/api/chat-folders` resource.
+- New reader-side `GET /api/kb/tree` and `/app/{team}/knowledge` Browse KB page:
+  the same `KbTreeService` core as the admin tree, soft-deleted documents never
+  returned, enforcement by the SQL `AccessScopeScope`. Reachable by every
+  authenticated role — the admin KB explorer stays admin-only.
+- R44: ships PHP (services) + HTTP with a **documented MCP exception** — per-user
+  UI organisation state changes nothing an agent can retrieve or ground on.
+
+---
+
 ### v8.30.0 — 2026-07-29 (System administration and operational membership)
 
 - `system-admin` now owns only the global `platform.admin` capability. No role

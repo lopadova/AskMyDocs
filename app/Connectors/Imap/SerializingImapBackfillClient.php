@@ -6,6 +6,7 @@ namespace App\Connectors\Imap;
 
 use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillMailboxSnapshot;
+use App\Connectors\Imap\Backfill\ImapBackfillMessageSizer;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -15,7 +16,7 @@ use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
 use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 
 /** Holds the same per-account lock as every other live IMAP surface. */
-final class SerializingImapBackfillClient implements ImapBackfillClient
+final class SerializingImapBackfillClient implements ImapBackfillClient, ImapBackfillMessageSizer
 {
     private ?Lock $lock = null;
     private bool $held = false;
@@ -74,6 +75,14 @@ final class SerializingImapBackfillClient implements ImapBackfillClient
     {
         $this->acquire();
         return $this->inner->fetchMessages($mailbox, $uids);
+    }
+
+    public function messageSizes(string $mailbox, array $uids): ?array
+    {
+        $this->acquire();
+
+        return $this->inner instanceof ImapBackfillMessageSizer
+            ? $this->inner->messageSizes($mailbox, $uids) : null;
     }
 
     public function close(): void

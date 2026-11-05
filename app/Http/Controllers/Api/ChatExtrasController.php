@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
+use App\Http\Resources\Chat\ConversationResource;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\Chat\SuggestedFollowupGenerator;
@@ -139,7 +140,11 @@ class ChatExtrasController extends Controller
         });
 
         return response()->json([
-            'conversation' => $branch->refresh(),
+            // Same shape as every other conversation producer (R27): the FE
+            // prepends this row straight into the ['conversations'] cache,
+            // so a raw model here would insert a half-shaped row missing
+            // chat_folder_id / pinned_at / archived_at / importance.
+            'conversation' => new ConversationResource($branch->refresh()),
             'copied_message_ids' => $copied,
         ], 201);
     }

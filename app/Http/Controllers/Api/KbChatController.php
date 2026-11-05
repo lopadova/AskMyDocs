@@ -11,6 +11,7 @@ use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\CounterfactualService;
 use App\Services\Guardrails\ChatGuardrails;
@@ -38,6 +39,7 @@ class KbChatController extends Controller
         KbChatRequest $request,
         AiManager $ai,
         ChatRetrievalService $retrieval,
+        KbInvestigationService $investigation,
         ChatLogManager $chatLog,
         ConfidenceCalculator $confidence,
         CounterfactualService $counterfactual,
@@ -85,7 +87,33 @@ class KbChatController extends Controller
 
         $startTime = microtime(true);
 
-        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        // The stateless endpoint follows the exact same profile-guided flow
+        // as conversation chat: raw text is interpreted first and never passed
+        // directly to vector retrieval.
+        $investigationResult = $investigation->investigate(
+            question: $question,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: (int) $request->input('depth', 3),
+            actor: $request->user(),
+        );
+        $result = $investigationResult->search;
+        if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
+            $understanding = $investigationResult->intent->understanding;
+            $context = new \App\Agent\AgentExecutionContext('stateless', $tenants->current(), $projectKey, 'chat',
+                'user', (string) $request->user()->id, \App\Support\SupportedLocale::normalize($understanding->language), 'UTC');
+            $answer = app(\App\Services\Chat\AssistantConversationResponder::class)->answer($understanding, $context, $request->user());
+            $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+            $chatLog->log(new ChatLogEntry(sessionId: $this->chatSessionId($request), userId: $request->user()->id,
+                question: $question, answer: $answer->answer, projectKey: $projectKey, aiProvider: 'server', aiModel: 'assistant-conversation',
+                chunksCount: 0, sources: [], promptTokens: 0, completionTokens: 0, totalTokens: 0, latencyMs: $latencyMs,
+                clientIp: $request->ip(), userAgent: $request->userAgent(), anonymous: $anonymous, extra: ['grounding' => $answer->grounding]));
+            $response = $this->buildSuccessResponse($answer->answer, [], 0,
+                new AiResponse($answer->answer, 'server', 'assistant-conversation'), $result, $latencyMs);
+            $response['confidence'] = null;
+            $response['meta']['grounding'] = $answer->grounding;
+            return response()->json($response);
+        }
 
         // v8.0/W3.4 — Counterfactual mini-retrieval against up to 3
         // other projects the user has membership in. RBAC-critical:
@@ -94,12 +122,18 @@ class KbChatController extends Controller
         // raw chunk pool — a project the user has no membership in
         // must never appear here. Default-ON via config; per-user
         // preference toggle lands in W3.5 (FE work).
-        $counterfactualPanels = $counterfactual->pick(
-            query: $question,
-            userId: $request->user()?->id,
-            tenantId: $tenants->current(),
-            primaryProjectKey: $projectKey,
-        );
+        // Counterfactual search is intentionally legacy-only: it broadens a
+        // raw query across other projects, incompatible with the recursive
+        // flow's profile and project boundary. An enabled investigation sees
+        // only its selected project/ACL-filtered sources.
+        $counterfactualPanels = $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            ? $counterfactual->pick(
+                query: $question,
+                userId: $request->user()?->id,
+                tenantId: $tenants->current(),
+                primaryProjectKey: $projectKey,
+            )
+            : [];
 
         // T3.3 — deterministic refusal short-circuit. If too few primary
         // chunks pass the grounding gate, we don't call the LLM at all and
@@ -110,7 +144,10 @@ class KbChatController extends Controller
         // null → 0 and silently disabled this gate in production), and
         // grounds on the FINAL rerank_score OR the vector floor so
         // lexically-strong matches aren't wrongly refused.
-        if ($retrieval->shouldRefuse($result)) {
+        if (! $investigationResult->isReady() || (
+            $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            && $retrieval->shouldRefuse($result)
+        )) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -118,8 +155,10 @@ class KbChatController extends Controller
                 projectKey: $projectKey,
                 result: $result,
                 startTime: $startTime,
-                reason: 'no_relevant_context',
+                reason: $investigationResult->refusalReason(),
                 counterfactual: $counterfactualPanels,
+                language: $investigationResult->intent?->understanding?->language,
+                clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );
         }
 
@@ -146,6 +185,7 @@ class KbChatController extends Controller
                 startTime: $startTime,
                 reason: 'blocked_by_guardrails',
                 counterfactual: $counterfactualPanels,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -154,6 +194,7 @@ class KbChatController extends Controller
             'expanded' => $result->expanded,
             'rejected' => $result->rejected,
             'projectKey' => $projectKey,
+            'retrievalInvestigation' => $investigationResult->answerPromptContext(),
         ])->render();
 
         // v8.16/W3 — one trace id per turn: run the LLM call inside the finops
@@ -194,6 +235,7 @@ class KbChatController extends Controller
                 latencyMs: $latencyMs,
                 counterfactual: $counterfactualPanels,
                 traceId: $traceId,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -342,6 +384,10 @@ class KbChatController extends Controller
                 // off, or when the calling user is anonymous).
                 'counterfactual' => $counterfactual,
                 'counterfactual_count' => count($counterfactual),
+                // The recursive-service trace is intentionally compact: it
+                // records generated KB queries and a stop reason, never source
+                // text or rejected candidates.
+                'retrieval_investigation' => $result->meta['investigation'] ?? null,
             ],
         ];
     }
@@ -369,9 +415,15 @@ class KbChatController extends Controller
         float $startTime,
         string $reason,
         array $counterfactual = [],
+        ?string $language = null,
+        ?string $clarification = null,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
+        if ($clarification !== null && $clarification !== '') {
+            $answer = $clarification;
+            $reason = 'focus_ambiguous';
+        }
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $this->chatSessionId($request),
@@ -487,16 +539,16 @@ class KbChatController extends Controller
      * generic message. Callers should NEVER receive the raw key — the
      * test suite asserts this on every refusal path.
      */
-    private function localizedRefusalMessage(string $reason): string
+    private function localizedRefusalMessage(string $reason, ?string $language = null): string
     {
         $perReasonKey = "kb.refusal.{$reason}";
-        $perReasonMessage = __($perReasonKey);
+        $perReasonMessage = __($perReasonKey, [], $language);
 
         if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
             return $perReasonMessage;
         }
 
-        return (string) __('kb.no_grounded_answer');
+        return (string) __('kb.no_grounded_answer', [], $language);
     }
 
     /**
@@ -555,9 +607,10 @@ class KbChatController extends Controller
         int $latencyMs,
         array $counterfactual = [],
         ?string $traceId = null,
+        ?string $language = null,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $this->chatSessionId($request),

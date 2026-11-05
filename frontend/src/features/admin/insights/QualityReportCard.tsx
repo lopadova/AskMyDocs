@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { QualityReport } from './insights.api';
 
 export interface QualityReportCardProps {
@@ -12,6 +13,7 @@ export interface QualityReportCardProps {
  * level import was evaluated and skipped as overkill for a 5-bar chart.)
  */
 export function QualityReportCard({ report }: QualityReportCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     if (report === null) {
         return (
             <div
@@ -24,13 +26,12 @@ export function QualityReportCard({ report }: QualityReportCardProps) {
                     background: 'var(--bg-1)',
                 }}
             >
-                <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>Quality report</h2>
+                <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>{translateInterface("Quality report")}</h2>
                 <div
                     data-testid="insight-card-quality-empty"
                     style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}
                 >
-                    Quality report unavailable for this snapshot.
-                </div>
+                    {translateInterface("Quality report unavailable for this snapshot.")}</div>
             </div>
         );
     }
@@ -53,7 +54,7 @@ export function QualityReportCard({ report }: QualityReportCardProps) {
                 gap: 10,
             }}
         >
-            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>Quality report</h2>
+            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>{translateInterface("Quality report")}</h2>
             <div
                 data-testid="insight-card-quality-summary"
                 style={{
@@ -63,10 +64,10 @@ export function QualityReportCard({ report }: QualityReportCardProps) {
                     fontSize: 11.5,
                 }}
             >
-                <SummaryItem label="Docs" value={report.total_docs} />
+                <SummaryItem label={translateInterface("Docs")} value={report.total_docs} />
                 <SummaryItem label="Chunks" value={report.total_chunks} />
-                <SummaryItem label="Short outliers" value={report.outlier_short} />
-                <SummaryItem label="Long outliers" value={report.outlier_long} />
+                <SummaryItem label={translateInterface("Short outliers")} value={report.outlier_short} />
+                <SummaryItem label={translateInterface("Long outliers")} value={report.outlier_long} />
             </div>
             <div
                 data-testid="insight-card-quality-histogram"
@@ -112,9 +113,8 @@ export function QualityReportCard({ report }: QualityReportCardProps) {
                 data-testid="insight-card-quality-missing-fm"
                 style={{ fontSize: 11.5, color: 'var(--fg-3)' }}
             >
-                {report.missing_frontmatter} canonical doc{report.missing_frontmatter === 1 ? '' : 's'}
-                {' '}missing frontmatter.
-            </div>
+                {report.missing_frontmatter} {" " + translateInterface("canonical doc")}{report.missing_frontmatter === 1 ? '' : 's'}
+                {' '}{translateInterface("missing frontmatter.")}</div>
         </div>
     );
 }

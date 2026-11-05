@@ -1,0 +1,22 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+RAPPORTO DI RISCONTRO DOCUMENTALE SIMULATO / CASO CF-01
+Documento: RD-DEMO-014-B
+Articolo esatto: TESS-DEMO-014
+Revisione esatta: B
+Data fittizia: 2026-10-19.
+
+OGGETTO
+Il rapporto RD-DEMO-014-B collega la scheda SCHEDA-DEMO-014-B alla nota
+APP-DEMO-014-B. Il suo oggetto è un confronto di riferimenti documentali,
+non una prova di qualità o un'analisi di laboratorio sul materiale.
+
+RISCONTRO DELLA STORIA INVENTATA
+Il codice articolo coincide nei due riferimenti.
+La nota APP-DEMO-014-B indica esplicitamente la revisione B.
+La scheda B dichiara la sostituzione della precedente revisione A.
+
+LIMITE ESPLICITO
+Il rapporto non contiene istruzioni di lavaggio, risultati di prove fisiche,
+certificazioni o parametri di lavorazione. Non consente di dedurli.
+Il rapporto qualità RQ-DEMO-021 riguarda un altro articolo, TESS-DEMO-021,
+e non deve essere usato come esito o approvazione di TESS-DEMO-014.

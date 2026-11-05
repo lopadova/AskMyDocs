@@ -78,7 +78,8 @@ final class PersistChunksStep implements FlowStepHandler
         // / external_id / converter into the metadata bag so the persisted
         // row carries the same shape as the legacy non-Flow path.
         $combinedMetadata = array_merge($metadata, [
-            'connector' => 'local',
+            'connector' => is_string($metadata['connector'] ?? null) && trim($metadata['connector']) !== ''
+                ? trim($metadata['connector']) : 'local',
             'external_url' => null,
             'external_id' => null,
             'converter' => is_array($parseOutput['extraction_meta'] ?? null) ? $parseOutput['extraction_meta'] : [],

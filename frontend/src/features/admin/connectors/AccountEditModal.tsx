@@ -1,7 +1,9 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toAdminError } from '../shared/errors';
 import type { AdminProject } from '../projects/admin-projects.api';
 import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
+import { ConnectorInstallationActions } from './ConnectorInstallationActions';
 import { ConnectionSettingsForm } from './ConnectionSettingsForm';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
 import { SourceAvatar } from './SourceAvatar';
@@ -11,6 +13,9 @@ import { buildConnections } from './connection-vm';
 import { useInstallationExport, useInstallationStats } from './connectors-hooks';
 import type { ConfigureConnectorPayload, ConnectorEntry, ConnectorInstallationDto } from './connectors.api';
 import { formatRelative } from './status-utils';
+import { EmailTriagePanel } from './EmailTriagePanel';
+import { Button } from '../../../components/Button';
+import './AccountEditModal.css';
 
 /**
  * v8.29 — the tabbed Edit modal for a connector account. v8.31 redesigned per the
@@ -19,25 +24,27 @@ import { formatRelative } from './status-utils';
  * ONE sticky footer ("Changes apply on next sync." + Cancel + Save) that submits
  * the active tab's form via the `form` attribute (each tab form is `footerless`).
  *
- * Three tabs over the SAME account:
+ * Tabs over the SAME account:
  *   - Details   : label + KB project binding (PATCH metadata) + at-a-glance stats
  *                 (documents synced · last sync — lazily fetched on open).
  *   - Connection: host / port / username / encryption + optional new password
  *     (reconfigure) — CREDENTIAL connectors only. Prefilled from the account's
  *     secret-free export; a blank password keeps the current one.
  *   - Settings  : the sync-settings editor. Folder-shaped connectors (IMAP) get
- *     the opinionated tri-state {@see SyncSettingsForm}; any other credential
- *     connector falls back to the generic {@see ConnectionSettingsForm}.
+ *     the opinionated tri-state {@see SyncSettingsForm}; other advertised
+ *     schemas fall back to the generic {@see ConnectionSettingsForm}.
+ *   - Triage: email capability versioned decision rules, previews and retrospective
+ *     campaigns. This tab owns its save action and keeps the modal open.
  *
  * The modal owns ONE submit/error surface (reset on tab switch) and closes on a
  * successful save; the per-tab forms throw on failure and the modal renders the
  * parsed message inline (R14 — never a silent failure).
  *
  * R15: role=dialog + aria-modal; a real tablist (role=tab/tabpanel, aria-selected);
- *      Esc + backdrop close. R29: `connector-account-{id}-edit-*` testids.
+ *      explicit close controls only. R29: `connector-account-{id}-edit-*` testids.
  */
 
-export type EditTab = 'details' | 'connection' | 'settings';
+export type EditTab = 'details' | 'connection' | 'settings' | 'triage';
 
 export interface AccountEditModalProps {
     entry: ConnectorEntry;
@@ -70,7 +77,9 @@ export function AccountEditModal({
     onClose,
     now,
 }: AccountEditModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isCredential = entry.auth_kind === 'credential';
+    const hasSettings = isCredential || (account.connection_settings_schema?.length ?? 0) > 0;
     // The Connection tab is credential-only; guard an out-of-range initialTab.
     const [tab, setTab] = useState<EditTab>(
         initialTab === 'connection' && !isCredential ? 'details' : initialTab,
@@ -84,14 +93,6 @@ export function AccountEditModal({
         setError(null);
         setFieldErrors({});
     }, [tab]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     // Prefill the Connection tab from the account's secret-free export — only fetch
     // while that tab is actually open (lazy).
@@ -117,7 +118,8 @@ export function AccountEditModal({
     const tabs: Array<{ id: EditTab; label: string; show: boolean }> = [
         { id: 'details', label: 'Details', show: true },
         { id: 'connection', label: 'Connection', show: isCredential },
-        { id: 'settings', label: 'Sync settings', show: isCredential },
+        { id: 'settings', label: 'Sync settings', show: hasSettings },
+        { id: 'triage', label: 'Triage email', show: account.supports_email_triage === true },
     ];
 
     const idBase = `connector-account-${account.id}-edit`;
@@ -128,14 +130,12 @@ export function AccountEditModal({
     const connectionNotReady = tab === 'connection' && (exportQuery.isLoading || exportQuery.isError);
     // A folder-shaped schema (IMAP) gets the tri-state settings editor; anything
     // else falls back to the generic schema-driven form.
-    const folderShaped = (account.connection_settings_schema ?? []).some((f) => f.discovery === 'folders');
+    const folderShaped = entry.key === 'imap' && (account.connection_settings_schema ?? []).some((f) => f.discovery === 'folders');
 
     return (
         <div
             data-testid={`${idBase}-backdrop`}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
+            className="connector-edit-backdrop"
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -153,6 +153,7 @@ export function AccountEditModal({
                 aria-modal="true"
                 aria-labelledby={titleId}
                 data-testid={`${idBase}-modal`}
+                className="connector-edit-modal"
                 data-active-tab={tab}
                 style={{
                     width: 600,
@@ -169,8 +170,8 @@ export function AccountEditModal({
                 }}
             >
                 {/* ── Sticky header ─────────────────────────────────────────── */}
-                <div style={{ flex: 'none', padding: '18px 22px 0', borderBottom: '1px solid var(--hairline)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="connector-edit-header" style={{ flex: 'none', padding: '18px 22px 0', borderBottom: '1px solid var(--hairline)' }}>
+                    <div className="connector-edit-identity" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <SourceAvatar
                             connectorKey={entry.key}
                             displayName={entry.display_name}
@@ -196,8 +197,8 @@ export function AccountEditModal({
                         <button
                             type="button"
                             data-testid={`${idBase}-close`}
-                            aria-label="Close"
-                            className="amd-cn-menu-btn focus-ring"
+                            aria-label={translateInterface("Close")}
+                            className="amd-cn-menu-btn focus-ring connector-edit-close"
                             onClick={onClose}
                             style={{
                                 flex: 'none',
@@ -219,7 +220,7 @@ export function AccountEditModal({
                             </svg>
                         </button>
                     </div>
-                    <div role="tablist" aria-label="Edit sections" style={{ display: 'flex', gap: 2, marginTop: 16 }}>
+                    <div className="connector-edit-tabs" role="tablist" aria-label="Edit sections" style={{ display: 'flex', gap: 2, marginTop: 16 }}>
                         {tabs
                             .filter((t) => t.show)
                             .map((t) => {
@@ -257,6 +258,7 @@ export function AccountEditModal({
                 {/* ── Scrollable body ───────────────────────────────────────── */}
                 <div
                     id={`${idBase}-panel`}
+                    className="connector-edit-panel"
                     role="tabpanel"
                     aria-labelledby={`${idBase}-tab-${tab}`}
                     style={{ flex: 1, overflowY: 'auto', padding: '20px 22px 8px' }}
@@ -311,7 +313,7 @@ export function AccountEditModal({
                         </ConnectionTabBody>
                     )}
 
-                    {tab === 'settings' && isCredential && folderShaped && (
+                    {tab === 'settings' && hasSettings && folderShaped && (
                         <SyncSettingsForm
                             footerless
                             formId={formId}
@@ -324,7 +326,7 @@ export function AccountEditModal({
                             isSubmitting={submitting}
                         />
                     )}
-                    {tab === 'settings' && isCredential && !folderShaped && (
+                    {tab === 'settings' && hasSettings && !folderShaped && (
                         <ConnectionSettingsForm
                             embedded
                             footerless
@@ -338,10 +340,13 @@ export function AccountEditModal({
                             isSubmitting={submitting}
                         />
                     )}
+                    {tab === 'settings' && <ConnectorInstallationActions account={account} />}
+                    {tab === 'triage' && account.supports_email_triage && <EmailTriagePanel installationId={account.id} />}
                 </div>
 
                 {/* ── Sticky footer ─────────────────────────────────────────── */}
                 <div
+                    className="connector-edit-footer"
                     style={{
                         flex: 'none',
                         display: 'flex',
@@ -355,48 +360,9 @@ export function AccountEditModal({
                     {/* The save-failure message renders IN the active tab body
                         (next to the fields it belongs to) — one error surface, not
                         a duplicate footer copy. */}
-                    <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-3)' }}>Changes apply on next sync.</span>
-                    <button
-                        type="button"
-                        data-testid={`${idBase}-cancel`}
-                        onClick={onClose}
-                        disabled={submitting}
-                        style={{
-                            border: '1px solid var(--panel-border-strong)',
-                            background: 'transparent',
-                            color: 'var(--fg-1)',
-                            font: 'inherit',
-                            fontSize: 13,
-                            fontWeight: 600,
-                            padding: '9px 16px',
-                            borderRadius: 9,
-                            cursor: submitting ? 'not-allowed' : 'pointer',
-                            opacity: submitting ? 0.6 : 1,
-                        }}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        form={formId}
-                        data-testid={`${idBase}-save`}
-                        disabled={submitting || connectionNotReady}
-                        style={{
-                            border: 'none',
-                            background: 'var(--grad-accent)',
-                            color: '#fff',
-                            font: 'inherit',
-                            fontSize: 13,
-                            fontWeight: 600,
-                            padding: '9px 18px',
-                            borderRadius: 9,
-                            cursor: submitting || connectionNotReady ? 'not-allowed' : 'pointer',
-                            opacity: submitting || connectionNotReady ? 0.6 : 1,
-                            boxShadow: '0 2px 12px rgba(139,92,246,.4)',
-                        }}
-                    >
-                        {submitting ? 'Saving…' : 'Save changes'}
-                    </button>
+                    <span className="connector-edit-save-hint" style={{ flex: 1, fontSize: 12, color: 'var(--fg-3)' }}>{tab === 'triage' ? 'Salva le regole dal pannello. Il recupero storico si avvia separatamente.' : account.connection_settings_schema?.some((field) => field.name === 'ingestion.enabled') ? 'Feature switches apply when saved. Content changes apply on next sync.' : 'Changes apply on next sync.'}</span>
+                    <Button data-testid={`${idBase}-cancel`} onClick={onClose} disabled={submitting}>{tab === 'triage' ? translateInterface("Close") : translateInterface("Cancel")}</Button>
+                    {tab !== 'triage' && <Button type="submit" variant="primary" form={formId} data-testid={`${idBase}-save`} busy={submitting} disabled={submitting || connectionNotReady}>{translateInterface("Save changes")}</Button>}
                 </div>
             </div>
         </div>
@@ -473,6 +439,7 @@ interface ConnectionTabBodyProps {
  * with empty defaults that would silently overwrite the stored connection params).
  */
 function ConnectionTabBody({ entry, loading, error, onRetry, children }: ConnectionTabBodyProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     if (loading) {
         return (
             <div
@@ -508,8 +475,7 @@ function ConnectionTabBody({ entry, loading, error, onRetry, children }: Connect
                         cursor: 'pointer',
                     }}
                 >
-                    Retry
-                </button>
+                    {translateInterface("Retry")}</button>
             </div>
         );
     }

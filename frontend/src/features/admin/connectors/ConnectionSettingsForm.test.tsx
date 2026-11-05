@@ -95,7 +95,7 @@ describe('ConnectionSettingsForm', () => {
         expect(screen.getByTestId('connector-imap-settings-senders-exclude-chip-noreply-x-com-remove')).toBeTruthy();
 
         // Select + checkbox seed.
-        expect((screen.getByTestId('connector-imap-settings-body-format') as HTMLSelectElement).value).toBe('prefer_html');
+        expect(screen.getByTestId('connector-imap-settings-body-format')).toHaveAttribute('data-value', 'prefer_html');
         expect((screen.getByTestId('connector-imap-settings-skip-auto-generated') as HTMLInputElement).checked).toBe(false);
     });
 
@@ -160,4 +160,50 @@ describe('ConnectionSettingsForm', () => {
         fireEvent.click(screen.getByTestId('connector-imap-settings-form-cancel'));
         expect(onClose).toHaveBeenCalledTimes(1);
     });
+});
+
+
+it('renders independent Freshdesk feature switches and submits explicit false values', () => {
+    const onSubmit = vi.fn();
+    const schema = [
+        field({ name: 'ingestion.enabled', label: 'Import into knowledge base', type: 'checkbox', default: true, group: 'Features' }),
+        field({ name: 'chat_tools.enabled', label: 'Live consultation', type: 'checkbox', default: true, group: 'Features' }),
+        field({ name: 'case_studies.enabled', label: 'Case sheets', type: 'checkbox', default: true, group: 'Features' }),
+    ];
+    render(<ConnectionSettingsForm connectorKey="freshdesk"
+        account={{ ...makeAccount({ chat_tools: { enabled: false } }), connection_settings_schema: schema }}
+        onSubmit={onSubmit} onClose={vi.fn()} />);
+    const ingestion = screen.getByRole('checkbox', { name: 'Import into knowledge base' });
+    const live = screen.getByRole('checkbox', { name: 'Live consultation' });
+    const cases = screen.getByRole('checkbox', { name: 'Case sheets' });
+    expect(ingestion).toBeChecked();
+    expect(live).not.toBeChecked();
+    expect(cases).toBeChecked();
+    fireEvent.click(ingestion);
+    fireEvent.click(cases);
+    fireEvent.submit(screen.getByTestId('connector-freshdesk-settings-form'));
+    expect(onSubmit).toHaveBeenCalledWith({
+        ingestion: { enabled: false }, chat_tools: { enabled: false }, case_studies: { enabled: false },
+    });
+});
+
+
+it('renders and round-trips an optional historical date including clearing it to full history', () => {
+    const onSubmit = vi.fn();
+    const account = { ...makeAccount(), connection_settings_schema: [field({
+        name: 'history.start_date', type: 'date', label: 'Historical import start date (UTC)',
+        min: '1970-01-01', max: '2026-10-12', group: 'Historical import',
+    })], settings: { history: { start_date: '2024-01-01' } } };
+    render(<ConnectionSettingsForm connectorKey="freshdesk" account={account} onSubmit={onSubmit} onClose={vi.fn()} />);
+    const input = screen.getByLabelText('Historical import start date (UTC)');
+    expect(input).toHaveAttribute('type', 'date');
+    expect(input).toHaveAttribute('min', '1970-01-01');
+    expect(input).toHaveAttribute('max', '2026-10-12');
+    expect(input).toHaveValue('2024-01-01');
+    fireEvent.change(input, { target: { value: '2025-02-01' } });
+    fireEvent.submit(screen.getByTestId('connector-freshdesk-settings-form'));
+    expect(onSubmit).toHaveBeenLastCalledWith({ history: { start_date: '2025-02-01' } });
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.submit(screen.getByTestId('connector-freshdesk-settings-form'));
+    expect(onSubmit).toHaveBeenLastCalledWith({ history: { start_date: null } });
 });

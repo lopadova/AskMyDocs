@@ -28,6 +28,56 @@ Start every investigation here.
 
 A `degraded`/`down` here localises the fault before you read a single log line.
 
+## A conversation appears stuck on knowledge search
+
+Download the existing chat debug JSON while the run is still active:
+`GET /api/admin/conversations/{conversation}/debug-transcript` (tenant
+administrator access). It performs no AI requests or remote diagnostic probes.
+The transcript remains schema version 2; additive `diagnostics` blocks use
+their own schema version 1.
+
+Read `agent_runs[].diagnostics.open_spans` and `waiting.observed_phase` to find
+the latest work boundary whose completion has not been recorded. For example,
+an open `queue.wait` with `wait_for: worker_receipt` locates enqueue/receipt;
+`kb.vector_query` locates a local database query; `kb.embedding`, `kb.rerank`,
+`kb.assessment_provider` or `provider.*` locate their corresponding operation;
+`tool.execute` identifies the tool boundary. Parallel research can have several
+pending spans: follow verified `research_links.children` to the child runs in
+the same export.
+
+Compare `last_activity_at`/`activity_age_ms` across downloads. Only durable work
+observations count; a parent row's `updated_at`, transport activity and SSE
+heartbeats do not prove retrieval progress. `transport_last_activity` and
+`transport.*` spans describe the server stream separately. Emitting a frame
+does not prove that the browser received it.
+
+A failed span with `error_handled: true` records a handled exception or explicit failed research result;
+`error_kind: timeout` requires an observed timeout exception class. Warnings
+`terminal_event_not_recorded` and `open_spans_in_terminal_run` identify missing
+observations. An old open span alone does not prove a stalled worker or a
+timeout: `waiting.cause` stays `unknown` and worker liveness is `not_probed`.
+Reads are not an atomic snapshot, so active transitions may briefly disagree.
+Research branch events normally appear in the parent event stream.
+
+Compare top-level `diagnostics.runtime_at_export` with execution-span
+`metadata.runtime` to detect release/configuration differences between the web
+process and worker. Runtime includes allowlisted release/environment, runtime
+versions, queue/timeout, cache/database drivers and planner/fanout settings;
+there is no environment or endpoint dump. The optional
+`APP_RELEASE` identifies the normal deployed build. No timeout,
+provider or cancellation policy changes are made by diagnostics.
+
+Each run persists at most 256 spans with 2,048-byte technical metadata.
+At most eight transport spans are retained. Apply the diagnostic-table migration
+and restart long-lived workers through the normal deployment process.
+`span_capacity_reached`, truncation markers and `availability` expose coverage
+limits; old uninstrumented runs cannot be reconstructed. The existing
+transcript's size contract is unchanged, and content uses the shared
+credential/PII redactor. Full schema, interpretation and a sanitized annotated
+example are maintained in the repository at
+`docs/session-debug-diagnostics.md` and
+`docs/examples/session-debug-pending-kb.json`.
+
 ## Embedding-dimension gotcha
 
 **Symptom:** after switching the embeddings provider/model, ingestion crashes on

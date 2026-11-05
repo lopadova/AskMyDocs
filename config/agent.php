@@ -3,9 +3,64 @@
 declare(strict_types=1);
 
 return [
+    'diagnostics' => [
+        // Explicit immutable deployment label/commit SHA. Never shell out or read .git on requests.
+        'release' => env('APP_RELEASE'),
+    ],
+    'tenant_instructions' => '',
+    'waves' => [
+        'enabled' => (bool) env('AGENT_WAVES_ENABLED', true),
+        'combined_initial_planning' => (bool) env('AGENT_COMBINED_INITIAL_PLANNING', true),
+        'concurrency' => max(1, (int) env('AGENT_WAVE_CONCURRENCY', 10)),
+        // A task boots a whole PHP application. Keep the default safe for the
+        // 512 MiB development worker, independently of logical wave width.
+        'process_concurrency' => max(1, (int) env('AGENT_WAVE_PROCESS_CONCURRENCY', 2)),
+        'timeout_seconds' => max(1, (int) env('AGENT_WAVE_TIMEOUT_SECONDS', 45)),
+        'exact_embedding_timeout_seconds' => max(1, (int) env('AGENT_EXACT_EMBEDDING_TIMEOUT_SECONDS', 10)),
+        'minimum_dispatch_seconds' => max(1, (int) env('AGENT_WAVE_MINIMUM_DISPATCH_SECONDS', 5)),
+    ],
+    'progressive' => ['enabled' => (bool) env('AGENT_PROGRESSIVE_ANSWERS_ENABLED', true)],
+    'finalization' => ['safety_seconds' => 5, 'provider_reserve_seconds' => 10, 'repair_min_seconds' => 45, 'presentation_min_seconds' => 45],
     'queue' => env('AGENT_QUEUE', 'agent'),
+    // Must remain below the queue connection's retry_after. See the reasoning runbook.
+    'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),
     'planner' => [
-        'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 8),
+        'mode' => env('AGENT_PLANNER_MODE', 'classic'),
+        // Avoid starting another planning round without enough collection time.
+        'time_reserve_seconds' => (int) env('AGENT_PLANNER_TIME_RESERVE_SECONDS', 30),
+        'max_actions_per_plan' => (int) env('AGENT_MAX_ACTIONS_PER_PLAN', 20),
+        'router_catalog_limit' => (int) env('AGENT_ROUTER_CATALOG_LIMIT', 40),
+        'candidate_limit' => (int) env('AGENT_PLANNER_CANDIDATE_LIMIT', 8),
+    ],
+    'synthesis' => [
+        'request_timeout_seconds' => max(1, (int) env('AGENT_TEXT_REQUEST_TIMEOUT_SECONDS', 60)),
+        'reasoning_effort' => env('AGENT_TEXT_REASONING_EFFORT', 'low'),
+        'time_reserve_seconds' => (int) env('AGENT_SYNTHESIS_TIME_RESERVE_SECONDS', 60),
+        // Provider-native model ids; null inherits the selected chat model.
+        'model' => env('AGENT_ANSWER_MODEL'),
+        'repair_model' => env('AGENT_ANSWER_REPAIR_MODEL'),
+        // Reasoning may exhaust the ordinary completion budget before the
+        // structured tool arguments finish. Only the one retry gets more room.
+        'structured_retry_max_tokens' => (int) env('AGENT_STRUCTURED_RETRY_MAX_TOKENS', 16384),
+    ],
+    'presentation' => [
+        'enabled' => (bool) env('AGENT_PRESENTATION_ENABLED', true),
+        // Inherits the answer model unless a separate provider-native id is chosen.
+        'model' => env('AGENT_PRESENTATION_MODEL'),
+    ],
+    'grounding' => [
+        // Agent answers are assembled from evidence-bound claims. This remains
+        // configurable only as an emergency rollback; production defaults to
+        // fail closed for every agent surface.
+        'enabled' => (bool) env('AGENT_CLAIM_GROUNDING_ENABLED', true),
+        // Batch Jev validation is the default on every agent surface. Disable
+        // this switch to roll back to the previous literal-quote gate.
+        'batch' => ['enabled' => (bool) env('AGENT_BATCH_SEMANTIC_GROUNDING_ENABLED', true)],
+        'semantic' => [
+            'enabled' => (bool) env('AGENT_SEMANTIC_GROUNDING_ENABLED', false),
+            // No universal default: calibrate this on labeled agent turns before enabling.
+            'threshold' => env('AGENT_SEMANTIC_GROUNDING_THRESHOLD', 0.8),
+        ],
     ],
     'events' => [
         'poll_ms' => (int) env('AGENT_EVENT_POLL_MS', 100),
@@ -25,11 +80,52 @@ return [
         'physical_hard' => (int) env('AGENT_PHYSICAL_HARD_LIMIT', 100),
         'consecutive_errors' => (int) env('AGENT_CONSECUTIVE_ERROR_LIMIT', 3),
         'duplicate_calls' => (int) env('AGENT_DUPLICATE_CALL_LIMIT', 2),
+        // Stops the knowledge-base tool after this many DIFFERENT queries in
+        // a row that each failed to surface any evidence the run didn't
+        // already have — a safety net against the planner blindly guessing
+        // topic after topic on a question with no answerable query (e.g. a
+        // catalog/overview request search_knowledge_base can't satisfy).
+        // Fixed regardless of investigation depth by design (AgentBudgetTracker::
+        // DEPTH_SCALED_LIMITS deliberately excludes it) — a higher depth
+        // should search MORE when it's finding something, never search
+        // blindly longer once it demonstrably isn't.
+        'consecutive_unproductive_searches' => (int) env('AGENT_CONSECUTIVE_UNPRODUCTIVE_SEARCH_LIMIT', 3),
         'interactive_time_seconds' => (int) env('AGENT_INTERACTIVE_TIME_LIMIT', 60),
         'bulk_time_seconds' => (int) env('AGENT_BULK_TIME_LIMIT', 90),
         'evidence_bytes' => (int) env('AGENT_EVIDENCE_BYTE_LIMIT', 524288),
         'confirmation_logical_extension_max' => (int) env('AGENT_CONFIRMATION_LOGICAL_EXTENSION_MAX', 25),
         'confirmation_physical_extension_max' => (int) env('AGENT_CONFIRMATION_PHYSICAL_EXTENSION_MAX', 100),
+    ],
+    /*
+    |--------------------------------------------------------------------------
+    | Investigation depth (1-5, user-facing "livello di approfondimento")
+    |--------------------------------------------------------------------------
+    |
+    | A per-run multiplier applied by AgentBudgetTracker::limit() to the
+    | depth-eligible entries in `limits` above (iterations, logical_soft/
+    | hard, physical_hard, both time budgets, evidence_bytes) — NOT to
+    | consecutive_errors/duplicate_calls, which stay fixed loop-safety
+    | guards regardless of how deep the caller asked to go. A higher depth
+    | gives the planner more plan->act->observe cycles to decide it needs
+    | another cascading KB search (or another tool call), and more evidence
+    | headroom + wall-clock time to actually finish that investigation — the
+    | run is durable/async (AgentRun + polling), so a longer time budget
+    | never blocks the initiating HTTP request.
+    |
+    | Level 3 = 1.0x = today's unscaled defaults, so a caller that never
+    | sends `depth` (or any pre-existing client) behaves byte-identically
+    | to before this knob existed.
+    |
+    */
+    'depth' => [
+        'multipliers' => [
+            1 => (float) env('AGENT_DEPTH_MULTIPLIER_1', 0.5),
+            2 => (float) env('AGENT_DEPTH_MULTIPLIER_2', 0.75),
+            3 => (float) env('AGENT_DEPTH_MULTIPLIER_3', 1.0),
+            4 => (float) env('AGENT_DEPTH_MULTIPLIER_4', 2.0),
+            5 => (float) env('AGENT_DEPTH_MULTIPLIER_5', 3.0),
+        ],
+        'default' => (int) env('AGENT_DEPTH_DEFAULT', 3),
     ],
     'locales' => [
         'supported' => array_values(array_filter(array_map(

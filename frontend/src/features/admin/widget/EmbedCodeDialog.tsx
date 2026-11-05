@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { ExternalLink, Info, ShieldCheck } from 'lucide-react';
 
@@ -123,6 +124,7 @@ export function EmbedCodeDialog({
     theme,
     intro,
 }: EmbedCodeDialogProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [title, setTitle] = useState('');
     const [launcherLabel, setLauncherLabel] = useState('');
     const [autoOpen, setAutoOpen] = useState(false);
@@ -451,7 +453,7 @@ export function EmbedCodeDialog({
                                 )}
                                 {mode === 'inline' ? (
                                     <>
-                                        The <code className="font-mono">&lt;div&gt;</code> is where
+                                        {translateInterface("The") + " "}<code className="font-mono">&lt;div&gt;</code> is where
                                         the chat renders — give it the height you want. The first{' '}
                                         <code className="font-mono">&lt;script&gt;</code> sets the
                                         configuration and the{' '}
@@ -481,7 +483,7 @@ export function EmbedCodeDialog({
                                     data-testid="admin-widget-embed-opt-title"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="Assistant"
+                                    placeholder={translateInterface("Assistant")}
                                 />
                             </div>
                             {mode === 'helper' && (

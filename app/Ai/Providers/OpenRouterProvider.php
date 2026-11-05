@@ -9,6 +9,7 @@ use App\Ai\Providers\Concerns\FallbackStreaming;
 use App\Ai\Providers\Concerns\SdkChat;
 use App\Ai\Support\ToolTurnDetector;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * OpenRouter provider — HYBRID adapter (v8.16/W2).
@@ -54,7 +55,7 @@ final class OpenRouterProvider implements AiProviderInterface
         // with-tools call (`tools` in options) AND the MCP loop's final answer
         // turn (no `tools`, but the history carries assistant `tool_calls` /
         // `role:'tool'` messages the SDK can't represent). Everything else → SDK.
-        if (array_key_exists('tools', $options) || ToolTurnDetector::historyHasToolTurn($messages)) {
+        if (array_key_exists('tools', $options) || array_key_exists('response_format', $options) || ToolTurnDetector::historyHasToolTurn($messages)) {
             return $this->chatViaHttpWithTools($systemPrompt, $messages, $options);
         }
 
@@ -109,6 +110,7 @@ final class OpenRouterProvider implements AiProviderInterface
      */
     private function chatViaHttpWithTools(string $systemPrompt, array $messages, array $options): AiResponse
     {
+        $requestStarted = microtime(true);
         $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
         foreach ($messages as $msg) {
             if (! is_array($msg)) {
@@ -145,7 +147,16 @@ final class OpenRouterProvider implements AiProviderInterface
             'messages' => $apiMessages,
             'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
             'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
+            'usage' => ['include' => true],
         ];
+
+        if (array_key_exists('response_format', $options)) {
+            $payload['response_format'] = $options['response_format'];
+            $payload['provider'] = ['require_parameters' => true];
+        }
+        if (is_array($options['provider'] ?? null)) {
+            $payload['provider'] = [...$options['provider'], ...($payload['provider'] ?? [])];
+        }
 
         // `tools` is absent on the MCP final answer turn (tool history, no tools);
         // only attach when the caller actually offers tools this turn. `tool_choice`
@@ -159,13 +170,29 @@ final class OpenRouterProvider implements AiProviderInterface
         }
 
         $baseUrl = rtrim($this->config['url'] ?? 'https://openrouter.ai/api/v1', '/');
+        $parameters = $this->supportedParameters($baseUrl, $payload['model'], $options['timeout'] ?? null);
+        if ($parameters !== null && ! in_array('temperature', $parameters, true)) {
+            // Sampling is optional. Keep required tools/schema unchanged while
+            // using the model's native sampling when its catalog disallows it.
+            unset($payload['temperature']);
+        }
+        if (is_array($options['reasoning'] ?? null) && $parameters !== null
+            && (in_array('reasoning', $parameters, true) || in_array('reasoning_effort', $parameters, true))) {
+            $payload['reasoning'] = $options['reasoning'];
+        }
+        $timeout = (float) ($this->config['timeout'] ?? 120);
+        if (isset($options['timeout'])) {
+            $budget = (float) $options['timeout'] - (microtime(true) - $requestStarted);
+            if ($budget <= 0) throw new \DomainException('ai_request_deadline_exhausted');
+            $timeout = min($timeout, $budget);
+        }
 
         $response = Http::withToken($this->config['key'])
             ->withHeaders([
                 'HTTP-Referer' => $this->config['http_referer'] ?? config('app.url', ''),
                 'X-Title' => $this->config['x_title'] ?? config('app.name', 'Enterprise KB'),
             ])
-            ->timeout($this->config['timeout'] ?? 120)
+            ->timeout($timeout)
             ->post("{$baseUrl}/chat/completions", $payload);
 
         $response->throw();
@@ -182,6 +209,25 @@ final class OpenRouterProvider implements AiProviderInterface
             finishReason: $data['choices'][0]['finish_reason'] ?? null,
             toolCalls: $this->normalizeToolCalls($message['tool_calls'] ?? null),
         );
+    }
+
+    /** Unknown capabilities preserve the request; never guess from model names. */
+    private function supportedParameters(string $baseUrl, string $model, ?float $timeoutSeconds = null): ?array
+    {
+        try {
+            return Cache::remember('openrouter-parameters:'.hash('sha256', $baseUrl.'|'.$model), 3600, function () use ($baseUrl, $model, $timeoutSeconds) {
+                $response = Http::timeout(min(10, $timeoutSeconds ?? 10))->get($baseUrl.'/models/'.str_replace('%2F', '/', rawurlencode($model)).'/endpoints');
+                $endpoints = $response->successful() ? $response->json('data.endpoints') : null;
+                if (! is_array($endpoints) || $endpoints === []
+                    || array_filter($endpoints, fn ($endpoint) => ! is_array($endpoint['supported_parameters'] ?? null))) {
+                    return null;
+                }
+
+                return array_values(array_unique(array_merge(...array_column($endpoints, 'supported_parameters'))));
+            });
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function normalizeToolCalls(mixed $rawToolCalls): array

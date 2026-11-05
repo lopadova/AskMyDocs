@@ -31,8 +31,8 @@ export interface UpdateProjectPayload {
 }
 
 export const adminProjectsApi = {
-    async list(): Promise<AdminProject[]> {
-        const { data } = await api.get<{ data: AdminProject[] }>('/api/admin/projects');
+    async list(tenant?: string | null): Promise<AdminProject[]> {
+        const { data } = await api.get<{ data: AdminProject[] }>('/api/admin/projects', tenant ? { headers: { 'X-Tenant-Id': tenant } } : undefined);
         return data.data;
     },
 

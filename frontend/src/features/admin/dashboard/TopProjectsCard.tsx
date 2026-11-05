@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { AdminTopProjectRow } from '../admin.api';
 import type { ChartState } from './ChartCard';
 
@@ -7,6 +8,7 @@ export interface TopProjectsCardProps {
 }
 
 export function TopProjectsCard({ rows, state }: TopProjectsCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const hasData = rows.length > 0;
     const resolvedState: ChartState = state === 'ready' && !hasData ? 'empty' : state;
     const max = Math.max(1, ...rows.map((r) => r.count));
@@ -33,18 +35,16 @@ export function TopProjectsCard({ rows, state }: TopProjectsCardProps) {
                     color: 'var(--fg-0)',
                 }}
             >
-                Top projects (7d)
-            </h3>
+                {translateInterface("Top projects (7d)")}</h3>
             {resolvedState === 'empty' ? (
                 <div
                     data-testid="top-projects-empty"
                     style={{ color: 'var(--fg-3)', fontSize: 12, fontFamily: 'var(--font-mono)' }}
                 >
-                    No chats yet for any project.
-                </div>
+                    {translateInterface("No chats yet for any project.")}</div>
             ) : resolvedState === 'loading' ? (
                 <div style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    <span className="shimmer">loading…</span>
+                    <span className="shimmer">{translateInterface("loading…")}</span>
                 </div>
             ) : (
                 <ul

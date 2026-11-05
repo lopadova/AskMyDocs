@@ -1,5 +1,7 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
+import { ChevronDown, FileText, Quote, ExternalLink, XIcon } from 'lucide-react';
 
 import {
     Dialog,
@@ -11,6 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { Markdown } from '../../lib/markdown';
 import { chatApi, type MessageCitation } from './chat.api';
+import { Button } from '@/components/Button';
+import './citation-document-modal.css';
 
 export interface CitationDocumentModalProps {
     /**
@@ -50,11 +54,12 @@ function fileName(path: string | null | undefined): string | null {
  * the chat answers (so wikilinks/callouts resolve).
  *
  * Works for EVERY reader, not only admins (who previously got navigated away to
- * the admin KB page). a11y comes from the Radix Dialog: focus trap, Escape,
+ * the admin KB page). a11y comes from the Radix Dialog: focus trap, explicit close controls,
  * `aria-modal`, restore-focus. R11/R29: stable testids; R14: the error path
  * surfaces a visible, retryable alert rather than a silent blank.
  */
 export function CitationDocumentModal({ citation, onClose, onOpenInKb }: CitationDocumentModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const documentId = citation.document_id;
 
     const { data, isLoading, isError, isFetching, refetch } = useQuery({
@@ -71,6 +76,7 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
     const state = isLoading ? 'loading' : isError ? 'error' : empty ? 'empty' : ready ? 'ready' : 'idle';
     const project = citation.project_key ?? data?.project_key ?? undefined;
     const origin = citation.origin ?? 'primary';
+    const claims = Array.isArray(citation.claims) ? citation.claims : [];
 
     // Defensive: ChatView + CitationsPopover only open a citation with a
     // concrete document_id; render nothing rather than a blank modal if a
@@ -93,63 +99,35 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                 data-testid="chat-citation-modal"
                 aria-busy={isFetching}
                 showCloseButton={false}
-                className="max-w-2xl"
-                style={{ maxHeight: '85vh', gridTemplateRows: 'auto minmax(0, 1fr) auto', gap: 12 }}
+                className="citation-document-dialog"
             >
-                <DialogHeader>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span
-                            data-testid="chat-citation-modal-origin"
-                            className="pill"
-                            style={{
-                                padding: '2px 8px',
-                                fontSize: 10.5,
-                                borderRadius: 99,
-                                border: '1px solid var(--panel-border)',
-                                color: 'var(--fg-2)',
-                                textTransform: 'uppercase',
-                                letterSpacing: '.06em',
-                                fontFamily: 'var(--font-mono)',
-                            }}
-                        >
-                            {ORIGIN_LABEL[origin] ?? origin}
-                        </span>
-                        <DialogClose asChild>
-                            <button
-                                type="button"
-                                data-testid="chat-citation-modal-close"
-                                aria-label="Close source document"
-                                style={{
-                                    marginLeft: 'auto',
-                                    cursor: 'pointer',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--fg-3)',
-                                    fontSize: 16,
-                                    lineHeight: 1,
-                                    padding: 4,
-                                }}
-                            >
-                                ✕
-                            </button>
-                        </DialogClose>
-                    </div>
-                    <DialogTitle data-testid="chat-citation-modal-title">{title}</DialogTitle>
-                    {citation.source_path && (
-                        <DialogDescription
-                            data-testid="chat-citation-modal-path"
-                            className="mono"
-                            style={{ wordBreak: 'break-all' }}
-                        >
-                            {citation.source_path}
+                <DialogHeader className="citation-document-header">
+                    <span className="citation-document-icon"><FileText size={30} aria-hidden /></span>
+                    <div className="citation-document-heading">
+                        <div className="citation-document-eyebrow">
+                            <span>Source document</span>
+                            <span data-testid="chat-citation-modal-origin" className="citation-document-origin">
+                                {ORIGIN_LABEL[origin] ?? origin}
+                            </span>
+                        </div>
+                        <DialogTitle data-testid="chat-citation-modal-title" className="citation-document-title">{title}</DialogTitle>
+                        <DialogDescription>
+                            Read the original source and the passages behind this answer.
                         </DialogDescription>
-                    )}
+                    </div>
+                    <DialogClose asChild>
+                        <Button variant="quiet" size="sm" iconOnly
+                            data-testid="chat-citation-modal-close" aria-label="Close source document"
+                            className="citation-document-close">
+                            <XIcon aria-hidden size={16} />
+                        </Button>
+                    </DialogClose>
                 </DialogHeader>
 
                 <div
                     data-testid="chat-citation-modal-body"
                     data-state={state}
-                    style={{ overflowY: 'auto', minHeight: 0, lineHeight: 1.55 }}
+                    className={`citation-document-body${ready && !empty && claims.length > 0 ? ' has-evidence' : ''}`}
                 >
                     {isLoading && (
                         <div data-testid="chat-citation-modal-loading" style={{ color: 'var(--fg-3)' }}>
@@ -159,62 +137,62 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
                     {isError && (
                         <div data-testid="chat-citation-modal-error" role="alert" style={{ color: 'var(--fg-2)' }}>
                             <p style={{ marginBottom: 8 }}>Could not load this document.</p>
-                            <button
-                                type="button"
-                                data-testid="chat-citation-modal-retry"
-                                onClick={() => void refetch()}
-                                style={{
-                                    cursor: 'pointer',
-                                    padding: '4px 12px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--panel-border)',
-                                    background: 'var(--bg-2)',
-                                    color: 'var(--fg-1)',
-                                }}
-                            >
-                                Retry
-                            </button>
+                            <Button size="sm" data-testid="chat-citation-modal-retry"
+                                onClick={() => void refetch()} busy={isFetching}>
+                                {translateInterface("Retry")}</Button>
                         </div>
                     )}
                     {empty && (
                         <div data-testid="chat-citation-modal-empty" style={{ color: 'var(--fg-3)' }}>
-                            This document has no indexed content yet.
-                        </div>
+                            {translateInterface("This document has no indexed content yet.")}</div>
                     )}
                     {ready && !empty && (
-                        <div data-testid="chat-citation-modal-content">
-                            <Markdown source={content} project={project ?? undefined} />
-                        </div>
+                        <>
+                            {claims.length > 0 && (
+                                <section data-testid="chat-citation-modal-evidence" className="citation-document-evidence">
+                                    <h3 className="citation-document-section-label"><Quote size={26} aria-hidden />
+                                        {claims.length === 1 ? 'Passaggio usato nella risposta' : 'Passaggi usati nella risposta'}
+                                    </h3>
+                                    {claims.map((claim) => (
+                                        <div key={`${claim.evidence_hash}:${claim.text}`} className="citation-document-claim">
+                                            <blockquote className="citation-document-claim-text"><Markdown source={claim.text} project={project} /></blockquote>
+                                            {claim.quote && (
+                                                <details className="citation-document-excerpt">
+                                                    <summary>Estratto originale <ChevronDown size={14} aria-hidden /></summary>
+                                                    <blockquote><Markdown source={claim.quote} project={project} /></blockquote>
+                                                </details>
+                                            )}
+                                        </div>
+                                    ))}
+                                </section>
+                            )}
+                            <section className="citation-document-reader" aria-label="Document content" tabIndex={0}>
+                                <h3 className="citation-document-section-label"><FileText size={20} aria-hidden />Document content</h3>
+                                <div data-testid="chat-citation-modal-content" className="citation-document-content">
+                                    <Markdown source={content} project={project ?? undefined} />
+                                </div>
+                            </section>
+                        </>
                     )}
                 </div>
 
-                {onOpenInKb && documentId != null && (
-                    <div
-                        style={{
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            borderTop: '1px solid var(--panel-border)',
-                            paddingTop: 10,
-                        }}
-                    >
-                        <button
-                            type="button"
-                            data-testid="chat-citation-modal-open-kb"
-                            onClick={() => onOpenInKb(citation)}
-                            style={{
-                                cursor: 'pointer',
-                                padding: '6px 14px',
-                                borderRadius: 8,
-                                border: '1px solid var(--panel-border)',
-                                background: 'var(--bg-2)',
-                                color: 'var(--fg-1)',
-                                fontSize: 12.5,
-                            }}
-                        >
-                            Open in Knowledge Base ↗
-                        </button>
-                    </div>
-                )}
+                <footer className="citation-document-footer">
+                    <details className="citation-document-details">
+                        <summary>Source details <ChevronDown size={14} aria-hidden /></summary>
+                        <div className="citation-document-metadata">
+                            <span>{translateInterface("Document #")}{documentId}{project ? ` · ${project}` : ''}</span>
+                            {citation.source_path && (
+                                <p data-testid="chat-citation-modal-path">{citation.source_path}</p>
+                            )}
+                        </div>
+                    </details>
+                    {onOpenInKb && (
+                        <Button variant="primary" size="md" data-testid="chat-citation-modal-open-kb"
+                            onClick={() => onOpenInKb(citation)} trailingIcon={<ExternalLink aria-hidden size={14} />}>
+                            Open in Knowledge Base
+                        </Button>
+                    )}
+                </footer>
             </DialogContent>
         </Dialog>
     );

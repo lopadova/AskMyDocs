@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../Icons';
 import { ProjectDot } from './Avatar';
@@ -25,7 +26,7 @@ export type TeamSwitcherProps = {
 
 // Deterministic accent per team — teams (unlike the old seed projects)
 // carry no colour of their own.
-const TEAM_COLORS = ['#8b5cf6', '#22d3ee', '#f97316', '#a3e635', '#f43f5e', '#eab308'];
+const TEAM_COLORS = ['#a9bda2', '#c2a97e', '#839fa3', '#bba38f', '#9ca78c', '#8caea1'];
 
 function teamColor(teams: Team[], tenantId: string): string {
     const idx = Math.max(
@@ -36,6 +37,7 @@ function teamColor(teams: Team[], tenantId: string): string {
 }
 
 export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement | null>(null);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -72,11 +74,11 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
     }, [open]);
 
     return (
-        <div ref={ref} style={{ position: 'relative' }}>
+        <div ref={ref} className="shell-menu-anchor shell-team-switcher">
             <button
                 ref={triggerRef}
                 type="button"
-                className="focus-ring"
+                className="focus-ring shell-context-trigger"
                 data-testid="team-switcher-trigger"
                 onClick={() => setOpen((o) => !o)}
                 disabled={singleTeam}
@@ -84,24 +86,10 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
-                aria-label={`Active team: ${team.name}`}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 10px',
-                    background: 'var(--bg-2)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: 9,
-                    cursor: singleTeam ? 'default' : 'pointer',
-                    color: 'var(--fg-0)',
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    opacity: singleTeam ? 0.75 : 1,
-                }}
+                aria-label={translateInterface('Active team: {name}', { name: team.name })}
             >
                 <ProjectDot color={teamColor(teams, team.tenant_id)} size={8} />
-                {team.name}
+                <span className="shell-context-trigger-label">{team.name}</span>
                 {!singleTeam && <Icon.ChevronDown size={13} style={{ color: 'var(--fg-3)' }} />}
             </button>
             {open && (
@@ -162,8 +150,7 @@ export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
                             <ProjectDot color={teamColor(teams, t.tenant_id)} size={10} />
                             <span style={{ flex: 1 }}>{t.name}</span>
                             <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
-                                {t.projects.length} projects
-                            </span>
+                                {t.projects.length} {" " + translateInterface("projects")}</span>
                             {team.tenant_id === t.tenant_id && <Icon.Check size={13} />}
                         </button>
                     ))}

@@ -1,6 +1,8 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
-import { useForm, type Resolver } from 'react-hook-form';
+import { Controller, useForm, type Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import type { AdminRole, AdminUser } from '../admin.api';
 
@@ -75,10 +77,12 @@ export function UserForm({
     serverErrors,
     onCancel,
 }: UserFormProps) {
+    const { t: translateInterface } = useUiTranslation();
     const schema = mode === 'create' ? createSchema : editSchema;
 
     const {
         register,
+        control,
         handleSubmit,
         setValue,
         watch,
@@ -131,7 +135,7 @@ export function UserForm({
             onSubmit={handleSubmit(onSubmit)}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
         >
-            <Field label="Name" error={errors.name?.message} testid="user-form-name-error">
+            <Field label={translateInterface("Name")} error={errors.name?.message} testid="user-form-name-error">
                 <input
                     data-testid="user-form-name"
                     {...register('name')}
@@ -174,41 +178,53 @@ export function UserForm({
                         error={errors.initial_project_key?.message}
                         testid="user-form-initial-project-error"
                     >
-                        <select
-                            aria-label="Initial project"
-                            data-testid="user-form-initial-project"
-                            {...register('initial_project_key')}
-                            className="focus-ring"
-                            style={inputStyle}
-                        >
-                            {projectKeys.length === 0 && <option value="">No projects available</option>}
-                            {projectKeys.map((projectKey) => (
-                                <option key={projectKey} value={projectKey}>{projectKey}</option>
-                            ))}
-                        </select>
+                        <Controller control={control} name="initial_project_key" render={({ field }) => (
+                            <SelectField
+                                aria-label="Initial project"
+                                data-testid="user-form-initial-project"
+                                name={field.name}
+                                value={field.value}
+                                onValueChange={field.onChange}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                className="focus-ring"
+                                style={inputStyle}
+                            >
+                                {projectKeys.length === 0 && <SelectOption value="">{translateInterface("No projects available")}</SelectOption>}
+                                {projectKeys.map((projectKey) => (
+                                    <SelectOption key={projectKey} value={projectKey}>{projectKey}</SelectOption>
+                                ))}
+                            </SelectField>
+                        )} />
                     </Field>
                     <Field
                         label="Membership role"
                         error={errors.membership_role?.message}
                         testid="user-form-membership-role-error"
                     >
-                        <select
-                            aria-label="Membership role"
-                            data-testid="user-form-membership-role"
-                            {...register('membership_role')}
-                            className="focus-ring"
-                            style={inputStyle}
-                        >
-                            <option value="member">Member</option>
-                            <option value="admin">Admin</option>
-                            <option value="owner">Owner</option>
-                        </select>
+                        <Controller control={control} name="membership_role" render={({ field }) => (
+                            <SelectField
+                                aria-label="Membership role"
+                                data-testid="user-form-membership-role"
+                                name={field.name}
+                                value={field.value}
+                                onValueChange={field.onChange}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                className="focus-ring"
+                                style={inputStyle}
+                            >
+                                <SelectOption value="member">Member</SelectOption>
+                                <SelectOption value="admin">Admin</SelectOption>
+                                <SelectOption value="owner">Owner</SelectOption>
+                            </SelectField>
+                        )} />
                     </Field>
                 </div>
             )}
 
             <div>
-                <div style={labelStyle}>Roles</div>
+                <div style={labelStyle}>{translateInterface("Roles")}</div>
                 <div
                     data-testid="user-form-roles"
                     style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
@@ -265,8 +281,7 @@ export function UserForm({
                     data-testid="user-form-is-active"
                     {...register('is_active')}
                 />
-                Active
-            </label>
+                {translateInterface("Active")}</label>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
                 {onCancel ? (
@@ -277,8 +292,7 @@ export function UserForm({
                         onClick={onCancel}
                         style={secondaryButtonStyle}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                 ) : null}
                 <button
                     type="submit"
@@ -290,7 +304,7 @@ export function UserForm({
                         opacity: submitting ? 0.6 : 1,
                     }}
                 >
-                    {submitting ? 'Saving…' : mode === 'create' ? 'Create user' : 'Save changes'}
+                    {submitting ? 'Saving…' : mode === 'create' ? 'Create user' : translateInterface("Save changes")}
                 </button>
             </div>
         </form>

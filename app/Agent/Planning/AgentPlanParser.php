@@ -56,7 +56,14 @@ final class AgentPlanParser
                 throw new \UnexpectedValueException("Planner action id [{$id}] is invalid or duplicated.");
             }
             if (! isset($tools[$toolName])) {
-                throw new \UnexpectedValueException("Planner selected unknown tool [{$toolName}].");
+                // Some providers qualify tool names with the synthetic functions
+                // namespace. Resolve only that alias against the current catalog.
+                $canonicalName = str_starts_with($toolName, 'functions.')
+                    ? substr($toolName, strlen('functions.')) : $toolName;
+                if (! isset($tools[$canonicalName])) {
+                    throw new \UnexpectedValueException("Planner selected unknown tool [{$toolName}].");
+                }
+                $toolName = $canonicalName;
             }
             foreach ($dependsOn as $dependency) {
                 if (! isset($knownIds[$dependency])) {

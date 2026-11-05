@@ -37,6 +37,7 @@ export interface Team {
   tenant_id: string;
   hash: string;
   name: string;
+  logo_url?: string | null;
   projects: TeamProject[];
 }
 
@@ -54,6 +55,10 @@ export interface Citation {
   document_id?: number | null;
   source_path?: string | null;
   title?: string | null;
+  project_key?: string | null;
+  origin?: "primary" | "related" | "rejected" | null;
+  headings?: string[];
+  chunks_used?: number;
   [key: string]: unknown;
 }
 
@@ -79,7 +84,33 @@ export interface ChatMeta {
   model?: string;
   chunks_used?: number;
   latency_ms?: number;
+  cost?: string | null;
+  cost_currency?: string | null;
+  retrieval_runner_up?: RunnerUpChunk[];
+  runner_up_count?: number;
+  counterfactual?: CounterfactualPanel[];
+  counterfactual_count?: number;
   [key: string]: unknown;
+}
+
+export interface RunnerUpChunk {
+  chunk_id?: number;
+  project_key?: string | null;
+  heading_path?: string | null;
+  chunk_text?: string | null;
+  vector_score?: number | null;
+  reason?: string | null;
+  document?: {
+    id?: number | null;
+    title?: string | null;
+    source_path?: string | null;
+    source_type?: string | null;
+  } | null;
+}
+
+export interface CounterfactualPanel {
+  project_key: string;
+  top_chunks: RunnerUpChunk[];
 }
 
 export interface ChatResponse {
@@ -119,5 +150,17 @@ export interface Thread {
   id: string;
   title: string;
   createdAt: number;
+  pinned?: boolean;
+  archived?: boolean;
+  importance?: "normal" | "high" | "critical";
   messages: LocalMessage[];
+}
+
+export type KbTreeNode =
+  | { type: "folder"; name: string; path: string; children: KbTreeNode[] }
+  | { type: "doc"; name: string; path: string; meta: { id: number; project_key: string; is_canonical: boolean; canonical_type: string | null } };
+export interface KbTreeResponse {
+  tree: KbTreeNode[];
+  counts: { docs: number; canonical: number; trashed: number };
+  generated_at: string;
 }

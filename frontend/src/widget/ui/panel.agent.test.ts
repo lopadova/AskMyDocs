@@ -80,7 +80,18 @@ describe('WidgetPanel agent activity', () => {
         });
 
         stream.enqueue(frame({
-            run_id: 'run-1', sequence: 2, type: 'run.completed', phase: 'run', locale: 'it-IT',
+            run_id: 'run-1', sequence: 2, type: 'research.findings', phase: 'research', locale: 'it', message_key: null,
+            message_params: {}, message: null, progress: null, can_cancel: true, created_at: null,
+            data: { validation: { status: 'accepted' }, findings: [{ id: 'first', text: 'Il cliente ha chiesto il reso.',
+                quote: 'Vorrei rendere il prodotto.', citation: { document_id: 11, title: 'Richiesta di reso', source_path: null } }] },
+        }));
+        await vi.waitFor(() => {
+            expect(root.querySelector('[data-testid="askmydocs-widget-progressive"]')?.textContent).toContain('Sono in arrivo altri dati');
+            expect(root.textContent).toContain('Il cliente ha chiesto il reso.');
+        });
+
+        stream.enqueue(frame({
+            run_id: 'run-1', sequence: 3, type: 'run.completed', phase: 'run', locale: 'it-IT',
             message_key: 'run.completed', message_params: {}, message: 'La risposta è pronta.', progress: null,
             can_cancel: false,
             data: { response: {
@@ -96,6 +107,7 @@ describe('WidgetPanel agent activity', () => {
             expect(root.querySelector('[data-testid="askmydocs-widget-agent-activity"]')).toHaveAttribute('data-state', 'settled');
             expect(root.textContent).toContain('Ho trovato l’ordine A-100.');
             expect(root.textContent).toContain('ERP · Ordini');
+            expect(root.querySelector('[data-testid="askmydocs-widget-progressive"]')).toBeNull();
         });
     });
 });

@@ -1,4 +1,9 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
+import { Button } from '../../../components/Button';
+import { FileTypeIcon, fileKind } from './FileTypeIcon';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Icon } from '../../../components/Icons';
 import type {
     KbTreeMode,
@@ -6,27 +11,16 @@ import type {
     KbTreeResponse,
 } from '../admin.api';
 
-/*
- * Phase G1 — KB tree panel.
- *
- * Filter bar (mode picker / search / with_trashed) + an expandable
- * tree rendered with nested <ul> so screen readers announce the
- * hierarchy without an ARIA grid.
- *
- * No virtualization — expected canonical corpus tops out in the low
- * thousands in G1 and the node DOM cost is cheap. G3/G4 may revisit
- * once the editor renders inline previews.
- *
- * Props `q` / `onQ` / etc. are controlled by KbView so the URL /
- * query cache key can be hoisted later (G2 adds deep links to doc
- * paths). Filter changes call the setters directly; no debouncing
- * — search is client-side filtering and re-fires on every keystroke,
- * which is fine because TanStack Query memoises by query key anyway.
- */
+/* The admin explorer requests bounded server pages. Reader callers can still
+ * supply a complete tree and use the local search fallback. */
 
 export type TreeState = 'loading' | 'ready' | 'error' | 'empty';
 
 export interface TreeViewProps {
+    serverSearch?: boolean;
+    pageNumber?: number;
+    onPreviousPage?: () => void;
+    onNextPage?: () => void;
     data: KbTreeResponse | undefined;
     state: TreeState;
     q: string;
@@ -35,13 +29,25 @@ export interface TreeViewProps {
     onModeChange: (next: KbTreeMode) => void;
     withTrashed: boolean;
     onWithTrashedChange: (next: boolean) => void;
+    /**
+     * Offer the "Include deleted" checkbox. Default true keeps the admin
+     * explorer unchanged; the reader-side Browse KB page passes false,
+     * because its endpoint never returns soft-deleted documents (R2) and
+     * a control that cannot change the result is worse than no control.
+     */
+    allowTrashedToggle?: boolean;
     selectedPath: string | null;
     onSelect: (path: string | null, meta: KbTreeNode | null) => void;
 }
 
 export function TreeView(props: TreeViewProps) {
+    const { t: translateInterface } = useUiTranslation();
     const {
         data,
+        serverSearch = false,
+        pageNumber = 1,
+        onPreviousPage,
+        onNextPage,
         state,
         q,
         onQChange,
@@ -49,6 +55,7 @@ export function TreeView(props: TreeViewProps) {
         onModeChange,
         withTrashed,
         onWithTrashedChange,
+        allowTrashedToggle = true,
         selectedPath,
         onSelect,
     } = props;
@@ -58,11 +65,11 @@ export function TreeView(props: TreeViewProps) {
             return [];
         }
         const term = q.trim().toLowerCase();
-        if (term === '') {
+        if (serverSearch || term === '') {
             return data.tree;
         }
         return filterTree(data.tree, term);
-    }, [data, q]);
+    }, [data, q, serverSearch]);
 
     return (
         <div
@@ -101,10 +108,11 @@ export function TreeView(props: TreeViewProps) {
                     <input
                         data-testid="kb-tree-q"
                         type="search"
-                        aria-label="Search path or file name"
+                        maxLength={200}
+                        aria-label={translateInterface("Search path or file name")}
                         value={q}
                         onChange={(e) => onQChange(e.target.value)}
-                        placeholder="Search path or file name…"
+                        placeholder={translateInterface("Search path or file name…")}
                         style={{
                             width: '100%',
                             padding: '7px 10px 7px 30px',
@@ -124,11 +132,11 @@ export function TreeView(props: TreeViewProps) {
                         flexWrap: 'wrap',
                     }}
                 >
-                    <select
+                    <SelectField
                         data-testid="kb-tree-mode"
-                        aria-label="Document mode filter"
+                        aria-label={translateInterface("Document mode filter")}
                         value={mode}
-                        onChange={(e) => onModeChange(e.target.value as KbTreeMode)}
+                        onValueChange={(nextValue) => onModeChange(nextValue as KbTreeMode)}
                         style={{
                             padding: '6px 8px',
                             fontSize: 12.5,
@@ -138,27 +146,28 @@ export function TreeView(props: TreeViewProps) {
                             color: 'var(--fg-1)',
                         }}
                     >
-                        <option value="all">All documents</option>
-                        <option value="canonical">Canonical only</option>
-                        <option value="raw">Raw only</option>
-                    </select>
-                    <label
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            fontSize: 12,
-                            color: 'var(--fg-2)',
-                        }}
-                    >
-                        <input
-                            type="checkbox"
-                            data-testid="kb-tree-with-trashed"
-                            checked={withTrashed}
-                            onChange={(e) => onWithTrashedChange(e.target.checked)}
-                        />
-                        Include deleted
-                    </label>
+                        <SelectOption value="all">{translateInterface("All documents")}</SelectOption>
+                        <SelectOption value="canonical">{translateInterface("Canonical only")}</SelectOption>
+                        <SelectOption value="raw">{translateInterface("Raw only")}</SelectOption>
+                    </SelectField>
+                    {allowTrashedToggle ? (
+                        <label
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontSize: 12,
+                                color: 'var(--fg-2)',
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                data-testid="kb-tree-with-trashed"
+                                checked={withTrashed}
+                                onChange={(e) => onWithTrashedChange(e.target.checked)}
+                            />
+                            {translateInterface("Include deleted")}</label>
+                    ) : null}
                     {data ? (
                         <span
                             data-testid="kb-tree-counts"
@@ -169,8 +178,7 @@ export function TreeView(props: TreeViewProps) {
                                 fontFamily: 'var(--font-mono)',
                             }}
                         >
-                            {data.counts.docs} docs · {data.counts.canonical} canonical
-                            {data.counts.trashed > 0 ? ` · ${data.counts.trashed} trashed` : ''}
+                            {data.counts.docs.toLocaleString()} {" " + translateInterface("docs ·") + " "}{data.counts.canonical} {" " + translateInterface("canonical")}{data.counts.trashed > 0 ? ` · ${data.counts.trashed} trashed` : ''}
                         </span>
                     ) : null}
                 </div>
@@ -192,24 +200,21 @@ export function TreeView(props: TreeViewProps) {
                         data-testid="kb-tree-skeleton"
                         style={{ padding: 12, color: 'var(--fg-3)', fontSize: 12 }}
                     >
-                        Loading tree…
-                    </div>
+                        {translateInterface("Loading tree…")}</div>
                 ) : null}
                 {state === 'error' ? (
                     <div
                         data-testid="kb-tree-error"
                         style={{ padding: 12, color: 'var(--danger-fg)', fontSize: 12 }}
                     >
-                        Could not load the KB tree. Try refreshing.
-                    </div>
+                        {translateInterface("Could not load the KB tree. Try refreshing.")}</div>
                 ) : null}
                 {state === 'empty' ? (
                     <div
                         data-testid="kb-tree-empty"
                         style={{ padding: 12, color: 'var(--fg-3)', fontSize: 12 }}
                     >
-                        No documents match the current filter.
-                    </div>
+                        {translateInterface("No documents match the current filter.")}</div>
                 ) : null}
                 {state === 'ready' ? (
                     <ul
@@ -222,9 +227,10 @@ export function TreeView(props: TreeViewProps) {
                     >
                         {visible.map((node) => (
                             <TreeNode
-                                key={node.path}
+                                key={`${pageNumber}:${q}:${node.path}`}
                                 node={node}
                                 depth={0}
+                                expandAll={q.trim() !== ''}
                                 selectedPath={selectedPath}
                                 onSelect={onSelect}
                             />
@@ -232,6 +238,15 @@ export function TreeView(props: TreeViewProps) {
                     </ul>
                 ) : null}
             </div>
+            {serverSearch && (
+                <div className="kb-tree-pagination" aria-label={translateInterface("Document pages")}>
+                    <span>{data?.pagination ? `${data.pagination.loaded} shown · Page ${pageNumber}` : `Page ${pageNumber}`}</span>
+                    <Button variant="quiet" size="sm" iconOnly aria-label={translateInterface("Previous documents")}
+                        disabled={pageNumber <= 1 || state === 'loading'} onClick={onPreviousPage}><ChevronLeft size={16} /></Button>
+                    <Button variant="quiet" size="sm" iconOnly aria-label={translateInterface("Next documents")}
+                        disabled={!data?.pagination?.has_more || state === 'loading'} onClick={onNextPage}><ChevronRight size={16} /></Button>
+                </div>
+            )}
         </div>
     );
 }
@@ -239,12 +254,13 @@ export function TreeView(props: TreeViewProps) {
 interface TreeNodeProps {
     node: KbTreeNode;
     depth: number;
+    expandAll?: boolean;
     selectedPath: string | null;
     onSelect: (path: string | null, meta: KbTreeNode | null) => void;
 }
 
-function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
-    const [open, setOpen] = useState(depth < 1);
+function TreeNode({ node, depth, selectedPath, onSelect, expandAll = false }: TreeNodeProps) {
+    const [open, setOpen] = useState(expandAll || depth < 1);
 
     if (node.type === 'folder') {
         // Copilot #4 a11y fix: treeitem role + aria-expanded belong on
@@ -283,7 +299,7 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
                         <Icon.Chevron size={12} />
                     )}
                     <Icon.Folder size={14} />
-                    <span>{node.name}</span>
+                    <span className="kb-tree-name" title={node.path}>{node.name}</span>
                 </button>
                 {open ? (
                     <ul
@@ -299,6 +315,7 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
                                 key={child.path}
                                 node={child}
                                 depth={depth + 1}
+                                expandAll={expandAll}
                                 selectedPath={selectedPath}
                                 onSelect={onSelect}
                             />
@@ -318,6 +335,7 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
             <button
                 type="button"
                 role="treeitem"
+                title={`${node.path} · ${fileKind(node)}${node.meta.canonical_type ? ` · ${node.meta.canonical_type}` : ''}`}
                 aria-selected={active}
                 className="focus-ring"
                 data-testid={`kb-tree-node-${node.path}`}
@@ -343,22 +361,15 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
                     textDecoration: trashed ? 'line-through' : 'none',
                 }}
             >
-                <Icon.File size={13} />
-                <span style={{ flex: 1 }}>{node.name}</span>
+                <FileTypeIcon node={node} />
+                <span className="kb-tree-name">{node.name}</span>
                 {canonical ? (
                     <span
                         data-testid={`kb-tree-badge-canonical-${node.path}`}
-                        style={{
-                            fontSize: 10,
-                            padding: '1px 6px',
-                            borderRadius: 999,
-                            background: 'var(--grad-accent-soft)',
-                            color: 'var(--accent-fg)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
-                        }}
+                        className="kb-tree-canonical-marker"
+                        aria-label={node.meta.canonical_type ?? 'Canonical document'}
                     >
-                        {node.meta.canonical_type ?? 'canonical'}
+                        <span aria-hidden />
                     </span>
                 ) : null}
             </button>

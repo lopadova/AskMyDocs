@@ -10,12 +10,12 @@ declare(strict_types=1);
 | Vendor defaults live in `vendor/padosoft/laravel-ai-finops/config/
 | ai-finops.php`. `mergeConfigFrom` does a SHALLOW array_merge, so any
 | top-level key declared here REPLACES the package's version of that key
-| entirely — every key we DON'T declare (pricing, features, audit,
+| entirely — every key we DON'T declare (features, audit,
 | alerts, footprint, storage, integrations, block_status, hook, …) keeps
 | the package default untouched.
 |
-| We override only four areas: the master switches, the SECURITY-CRITICAL
-| route stack, multi-tenant attribution, and currency. Everything else
+| We override five areas: the master switches, the SECURITY-CRITICAL
+| route stack, multi-tenant attribution, currency, and pricing. Everything else
 | ships sane EU-friendly defaults from the package.
 |
 */
@@ -62,6 +62,82 @@ return [
         'base' => env('AI_FINOPS_CURRENCY', 'USD'),
         'display' => env('AI_FINOPS_DISPLAY_CURRENCY', 'EUR'),
         'fx_provider' => null,
+    ],
+
+    // Full pricing subtree: mergeConfigFrom replaces this top-level array.
+    'pricing' => [
+        'overrides_win' => true, // local Padosoft DB entries (manual) override feeds
+
+        // Enabled sources, in default-precedence order (first = highest).
+        'sources' => ['manual', 'litellm', 'openrouter'],
+
+        // Tie / unknown-freshness winner order.
+        'default_winner' => ['manual', 'litellm', 'openrouter'],
+
+        'litellm' => [
+            'enabled' => env('AI_FINOPS_PRICING_LITELLM', true),
+            'url' => env('AI_FINOPS_PRICING_LITELLM_URL', 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'),
+        ],
+
+        // OpenRouter live models API. The public listing needs no key; a key
+        // (never serialized) raises rate limits and unlocks per-endpoint prices
+        // (Phase 2). OpenRouter passes provider list prices through WITHOUT an
+        // inference markup; its ~5.5% credit top-up fee is modeled in `fees`.
+        'openrouter' => [
+            'enabled' => env('AI_FINOPS_PRICING_OPENROUTER', true),
+            'url' => env('AI_FINOPS_PRICING_OPENROUTER_URL', 'https://openrouter.ai/api/v1/models'),
+            'embeddings_url' => env('AI_FINOPS_PRICING_OPENROUTER_EMBEDDINGS_URL', 'https://openrouter.ai/api/v1/embeddings/models'),
+            'key' => env('AI_FINOPS_PRICING_OPENROUTER_KEY'), // optional; exposed only as has_* boolean
+            'allow_keyless' => true, // the public model list works without a key
+            'use_endpoints' => false, // Phase 2: per-provider endpoint prices (3–10× spread)
+        ],
+
+        'sync_cron' => env('AI_FINOPS_PRICING_SYNC_CRON', '0 4 * * *'),
+
+        // Which source is authoritative per provider (the "who bills you" rule).
+        // Unmapped providers fall through to freshest-sync / default_winner.
+        'provider_source_map' => [
+            'openrouter' => 'openrouter',
+            'regolo' => 'manual',
+            // openai/anthropic/azure/bedrock/vertex/fal_ai/… default to litellm
+        ],
+
+        // Per-provider account-level overhead applied to ESTIMATES only (what-if,
+        // forecast, preflight) — never to the raw metered ledger. Percent.
+        'fees' => [
+            // 'openrouter' => ['markup_pct' => 5.5],
+        ],
+
+        // Recover the provider's ACTUAL billed cost that laravel/ai drops during
+        // normalization (it keeps tokens only). When enabled, a global Http response
+        // middleware captures usage.cost from responses whose body matches the
+        // OpenRouter shape (usage.cost present) — Laravel's Http middleware does not
+        // expose the request URL, so body-shape matching is used instead of host
+        // filtering. The `hosts` key is reserved for documentation / future use when
+        // Laravel adds request context to response middleware.
+        'actual_cost' => [
+            'enabled' => env('AI_FINOPS_ACTUAL_COST', true),
+            'hosts' => ['openrouter.ai'], // informational — body-shape matching is active
+            'store_raw' => false, // also stash the captured usage/cost block in metadata
+            'openrouter' => [
+                'generation_lookup' => false,   // confirm via GET /generation?id= (+1 HTTP)
+                'credit_to_currency' => 1.0,    // OpenRouter credits → base currency
+            ],
+        ],
+
+        // Cost cascade fallback: when a response carries neither cost nor token usage,
+        // estimate tokens then apply the tariff (flagged tokens_estimated). Heuristic by
+        // default; auto-upgrades to exact counts if the optional yethee/tiktoken is installed.
+        'token_estimation' => [
+            'enabled' => true,
+            'expected_output_ratio' => 1.0, // preflight: assume output ≈ input × ratio
+        ],
+
+        'discounts' => [
+            'prompt_cache' => true,
+            'batch_api' => true,
+            'committed_use' => true,
+        ],
     ],
 
     /*

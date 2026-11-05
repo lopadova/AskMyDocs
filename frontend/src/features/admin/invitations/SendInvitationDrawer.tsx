@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useState } from 'react';
 import { toAdminError } from '../shared/errors';
 import { useToast } from '../shared/Toast';
@@ -81,17 +82,17 @@ export function SendInvitationDrawer({ onClose, onSent }: SendInvitationDrawerPr
                 </Field>
 
                 <Field id="invite-channel" label="Channel" error={fieldErrors.channel}>
-                    <select
+                    <SelectField
                         id="invite-channel"
                         data-testid="admin-invitations-invite-channel"
                         value={channel}
-                        onChange={(e) => setChannel(e.target.value as InviteChannel)}
+                        onValueChange={(selectedValue) => setChannel(selectedValue as InviteChannel)}
                         style={drawerInput}
                     >
                         {CHANNELS.map((c) => (
-                            <option key={c} value={c}>{c}</option>
+                            <SelectOption key={c} value={c}>{c}</SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </Field>
 
                 <Field id="invite-role" label="Role (optional)" error={fieldErrors.role}>

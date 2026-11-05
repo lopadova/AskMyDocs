@@ -27,10 +27,15 @@ final class ProgressTrackingImapClient implements ImapClientInterface
      */
     private array $awaitingIngestionSearch = [];
 
+    private int $remainingMessages;
+
     public function __construct(
         private readonly ImapClientInterface $inner,
         private readonly ImapSyncProgressContext $progress,
-    ) {}
+        int $maxMessages = 10,
+    ) {
+        $this->remainingMessages = max(1, $maxMessages);
+    }
 
     public function listMailboxes(): array
     {
@@ -56,6 +61,13 @@ final class ProgressTrackingImapClient implements ImapClientInterface
             if ($uidValidity !== null) {
                 $this->progress->observeSearch($mailbox, $uidValidity, $uids);
                 $this->awaitingIngestionSearch[$mailbox] = false;
+                $batch = array_slice($uids, 0, $this->remainingMessages);
+                $this->remainingMessages -= count($batch);
+                if (count($batch) < count($uids)) {
+                    $this->progress->deferSearchWork();
+                }
+
+                return $batch;
             }
         }
 

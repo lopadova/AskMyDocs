@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminTagsApi, type AdminTag, type CreateTagPayload, type UpdateTagPayload } from './admin-tags.api';
@@ -21,6 +22,7 @@ import { TagFormDialog } from './TagFormDialog';
  * carry `role="dialog"` + `aria-modal`. Bound `<label>` per field.
  */
 export function TagsList(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [filter, setFilter] = useState('');
     const [editingTag, setEditingTag] = useState<AdminTag | null>(null);
@@ -84,18 +86,17 @@ export function TagsList(): ReactNode {
     return (
         <div data-testid="admin-tags-view" style={{ padding: 24 }}>
             <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Tags</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Tags")}</h1>
                 <span data-testid="admin-tags-count" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    {tags.length} total
-                </span>
+                    {tags.length} {" " + translateInterface("total")}</span>
                 <span style={{ flex: 1 }} />
                 <input
                     data-testid="admin-tags-filter"
                     type="text"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filter by project / slug / label"
-                    aria-label="Filter tags"
+                    placeholder={translateInterface("Filter by project / slug / label")}
+                    aria-label={translateInterface("Filter tags")}
                     style={{
                         padding: '5px 10px',
                         borderRadius: 6,
@@ -123,14 +124,12 @@ export function TagsList(): ReactNode {
                         cursor: 'pointer',
                     }}
                 >
-                    + New tag
-                </button>
+                    {translateInterface("+ New tag")}</button>
             </header>
 
             {tagsQuery.isLoading && (
                 <p data-testid="admin-tags-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
             {!tagsQuery.isLoading && tags.length === 0 && (
                 <p
@@ -138,16 +137,14 @@ export function TagsList(): ReactNode {
                     data-state="empty"
                     style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}
                 >
-                    No tags yet. Click <code>+ New tag</code> to create one.
-                </p>
+                    {translateInterface("No tags yet. Click") + " "}<code>{translateInterface("+ New tag")}</code> {" " + translateInterface("to create one.")}</p>
             )}
             {!tagsQuery.isLoading && tags.length > 0 && filteredTags.length === 0 && (
                 <p
                     data-testid="admin-tags-no-match"
                     style={{ color: 'var(--fg-3)' }}
                 >
-                    No tags match the filter.
-                </p>
+                    {translateInterface("No tags match the filter.")}</p>
             )}
             {filteredTags.length > 0 && (
                 <table
@@ -161,11 +158,11 @@ export function TagsList(): ReactNode {
                 >
                     <thead>
                         <tr style={{ textAlign: 'left', color: 'var(--fg-2)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            <th style={cellStyle}>Color</th>
-                            <th style={cellStyle}>Project</th>
-                            <th style={cellStyle}>Slug</th>
-                            <th style={cellStyle}>Label</th>
-                            <th style={{ ...cellStyle, textAlign: 'right' }}>Actions</th>
+                            <th style={cellStyle}>{translateInterface("Color")}</th>
+                            <th style={cellStyle}>{translateInterface("Project")}</th>
+                            <th style={cellStyle}>{translateInterface("Slug")}</th>
+                            <th style={cellStyle}>{translateInterface("Label")}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -209,8 +206,7 @@ export function TagsList(): ReactNode {
                                                     }}
                                                     style={iconButtonStyle()}
                                                 >
-                                                    Edit
-                                                </button>
+                                                    {translateInterface("Edit")}</button>
                                                 <button
                                                     type="button"
                                                     data-testid={`admin-tag-row-${tag.id}-delete`}
@@ -220,8 +216,7 @@ export function TagsList(): ReactNode {
                                                     }
                                                     style={iconButtonStyle()}
                                                 >
-                                                    Delete
-                                                </button>
+                                                    {translateInterface("Delete")}</button>
                                             </>
                                         )}
                                         {isConfirming && (
@@ -235,8 +230,7 @@ export function TagsList(): ReactNode {
                                                     }}
                                                     style={confirmButtonStyle('danger')}
                                                 >
-                                                    Confirm
-                                                </button>
+                                                    {translateInterface("Confirm")}</button>
                                                 <button
                                                     type="button"
                                                     data-testid={`admin-tag-row-${tag.id}-delete-cancel`}
@@ -245,8 +239,7 @@ export function TagsList(): ReactNode {
                                                     }
                                                     style={confirmButtonStyle('neutral')}
                                                 >
-                                                    Cancel
-                                                </button>
+                                                    {translateInterface("Cancel")}</button>
                                             </>
                                         )}
                                     </td>

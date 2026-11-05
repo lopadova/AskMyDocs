@@ -61,7 +61,7 @@ export interface ApiRouteSummary {
     mode: RouteMode;
     endpoint_type: EndpointType;
     http_method: HttpMethod;
-    last_test_status: number | null;
+    last_test_status: number | string | null;
 }
 
 /** Secret-hidden auth profile (ApiAuthProfileResource) — credentials are write-only. */
@@ -107,6 +107,33 @@ export interface AgentRunOverview {
         average_duration_ms: number | null;
     };
     status_counts: Record<string, number>;
+    planner_shadow: {
+        reports: number;
+        agreement_rate: number | null;
+        agreements: number;
+        disagreements: number;
+        invalid_plan_rate: number | null;
+        errors: number;
+        fallbacks: number;
+        validation_corrections: number;
+        premature_insufficient_avoided: number;
+        average_candidates: number | null;
+        average_router_latency_ms: number | null;
+        average_planner_latency_ms: number | null;
+        average_tokens: number | null;
+    };
+    mcp_transport: {
+        executions: number;
+        physical_requests: number;
+        negotiation_cache_hit_rate: number | null;
+        average_oauth_refresh_ms: number | null;
+        average_endpoint_guard_dns_ms: number | null;
+        average_discovery_ms: number | null;
+        average_tool_call_ms: number | null;
+        average_decode_ms: number | null;
+        recoveries: Record<string, number>;
+        error_codes: Record<string, number>;
+    };
     policy: Record<string, number>;
     recent_runs: Array<{
         run_id: string;
@@ -153,6 +180,7 @@ export interface ApiRoute {
     endpoint_type: EndpointType;
     endpoint_type_locked: boolean;
     items_path: string | null;
+    identity_fields?: string[];
     timeout_ms: number | null;
     cache_ttl_s: number | null;
     rate_limit: number | null;
@@ -163,8 +191,8 @@ export interface ApiRoute {
     output_transform: Record<string, unknown> | null;
     pagination: PaginationConfig | null;
     last_test_at: string | null;
-    last_test_status: number | null;
-    last_test_payload: Record<string, unknown> | null;
+    last_test_status: number | string | null;
+    last_test_payload: Record<string, unknown> | unknown[] | null;
     parameters?: ApiRouteParameter[];
     /** The canonical config JSON — the FE modal's form model. Present when the
      *  parameters relation is loaded (show/store/update/test responses). */
@@ -210,6 +238,7 @@ export interface RouteConfig {
     response: {
         endpoint_type: EndpointTypeChoice;
         items_path: string | null;
+        identity_fields?: string[];
         transform: { include: string[]; exclude: string[] } | null;
         pagination: PaginationConfig | null;
     };
@@ -362,7 +391,59 @@ export interface DrillResult {
 
 const BASE = '/api/admin/api-connectors';
 
+export type ApiConnectorConfig = Record<string, unknown>;
+
+export interface ConnectorImportPreview {
+    config: ApiConnectorConfig;
+    name: string;
+    endpoint_count: number;
+    relation_count: number;
+    required_credentials: {
+        profile_ref: string;
+        profile_label?: string;
+        type: AuthType;
+        key: string;
+        label: string;
+        secret: boolean;
+    }[];
+}
+
+export type ConnectorImportCredentials = Record<string, Record<string, string>>;
+
 export const apiConnectorsApi = {
+    async exportPackage(id: number): Promise<Blob> {
+        try {
+            const { data } = await api.get<Blob>(`${BASE}/${id}/export`, { params: { format: 'zip' }, responseType: 'blob' });
+            return data;
+        } catch (cause) {
+            const failure = cause as { response?: { data: unknown } };
+            if (failure.response?.data instanceof Blob) {
+                try { failure.response.data = JSON.parse(await failure.response.data.text()); } catch { /* retain transport error */ }
+            }
+            throw cause;
+        }
+    },
+
+    async exportConfig(id: number): Promise<ApiConnectorConfig> {
+        const { data } = await api.get<{ data: ApiConnectorConfig }>(`${BASE}/${id}/export`);
+        return data.data;
+    },
+
+    async previewImport(config: unknown): Promise<ConnectorImportPreview> {
+        let payload: FormData | { config: unknown } = { config };
+        if (config instanceof File) {
+            payload = new FormData();
+            payload.append('file', config);
+        }
+        const { data } = await api.post<{ data: ConnectorImportPreview }>(`${BASE}/import/validate`, payload);
+        return data.data;
+    },
+
+    async importConfig(config: ApiConnectorConfig, credentials: ConnectorImportCredentials): Promise<ApiConnector> {
+        const { data } = await api.post<{ data: ApiConnector }>(`${BASE}/import`, { config, credentials });
+        return data.data;
+    },
+
     async agentOverview(): Promise<AgentRunOverview> {
         const { data } = await api.get<{ data: AgentRunOverview }>('/api/admin/agent-runs/overview');
         return data.data;

@@ -30,12 +30,14 @@
           "digitization-review",
           "portable-wiki-export",
           "chat-and-retrieval",
+          "chat-sessions-workspace",
           "canonical-and-promotion",
           "auto-wiki",
           "connectors",
           "connectors-credential",
           "connectors-multi-account",
           "connectors-sync-settings",
+          "connectors-email-api",
           "ingest-provenance",
           "source-permissions",
           "tool-firewall",
@@ -78,7 +80,9 @@
         "pages": [
           "ai-providers",
           "mcp-server",
+          "codex-project-connection",
           "desktop-client",
+          "external-oauth",
           "sister-packages"
         ]
       },
@@ -103,6 +107,7 @@
           "architecture/canonical-graph",
           "architecture/auto-wiki-engine",
           "architecture/ingestion-pipeline",
+          "architecture/agent-capability-planner",
           "architecture/database-schema",
           "architecture/security-and-threat-model",
           "architecture/governed-actions",

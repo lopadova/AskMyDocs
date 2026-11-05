@@ -1,0 +1,28 @@
+/* OAuth email adds settings and triage tabs to the shared account dialog. */
+@media (max-width: 480px) {
+    .connector-edit-backdrop {
+        padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)) !important;
+    }
+
+    .connector-edit-modal {
+        height: calc(100dvh - 24px) !important;
+        max-height: 100% !important;
+    }
+
+    .connector-edit-header { padding: 16px 16px 0 !important; }
+    .connector-edit-identity {
+        display: grid !important;
+        grid-template-columns: 38px minmax(0, 1fr) 44px;
+        gap: 8px !important;
+    }
+    .connector-edit-identity > :nth-child(3) { grid-column: 2; grid-row: 2; justify-self: start; }
+    .connector-edit-close { grid-column: 3; grid-row: 1; width: 44px !important; height: 44px !important; }
+    .connector-edit-tabs { overflow-x: auto; }
+    .connector-edit-tabs > button { flex: 1 1 0; min-width: 0; min-height: 44px; white-space: normal; padding: 8px 6px 12px !important; }
+    .connector-edit-panel { padding: 16px !important; }
+    .connector-edit-panel [role="group"] label > span { overflow-wrap: anywhere; min-width: 0; }
+    .connector-edit-panel input, .connector-edit-panel [data-slot="select-trigger"], .connector-edit-panel textarea { font-size: 16px !important; }
+    .connector-edit-footer { flex-wrap: wrap; padding: 12px 16px !important; }
+    .connector-edit-save-hint { flex: 1 0 100% !important; }
+    .connector-edit-footer .ui-button { flex: 1 0 auto; min-height: 44px; }
+}

@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Contracts\AgentRunHandler;
+use App\Mcp\Apps\McpAppTurnContext;
 use App\Models\AgentRun;
+use App\Models\Conversation;
+use App\Models\User;
+use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Queue entry point that owns run lifecycle, collection and final synthesis. */
@@ -16,12 +21,49 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         private AgentAnswerSynthesizer $synthesizer,
         private AgentEventPublisher $events,
         private AgentResultProjector $projector,
+        private McpAppTurnContext $mcpAppContext,
+        private AgentTurnContextBuilder $turnContextBuilder,
+        private WidgetPiiMasker $masker,
     ) {}
 
     public function handle(AgentRun $run): void
     {
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $lockSpan = $diagnostics->begin($run, 'run.lock');
+        // A redelivered parent must not finalize a snapshot while another worker
+        // is still collecting its branches. Child locks alone cannot prevent it.
+        $lock = \Illuminate\Support\Facades\Cache::lock('agent-run:'.$run->tenant_id.':'.$run->run_id,
+            max(120, (int) config('agent.job_timeout_seconds', 120)) + 60);
+        if (! $lock->get()) {
+            $diagnostics->end($run, $lockSpan, metadata: ['lock_acquired' => false]);
+            return;
+        }
+        $diagnostics->end($run, $lockSpan, metadata: ['lock_acquired' => true]);
+        try {
+            app(\App\Ai\AgentChatModelScope::class)->within(AgentExecutionContext::fromArray($run->toArray()),
+                fn () => app(\App\Services\Qa\CampaignScope::class)->withinRun($run, fn () => $this->handleOwned($run)));
+        } finally {
+            $lock->release();
+            // A fast graph can finish while this worker still owns the parent
+            // lock. Its queued continuation may already have been acknowledged
+            // by a competing worker; re-drive after releasing our own lock.
+            $current = $run->fresh();
+            if ($current?->status === AgentRun::STATUS_QUEUED && data_get($current->result_json, 'api_tool_resumptions', []) !== []) {
+                app(AgentRunDispatcher::class)->enqueue($current);
+            }
+        }
+    }
+
+    private function handleOwned(AgentRun $run): void
+    {
         $run->refresh();
-        if ($run->isTerminal() || $run->status === AgentRun::STATUS_AWAITING_CONFIRMATION) {
+        if ($run->isTerminal() || in_array($run->status, [
+            AgentRun::STATUS_AWAITING_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
+            AgentRun::STATUS_AWAITING_MCP_INPUT,
+            AgentRun::STATUS_WAITING_MCP_TASK,
+        ], true) || ($run->status === AgentRun::STATUS_WAITING_API_TOOL
+            && ! data_get($run->result_json, 'wave_dispatching', false))) {
             return;
         }
 
@@ -55,61 +97,140 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             $this->events->publish($run, 'run.started', 'run.started');
         }
 
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $executionSpan = $diagnostics->begin($run, 'run.execute', ['runtime' => $diagnostics->runtime()]);
         try {
-            $outcome = $this->loop->run($run, $context);
-            if ($outcome->awaitingConfirmation()) {
+            $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
+            $outcome = $this->loop->run($run, $context, $turnContext);
+            if ($outcome->requiresInteraction()) {
+                $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
                 return;
             }
 
             $this->events->publish($run, 'synthesis.started', 'synthesis.started');
-            $answer = $this->synthesizer->synthesize(
+            $run->refresh();
+            if (config('reasoning.enabled')) {
+                $safe = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+                $safe->import(app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $outcome->evidence->jsonSerialize(),
+                    data_get($run->result_json, 'question_understanding.transition') === 'recap'));
+                $outcome = new AgentLoopOutcome($outcome->decision, $safe, $outcome->completedActions, $outcome->stopReason);
+                $turnContext = $this->turnContext($run);
+                $owner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
+                if ($owner !== null) {
+                    $decodedContext = json_decode($turnContext ?? '{}', true) ?: [];
+                    $decodedContext['reasoning']['already_communicated'] = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)
+                        ->communicatedForEvidence($owner, $safe->jsonSerialize());
+                    $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                }
+            }
+            $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
                 trim((string) data_get($run->input_json, 'question', '')),
                 $context,
                 $outcome,
-            );
+                $turnContext,
+                is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
+                durableRunId: $run->run_id,
+            ));
             $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
                 ? AgentRun::STATUS_PARTIAL
                 : AgentRun::STATUS_COMPLETED;
-            $checkpoint = is_array($run->result_json) ? $run->result_json : [];
-            $run->forceFill([
+            $saved = $this->finalize($run, $status, $outcome, $answer);
+            if (! $saved) {
+                $diagnostics->end($run, $executionSpan, $run->fresh()->status === AgentRun::STATUS_CANCELLED ? 'cancelled' : 'completed', ['operation' => 'terminal_already_recorded']);
+                return;
+            }
+            $diagnostics->end($run, $executionSpan);
+        } catch (AgentRunCancelledException $exception) {
+            $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
+            // AgentRunControl already persisted and published the cancellation.
+        } catch (Throwable $exception) {
+            $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
+            $run->refresh();
+            if ($run->isTerminal()) {
+                return;
+            }
+            if (app(VerifiedAnswerCheckpoint::class)->recover($run, 'agent_run_failed')) return;
+            Log::error('Agent run failed.', [
+                'run_id' => $run->run_id,
+                'tenant_id' => $run->tenant_id,
+                'project_key' => $run->project_key,
+                'status_before_failure' => $run->status,
+                'exception_class' => $exception::class,
+                'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
+                'exception_trace' => $exception->getTraceAsString(),
+            ]);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($run, $exception): void {
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                if ($locked->isTerminal()) {
+                    return;
+                }
+                $locked->forceFill([
+                    'status' => AgentRun::STATUS_FAILED,
+                    'error_code' => $this->errorCode($exception),
+                    'completed_at' => now(),
+                ])->save();
+                $this->events->publish($locked, 'run.failed', 'run.failed',
+                    data: ['error_code' => $locked->error_code], canCancel: false);
+            });
+        }
+    }
+
+    private function finalize(AgentRun $run, string $status, AgentLoopOutcome $outcome, AgentAnswer $answer): bool
+    {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($run, $status, $outcome, $answer): bool {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+            if ($locked->isTerminal()) {
+                return false;
+            }
+            $locked->forceFill([
                 'status' => $status,
-                'result_json' => array_merge($checkpoint, [
-                    'phase' => 'final',
-                    'decision' => $outcome->decision,
-                    'stop_reason' => $outcome->stopReason,
-                    'response' => $answer->jsonSerialize(),
+                'result_json' => array_merge((array) $locked->result_json, [
+                    'phase' => 'final', 'decision' => $outcome->decision,
+                    'stop_reason' => $outcome->stopReason, 'response' => $answer->jsonSerialize(),
                 ]),
-                'completed_at' => now(),
-                'error_code' => null,
+                'completed_at' => now(), 'error_code' => null,
             ])->save();
-            $this->projector->project($run, $answer);
+            $this->projector->project($locked, $answer);
+            app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->finishRun($locked, $outcome->evidence->jsonSerialize(), $answer);
+            app(AgentResearchProgress::class)->finished($locked, $answer);
             $this->events->publish(
-                $run,
+                $locked,
                 $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',
                 $status === AgentRun::STATUS_PARTIAL ? 'run.partial' : 'run.completed',
                 data: ['response' => $answer->jsonSerialize()],
                 canCancel: false,
             );
-        } catch (AgentRunCancelledException) {
-            // AgentRunControl already persisted and published the cancellation.
-        } catch (Throwable $exception) {
-            $run->refresh();
-            if ($run->status === AgentRun::STATUS_CANCELLED) {
-                return;
+
+            return true;
+        });
+    }
+
+    private function turnContext(AgentRun $run): ?string
+    {
+        $appId = data_get($run->input_json, 'mcp_app_id');
+        $user = $run->user;
+        $conversation = $run->conversation;
+        $mcpAppContext = null;
+
+        if (is_string($appId) && $user instanceof User && $conversation instanceof Conversation) {
+            $previousTimezone = date_default_timezone_get();
+            try {
+                // Connector timestamps are persisted in the application timezone.
+                // Agent runs use the actor's timezone for localized output, so use
+                // the storage timezone while authorizing expiry-bound app context.
+                date_default_timezone_set((string) config('app.timezone', 'UTC'));
+
+                $mcpAppContext = $this->mcpAppContext->resolve($appId, $user, $conversation);
+            } finally {
+                date_default_timezone_set($previousTimezone);
             }
-            $run->forceFill([
-                'status' => AgentRun::STATUS_FAILED,
-                'error_code' => $this->errorCode($exception),
-                'completed_at' => now(),
-            ])->save();
-            $this->events->publish(
-                $run,
-                'run.failed',
-                'run.failed',
-                data: ['error_code' => $run->error_code],
-                canCancel: false,
-            );
         }
+
+        $context = $this->turnContextBuilder->build($run, $mcpAppContext);
+
+        return $context === []
+            ? null
+            : json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     private function context(AgentRun $run): AgentExecutionContext

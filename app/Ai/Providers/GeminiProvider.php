@@ -133,7 +133,7 @@ final class GeminiProvider implements AiProviderInterface
             'x-goog-api-key' => $this->config['key'],
             'content-type' => 'application/json',
         ])
-            ->timeout($this->config['timeout'] ?? 120)
+            ->timeout(min($this->config['timeout'] ?? 120, $options['timeout'] ?? 120))
             ->post("{$baseUrl}/models/{$model}:generateContent", $payload);
 
         $response->throw();

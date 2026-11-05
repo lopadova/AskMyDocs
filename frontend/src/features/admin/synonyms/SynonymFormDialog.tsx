@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
     normalizeToken,
@@ -17,7 +18,7 @@ import {
  *
  * R11: every interactive element carries a `data-testid`.
  * R15: every input has a bound `<label htmlFor>`. Form is `role="dialog"`
- * + `aria-modal="true"`. Esc closes via the keydown listener.
+ * + `aria-modal="true"`. Only explicit controls close the dialog.
  */
 
 export interface SynonymFormDialogProps {
@@ -37,6 +38,7 @@ export function SynonymFormDialog({
     submitError,
     isSubmitting,
 }: SynonymFormDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = synonym !== null;
     const [projectKey, setProjectKey] = useState(synonym?.project_key ?? defaultProjectKey ?? '');
     const [term, setTerm] = useState(synonym?.term ?? '');
@@ -49,14 +51,6 @@ export function SynonymFormDialog({
         setSynonymsText((synonym?.synonyms ?? []).join('\n'));
         setEnabled(synonym?.enabled ?? true);
     }, [synonym, defaultProjectKey]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     // Normalize the term exactly as the backend does (lowercase + trim +
     // collapse whitespace) so the distinct-check and persisted value agree
@@ -90,9 +84,6 @@ export function SynonymFormDialog({
     return (
         <div
             data-testid="admin-synonym-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -128,7 +119,7 @@ export function SynonymFormDialog({
                 </h2>
 
                 <label htmlFor="admin-synonym-project" style={fieldStyle}>
-                    <span style={labelStyle}>Project key</span>
+                    <span style={labelStyle}>{translateInterface("Project key")}</span>
                     <input
                         id="admin-synonym-project"
                         data-testid="admin-synonym-form-project"
@@ -210,15 +201,14 @@ export function SynonymFormDialog({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="admin-synonym-form-submit"
                         disabled={isSubmitting || !canSubmit}
                         style={buttonStyle('primary', !!isSubmitting || !canSubmit)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save") : translateInterface("Create")}
                     </button>
                 </div>
             </form>

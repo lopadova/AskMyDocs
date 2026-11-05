@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { OrphanDoc } from './insights.api';
 
 export interface OrphanDocsCardProps {
@@ -5,6 +6,7 @@ export interface OrphanDocsCardProps {
 }
 
 export function OrphanDocsCard({ items }: OrphanDocsCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const state = items.length === 0 ? 'empty' : 'ready';
     return (
         <div
@@ -21,15 +23,13 @@ export function OrphanDocsCard({ items }: OrphanDocsCardProps) {
             }}
         >
             <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>
-                Orphan canonical docs
-            </h2>
+                {translateInterface("Orphan canonical docs")}</h2>
             {state === 'empty' ? (
                 <div
                     data-testid="insight-card-orphans-empty"
                     style={{ fontSize: 12, color: 'var(--fg-3)' }}
                 >
-                    No orphan canonical docs in the graph.
-                </div>
+                    {translateInterface("No orphan canonical docs in the graph.")}</div>
             ) : (
                 <ul
                     style={{
@@ -61,8 +61,7 @@ export function OrphanDocsCard({ items }: OrphanDocsCardProps) {
                                     fontFamily: 'var(--font-mono)',
                                 }}
                             >
-                                {item.project_key} · {item.chunks_count} chunks · no edges
-                            </div>
+                                {item.project_key} · {item.chunks_count} {" " + translateInterface("chunks · no edges")}</div>
                         </li>
                     ))}
                 </ul>

@@ -22,6 +22,9 @@ final class ImapBackfillDiscovery
 
     public function discover(ConnectorInstallation $installation, ImapBackfill $backfill): void
     {
+        if ($backfill->isCancelled()) {
+            return;
+        }
         $diagnosticId = (string) Str::uuid();
         $startedAt = microtime(true);
         $phaseStartedAt = $startedAt;
@@ -61,10 +64,16 @@ final class ImapBackfillDiscovery
             $absoluteStart = Carbon::parse((string) config('connectors.imap.backfill.absolute_start', '1970-01-01'))->startOfDay();
 
             foreach ($mailboxes as $mailbox) {
+                if ($backfill->isCancelled()) {
+                    return;
+                }
                 $mailboxHash = ImapBackfillDiagnostics::mailboxHash($mailbox);
                 $phase = 'snapshot_mailbox';
                 $phaseStartedAt = microtime(true);
                 $snapshot = $client->snapshotMailbox($mailbox);
+                if ($backfill->isCancelled()) {
+                    return;
+                }
                 Log::info('[imap-backfill-diag] discovery mailbox snapshot completed', [
                     'diagnostic_id' => $diagnosticId,
                     'phase' => $phase,
@@ -125,7 +134,12 @@ final class ImapBackfillDiscovery
             $mailboxHash = null;
             $phase = 'persist_windows';
             $phaseStartedAt = microtime(true);
-            DB::transaction(function () use ($backfill, $rows, $totalMessages): void {
+            $persisted = DB::transaction(function () use ($backfill, $rows, $totalMessages): bool {
+                $backfill = ImapBackfill::query()->forTenant((string) $backfill->tenant_id)
+                    ->lockForUpdate()->findOrFail($backfill->id);
+                if ($backfill->status !== ImapBackfill::STATUS_DISCOVERING) {
+                    return false;
+                }
                 ImapBackfillWindow::query()
                     ->forTenant((string) $backfill->tenant_id)
                     ->where('imap_backfill_id', $backfill->id)
@@ -146,7 +160,12 @@ final class ImapBackfillDiscovery
                     'heartbeat_at' => now(),
                     'error_json' => null,
                 ])->save();
+
+                return true;
             });
+            if (! $persisted) {
+                return;
+            }
             Log::info('[imap-backfill-diag] discovery completed', [
                 'diagnostic_id' => $diagnosticId,
                 'phase' => $phase,

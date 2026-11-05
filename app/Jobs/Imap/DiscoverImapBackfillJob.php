@@ -70,6 +70,9 @@ final class DiscoverImapBackfillJob implements ShouldQueue
         try {
             $discovery->discover($installation, $backfill);
         } catch (Throwable $e) {
+            if ($backfill->isCancelled()) {
+                return;
+            }
             $backfill->forceFill([
                 'heartbeat_at' => now(),
                 'error_json' => ['message' => $e->getMessage(), 'type' => $e::class],
@@ -83,8 +86,10 @@ final class DiscoverImapBackfillJob implements ShouldQueue
             throw $e;
         }
 
-        PumpImapBackfillJob::dispatch($backfill->id, $this->tenantId)
-            ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        if ($backfill->fresh()->status === ImapBackfill::STATUS_RUNNING) {
+            PumpImapBackfillJob::dispatch($backfill->id, $this->tenantId)
+                ->onQueue((string) config('connectors.imap.backfill.queue', 'connectors'));
+        }
     }
 
     /** @return array<int,object> */
@@ -93,6 +98,9 @@ final class DiscoverImapBackfillJob implements ShouldQueue
         $releaseAfter = (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60);
         $ttl = (int) config('connectors.imap.mailbox_lock.ttl_seconds', 700);
         $backfill = ImapBackfill::query()->forTenant($this->tenantId)->find($this->backfillId);
+        if ($backfill?->status === ImapBackfill::STATUS_CANCELLED) {
+            return [];
+        }
         $installation = $backfill === null ? null : ConnectorInstallation::query()
             ->forTenant($this->tenantId)
             ->find($backfill->connector_installation_id);
@@ -142,11 +150,15 @@ final class DiscoverImapBackfillJob implements ShouldQueue
         }
         $error['terminal_queue_error'] = $terminal;
 
-        $backfill->forceFill([
-            'status' => ImapBackfill::STATUS_FAILED,
-            'heartbeat_at' => now(),
-            'error_json' => $error,
-        ])->save();
+        $updated = ImapBackfill::query()->forTenant($this->tenantId)->whereKey($backfill->id)
+            ->where('status', ImapBackfill::STATUS_DISCOVERING)->update([
+                'status' => ImapBackfill::STATUS_FAILED,
+                'heartbeat_at' => now(),
+                'error_json' => json_encode($error, JSON_THROW_ON_ERROR),
+            ]);
+        if ($updated === 0) {
+            return;
+        }
 
         Log::error('[imap-backfill-diag] discovery job reached terminal queue failure', [
             'backfill_id' => $this->backfillId,

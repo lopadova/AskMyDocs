@@ -1,0 +1,247 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Connectors\Imap;
+
+use RuntimeException;
+use Webklex\PHPIMAP\Config;
+use Webklex\PHPIMAP\Connection\Protocols\ImapProtocol;
+use Webklex\PHPIMAP\Connection\Protocols\Response;
+use Webklex\PHPIMAP\IMAP;
+
+/** Enforce inbound-only IMAP even when the MIME library tries to restore flags. */
+final class ReadOnlyImapProtocol extends ImapProtocol
+{
+    /** @var array<int,array> Only the flags from the last explicit read. */
+    private array $lastFlags = [];
+
+    private int|string $lastFlagsSequence = IMAP::ST_UID;
+
+    private ?int $acknowledgedSeenRestore = null;
+
+    private float $lastWireActivityAt = 0;
+
+    private int $literalBytesRemaining = 0;
+
+    private ?float $requestDeadline = null;
+
+    private bool $ioBoundBySyncBudget = false;
+
+    public function __construct(
+        Config $config,
+        bool $cert_validation = true,
+        mixed $encryption = false,
+        private readonly ?ImapSyncBudget $budget = null,
+    ) {
+        parent::__construct($config, $cert_validation, $encryption);
+    }
+
+    public function nextLine(Response $response): string
+    {
+        $this->prepareIo();
+        if ($this->literalBytesRemaining > 0) {
+            // A literal is a counted byte string, not a sequence of lines.
+            // Webklex otherwise reads MIME payloads one byte at a time and
+            // retains every base64 line in Response as well as the full body.
+            // Keep one payload copy and read bounded chunks, including binary
+            // data and messages which have no trailing newline.
+            $chunk = fread($this->stream, min(64 * 1024, $this->literalBytesRemaining));
+            if ($chunk === false || $chunk === '') {
+                $this->readFailed('IMAP literal ended before its declared byte count.');
+            }
+            $this->literalBytesRemaining -= strlen($chunk);
+
+            return $chunk;
+        }
+
+        $line = fgets($this->stream);
+        if ($line === false || ! str_ends_with($line, "\n")) {
+            $this->readFailed('empty response');
+        }
+        $response->addResponse($line);
+        if (preg_match('/\{([0-9]+)\+?\}\r?\n\z/', $line, $match)) {
+            $this->literalBytesRemaining = (int) $match[1];
+        }
+        if ($this->debug) {
+            echo '<< '.$line;
+        }
+
+        return $line;
+    }
+
+    public function connected(): bool
+    {
+        if ($this->budget?->remainingSeconds() === 0.0) {
+            $this->abortConnection();
+            $this->budget->throwIfExpired();
+        }
+        if (! is_resource($this->stream) || feof($this->stream)) {
+            return false;
+        }
+        // Webklex checks the connection while parsing every MIME message and
+        // attachment. Recent successful wire reads already prove it is alive;
+        // only an idle connection needs another NOOP. A failed read clears this
+        // shortcut and the existing reconnect decorator retries the operation.
+        if (microtime(true) - $this->lastWireActivityAt < 15) {
+            return true;
+        }
+
+        $connected = parent::connected();
+        // The vendor health check catches RuntimeException and returns false.
+        // Keep an exhausted job distinguishable from a failed authentication.
+        $this->budget?->throwIfExpired();
+
+        return $connected;
+    }
+
+    public function readLine(Response $response, array|string &$tokens = [], string $wantedTag = '*', bool $dontParse = false): bool
+    {
+        try {
+            $complete = parent::readLine($response, $tokens, $wantedTag, $dontParse);
+            $this->lastWireActivityAt = microtime(true);
+
+            return $complete;
+        } catch (\Throwable $exception) {
+            $this->lastWireActivityAt = 0;
+
+            throw $exception;
+        }
+    }
+
+    public function flags(int|array $uids, int|string $uid = IMAP::ST_UID): Response
+    {
+        $restoreUid = $this->acknowledgedSeenRestore;
+        $this->acknowledgedSeenRestore = null;
+        $requested = is_array($uids) ? array_values($uids) : [$uids];
+        // unsetFlag(Seen) immediately re-reads flags after its local no-op STORE.
+        // Return the flags already fetched for this message instead of issuing
+        // one redundant network command per unread message in a bulk fetch.
+        if ($restoreUid !== null && $requested === [$restoreUid]
+            && $uid === $this->lastFlagsSequence && isset($this->lastFlags[$restoreUid])) {
+            return Response::empty()->setResult([$restoreUid => $this->lastFlags[$restoreUid]]);
+        }
+
+        $response = parent::flags($uids, $uid);
+        $this->lastFlags = $response->successful() ? $response->array() : [];
+        $this->lastFlagsSequence = $uid;
+
+        return $response;
+    }
+
+    public function sendRequest(string $command, array $tokens = [], ?string &$tag = null): Response
+    {
+        $this->acknowledgedSeenRestore = null;
+        $command = strtoupper(trim($command));
+        if ($command === 'SELECT') {
+            $command = 'EXAMINE';
+        }
+        if ($command === 'EXAMINE') {
+            $this->lastFlags = [];
+        }
+        if (! in_array($command, [
+            'EXAMINE', 'FETCH', 'UID FETCH', 'SEARCH', 'UID SEARCH', 'LIST', 'LSUB',
+            'STATUS', 'CAPABILITY', 'NAMESPACE', 'NOOP', 'CHECK', 'ID', 'STARTTLS',
+            'LOGIN', 'AUTHENTICATE', 'LOGOUT', 'GETQUOTA', 'GETQUOTAROOT',
+        ], true)) {
+            throw new RuntimeException("Read-only IMAP rejected {$command}.");
+        }
+        if (in_array($command, ['FETCH', 'UID FETCH'], true) && isset($tokens[1]) && is_string($tokens[1])) {
+            // Keep the parser's expected BODY[...] response key; only the wire
+            // request has PEEK, which the server omits from its response key.
+            $tokens[1] = str_replace('BODY[', 'BODY.PEEK[', $tokens[1]);
+        }
+
+        // A per-read timeout restarts on every untagged response/literal chunk.
+        // Bound the entire command too, even if the server keeps trickling data.
+        $this->requestDeadline = hrtime(true) / 1e9 + max(1, $this->getConnectionTimeout());
+
+        return parent::sendRequest($command, $tokens, $tag);
+    }
+
+    public function write(Response $response, string $data): void
+    {
+        $this->prepareIo();
+        parent::write($response, $data);
+    }
+
+    private function prepareIo(): void
+    {
+        $remaining = $this->budget?->remainingSeconds();
+        if ($remaining === 0.0) {
+            $this->abortConnection();
+            $this->budget->throwIfExpired();
+        }
+        $commandRemaining = $this->requestDeadline === null
+            ? max(1, $this->getConnectionTimeout())
+            : $this->requestDeadline - hrtime(true) / 1e9;
+        $this->ioBoundBySyncBudget = $remaining !== null && $remaining <= $commandRemaining;
+        $remaining = min($remaining ?? $commandRemaining, $commandRemaining);
+        if ($remaining <= 0) {
+            $this->abortConnection();
+            throw new RuntimeException('IMAP command timed out.');
+        }
+        if (is_resource($this->stream)) {
+            $microseconds = max(1, (int) ceil($remaining * 1_000_000));
+            stream_set_timeout($this->stream, intdiv($microseconds, 1_000_000), $microseconds % 1_000_000);
+        }
+    }
+
+    private function readFailed(string $message): never
+    {
+        $timedOut = is_resource($this->stream) && (stream_get_meta_data($this->stream)['timed_out'] ?? false);
+        $budgetTimedOut = $timedOut && $this->ioBoundBySyncBudget;
+        // No LOGOUT on a socket with an incomplete response: it would wait for
+        // the same stalled command again and consume the worker's cleanup margin.
+        $this->abortConnection();
+        if ($budgetTimedOut) {
+            // PHP's stream timer can fire just before the monotonic deadline
+            // due to platform timer rounding. Preserve the reason for the cap.
+            $this->budget?->exhaust();
+        }
+        $this->budget?->throwIfExpired();
+        throw new RuntimeException($timedOut ? 'IMAP response timed out.' : $message);
+    }
+
+    private function abortConnection(): void
+    {
+        if (is_resource($this->stream)) {
+            fclose($this->stream);
+        }
+        $this->reset();
+    }
+
+    public function reset(): void
+    {
+        parent::reset();
+        $this->lastFlags = [];
+        $this->acknowledgedSeenRestore = null;
+        $this->lastWireActivityAt = 0;
+        $this->literalBytesRemaining = 0;
+        $this->requestDeadline = null;
+        $this->ioBoundBySyncBudget = false;
+    }
+
+    public function content(int|array $uids, string $rfc = 'RFC822', int|string $uid = IMAP::ST_UID): Response
+    {
+        return $this->fetch(['BODY[TEXT]'], is_array($uids) ? $uids : [$uids], null, $uid);
+    }
+
+    public function store(
+        array|string $flags, int $from, ?int $to = null, ?string $mode = null,
+        bool $silent = true, int|string $uid = IMAP::ST_UID, ?string $item = null,
+    ): Response {
+        // Webklex's FT_PEEK calls unsetFlag(Seen) after parsing an unread body.
+        // EXAMINE + BODY.PEEK already preserve the flags: acknowledge this one
+        // library cleanup locally without sending any STORE to the server.
+        if ($mode === '-' && $silent && $item === null
+            && array_map(static fn ($flag): string => strtolower((string) $flag), (array) $flags) === ['\\seen']) {
+            $this->acknowledgedSeenRestore = ($to === null || $to === $from)
+                && $uid === $this->lastFlagsSequence ? $from : null;
+
+            return Response::empty()->setResult(true);
+        }
+
+        throw new RuntimeException('Read-only IMAP rejected a flag change.');
+    }
+}

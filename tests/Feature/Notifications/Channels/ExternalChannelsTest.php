@@ -212,7 +212,7 @@ final class ExternalChannelsTest extends TestCase
     public function test_send_external_notification_job_signs_request_with_hmac_when_secret_present(): void
     {
         Http::fake([
-            'https://webhook.example.invalid/*' => Http::response('', 200),
+            'https://93.184.216.34/*' => Http::response('', 200),
         ]);
 
         $row = $this->makeRow();
@@ -222,7 +222,7 @@ final class ExternalChannelsTest extends TestCase
             channelName: 'webhook',
             eventRowId: (int) $row->id,
             tenantId: (string) $row->tenant_id,
-            url: 'https://webhook.example.invalid/inbox',
+            url: 'https://93.184.216.34/inbox',
             payload: $payload,
             hmacSecret: $secret,
         );

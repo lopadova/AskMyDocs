@@ -1,4 +1,6 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 
 export interface VoiceInputProps {
@@ -36,6 +38,7 @@ function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 }
 
 export function VoiceInput({ onTranscript }: VoiceInputProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const [listening, setListening] = useState(false);
     const [supported, setSupported] = useState<boolean>(true);
     const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -86,37 +89,28 @@ export function VoiceInput({ onTranscript }: VoiceInputProps): ReactNode {
     };
 
     return (
-        <button
+        <Button
             type="button"
+            variant="quiet"
+            size="sm"
+            iconOnly
             onClick={toggle}
-            className="btn icon sm"
+            className="chat-composer-tool-button chat-composer-voice"
             data-testid="chat-composer-voice"
             data-state={listening ? 'listening' : supported ? 'idle' : 'unsupported'}
             aria-pressed={listening}
-            aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+            aria-label={listening ? 'Stop voice input' : translateInterface("Start voice input")}
             disabled={!supported}
             aria-disabled={!supported}
             title={supported ? (listening ? 'Listening…' : 'Voice input') : 'Voice input not supported in this browser'}
-            style={{
-                background: listening ? 'var(--grad-accent)' : 'transparent',
-                border: listening ? 0 : '1px solid transparent',
-                color: listening ? '#0a0a14' : supported ? 'var(--fg-2)' : 'var(--fg-3)',
-                position: 'relative',
-            }}
         >
             <Icon.Mic size={13} />
             {listening && (
                 <span
-                    aria-hidden
-                    style={{
-                        position: 'absolute',
-                        inset: -2,
-                        borderRadius: 8,
-                        border: '2px solid var(--accent-a)',
-                        animation: 'pulse 1.4s infinite',
-                    }}
+                    className="chat-composer-voice-pulse"
+                    aria-hidden="true"
                 />
             )}
-        </button>
+        </Button>
     );
 }

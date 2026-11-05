@@ -1,0 +1,133 @@
+ASKMYDOCS / PRESENTAZIONE DEL PRODOTTO
+Posizionamento editoriale e percorso dimostrativo
+Snapshot: 8003ca793c0218ec13451b449fa02a874de762a0, 29 ottobre 2026.
+
+FRASE DI POSIZIONAMENTO
+AskMyDocs collega documenti, conversazioni e dati dei sistemi aziendali per
+rispondere alle domande di lavoro con fonti consultabili, dentro un perimetro
+di accesso e di conoscenza governato dal team.
+
+PROMESSA CENTRALE
+Rendere utilizzabile la conoscenza che l'organizzazione possiede già:
+trovarla, metterla in relazione, distinguere ciò che è documentato dal dato
+corrente e tornare alla fonte prima di decidere.
+
+PUBBLICO PRIORITARIO
+Team di assistenza, operations e back office che affrontano domande ripetute
+su procedure, pratiche e dati distribuiti fra più archivi e applicazioni.
+Il lettore guida è il responsabile che deve organizzare fonti e responsabilità;
+il lettore operativo è la persona che deve trovare e verificare una risposta.
+
+PUBBLICO SECONDARIO
+Responsabili della conoscenza e delle procedure; team tecnici e consulenti che
+vogliono usare il corpus del progetto anche da client AI compatibili. La
+presentazione può parlare a questi pubblici con casi separati, senza fingere
+che abbiano tutti lo stesso compito o gli stessi prerequisiti.
+
+BENEFICIO CONCRETO
+Una conversazione può affiancare la procedura, lo storico pertinente e il
+riscontro corrente del sistema operativo, lasciando identificabili le fonti.
+Il team ritrova e verifica il contesto senza ricostruirlo ogni volta a mano
+fra cartelle, persone e schermate. Questo è un beneficio di processo plausibile
+derivato dai meccanismi implementati, non una percentuale di tempo risparmiato.
+
+SITUAZIONI DI PARTENZA
+- La risposta esiste, ma è sparsa fra documenti e persone.
+- Un dato cambia nel gestionale mentre la procedura resta in un archivio.
+- Lo storico dei casi viene conservato ma raramente riutilizzato.
+- Il nuovo collega conosce il documento e non le ragioni delle decisioni.
+- Le persone lavorano in più strumenti AI e ripetono il trasferimento del contesto.
+
+MESSAGGI DA METTERE IN APERTURA
+1. Fai domande sulle informazioni della tua organizzazione.
+2. Collega documenti, email, helpdesk e sistemi con interfacce disponibili.
+3. Apri le fonti e distingui documenti, dati correnti e materiale generato.
+4. Organizza progetti, accessi e responsabilità della conoscenza.
+5. Porta la ricerca nel punto di lavoro: app, widget o client AI compatibile.
+
+MESSAGGI DA TENERE NELLA PARTE FINALE
+Moduli amministrativi, filtri e profili, promozione canonica, salute della KB,
+osservabilità, valutazioni e costi, configurazioni, code e dipendenze. Sono
+capacità importanti per spiegare come si governa il prodotto, ma non devono
+precedere la comprensione del problema che risolve.
+
+TONO
+La persona e il lavoro prima dell'architettura. Esempi circoscritti, verbi
+concreti, una tesi per pagina e una fonte per ogni capacità descritta. Le
+illustrazioni umanistiche comunicano il contesto; non provano un flusso.
+
+CASI D'USO
+I cinque casi di casi-uso.json sono scenari dimostrativi. Non attribuire
+risultati a clienti. I materiali Nencini Sport sono una demo documentata con
+un suo perimetro: non trasformarli in una referenza commerciale o in prova
+che GESCAT, documenti ed email fossero già attivi in quell'ambiente.
+
+ADATTO QUANDO
+- Esiste un corpus di fonti curabili e un responsabile dei contenuti.
+- Le persone hanno domande ripetute e devono poter controllare le prove.
+- I sistemi da collegare offrono interfacce e permessi compatibili.
+- L'organizzazione può predisporre installazione, provider, code e governance.
+
+DA QUALIFICARE PRIMA DELLA PROPOSTA
+- Quali risposte devono venire da procedure e quali da dati correnti?
+- Quali fonti sono attuali, affidabili e ammesse al progetto?
+- Chi può leggere i contenuti e chi può promuoverli o modificarli?
+- Quale integrazione esiste già e quale va realizzata o configurata?
+- Quali attività devono restare decisioni o azioni esplicite dell'operatore?
+
+NON PROMETTERE
+- Risposte sempre corrette o assenza garantita di errori del modello.
+- Un collegamento universale già pronto a qualsiasi gestionale.
+- Aggiornamenti automatici di ticket, ordini o altri sistemi nei casi read-only.
+- Benefici numerici, ROI, costi o risultati cliente non misurati.
+- Conformità legale automatica per la sola presenza dei moduli di governance.
+- La disponibilità di ogni funzione su ogni installazione senza configurazione.
+- Una nuova beta iOS pubblicata o certificazione universale dei login dei client.
+
+DEMO DI CINQUE MINUTI
+Scenario: una persona cerca una procedura e il motivo della sua adozione nel
+progetto dimostrativo, poi confronta il dato di un ordine sintetico se esiste
+un endpoint di test già configurato.
+
+Prerequisiti preparati prima della sessione:
+- Progetto demo con membership e ACL verificate.
+- Tre documenti sintetici: procedura attuale, decisione approvata, nota storica.
+- Citazioni verificabili e file originali disponibili.
+- Eventuale API di sola lettura con record e schema di test concordati.
+- Nessuna credenziale o contenuto cliente da mostrare.
+
+0:00-0:40 / IL PROBLEMA
+Mostrare che procedura, decisione e dato operativo hanno sedi diverse. Chiedere
+quale informazione il gruppo cerca più spesso; scegliere una domanda preparata.
+
+0:40-1:40 / LA DOMANDA
+Aprire la chat nel progetto demo e chiedere la procedura pertinente. Mostrare
+l'avanzamento, poi leggere solo i punti sostenuti dalle fonti disponibili.
+
+1:40-2:40 / LA PROVA
+Aprire una citazione. Mostrare il passaggio del documento e la sua identità.
+Seguire il collegamento a una decisione o una fonte correlata disponibile.
+Se il sistema non trova una prova sufficiente, mostrare il limite senza
+riempire la risposta con un dato dimostrativo non recuperato.
+
+2:40-3:40 / IL DATO CORRENTE, SE PRONTO
+Interrogare l'ordine sintetico tramite il tool di lettura già configurato e
+aprire il riferimento della chiamata. Distinguere stato osservato e procedura.
+Se l'endpoint non è pronto, mostrare la schermata di configurazione come
+configurazione, senza simulare una chiamata riuscita.
+
+3:40-4:30 / IL CONTROLLO
+Mostrare progetto, fonti selezionate e una responsabilità editoriale: chi cura
+la procedura, chi legge, chi promuove una pagina automatica. Non avviare una
+campagna email, una sincronizzazione reale o una modifica esterna durante la demo.
+
+4:30-5:00 / IL PROSSIMO PASSO
+Scegliere una domanda reale, un piccolo insieme di fonti ammesse e il relativo
+responsabile. Il criterio della prova successiva è osservabile: fonte corretta,
+citazione apribile, accesso appropriato e dato corrente distinguibile.
+
+STATO E LIMITI DELLA CONSEGNA
+Posizionamento derivato dalle capacità del prodotto alla revisione indicata.
+Nessuna ricerca competitiva o validazione della domanda di mercato eseguita.
+Nessuna demo live o inferenza eseguita per questi materiali. Tutte le prove
+rinviano al codice e alla documentazione elencati in casi-uso.json.

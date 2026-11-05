@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Connectors\Imap\Backfill\ImapBackfillClient;
 use App\Connectors\Imap\Backfill\ImapBackfillClientFactory;
+use App\Connectors\Imap\Backfill\ImapBackfillMailboxClient;
+use App\Connectors\Imap\Backfill\ImapBackfillMessageSizer;
+use App\Connectors\Imap\ImapSyncBudget;
+use App\Connectors\Imap\MemoryBoundedImapClient;
+use App\Connectors\Imap\ReadOnlyWebklexClient;
 use App\Connectors\Imap\ReconnectingImapBackfillClient;
 use App\Connectors\Imap\ReconnectingImapClient;
 use App\Connectors\Imap\SerializingImapBackfillClient;
 use App\Connectors\Imap\SerializingImapClient;
 use App\Connectors\Imap\SerializingImapClientFactory;
+use Mockery;
 use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
 use ReflectionProperty;
 use Tests\TestCase;
@@ -51,6 +58,20 @@ final class ImapDecoratorCompositionTest extends TestCase
             $inner,
             'reconnect must be nested INSIDE the serialization lock (Serializing(Reconnecting(raw)))',
         );
+        $downloads = (new ReflectionProperty(ReconnectingImapClient::class, 'inner'))->getValue($inner);
+        $this->assertInstanceOf(MemoryBoundedImapClient::class, $downloads, 'incremental sync must also bound large MIME parsing');
+        $bulk = (new ReflectionProperty(MemoryBoundedImapClient::class, 'downloads'))->getValue($downloads);
+        $raw = (new ReflectionProperty(ImapBackfillMailboxClient::class, 'rawClient'))->getValue($bulk);
+        $this->assertSame(
+            $this->app->make(ImapSyncBudget::class),
+            (new ReflectionProperty(ReadOnlyWebklexClient::class, 'budget'))->getValue($raw),
+            'network reads must share the job deadline',
+        );
+        $this->assertSame(
+            $this->app->make(ImapSyncBudget::class),
+            (new ReflectionProperty(ReconnectingImapClient::class, 'budget'))->getValue($inner),
+            'reconnects must not start a fresh deadline',
+        );
     }
 
     public function test_backfill_bulk_client_uses_the_same_reconnect_and_serialization_chain(): void
@@ -71,5 +92,30 @@ final class ImapDecoratorCompositionTest extends TestCase
             $inner,
             'backfill reconnect must remain inside the shared per-mailbox lock',
         );
+    }
+
+    public function test_metadata_sizing_retries_inside_the_same_mailbox_lock(): void
+    {
+        $raw = Mockery::mock(ImapBackfillClient::class.', '.ImapBackfillMessageSizer::class);
+        $calls = 0;
+        $raw->shouldReceive('messageSizes')->twice()->with('INBOX', [7])->andReturnUsing(function () use (&$calls): array {
+            if (++$calls === 1) {
+                throw new \RuntimeException('connection reset');
+            }
+
+            return [7 => 33189313];
+        });
+        $raw->shouldReceive('close')->twice();
+        $store = $this->app['cache']->store('array')->getStore();
+        $client = new SerializingImapBackfillClient(
+            new ReconnectingImapBackfillClient($raw, 2, 0), $store, 'sizing-lock', 0, 60,
+        );
+
+        $this->assertSame([7 => 33189313], $client->messageSizes('INBOX', [7]));
+        $other = $store->lock('sizing-lock', 60);
+        $this->assertFalse($other->get(), 'a reconnect must keep the physical mailbox locked');
+        $client->close();
+        $this->assertTrue($other->get());
+        $other->release();
     }
 }

@@ -87,6 +87,24 @@ final class AgentRunControlTest extends TestCase
             ->assertJsonPath('error', 'extension_out_of_bounds');
     }
 
+    public function test_mcp_interaction_is_persisted_as_a_first_class_pause(): void
+    {
+        $user = $this->user('mcp-pause@example.com');
+        $run = $this->makeRun($user, AgentRun::STATUS_RUNNING);
+
+        app(AgentRunControl::class)->awaitMcpInteraction($run, 'mcp_input_required', [
+            'pending_interaction_id' => 'interaction-123',
+            'prompt' => 'Choose a warehouse',
+        ]);
+
+        $fresh = $run->fresh();
+        $this->assertSame(AgentRun::STATUS_AWAITING_MCP_INPUT, $fresh->status);
+        $this->assertSame('interaction-123', data_get($fresh->result_json, 'pending_mcp_interaction.pending_interaction_id'));
+        $event = $run->events()->sole();
+        $this->assertSame('run.mcp_interaction_required', $event->type);
+        $this->assertSame('mcp_input_required', data_get($event->payload_json, 'data.reason'));
+    }
+
     public function test_run_access_hides_another_users_run(): void
     {
         $owner = $this->user('control-owner@example.com');

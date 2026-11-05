@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Fragment, useState } from 'react';
 import { useCommandHistory, type HistoryRow } from './maintenance.api';
 
@@ -6,6 +8,7 @@ import { useCommandHistory, type HistoryRow } from './maintenance.api';
  * show stdout_head / error_message.
  */
 export function CommandHistoryTable() {
+    const { t: translateInterface } = useUiTranslation();
     const [page, setPage] = useState(1);
     const [cmdFilter, setCmdFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -41,27 +44,27 @@ export function CommandHistoryTable() {
                     />
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={labelStyle}>Status</span>
-                    <select
+                    <span style={labelStyle}>{translateInterface("Status")}</span>
+                    <SelectField
                         data-testid="history-filter-status"
                         value={statusFilter}
-                        onChange={(e) => {
-                            setStatusFilter(e.target.value);
+                        onValueChange={(nextValue) => {
+                            setStatusFilter(nextValue);
                             setPage(1);
                         }}
                         style={inputStyle}
                     >
-                        <option value="">any</option>
-                        <option value="started">started</option>
-                        <option value="completed">completed</option>
-                        <option value="failed">failed</option>
-                        <option value="rejected">rejected</option>
-                    </select>
+                        <SelectOption value="">any</SelectOption>
+                        <SelectOption value="started">started</SelectOption>
+                        <SelectOption value="completed">completed</SelectOption>
+                        <SelectOption value="failed">failed</SelectOption>
+                        <SelectOption value="rejected">rejected</SelectOption>
+                    </SelectField>
                 </label>
             </div>
 
             {state === 'loading' ? (
-                <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>Loading…</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</div>
             ) : null}
             {state === 'empty' ? (
                 <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>No matching history rows.</div>
@@ -82,9 +85,9 @@ export function CommandHistoryTable() {
                             <tr>
                                 <th style={thStyle}>Time</th>
                                 <th style={thStyle}>Command</th>
-                                <th style={thStyle}>Status</th>
+                                <th style={thStyle}>{translateInterface("Status")}</th>
                                 <th style={thStyle}>Exit</th>
-                                <th style={thStyle}>Duration</th>
+                                <th style={thStyle}>{translateInterface("Duration")}</th>
                                 <th style={thStyle}></th>
                             </tr>
                         </thead>
@@ -124,7 +127,7 @@ export function CommandHistoryTable() {
                                                         cursor: 'pointer',
                                                     }}
                                                 >
-                                                    {isOpen ? 'Hide' : 'Details'}
+                                                    {isOpen ? translateInterface("Hide") : 'Details'}
                                                 </button>
                                             </td>
                                         </tr>

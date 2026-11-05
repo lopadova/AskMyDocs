@@ -82,6 +82,30 @@ class IngestDocumentJobTest extends TestCase
         $this->app->call([$job, 'handle']);
     }
 
+    public function test_embedding_failure_preserves_the_original_exception_for_queue_diagnostics(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/embedding-failure.md', "# Mail\n\nA document to embed.");
+        config()->set('kb.sources.path_prefix', '');
+        $cause = new RuntimeException('Embedding provider refused the request.');
+        $embeddings = \Mockery::mock(\App\Services\Kb\EmbeddingCacheService::class);
+        $embeddings->shouldReceive('generate')->once()->andThrow($cause);
+        $this->app->instance(\App\Services\Kb\EmbeddingCacheService::class, $embeddings);
+        $job = new IngestDocumentJob('demo', 'docs/embedding-failure.md', 'kb');
+
+        try {
+            $this->app->call([$job, 'handle']);
+            $this->fail('The embedding failure must reach the queue worker.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('at step [embed-chunks]', $exception->getMessage());
+            $this->assertStringContainsString('kb:docs/embedding-failure.md', $exception->getMessage());
+            $this->assertSame($cause, $exception->getPrevious());
+            $this->assertStringContainsString($cause->getMessage(), (string) $exception);
+        }
+
+        $this->assertSame(0, KnowledgeDocument::query()->where('source_path', 'docs/embedding-failure.md')->count());
+    }
+
     /**
      * v8.36 — a deterministic OCR refusal (over the byte/page cap) is failed
      * immediately instead of being retried three times (R14).
@@ -299,6 +323,21 @@ class IngestDocumentJobTest extends TestCase
         $this->assertSame('kb', $doc->metadata['disk'] ?? null);
     }
 
+    public function test_connector_provenance_survives_the_entire_queued_ingest_flow(): void
+    {
+        Storage::fake('kb');
+        config(['kb.sources.path_prefix' => '']);
+        Storage::disk('kb')->put('mail/return.md', "# Return request\n\nPlease send a return label.");
+        $job = new IngestDocumentJob('demo', 'mail/return.md', 'kb', 'Return request', [
+            'connector' => 'imap', 'installation_id' => 10, 'imap_doc_key' => 'INBOX:14:42',
+        ]);
+        $this->app->call([$job, 'handle']);
+        $document = KnowledgeDocument::firstOrFail();
+        $this->assertSame('imap', $document->metadata['connector']);
+        $this->assertSame(10, $document->metadata['installation_id']);
+        $this->assertSame('INBOX:14:42', $document->metadata['imap_doc_key']);
+    }
+
     public function test_generated_email_fixture_skips_post_ingest_ai_jobs(): void
     {
         Storage::fake('kb');
@@ -455,6 +494,18 @@ MD,
         );
 
         $this->assertSame('custom-queue-name', $job->queue);
+    }
+
+    public function test_uses_a_bounded_automatic_retry_schedule(): void
+    {
+        $job = new IngestDocumentJob(
+            projectKey: 'demo',
+            relativePath: 'retryable.md',
+            disk: 'kb',
+        );
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([10, 30, 60], $job->backoff);
     }
 
 

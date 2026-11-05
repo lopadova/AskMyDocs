@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from 'react';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
+import { ToolSourceModal } from './ToolSourceModal';
+import type { ToolSource } from './chat.api';
 import { RelatedPanel } from './RelatedPanel';
 import { ConfidenceBadge } from './ConfidenceBadge';
+import { SearchStatsBadge } from './SearchStatsBadge';
 import { RefusalNotice } from './RefusalNotice';
 import { ThinkingTrace } from './ThinkingTrace';
 import { MessageActions } from './MessageActions';
@@ -13,6 +17,9 @@ import { UserMessageEditor } from './UserMessageEditor';
 import { RetrievalRunnerUpPanel } from './RetrievalRunnerUpPanel';
 import { CounterfactualPanel } from './CounterfactualPanel';
 import {
+    getAgentActivity,
+    getAgentArtifact,
+    getAgentSelection,
     getCitations,
     getConfidence,
     getCounterfactual,
@@ -23,10 +30,13 @@ import {
     getRunnerUp,
     getTextContent,
     getToolCalls,
+    getToolSources,
     isUiMessage,
     type RenderableMessage,
 } from './message-shape-adapters';
 import { ToolCallBubble } from './tool-call-renderer/ToolCallBubble';
+import { AgentTableArtifact, type AgentArtifactSelection } from './AgentTableArtifact';
+import { AgentSelectionReceipt } from './AgentSelectionReceipt';
 
 export interface MessageBubbleProps {
     conversationId: number;
@@ -40,6 +50,7 @@ export interface MessageBubbleProps {
     message: RenderableMessage;
     projectKey?: string | null;
     streaming?: boolean;
+    activityInfo?: ReactNode;
     /**
      * v4.5/W7 Tier 1 #2 — assistant-only. Wired by the parent
      * (ChatView) for the LAST assistant turn to `chat.regenerate()`.
@@ -62,6 +73,8 @@ export interface MessageBubbleProps {
      * Wired by ChatView (admin-gated). Forwarded to CitationsPopover.
      */
     onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
+    onMcpAppMessage?: (content: string, appId: string) => Promise<void>;
+    onAgentArtifactSelection?: (selection: AgentArtifactSelection) => Promise<void>;
 }
 
 /**
@@ -90,17 +103,25 @@ export function MessageBubble({
     message,
     projectKey,
     streaming = false,
+    activityInfo,
     onRegenerate,
     onBranch,
     onEditSubmit,
     showCounterfactual = true,
     onOpenSource,
+    onMcpAppMessage,
+    onAgentArtifactSelection,
 }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
     const messageId = getMessageId(message);
     const textContent = getTextContent(message);
+    const agentSelection = getAgentSelection(message);
+    const messageLocale = !isUiMessage(message) && typeof message.metadata?.locale === 'string'
+        ? message.metadata.locale
+        : 'en';
     const [editing, setEditing] = useState(false);
+    const [openToolSource, setOpenToolSource] = useState<ToolSource | null>(null);
 
     if (isUser) {
         if (editing && onEditSubmit) {
@@ -121,13 +142,6 @@ export function MessageBubble({
                 data-testid={`chat-message-${messageId}`}
                 data-role="user"
                 className="popin chat-user-row"
-                style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    alignItems: 'center',
-                    gap: 6,
-                    marginBottom: 18,
-                }}
             >
                 {/*
                   * Edit affordance sits OUTSIDE the bubble, to its left
@@ -137,31 +151,27 @@ export function MessageBubble({
                   * focused (`.chat-user-edit` in tokens.css) so it stays
                   * keyboard-reachable without cluttering the thread.
                   */}
-                {onEditSubmit && !streaming && (
-                    <button
-                        type="button"
-                        className="btn icon sm ghost chat-user-edit"
+                {onEditSubmit && !streaming && !agentSelection && (
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        className="chat-user-edit"
                         data-testid={`chat-message-${messageId}-edit`}
                         onClick={() => setEditing(true)}
                         aria-label="Edit your message"
+                        title="Edit your message"
                     >
                         <Icon.Edit size={12} />
-                    </button>
+                    </Button>
                 )}
                 <div
-                    style={{
-                        maxWidth: '70%',
-                        padding: '10px 14px',
-                        background: 'var(--bg-3)',
-                        border: '1px solid var(--panel-border)',
-                        borderRadius: '14px 14px 4px 14px',
-                        fontSize: 13.5,
-                        lineHeight: 1.55,
-                        color: 'var(--fg-0)',
-                        whiteSpace: 'pre-wrap',
-                    }}
+                    data-selection-receipt={agentSelection ? 'true' : undefined}
+                    className="chat-user-bubble"
                 >
-                    {textContent}
+                    {agentSelection
+                        ? <AgentSelectionReceipt selection={agentSelection} locale={messageLocale} />
+                        : textContent}
                 </div>
             </div>
         );
@@ -177,6 +187,7 @@ export function MessageBubble({
     // refetches the legacy shape.
     const meta = isUiMessage(message) ? {} : (message.metadata ?? {});
     const citations = getCitations(message);
+    const toolSources = typeof messageId === 'number' ? getToolSources(message) : [];
 
     // T3.5 — confidence + refusal_reason live at BOTH the top level
     // and in metadata for AppMessage; getRefusalReason / getConfidence
@@ -187,37 +198,40 @@ export function MessageBubble({
     const confidence = getConfidence(message);
     const isRefusal = refusalReason != null;
     const toolCalls = getToolCalls(message);
+    const hasPersistedActivity = getAgentActivity(message).length > 0;
+    const visibleToolCalls = hasPersistedActivity
+        ? toolCalls.filter((toolCall) => toolCall.status !== 'ok' || toolCall.app != null)
+        : toolCalls;
     const runnerUp = getRunnerUp(message);
     const counterfactual = getCounterfactual(message);
+    const agentArtifact = getAgentArtifact(message);
 
     return (
         <div
             data-testid={`chat-message-${messageId}`}
             data-role="assistant"
             data-refusal-reason={refusalReason ?? ''}
-            className="popin"
-            style={{ display: 'flex', gap: 12, marginBottom: 22 }}
+            className="popin chat-assistant-row"
         >
-            <div
-                style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 9,
-                    background: 'var(--grad-accent)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flex: '0 0 auto',
-                }}
+            <span
+                className="chat-agent-avatar"
+                data-testid="chat-agent-avatar"
+                data-agent-mark="sparkles"
+                aria-hidden="true"
             >
-                <Icon.Logo size={16} />
-            </div>
+                <Icon.Sparkles size={15} />
+            </span>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
-                {toolCalls.length > 0 && (
+                {visibleToolCalls.length > 0 && (
                     <div data-testid={`chat-message-${messageId}-tool-calls`}>
-                        {toolCalls.map((toolCall) => (
-                            <ToolCallBubble key={toolCall.id} toolCall={toolCall} />
+                        {visibleToolCalls.map((toolCall) => (
+                            <ToolCallBubble
+                                key={toolCall.id}
+                                toolCall={toolCall}
+                                conversationId={conversationId}
+                                onMcpAppMessage={onMcpAppMessage}
+                            />
                         ))}
                     </div>
                 )}
@@ -232,11 +246,19 @@ export function MessageBubble({
                 ) : (
                     <div
                         data-testid={`chat-message-${messageId}-body`}
-                        style={{ fontSize: 13.5, color: 'var(--fg-1)' }}
+                        className="chat-message-body"
                     >
-                        <Markdown source={textContent} project={projectKey ?? undefined} />
+                        <Markdown source={textContent} project={projectKey ?? undefined} variant="answer" />
                         {streaming && <span className="caret" />}
                     </div>
+                )}
+                {!streaming && !isRefusal && agentArtifact && typeof messageId === 'number' && (
+                    <AgentTableArtifact
+                        artifact={agentArtifact}
+                        messageId={messageId}
+                        locale={typeof meta.locale === 'string' ? meta.locale : 'en'}
+                        onSelect={onAgentArtifactSelection}
+                    />
                 )}
                 {/*
                   * Citations are skipped on the refusal path — the BE
@@ -244,8 +266,13 @@ export function MessageBubble({
                   * guarding here protects against a future regression
                   * that surfaces stale citations under a refusal body.
                   */}
-                {!streaming && !isRefusal && citations.length > 0 && (
-                    <CitationsPopover citations={citations} onOpenSource={onOpenSource} />
+                {!streaming && !isRefusal && (citations.length > 0 || toolSources.length > 0) && (
+                    <CitationsPopover citations={citations} onOpenSource={onOpenSource}
+                        toolSources={toolSources} onOpenToolSource={setOpenToolSource} />
+                )}
+                {openToolSource && typeof messageId === 'number' && (
+                    <ToolSourceModal source={openToolSource} conversationId={conversationId} messageId={messageId}
+                        onClose={() => setOpenToolSource(null)} />
                 )}
                 {/* v8.8/W6 — Related graph panel for the cited CANONICAL docs.
                     Derives slugs + project from the citations themselves; the
@@ -263,90 +290,86 @@ export function MessageBubble({
                     <CounterfactualPanel rows={counterfactual} enabled={showCounterfactual} />
                 )}
                 {!streaming && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 10 }}>
-                        <MessageActions
-                            content={textContent}
-                            onRegenerate={onRegenerate}
-                            onBranch={onBranch}
-                        />
-                        {/*
-                          * FeedbackButtons posts to
-                          * /conversations/{conv}/messages/{id}/feedback (see
-                          * `chatApi.rateMessage()`) which requires a numeric
-                          * persisted id. SDK UIMessage carries a string id
-                          * during the window between stream-finish and the
-                          * TanStack invalidation that swaps the cached
-                          * UIMessage for the persisted AppMessage. Hide the
-                          * buttons in that transient state — they reappear
-                          * once the refetch lands the canonical row.
-                          */}
-                        {typeof messageId === 'number' && !isUiMessage(message) && (
-                            <FeedbackButtons
-                                conversationId={conversationId}
-                                messageId={messageId}
-                                initialRating={message.rating}
+                    <div className="chat-message-footer">
+                        <div className="chat-message-controls">
+                            {activityInfo}
+                            <MessageActions
+                                content={textContent}
+                                onRegenerate={onRegenerate}
+                                onBranch={onBranch}
                             />
-                        )}
-                        <span style={{ flex: 1 }} />
-                        {/*
-                          * T3.6 — confidence badge to the right of
-                          * the action row. Renders nothing on legacy
-                          * rows that have no signal; renders 'refused'
-                          * tier (grey) when refusal_reason is set;
-                          * otherwise renders the high/moderate/low
-                          * tier per the score band.
-                          */}
-                        <ConfidenceBadge
-                            confidence={confidence}
-                            refusalReason={refusalReason}
-                        />
-                        {meta.model && (
-                            <span
-                                data-testid={`chat-message-${messageId}-meta`}
-                                className="mono"
-                                style={{
-                                    fontSize: 10.5,
-                                    color: 'var(--fg-3)',
-                                    marginLeft: 8,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                }}
-                            >
-                                <span data-testid={`chat-message-${messageId}-provider-model`}>
-                                    {meta.provider ? `${meta.provider} · ` : ''}
-                                    {meta.model}
-                                </span>
-                                {!isUiMessage(message) && message.created_at && (
-                                    <span data-testid={`chat-message-${messageId}-timestamp`}>
-                                        · {formatTimestamp(message.created_at)}
+                            {/*
+                              * FeedbackButtons posts to
+                              * /conversations/{conv}/messages/{id}/feedback (see
+                              * `chatApi.rateMessage()`) which requires a numeric
+                              * persisted id. SDK UIMessage carries a string id
+                              * during the window between stream-finish and the
+                              * TanStack invalidation that swaps the cached
+                              * UIMessage for the persisted AppMessage. Hide the
+                              * buttons in that transient state — they reappear
+                              * once the refetch lands the canonical row.
+                              */}
+                            {typeof messageId === 'number' && !isUiMessage(message) && (
+                                <FeedbackButtons
+                                    conversationId={conversationId}
+                                    messageId={messageId}
+                                    initialRating={message.rating}
+                                />
+                            )}
+                        </div>
+                        <div className="chat-message-metadata">
+                            {/*
+                              * T3.6 — confidence badge to the right of
+                              * the action row. Renders nothing on legacy
+                              * rows that have no signal; renders 'refused'
+                              * tier (grey) when refusal_reason is set;
+                              * otherwise renders the high/moderate/low
+                              * tier per the score band.
+                              */}
+                            <ConfidenceBadge
+                                confidence={confidence}
+                                refusalReason={refusalReason}
+                            />
+                            <SearchStatsBadge stats={meta.search_stats} />
+                            {meta.model && (
+                                <span
+                                    data-testid={`chat-message-${messageId}-meta`}
+                                    className="mono chat-message-meta"
+                                >
+                                    <span data-testid={`chat-message-${messageId}-provider-model`}>
+                                        {meta.provider ? `${meta.provider} · ` : ''}
+                                        {meta.model}
                                     </span>
-                                )}
-                                {meta.latency_ms !== undefined && (
-                                    <span>· {(meta.latency_ms / 1000).toFixed(1)}s</span>
-                                )}
-                            </span>
-                        )}
-                        {/*
-                          * v4.5/W7 Tier 1 #5 — per-turn token + cost meter.
-                          * v8.16/W3: prefers the authoritative server-resolved
-                          * cost (meta.cost / cost_currency, any ISO currency) and
-                          * skips the rate fetch when present; falls back to the
-                          * client-side rate compute (TanStack Query on
-                          * /api/chat/cost-rates) for legacy rows / metering-off.
-                          * Renders nothing on user turns / rows with no token
-                          * telemetry.
-                          */}
-                        <TokenCostMeter
-                            provider={meta.provider}
-                            model={meta.model}
-                            promptTokens={meta.prompt_tokens}
-                            completionTokens={meta.completion_tokens}
-                            totalTokens={meta.total_tokens}
-                            serverCost={meta.cost}
-                            serverCostCurrency={meta.cost_currency}
-                        />
-                        {/* timestamp moved into provider/model meta block above */}
+                                    {!isUiMessage(message) && message.created_at && (
+                                        <span data-testid={`chat-message-${messageId}-timestamp`}>
+                                            · {formatTimestamp(message.created_at)}
+                                        </span>
+                                    )}
+                                    {meta.latency_ms !== undefined && (
+                                        <span>· {(meta.latency_ms / 1000).toFixed(1)}s</span>
+                                    )}
+                                </span>
+                            )}
+                            {/*
+                              * v4.5/W7 Tier 1 #5 — per-turn token + cost meter.
+                              * v8.16/W3: prefers the authoritative server-resolved
+                              * cost (meta.cost / cost_currency, any ISO currency) and
+                              * skips the rate fetch when present; falls back to the
+                              * client-side rate compute (TanStack Query on
+                              * /api/chat/cost-rates) for legacy rows / metering-off.
+                              * Renders nothing on user turns / rows with no token
+                              * telemetry.
+                              */}
+                            <TokenCostMeter
+                                provider={meta.provider}
+                                model={meta.model}
+                                promptTokens={meta.prompt_tokens}
+                                completionTokens={meta.completion_tokens}
+                                totalTokens={meta.total_tokens}
+                                serverCost={meta.cost}
+                                serverCostCurrency={meta.cost_currency}
+                            />
+                        </div>
 
                     </div>
                 )}

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Admin\Connectors;
 
 use App\Connectors\Imap\Backfill\ImapBackfillDiagnostics;
+use App\Connectors\Imap\ImapConnectionParameters;
 use App\Connectors\Imap\MailboxLockKey;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Log;
@@ -91,12 +92,12 @@ final class ConnectorEmailProbeService
             // The probe rebuilds an IMAP client; it has no meaning for other
             // connectors (R14 — a clear 404, not a misleading empty result).
             throw new NotFoundHttpException(
-                "Test fetch is not supported for connector '{$installation->connector_name}'.",
+                "Test fetch is not supported for connector '{$installation->connector_name}'. Use connection health and folder discovery; API message sampling is unavailable.",
             );
         }
 
         $config = (array) ($installation->config_json ?? []);
-        $connection = (array) ($config['connection'] ?? []);
+        $connection = ImapConnectionParameters::forConfig($config);
         $authMode = (string) ($config['auth_mode'] ?? 'basic');
         $folder = $this->resolveFolder($config);
         $mailboxLockKey = MailboxLockKey::forInstallation($installation);
