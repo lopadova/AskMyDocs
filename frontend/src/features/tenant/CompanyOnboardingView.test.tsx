@@ -29,6 +29,7 @@ vi.mock('../auth/auth.api', () => ({
 }));
 
 beforeEach(() => {
+    localStorage.setItem('amd-ui-locale', 'it');
     useAuthStore.getState().clear();
     vi.clearAllMocks();
 });
@@ -51,7 +52,7 @@ describe('CompanyOnboardingView', () => {
         await user.click(screen.getByTestId('company-onboarding-submit'));
 
         expect(await screen.findByTestId('company_name-error')).toHaveTextContent(
-            /enter your company name/i,
+            /inserisci il nome della tua azienda/i,
         );
         expect(completeCompanyOnboarding).not.toHaveBeenCalled();
     });

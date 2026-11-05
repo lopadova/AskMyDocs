@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminShell } from '../shell/AdminShell';
@@ -14,6 +16,7 @@ function quarterBounds(year: number, quarter: 1 | 2 | 3 | 4): { start: string; e
 }
 
 export function ComplianceReportsView() {
+    const { t: translateInterface } = useUiTranslation();
     const now = new Date();
     const [tenantId, setTenantId] = useState('tenant-acme');
     const [year, setYear] = useState<number>(now.getUTCFullYear());
@@ -54,10 +57,9 @@ export function ComplianceReportsView() {
     return (
         <AdminShell section="compliance-reports">
             <div data-testid="compliance-reports-root" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <h1 style={{ margin: 0, fontSize: 22 }}>Compliance Reports</h1>
+                <h1 style={{ margin: 0, fontSize: 22 }}>{translateInterface("Compliance Reports")}</h1>
                 <p style={{ margin: 0, color: 'var(--fg-3)', fontSize: 13 }}>
-                    Generate quarterly snapshots, verify tamper-evident hashes, and export PDF/JSON evidence.
-                </p>
+                    {translateInterface("Generate quarterly snapshots, verify tamper-evident hashes, and export PDF/JSON evidence.")}</p>
 
                 <div
                     style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
@@ -69,16 +71,16 @@ export function ComplianceReportsView() {
                         onChange={(e) => setTenantId(e.target.value)}
                         placeholder="tenant-id"
                     />
-                    <select
+                    <SelectField
                         data-testid="compliance-reports-quarter"
                         value={quarter}
-                        onChange={(e) => setQuarter(Number(e.target.value) as 1 | 2 | 3 | 4)}
+                        onValueChange={(nextValue) => setQuarter(Number(nextValue) as 1 | 2 | 3 | 4)}
                     >
-                        <option value={1}>Q1</option>
-                        <option value={2}>Q2</option>
-                        <option value={3}>Q3</option>
-                        <option value={4}>Q4</option>
-                    </select>
+                        <SelectOption value={1}>Q1</SelectOption>
+                        <SelectOption value={2}>Q2</SelectOption>
+                        <SelectOption value={3}>Q3</SelectOption>
+                        <SelectOption value={4}>Q4</SelectOption>
+                    </SelectField>
                     <input
                         data-testid="compliance-reports-year"
                         type="number"
@@ -101,11 +103,11 @@ export function ComplianceReportsView() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr>
-                                <th align="left">Tenant</th>
-                                <th align="left">Period</th>
-                                <th align="left">Generated</th>
-                                <th align="left">Hash Verify</th>
-                                <th align="left">Exports</th>
+                                <th align="left">{translateInterface("Tenant")}</th>
+                                <th align="left">{translateInterface("Period")}</th>
+                                <th align="left">{translateInterface("Generated")}</th>
+                                <th align="left">{translateInterface("Hash Verify")}</th>
+                                <th align="left">{translateInterface("Exports")}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -120,8 +122,7 @@ export function ComplianceReportsView() {
                                             data-testid={`compliance-reports-verify-${row.id}`}
                                             onClick={() => void runVerify(row)}
                                         >
-                                            Verify
-                                        </button>
+                                            {translateInterface("Verify")}</button>
                                         <span data-testid={`compliance-reports-verify-badge-${row.id}`} style={{ marginLeft: 8 }}>
                                             {verifyState[row.id] === 'ok' ? 'valid' : verifyState[row.id] === 'fail' ? 'invalid' : 'not checked'}
                                         </span>
@@ -145,13 +146,13 @@ export function ComplianceReportsView() {
                             ))}
                             {sortedRows.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} style={{ color: 'var(--fg-3)' }}>No reports yet.</td>
+                                    <td colSpan={5} style={{ color: 'var(--fg-3)' }}>{translateInterface("No reports yet.")}</td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
-                    {reportQuery.isLoading && <p style={{ margin: 12 }}>Loading…</p>}
-                    {reportQuery.isError && <p style={{ margin: 12, color: 'var(--danger)' }}>Failed to load reports.</p>}
+                    {reportQuery.isLoading && <p style={{ margin: 12 }}>{translateInterface("Loading…")}</p>}
+                    {reportQuery.isError && <p style={{ margin: 12, color: 'var(--danger)' }}>{translateInterface("Failed to load reports.")}</p>}
                 </div>
             </div>
         </AdminShell>

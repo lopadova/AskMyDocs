@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useTeamStore, type Team } from './team-store';
+import { applyVisualTheme, isVisualTheme } from './visual-theme';
 
 export type AuthUser = {
     id: number;
@@ -22,8 +23,14 @@ export type AuthProject = {
  * so the link never points at the unregistered /admin/invitations 404.
  */
 export type AuthFeatures = {
+    /** Configured availability, independent of runtime health and authorisation. */
+    modules?: Record<string, { enabled: boolean }>;
     invitations_admin?: boolean;
     system_admin?: boolean;
+    realtime_agent_live?: {
+        available: boolean;
+        reason: string | null;
+    };
 };
 
 /**
@@ -48,6 +55,7 @@ export type AuthMePayload = {
         can_create_company: boolean;
     };
     preferences?: Record<string, string>;
+    appearance?: { theme?: string };
     features?: AuthFeatures;
     kb_upload?: AuthKbUpload;
 };
@@ -87,6 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     onboarding: { required: false, can_create_company: false },
     loading: true,
     setMe: (me) => {
+        if (isVisualTheme(me.appearance?.theme)) applyVisualTheme(me.appearance.theme);
         // Single sync point for the team store: covers both the bootstrap
         // `/api/auth/me` call (guards.tsx) and the post-login refresh, and
         // runs BEFORE `loading` flips false — RequireAuth keeps the route

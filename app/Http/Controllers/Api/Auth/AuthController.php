@@ -6,6 +6,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\TokenRequest;
 use App\Invitations\RegistrationAccountCompletionService;
 use App\Models\User;
+use App\Realtime\RealtimeAgentAvailability;
 use App\Services\Auth\CompanyOnboardingEligibility;
 use App\Services\Auth\UserTeamsResolver;
 use App\Support\DesktopToken;
@@ -32,6 +33,7 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly RegistrationAccountCompletionService $registration,
+        private readonly RealtimeAgentAvailability $realtimeAgentAvailability,
     ) {}
 
     public function login(LoginRequest $request): JsonResponse
@@ -208,6 +210,9 @@ class AuthController extends Controller
                 'density' => 'balanced',
                 'language' => SupportedLocale::normalize($user->locale),
             ],
+            'appearance' => [
+                'theme' => app(\App\Services\Appearance\InstallationAppearance::class)->theme(),
+            ],
             // R27 additive — UI capability hints for the SPA (never strip or
             // rename existing keys). `invitations_admin` mirrors the
             // INVITATIONS_ADMIN_ENABLED master switch: the native Invitations
@@ -215,8 +220,15 @@ class AuthController extends Controller
             // so the link never points at the unregistered /admin/invitations
             // 404 route when the package mount is OFF (R14/R43).
             'features' => [
+                'modules' => [
+                    'flows' => ['enabled' => (bool) config('flow-admin.enabled', false)],
+                    'eval-harness' => ['enabled' => (bool) config('eval-harness-ui.enabled', false)],
+                    'evidence-risk-review' => ['enabled' => (bool) config('evidence-risk-review.api.enabled', false)],
+                    'pii-redactor' => ['enabled' => (bool) config('pii-redactor-admin.enabled', false)],
+                ],
                 'invitations_admin' => (bool) config('invitations-admin.enabled', false),
                 'system_admin' => $user->can(\App\Support\PlatformAccess::PLATFORM_ADMIN_PERMISSION),
+                'realtime_agent_live' => $this->realtimeAgentAvailability->status(),
             ],
             // R27 additive / R18 — the file types the KB upload accepts, from
             // the ONE source of truth (`SourceType::knownExtensions()`, images

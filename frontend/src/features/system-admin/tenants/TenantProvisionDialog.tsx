@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toAdminError } from '../../admin/shared/errors';
@@ -46,6 +48,7 @@ export function TenantProvisionDialog({
     onClose,
     onProvisioned,
 }: TenantProvisionDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const dialogRef = useRef<HTMLFormElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const [tenantName, setTenantName] = useState('');
@@ -65,7 +68,6 @@ export function TenantProvisionDialog({
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onClose();
             if (event.key !== 'Tab' || dialogRef.current === null) return;
 
             const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
@@ -191,9 +193,6 @@ export function TenantProvisionDialog({
     return (
         <div
             data-testid="tenant-control-provision-backdrop"
-            onClick={(event) => {
-                if (event.target === event.currentTarget) onClose();
-            }}
             style={backdropStyle}
         >
             <form
@@ -220,8 +219,7 @@ export function TenantProvisionDialog({
                     </div>
                     <span style={{ flex: 1 }} />
                     <button type="button" data-testid="tenant-control-provision-close" onClick={onClose} style={quietButton}>
-                        Close
-                    </button>
+                        {translateInterface("Close")}</button>
                 </div>
 
                 {result ? (
@@ -261,7 +259,7 @@ export function TenantProvisionDialog({
                             onClick={() => void copyCredentials()}
                             style={primaryButton}
                         >
-                            {copied ? 'Copied' : 'Copy account package'}
+                            {copied ? translateInterface("Copied") : 'Copy account package'}
                         </button>
                     </div>
                 ) : (
@@ -363,7 +361,7 @@ export function TenantProvisionDialog({
                                                 onClick={() => setShowPassword((value) => !value)}
                                                 style={quietButton}
                                             >
-                                                {showPassword ? 'Hide' : 'Show'}
+                                                {showPassword ? translateInterface("Hide") : 'Show'}
                                             </button>
                                             <button
                                                 type="button"
@@ -383,8 +381,7 @@ export function TenantProvisionDialog({
                                                 }}
                                                 style={quietButton}
                                             >
-                                                Regenerate
-                                            </button>
+                                                {translateInterface("Regenerate")}</button>
                                         </div>
                                         {passwordGenerationError && <FieldError field="password-generation" text={passwordGenerationError} />}
                                         {error?.fieldErrors.password && <FieldError field="password" text={error.fieldErrors.password} />}
@@ -395,18 +392,18 @@ export function TenantProvisionDialog({
                             {(isNew || isExisting) && (
                                 <label htmlFor="tenant-control-user-role" style={labelStyle}>
                                     <span>Initial role</span>
-                                    <select
+                                    <SelectField
                                         id="tenant-control-user-role"
                                         data-testid="tenant-control-provision-role"
                                         value={role}
-                                        onChange={(event) => setRole(event.target.value as typeof role)}
+                                        onValueChange={(value) => setRole(value as typeof role)}
                                         style={inputStyle}
                                     >
-                                        <option value="super-admin">Super admin · maximum tenant privilege (membership still required)</option>
-                                        <option value="admin">Admin · tenant management + all projects</option>
-                                        <option value="editor">Editor · content editing</option>
-                                        <option value="viewer">Viewer · read access</option>
-                                    </select>
+                                        <SelectOption value="super-admin">Super admin · maximum tenant privilege (membership still required)</SelectOption>
+                                        <SelectOption value="admin">Admin · tenant management + all projects</SelectOption>
+                                        <SelectOption value="editor">Editor · content editing</SelectOption>
+                                        <SelectOption value="viewer">Viewer · read access</SelectOption>
+                                    </SelectField>
                                     <span style={hintStyle}>
                                         This application role is shared across every tenant associated with the account.
                                         Existing accounts are never promoted by this workflow.
@@ -429,8 +426,7 @@ export function TenantProvisionDialog({
                                 onClick={onClose}
                                 style={quietButton}
                             >
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                             <button
                                 type="submit"
                                 data-testid="tenant-control-provision-submit"

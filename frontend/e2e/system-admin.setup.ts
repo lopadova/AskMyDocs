@@ -1,7 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { resetAndSeed } from './setup-helpers';
 
 const AUTH_FILE = 'playwright/.auth/system-admin.json';
 const EMAIL = process.env.E2E_SYSTEM_ADMIN_EMAIL ?? 'system@demo.local';
@@ -9,7 +8,7 @@ const PASSWORD = process.env.E2E_SYSTEM_ADMIN_PASSWORD ?? 'password';
 
 setup('authenticate as system administrator', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
-    await resetAndSeed(page);
+    // This is the tail of the setup chain, not a second database bootstrap.
     await page.request.get('/sanctum/csrf-cookie');
 
     const xsrf = (await context.cookies()).find((cookie) => cookie.name === 'XSRF-TOKEN');

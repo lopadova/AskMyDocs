@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { useCampaigns, useTenants } from './use-invitations';
@@ -9,6 +10,7 @@ import { deriveListState, formatDateTime, formatNumber, isCapped } from './forma
 import { filterRowStyle } from './tab-styles';
 
 export function CampaignsTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState<Campaign | null>(null);
 
@@ -40,8 +42,7 @@ export function CampaignsTab() {
                     onClick={() => setEditing(c)}
                     style={editBtn}
                 >
-                    Edit
-                </button>
+                    {translateInterface("Edit")}</button>
             ),
         },
     ];

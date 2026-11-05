@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 import { READ_ROW_CAP } from './invitations.api';
 import type { ListState } from './format';
@@ -49,11 +50,12 @@ export function InvitesDataTable<T>({
     emptyLabel = 'Nothing here yet.',
     errorLabel = "Couldn't load — check that you're signed in and the invitations API is reachable.",
 }: InvitesDataTableProps<T>) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div data-testid={testid} data-state={state} aria-busy={state === 'loading'}>
             {state === 'loading' && (
                 <p data-testid={`${testid}-loading`} data-state="loading" style={{ color: 'var(--fg-3)', padding: 16 }}>
-                    <span className="shimmer">Loading…</span>
+                    <span className="shimmer">{translateInterface("Loading…")}</span>
                 </p>
             )}
 

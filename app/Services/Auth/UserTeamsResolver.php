@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Auth;
 
 use App\Models\User;
+use App\Services\Admin\TenantBrandingService;
 use App\Support\SystemTenantRegistry;
 use App\Support\TeamHash;
 use Illuminate\Support\Facades\Schema;
@@ -34,6 +35,8 @@ use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
  */
 final class UserTeamsResolver
 {
+    public function __construct(private readonly TenantBrandingService $branding) {}
+
     /**
      * @return list<array{tenant_id: string, hash: string, name: string, projects: list<array{project_key: string, role: string, scope: array<mixed>}>}>
      */
@@ -61,6 +64,7 @@ final class UserTeamsResolver
         $projectsByTenant = array_intersect_key($projectsByTenant, array_flip($tenantIds));
 
         $labels = $this->labels($tenantIds);
+        $logoUrls = $this->branding->logoUrls($tenantIds);
 
         $teams = array_map(static fn (string $tenantId): array => [
             'tenant_id' => $tenantId,
@@ -68,6 +72,7 @@ final class UserTeamsResolver
             // under /app/{hash}/… — see App\Support\TeamHash.
             'hash' => TeamHash::for($tenantId),
             'name' => $labels[$tenantId] ?? Str::headline($tenantId),
+            'logo_url' => $logoUrls[$tenantId] ?? null,
             'projects' => $projectsByTenant[$tenantId] ?? [],
         ], $tenantIds);
 
