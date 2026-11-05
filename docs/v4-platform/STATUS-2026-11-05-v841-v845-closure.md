@@ -1,4 +1,4 @@
-# STATUS — AskMyDocs "Retrieval Quality" cycle closure (W3, W4, W5)
+# STATUS — AskMyDocs "Retrieval Quality" cycle closure (W3, W4, W5, W6, W7 + merge with main)
 
 **Cycle:** provisional labels v8.41 → v8.45 ([ADR 0035](../adr/0035-v841-retrieval-quality-cycle.md),
 [plan](PLAN-v8.41-retrieval-quality.md)). W1 and W2 are recorded in
@@ -57,6 +57,51 @@ product owner; assigned for review only after W5. **Closed:** 2026-11-05.
 | CI: `npm install --prefix tools/code-chunker` so the real-helper tests run | `tests.yml` |
 | Doc-site: `ingesting-source-code.mdx` (registered), cross-links, configuration / CLI / API / MCP rows | shipped |
 
+## Merge with main (the develop → main consolidation)
+
+`origin/main` received the 2026-11-05 develop → main consolidation
+([dossier](../releases/2026-11-05-develop-main/README.md)); it was merged into this branch in
+`42506cca`. ADR 0035 records the decisions in the addendum *Integration with the recursive investigation*.
+
+| Deliverable | State |
+|---|---|
+| `RetrievalFilters::withoutExpansion()` (`skipExpansion`) set by `KbInvestigationService` (round queries), `AgentLoop` and `AgentWaveKnowledgeSearch`; `meta.query_expansion = {status: skipped, reason: model_written_query}` | shipped; zero provider calls asserted |
+| main's `$observe` diagnostics wrap `kb.query_expansion`, `kb.rerank`, `kb.cross_encoder` in `KbSearchService::search()` | shipped |
+| Explain traces the investigation: `kb:search --investigation`, explain HTTP `investigation=1`, `KbRetrievalExplainTool` `investigation: true` → `meta.investigation` (= `KbInvestigationResult::trace()`); `{status: disabled, flag: KB_RECURSIVE_RETRIEVAL_ENABLED}` when the switch is off | shipped, both states tested |
+| `kb:benchmark --path=direct\|investigation` (`BenchmarkRunner::PATH_*`); scorecard `path`, per-row `investigation` | shipped; unknown path rejected |
+| `CodeAstChunker` splits a single over-cap line with main's `TextBudgetSplitter` (`metadata.split.part/of`) | shipped |
+| Code symbols found by main's exact identifier lookup (`exactIdentifierCandidates`, `pg_trgm` indexes) | asserted |
+| Path-contexts admin screen: IT/EN messages, shared `SelectField`, nav under Knowledge › Settings | shipped; Vitest + Playwright updated |
+
+## W6 — qmd parity closure (ADR 0035 addendum)
+
+| Deliverable | State |
+|---|---|
+| `TopRankBonus` — +`first` (0.05) / +`podium` (0.02) on the **original query's** lists only, both fusion paths; explain `rrf = {base, top_rank_bonus, total}` | shipped (`KB_RRF_TOP_RANK_BONUS_ENABLED`, default OFF) |
+| `DocumentBatchReader` — selectors `#ref` / glob / exact path, ≤ 20, byte budget with declared `truncated` / `omitted` / `missing`; `kb:multi-get`, `POST /api/kb/documents/multi` (`token.ability:kb:read`, `throttle:30,1`), `KbMultiGetTool` | shipped (`KB_MULTI_GET_ENABLED`, default OFF; `404 multi_get_disabled`) |
+| `DocumentReferenceResolver` — `#` + 6–64 hex prefix of `document_hash`, tenant + ACL scoped, archived excluded, ambiguity = error with candidates; `document.ref` on every search result; `kb:show #ref`; `KbReadDocumentTool` `ref` | shipped (no flag — additive key) |
+| `UserQueryDocument` — `lex:` / `vec:` / `hyde:` / `intent:` lines become the expansion, no model call, `meta.query_expansion.status = user_document` | shipped (`KB_QUERY_DOCUMENTS_ENABLED`, default OFF) |
+| `kb:search --min-score --all --line-numbers --files --csv --md`; `min_score` / `line_numbers` on explain HTTP + MCP; `min_score` on `KbSearchTool` (`ResultScoreFloor`); CSV formula-neutralised | shipped |
+| Self-hosted expansion profile: `KB_QUERY_EXPANSION_PROFILE=provider\|self_hosted`, `SelfHostedExpansionClient`, shared SSRF guard `App\Support\Http\AllowListedEndpoint` (now also used by `HttpCrossEncoderReranker`) | shipped; allow-list test |
+| Tests: `QmdParityStagesTest`, `MultiGetAndReferencesTest` | green |
+
+## W7 — expansion learning loop (ADR 0035 addendum)
+
+| Deliverable | State |
+|---|---|
+| Migration `2026_11_05_000004` — `kb_expansion_events`, `kb_expansion_tunings`, `kb_expansion_models` (tenant-aware, R31; models listed in the architecture tests) | shipped |
+| `ExpansionSignalRecorder` — one masked event per expansion that ran, per-type `lists` / `in_top` / `unique_in_top` (the reward); records **only** when PII redaction is active for the project (`ChunkRedactor::isActive()`, fail-closed), variants masked too; suppressed during the gate; never blocks the user path | shipped |
+| `ExpansionLearningService::analyze()` — weights `clamp(0.5 + hit rate, 0.25, 1.5)` + ≤ 4 masked few-shot examples; `min_events` / `window_days` | shipped |
+| `BenchmarkExpansionTuningGate` (behind `ExpansionTuningGate`) — benchmark v2 baseline vs candidate in the dedicated tenant `system-expansion-gate` (`KB_EXPANSION_LEARNING_GATE_TENANT`); `passed` / `failed` / `not_measurable` (expansion off ⇒ never auto-applied) | shipped |
+| Apply / reject (rollback) — one `applied` tuning per (tenant, project) (scope lock, R21; PG partial unique `uq_kb_exp_tunings_one_applied`); every mutation audited in `admin_command_audit`; `ActiveExpansionTuning` (cached, fails safe to neutral) feeds the per-type multipliers to the N-list fusion and the examples to the expansion prompt as delimited user-turn data; tuning id in the expansion cache key | shipped |
+| Auto-apply only with `KB_EXPANSION_LEARNING_AUTO_APPLY=true` **and** a passed gate | asserted |
+| Training: `export` (JSONL on the private disk, default) and `openai` (fine-tuning API; code-owned `BASE_MODELS`; `AllowListedEndpoint`; consent list `KB_EXPANSION_TRAINING_CONSENTED_TENANTS`, fail-closed; `min_rows`) | shipped; provider faked in tests |
+| Human promotion (super-admin + `confirm`) → served through the OpenAI provider with the `ft:` id; one promoted model per tenant (PG `uq_kb_exp_models_one_promoted`); `retire` = rollback (refused while a provider job is `submitted`/`training`; `retired_by`/`retired_at`); dataset write failure → 503 `storage_failed` | shipped |
+| Surfaces: `kb:expansion-learn` (10 actions), `/api/admin/kb/expansion-learning/*` (R32 matrix row; `analyze` queued 202 via `AnalyzeExpansionLearningJob`), `KbExpansionLearningTool` (read-only — documented R44 exception), admin screen Knowledge › Quality › Expansion learning (Vitest + `admin-expansion-learning.spec.ts`) | shipped |
+| Scheduler slot `kb_expansion_learn` → `kb:expansion-learn nightly` (`50 3 * * *`, `SCHEDULE_KB_EXPANSION_LEARN_*`): prune + analyse + poll pending provider training jobs; no-op while OFF | shipped |
+| Flag `KB_EXPANSION_LEARNING_ENABLED` | default OFF (`404 expansion_learning_disabled` / `{disabled: true}`, nothing recorded) |
+| Tests: `ExpansionLearningLoopTest` (both flag states, cross-tenant 404, consent, base-model allow-list, super-admin gates) | green |
+
 ## Verification
 
 Run on the build machine (PHP 8.3.6, SQLite in-memory, Node 22):
@@ -87,20 +132,59 @@ Run on the build machine (PHP 8.3.6, SQLite in-memory, Node 22):
    Postgres E2E job is the gate.
 3. **A 2 000-file repository.** The helper was timed on 300 files (≈ 120 ms each including start-up) and
    the 2 000-file figure is an extrapolation.
+4. **The investigation path in the benchmark.** `kb:benchmark --path=investigation` needs a chat provider and
+   a retrieval profile; it was exercised for its contract, never run live here.
+5. **The W6 bonus values.** 0.05 / 0.02 are qmd's numbers, not tuned on our corpus with real embeddings.
+6. **The W7 loop on real traffic.** No real query log exists yet; every W7 test runs on synthetic events. The
+   gate measures the **benchmark** corpus, not a tenant's corpus, and returns `not_measurable` while query
+   expansion is off. No GPU training ran (the `export` backend stops at a JSONL; the `openai` backend was
+   exercised against a faked API). Expansion signals come only from direct retrieval: with
+   `KB_RECURSIVE_RETRIEVAL_ENABLED=true` chat turns do not expand and record nothing.
+7. **The self-hosted expansion profile** against a real vLLM / Ollama endpoint (faked in tests).
 
 ## Operator steps
 
 ```bash
-php artisan migrate                                  # 2026_11_05_000001..000003
+php artisan migrate                                  # 2026_11_05_000001..000004
 npm install --prefix tools/code-chunker              # ingestion workers only, if you want tree-sitter
-# per capability, in this order, measuring each with kb:benchmark --suite=v2:
+# per capability, in this order, measuring each with kb:benchmark --suite=v2
+# (and --path=investigation where a chat provider + retrieval profile exist):
 #   KB_FTS_QUERY_SYNTAX=websearch   KB_EMBEDDING_CONTEXTUAL_INPUT=true (+ kb:reembed-stale)
+#   KB_RRF_TOP_RANK_BONUS_ENABLED=true
 #   KB_CROSS_RERANK_ENABLED=true    KB_QUERY_EXPANSION_ENABLED=true
+#     (optional: KB_QUERY_EXPANSION_PROFILE=self_hosted + _SELF_HOSTED_URL/_MODEL/_ALLOWED_HOSTS)
 #   KB_CODE_INGESTION_ENABLED=true  (+ KB_CODE_CHUNKER_DRIVER=auto|tree_sitter)
+# agent affordances, per project (no ranking change):
+#   KB_MULTI_GET_ENABLED=true  KB_QUERY_DOCUMENTS_ENABLED=true
+#   KB_MCP_FACETS_ENABLED=true KB_PATH_CONTEXTS_ENABLED=true
+# learning loop — only after query expansion is ON and has served real traffic:
+#   KB_EXPANSION_LEARNING_ENABLED=true   (records; nightly analyses; humans apply)
+#   KB_EXPANSION_LEARNING_AUTO_APPLY=true (later, only if gate results have been trustworthy)
+#   KB_EXPANSION_TRAINING_CONSENTED_TENANTS=<tenant,…> (only with recorded consent + DPA, for --backend=openai)
 ```
+
+The step-by-step procedure and rollbacks are in the
+[rollout runbook](../runbooks/retrieval-quality-rollout.md).
 
 **Tags:** assign the final version numbers (see the note at the top) and tag as the earlier cycles'
 STATUS documents describe; a session credential that cannot push tag refs cannot do it.
+
+## Inherited from main (not caused by this PR)
+
+The consolidation's own [VALIDATION](../releases/2026-11-05-develop-main/VALIDATION.md) records four red
+gates that exist identically on the original develop. They arrive with the merge of main and are **not**
+introduced by the retrieval-quality cycle; they are listed here so the PR's CI reading is honest:
+
+1. **Full PHP suite stops at `FreshdeskCaseStudyTest`** (4 293 / 6 733 tests): the lock pins
+   `padosoft/askmydocs-connector-freshdesk` **1.0.0**, which does not contain
+   `CaseStudies\CaseStudyGeneratorContract` used by `app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php`.
+   Fix belongs to the package release + lock (merger, BUILD-LOCK).
+2. **`GraphExecutorNotAdoptedTest`** (Architecture suite): `OperationNode.php → FlowNodeHandler` adopts the graph
+   executor the contract still forbids until the engine-tables tenancy decision is closed.
+3. **`scripts/verify-e2e-real-data.sh`**: five findings in `frontend/e2e/mcp-project-connection.spec.ts:66` and
+   `frontend/e2e/pact-auth-consent.spec.ts:14,15,17,31` (internal-route interception without the R13 marker).
+4. **FinOps migration rollback on SQLite**: `2026_08_25_000002_add_invocation_id_to_ai_finops_usage_ledger_table`
+   cannot drop `invocation_id` while its index exists; the PostgreSQL rollback cycle is still to be run.
 
 ## Deferred (documented, not forgotten)
 
@@ -109,3 +193,5 @@ STATUS documents describe; a session credential that cannot push tag refs cannot
 - A long-lived helper worker mode, if per-file start-up ever dominates.
 - A cross-encoder score as a refusal signal (needs its own calibration set).
 - A pure-PHP `nikic/php-parser` fast path for PHP files.
+- W7: a DB-backed, audited per-tenant training-consent record (today an operator env list); a tenant-corpus
+  gate (today benchmark v2); a provider webhook for training runs (today the nightly poll or `kb:expansion-learn refresh`).

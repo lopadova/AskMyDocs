@@ -133,6 +133,10 @@ is kept whole; otherwise the best scored break point in the look-back window
 wins; a single enormous function is cut with `KB_CHUNK_OVERLAP_TOKENS` of tail
 overlap and every slice keeps the function's symbol. `heading_path` is the file
 path followed by the symbol path (`src/Billing/Invoice.php > Invoice > total`).
+The range builder never cuts *inside* a line, so a single line longer than the hard
+cap (a minified bundle that escaped the deny-list, an inlined data blob) is split
+with the shared `TextBudgetSplitter` — UTF-8 safe, no text dropped — and each piece
+records `metadata.split = {part, of}`.
 
 ## Data model & contracts
 
@@ -146,6 +150,7 @@ metadata:
 | `symbol` / `symbols` | The primary symbol path and the declarations inside the chunk |
 | `start_line` / `end_line` | 1-based **source** lines — what `kb:show --from/--lines` and the line-range MCP reads consume |
 | `secrets_redacted` | Count on the first chunk of a document (a number, never a value) |
+| `split` | `{part, of}` — present only when one over-cap line was split into several chunks |
 
 The document's `source_type` is `code` and its `mime_type` is the language MIME
 `text/x-<language>`. Supported languages: PHP, TypeScript/TSX, JavaScript
@@ -163,8 +168,17 @@ YAML and JSON use the heuristic driver by design**, not as a degradation.
   configuration through a *partial* expression index
   (`idx_chunks_fts_code … WHERE (metadata->>'language') IS NOT NULL`, PostgreSQL
   only). The prose pass and the code pass are merged by chunk id, best score wins.
+- **Symbol lookup.** In chat (the recursive investigation) and the agent's wave
+  search, a question that names an identifier (`InvoiceTotals`,
+  `calculateVatRounding`) also goes through the literal identifier lookup
+  (`KbSearchService::exactIdentifierCandidates()`, backed by the `pg_trgm` indexes
+  on chunk text and document titles), so an exact symbol is found even when the
+  embeddings rank it low. No code-specific identifier index exists; the shared one
+  covers code — see [Exact identifier lookup](/architecture/exact-identifier-lookup).
 - Everything downstream — Reranker, cross-encoder, graph expansion, path
-  contexts, citations — treats a code chunk like any other.
+  contexts, citations — treats a code chunk like any other. Search results carry a
+  `document.ref` (`#…`), so an agent can re-open a file with `kb:show '#ref'
+  --from=<line>` or read several with `kb:multi-get 'src/Billing/**'`.
 
 ## Configuration
 

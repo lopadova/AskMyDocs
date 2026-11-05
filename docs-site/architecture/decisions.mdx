@@ -160,22 +160,36 @@ flowchart LR
 ## The retrieval-quality arc: explainable, contextual, cross-encoded, code-aware
 
 - **[ADR 0035](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0035-v841-retrieval-quality-cycle.md) — Retrieval quality: explain, contextual embeddings, cross-encoder, expansion, code.**
-  One decision record, seven decisions, ordered *measurement first*. **D1** ships a
-  harder benchmark (v2: seven query classes, a per-class scorecard, a regression
-  gate) and a per-result ranking trace *before* anything is tuned, so every later
-  change is judged by a number that can fail. **D2** embeds `title | section | text`
-  instead of the bare chunk and records an `embedding_fingerprint` so a recipe
-  change is visible and `kb:reembed-stale` re-embeds exactly what drifted. **D3**
-  adds a position-aware cross-encoder stage whose blend never rewrites
-  `rerank_score`/`vector_score` — the refusal gate keeps reading what it always
-  read. **D4** adds typed query expansion with a strong-signal skip; **D5** gives
-  agents facets, line-range reads, did-you-mean and admin-authored path contexts;
-  **D6** makes source code a content class: syntax-aware chunking in an
-  out-of-process Node helper, a non-overridable deny-list, and credentials
-  redacted before anything is stored or embedded. The cycle's rule is the one
-  the earlier arcs drew: every behaviour ships **default-OFF**, tested in both
-  flag states, and is promoted only on benchmark evidence — which is why no
-  default changed in the cycle that built the machinery to justify one.
+  One decision record, seven decisions, ordered *measurement first*, prompted by a study
+  of `tobi/qmd` ([AskMyDocs vs qmd](/askmydocs-vs-qmd)). **D1** ships a harder benchmark
+  (v2: seven query classes, a per-class scorecard, a regression gate) and a per-result
+  ranking trace *before* anything is tuned, so every later change is judged by a number
+  that can fail. **D2** embeds `title | section | text` instead of the bare chunk and
+  records an `embedding_fingerprint` so a recipe change is visible and
+  `kb:reembed-stale` re-embeds exactly what drifted. **D3** gives the full-text branch a
+  query syntax (`websearch`: phrases, negation, identifier phrases). **D4** adds a
+  position-aware cross-encoder stage whose blend never rewrites
+  `rerank_score`/`vector_score` — the refusal gate keeps reading what it always read.
+  **D5** adds typed query expansion with a strong-signal skip; **D6** gives agents
+  facets, line-range reads, did-you-mean and admin-authored path contexts; **D7** makes
+  source code a content class: syntax-aware chunking in an out-of-process Node helper,
+  a non-overridable deny-list, and credentials redacted before anything is stored or
+  embedded. Three addenda followed. *Integration with the recursive investigation*:
+  once chat started rewriting the user's message into model-written round queries,
+  those queries skip expansion (`model_written_query`) — expanding a rewrite pays a
+  second LLM call to drift further — and explain/benchmark gained an `investigation`
+  path so the trace describes what chat really ran. *W6* closes qmd parity: a top-rank
+  bonus restricted to the original query's lists, `#docid` references as content-hash
+  prefixes (ambiguity is an error), bounded `multi_get`, user-written query documents
+  with no model call, script-friendly CLI output, and a self-hosted expansion profile
+  behind the same exact-host allow-list as the cross-encoder. *W7* answers qmd's
+  fine-tuned expansion model the multi-tenant way: learn per-type weights and examples
+  from the deployment's own masked searches, apply them only by a human or on a passed
+  benchmark gate, and keep fine-tuning (export for on-prem training, or a provider job
+  for consenting tenants) behind human promotion. The cycle's rule is the one the
+  earlier arcs drew: every behaviour ships **default-OFF**, tested in both flag states,
+  and is promoted only on benchmark evidence — which is why no default changed in the
+  cycle that built the machinery to justify one.
 
 ## Decision rationale (meta)
 

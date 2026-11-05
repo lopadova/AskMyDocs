@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-04 — approved by the product owner; cross-encoder drivers: both `http` API and self-hosted selectable via settings/env, default self-hosted; Node available on ingestion workers)
 - **Date:** 2026-11-04
+- **Amended:** 2026-11-05 — integration with the recursive investigation (main consolidation), W6 (qmd parity closure) and W7 (expansion learning loop); see the addenda at the end.
 - **Cycle:** v8.41 → v8.45 ("Retrieval Quality", plan:
   [`PLAN-v8.41-retrieval-quality.md`](../v4-platform/PLAN-v8.41-retrieval-quality.md))
 - **Builds on:** the v8.2 retrieval-quality benchmark (`kb:benchmark`,
@@ -501,12 +502,20 @@ exception.
 
 - **Local GGUF inference inside the app process** — our deployment model is
   server-side and multi-tenant; models are reached through the provider layer.
+  (Still rejected after W6: the `self_hosted` expansion profile reaches an
+  operator-run model **over HTTP**, behind an exact host allow-list — the model
+  runs next to the app, never inside the PHP process. See the W6 addendum.)
 - **Unauthenticated HTTP endpoints / origin-only protection** — our surfaces are
   Sanctum + RBAC + tenant scoped.
 - **Document-level fusion** (qmd fuses per file) — our citations are per chunk;
   fusion stays per chunk.
-- **Fine-tuning our own expansion model** — deferred until D5 has produced real
-  query logs and a scoring function; not justified before that.
+- ~~**Fine-tuning our own expansion model** — deferred until D5 has produced real
+  query logs and a scoring function; not justified before that.~~ **Superseded by
+  the W7 addendum.** The *infrastructure* now ships (signal recording, scoring
+  function, dataset builder, training backends, human promotion, rollback); what
+  remains outside this repository is the *execution* of a GPU training run and
+  the real query logs it needs. It is therefore no longer "rejected", and no
+  longer simply "deferred" either — see W7 below.
 
 ## Deferred
 
@@ -516,6 +525,13 @@ exception.
   webhook-driven incremental sync of repositories.
 - Symbol-level graph edges from code (imports/calls → `kb_edges`).
 - Pure-PHP fast path for PHP files (`nikic/php-parser`).
+- (W7) Running the fine-tuning itself: the `export` backend hands a JSONL to an
+  external trainer; the `openai` backend delegates to the provider. No GPU
+  training runs in this platform, by design.
+- (W7) A tenant-corpus gate: today's gate measures the labelled benchmark-v2
+  corpus, not the tenant's own documents (no tenant has labelled queries yet).
+- (W7) An explicit consent record per tenant: the training consent is an
+  operator-maintained env list, not a DB-backed, audited consent grant.
 
 ## Test plan (summary — per-workstream detail in the plan)
 
@@ -592,3 +608,321 @@ the GitHub Action collect and POST steps against a temporary git repository.
 class runs against the deterministic stub, so it proves ingestion and scoring work end
 to end, not that code questions are answered better. That measurement belongs to a
 live run with a real provider and pgvector (see the closure document).
+
+---
+
+## Addendum — Integration with the recursive investigation (main consolidation, 2026-11-05)
+
+The develop → main consolidation (`docs/releases/2026-11-05-develop-main/`) was
+merged into the cycle branch (`42506cca`). It brought a new chat hot path —
+`App\Services\Kb\Investigation\KbInvestigationService`, a retrieve → read →
+assess loop in which **the raw user message is never sent to vector search**: an
+interpreter model rewrites it into round queries (`kbQueries`), each round is
+executed through the ordinary tenant/project/ACL-aware retrieval service, and the
+loop stops on a typed `stop_reason`. Chat now runs that loop whenever
+`KB_RECURSIVE_RETRIEVAL_ENABLED` is `true` (the default). Everything this ADR
+built still sits *underneath* it; five integration decisions were needed.
+
+### I1 — Model-written queries are never expanded again
+
+**Decision.** `RetrievalFilters` gains `skipExpansion` (not a filter — a
+caller declaration), set through `RetrievalFilters::withoutExpansion()` by every
+caller whose query was already written by a model:
+`KbInvestigationService::modelWrittenQueryFilters()`, the agent planner's search
+(`App\Agent\AgentLoop`) and the wave search
+(`App\Agent\Waves\AgentWaveKnowledgeSearch`). `KbSearchService::expansionLists()`
+then reports `meta.query_expansion = {status: "skipped", reason:
+"model_written_query"}` and makes no call.
+
+**Why.** D5 exists to repair a *human* query that shares few words with the
+document. A round query is already a model's rewrite: expanding it pays a second
+LLM call for the same job and drifts further from the user's words (a rewrite of
+a rewrite). The skip is checked right after the master switch and **before**
+the strong-signal test and any model call; the test counts provider calls and
+asserts zero (R26 — `QmdParityStagesTest::test_a_model_written_query_is_never_expanded_again`);
+`withoutExpansion()` preserves every other filter
+(`test_without_expansion_keeps_every_other_filter`).
+
+**Consequence (stated, not hidden).** With the investigation ON, chat turns no
+longer reach typed expansion at all; expansion — and therefore the W7 learning
+signal — comes from the *direct* retrieval surfaces (`kb:search`, the MCP search
+tools, the explain surfaces, the benchmark's `direct` path, and chat when the
+investigation switch is OFF).
+
+### I2 — The stages are observable inside the investigation's diagnostics
+
+main's `$observe` diagnostics closure (the per-phase timing/wait-reason trace the
+run diagnostics read) now also wraps `kb.query_expansion`, `kb.rerank` and
+`kb.cross_encoder` in `KbSearchService::search()`, next to the existing
+`kb.embedding` / `kb.vector_query` / `kb.full_text_query`. A slow cross-encoder or
+expansion call is therefore attributed to its own phase, not to "retrieval".
+
+### I3 — Explain can trace the path the user's answer actually takes
+
+Explaining only the direct retrieval would describe a path chat no longer takes.
+The explain core (`RetrievalExplainService::explain()`) accepts
+`investigation: true` on all three surfaces — `kb:search --investigation`,
+`GET /api/admin/kb/retrieval/explain?investigation=1`, `KbRetrievalExplainTool`
+`investigation: true` — runs the investigation and returns
+`meta.investigation` = `KbInvestigationResult::trace()` (`status`, `queries`,
+`stop_reason`, `selected_documents`, `supported_facts`, `missing_facts`,
+`language`, `research_flows`, `attempts`). With the switch OFF the key is
+`{status: "disabled", flag: "KB_RECURSIVE_RETRIEVAL_ENABLED"}` and the direct
+retrieval is explained (R14: visible, never silent; R27: additive key, absent
+when not requested).
+
+### I4 — The benchmark can measure either path
+
+`kb:benchmark --path=direct|investigation` (`BenchmarkRunner::PATH_DIRECT` /
+`PATH_INVESTIGATION`, an unknown value fails). The scorecard records `path`, and
+every row an additive `investigation` = `{status, stop_reason, rounds}` (null on
+the direct path). The investigation path needs a chat provider and a retrieval
+profile: it is a **live** measurement, never a `--stub` one.
+
+### I5 — Code chunks and code symbols on main's machinery
+
+- `CodeAstChunker` never cuts inside a line, so a single line over the hard cap
+  (minified bundle, inlined data blob) would have become one oversized chunk. It
+  now splits exactly that case with main's shared `TextBudgetSplitter` (UTF-8
+  safe, no text dropped) and records `metadata.split = {part, of}`.
+- Code symbols are found by main's literal identifier lookup
+  (`KbSearchService::exactIdentifierCandidates()`, backed by the `pg_trgm`
+  indexes of `2026_10_22_000002_add_literal_lookup_trigram_indexes`), which the
+  investigation uses for target identifiers — pinned by
+  `test_exact_identifier_lookup_finds_a_code_symbol`. No second identifier
+  index was added.
+- The path-contexts admin screen adopted main's interface conventions: IT/EN
+  messages (`path-contexts.messages.it.ts`), the shared shadcn-based `SelectField`, and the nav
+  entry under **Knowledge › Settings**.
+
+---
+
+## Addendum — W6: qmd parity closure
+
+A second pass over `tobi/qmd` after W5 listed what it still did that we did not.
+Six items were adopted; each is default-OFF (R43) unless noted, and each lives on
+one core with every caller-facing surface (R44).
+
+| # | qmd behaviour | Our decision | Core |
+|---|---|---|---|
+| P1 | RRF **top-rank bonus** (protects the head of a list) | Adopted, **original-query lists only** | `Retrieval\TopRankBonus` |
+| P2 | `multi_get` — read many documents by path/glob/id in one call | Adopted, tenant + ACL scoped, byte-budgeted | `Agent\DocumentBatchReader` |
+| P3 | `#docid` short ids | Adopted as a **content-hash prefix**, ambiguity is an error | `Agent\DocumentReferenceResolver` |
+| P4 | Query **documents** (`lex:`/`vec:`/`hyde:`/`intent:` lines) | Adopted, **no model call** | `Retrieval\Expansion\UserQueryDocument` |
+| P5 | CLI output: `--min-score`, `--all`, `--line-numbers`, `--files`, `--csv`, `--md` | Adopted on `kb:search`; `min_score`/`line_numbers` on explain HTTP + MCP, `min_score` on `KbSearchTool` | `Retrieval\ResultScoreFloor` |
+| P6 | Expansion by a **local** model | Adopted as a `self_hosted` HTTP profile (not in-process) | `Retrieval\Expansion\SelfHostedExpansionClient` + `App\Support\Http\AllowListedEndpoint` |
+
+### P1 — Top-rank bonus
+
+RRF flattens the head: with `k = 60`, rank 1 and rank 3 differ by ~3 %, so an
+exact hit for the user's own words can be overtaken by a chunk several
+paraphrase lists placed mid-table. `TopRankBonus::for($bestRank)` adds
+`kb.hybrid_search.top_rank_bonus.first` (default 0.05) for a best rank of 1 and
+`.podium` (0.02) for ranks 2–3 **in the original query's lists only** — an
+expansion variant can never earn it, so a model-written rewrite cannot promote a
+chunk to the head. Applied in both fusion paths (two-list hybrid RRF and the
+N-list expansion fusion). The explain trace reports `rrf = {base,
+top_rank_bonus, total}` with `total` equal to the fused score.
+Flag `KB_RRF_TOP_RANK_BONUS_ENABLED` (+ `_FIRST`, `_PODIUM`); OFF ⇒ `0.0`
+everywhere, fusion byte-identical.
+
+### P2 + P3 — Batch reads and short references
+
+- **References.** `#` + 6–64 lowercase hex resolves to the live document whose
+  `document_hash` starts with that prefix; without a leading `#` only an
+  unmistakable hash counts (12+ hex with a letter), so a numeric id or a path is
+  never read as one. Resolution is tenant-scoped (R30) through Eloquent, so
+  soft-delete and `AccessScopeScope` apply (R2, R33); archived versions are
+  excluded; an ambiguous prefix raises `AmbiguousDocumentReference` with up to
+  five candidates — never a silent first-row pick (R14). Every search result now
+  carries `document.ref` (`#` + 12 hex); `kb:show #ref` and
+  `KbReadDocumentTool { ref }` open it (on ambiguity `kb:show` lists the
+  candidates and fails, the MCP tool returns an error naming them, `multi_get`
+  reports `ambiguous_reference` under `missing`).
+  *Why a hash prefix and not the row id:* the id changes on every new version;
+  the hash names the exact text that was cited.
+- **multi_get.** Selectors (≤ 20) are a `#ref`, a glob over `source_path`
+  (`KbPath::matchesAnyGlob()` after a `LikeEscaper`-escaped SQL prefix
+  pre-filter, R19) or an exact path (`KbPath::normalize()`, R1). Output
+  `{documents, omitted, missing, meta}`: at most `kb.multi_get.max_documents`
+  (20) documents within a byte budget (`max_bytes`, default 65 536, ceiling
+  `max_bytes_ceiling` 262 144); the document that crosses the budget is cut on a
+  UTF-8 boundary and flagged `truncated`, the rest are listed under `omitted`,
+  unmatched selectors under `missing` with a reason (and suggestions or
+  ambiguity candidates). Surfaces: `kb:multi-get`, `POST /api/kb/documents/multi`
+  (`token.ability:kb:read`, `throttle:30,1`), `KbMultiGetTool`. Flag
+  `KB_MULTI_GET_ENABLED`; OFF ⇒ `404 multi_get_disabled` / `{disabled: true}`.
+  *Why an authenticated-reader route and not admin:* every document is read
+  under the caller's own ACL, so a batch returns nothing a caller could not open
+  one by one.
+
+### P4 — User query documents
+
+With `KB_QUERY_DOCUMENTS_ENABLED=true`, a query whose lines start with `lex:`,
+`vec:`, `hyde:` or `intent:` is parsed by `UserQueryDocument::parse()`: plain
+lines form the original query, typed lines become a `QueryExpansion` carried on
+`RetrievalFilters::$presetExpansion`, and `intent:` fills an absent intent. The
+variants feed the same weighted N-list fusion as a model expansion, with
+`meta.query_expansion.status = "user_document"` — and **no model is called**
+(zero LLM cost, no drift: the author wrote them). It works even when
+`KB_QUERY_EXPANSION_ENABLED=false`. Bounds mirror the model contract (≤ 5 `lex`
+and `vec`, one `hyde`, length caps, control characters stripped). *Why gated:* a
+query that happens to begin with `vec:` today must keep meaning what it means
+today until an operator opts in.
+
+### P5 — Search output for tools and pipes
+
+`ResultScoreFloor::apply()` drops results below a caller-chosen floor on the
+score they are ordered by (`rerank_score`, else `vector_score`), **after**
+ranking — it never reorders and is deliberately not the refusal gate.
+`kb:search` adds `--min-score`, `--all` (up to `KB_RETRIEVAL_EXPLAIN_MAX_LIMIT`),
+`--line-numbers` (each chunk's line range in the view `kb:show --from` reads),
+and mutually exclusive output formats `--files` / `--csv` / `--md` (beside
+`--json`). CSV cells that start with `=`, `+`, `-`, `@`, tab or CR are
+neutralised (SEC-CSV-001).
+
+### P6 — Self-hosted expansion profile
+
+`KB_QUERY_EXPANSION_PROFILE=self_hosted` sends expansion to an operator-run
+OpenAI-compatible `/chat/completions` endpoint (vLLM, llama.cpp server, Ollama,
+TGI) instead of the `AiManager` providers — no third-party processor. The
+endpoint must pass `AllowListedEndpoint::violation()` against an exact host
+allow-list (`KB_QUERY_EXPANSION_SELF_HOSTED_ALLOWED_HOSTS`; https unless
+`_ALLOW_HTTP`; no userinfo/query/fragment; no redirects; bounded timeout
+`KB_QUERY_EXPANSION_TIMEOUT`, bounded body, closed response shape). The same
+helper now backs the cross-encoder's endpoint check (one SSRF rule, not two
+copies). No FinOps ledger row: the hardware is the operator's own.
+
+### What W6 did not verify
+
+The bonus values (0.05 / 0.02) are qmd's, not tuned on our benchmark with real
+embeddings; P1 therefore stays OFF until a live `kb:benchmark --suite=v2`
+comparison exists. The self-hosted profile was tested against a faked endpoint,
+not a running vLLM / Ollama.
+
+---
+
+## Addendum — W7: the expansion learning loop
+
+qmd ships a **fine-tuned** query-expansion model; ours called a general model
+with a fixed prompt. Fine-tuning was "deferred until D5 produced real query logs
+and a scoring function". W7 builds that scoring function and everything after
+it, so the loop can start the day real logs exist — and keeps every step that
+changes behaviour behind a measured gate or a human.
+
+### The loop
+
+```
+SIGNAL → ANALYSE → GATE → APPLY            (weights + few-shot, no training)
+                   └→ TRAIN → PROMOTE       (a fine-tuned model, human-promoted)
+```
+
+1. **Signal** (`ExpansionSignalRecorder`). After each ranking that an expansion
+   influenced — and **only when PII redaction is actually active for the project**
+   (`ChunkRedactor::isActive()`; otherwise nothing is recorded, fail-closed) — one
+   `kb_expansion_events` row: the **masked** query (one-way `mask`, ≤ 500 chars) and
+   its SHA-256, the typed variants (each masked too), the final top-k chunk ids
+   (never chunk text), `refused`, and per
+   variant type `lex` / `vec` / `hyde`: `lists`, `in_top`, and **`unique_in_top`**
+   — top-k chunks that *only* that type returned. `unique_in_top` is the reward:
+   the clean measure of "this rewrite found something the user's own words and
+   the other rewrites missed". Never blocks the user path (failures logged by
+   class only); suppressed while the gate runs, so gate traffic is never data.
+2. **Analyse** (`ExpansionLearningService::analyze()`). Over a window
+   (`window_days`, 30) with at least `min_events` (30): per type, hit rate =
+   events with `unique_in_top > 0` / events where the type produced lists;
+   weight = `clamp(0.5 + hit rate, 0.25, 1.5)` (no evidence ⇒ 1.0 neutral). Plus
+   up to 4 few-shot examples — the highest-reward, non-refused, not-harmful
+   events, keeping only the variant types that earned a unique hit. Admin
+   feedback (+1 / −1 per event) adds to the reward or excludes the event.
+3. **Gate** (`BenchmarkExpansionTuningGate`, behind the `ExpansionTuningGate`
+   contract). Benchmark v2 twice — neutral tuning vs the proposal, through
+   `ActiveExpansionTuning::with()` — on nDCG@k and MRR: `passed` (≥ baseline −
+   `gate_tolerance`), `failed`, or `not_measurable` (expansion OFF here, a
+   benchmark error, or a partial corpus). *Fail-closed:* "no evidence" is never
+   "no regression". The corpus is ingested into a dedicated non-operational tenant
+   (`kb.expansion_learning.gate_tenant`, default `system-expansion-gate`), never a
+   customer's (R30).
+4. **Apply.** One `applied` row per (tenant, project) — the service locks the whole
+   (tenant, project) scope (R21) and PostgreSQL enforces it with the partial unique
+   index `uq_kb_exp_tunings_one_applied`; applying supersedes the previous one;
+   `reject` on an applied row is the rollback to neutral. Every mutation (apply,
+   reject/rollback, train, promote, retire) writes an `admin_command_audit` row in
+   the same transaction (SEC-AUDIT, fail-closed). Auto-apply
+   happens **only** with `KB_EXPANSION_LEARNING_AUTO_APPLY=true` **and** a
+   `passed` gate. Applied weights multiply each expansion list's weight in the
+   N-list fusion; applied examples ride in the **user** turn inside an
+   `<examples>` block marked as data (SEC-LLM-001 — they come from user
+   queries, so they never enter the system prompt), and the tuning id is part of
+   the expansion cache key. `ActiveExpansionTuning` is cached and fails safe: any
+   read error ⇒ neutral, exactly the W4 behaviour.
+5. **Train** (`train()`). An OpenAI-chat-format SFT dataset from the rewarded
+   events (system turn = `QueryExpansionService::systemPrompt()`, so training and
+   serving match; assistant turn = only the types that earned a unique hit),
+   written to a private disk (R4: a failed write raises
+   `TrainingDatasetStorageFailed` → HTTP 503 `storage_failed`, never a "submitted" run),
+   then handed to a backend: **`export`** (default — the JSONL stays on the
+   operator's disk for an external trainer such as Unsloth/TRL/Axolotl; run ends
+   `exported`; the result is served through the W6 `self_hosted` profile) or
+   **`openai`** (fine-tuning API: base model from the code-owned
+   `OpenAiFineTuningBackend::BASE_MODELS`, API base behind `AllowListedEndpoint`,
+   4xx permanent, shape-checked ids, failures recorded with a machine reason).
+   Any backend other than `export` requires the tenant in
+   `KB_EXPANSION_TRAINING_CONSENTED_TENANTS` — fail-closed. Minimum
+   `KB_EXPANSION_TRAINING_MIN_ROWS` (floor 10).
+6. **Promote / retire.** A `ready` candidate with a provider id becomes the
+   tenant's expansion model only by `promote()` (super-admin + confirm on HTTP,
+   `--yes` on CLI); it is then served through the OpenAI provider with its
+   `ft:` id (when the profile is `provider`); one promoted model per tenant
+   (`uq_kb_exp_models_one_promoted` on PostgreSQL). `retire()` is the rollback; it
+   refuses a run still `submitted` / `training` at the provider.
+
+### Surfaces (R44)
+
+- **PHP:** `kb:expansion-learn {status|analyze|apply|reject|train|refresh|promote|retire|prune|nightly}`.
+  Scheduler slot `kb_expansion_learn` → `kb:expansion-learn nightly` at
+  `50 3 * * *` (`SCHEDULE_KB_EXPANSION_LEARN_*`): prune + analyse every
+  (tenant, project) with enough events + poll every provider training job still
+  `submitted`/`training` (`refreshPending()`); a silent no-op while the loop is OFF.
+- **HTTP:** `/api/admin/kb/expansion-learning/*` in the `role:admin|super-admin`
+  group (R32 matrix row): `GET /`, `POST /analyze` (queued,
+  `AnalyzeExpansionLearningJob`, 202), `POST /tunings/{id}/apply|reject`,
+  `POST /events/{id}/feedback`, `POST /training`, `POST /models/{id}/refresh|promote|retire`.
+  `training` and `promote` additionally require super-admin **and**
+  `confirm: true`. Admin screen: Knowledge › Quality › *Expansion learning*.
+- **MCP:** `KbExpansionLearningTool` — **read-only, documented R44 exception**:
+  changing the live expansion, sending data to a training provider, or promoting
+  a model is a human decision (ADR 0003's boundary applied to the retrieval
+  model). Admin principals only.
+- **Storage:** `kb_expansion_events`, `kb_expansion_tunings`,
+  `kb_expansion_models` (migration `2026_11_05_000004`), all tenant-aware with
+  `tenant_id` first in every composite index (R31).
+
+### Privacy
+
+A new processing purpose: user queries (masked) are stored to improve
+retrieval. Recording requires active PII redaction for the project; only the
+masked query, the masked variants and the hash are kept, never chunk text;
+retention is `KB_EXPANSION_LEARNING_RETENTION_DAYS` (90, the nightly prune);
+retention is deployment-wide and deletes by age only (deliberately cross-tenant,
+like the other prune commands). Sending the dataset to a training provider is a
+transfer to a processor: it needs the tenant's consent and a DPA, recorded by the
+operator in `KB_EXPANSION_TRAINING_CONSENTED_TENANTS`. The `export` backend sends
+nothing anywhere.
+
+### Honest limits (what W7 does not prove)
+
+- **No GPU training happens here.** `export` stops at a JSONL; `openai` delegates.
+- **No real logs exist yet.** Every W7 test runs on synthetic events. The
+  weights and examples are only as good as the traffic that produces them.
+- **The gate measures the benchmark corpus, not the tenant's corpus.** A
+  proposal can pass on benchmark v2 and still be neutral (or worse) on a
+  tenant's real documents. That is why auto-apply is a second, separate flag.
+- **Expansion must be ON for the gate to say anything** — with
+  `KB_QUERY_EXPANSION_ENABLED=false` every gate result is `not_measurable` and
+  auto-apply never fires.
+- **Signal comes from direct retrieval only** (see I1): with the investigation
+  on, chat turns do not expand, so they produce no events.
+- Training runs advance only as fast as the nightly poll (or a manual
+  `kb:expansion-learn refresh --id=` / HTTP refresh): there is no webhook from
+  the provider.

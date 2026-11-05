@@ -32,6 +32,16 @@ sequenceDiagram
 
 ## Hybrid retrieval
 
+<Note>
+Since the develop → main consolidation, chat does not search the raw message: the
+recursive investigation rewrites it into model-written round queries and runs each
+through the retrieval below (`KB_RECURSIVE_RETRIEVAL_ENABLED`, default on). Typed query
+expansion is skipped for those queries; the optional retrieval-quality stages — top-rank
+bonus, cross-encoder, path contexts — still apply. The full path is in
+[Retrieval pipeline](/architecture/retrieval-pipeline); trace a real turn with
+`kb:search "…" --investigation`.
+</Note>
+
 Retrieval never relies on vector similarity alone:
 
 - **Vector** search over `pgvector` and **keyword** search over a Postgres FTS
