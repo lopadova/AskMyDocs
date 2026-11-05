@@ -191,6 +191,10 @@ return [
             'enabled' => (bool) env('SCHEDULE_CHAT_LOG_PRUNE_ENABLED', true),
             'cron' => (string) env('SCHEDULE_CHAT_LOG_PRUNE_CRON', '20 3 * * *'),
         ],
+        'realtime_agent_prune' => [
+            'enabled' => (bool) env('SCHEDULE_REALTIME_AGENT_PRUNE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_REALTIME_AGENT_PRUNE_CRON', '25 3 * * *'),
+        ],
         'kb_prune_deleted' => [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_DELETED_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_PRUNE_DELETED_CRON', '30 3 * * *'),

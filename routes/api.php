@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\ApiConnectorConfigController;
+use App\Http\Controllers\Api\Admin\ConversationDebugTranscriptController;
 use App\Http\Controllers\Api\Admin\AgentRunOverviewController;
 use App\Http\Controllers\Api\Admin\ComplianceReportController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
@@ -37,6 +39,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetCon
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
+use App\Http\Controllers\Api\ChatFolderController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\ChatPreferencesController;
 use App\Http\Controllers\Api\UserLocaleController;
@@ -48,6 +51,8 @@ use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
+use App\Http\Controllers\Api\KbTreeReaderController;
+use App\Http\Controllers\Api\TenantLogoController;
 use App\Http\Controllers\Api\Widget\WidgetDocumentPreviewController;
 use App\Http\Controllers\Api\Widget\WidgetSessionController;
 use App\Http\Controllers\Api\Widget\WidgetAgentRunController;
@@ -55,6 +60,23 @@ use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
 use App\Http\Controllers\Api\Widget\WidgetSetupController;
 use App\Http\Controllers\Api\Widget\WidgetUserTokenController;
 use Illuminate\Support\Facades\Route;
+
+require __DIR__.'/chat-api.php';
+
+// Public presentation metadata contains only an allowlisted theme identifier.
+Route::get('/appearance', [\App\Http\Controllers\Api\AppearanceController::class, 'show'])
+    ->name('api.appearance.show');
+
+// Installation appearance is global: do not apply tenant.authorize or infer
+// write access from platform.admin. Stateful writes retain normal web CSRF.
+Route::middleware(['web', 'auth:sanctum', 'role:super-admin', 'token.ability:appearance:manage'])
+    ->prefix('system/appearance')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\AppearanceController::class, 'show'])
+            ->name('api.system.appearance.show');
+        Route::put('/', [\App\Http\Controllers\Api\AppearanceController::class, 'update'])
+            ->name('api.system.appearance.update');
+    });
 
 /*
 |--------------------------------------------------------------------------
@@ -143,6 +165,13 @@ Route::prefix('auth')->group(function () {
     });
 });
 
+// Authenticated image stream shared by the cookie SPA and Bearer desktop
+// client. It deliberately sits outside tenant.authorize because <img> cannot
+// attach X-Tenant-Id; the controller authorizes the target slug by membership.
+Route::get('/tenant-logos/{slug}', TenantLogoController::class)
+    ->middleware(['web', 'auth:sanctum'])
+    ->name('api.tenant-logos.show');
+
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
@@ -201,7 +230,34 @@ Route::middleware([
     Route::apiResource('/chat-filter-presets', ChatFilterPresetController::class)
         ->parameters(['chat-filter-presets' => 'id'])
         ->names('api.chat-filter-presets');
+
+    // v8.x — user-created folders grouping chat sessions in the Sessions
+    // workspace. Per-(tenant, user) authorization lives inside
+    // ChatFolderService (forTenant + where user_id), exactly like the
+    // presets above: no policy, no global scope.
+    //
+    // Mounted HERE rather than beside /conversations in routes/web.php on
+    // purpose: AdminAuthorizationMatrixTest::defineRoutes() mounts ONLY
+    // routes/api.php, so anything in web.php is structurally invisible to
+    // the canonical R32 gate. A new resource belongs where the matrix can
+    // see it.
+    Route::apiResource('/chat-folders', ChatFolderController::class)
+        ->only(['index', 'store', 'update', 'destroy'])
+        ->parameters(['chat-folders' => 'id'])
+        // The controller signatures are `int $id`, so a non-numeric segment
+        // would be a TypeError -> 500 on attacker-chosen input. Constrain
+        // the route instead, so `/api/chat-folders/abc` is simply a 404.
+        ->whereNumber('id')
+        ->names('api.chat-folders');
     Route::delete('/kb/documents', KbDeleteController::class);
+
+    // v8.x — reader-side KB tree for the Browse KB page. SAME core as the
+    // admin tree (KbTreeService), with `with_trashed` neither accepted nor
+    // passed (R2): a reader never sees a deleted document. Tenant +
+    // AccessScope isolation come from the service's own query (R30/R33).
+    Route::get('/kb/tree', KbTreeReaderController::class)
+        ->middleware('token.ability:kb:read')
+        ->name('api.kb.tree');
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
     // default-scoped KnowledgeDocument so soft-deletes + RBAC filter
@@ -304,6 +360,8 @@ Route::middleware([
             ->name('api.admin.metrics.series');
         Route::get('/metrics/health', [DashboardMetricsController::class, 'health'])
             ->name('api.admin.metrics.health');
+        Route::get('/ai-usage', \App\Http\Controllers\Api\Admin\AiUsageController::class)
+            ->name('api.admin.ai-usage');
 
         // Phase F2 — Users & Roles + Memberships.
         // `users` is soft-deletable, so the controller opts into
@@ -496,6 +554,10 @@ Route::middleware([
         // TARGET team inside TeamRegistryService (membership required),
         // independent of the request's X-Tenant-Id.
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/teams`).
+        Route::post('teams/{slug}/logo', [\App\Http\Controllers\Api\Admin\TeamLogoController::class, 'store'])
+            ->name('api.admin.teams.logo.store');
+        Route::delete('teams/{slug}/logo', [\App\Http\Controllers\Api\Admin\TeamLogoController::class, 'destroy'])
+            ->name('api.admin.teams.logo.destroy');
         Route::apiResource('teams', \App\Http\Controllers\Api\Admin\TeamController::class)
             ->parameters(['teams' => 'slug'])
             ->only(['index', 'store', 'update'])
@@ -623,6 +685,14 @@ Route::middleware([
             ->name('api.admin.kb.autowiki-settings.index');
         Route::put('/kb/autowiki-settings', [\App\Http\Controllers\Api\Admin\KbAutoWikiSettingController::class, 'upsert'])
             ->name('api.admin.kb.autowiki-settings.upsert');
+
+        // Recursive retrieval is deliberately disabled until an administrator
+        // defines the business context for the project.  The profile is a
+        // tenant-scoped configuration surface, never an inferred KB document.
+        Route::get('/kb/retrieval-profiles', [\App\Http\Controllers\Api\Admin\KbRetrievalProfileController::class, 'index'])
+            ->name('api.admin.kb.retrieval-profiles.index');
+        Route::put('/kb/retrieval-profiles', [\App\Http\Controllers\Api\Admin\KbRetrievalProfileController::class, 'upsert'])
+            ->name('api.admin.kb.retrieval-profiles.upsert');
 
         // v8.8/W4 — content-gap analytics (questions the KB couldn't answer).
         // R32 — covered by the AdminAuthorizationMatrix
@@ -1016,6 +1086,18 @@ Route::middleware([
 | the active tenant 404.
 |
 */
+if (config('connector-api.routes.enabled', true)) {
+    Route::middleware(array_values(array_diff(config('connector-api.routes.middleware'), ['api'])))
+        ->prefix(preg_replace('#^api/#', '', config('connector-api.routes.prefix')))
+        ->name('api-connectors.config.')
+        ->group(function (): void {
+            Route::get('{connector}/export', [ApiConnectorConfigController::class, 'export'])
+                ->whereNumber('connector')->name('export');
+            Route::post('import/validate', [ApiConnectorConfigController::class, 'preview'])->name('preview');
+            Route::post('import', [ApiConnectorConfigController::class, 'import'])->name('import');
+        });
+}
+
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
@@ -1025,6 +1107,21 @@ Route::middleware([
 ])
     ->prefix('admin/connectors')
     ->group(function () {
+        $triage = \App\Http\Controllers\Api\Admin\EmailTriageController::class;
+        Route::get('/{installationId}/email-triage', [$triage, 'show'])->whereNumber('installationId');
+        Route::put('/{installationId}/email-triage', [$triage, 'save'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/suggest', [$triage, 'suggest'])->whereNumber('installationId')
+            ->middleware('throttle:email-triage-assistant')->name('api.admin.connectors.email-triage.suggest');
+        Route::post('/{installationId}/email-triage/preview', [$triage, 'preview'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/campaign-preview', [$triage, 'campaignPreview'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/campaigns', [$triage, 'startCampaign'])->whereNumber('installationId');
+        Route::post('/{installationId}/email-triage/campaigns/{campaignId}', [$triage, 'controlCampaign'])->whereNumber(['installationId', 'campaignId']);
+        Route::post('/{installationId}/email-triage/campaigns/{campaignId}/items/{itemId}/retry', [$triage, 'retryCampaignItem'])->whereNumber(['installationId', 'campaignId', 'itemId']);
+        Route::post('/{installationId}/email-triage/messages/{messageId}/retry', [$triage, 'retry'])->whereNumber(['installationId', 'messageId']);
+        Route::get('/{installationId}/actions/{action}', [\App\Http\Controllers\Api\Admin\ConnectorInstallationActionController::class, 'show'])
+            ->whereNumber('installationId')->name('api.admin.connectors.actions.show');
+        Route::post('/{installationId}/actions/{action}', [\App\Http\Controllers\Api\Admin\ConnectorInstallationActionController::class, 'store'])
+            ->whereNumber('installationId')->name('api.admin.connectors.actions.store');
         Route::get('/', [ConnectorAdminController::class, 'index'])
             ->name('api.admin.connectors.index');
         Route::get('/{name}/install', [ConnectorAdminController::class, 'startInstall'])
@@ -1080,6 +1177,9 @@ Route::middleware([
         Route::post('/{installationId}/imap-backfill', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'startImapBackfill'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.imap-backfill.start');
+        Route::post('/{installationId}/imap-backfill/{backfillId}/cancel', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'cancelImapBackfill'])
+            ->whereNumber(['installationId', 'backfillId'])
+            ->name('api.admin.connectors.imap-backfill.cancel');
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');
@@ -1145,6 +1245,30 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
+| Admin — Conversation debug transcript
+|--------------------------------------------------------------------------
+|
+| A transcript contains the original messages plus persisted planner,
+| retrieval and tool-result payloads. It is intentionally stricter than the
+| general agent overview: only a tenant administrator may download it.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'role:admin|super-admin',
+])
+    ->prefix('admin/conversations')
+    ->group(function () {
+        Route::get('/{conversation}/debug-transcript', ConversationDebugTranscriptController::class)
+            ->whereNumber('conversation')
+            ->name('api.admin.conversations.debug-transcript');
+    });
+
+/*
+|--------------------------------------------------------------------------
 | Admin — Runtime configuration governance (v8.22 / Ciclo 3, super-admin)
 |--------------------------------------------------------------------------
 |
@@ -1158,6 +1282,26 @@ Route::middleware([
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
     'tenant.authorize',
+    'role:admin|super-admin',
+])
+    ->prefix('developer/local-integrations')
+    ->group(function () {
+        // Deliberately outside /admin: this is a local-machine service
+        // console, not a deployable tenant administration surface. The
+        // controller returns 404 unless APP_ENV=local as a second boundary.
+        Route::get('/', [\App\Http\Controllers\Api\Developer\LocalIntegrationFixturesController::class, 'show'])
+            ->name('api.developer.local-integrations.show');
+        Route::post('/{action}', [\App\Http\Controllers\Api\Developer\LocalIntegrationFixturesController::class, 'control'])
+            ->whereIn('action', ['start', 'stop', 'restart'])
+            ->middleware('throttle:30,1')
+            ->name('api.developer.local-integrations.control');
+    });
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
     'role:super-admin',
 ])
     ->prefix('admin/app-settings')
@@ -1166,6 +1310,10 @@ Route::middleware([
             ->name('api.admin.app-settings.index');
         Route::put('/', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'update'])
             ->name('api.admin.app-settings.update');
+        Route::put('/batch', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'updateMany']);
+        Route::get('/models', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'models']);
+        Route::post('/models/refresh', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'models'])->middleware('throttle:10,1');
+        Route::post('/assist', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'assist'])->middleware('throttle:10,1');
     });
 
 /*
@@ -1187,6 +1335,7 @@ Route::middleware([
 ])
     ->prefix('admin/mcp-servers')
     ->group(function () {
+        Route::get('/capabilities', [McpServersAdminController::class, 'capabilities']);
         Route::get('/', [McpServersAdminController::class, 'index'])
             ->name('api.admin.mcp-servers.index');
         Route::post('/', [McpServersAdminController::class, 'store'])
@@ -1214,6 +1363,16 @@ Route::middleware([
 ])
     ->get('/admin/mcp-tool-call-audit', [McpToolCallAuditController::class, 'index'])
     ->name('api.admin.mcp-tool-call-audit.index');
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'can:manageConnectors',
+])
+    ->get('/admin/connectors/mcp/shadow-reports', [\App\Http\Controllers\Api\Admin\McpShadowReportController::class, 'index'])
+    ->name('api.admin.connectors.mcp.shadow-reports');
 
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,

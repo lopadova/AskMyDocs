@@ -69,4 +69,58 @@ final class AppSettingsController extends Controller
             'data' => $this->resolver->all($this->tenants->current(), $projectKey),
         ]);
     }
+
+    public function updateMany(Request $request, \App\Services\Admin\AiModelCatalog $catalog): JsonResponse
+    {
+        $data = $request->validate(['project_key' => ['nullable', 'string', 'max:120'], 'values' => ['required', 'array', 'min:1', 'max:20']]);
+        $scope = AppSetting::normalizeProjectKey($data['project_key'] ?? null);
+        $tenant = $this->tenants->current();
+        foreach ($data['values'] as $key => $value) {
+            if (! is_string($key)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['values' => ['Settings must be keyed by their registered name.']]);
+            }
+            $this->resolver->validateDraft($key, $value, $scope);
+        }
+        $provider = array_key_exists('ai.provider', $data['values']) ? $data['values']['ai.provider'] : $this->resolver->effective('ai.provider', $tenant);
+        $provider = $provider ?: config('ai.default');
+        $models = array_filter(array_intersect_key($data['values'], array_flip(\App\Services\Admin\AppSettingsAssistant::MODEL_KEYS)), fn ($value) => $value !== null && $value !== '');
+        if ($models !== []) {
+            $snapshot = $catalog->get($provider, $tenant);
+            $available = $snapshot['error'] === null ? array_column(array_filter($snapshot['models'], fn ($model) => $model['selectable']), 'id') : [];
+            foreach ($models as $key => $model) {
+                if (! in_array($model, $available, true)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['values.'.$key => ['Choose an available model for the selected provider.']]);
+                }
+            }
+        }
+        if (($data['values']['ai.chat_routing'] ?? null) === 'economy' && $provider !== 'openrouter') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['values.ai.chat_routing' => ['Economy routing is available only with OpenRouter.']]);
+        }
+        $this->resolver->setMany($data['values'], $tenant, $scope);
+        return response()->json(['data' => $this->resolver->all($tenant, $scope)]);
+    }
+
+    public function models(Request $request, \App\Services\Admin\AiModelCatalog $catalog): JsonResponse
+    {
+        $data = $request->validate(['provider' => ['required', \Illuminate\Validation\Rule::in(\App\Services\Admin\AiModelCatalog::PROVIDERS)]]);
+        return response()->json($catalog->get($data['provider'], $this->tenants->current(), $request->isMethod('post')))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function assist(Request $request, \App\Services\Admin\AppSettingsAssistant $assistant): JsonResponse
+    {
+        $data = $request->validate(['prompt' => ['required', 'string', 'min:5', 'max:4000'],
+            'project_key' => ['nullable', 'string', 'max:120'], 'draft' => ['present', 'array', 'max:20'],
+            'provider' => ['required', \Illuminate\Validation\Rule::in(\App\Services\Admin\AiModelCatalog::PROVIDERS)],
+            'target' => ['required', \Illuminate\Validation\Rule::in(['configuration', 'agent.tenant_instructions'])]]);
+        try {
+            return response()->json($assistant->generate($data['prompt'], $this->tenants->current(),
+                AppSetting::normalizeProjectKey($data['project_key'] ?? null), $data['provider'], $data['target'], $data['draft']))
+                ->header('Cache-Control', 'private, no-store');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable) {
+            return response()->json(['message' => 'The configuration assistant is unavailable. Your form has not been changed.'], 503);
+        }
+    }
 }

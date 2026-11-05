@@ -31,20 +31,25 @@ final class TenantReadScopeTest extends TestCase
      * this guard (Copilot caught ChatLogProvenance + 16 others missing).
      */
     private const TENANT_AWARE_MODELS = [
-        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentRun',
+        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot', 'AgentDiagnosticSpan', 'AgentRun',
+        'ApiTool', 'ApiToolRevision', 'ApiToolRun', 'ApiToolStep', 'ApiToolVerification',
         'EmailDatasetOperationNonce',
-        'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
+        'EmailTriageProfile', 'EmailTriageMessage', 'EmailTriageEvaluation', 'EmailTriageCampaign', 'EmailTriageCampaignItem',
+        'ChatFilterPreset', 'ChatFolder', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
         'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbDocumentPageReview', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbIngestBatch',
         'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbTextCorrectionCandidate', 'KbUserBadge', 'KbWikiExportRequest', 'KbWikiImportCandidate', 'KbWikiIndex', 'KnowledgeChunk',
-        'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
+        'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpConnectorShadowReport', 'AgentPlannerShadowReport', 'McpServer',
         'UnmappedSourcePrincipal',
+        'KbRetrievalProfile',
+        'OAuthAccessToken', 'OAuthAuthorizationCode',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'AppSetting', 'ConnectorSyncRun', 'ImapBackfill', 'ImapBackfillWindow',
-        'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
-        'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
+        'Project', 'ProjectMembership', 'QaCampaign', 'QaInferenceAttempt', 'RealtimeAgentSessionLink',
+        'SessionMemoryObservation', 'TabularCell', 'TabularReview',
+        'TenantBranding', 'TenantSchedulerOverride', 'WidgetIdentity', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];
 
@@ -55,9 +60,13 @@ final class TenantReadScopeTest extends TestCase
      * @var array<string, string>
      */
     private const ALLOWLIST = [
+        'app/Console/Commands/OAuthPruneCommand.php' => 'Global retention sweep of expired/used authorization codes.',
+        'app/Console/Commands/OAuthDisableClientCommand.php' => 'Operator disables a global client and revokes its grants across all tenants.',
+        'app/Http/Controllers/Api/Auth/PasswordResetController.php' => 'Password reset revokes every grant/code owned by the authenticated reset identity across tenants.',
         // Scheduler sweep is intentionally cross-tenant; each queued job captures
         // the row's tenant and rebinds both tenant contexts before any work.
         'app/Connectors/Scheduling/ImapBackfillScheduler.php' => 'Cross-tenant scheduled dispatcher; jobs are tenant-captured.',
+        'app/Console/Commands/PumpEmailTriageCommand.php' => 'Cross-tenant durable outbox dispatcher; jobs capture the row tenant and scope all analysis/campaign work.',
         // Cross-tenant by design: the embedding cache + the deleter's
         // legacy unscoped sweep both log/justify the cross-tenant access
         // inline, and DocumentDeleter applies forTenant CONDITIONALLY
@@ -83,6 +92,7 @@ final class TenantReadScopeTest extends TestCase
         'app/Console/Commands/PruneStagingBatchesCommand.php' => 'Global upload-staging retention sweep; intentionally instance-wide (same posture as the other prune commands).',
         'app/Console/Commands/PruneWikiExportsCommand.php' => 'v8.38/W4b — global async wiki-export bundle retention sweep (ADR 0032 §12); intentionally instance-wide, same posture as the other prune commands.',
         'app/Console/Commands/GamificationNarrateCommand.php' => 'Tenant enumeration → per-tenant GamificationInsightsService::recomputeForTenant (scoped downstream).',
+        'app/Console/Commands/ImportLegacyMcpServersCommand.php' => 'Tenant enumeration → per-tenant idempotent MCP importer (scoped downstream).',
         'app/Console/Commands/KbReviewReconcileStuckCorrectionsCommand.php' => 'Tenant enumeration → per-tenant KbReviewService::reconcileStuckCorrections (scoped downstream).',
 
         // User→tenant DISCOVERY for DSAR/compliance: its whole job is to find
@@ -105,6 +115,7 @@ final class TenantReadScopeTest extends TestCase
         $roots = [
             dirname(__DIR__, 2).'/app/Http/Controllers',
             dirname(__DIR__, 2).'/app/Services',
+            dirname(__DIR__, 2).'/app/ApiTools',
             // Audit#3 — these were NOT scanned originally and harboured the
             // MCP-tool / insights-command / provenance cross-tenant leaks.
             dirname(__DIR__, 2).'/app/Mcp',
@@ -179,7 +190,7 @@ final class TenantReadScopeTest extends TestCase
         // missing ChatLogProvenance + 16 others).
         $modelsDir = dirname(__DIR__, 2).'/app/Models';
         $actual = [];
-        foreach (glob($modelsDir.'/*.php') ?: [] as $file) {
+        foreach ([...(glob($modelsDir.'/*.php') ?: []), ...(glob(dirname(__DIR__, 2).'/app/ApiTools/Models/*.php') ?: [])] as $file) {
             $code = (string) file_get_contents($file);
             if (preg_match('/^\s*use [\w\\\\]*BelongsToTenant;/m', $code) === 1) {
                 $actual[] = basename($file, '.php');

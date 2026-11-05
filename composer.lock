@@ -4,8 +4,79 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "69d04e7ad054e145f045585cba93f8c2",
+    "content-hash": "0b6ddd79fe88904c0b3f598c2414cda4",
     "packages": [
+        {
+            "name": "agents-full-duplex/laravel-realtime-agent",
+            "version": "v0.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/voice_agent_fullduplex.git",
+                "reference": "6ac7500a6eeaa44112ab37ae62f0d9f455f31d8e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/voice_agent_fullduplex/zipball/6ac7500a6eeaa44112ab37ae62f0d9f455f31d8e",
+                "reference": "6ac7500a6eeaa44112ab37ae62f0d9f455f31d8e",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/auth": "^12.0 || ^13.0",
+                "illuminate/cache": "^12.0 || ^13.0",
+                "illuminate/console": "^12.0 || ^13.0",
+                "illuminate/contracts": "^12.0 || ^13.0",
+                "illuminate/database": "^12.0 || ^13.0",
+                "illuminate/filesystem": "^12.0 || ^13.0",
+                "illuminate/http": "^12.0 || ^13.0",
+                "illuminate/routing": "^12.0 || ^13.0",
+                "illuminate/support": "^12.0 || ^13.0",
+                "illuminate/validation": "^12.0 || ^13.0",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "larastan/larastan": "^3.0",
+                "laravel/pint": "^1.0",
+                "orchestra/testbench": "^10.0 || ^11.0",
+                "phpunit/phpunit": "^11.0 || ^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "RealtimeAgent": "AgentsFullDuplex\\RealtimeAgent\\Facades\\RealtimeAgent"
+                    },
+                    "providers": [
+                        "AgentsFullDuplex\\RealtimeAgent\\RealtimeAgentServiceProvider"
+                    ]
+                },
+                "branch-alias": {
+                    "dev-main": "0.1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "AgentsFullDuplex\\RealtimeAgent\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Provider-neutral Laravel core and browser bridge for full-duplex realtime agents.",
+            "homepage": "https://github.com/padosoft/voice_agent_fullduplex",
+            "keywords": [
+                "agents",
+                "full-duplex",
+                "laravel",
+                "realtime",
+                "voice"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/voice_agent_fullduplex/issues",
+                "source": "https://github.com/padosoft/voice_agent_fullduplex"
+            },
+            "time": "2026-09-14T13:57:00+00:00"
+        },
         {
             "name": "aws/aws-crt-php",
             "version": "v1.2.7",
@@ -62,16 +133,16 @@
         },
         {
             "name": "aws/aws-sdk-php",
-            "version": "3.394.3",
+            "version": "3.398.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/aws/aws-sdk-php.git",
-                "reference": "d015718cd1becf0be9f75a1e72a7401453de4f3c"
+                "reference": "4a8bc490c38316ad7f6934bd89049da1971c462c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/d015718cd1becf0be9f75a1e72a7401453de4f3c",
-                "reference": "d015718cd1becf0be9f75a1e72a7401453de4f3c",
+                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/4a8bc490c38316ad7f6934bd89049da1971c462c",
+                "reference": "4a8bc490c38316ad7f6934bd89049da1971c462c",
                 "shasum": ""
             },
             "require": {
@@ -153,9 +224,9 @@
             "support": {
                 "forum": "https://github.com/aws/aws-sdk-php/discussions",
                 "issues": "https://github.com/aws/aws-sdk-php/issues",
-                "source": "https://github.com/aws/aws-sdk-php/tree/3.394.3"
+                "source": "https://github.com/aws/aws-sdk-php/tree/3.398.3"
             },
-            "time": "2026-08-28T18:18:55+00:00"
+            "time": "2026-09-29T18:22:38+00:00"
         },
         {
             "name": "brick/math",
@@ -661,6 +732,80 @@
                 }
             ],
             "time": "2025-03-06T22:45:56+00:00"
+        },
+        {
+            "name": "firebase/php-jwt",
+            "version": "v7.2.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/googleapis/php-jwt.git",
+                "reference": "0501f5729b9e2448516674aff07c7d1727869b8e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/googleapis/php-jwt/zipball/0501f5729b9e2448516674aff07c7d1727869b8e",
+                "reference": "0501f5729b9e2448516674aff07c7d1727869b8e",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "guzzlehttp/guzzle": "^7.4||^8.0",
+                "phpfastcache/phpfastcache": "^9.2",
+                "phpseclib/phpseclib": "~3.0",
+                "phpspec/prophecy-phpunit": "^2.2",
+                "phpunit/phpunit": "^9.5",
+                "psr/cache": "^2.0||^3.0",
+                "psr/http-client": "^1.0",
+                "psr/http-factory": "^1.0"
+            },
+            "suggest": {
+                "ext-sodium": "Support EdDSA (Ed25519) signatures",
+                "paragonie/sodium_compat": "Support EdDSA (Ed25519) signatures when libsodium is not present",
+                "phpseclib/phpseclib": "Support PS256 (RSASSA-PSS) signatures"
+            },
+            "type": "library",
+            "extra": {
+                "component": {
+                    "id": "jwt",
+                    "path": "Jwt",
+                    "entry": "README.md",
+                    "target": "googleapis/php-jwt.git"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Firebase\\JWT\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "BSD-3-Clause"
+            ],
+            "authors": [
+                {
+                    "name": "Neuman Vong",
+                    "email": "neuman+pear@twilio.com",
+                    "role": "Developer"
+                },
+                {
+                    "name": "Anant Narayanan",
+                    "email": "anant@php.net",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
+            "homepage": "https://github.com/googleapis/php-jwt",
+            "keywords": [
+                "jwt",
+                "php"
+            ],
+            "support": {
+                "issues": "https://github.com/googleapis/php-jwt/issues",
+                "source": "https://github.com/googleapis/php-jwt/tree/v7.2.1"
+            },
+            "time": "2026-09-28T17:51:46+00:00"
         },
         {
             "name": "fruitcake/php-cors",
@@ -1212,16 +1357,16 @@
         },
         {
             "name": "laravel/ai",
-            "version": "v0.11.0",
+            "version": "v0.11.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/ai.git",
-                "reference": "dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c"
+                "reference": "ee2c5162838d440c4e2e629ea93c8c87e838eaed"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/ai/zipball/dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c",
-                "reference": "dd08142f0c4dc4d5544521ce3fc4a1b9c2fe748c",
+                "url": "https://api.github.com/repos/laravel/ai/zipball/ee2c5162838d440c4e2e629ea93c8c87e838eaed",
+                "reference": "ee2c5162838d440c4e2e629ea93c8c87e838eaed",
                 "shasum": ""
             },
             "require": {
@@ -1284,7 +1429,7 @@
                 "issues": "https://github.com/laravel/ai/issues",
                 "source": "https://github.com/laravel/ai"
             },
-            "time": "2026-08-19T03:03:13+00:00"
+            "time": "2026-09-03T09:04:44+00:00"
         },
         {
             "name": "laravel/framework",
@@ -1516,6 +1661,80 @@
                 "source": "https://github.com/laravel/framework"
             },
             "time": "2026-10-16T04:59:27+00:00"
+        },
+        {
+            "name": "laravel/mcp",
+            "version": "v0.9.6",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/laravel/mcp.git",
+                "reference": "57767d61fac5963bc90cffdaf371d1c687331ac5"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/laravel/mcp/zipball/57767d61fac5963bc90cffdaf371d1c687331ac5",
+                "reference": "57767d61fac5963bc90cffdaf371d1c687331ac5",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "ext-mbstring": "*",
+                "illuminate/console": "^11.45.3|^12.41.1|^13.0",
+                "illuminate/container": "^11.45.3|^12.41.1|^13.0",
+                "illuminate/contracts": "^11.45.3|^12.41.1|^13.0",
+                "illuminate/http": "^11.45.3|^12.41.1|^13.0",
+                "illuminate/json-schema": "^12.41.1|^13.0",
+                "illuminate/routing": "^11.45.3|^12.41.1|^13.0",
+                "illuminate/support": "^11.45.3|^12.41.1|^13.0",
+                "illuminate/validation": "^11.45.3|^12.41.1|^13.0",
+                "php": "^8.2",
+                "symfony/process": "^7.4.5|^8.0.5"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.20",
+                "orchestra/testbench": "^9.15|^10.8|^11.0",
+                "pestphp/pest": "^3.8.5|^4.3.2",
+                "phpstan/phpstan": "^2.1.27",
+                "rector/rector": "^2.2.4"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "Mcp": "Laravel\\Mcp\\Facades\\Mcp"
+                    },
+                    "providers": [
+                        "Laravel\\Mcp\\Server\\McpServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Laravel\\Mcp\\": "src/",
+                    "Laravel\\Mcp\\Server\\": "src/Server/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Taylor Otwell",
+                    "email": "taylor@laravel.com"
+                }
+            ],
+            "description": "Rapidly build MCP servers for your Laravel applications.",
+            "homepage": "https://github.com/laravel/mcp",
+            "keywords": [
+                "laravel",
+                "mcp"
+            ],
+            "support": {
+                "issues": "https://github.com/laravel/mcp/issues",
+                "source": "https://github.com/laravel/mcp"
+            },
+            "time": "2026-09-24T10:45:24+00:00"
         },
         {
             "name": "laravel/prompts",
@@ -3118,16 +3337,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-api",
-            "version": "v1.0.0-beta.4",
+            "version": "v1.0.0-beta.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-api.git",
-                "reference": "bb7749347cbf24e70fc80902d85e9179837e74f9"
+                "reference": "70e219d09c4da899bc1f7117ca5463a8b88970b5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/bb7749347cbf24e70fc80902d85e9179837e74f9",
-                "reference": "bb7749347cbf24e70fc80902d85e9179837e74f9",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-api/zipball/70e219d09c4da899bc1f7117ca5463a8b88970b5",
+                "reference": "70e219d09c4da899bc1f7117ca5463a8b88970b5",
                 "shasum": ""
             },
             "require": {
@@ -3196,10 +3415,10 @@
                 "tool-calling"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.4",
+                "source": "https://github.com/padosoft/askmydocs-connector-api/tree/v1.0.0-beta.5",
                 "issues": "https://github.com/padosoft/askmydocs-connector-api/issues"
             },
-            "time": "2026-08-30T00:39:13+00:00"
+            "time": "2026-10-08T09:43:19+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-base",
@@ -3556,6 +3775,177 @@
             "time": "2026-08-29T15:22:22+00:00"
         },
         {
+            "name": "padosoft/askmydocs-connector-freshdesk",
+            "version": "1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-freshdesk.git",
+                "reference": "c6066c02ec44d6bb6d35bb5af29537062e93d90d"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-freshdesk/zipball/c6066c02ec44d6bb6d35bb5af29537062e93d90d",
+                "reference": "c6066c02ec44d6bb6d35bb5af29537062e93d90d",
+                "shasum": ""
+            },
+            "require": {
+                "ext-curl": "*",
+                "ext-fileinfo": "*",
+                "ext-zip": "*",
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/queue": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "league/html-to-markdown": "^5.1",
+                "padosoft/askmydocs-connector-base": "^1.6",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\AskMyDocsConnectorFreshdesk\\FreshdeskServiceProvider"
+                    ]
+                },
+                "askmydocs": {
+                    "connectors": [
+                        "Padosoft\\AskMyDocsConnectorFreshdesk\\FreshdeskConnector"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorFreshdesk\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorFreshdesk\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit"
+                ],
+                "analyse": [
+                    "phpstan analyse --memory-limit=512M"
+                ],
+                "format": [
+                    "pint"
+                ]
+            },
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Padosoft",
+                    "homepage": "https://github.com/padosoft"
+                }
+            ],
+            "description": "Freshdesk connector for AskMyDocs: resumable ticket and knowledge base ingestion, attachments and read-only live tools.",
+            "homepage": "https://github.com/padosoft/askmydocs-connector-freshdesk",
+            "keywords": [
+                "askmydocs",
+                "connectors",
+                "freshdesk",
+                "knowledge-base",
+                "laravel",
+                "rag"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/askmydocs-connector-freshdesk/issues",
+                "source": "https://github.com/padosoft/askmydocs-connector-freshdesk"
+            },
+            "time": "2026-10-09T11:45:01+02:00"
+        },
+        {
+            "name": "padosoft/askmydocs-connector-gmail",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-gmail-api.git",
+                "reference": "ae1dbfd888ef4ce320e63cdaeb54cfeaddc65293"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-gmail-api/zipball/ae1dbfd888ef4ce320e63cdaeb54cfeaddc65293",
+                "reference": "ae1dbfd888ef4ce320e63cdaeb54cfeaddc65293",
+                "shasum": ""
+            },
+            "require": {
+                "ext-dom": "*",
+                "ext-mbstring": "*",
+                "ext-openssl": "*",
+                "firebase/php-jwt": "^7.0",
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/filesystem": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "league/html-to-markdown": "^5.1",
+                "padosoft/askmydocs-connector-base": "^1.6",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\AskMyDocsConnectorGmail\\GmailServiceProvider"
+                    ]
+                },
+                "askmydocs": {
+                    "connectors": [
+                        "Padosoft\\AskMyDocsConnectorGmail\\GmailConnector"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorGmail\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorGmail\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "vendor/bin/phpunit"
+                ],
+                "format": [
+                    "vendor/bin/pint"
+                ],
+                "analyse": [
+                    "vendor/bin/phpstan analyse --memory-limit=512M"
+                ]
+            },
+            "license": [
+                "Apache-2.0"
+            ],
+            "description": "Read-only Gmail API acquisition for AskMyDocs with resumable history and email v1 triage.",
+            "support": {
+                "source": "https://github.com/padosoft/askmydocs-connector-gmail-api/tree/v1.0.0",
+                "issues": "https://github.com/padosoft/askmydocs-connector-gmail-api/issues"
+            },
+            "time": "2026-10-16T09:53:53+00:00"
+        },
+        {
             "name": "padosoft/askmydocs-connector-google-drive",
             "version": "v1.2.0",
             "source": {
@@ -3805,6 +4195,163 @@
                 "issues": "https://github.com/padosoft/askmydocs-connector-jira/issues"
             },
             "time": "2026-08-29T15:22:32+00:00"
+        },
+        {
+            "name": "padosoft/askmydocs-connector-mcp",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-mcp.git",
+                "reference": "cf4aafd963b8dd1eecc60819b36e284317d4905b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-mcp/zipball/cf4aafd963b8dd1eecc60819b36e284317d4905b",
+                "reference": "cf4aafd963b8dd1eecc60819b36e284317d4905b",
+                "shasum": ""
+            },
+            "require": {
+                "ext-curl": "*",
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/routing": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "nesbot/carbon": "^2.0|^3.0",
+                "padosoft/askmydocs-connector-base": "^1.4",
+                "padosoft/askmydocs-mcp-pack": "^2.0@dev",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\AskMyDocsConnectorMcp\\McpConnectorServiceProvider"
+                    ]
+                },
+                "askmydocs": {
+                    "connectors": [
+                        "Padosoft\\AskMyDocsConnectorMcp\\McpConnector"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorMcp\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Lorenzo Padovani",
+                    "email": "lorenzo.padovani@padosoft.com"
+                }
+            ],
+            "description": "Per-user MCP connections for AskMyDocs — OAuth accounts, tenant/project scoping, discovered tool policy, and encrypted credentials on top of askmydocs-mcp-pack v2.",
+            "keywords": [
+                "askmydocs",
+                "connectors",
+                "laravel",
+                "mcp",
+                "model-context-protocol",
+                "oauth",
+                "padosoft",
+                "tool-calling"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/askmydocs-connector-mcp/issues",
+                "source": "https://github.com/padosoft/askmydocs-connector-mcp/tree/v1.0.0"
+            },
+            "time": "2026-09-07T15:52:45+00:00"
+        },
+        {
+            "name": "padosoft/askmydocs-connector-microsoft-mail",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/askmydocs-connector-outlook-api.git",
+                "reference": "0131a5f085c701a4b12c6cb789ead1f441923441"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-outlook-api/zipball/0131a5f085c701a4b12c6cb789ead1f441923441",
+                "reference": "0131a5f085c701a4b12c6cb789ead1f441923441",
+                "shasum": ""
+            },
+            "require": {
+                "ext-dom": "*",
+                "ext-fileinfo": "*",
+                "ext-mbstring": "*",
+                "ext-openssl": "*",
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/filesystem": "^12.0|^13.0",
+                "illuminate/http": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "league/html-to-markdown": "^5.1",
+                "padosoft/askmydocs-connector-base": "^1.6",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.18",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\AskMyDocsConnectorMicrosoftMail\\MicrosoftMailServiceProvider"
+                    ]
+                },
+                "askmydocs": {
+                    "connectors": [
+                        "Padosoft\\AskMyDocsConnectorMicrosoftMail\\MicrosoftMailConnector"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorMicrosoftMail\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Padosoft\\AskMyDocsConnectorMicrosoftMail\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit"
+                ],
+                "analyse": [
+                    "phpstan analyse --memory-limit=512M"
+                ],
+                "format": [
+                    "pint"
+                ]
+            },
+            "license": [
+                "Apache-2.0"
+            ],
+            "description": "Read-only Microsoft Graph email ingestion for AskMyDocs with resumable per-folder delta and the shared email triage contract.",
+            "support": {
+                "source": "https://github.com/padosoft/askmydocs-connector-outlook-api/tree/v1.0.0",
+                "issues": "https://github.com/padosoft/askmydocs-connector-outlook-api/issues"
+            },
+            "time": "2026-10-16T09:54:20+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-notion",
@@ -6253,16 +6800,16 @@
         },
         {
             "name": "spatie/laravel-package-tools",
-            "version": "1.93.2",
+            "version": "1.93.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/spatie/laravel-package-tools.git",
-                "reference": "e927d5b5b05e9fecae098e559e51918aa608ad02"
+                "reference": "7aeef26bd8d4909bec744dbf47aee7d1395588c1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/spatie/laravel-package-tools/zipball/e927d5b5b05e9fecae098e559e51918aa608ad02",
-                "reference": "e927d5b5b05e9fecae098e559e51918aa608ad02",
+                "url": "https://api.github.com/repos/spatie/laravel-package-tools/zipball/7aeef26bd8d4909bec744dbf47aee7d1395588c1",
+                "reference": "7aeef26bd8d4909bec744dbf47aee7d1395588c1",
                 "shasum": ""
             },
             "require": {
@@ -6302,7 +6849,7 @@
             ],
             "support": {
                 "issues": "https://github.com/spatie/laravel-package-tools/issues",
-                "source": "https://github.com/spatie/laravel-package-tools/tree/1.93.2"
+                "source": "https://github.com/spatie/laravel-package-tools/tree/1.93.3"
             },
             "funding": [
                 {
@@ -6310,7 +6857,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-08-26T09:13:25+00:00"
+            "time": "2026-09-28T07:16:50+00:00"
         },
         {
             "name": "spatie/laravel-permission",
@@ -6965,16 +7512,16 @@
         },
         {
             "name": "symfony/filesystem",
-            "version": "v7.4.17",
+            "version": "v7.4.18",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/filesystem.git",
-                "reference": "ee7bc7bca4c7079b88e57d5000aeeb20df570c8d"
+                "reference": "90d412aa5277c6819db39e7605aa46b1019e3232"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/filesystem/zipball/ee7bc7bca4c7079b88e57d5000aeeb20df570c8d",
-                "reference": "ee7bc7bca4c7079b88e57d5000aeeb20df570c8d",
+                "url": "https://api.github.com/repos/symfony/filesystem/zipball/90d412aa5277c6819db39e7605aa46b1019e3232",
+                "reference": "90d412aa5277c6819db39e7605aa46b1019e3232",
                 "shasum": ""
             },
             "require": {
@@ -7011,7 +7558,7 @@
             "description": "Provides basic utilities for the filesystem",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/filesystem/tree/v7.4.17"
+                "source": "https://github.com/symfony/filesystem/tree/v7.4.18"
             },
             "funding": [
                 {
@@ -7031,7 +7578,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-08-21T12:09:28+00:00"
+            "time": "2026-08-23T10:03:40+00:00"
         },
         {
             "name": "symfony/finder",
@@ -9358,12 +9905,12 @@
             "version": "v5.7.0",
             "source": {
                 "type": "git",
-                "url": "https://github.com/phpdotenv/phpdotenv.git",
+                "url": "https://github.com/vlucas/phpdotenv.git",
                 "reference": "301c07936b16d88628b126b01d082ba153cf4c40"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpdotenv/phpdotenv/zipball/301c07936b16d88628b126b01d082ba153cf4c40",
+                "url": "https://api.github.com/repos/vlucas/phpdotenv/zipball/301c07936b16d88628b126b01d082ba153cf4c40",
                 "reference": "301c07936b16d88628b126b01d082ba153cf4c40",
                 "shasum": ""
             },
@@ -9859,80 +10406,6 @@
                 "source": "https://github.com/hamcrest/hamcrest-php/tree/v3.0.0"
             },
             "time": "2026-03-17T11:56:53+00:00"
-        },
-        {
-            "name": "laravel/mcp",
-            "version": "v0.9.4",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/laravel/mcp.git",
-                "reference": "7ca5b923630118696602d14348cd0466a5e853ec"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/laravel/mcp/zipball/7ca5b923630118696602d14348cd0466a5e853ec",
-                "reference": "7ca5b923630118696602d14348cd0466a5e853ec",
-                "shasum": ""
-            },
-            "require": {
-                "ext-json": "*",
-                "ext-mbstring": "*",
-                "illuminate/console": "^11.45.3|^12.41.1|^13.0",
-                "illuminate/container": "^11.45.3|^12.41.1|^13.0",
-                "illuminate/contracts": "^11.45.3|^12.41.1|^13.0",
-                "illuminate/http": "^11.45.3|^12.41.1|^13.0",
-                "illuminate/json-schema": "^12.41.1|^13.0",
-                "illuminate/routing": "^11.45.3|^12.41.1|^13.0",
-                "illuminate/support": "^11.45.3|^12.41.1|^13.0",
-                "illuminate/validation": "^11.45.3|^12.41.1|^13.0",
-                "php": "^8.2",
-                "symfony/process": "^7.4.5|^8.0.5"
-            },
-            "require-dev": {
-                "laravel/pint": "^1.20",
-                "orchestra/testbench": "^9.15|^10.8|^11.0",
-                "pestphp/pest": "^3.8.5|^4.3.2",
-                "phpstan/phpstan": "^2.1.27",
-                "rector/rector": "^2.2.4"
-            },
-            "type": "library",
-            "extra": {
-                "laravel": {
-                    "aliases": {
-                        "Mcp": "Laravel\\Mcp\\Facades\\Mcp"
-                    },
-                    "providers": [
-                        "Laravel\\Mcp\\Server\\McpServiceProvider"
-                    ]
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Laravel\\Mcp\\": "src/",
-                    "Laravel\\Mcp\\Server\\": "src/Server/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Taylor Otwell",
-                    "email": "taylor@laravel.com"
-                }
-            ],
-            "description": "Rapidly build MCP servers for your Laravel applications.",
-            "homepage": "https://github.com/laravel/mcp",
-            "keywords": [
-                "laravel",
-                "mcp"
-            ],
-            "support": {
-                "issues": "https://github.com/laravel/mcp/issues",
-                "source": "https://github.com/laravel/mcp"
-            },
-            "time": "2026-08-13T15:01:07+00:00"
         },
         {
             "name": "laravel/pail",
@@ -11501,6 +11974,50 @@
             "time": "2026-06-29T15:41:09+00:00"
         },
         {
+            "name": "ralouphie/getallheaders",
+            "version": "3.0.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/ralouphie/getallheaders.git",
+                "reference": "120b605dfeb996808c31b6477290a714d356e822"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/ralouphie/getallheaders/zipball/120b605dfeb996808c31b6477290a714d356e822",
+                "reference": "120b605dfeb996808c31b6477290a714d356e822",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=5.6"
+            },
+            "require-dev": {
+                "php-coveralls/php-coveralls": "^2.1",
+                "phpunit/phpunit": "^5 || ^6.5"
+            },
+            "type": "library",
+            "autoload": {
+                "files": [
+                    "src/getallheaders.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Ralph Khattar",
+                    "email": "ralph.khattar@gmail.com"
+                }
+            ],
+            "description": "A polyfill for getallheaders.",
+            "support": {
+                "issues": "https://github.com/ralouphie/getallheaders/issues",
+                "source": "https://github.com/ralouphie/getallheaders/tree/develop"
+            },
+            "time": "2019-03-08T08:55:37+00:00"
+        },
+        {
             "name": "sebastian/cli-parser",
             "version": "4.2.1",
             "source": {
@@ -12546,7 +13063,7 @@
     "platform": {
         "php": "^8.3"
     },
-    "platform-dev": {},
+    "platform-dev": [],
     "platform-overrides": {
         "php": "8.3.0"
     },

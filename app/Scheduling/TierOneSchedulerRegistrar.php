@@ -42,6 +42,7 @@ final class TierOneSchedulerRegistrar
     private const SLOTS = [
         ['kb_prune_embedding_cache', 'kb:prune-embedding-cache'],
         ['chat_log_prune', 'chat-log:prune'],
+        ['realtime_agent_prune', 'realtime-agent:prune'],
         ['kb_prune_deleted', 'kb:prune-deleted'],
         ['kb_rebuild_graph', 'kb:rebuild-graph'],
         ['kb_health_recompute', 'kb:health-recompute'],

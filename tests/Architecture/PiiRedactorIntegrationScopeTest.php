@@ -19,7 +19,7 @@ use Tests\TestCase;
  *
  * The four touch-points enumerated:
  *
- *   1. `App\Http\Middleware\RedactChatPii` — gates
+ *   1. `App\Services\Chat\ChatInputRedactor` — gates
  *      `kb.pii_redactor.enabled` AND
  *      `kb.pii_redactor.persist_chat_redacted`.
  *   2. `App\Services\Kb\EmbeddingCacheService::generate()` — gates
@@ -42,6 +42,8 @@ final class PiiRedactorIntegrationScopeTest extends TestCase
 {
     private const REDACT_CHAT_PII = 'app/Http/Middleware/RedactChatPii.php';
 
+    private const CHAT_INPUT_REDACTOR = 'app/Services/Chat/ChatInputRedactor.php';
+
     private const EMBEDDING_CACHE_SERVICE = 'app/Services/Kb/EmbeddingCacheService.php';
 
     private const AI_INSIGHTS_SERVICE = 'app/Services/Admin/AiInsightsService.php';
@@ -50,7 +52,14 @@ final class PiiRedactorIntegrationScopeTest extends TestCase
 
     public function test_redact_chat_pii_middleware_reads_both_master_switch_and_persist_knob(): void
     {
-        $body = $this->fileAt(self::REDACT_CHAT_PII);
+        $middleware = $this->fileAt(self::REDACT_CHAT_PII);
+        $body = $this->fileAt(self::CHAT_INPUT_REDACTOR);
+
+        $this->assertStringContainsString(
+            'ChatInputRedactor',
+            $middleware,
+            'RedactChatPii middleware MUST delegate to the shared chat-input redactor.',
+        );
 
         // The middleware loads the whole `kb.pii_redactor` block once
         // and then array-accesses the individual gates — which is fine

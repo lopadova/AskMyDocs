@@ -36,6 +36,22 @@ final class AppSettingRegistry
                 'deployOnly' => false,
                 'enum' => ['openai', 'anthropic', 'gemini', 'openrouter', 'regolo'],
             ],
+            // Optional project-scoped profile: overrides every agent text stage.
+            'ai.chat_model' => [
+                'label' => 'Agent text model for every stage',
+                'type' => 'string',
+                'config' => 'ai.chat_model',
+                'scope' => 'both',
+                'deployOnly' => false,
+            ],
+            'ai.chat_routing' => [
+                'label' => 'Agent provider routing',
+                'type' => 'enum',
+                'config' => 'ai.chat_routing',
+                'scope' => 'both',
+                'deployOnly' => false,
+                'enum' => ['default', 'economy'],
+            ],
             // Connector sync cadence (minutes) — governable per tenant AND
             // per project (a project may legitimately sync at a different rate).
             'connector.sync_cadence_minutes' => [
@@ -46,6 +62,45 @@ final class AppSettingRegistry
                 'deployOnly' => false,
                 'min' => 5,
                 'max' => 1440,
+            ],
+            // Tenant rollout gate for the replacement MCP runtime. The deploy
+            // switch in connector-mcp.enabled remains the hard kill switch.
+            'connector.mcp.runtime_mode' => [
+                'label' => 'MCP connector runtime mode',
+                'type' => 'enum',
+                'config' => 'connector-mcp.runtime_mode',
+                'scope' => 'tenant',
+                'deployOnly' => false,
+                'enum' => ['off', 'shadow', 'active'],
+            ],
+            'agent.planner.mode' => [
+                'label' => 'Agent capability planner mode',
+                'type' => 'enum',
+                'config' => 'agent.planner.mode',
+                'scope' => 'both',
+                'deployOnly' => false,
+                'enum' => ['classic', 'shadow', 'capability'],
+            ],
+            'agent.tenant_instructions' => [
+                'label' => 'Tenant assistant operating instructions',
+                'type' => 'string',
+                'config' => 'agent.tenant_instructions',
+                'scope' => 'tenant',
+                'deployOnly' => false,
+            ],
+            'agent.synthesis.model' => [
+                'label' => 'Agent answer model',
+                'type' => 'string',
+                'config' => 'agent.synthesis.model',
+                'scope' => 'both',
+                'deployOnly' => false,
+            ],
+            'agent.synthesis.repair_model' => [
+                'label' => 'Agent answer repair model',
+                'type' => 'string',
+                'config' => 'agent.synthesis.repair_model',
+                'scope' => 'both',
+                'deployOnly' => false,
             ],
             // Deploy-only security knob — visible but NOT runtime-settable.
             'ai_finops.enabled' => [

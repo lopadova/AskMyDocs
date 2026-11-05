@@ -236,6 +236,7 @@ class MaintenanceCommandController extends Controller
         $descriptionMap = [
             'kb_prune_embedding_cache' => 'Embedding cache retention (LRU).',
             'chat_log_prune' => 'Chat log retention (default 90d).',
+            'realtime_agent_prune' => 'Realtime agent transcript and audit retention.',
             'kb_prune_deleted' => 'Hard-delete soft-deleted KB docs past retention.',
             'kb_rebuild_graph' => 'Recompute kb_nodes + kb_edges from canonical frontmatter.',
             'kb_health_recompute' => 'Recompute canonical health snapshot + decision-debt score.',
