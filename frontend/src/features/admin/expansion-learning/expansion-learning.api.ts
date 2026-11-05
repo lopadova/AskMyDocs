@@ -22,8 +22,6 @@ import { toAdminError } from '../shared/errors';
 export const EXPANSION_LEARNING_URL = '/api/admin/kb/expansion-learning';
 export const EXPANSION_LEARNING_QUERY_KEY = ['admin-kb-expansion-learning'] as const;
 
-/** Mirror of `OpenAiFineTuningBackend::BASE_MODELS` (code-owned allow-list; the server stays authoritative). */
-export const OPENAI_BASE_MODELS = ['gpt-4.1-mini-2025-04-14', 'gpt-4.1-nano-2025-04-14', 'gpt-4o-mini-2024-07-18'] as const;
 
 export type TrainingBackend = 'export' | 'openai';
 export type GateStatus = 'passed' | 'failed' | 'not_measurable' | 'skipped';
@@ -80,6 +78,8 @@ export interface ExpansionLearningStatus {
     enabled: boolean;
     auto_apply: boolean;
     training_consent: boolean;
+    /** R18 — the code-owned `OpenAiFineTuningBackend::BASE_MODELS`, served by the backend. */
+    training_base_models?: string[] | null;
     events: { total: number; last_30_days: number; with_feedback: number };
     applied: ExpansionTuning | null;
     proposals: ExpansionTuning[];

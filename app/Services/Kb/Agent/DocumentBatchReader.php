@@ -43,6 +43,9 @@ final class DocumentBatchReader
 
     private const GLOB_CANDIDATE_CAP = 500;
 
+    /** True when a glob reached GLOB_CANDIDATE_CAP candidates: more may exist (declared, R14). */
+    private bool $globCapped = false;
+
     public function __construct(
         private readonly DocumentLineReader $lines,
         private readonly DocumentReferenceResolver $references,
@@ -81,6 +84,7 @@ final class DocumentBatchReader
             throw new InvalidArgumentException('At most '.self::MAX_SELECTORS.' selectors per call.');
         }
 
+        $this->globCapped = false;
         $budget = max(1, min($maxBytes ?? (int) config('kb.multi_get.default_max_bytes', 65_536), $this->maxBytesCeiling()));
         $limit = $this->maxDocuments();
 
@@ -97,17 +101,19 @@ final class DocumentBatchReader
         $documents = [];
         $omitted = [];
         $used = 0;
-        $truncated = false;
+        $truncated = $this->globCapped;
         foreach (array_values($found) as $index => $doc) {
-            $content = $this->lines->content($doc);
-            $bytes = strlen($content);
             $remaining = $budget - $used;
             if ($index >= $limit || $remaining <= 0) {
-                $omitted[] = ['id' => $doc->id, 'ref' => DocumentReferenceResolver::shortRef($doc->document_hash), 'source_path' => (string) $doc->source_path, 'bytes' => $bytes];
+                // R3 — an omitted document's text is never loaded: its size
+                // comes from one aggregate over its chunks.
+                $omitted[] = ['id' => $doc->id, 'ref' => DocumentReferenceResolver::shortRef($doc->document_hash), 'source_path' => (string) $doc->source_path, 'bytes' => $this->sizeOf($doc)];
                 $truncated = true;
 
                 continue;
             }
+            $content = $this->lines->content($doc);
+            $bytes = strlen($content);
             $cut = $bytes > $remaining;
             $body = $cut ? mb_strcut($content, 0, $remaining, 'UTF-8') : $content;
             $used += strlen($body);
@@ -129,7 +135,7 @@ final class DocumentBatchReader
             'documents' => $documents,
             'omitted' => $omitted,
             'missing' => $missing,
-            'meta' => ['max_bytes' => $budget, 'bytes_returned' => $used, 'max_documents' => $limit, 'truncated' => $truncated],
+            'meta' => ['max_bytes' => $budget, 'bytes_returned' => $used, 'max_documents' => $limit, 'truncated' => $truncated, 'glob_capped' => $this->globCapped],
         ];
     }
 
@@ -181,15 +187,31 @@ final class DocumentBatchReader
         $glob = ltrim(str_replace('\\', '/', $glob), '/');
         $literalPrefix = substr($glob, 0, (int) strcspn($glob, '*?['));
 
-        return $this->base($tenantId, $projectKey)
+        $candidates = $this->base($tenantId, $projectKey)
             ->when($literalPrefix !== '', fn (Builder $q) => $q->whereRaw('source_path LIKE ? '.LikeEscaper::ESCAPE_SQL, [LikeEscaper::escape($literalPrefix).'%']))
             ->orderBy('source_path')
             ->orderBy('id')
             ->limit(self::GLOB_CANDIDATE_CAP)
-            ->get()
+            ->get();
+        $this->globCapped = $this->globCapped || $candidates->count() >= self::GLOB_CANDIDATE_CAP;
+
+        return $candidates
             ->filter(fn (KnowledgeDocument $d): bool => KbPath::matchesAnyGlob((string) $d->source_path, [$glob]))
             ->values()
             ->all();
+    }
+
+    private function sizeOf(KnowledgeDocument $doc): int
+    {
+        // The document view joins chunks with a blank line: add those separators.
+        $row = \App\Models\KnowledgeChunk::query()->forTenant((string) $doc->tenant_id)
+            ->where('knowledge_document_id', $doc->id)
+            // Bytes, not characters, where the engine can say so (SQLite has no octet length).
+            ->selectRaw('COALESCE(SUM('.(\Illuminate\Support\Facades\DB::getDriverName() === 'pgsql' ? 'OCTET_LENGTH' : 'LENGTH').'(chunk_text)), 0) AS bytes, COUNT(*) AS chunks')
+            ->toBase()->first();
+        $chunks = (int) ($row->chunks ?? 0);
+
+        return (int) ($row->bytes ?? 0) + max(0, $chunks - 1) * 2;
     }
 
     private function base(string $tenantId, ?string $projectKey): Builder

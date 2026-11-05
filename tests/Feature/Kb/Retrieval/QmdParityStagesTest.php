@@ -300,4 +300,70 @@ final class QmdParityStagesTest extends TestCase
         $hits = app(KbSearchService::class)->exactIdentifierCandidates(['calculate_total_v2'], self::PROJECT);
         $this->assertContains('src/Billing/Invoice.php', $hits->map(fn ($c) => data_get($c, 'document.source_path') ?? $c->document?->source_path)->all());
     }
+
+    // ── investigation ON paths ───────────────────────────────────────────
+
+    private function fakeInvestigation(): void
+    {
+        $chunk = ['chunk_id' => 1, 'chunk_text' => 'Cache purge on change.', 'vector_score' => 0.9, 'rerank_score' => 0.8,
+            'document' => ['id' => 1, 'ref' => '#aaaaaaaaaaaa', 'title' => 'Runbook', 'source_path' => 'cache-purge-runbook.md']];
+        $investigation = Mockery::mock(\App\Services\Kb\Investigation\KbInvestigationService::class);
+        $investigation->shouldReceive('investigate')->andReturn(new \App\Services\Kb\Investigation\KbInvestigationResult(
+            'ready', 'enough_evidence', new \App\Services\Kb\Retrieval\SearchResult(collect([$chunk]), collect(), collect()),
+            queries: ['cache purge document change', 'purge runbook'],
+        ));
+        $this->app->instance(\App\Services\Kb\Investigation\KbInvestigationService::class, $investigation);
+    }
+
+    public function test_explain_traces_the_investigation_when_it_is_on(): void
+    {
+        config(['kb.investigation.enabled' => true]);
+        $this->fakeInvestigation();
+
+        $this->assertSame(0, Artisan::call('kb:search', ['query' => self::Q, '--project' => self::PROJECT, '--investigation' => true, '--json' => true]));
+        $payload = json_decode(Artisan::output(), true);
+        $this->assertSame('ready', $payload['meta']['investigation']['status']);
+        $this->assertSame('enough_evidence', $payload['meta']['investigation']['stop_reason']);
+        $this->assertSame(['cache purge document change', 'purge runbook'], $payload['meta']['investigation']['queries']);
+        $this->assertSame('cache-purge-runbook.md', $payload['results'][0]['document']['source_path'], 'the results ARE the investigation sources');
+    }
+
+    public function test_the_benchmark_measures_the_investigation_path(): void
+    {
+        $this->fakeInvestigation();
+        $runner = app(\App\Services\Kb\Benchmark\BenchmarkRunner::class);
+        $card = $runner->run(dirname(__DIR__, 4).'/resources/benchmark/corpus', dirname(__DIR__, 4).'/resources/benchmark/queries.yaml', 'bench-inv', 5, false, 'v1', \App\Services\Kb\Benchmark\BenchmarkRunner::PATH_INVESTIGATION);
+
+        $this->assertSame('investigation', $card['path']);
+        $this->assertSame(['status' => 'ready', 'stop_reason' => 'enough_evidence', 'rounds' => 2], $card['queries'][0]['investigation']);
+    }
+
+    public function test_top_rank_bonus_changes_the_real_fused_score_and_order(): void
+    {
+        $chunk = function (int $id) {
+            $c = new \App\Models\KnowledgeChunk();
+            $c->id = $id;
+            $c->vector_score = 0.5;
+
+            return $c;
+        };
+        // Original list: A(1) first. Expansion vec list: B(2) first, C(3) second; B also 2nd in original.
+        $lists = [
+            ['source' => 'vector', 'query' => 'original', 'chunks' => collect([$chunk(1), $chunk(2)]), 'weight' => 0.7, 'score_field' => 'vector_score'],
+            ['source' => 'vector', 'query' => 'vec', 'chunks' => collect([$chunk(2), $chunk(3)]), 'weight' => 0.35, 'score_field' => 'vector_score'],
+        ];
+        $fuse = new \ReflectionMethod(KbSearchService::class, 'fuseLists');
+        $svc = app(KbSearchService::class);
+
+        $off = $fuse->invoke($svc, $lists, 60, []);
+        $this->assertSame([2, 1, 3], $off->pluck('id')->all(), 'OFF: plain RRF lets B (two lists) overtake the original head');
+        $offScores = $off->mapWithKeys(fn ($c) => [$c->id => $c->rrf_score])->all(); // fuseLists mutates the same models
+
+        config(['kb.hybrid_search.top_rank_bonus.enabled' => true]);
+        $on = $fuse->invoke($svc, $lists, 60, []);
+        $this->assertSame([1, 2, 3], $on->pluck('id')->all(), 'ON: the original rank-1 hit keeps the head');
+        $this->assertEqualsWithDelta($offScores[1] + 0.05, $on->firstWhere('id', 1)->rrf_score, 1e-9);
+        $this->assertEqualsWithDelta($offScores[2] + 0.02, $on->firstWhere('id', 2)->rrf_score, 1e-9, 'rank 2 of the original list: podium bonus');
+        $this->assertEqualsWithDelta($offScores[3], $on->firstWhere('id', 3)->rrf_score, 1e-9, 'expansion-only hits never get the bonus');
+    }
 }

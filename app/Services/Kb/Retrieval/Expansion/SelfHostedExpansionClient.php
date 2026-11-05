@@ -6,6 +6,7 @@ namespace App\Services\Kb\Retrieval\Expansion;
 
 use App\Support\Http\AllowListedEndpoint;
 use Illuminate\Support\Facades\Http;
+use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 use Throwable;
 
@@ -55,7 +56,8 @@ final class SelfHostedExpansionClient
         try {
             $request = Http::acceptJson()->asJson()->withoutRedirecting()
                 ->timeout(max(1, $this->timeoutSeconds))
-                ->connectTimeout(max(1, min(5, $this->timeoutSeconds)));
+                ->connectTimeout(max(1, min(5, $this->timeoutSeconds)))
+                ->withOptions(['stream' => true]);
             $key = trim((string) ($this->profile['api_key'] ?? ''));
             if ($key !== '') {
                 $request = $request->withToken($key);
@@ -76,19 +78,38 @@ final class SelfHostedExpansionClient
         if (! $response->successful()) {
             throw new RuntimeException('http_'.$response->status());
         }
-        $contentType = strtolower((string) $response->header('Content-Type'));
-        if ($contentType !== '' && ! str_contains($contentType, 'json')) {
+        // Only a declared JSON answer is parsed (no sniffing an untyped body).
+        if (! str_contains(strtolower((string) $response->header('Content-Type')), 'json')) {
             throw new RuntimeException('bad_content_type');
         }
-        $body = $response->body();
-        if (strlen($body) > self::MAX_BODY_BYTES) {
-            throw new RuntimeException('response_too_large');
-        }
+        $body = $this->readBounded($response->toPsrResponse()->getBody());
         $content = data_get(json_decode($body, true), 'choices.0.message.content');
         if (! is_string($content) || $content === '') {
             throw new RuntimeException('bad_shape');
         }
 
         return $content;
+    }
+
+    /** Read at most MAX_BODY_BYTES, never the whole body into memory first. */
+    private function readBounded(StreamInterface $stream): string
+    {
+        $buffer = '';
+        try {
+            while (! $stream->eof()) {
+                $chunk = $stream->read(8192);
+                if ($chunk === '') {
+                    break;
+                }
+                $buffer .= $chunk;
+                if (strlen($buffer) > self::MAX_BODY_BYTES) {
+                    throw new RuntimeException('response_too_large');
+                }
+            }
+        } finally {
+            $stream->close();
+        }
+
+        return $buffer;
     }
 }

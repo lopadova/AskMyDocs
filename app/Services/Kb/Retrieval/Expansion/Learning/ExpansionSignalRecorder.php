@@ -25,9 +25,14 @@ use Throwable;
  *                 original query's lists and the other types missed them) —
  *                 the clean measure of "this rewrite found something new"
  *
- * Privacy (SEC-LOG / GDPR): only the PII-MASKED query (one-way `mask`, the same
- * pass the expansion model already sees) and its SHA-256 are stored; chunk ids,
- * never chunk text. Retention: `kb:expansion-learn prune` (scheduled).
+ * Privacy (SEC-LOG / GDPR) — FAIL-CLOSED: an event is recorded only when PII
+ * redaction is ACTUALLY active for the project ({@see ChunkRedactor::isActive()});
+ * then the query AND every variant (lex / vec / hyde — a user query document's
+ * lines are user text too) are stored masked (one-way `mask`). With redaction
+ * off nothing is recorded, so the learning loop can never turn raw user text
+ * into few-shot examples or a training dataset. Chunk ids, never chunk text.
+ * Recording is also suppressed while the benchmark gate runs ({@see suppressed()}),
+ * so gate traffic never becomes learning data. Retention: `kb:expansion-learn prune`.
  *
  * Never blocks the user path: every failure is caught and logged by class only.
  */
@@ -40,9 +45,30 @@ final class ExpansionSignalRecorder
         private readonly TenantContext $tenants,
     ) {}
 
+    private static int $suppressed = 0;
+
     public static function enabled(): bool
     {
         return (bool) config('kb.expansion_learning.enabled', false);
+    }
+
+    /**
+     * Run `$callback` with recording switched off (the benchmark gate's own
+     * searches must not feed the loop). Re-entrant, always restored.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    public static function suppressed(callable $callback): mixed
+    {
+        self::$suppressed++;
+        try {
+            return $callback();
+        } finally {
+            self::$suppressed--;
+        }
     }
 
     /**
@@ -51,13 +77,22 @@ final class ExpansionSignalRecorder
      */
     public function record(string $query, ?string $projectKey, string $source, QueryExpansion $expansion, array $lists, Collection $ranked, bool $refused): ?KbExpansionEvent
     {
-        if (! self::enabled()) {
+        if (! self::enabled() || self::$suppressed > 0) {
             return null;
         }
 
         try {
+            if (! $this->redactor->isActive((string) $projectKey)) {
+                return null;
+            }
             $topIds = $ranked->pluck('chunk_id')->filter(static fn ($id): bool => is_numeric($id))->map(static fn ($id): int => (int) $id)->values()->all();
             $masked = mb_substr((string) $this->redactor->redactTexts((string) $projectKey, [trim($query)], previewSafe: true)[0], 0, 500);
+            $mask = fn (array $texts): array => $texts === [] ? [] : array_values($this->redactor->redactTexts((string) $projectKey, array_values($texts), previewSafe: true));
+            $maskedExpansion = [
+                'lex' => $mask($expansion->lex),
+                'vec' => $mask($expansion->vec),
+                'hyde' => $expansion->hyde === null ? null : $mask([$expansion->hyde])[0],
+            ];
 
             return KbExpansionEvent::query()->create([
                 'tenant_id' => $this->tenants->current(),
@@ -65,7 +100,7 @@ final class ExpansionSignalRecorder
                 'query_hash' => hash('sha256', mb_strtolower($masked)),
                 'masked_query' => $masked,
                 'source' => mb_substr($source, 0, 20),
-                'expansion' => $expansion->toArray(),
+                'expansion' => $maskedExpansion,
                 'list_stats' => self::stats($lists, $topIds),
                 'top_chunk_ids' => $topIds,
                 'refused' => $refused,

@@ -19,6 +19,7 @@ function status(overrides: Partial<ExpansionLearningStatus> = {}): ExpansionLear
         enabled: true,
         auto_apply: false,
         training_consent: true,
+        training_base_models: ['gpt-4.1-mini-2025-04-14', 'gpt-4.1-nano-2025-04-14', 'gpt-4o-mini-2024-07-18'],
         events: { total: 120, last_30_days: 45, with_feedback: 7 },
         applied: {
             id: 3,

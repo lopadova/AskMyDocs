@@ -300,7 +300,7 @@ export function ExpansionLearningView(): ReactNode {
                         )}
                     </section>
 
-                    <ExpansionLearningTrainingForm projectKey={projectFilter} trainingConsent={status.training_consent} />
+                    <ExpansionLearningTrainingForm projectKey={projectFilter} trainingConsent={status.training_consent} baseModels={status.training_base_models ?? []} />
                 </>
             )}
 

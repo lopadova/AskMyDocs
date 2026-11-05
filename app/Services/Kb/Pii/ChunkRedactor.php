@@ -127,6 +127,25 @@ final class ChunkRedactor
      * @param  list<string>  $texts
      * @return list<string>  same length and order as `$texts`
      */
+    /**
+     * Whether {@see redactTexts()} would actually transform text for this
+     * project right now (both master switches on AND the tenant/project policy
+     * enabled). Callers that PERSIST text (W7 expansion learning) use it to
+     * fail closed instead of storing raw user input.
+     */
+    public function isActive(string $projectKey): bool
+    {
+        if (! (bool) config('pii-redactor.enabled', false) || ! (bool) config('kb.pii_redactor.enabled', false)) {
+            return false;
+        }
+
+        try {
+            return (bool) ($this->policy->resolve(app(TenantContext::class)->current(), $projectKey)['redact_enabled'] ?? false);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function redactTexts(string $projectKey, array $texts, bool $previewSafe = false): array
     {
         if ($texts === []) {

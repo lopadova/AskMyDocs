@@ -3,7 +3,6 @@ import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from '../../../lib/ui-locale';
 import { useToast } from '../shared/Toast';
 import {
-    OPENAI_BASE_MODELS,
     expansionLearningErrorMessage,
     useStartTraining,
     type TrainingBackend,
@@ -24,14 +23,16 @@ interface Props {
     /** The page's project filter; '' trains on every project of the tenant. */
     projectKey: string;
     trainingConsent: boolean;
+    /** Allowed base models, from the status endpoint (R18: never a literal FE copy). */
+    baseModels: string[];
 }
 
-export function ExpansionLearningTrainingForm({ projectKey, trainingConsent }: Props): ReactNode {
+export function ExpansionLearningTrainingForm({ projectKey, trainingConsent, baseModels }: Props): ReactNode {
     const { t } = useUiTranslation();
     const toast = useToast();
     const train = useStartTraining();
     const [backend, setBackend] = useState<TrainingBackend>('export');
-    const [baseModel, setBaseModel] = useState<string>(OPENAI_BASE_MODELS[0]);
+    const [baseModel, setBaseModel] = useState<string>(baseModels[0] ?? '');
     const [confirmed, setConfirmed] = useState(false);
     const [confirmError, setConfirmError] = useState<string | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export function ExpansionLearningTrainingForm({ projectKey, trainingConsent }: P
                             onValueChange={setBaseModel}
                             style={selectStyle}
                         >
-                            {OPENAI_BASE_MODELS.map((model) => (
+                            {baseModels.map((model) => (
                                 <SelectOption key={model} value={model}>
                                     {model}
                                 </SelectOption>

@@ -325,6 +325,8 @@ return [
         'retention_days' => (int) env('KB_EXPANSION_LEARNING_RETENTION_DAYS', 90),
         'cache_ttl' => (int) env('KB_EXPANSION_LEARNING_CACHE_TTL', 300),
         'gate_project' => env('KB_EXPANSION_LEARNING_GATE_PROJECT', 'expansion-gate'),
+        // Dedicated non-operational tenant the gate's benchmark corpus lives in.
+        'gate_tenant' => env('KB_EXPANSION_LEARNING_GATE_TENANT', 'system-expansion-gate'),
         'gate_tolerance' => (float) env('KB_EXPANSION_LEARNING_GATE_TOLERANCE', 0.0),
         'training' => [
             // Tenants whose operator recorded consent (and a DPA) to send MASKED
@@ -332,6 +334,8 @@ return [
             'consented_tenants' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_EXPANSION_TRAINING_CONSENTED_TENANTS', ''))))),
             'base_model' => env('KB_EXPANSION_TRAINING_BASE_MODEL', 'gpt-4.1-mini-2025-04-14'),
             'min_rows' => (int) env('KB_EXPANSION_TRAINING_MIN_ROWS', 50),
+            // Billable provider jobs per tenant per 30 days (one in flight at a time).
+            'max_runs_per_30_days' => (int) env('KB_EXPANSION_TRAINING_MAX_RUNS_PER_30_DAYS', 2),
             'disk' => env('KB_EXPANSION_TRAINING_DISK', 'local'),
             'openai_base_url' => env('KB_EXPANSION_TRAINING_OPENAI_BASE_URL', 'https://api.openai.com/v1'),
             'openai_allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_EXPANSION_TRAINING_OPENAI_ALLOWED_HOSTS', 'api.openai.com'))))),

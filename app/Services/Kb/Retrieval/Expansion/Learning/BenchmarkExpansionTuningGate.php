@@ -6,6 +6,7 @@ namespace App\Services\Kb\Retrieval\Expansion\Learning;
 
 use App\Services\Kb\Benchmark\BenchmarkRunner;
 use App\Services\Kb\Retrieval\Expansion\QueryExpansionService;
+use App\Support\TenantContext;
 use Throwable;
 
 /**
@@ -24,10 +25,21 @@ use Throwable;
  */
 final class BenchmarkExpansionTuningGate implements ExpansionTuningGate
 {
+    /**
+     * @param  (\Closure(string $corpus, string $queries, string $project): array<string,mixed>)|null  $run
+     *         test seam for the one benchmark run (the runner is final); null = the real runner
+     */
     public function __construct(
         private readonly BenchmarkRunner $runner,
         private readonly QueryExpansionService $expansion,
+        private readonly ?\Closure $run = null,
     ) {}
+
+    /** @return array<string,mixed> */
+    private function runOnce(string $corpus, string $queries, string $project): array
+    {
+        return $this->run !== null ? ($this->run)($corpus, $queries, $project) : $this->runner->run($corpus, $queries, $project, 5, false, 'v2');
+    }
 
     public function evaluate(array $tuning): array
     {
@@ -40,11 +52,21 @@ final class BenchmarkExpansionTuningGate implements ExpansionTuningGate
         $project = (string) config('kb.expansion_learning.gate_project', 'expansion-gate');
         $tolerance = max(0.0, (float) config('kb.expansion_learning.gate_tolerance', 0.0));
 
+        // The benchmark INGESTS its labelled corpus into the active tenant: run
+        // it in a dedicated, non-operational tenant (never the customer's, R30)
+        // and with signal recording off, so gate traffic never becomes data.
+        $tenants = app(TenantContext::class);
+        $previous = $tenants->current();
+        $tenants->set((string) config('kb.expansion_learning.gate_tenant', 'system-expansion-gate'));
         try {
-            $baseline = ActiveExpansionTuning::with(ActiveExpansionTuning::neutral(), fn (): array => $this->runner->run($corpus, $queries, $project, 5, false, 'v2'));
-            $candidate = ActiveExpansionTuning::with($tuning, fn (): array => $this->runner->run($corpus, $queries, $project, 5, false, 'v2'));
+            [$baseline, $candidate] = ExpansionSignalRecorder::suppressed(fn (): array => [
+                ActiveExpansionTuning::with(ActiveExpansionTuning::neutral(), fn (): array => $this->runOnce($corpus, $queries, $project)),
+                ActiveExpansionTuning::with($tuning, fn (): array => $this->runOnce($corpus, $queries, $project)),
+            ]);
         } catch (Throwable $e) {
             return ['status' => 'not_measurable', 'reason' => 'benchmark_error', 'error_class' => $e::class];
+        } finally {
+            $tenants->set($previous);
         }
 
         $metrics = static fn (array $card): array => [

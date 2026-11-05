@@ -120,7 +120,8 @@ final class KbExpansionLearnCommand extends Command
             $tenantContext->set($pair['tenant_id']);
             $proposals += $service->analyze($pair['tenant_id'], $pair['project_key'], 'system:nightly') === null ? 0 : 1;
         }
-        $this->info(sprintf('pruned %d event(s), recorded %d proposal(s)', $deleted, $proposals));
+        $polled = $service->refreshPending();
+        $this->info(sprintf('pruned %d event(s), recorded %d proposal(s), polled %d training job(s)', $deleted, $proposals, $polled));
 
         return self::SUCCESS;
     }

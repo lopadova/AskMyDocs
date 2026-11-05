@@ -20,7 +20,7 @@ class KbExpansionModel extends Model
 
     protected $table = 'kb_expansion_models';
 
-    protected $fillable = ['tenant_id', 'project_key','backend','base_model','dataset_path','dataset_rows','provider_file_id','provider_job_id','model_id','status','failure_reason','gate','created_by','promoted_by','promoted_at'];
+    protected $fillable = ['tenant_id', 'project_key','backend','base_model','dataset_path','dataset_rows','provider_file_id','provider_job_id','model_id','status','failure_reason','gate','created_by','promoted_by','promoted_at','retired_by','retired_at'];
 
-    protected $casts = ['gate' => 'array', 'dataset_rows' => 'integer', 'promoted_at' => 'datetime'];
+    protected $casts = ['gate' => 'array', 'dataset_rows' => 'integer', 'promoted_at' => 'datetime', 'retired_at' => 'datetime'];
 }

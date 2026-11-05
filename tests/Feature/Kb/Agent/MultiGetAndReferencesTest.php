@@ -168,6 +168,8 @@ final class MultiGetAndReferencesTest extends TestCase
         $this->assertFalse($out['documents'][0]['truncated']);
         $this->assertTrue($out['documents'][1]['truncated']);
         $this->assertSame(['runbooks/oncall.md'], array_column($out['omitted'], 'source_path'));
+        $this->assertSame(15, $out['omitted'][0]['bytes'], 'size from SQL, content never loaded');
+        $this->assertFalse($out['meta']['glob_capped']);
         $this->assertTrue($out['meta']['truncated']);
     }
 
@@ -238,8 +240,9 @@ final class MultiGetAndReferencesTest extends TestCase
         $this->assertSame('policies/remote.md', $payload['document']['source_path']);
         $this->assertSame('#abcdef010000', $payload['document']['ref']);
 
-        $ambiguous = json_decode((string) $tool->handle(new Request(['ref' => '#abcdef']))->content(), true);
-        $this->assertSame('ambiguous_reference', $ambiguous['error']);
+        $ambiguous = $tool->handle(new Request(['ref' => '#abcdef']));
+        $this->assertTrue($ambiguous->isError(), 'R14: an ambiguous reference is an MCP error, not a success');
+        $this->assertStringContainsString('policies/remote.md', (string) $ambiguous->content());
     }
 
     // ── shared SSRF guard ────────────────────────────────────────────────

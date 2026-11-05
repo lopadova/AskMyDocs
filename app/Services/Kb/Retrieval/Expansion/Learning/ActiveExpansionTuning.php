@@ -21,10 +21,10 @@ use Throwable;
  */
 final class ActiveExpansionTuning
 {
-    /** @var array<string, array{weights: array<string,float>, few_shot: list<array<string,mixed>>, tuning_id: int|null}>|null test/gate override, keyed by "*" */
+    /** @var array<string, array{weights: array<string,float>, few_shot: list<array<string,mixed>>, tuning_id: int|string|null}>|null test/gate override, keyed by "*" */
     private static ?array $override = null;
 
-    /** @return array{weights: array{lex: float, vec: float, hyde: float}, few_shot: list<array<string,mixed>>, tuning_id: int|null} */
+    /** @return array{weights: array{lex: float, vec: float, hyde: float}, few_shot: list<array<string,mixed>>, tuning_id: int|string|null} */
     public static function for(string $tenantId, ?string $projectKey): array
     {
         if (self::$override !== null) {
@@ -90,10 +90,15 @@ final class ActiveExpansionTuning
     public static function with(array $tuning, callable $callback): mixed
     {
         $previous = self::$override;
+        $weights = self::sanitiseWeights($tuning['weights'] ?? []);
+        $fewShot = array_values((array) ($tuning['few_shot'] ?? []));
         self::$override = ['*' => [
-            'weights' => self::sanitiseWeights($tuning['weights'] ?? []),
-            'few_shot' => array_values((array) ($tuning['few_shot'] ?? [])),
-            'tuning_id' => null,
+            'weights' => $weights,
+            'few_shot' => $fewShot,
+            // A distinct cache identity per evaluated payload: the candidate run
+            // must never replay expansions cached for the baseline (or for
+            // production's "no tuning" key), or its examples are never tried.
+            'tuning_id' => $fewShot === [] ? null : 'gate-'.substr(hash('sha256', (string) json_encode([$weights, $fewShot])), 0, 16),
         ]];
         try {
             return $callback();

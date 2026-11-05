@@ -54,7 +54,10 @@ class KbReadDocumentTool extends Tool
             try {
                 $document = app(DocumentReferenceResolver::class)->resolve(app(TenantContext::class)->current(), $ref);
             } catch (AmbiguousDocumentReference $e) {
-                return Response::json(['error' => 'ambiguous_reference', 'candidates' => $e->candidates]);
+                return Response::error('The reference matches several documents; use a longer prefix: '.implode(', ', array_map(
+                    static fn (array $c): string => (string) $c['ref'].' '.(string) $c['source_path'],
+                    $e->candidates,
+                )));
             } catch (DocumentReferenceNotFound) {
                 return Response::error('No readable document matches this reference.');
             }

@@ -21,7 +21,9 @@ use Illuminate\Database\Eloquent\Builder;
  *    the ACL global scopes apply exactly as on every other read (R2, R33);
  *  - archived versions are excluded: a short reference names the live text;
  *  - an ambiguous prefix is an error with the candidates, never a silent pick
- *    of the first row (R14). Callers map it to 409.
+ *    of the first row (R14): `kb:show` lists them and fails, the MCP read tool
+ *    returns an error naming them, `multi_get` reports `ambiguous_reference`
+ *    under `missing`.
  */
 final class DocumentReferenceResolver
 {
@@ -66,7 +68,9 @@ final class DocumentReferenceResolver
             ->forTenant($tenantId)
             ->where('status', '!=', 'archived')
             ->when($projectKey !== null && $projectKey !== '', fn (Builder $q) => $q->where('project_key', $projectKey))
-            ->whereRaw('LOWER(document_hash) LIKE ? '.LikeEscaper::ESCAPE_SQL, [LikeEscaper::escape($prefix).'%'])
+            // The hash is stored lowercase hex and the prefix is normalised: no
+            // function on the column, so a btree index on document_hash applies.
+            ->whereRaw('document_hash LIKE ? '.LikeEscaper::ESCAPE_SQL, [LikeEscaper::escape($prefix).'%'])
             ->orderBy('id')
             ->limit(self::MAX_CANDIDATES + 1)
             ->get();

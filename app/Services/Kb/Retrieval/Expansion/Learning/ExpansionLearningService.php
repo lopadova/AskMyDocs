@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Retrieval\Expansion\Learning;
 
+use App\Models\AdminCommandAudit;
 use App\Models\KbExpansionEvent;
 use App\Models\KbExpansionModel;
 use App\Models\KbExpansionTuning;
@@ -11,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
-use RuntimeException;
 
 /**
  * W7 (ADR 0035 addendum — the expansion learning loop) — the ONE core behind
@@ -77,6 +77,8 @@ final class ExpansionLearningService
             'enabled' => $this->enabled(),
             'auto_apply' => (bool) config('kb.expansion_learning.auto_apply', false),
             'training_consent' => $this->hasTrainingConsent($tenantId),
+            // R18 — the FE picks from the code-owned list, never a literal copy.
+            'training_base_models' => OpenAiFineTuningBackend::BASE_MODELS,
             'events' => [
                 'total' => (clone $events)->count(),
                 'last_30_days' => (clone $events)->where('created_at', '>=', now()->subDays(30))->count(),
@@ -181,7 +183,13 @@ final class ExpansionLearningService
         $this->assertEnabled();
 
         $applied = DB::transaction(function () use ($tenantId, $tuningId, $actor): KbExpansionTuning {
-            $tuning = KbExpansionTuning::query()->forTenant($tenantId)->lockForUpdate()->findOrFail($tuningId);
+            $tuning = KbExpansionTuning::query()->forTenant($tenantId)->findOrFail($tuningId);
+            // R21 — lock the WHOLE (tenant, project) scope, not only the target
+            // row: two concurrent applies of different proposals must serialise,
+            // or both would see "nothing applied" and both commit `applied`.
+            // PostgreSQL also enforces it (partial unique index, migration 000004).
+            KbExpansionTuning::query()->forTenant($tenantId)->where('project_key', $tuning->project_key)->lockForUpdate()->get(['id']);
+            $tuning->refresh();
             if ($tuning->status !== 'proposed') {
                 throw new InvalidArgumentException("Only a proposed tuning can be applied (this one is {$tuning->status}).");
             }
@@ -189,6 +197,7 @@ final class ExpansionLearningService
                 ->where('project_key', $tuning->project_key)->where('status', 'applied')
                 ->update(['status' => 'superseded', 'updated_at' => now()]);
             $tuning->forceFill(['status' => 'applied', 'decided_by' => mb_substr($actor, 0, 120), 'decided_at' => now()])->save();
+            $this->audit($tenantId, $actor, 'apply', ['tuning_id' => $tuning->id, 'project_key' => $tuning->project_key, 'gate' => $tuning->gate['status'] ?? null]);
 
             return $tuning;
         });
@@ -205,7 +214,11 @@ final class ExpansionLearningService
         if (! in_array($tuning->status, ['proposed', 'applied'], true)) {
             throw new InvalidArgumentException("A {$tuning->status} tuning cannot be rejected.");
         }
-        $tuning->forceFill(['status' => 'rejected', 'decided_by' => mb_substr($actor, 0, 120), 'decided_at' => now()])->save();
+        $previousStatus = $tuning->status;
+        DB::transaction(function () use ($tuning, $tenantId, $actor, $previousStatus): void {
+            $tuning->forceFill(['status' => 'rejected', 'decided_by' => mb_substr($actor, 0, 120), 'decided_at' => now()])->save();
+            $this->audit($tenantId, $actor, $previousStatus === 'applied' ? 'rollback' : 'reject', ['tuning_id' => $tuning->id, 'project_key' => $tuning->project_key]);
+        });
         ActiveExpansionTuning::forget($tenantId, $tuning->project_key);
 
         return $this->present($tuning);
@@ -284,6 +297,10 @@ final class ExpansionLearningService
             throw new InvalidArgumentException('Base model not allowed. Allowed: '.implode(', ', OpenAiFineTuningBackend::BASE_MODELS));
         }
 
+        if ($backend->name() === 'openai') {
+            $this->assertTrainingBudget($tenantId);
+        }
+
         $rows = $this->dataset($tenantId, $projectKey);
         $minRows = max(10, (int) config('kb.expansion_learning.training.min_rows', 50));
         if (count($rows) < $minRows) {
@@ -295,9 +312,10 @@ final class ExpansionLearningService
         $path = sprintf('expansion-training/%s/%s.jsonl', preg_replace('/[^A-Za-z0-9_-]/', '_', $tenantId), (string) Str::uuid());
         if (Storage::disk($disk)->put($path, $contents) !== true) {
             // R4 — a dataset that was not written must not become a "submitted" run.
-            throw new RuntimeException('The training dataset could not be written to the configured disk.');
+            throw new TrainingDatasetStorageFailed();
         }
 
+        $this->audit($tenantId, $actor, 'train', ['backend' => $backend->name(), 'base_model' => $base, 'rows' => count($rows), 'project_key' => $projectKey]);
         $run = KbExpansionModel::query()->create([
             'tenant_id' => $tenantId,
             'project_key' => $projectKey,
@@ -333,13 +351,16 @@ final class ExpansionLearningService
     {
         $this->assertEnabled();
         $promoted = DB::transaction(function () use ($tenantId, $modelId, $actor): KbExpansionModel {
-            $run = KbExpansionModel::query()->forTenant($tenantId)->lockForUpdate()->findOrFail($modelId);
+            // R21 — serialise every promotion of this tenant (see apply()).
+            KbExpansionModel::query()->forTenant($tenantId)->lockForUpdate()->get(['id']);
+            $run = KbExpansionModel::query()->forTenant($tenantId)->findOrFail($modelId);
             if ($run->status !== 'ready' || ! is_string($run->model_id) || $run->model_id === '') {
                 throw new InvalidArgumentException('Only a ready candidate with a provider model id can be promoted.');
             }
             KbExpansionModel::query()->forTenant($tenantId)->where('status', 'promoted')
-                ->update(['status' => 'retired', 'updated_at' => now()]);
+                ->update(['status' => 'retired', 'retired_by' => mb_substr($actor, 0, 120), 'retired_at' => now(), 'updated_at' => now()]);
             $run->forceFill(['status' => 'promoted', 'promoted_by' => mb_substr($actor, 0, 120), 'promoted_at' => now()])->save();
+            $this->audit($tenantId, $actor, 'promote', ['model_run_id' => $run->id, 'model_id' => $run->model_id]);
 
             return $run;
         });
@@ -348,33 +369,100 @@ final class ExpansionLearningService
         return $this->presentModel($promoted);
     }
 
-    /** Roll back a promoted model (or discard a candidate). */
+    /**
+     * Roll back a promoted model, or discard a ready / exported / failed run.
+     * A run still `submitted` / `training` at the provider is refused: cancel
+     * the provider job first (it would otherwise finish and bill unseen).
+     */
     public function retire(string $tenantId, int $modelId, string $actor): array
     {
         $this->assertEnabled();
         $run = KbExpansionModel::query()->forTenant($tenantId)->findOrFail($modelId);
-        $run->forceFill(['status' => 'retired', 'promoted_by' => $run->promoted_by ?? mb_substr($actor, 0, 120)])->save();
+        if (! in_array($run->status, ['promoted', 'ready', 'exported', 'failed'], true)) {
+            throw new InvalidArgumentException("A {$run->status} run cannot be retired; wait for it to finish or cancel the provider job first.");
+        }
+        $previousStatus = $run->status;
+        DB::transaction(function () use ($run, $tenantId, $actor, $previousStatus): void {
+            $run->forceFill(['status' => 'retired', 'retired_by' => mb_substr($actor, 0, 120), 'retired_at' => now()])->save();
+            $this->audit($tenantId, $actor, 'retire', ['model_run_id' => $run->id, 'previous_status' => $previousStatus]);
+        });
         ActiveExpansionTuning::forget($tenantId, null);
 
         return $this->presentModel($run);
     }
 
-    /** Retention: delete events older than `kb.expansion_learning.retention_days`. Returns the count. */
+    /**
+     * Retention (SEC-RETENTION / GDPR): everything derived from user queries
+     * ages out on the SAME window — events are deleted, the few-shot examples
+     * copied into tunings are emptied, and training datasets on disk are
+     * deleted (the run row keeps its counts, `dataset_path` becomes null).
+     * Returns the number of events deleted.
+     */
     public function prune(?int $days = null): int
     {
         $days ??= (int) config('kb.expansion_learning.retention_days', 90);
         if ($days <= 0) {
             return 0;
         }
+        $cutoff = now()->subDays($days);
         $deleted = 0;
         // Deliberately cross-tenant: retention is a deployment-wide policy and
         // deletes by age only (same posture as the other prune commands).
-        KbExpansionEvent::query()->withoutGlobalScopes()->where('created_at', '<', now()->subDays($days))
+        KbExpansionEvent::query()->withoutGlobalScopes()->where('created_at', '<', $cutoff)
             ->select('id')->chunkById(1000, function ($rows) use (&$deleted): void {
                 $deleted += KbExpansionEvent::query()->withoutGlobalScopes()->whereIn('id', $rows->pluck('id'))->delete();
             });
 
+        KbExpansionTuning::query()->withoutGlobalScopes()->where('created_at', '<', $cutoff)
+            ->select(['id', 'tenant_id', 'project_key', 'few_shot'])->chunkById(500, function ($rows): void {
+                foreach ($rows as $row) {
+                    if ((array) $row->few_shot === []) {
+                        continue;
+                    }
+                    KbExpansionTuning::query()->withoutGlobalScopes()->whereKey($row->id)->update(['few_shot' => '[]', 'updated_at' => now()]);
+                    ActiveExpansionTuning::forget((string) $row->tenant_id, (string) $row->project_key);
+                }
+            });
+
+        $disk = Storage::disk((string) config('kb.expansion_learning.training.disk', 'local'));
+        KbExpansionModel::query()->withoutGlobalScopes()->where('created_at', '<', $cutoff)->whereNotNull('dataset_path')
+            ->select(['id', 'dataset_path'])->chunkById(500, function ($rows) use ($disk): void {
+                foreach ($rows as $row) {
+                    $path = (string) $row->dataset_path;
+                    // R4 — only forget the path once the file is really gone.
+                    if ($disk->exists($path) && ! $disk->delete($path)) {
+                        continue;
+                    }
+                    KbExpansionModel::query()->withoutGlobalScopes()->whereKey($row->id)->update(['dataset_path' => null, 'updated_at' => now()]);
+                }
+            });
+
         return $deleted;
+    }
+
+    /**
+     * Poll every provider job still running, tenant by tenant (the nightly
+     * run). Returns the number of runs polled.
+     */
+    public function refreshPending(): int
+    {
+        $polled = 0;
+        $tenants = app(\App\Support\TenantContext::class);
+        $previous = $tenants->current();
+        try {
+            KbExpansionModel::query()->withoutGlobalScopes()->whereIn('status', ['submitted', 'training'])
+                ->select(['id', 'tenant_id'])->chunkById(100, function ($rows) use (&$polled, $tenants): void {
+                    foreach ($rows as $row) {
+                        $tenants->set((string) $row->tenant_id);
+                        $this->refresh((string) $row->tenant_id, (int) $row->id);
+                        $polled++;
+                    }
+                });
+        } finally {
+            $tenants->set($previous);
+        }
+
+        return $polled;
     }
 
     /**
@@ -388,6 +476,7 @@ final class ExpansionLearningService
     {
         return KbExpansionEvent::query()->withoutGlobalScopes()
             ->whereNotNull('project_key')
+            ->where('tenant_id', '!=', (string) config('kb.expansion_learning.gate_tenant', 'system-expansion-gate'))
             ->where('created_at', '>=', now()->subDays(max(1, (int) config('kb.expansion_learning.window_days', 30))))
             ->groupBy('tenant_id', 'project_key')
             ->havingRaw('COUNT(*) >= ?', [max(1, (int) config('kb.expansion_learning.min_events', 30))])
@@ -396,9 +485,50 @@ final class ExpansionLearningService
             ->all();
     }
 
+    /**
+     * SEC-LLM-001 gate 7 — a provider fine-tuning job is billable and is NOT
+     * metered by the FinOps ledger (the provider bills it after the fact), so
+     * it is bounded here: at most one job in flight per tenant and at most
+     * `kb.expansion_learning.training.max_runs_per_30_days` (default 2).
+     */
+    private function assertTrainingBudget(string $tenantId): void
+    {
+        $inFlight = KbExpansionModel::query()->forTenant($tenantId)->where('backend', 'openai')->whereIn('status', ['pending', 'submitted', 'training'])->exists();
+        if ($inFlight) {
+            throw new InvalidArgumentException('A provider training job is already running for this tenant.');
+        }
+        $cap = max(0, (int) config('kb.expansion_learning.training.max_runs_per_30_days', 2));
+        $recent = KbExpansionModel::query()->forTenant($tenantId)->where('backend', 'openai')->where('created_at', '>=', now()->subDays(30))->count();
+        if ($recent >= $cap) {
+            throw new InvalidArgumentException("The provider training budget is exhausted ({$cap} runs per 30 days).");
+        }
+    }
+
     public function hasTrainingConsent(string $tenantId): bool
     {
         return in_array($tenantId, (array) config('kb.expansion_learning.training.consented_tenants', []), true);
+    }
+
+    /**
+     * SEC-AUDIT — every learning-loop mutation leaves an attributable row in
+     * the shared admin trail. Called inside the mutation's transaction where
+     * there is one, so a failed audit write rolls the change back (fail-closed).
+     *
+     * @param  array<string,mixed>  $args  ids and statuses only — never query text
+     */
+    private function audit(string $tenantId, string $actor, string $action, array $args): void
+    {
+        AdminCommandAudit::query()->create([
+            'tenant_id' => $tenantId,
+            // FK to users: link only an existing account (the actor string is
+            // always kept in args_json, so attribution never depends on it).
+            'user_id' => preg_match('/^user:(\d+)$/', $actor, $m) === 1 && \App\Models\User::query()->whereKey((int) $m[1])->exists() ? (int) $m[1] : null,
+            'command' => 'kb:expansion-learn '.$action,
+            'args_json' => $args + ['actor' => mb_substr($actor, 0, 120)],
+            'status' => AdminCommandAudit::STATUS_COMPLETED,
+            'started_at' => now(),
+            'completed_at' => now(),
+        ]);
     }
 
     private function backend(string $name): ExpansionTrainingBackend
@@ -467,6 +597,8 @@ final class ExpansionLearningService
             'created_by' => $m->created_by,
             'promoted_by' => $m->promoted_by,
             'promoted_at' => $m->promoted_at?->toIso8601String(),
+            'retired_by' => $m->retired_by,
+            'retired_at' => $m->retired_at?->toIso8601String(),
             'created_at' => $m->created_at?->toIso8601String(),
         ];
     }

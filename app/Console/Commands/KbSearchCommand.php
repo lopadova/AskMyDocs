@@ -124,14 +124,22 @@ final class KbSearchCommand extends Command
     private function renderFiles(array $results): void
     {
         $seen = [];
+        $out = fopen('php://temp', 'r+');
+        if ($out === false) {
+            throw new \RuntimeException('Cannot open a temporary stream for --files output.');
+        }
         foreach ($results as $r) {
             $path = (string) ($r['document']['source_path'] ?? '');
             if ($path === '' || isset($seen[$path])) {
                 continue;
             }
             $seen[$path] = true;
-            $this->line(sprintf('%s,%s,%s', (string) ($r['document']['ref'] ?? ''), $this->score($r), $path));
+            // CSV quoting: a path with a comma or a quote stays one field.
+            fputcsv($out, array_map([$this, 'csvCell'], [(string) ($r['document']['ref'] ?? ''), $this->score($r), $path]), escape: '');
         }
+        rewind($out);
+        $this->output->write((string) stream_get_contents($out));
+        fclose($out);
     }
 
     /** @param  list<array<string,mixed>>  $results */

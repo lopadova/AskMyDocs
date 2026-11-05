@@ -9,13 +9,13 @@ use App\Jobs\AnalyzeExpansionLearningJob;
 use App\Services\Kb\Retrieval\Expansion\Learning\ExpansionLearningDisabled;
 use App\Services\Kb\Retrieval\Expansion\Learning\ExpansionLearningService;
 use App\Services\Kb\Retrieval\Expansion\Learning\OpenAiFineTuningBackend;
+use App\Services\Kb\Retrieval\Expansion\Learning\TrainingDatasetStorageFailed;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
-use RuntimeException;
 
 /**
  * W7 — HTTP surface of the expansion learning loop (R44), mounted in the
@@ -129,7 +129,8 @@ final class KbExpansionLearningController extends Controller
             return response()->json(['code' => 'not_found', 'message' => 'No such tuning or model run.'], 404);
         } catch (InvalidArgumentException $e) {
             return response()->json(['code' => 'refused', 'message' => $e->getMessage()], 422);
-        } catch (RuntimeException) {
+        } catch (TrainingDatasetStorageFailed) {
+            // R14 — chosen by exception TYPE: any other runtime error stays a 500.
             return response()->json(['code' => 'storage_failed', 'message' => 'The training dataset could not be stored.'], 503);
         }
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -84,7 +85,17 @@ return new class extends Migration
                 $table->timestamps();
 
                 $table->index(['tenant_id', 'status'], 'idx_kb_exp_models_tenant_status');
+                $table->string('retired_by', 120)->nullable();
+                $table->timestamp('retired_at')->nullable();
             });
+        }
+
+        // R21 — the "one applied tuning per (tenant, project)" and "one promoted
+        // model per tenant" invariants are DB-enforced where the engine supports
+        // partial indexes (PostgreSQL); the service also serialises with a scope lock.
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement("CREATE UNIQUE INDEX IF NOT EXISTS uq_kb_exp_tunings_one_applied ON kb_expansion_tunings (tenant_id, project_key) WHERE status = 'applied'");
+            DB::statement("CREATE UNIQUE INDEX IF NOT EXISTS uq_kb_exp_models_one_promoted ON kb_expansion_models (tenant_id) WHERE status = 'promoted'");
         }
     }
 
