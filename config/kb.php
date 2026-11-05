@@ -126,6 +126,185 @@ return [
         'rrf_k' => env('KB_RRF_K', 60),
         'semantic_weight' => env('KB_HYBRID_SEMANTIC_WEIGHT', 0.70),
         'fts_weight' => env('KB_HYBRID_FTS_WEIGHT', 0.30),
+        // v8.41/W1 (ADR 0035 §D3) — lexical query syntax. `plain` = the legacy
+        // `plainto_tsquery` (quotes/negation ignored, byte-identical to
+        // before). `websearch` = `websearch_to_tsquery` ("exact phrase",
+        // -exclusion, or) + prefix match for a bare single term + phrase
+        // match for compound identifiers (DEC-0054, src/lib/i18n.ts) +
+        // `ts_rank_cd` (bounded 0..1). Default `plain` until the benchmark v2
+        // run recorded in the W1 closure doc promotes it.
+        'query_syntax' => in_array(strtolower((string) env('KB_FTS_QUERY_SYNTAX', 'plain')), ['plain', 'websearch'], true)
+            ? strtolower((string) env('KB_FTS_QUERY_SYNTAX', 'plain'))
+            : 'plain',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Embedding input template (v8.42/W2, ADR 0035 §D2)
+    |--------------------------------------------------------------------------
+    |
+    | What text is sent to the embeddings provider for a chunk. OFF (default) =
+    | the bare chunk text, byte-identical to every release before v8.42. ON =
+    | `title: {document title} | section: {heading path} | text: {chunk}`
+    | (canonical documents add `| type: {canonical_type}`), so a chunk like
+    | "Il timeout è 30 s" carries the system and section it describes into its
+    | vector. `knowledge_chunks.chunk_text` stays the BARE chunk either way —
+    | the template only shapes the vector, never what is shown, cited, hashed
+    | or full-text indexed.
+    |
+    | Flipping this flag never re-embeds a corpus: existing chunks keep their
+    | vectors (and their `embedding_fingerprint`) until the operator runs
+    | `php artisan kb:reembed-stale` (use `--dry-run` first for the cost).
+    | The fingerprint covers the template id, so a flip is detected as drift.
+    |
+    */
+
+    'embedding_input' => [
+        'contextual' => filter_var(env('KB_EMBEDDING_CONTEXTUAL_INPUT', false), FILTER_VALIDATE_BOOLEAN),
+        // Bump when the template text changes; part of the fingerprint.
+        'template_version' => 1,
+        // Optional USD per 1M embedding tokens, used ONLY to turn the
+        // `kb:reembed-stale --dry-run` token estimate into a cost estimate.
+        // Unset = the dry run reports tokens and no cost (never a guess).
+        'price_per_million_tokens' => is_numeric($p = env('KB_EMBEDDING_PRICE_PER_MILLION_TOKENS')) ? (float) $p : null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cross-encoder stage (v8.43/W3, ADR 0035 §D4)
+    |--------------------------------------------------------------------------
+    |
+    | After the heuristic Reranker, the top `candidates` chunks are re-scored by
+    | a model that reads each (query, chunk) PAIR and blended position-aware
+    | (see CrossEncoderBlender): the head of the heuristic order is protected,
+    | the tail is where the model decides. `rerank_score` / `vector_score` — the
+    | inputs of the refusal gate — are NEVER modified. Any failure falls back to
+    | the heuristic order and says so in `meta.cross_encoder`.
+    |
+    | Two profiles, both selectable here (default SELF-HOSTED): `self_hosted` —
+    | an inference server you run (vLLM / TEI / Infinity serving e.g.
+    | Qwen3-Reranker) — and `api` — a hosted rerank API (Cohere / Jina /
+    | Voyage). Every endpoint host must be in the profile's EXACT allow-list
+    | (`host` or `host:port`); `api` is https-only, `self_hosted` tolerates plain
+    | http only with `allow_http`. `fake` is a test double refused in production.
+    |
+    */
+
+    'cross_rerank' => [
+        'enabled' => filter_var(env('KB_CROSS_RERANK_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'driver' => env('KB_CROSS_RERANK_DRIVER', 'http'),            // http | fake
+        'profile' => env('KB_CROSS_RERANK_PROFILE', 'self_hosted'),   // self_hosted | api
+        'candidates' => (int) env('KB_CROSS_RERANK_CANDIDATES', 30),
+        'timeout' => (int) env('KB_CROSS_RERANK_TIMEOUT', 10),
+        'max_passage_chars' => (int) env('KB_CROSS_RERANK_MAX_PASSAGE_CHARS', 2000),
+        'cache_ttl' => (int) env('KB_CROSS_RERANK_CACHE_TTL', 604800),
+        // Optional USD per 1M (estimated) tokens, for the FinOps ledger row.
+        'price_per_million_tokens' => (float) env('KB_CROSS_RERANK_PRICE_PER_MILLION_TOKENS', 0.0),
+        'tiers' => [
+            'head_rank' => 3,
+            'mid_rank' => 10,
+            'head_weight' => (float) env('KB_CROSS_RERANK_HEAD_WEIGHT', 0.75),
+            'mid_weight' => (float) env('KB_CROSS_RERANK_MID_WEIGHT', 0.60),
+            'tail_weight' => (float) env('KB_CROSS_RERANK_TAIL_WEIGHT', 0.40),
+        ],
+        'profiles' => [
+            'self_hosted' => [
+                'endpoint' => env('KB_CROSS_RERANK_SELF_HOSTED_URL'),
+                'model' => env('KB_CROSS_RERANK_SELF_HOSTED_MODEL', 'Qwen/Qwen3-Reranker-0.6B'),
+                'api_key' => env('KB_CROSS_RERANK_SELF_HOSTED_API_KEY'),
+                'body_style' => env('KB_CROSS_RERANK_SELF_HOSTED_BODY_STYLE', 'documents'),   // documents | texts (TEI)
+                'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_CROSS_RERANK_SELF_HOSTED_ALLOWED_HOSTS', ''))))),
+                'allow_http' => filter_var(env('KB_CROSS_RERANK_SELF_HOSTED_ALLOW_HTTP', false), FILTER_VALIDATE_BOOLEAN),
+            ],
+            'api' => [
+                'endpoint' => env('KB_CROSS_RERANK_API_URL'),
+                'model' => env('KB_CROSS_RERANK_API_MODEL'),
+                'api_key' => env('KB_CROSS_RERANK_API_KEY'),
+                'body_style' => 'documents',
+                'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_CROSS_RERANK_API_ALLOWED_HOSTS', ''))))),
+                'allow_http' => false,
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Typed query expansion (v8.44/W4, ADR 0035 §D5)
+    |--------------------------------------------------------------------------
+    |
+    | A cheap model proposes `lex` (keyword), `vec` (paraphrase) and `hyde`
+    | (hypothetical answer passage) variants of the query; lex goes to the
+    | full-text branch, vec/hyde to the vector branch, all fused by weighted RRF
+    | with the ORIGINAL query's lists at twice the weight. Skipped when the
+    | lexical (or, hybrid off, the vector) top hit is already strong and clearly
+    | separated, and whenever the caller passes an `intent`. The model's answer
+    | is a closed JSON object; anything else is discarded. Provider/model are
+    | optional overrides validated against a code-owned shape — unset = the
+    | tenant's chat provider and its default model.
+    |
+    */
+
+    'query_expansion' => [
+        'enabled' => filter_var(env('KB_QUERY_EXPANSION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'provider' => env('KB_QUERY_EXPANSION_PROVIDER'),
+        'model' => env('KB_QUERY_EXPANSION_MODEL'),
+        'max_variants' => (int) env('KB_QUERY_EXPANSION_MAX_VARIANTS', 3),
+        'cache_ttl' => (int) env('KB_QUERY_EXPANSION_CACHE_TTL', 86400),
+        // Strong-signal skip. Calibrated on benchmark v2 (see the W4 closure doc).
+        'skip_min_score' => (float) env('KB_QUERY_EXPANSION_SKIP_MIN_SCORE', 0.85),
+        'skip_min_gap' => (float) env('KB_QUERY_EXPANSION_SKIP_MIN_GAP', 0.15),
+        // Weight of an expansion list relative to the matching original list.
+        'expansion_weight_ratio' => (float) env('KB_QUERY_EXPANSION_WEIGHT_RATIO', 0.5),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Agent affordances (v8.44/W4, ADR 0035 §D6)
+    |--------------------------------------------------------------------------
+    */
+
+    // Corpus facets (kb:facets · GET /api/kb/facets · KbFacetsTool). OFF = clean 404 / {disabled:true}.
+    'facets' => [
+        'enabled' => filter_var(env('KB_MCP_FACETS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'limit' => (int) env('KB_FACETS_LIMIT', 50),
+    ],
+
+    // Path contexts: admin-authored descriptions bound to a source_path prefix,
+    // returned with citations and rendered in the prompt as untrusted DATA.
+    'path_contexts' => [
+        'enabled' => filter_var(env('KB_PATH_CONTEXTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    ],
+
+    // Line-range reads (KbReadDocumentTool from_line/max_lines, kb:show, the preview endpoint).
+    'line_read' => [
+        'max_lines' => (int) env('KB_LINE_READ_MAX_LINES', 400),
+    ],
+
+    // "Did you mean" suggestions on a missed slug / path.
+    'did_you_mean' => [
+        'max_distance' => (int) env('KB_DID_YOU_MEAN_MAX_DISTANCE', 3),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retrieval explain (v8.41/W1, ADR 0035 §D1)
+    |--------------------------------------------------------------------------
+    |
+    | Per-result decomposition of a ranking: which lists (vector / full-text /
+    | expansion) ranked a chunk, with what weight, which heuristic and
+    | cross-encoder terms moved it. Computed from values the pipeline already
+    | holds (no extra query, no extra provider call) and only when asked.
+    | The `kb:search --explain` CLI always works for operators; this flag
+    | gates the HTTP (`GET /api/admin/kb/retrieval/explain`) and MCP
+    | (`KbRetrievalExplainTool`) surfaces — OFF answers a clean 404 /
+    | disabled tool response (R43).
+    |
+    */
+
+    'retrieval_explain' => [
+        'enabled' => filter_var(env('KB_RETRIEVAL_EXPLAIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Hard cap on `limit` for the explain surfaces (the trace is verbose).
+        'max_limit' => (int) env('KB_RETRIEVAL_EXPLAIN_MAX_LIMIT', 20),
     ],
 
     /*
@@ -1008,6 +1187,20 @@ return [
         'threshold_mrr' => (float) env('KB_BENCHMARK_THRESHOLD_MRR', 0.85),
         'threshold_citation_precision' => (float) env('KB_BENCHMARK_THRESHOLD_CITATION_PRECISION', 0.90),
         'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_THRESHOLD_REFUSAL_ACCURACY', 0.95),
+        // v8.41/W1 (ADR 0035 §D1) — benchmark v2 gates on its OWN floor.
+        // These defaults are the W1 STUB baseline (deterministic embedder, no
+        // key, SQLite) minus a 0.02 tolerance: nDCG@5 0.6044, MRR 0.6405,
+        // citation-precision 0.7246, refusal-accuracy 0.875 over the 80
+        // non-code queries. A change that makes retrieval WORSE on v2 fails
+        // `kb:benchmark --stub --suite=v2 --gate` (and the BenchmarkV2Test that
+        // runs it in CI). A LIVE run (real embeddings) scores higher; raise
+        // these env knobs per deployment after recording its own baseline.
+        'v2' => [
+            'threshold_ndcg' => (float) env('KB_BENCHMARK_V2_THRESHOLD_NDCG', 0.58),
+            'threshold_mrr' => (float) env('KB_BENCHMARK_V2_THRESHOLD_MRR', 0.62),
+            'threshold_citation_precision' => (float) env('KB_BENCHMARK_V2_THRESHOLD_CITATION_PRECISION', 0.70),
+            'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_V2_THRESHOLD_REFUSAL_ACCURACY', 0.85),
+        ],
     ],
 
     /*

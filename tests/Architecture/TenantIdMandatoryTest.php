@@ -79,6 +79,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbTag::class,
         // v8.7/W1 — per-(tenant, project) synonym groups for query expansion.
         \App\Models\KbSynonym::class,
+        // v8.44/W4 — admin-authored descriptions bound to a source_path prefix.
+        \App\Models\KbPathContext::class,
         // v8.7/W3–W4 — AI deep-analysis on document change.
         \App\Models\KbDocAnalysis::class,
         // v8.8/W3 — per-(tenant, project) deep-analysis gate override.

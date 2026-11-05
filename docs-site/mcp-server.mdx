@@ -33,6 +33,28 @@ The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
   (`KbWikiReviewTool`), suggestion apply (`KbApplySuggestionTool`), wiki
   maintenance (`KbWikiMaintainTool`), and auto→human-vouched tier promotion
   (`KbWikiPromoteTool`).
+- **Agent orientation (v8.44):** `KbFacetsTool` lists the filterable dimensions with
+  counts (source types, canonical types/statuses, languages, tags, top-level folders, the
+  source-updated range) so an agent builds valid filters instead of guessing — counted
+  under *the principal's own* document ACL, so a value that only hidden documents carry
+  never appears. `KbReadDocumentTool` gains optional `from_line` / `max_lines` (omit both
+  and the payload is unchanged), and `KbReadChunkTool` now reports the `start_line` /
+  `end_line` the chunk occupies, so an agent goes from a citation to the exact lines.
+  `KbDocumentBySlugTool` answers a miss with up to five `suggestions` (near-miss slugs /
+  paths the caller may read). `KbPathContextsTool` (read-only, admin principals) lists the
+  admin-authored descriptions of parts of the corpus; writing them is deliberately an
+  admin-only act over the audited HTTP/CLI surfaces — a path context is text that reaches
+  the prompt. The search tools accept an optional `intent`. Facets and path contexts are
+  default-off flags (`KB_MCP_FACETS_ENABLED`, `KB_PATH_CONTEXTS_ENABLED`) and answer
+  `{disabled: true}`.
+- **Retrieval diagnostics (v8.41):** `KbRetrievalExplainTool` runs a query and returns,
+  per result, *why* it ranked where it did — the vector / full-text lists that produced
+  it, the RRF contributions and the heuristic terms (see
+  [Retrieval pipeline](/architecture/retrieval-pipeline)). Read-only, `admin` /
+  `super-admin` principals only (a baseline `mcp:read` token is not a role), and gated
+  by `KB_RETRIEVAL_EXPLAIN_ENABLED` — off answers `{disabled: true}`. The ingestion-status
+  tool also gains an additive `stale_embeddings` block (chunks whose vector recipe differs
+  from the active one).
 - **Document-intelligence read surface (v8.36):** `KbOcrStatusTool` reports whether a
   document was OCR'd, with which driver, per-page confidence and figure count — read-only
   by design; an agent cannot start an OCR run or spend (see

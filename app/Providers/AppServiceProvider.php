@@ -983,6 +983,14 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbEraseSubjectCommand::class,
             // v8.23 (Ciclo 4) — re-embed a project under the current PII policy (R44 CLI surface).
             \App\Console\Commands\KbReembedProjectCommand::class,
+            // v8.41/W1 (ADR 0035 D1) — retrieval CLI with optional per-result explain (R44 CLI surface).
+            \App\Console\Commands\KbSearchCommand::class,
+            // v8.42/W2 (ADR 0035 D2) — re-embed chunks whose vector recipe is stale (R44 CLI surface).
+            \App\Console\Commands\KbReembedStaleCommand::class,
+            // v8.44/W4 (ADR 0035 D6) — agent affordances CLI surfaces (R44).
+            \App\Console\Commands\KbFacetsCommand::class,
+            \App\Console\Commands\KbShowCommand::class,
+            \App\Console\Commands\KbPathContextCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
             // Platform control plane — the ONLY supported workflow for

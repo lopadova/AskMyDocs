@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb\Chat;
 
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\PathContext\PathContextService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Services\Kb\Retrieval\SearchResult;
@@ -69,7 +70,66 @@ class ChatRetrievalService
             'chunks' => $result->primary,
             'expanded' => $result->expanded,
             'rejected' => $result->rejected,
+            // v8.44/W4 (ADR 0035 §D6.4) — admin-authored descriptions of the
+            // parts of the corpus the cited chunks come from. Rendered as
+            // delimited untrusted DATA above `## Context`, never as an
+            // instruction. Empty (block omitted) when the feature is off.
+            'pathContexts' => $this->promptPathContexts($result),
         ];
+    }
+
+    /**
+     * Distinct path-context descriptions across the chunks the model will read,
+     * general → specific per document, first occurrence wins.
+     *
+     * @return list<string>
+     */
+    private function promptPathContexts(SearchResult $result): array
+    {
+        $chains = $this->pathContextChains($result->primary->concat($result->expanded));
+
+        $seen = [];
+        foreach ($chains as $chain) {
+            foreach ($chain as $description) {
+                $seen[$description] = true;
+            }
+        }
+
+        return array_keys($seen);
+    }
+
+    /**
+     * Path-context chains for the documents behind a set of chunks, keyed by
+     * {@see PathContextService::key()}. One lookup per project; `[]` when off.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $chunks
+     * @return array<string, list<string>>
+     */
+    private function pathContextChains(\Illuminate\Support\Collection $chunks): array
+    {
+        $service = app(PathContextService::class);
+        if (! $service->enabled()) {
+            return [];
+        }
+
+        $documents = $chunks
+            ->map(fn ($c): array => [
+                'project_key' => (string) (data_get($c, 'project_key') ?? data_get($c, 'document.project_key') ?? ''),
+                'source_path' => (string) data_get($c, 'document.source_path', ''),
+            ])
+            ->filter(fn (array $d): bool => $d['project_key'] !== '' && $d['source_path'] !== '')
+            ->unique(fn (array $d): string => $d['project_key'].'|'.$d['source_path'])
+            ->values()
+            ->all();
+
+        try {
+            return $service->chainsFor(app(\App\Support\TenantContext::class)->current(), $documents);
+        } catch (\Throwable $e) {
+            // A description is decoration: a lookup failure must never break an answer.
+            \Illuminate\Support\Facades\Log::warning('kb.path_context.lookup_failed', ['error_class' => $e::class]);
+
+            return [];
+        }
     }
 
     /**
@@ -82,9 +142,10 @@ class ChatRetrievalService
     public function buildCitations(SearchResult $result): array
     {
         $citations = [];
-        $this->appendCitations($result->primary, 'primary', $citations);
-        $this->appendCitations($result->expanded, 'related', $citations);
-        $this->appendCitations($result->rejected, 'rejected', $citations);
+        $chains = $this->pathContextChains($result->primary->concat($result->expanded)->concat($result->rejected));
+        $this->appendCitations($result->primary, 'primary', $citations, $chains);
+        $this->appendCitations($result->expanded, 'related', $citations, $chains);
+        $this->appendCitations($result->rejected, 'rejected', $citations, $chains);
 
         return array_values($citations);
     }
@@ -135,8 +196,9 @@ class ChatRetrievalService
     /**
      * @param  \Illuminate\Support\Collection<int, mixed>  $chunks
      * @param  array<string, array<string, mixed>>  $citations
+     * @param  array<string, list<string>>  $pathContextChains
      */
-    private function appendCitations(\Illuminate\Support\Collection $chunks, string $origin, array &$citations): void
+    private function appendCitations(\Illuminate\Support\Collection $chunks, string $origin, array &$citations, array $pathContextChains = []): void
     {
         // Group by document id (stable, never null for a persisted doc),
         // falling back to source_path only when the id is absent — the old
@@ -184,6 +246,13 @@ class ChatRetrievalService
                 // snippet, and a content fingerprint that survives re-
                 // ingestion so a citation can be traced to exact bytes.
                 'chunks' => $group->map(fn ($c) => self::chunkEvidence($c))->values()->all(),
+                // v8.44/W4 — the admin-authored descriptions of where this
+                // document lives (general → specific). R27 additive; `[]` when
+                // the feature is off or no prefix matches.
+                'path_context' => $pathContextChains[app(PathContextService::class)->key(
+                    (string) (data_get($first, 'project_key') ?? data_get($first, 'document.project_key') ?? ''),
+                    (string) data_get($first, 'document.source_path', ''),
+                )] ?? [],
             ];
         }
     }

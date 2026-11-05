@@ -98,6 +98,15 @@ score, then applies a canonical boost and a status penalty. Defaults
 | Knob | Env | Default | Effect |
 |---|---|---|---|
 | Candidate multiplier | `KB_RERANK_CANDIDATE_MULTIPLIER` | `3` | Over-retrieve 3× the limit, then rerank down |
+| Lexical query syntax (v8.41) | `KB_FTS_QUERY_SYNTAX` | `plain` | `plain` (legacy `plainto_tsquery`) or `websearch` (quotes, `-negation`, prefix, identifier phrases, bounded `ts_rank_cd`) |
+| Retrieval explain (v8.41) | `KB_RETRIEVAL_EXPLAIN_ENABLED` | `false` | HTTP + MCP surfaces of the per-result ranking trace (`kb:search --explain` always works) |
+| Contextual embedding input (v8.42) | `KB_EMBEDDING_CONTEXTUAL_INPUT` | `false` | Embed `title \| section \| text` instead of the bare chunk; never re-embeds on its own — run `kb:reembed-stale` |
+| Cross-encoder stage (v8.43) | `KB_CROSS_RERANK_ENABLED` | `false` | Re-scores the heuristic top-N with a pair-reading model; `KB_CROSS_RERANK_PROFILE` = `self_hosted` (default) \| `api`, endpoint + exact host allow-list per profile |
+| Query expansion (v8.44) | `KB_QUERY_EXPANSION_ENABLED` | `false` | Typed `lex`/`vec`/`hyde` variants of the query; skipped on a strong signal; optional `KB_QUERY_EXPANSION_PROVIDER` / `_MODEL` |
+| Corpus facets (v8.44) | `KB_MCP_FACETS_ENABLED` | `false` | `GET /api/kb/facets`, `kb:facets`, `KbFacetsTool` |
+| Path contexts (v8.44) | `KB_PATH_CONTEXTS_ENABLED` | `false` | Admin-authored descriptions of corpus areas, in the prompt and the citations |
+| Line-range read cap (v8.44) | `KB_LINE_READ_MAX_LINES` | `400` | Upper bound of any `from_line`/`max_lines` read |
+| Embedding cost estimate (v8.42) | `KB_EMBEDDING_PRICE_PER_MILLION_TOKENS` | unset | Turns the `kb:reembed-stale --dry-run` token estimate into a cost |
 | Vector weight | `KB_RERANK_VECTOR_WEIGHT` | `0.55` | Cosine similarity signal |
 | Keyword weight | `KB_RERANK_KEYWORD_WEIGHT` | `0.25` | Lexical overlap signal |
 | Heading weight | `KB_RERANK_HEADING_WEIGHT` | `0.05` | Heading-path match signal |

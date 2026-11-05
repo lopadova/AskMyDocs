@@ -37,6 +37,14 @@ gated by a single-use confirm token.
 - **Sister admins** — PII Redactor, Flow, Eval Harness, AI Act, MCP, Evidence &
   Risk Review — each cross-mounted natively.
 
+### Path contexts (v8.44)
+
+Under **Knowledge → Path contexts**: list, add, edit and delete the descriptions bound to
+a `source_path` prefix. The form shows a live `n / 500` counter and per-field errors; delete
+needs an explicit confirm; with the feature off (`KB_PATH_CONTEXTS_ENABLED=false`, the
+default) the page shows a single "disabled on this deployment" panel instead of failing.
+See [Chat & retrieval](/chat-and-retrieval#path-contexts-in-the-prompt-and-the-citations).
+
 ## RBAC + audit (every page)
 
 ```mermaid

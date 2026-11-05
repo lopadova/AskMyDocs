@@ -25,6 +25,12 @@ final class StubEmbeddingCache extends EmbeddingCacheService
         // provider, so the parent's dependencies are not required.
     }
 
+    /** @return array{provider: string, model: string} */
+    public function activeTarget(): array
+    {
+        return ['provider' => 'stub', 'model' => 'deterministic-'.DeterministicEmbedder::DEFAULT_DIM];
+    }
+
     /**
      * @param  list<string>  $texts
      */

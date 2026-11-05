@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeChunk;
+use App\Services\Kb\Agent\DocumentLineReader;
 use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -42,9 +43,19 @@ class KbReadChunkTool extends Tool
             ->with('document')
             ->findOrFail((int) $request->get('chunk_id'));
 
+        // v8.44/W4 (ADR 0035 §D6.2) — the lines this chunk occupies in the
+        // document view, so an agent can go from a citation to
+        // KbReadDocumentTool(from_line, max_lines). Additive (R27); null when
+        // the parent document is somehow unavailable.
+        $lines = $chunk->document !== null
+            ? app(DocumentLineReader::class)->chunkLines($chunk->document, $chunk->id)
+            : null;
+
         return Response::json([
             'chunk' => [
                 'id' => $chunk->id,
+                'start_line' => $lines['start_line'] ?? null,
+                'end_line' => $lines['end_line'] ?? null,
                 'project_key' => $chunk->project_key,
                 'heading_path' => $chunk->heading_path,
                 'chunk_text' => $chunk->chunk_text,

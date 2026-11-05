@@ -222,6 +222,12 @@ Route::middleware([
         ->name('api.kb.documents.search');
     Route::get('/kb/collections', KbCollectionPickerController::class)
         ->name('api.kb.collections.index');
+    // v8.44/W4 / ADR 0035 §D6.1 — corpus facets (R44 HTTP surface). Any
+    // authenticated reader; counts are computed under the caller's own document
+    // ACL (R33). Flag-gated (KB_MCP_FACETS_ENABLED, R43: OFF = 404 facets_disabled).
+    Route::get('/kb/facets', \App\Http\Controllers\Api\KbFacetsController::class)
+        ->middleware('token.ability:kb:read')
+        ->name('api.kb.facets');
 
     // T2.9 — user-owned saved filter combinations (FE FilterBar dropdown
     // consumes these in T2.7-FE follow-up). Per-user authorization
@@ -840,6 +846,25 @@ Route::middleware([
         // route contracts must not collide).
         Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
+        // v8.41/W1 / ADR 0035 §D1 — per-result retrieval explain (R44 HTTP
+        // surface). Flag-gated (KB_RETRIEVAL_EXPLAIN_ENABLED, R43: OFF = 404).
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/retrieval/explain`).
+        Route::get('/kb/retrieval/explain', \App\Http\Controllers\Api\Admin\KbRetrievalExplainController::class)
+            ->name('api.admin.kb.retrieval.explain');
+
+        // v8.44/W4 / ADR 0035 §D6.4 — path contexts (R44 HTTP surface): admin-
+        // authored descriptions bound to a source_path prefix. Flag-gated
+        // (KB_PATH_CONTEXTS_ENABLED, R43: OFF = 404 path_contexts_disabled).
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/path-contexts`);
+        // PUT/DELETE share this group's `role:admin|super-admin` gate.
+        Route::get('/kb/path-contexts', [\App\Http\Controllers\Api\Admin\KbPathContextController::class, 'index'])
+            ->name('api.admin.kb.path-contexts.index');
+        Route::put('/kb/path-contexts', [\App\Http\Controllers\Api\Admin\KbPathContextController::class, 'upsert'])
+            ->name('api.admin.kb.path-contexts.upsert');
+        Route::delete('/kb/path-contexts/{id}', [\App\Http\Controllers\Api\Admin\KbPathContextController::class, 'destroy'])
+            ->whereNumber('id')->name('api.admin.kb.path-contexts.destroy');
 
         // v8.36 / ADR 0029 — OCR status + re-run (R44 HTTP surface). R32 —
         // covered by the AdminAuthorizationMatrix (`/api/admin/kb/documents/1/ocr`).

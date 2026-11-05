@@ -93,6 +93,89 @@ When hybrid search is enabled, semantic and FTS result lists are merged via
 The `meta.search_strategy.fusion_method` field records which path ran
 (`rerank_weighted_sum` | `rrf` | `semantic_only`).
 
+### Cross-encoder stage
+
+*v8.43 · [ADR 0035](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0035-v841-retrieval-quality-cycle.md) §D4.*
+The heuristic `Reranker` scores overlap and metadata; **nothing in it ever reads the
+pair (query, chunk)**. With `KB_CROSS_RERANK_ENABLED=true` the heuristic top-N
+(default 30) is re-scored by a cross-encoder and blended **position-aware**, so the
+model decides the tail while the clear heuristic winners keep their place:
+
+```mermaid
+flowchart LR
+  C[candidates<br/>vector ± full-text ± expansion] --> H[Reranker<br/>heuristic score h]
+  H --> N["top-N (30)"]
+  N --> X["cross-encoder c<br/>cache · PII-masked query · metered"]
+  X --> B["final = w(rank)·h̃ + (1−w)·c·(1−status penalty) + mention bonus"]
+  B --> S[slice to limit]
+  X -. timeout / bad shape / host not allowed .-> F[heuristic order<br/>meta.cross_encoder = unavailable]
+```
+
+`h̃` is the heuristic score min-max normalised over the candidate set with the
+@mention boost removed; `w` is **0.75** for heuristic ranks 1-3, **0.60** for 4-10,
+**0.40** beyond (`kb.cross_rerank.tiers.*`). The status penalty multiplies the
+model's score too, so a deprecated or superseded document cannot regain rank
+through text similarity; an explicit @mention is a precedence (a flat +1.0, above
+anything the blend can produce).
+
+Invariants the tests pin: **`rerank_score` and `vector_score` — the refusal gate's
+inputs — are never modified** (the refusal decision is identical ON and OFF);
+the blended value lives under `cross_encoder.blended` and only decides *order*;
+OFF calls the Reranker with the plain `limit`, exactly as before; any failure falls
+back to the heuristic order and says so in `meta.cross_encoder`
+(`{status:"unavailable", reason:"http_503"|"bad_shape"|"endpoint_not_allowed"|…}`).
+
+Two **profiles** share one hardened driver: `self_hosted` (default — an inference
+server you run: vLLM / TEI / Infinity serving e.g. Qwen3-Reranker) and `api` (a
+hosted rerank API: Cohere / Jina / Voyage). The endpoint host[:port] must be in the
+profile's exact allow-list; redirects are not followed; the response is validated
+against a closed shape (count, integer indexes, finite numbers; raw logits go
+through a sigmoid); `api` is https-only and `self_hosted` tolerates plain http only
+with `allow_http`. Scores are cached by `sha256(tenant | model | query | passage)` —
+the score only, never text — and every uncached call leaves a FinOps ledger row under
+`purpose_tag = cross_rerank`.
+
+### Typed query expansion
+
+*v8.44 · ADR 0035 §D5.* A short or oddly-phrased query ("timeout milano") shares
+few words with the document that answers it. With `KB_QUERY_EXPANSION_ENABLED=true`
+a cheap model proposes three kinds of variants, each routed where it helps:
+
+| type | meaning | goes to |
+|---|---|---|
+| `lex` | keyword variants (other words a document might use) | the full-text branch (needs hybrid search on) |
+| `vec` | paraphrases of the question | the vector branch |
+| `hyde` | one short hypothetical answer passage | the vector branch |
+
+All lists are fused by weighted RRF with the **original query's lists at twice the
+weight** of each expansion list, independent of insertion order. Three details are
+load-bearing:
+
+- **`vector_score` always measures similarity to the original query.** A chunk that
+  only an expansion list surfaced gets its cosine against the *user's* embedding
+  computed after fusion — never the score against a model-written paraphrase — so
+  the refusal gate cannot be talked into grounding.
+- **Strong-signal skip.** When the original query already has a clear winner (top
+  lexical — or, with hybrid off, vector — score ≥ `skip_min_score` and ≥
+  `skip_min_gap` ahead of the runner-up) no model is called at all (proved with
+  `shouldNotReceive`). A supplied `intent` disables the skip: the obvious match may
+  not be what the caller wants.
+- **The model's answer is a closed JSON object** (`lex`, `vec`, `hyde` only; limits
+  on count and length; every variant must keep a significant word of the original;
+  unknown keys discard the *whole* answer — nothing is repaired). The query goes in
+  the user role between delimiters under a fixed system prompt and is PII-masked
+  first; the expansion is cached per (tenant, project, model, query), a dud (all
+  sub-queries empty) is evicted, and `intent` is **never** sent to the model (it
+  gets copied into sub-queries as meta-language).
+
+### Intent
+
+An optional `intent` string (`"web page load times"` for the query `"performance"`)
+is accepted by `/api/kb/chat`, `KbSearchTool`, `KbSearchByProjectTool`, `kb:search
+--intent` and the explain surfaces. It is **not searched on its own**: it prefixes the
+query for the cross-encoder and disables the expansion skip. Absent = identical
+behaviour.
+
 ### Graph expansion & rejected injection
 
 `GraphExpander::expand()` walks a fixed **1 hop** of `kb_edges` from the
@@ -105,6 +188,58 @@ vector-correlates the query against `rejected-approach` canonical docs (summary
 chunks only) and returns up to `KB_REJECTED_INJECTION_MAX_DOCS=3` above
 `KB_REJECTED_MIN_SIMILARITY=0.40`. Both **degrade to empty** for a tenant with no
 canonical docs.
+
+### Explaining a ranking
+
+*v8.41 · [ADR 0035](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0035-v841-retrieval-quality-cycle.md) §D1.*
+"The answer got worse" is not debuggable; "the vector list ranked chunk 4182 first
+but the status penalty pushed it to rank 9" is. When a caller asks for it
+(`RetrievalFilters::$explain`), every returned chunk carries an `explain` block
+assembled from values the pipeline **already holds** — no extra query, no extra
+provider call (a test pins the query count equal with and without it):
+
+```mermaid
+flowchart LR
+  V[vector list<br/>rank · cosine] --> T[RetrievalExplainTrace]
+  F[full-text list<br/>rank · ts_rank] --> T
+  T -->|RRF contributions| P[RetrievalExplainPresenter]
+  R[Reranker<br/>rerank_detail] --> P
+  P --> E["explain { lists, rrf, heuristic,<br/>cross_encoder, graph }"]
+```
+
+| key | content |
+|---|---|
+| `lists[]` | one entry per ranked list that produced the chunk: `source` (`vector`/`fts`), `rank` (1-based), `weight`, `backend_score`, `rrf_contribution` |
+| `rrf` | `{base, total}` — the fused score when hybrid search ran, else `null`. The listed contributions **sum to it** (asserted) |
+| `heuristic` | the `Reranker` terms: `vector`, `keyword`, `heading`, `tags`, `recency`, `preamble`, `canonical_boost`, `status_penalty`, `mention_boost`, `total`; `null` when reranking is off |
+| `cross_encoder`, `graph` | reserved for later workstreams; present and `null` so the contract is stable |
+
+It never carries chunk text beyond a 160-character preview and never a provider
+payload. Three surfaces over one core (`RetrievalExplainService`):
+`php artisan kb:search "…" --explain` (always available to operators),
+`GET /api/admin/kb/retrieval/explain` and the `KbRetrievalExplainTool` MCP tool —
+both `admin`/`super-admin` only and gated by `KB_RETRIEVAL_EXPLAIN_ENABLED`
+(default off → a clean `404 retrieval_explain_disabled` / `{disabled: true}`).
+Asking for an explanation **never changes the ranking** (also asserted).
+
+### Lexical query syntax
+
+*v8.41 · ADR 0035 §D3.* `KB_FTS_QUERY_SYNTAX` selects how the full-text branch
+builds its `tsquery`:
+
+- `plain` (default) — one `plainto_tsquery` per phrase; quotes and `-negation`
+  are ignored. Byte-identical SQL to before v8.41.
+- `websearch` — per phrase: `websearch_to_tsquery` for anything with structure
+  (`"exact phrase"`, `-exclusion`, `or`, several words); a **prefix** match for a
+  bare single word; a **phrase** match for a compound identifier
+  (`DEC-0054`, `src/lib/i18n.ts`, `ERR_STOCK_0417`, `2026.4.10`) — Postgres'
+  parser splits those at index time, so they have to be matched as the phrase
+  their parts form. Ranking switches to `ts_rank_cd(…, 32)`, which is bounded 0..1.
+
+User text is only ever a **bound parameter**: the prefix path reduces the token to
+letters and digits before it is bound, so no `tsquery` operator can survive
+(SEC-RAWSQL-001; a hostile-input test covers `& | ! ( ) :* ' ; --`). The default
+flips to `websearch` only on benchmark-v2 evidence recorded in the W1 closure doc.
 
 ## Data model / contract
 

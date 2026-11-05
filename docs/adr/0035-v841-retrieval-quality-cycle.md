@@ -208,7 +208,7 @@ re-embeds a corpus implicitly.
   `websearch_to_tsquery` call OR-ed in, exactly as today's per-phrase
   `plainto_tsquery` expansion.
 - A single bare term gets a prefix match (`term:*`) — built from
-  `to_tsquery` with the term **sanitised to `[\p{L}\p{N}_]+`** before
+  `to_tsquery` with the term **sanitised to `[\p{L}\p{N}]+`** before
   interpolation into a bound parameter (never concatenated, SEC-RAWSQL-001).
 - A term containing separators (`DEC-0054`, `i18n.ts`, `2026.4.10`) is matched
   as the phrase of its parts (`phraseto_tsquery`), mirroring how the index

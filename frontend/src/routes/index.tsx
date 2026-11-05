@@ -30,6 +30,7 @@ import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
+import { PathContextsView } from '../features/admin/path-contexts/PathContextsView';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
 import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView';
@@ -887,6 +888,25 @@ const adminSynonymsRoute = createRoute({
     component: AdminSynonymsRoute,
 });
 
+// Admin Path contexts — admin-authored descriptions bound to a source_path
+// prefix. Same flat-RBAC RequireRole + AdminShell wrapping as Synonyms; the
+// feature flag (KB_PATH_CONTEXTS_ENABLED) is handled INSIDE the view (R43).
+function AdminPathContextsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="path-contexts">
+                <PathContextsView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminPathContextsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/path-contexts',
+    component: AdminPathContextsRoute,
+});
+
 // v8.7/W3–W4 — Doc Insights (AI document-change analyses).
 function AdminKbInsightsRoute() {
     return (
@@ -1615,6 +1635,7 @@ const teamChildren = [
     adminRetrievalProfilesRoute,
     adminTagsRoute,
     adminSynonymsRoute,
+    adminPathContextsRoute,
     adminKbInsightsRoute,
     adminAnalysisSettingsRoute,
     adminContentGapsRoute,

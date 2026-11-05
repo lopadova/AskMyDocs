@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Flow\Steps;
 
+use App\Services\Kb\Embedding\EmbeddingInputTemplate;
 use App\Services\Kb\EmbeddingCacheService;
+use App\Services\Kb\Pipeline\ChunkDraft;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepHandler;
 use Padosoft\LaravelFlow\FlowStepResult;
@@ -26,6 +28,7 @@ final class EmbedChunksStep implements FlowStepHandler
 {
     public function __construct(
         private readonly EmbeddingCacheService $embeddings,
+        private readonly EmbeddingInputTemplate $template,
     ) {}
 
     public function execute(FlowContext $context): FlowStepResult
@@ -55,9 +58,38 @@ final class EmbedChunksStep implements FlowStepHandler
             $drafts = [];
         }
 
-        $texts = array_map(
-            static fn (array $draft): string => (string) ($draft['text'] ?? ''),
+        // v8.42/W2 (ADR 0035 §D2) — compose the embedding inputs through the
+        // SAME shared template the direct DocumentIngestor path uses (bare
+        // chunk text when the contextual flag is off). Header fragments
+        // (title / path / headings) are PII-redacted inside the template.
+        $parseOutput = is_array($context->stepOutputs['parse-markdown'] ?? null)
+            ? $context->stepOutputs['parse-markdown']
+            : [];
+        $sourcePath = (string) ($parseOutput['source_path'] ?? $context->input['source_path'] ?? '');
+        $title = (string) ($context->input['title'] ?? '');
+        if ($title === '') {
+            $title = pathinfo($sourcePath, PATHINFO_FILENAME);
+        }
+        $canonicalType = is_array($parseOutput['canonical'] ?? null)
+            ? ($parseOutput['canonical']['type'] ?? null)
+            : null;
+
+        $draftObjects = array_map(
+            static fn (array $draft): ChunkDraft => new ChunkDraft(
+                text: (string) ($draft['text'] ?? ''),
+                order: (int) ($draft['order'] ?? 0),
+                headingPath: (string) ($draft['heading_path'] ?? ''),
+                metadata: is_array($draft['metadata'] ?? null) ? $draft['metadata'] : [],
+            ),
             $drafts,
+        );
+
+        $texts = $this->template->inputs(
+            (string) ($context->input['project_key'] ?? ''),
+            $title,
+            $sourcePath,
+            is_string($canonicalType) ? $canonicalType : null,
+            $draftObjects,
         );
 
         $response = $this->embeddings->generate($texts);

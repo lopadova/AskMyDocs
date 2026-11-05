@@ -30,7 +30,33 @@ use Throwable;
  */
 final class IngestionObservabilityService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly ?\App\Services\Kb\Embedding\ReembedStaleService $staleEmbeddings = null,
+    ) {}
+
+    /**
+     * v8.42/W2 (ADR 0035 §D2) — how many of this tenant's chunk vectors were
+     * produced under a different recipe than the active one (additive key on
+     * the ingestion-status surfaces, R27). Read-only: aggregate SQL only, no
+     * provider call. Returns null — never throws — when the embeddings
+     * provider cannot be resolved (e.g. no key configured), so a status
+     * endpoint never 500s because of this block (R14: null = "unknown").
+     *
+     * @return array<string,mixed>|null
+     */
+    public function staleEmbeddings(): ?array
+    {
+        $service = $this->staleEmbeddings ?? app(\App\Services\Kb\Embedding\ReembedStaleService::class);
+
+        try {
+            return $service->summary($this->tenants->current());
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
 
     /**
      * @return list<array{name: string, role: string, depth: int|null}>

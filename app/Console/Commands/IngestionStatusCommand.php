@@ -34,6 +34,7 @@ final class IngestionStatusCommand extends Command
         try {
             $queues = $service->queueDepths();
             $runs = $service->recentRuns($limit);
+            $stale = $service->staleEmbeddings();
         } finally {
             $tenants->set($previous);
         }
@@ -46,6 +47,15 @@ final class IngestionStatusCommand extends Command
                 $queues,
             ),
         );
+
+        if ($stale !== null) {
+            $this->line(sprintf(
+                'Stale embeddings: %d chunk(s) in %d document(s) differ from the active recipe %s (run `kb:reembed-stale --dry-run`).',
+                $stale['stale_chunks'],
+                $stale['stale_documents'],
+                $stale['active_fingerprint'],
+            ));
+        }
 
         if ($runs === []) {
             $this->info('No connector sync runs recorded yet.');

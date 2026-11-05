@@ -25,12 +25,17 @@ use PhpOffice\PhpWord\SimpleType\Jc;
  */
 final class MakeBenchmarkFixturesCommand extends Command
 {
-    protected $signature = 'kb:make-benchmark-fixtures';
+    protected $signature = 'kb:make-benchmark-fixtures
+        {--suite=v1 : v1 (default) regenerates the v8.2 fixtures; v2 regenerates the benchmark v2 binary fixtures (ADR 0035)}';
 
     protected $description = 'Regenerate the binary (PDF + DOCX) benchmark corpus fixtures.';
 
     public function handle(): int
     {
+        if (strtolower(trim((string) $this->option('suite'))) === 'v2') {
+            return $this->handleV2();
+        }
+
         $dir = resource_path('benchmark/corpus');
         if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
             $this->error("Cannot create {$dir}");
@@ -64,6 +69,105 @@ final class MakeBenchmarkFixturesCommand extends Command
         $this->info('Fixtures regenerated + verified.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * v8.41/W1 (ADR 0035 §D1) — the two binary fixtures of benchmark v2: a PDF
+     * post-mortem (2 pages) and a DOCX HR-handbook extract. Fictional company
+     * "Northwind Logistics", no personal data, no secrets.
+     */
+    private function handleV2(): int
+    {
+        $dir = resource_path('benchmark/v2/corpus');
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            $this->error("Cannot create {$dir}");
+
+            return self::FAILURE;
+        }
+
+        $pdfPath = $dir.'/incident-postmortem-db.pdf';
+        if (file_put_contents($pdfPath, $this->buildPdf($this->pdfPagesV2())) === false) {
+            $this->error("Cannot write {$pdfPath}");
+
+            return self::FAILURE;
+        }
+        $this->info("Wrote {$pdfPath} (".filesize($pdfPath).' bytes)');
+
+        $docxPath = $dir.'/hr-handbook-extract.docx';
+        $this->buildDocxV2($docxPath);
+        $this->info("Wrote {$docxPath} (".filesize($docxPath).' bytes)');
+
+        $extracted = $this->verifyPdf($pdfPath);
+        if (! str_contains($extracted, 'pm-4471') || substr_count($extracted, '## page') < 2) {
+            $this->error('v2 PDF extraction did NOT contain the expected text — fixture is unusable.');
+
+            return self::FAILURE;
+        }
+
+        $this->info('v2 fixtures regenerated + verified.');
+
+        return self::SUCCESS;
+    }
+
+    /** @return list<list<string>> */
+    private function pdfPagesV2(): array
+    {
+        return [
+            [
+                'Post-mortem: order database failover, 14 March 2026',
+                '',
+                'Summary: the Northwind order database primary became',
+                'unreachable at 02:07 UTC. An automatic failover promoted a',
+                'replica that had not yet replayed the last write-ahead log',
+                'segments, so roughly nine minutes of order writes were lost',
+                'from the read path until the segments were replayed.',
+                '',
+                'Detection: the on-call engineer was paged after 11 minutes.',
+                'The recovery time objective for the order database is 15',
+                'minutes, so the objective was met by a narrow margin.',
+            ],
+            [
+                'Root cause and actions',
+                '',
+                'Root cause: the failover controller promoted a replica',
+                'without checking its replay lag against the 5 second limit.',
+                '',
+                'Action PM-4471: block promotion of any replica whose replay',
+                'lag exceeds 5 seconds. Owner: platform team. Due: 30 April.',
+                'Action PM-4472: page the on-call engineer after 3 minutes of',
+                'primary unavailability instead of 10 minutes.',
+            ],
+        ];
+    }
+
+    private function buildDocxV2(string $path): void
+    {
+        $word = new PhpWord();
+        $section = $word->addSection();
+
+        $section->addTitle('Northwind Employee Handbook - extract', 1);
+        $section->addText('This extract summarises probation, training and equipment rules for new hires.');
+
+        $section->addTitle('Probation period', 2);
+        $section->addText(
+            'The probation period lasts 90 days. A review meeting takes place '
+            .'in week 6, and the contract is confirmed or ended no later than day 90.'
+        );
+
+        $section->addTitle('Training budget', 2);
+        $section->addText(
+            'Every employee has an annual training budget of 1,200 euro. '
+            .'Courses above 400 euro need written approval from the team lead '
+            .'before enrolment.'
+        );
+
+        $section->addTitle('Equipment', 2);
+        $section->addText(
+            'A laptop is replaced after 36 months. Lost or stolen equipment '
+            .'must be reported to IT within 24 hours.'
+        );
+
+        IOFactory::createWriter($word, 'Word2007')->save($path);
     }
 
     /** @return list<list<string>> pages, each a list of text lines */

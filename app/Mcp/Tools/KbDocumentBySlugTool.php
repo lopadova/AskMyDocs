@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Agent\SimilarDocumentFinder;
 use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -34,7 +35,7 @@ class KbDocumentBySlugTool extends Tool
         ];
     }
 
-    public function handle(Request $request): Response
+    public function handle(Request $request, SimilarDocumentFinder $similarDocumentFinder): Response
     {
         $slug = (string) $request->get('slug');
         $projectKey = (string) $request->get('project_key');
@@ -54,7 +55,15 @@ class KbDocumentBySlugTool extends Tool
             ->first();
 
         if ($doc === null) {
-            return Response::json(['error' => 'not_found', 'slug' => $slug, 'project_key' => $projectKey]);
+            // v8.44/W4 (ADR 0035 §D6.3) — "did you mean": near-miss slugs/paths the
+            // caller may read (tenant- and ACL-scoped), so a typo recovers in one
+            // turn. Additive key (R27); [] when nothing is close.
+            return Response::json([
+                'error' => 'not_found',
+                'slug' => $slug,
+                'project_key' => $projectKey,
+                'suggestions' => $similarDocumentFinder->suggest(app(TenantContext::class)->current(), $slug, $projectKey),
+            ]);
         }
 
         $payload = [

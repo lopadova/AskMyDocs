@@ -35,6 +35,15 @@ final readonly class RetrievalFilters
      * @param  ?string       $dateTo          ISO-8601 date string applied as `<=` against `indexed_at`.
      * @param  list<string>  $languages       ISO 639-1 codes ('it', 'en', ...).
      * @param  ?int          $collectionId    Restrict retrieval to one Living Collection membership set.
+     * @param  bool          $explain         v8.41/W1 (ADR 0035 §D1) — attach a per-result `explain` trace
+     *                                        to the returned chunks. NOT a filter: it never narrows the
+     *                                        candidate set, so isEmpty() ignores it and the query plan is
+     *                                        unchanged. Default false = no trace, no extra work.
+     * @param  ?string       $intent          v8.44/W4 (ADR 0035 §D5) — a free-text disambiguation hint ("web
+     *                                        page load times" for the query "performance"). NOT a filter. It
+     *                                        steers the cross-encoder and disables the strong-signal skip of
+     *                                        query expansion; it is NEVER sent to the expansion model (it
+     *                                        gets copied into the sub-queries as meta-language).
      */
     public function __construct(
         public array $projectKeys = [],
@@ -48,6 +57,8 @@ final readonly class RetrievalFilters
         public ?string $dateFrom = null,
         public ?string $dateTo = null,
         public array $languages = [],
+        public bool $explain = false,
+        public ?string $intent = null,
     ) {}
 
     /**
@@ -68,6 +79,42 @@ final readonly class RetrievalFilters
             && $this->languages === []
             && $this->dateFrom === null
             && $this->dateTo === null;
+    }
+
+    /**
+     * Same filters, with the per-result `explain` trace switched on.
+     */
+    public function withExplain(bool $explain = true): self
+    {
+        return $this->copy(['explain' => $explain]);
+    }
+
+    /** Same filters, with a disambiguation hint (null / blank = none). */
+    public function withIntent(?string $intent): self
+    {
+        $intent = $intent === null ? '' : trim($intent);
+
+        return $this->copy(['intent' => $intent === '' ? null : mb_substr($intent, 0, 300)]);
+    }
+
+    /** @param  array<string,mixed>  $overrides */
+    private function copy(array $overrides): self
+    {
+        return new self(...array_merge([
+            'projectKeys' => $this->projectKeys,
+            'tagSlugs' => $this->tagSlugs,
+            'sourceTypes' => $this->sourceTypes,
+            'canonicalTypes' => $this->canonicalTypes,
+            'connectorTypes' => $this->connectorTypes,
+            'docIds' => $this->docIds,
+            'collectionId' => $this->collectionId,
+            'folderGlobs' => $this->folderGlobs,
+            'dateFrom' => $this->dateFrom,
+            'dateTo' => $this->dateTo,
+            'languages' => $this->languages,
+            'explain' => $this->explain,
+            'intent' => $this->intent,
+        ], $overrides));
     }
 
     /**

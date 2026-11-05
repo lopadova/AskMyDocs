@@ -77,4 +77,44 @@ final class ChunkRedactor
             $drafts,
         );
     }
+    /**
+     * v8.42/W2 (ADR 0035 §D2) — redact short free-text fragments (a document
+     * title, a heading path) that are about to be composed into an embedding
+     * input. Same gates, policy and strategy as {@see redact()}; a no-op
+     * (texts returned unchanged) unless redaction is genuinely active.
+     *
+     * The composed embedding input contains the title and heading, which can
+     * carry personal data the chunk body does not — so the fragment, not just
+     * the body, must pass through the redaction seam before the first
+     * embedding (ADR 0029 §9 posture).
+     *
+     * @param  list<string>  $texts
+     * @return list<string>  same length and order as `$texts`
+     */
+    public function redactTexts(string $projectKey, array $texts, bool $previewSafe = false): array
+    {
+        if ($texts === []) {
+            return $texts;
+        }
+        if (! (bool) config('pii-redactor.enabled', false)) {
+            return $texts;
+        }
+        if (! (bool) config('kb.pii_redactor.enabled', false)) {
+            return $texts;
+        }
+
+        $tenantId = app(TenantContext::class)->current();
+        $policy = $this->policy->resolve($tenantId, $projectKey);
+        if (! $policy['redact_enabled']) {
+            return $texts;
+        }
+
+        $strategy = $this->strategies->forName($previewSafe ? 'mask' : $policy['strategy']);
+        $engine = app(RedactorEngine::class);
+
+        return array_map(
+            static fn (string $text): string => $text === '' ? $text : $engine->redact($text, $strategy),
+            $texts,
+        );
+    }
 }

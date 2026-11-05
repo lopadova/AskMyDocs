@@ -1,0 +1,71 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 625 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Post-mortem: order database failover, 14 March 2026) Tj
+T* () Tj
+T* (Summary: the Northwind order database primary became) Tj
+T* (unreachable at 02:07 UTC. An automatic failover promoted a) Tj
+T* (replica that had not yet replayed the last write-ahead log) Tj
+T* (segments, so roughly nine minutes of order writes were lost) Tj
+T* (from the read path until the segments were replayed.) Tj
+T* () Tj
+T* (Detection: the on-call engineer was paged after 11 minutes.) Tj
+T* (The recovery time objective for the order database is 15) Tj
+T* (minutes, so the objective was met by a narrow margin.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 467 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Root cause and actions) Tj
+T* () Tj
+T* (Root cause: the failover controller promoted a replica) Tj
+T* (without checking its replay lag against the 5 second limit.) Tj
+T* () Tj
+T* (Action PM-4471: block promotion of any replica whose replay) Tj
+T* (lag exceeds 5 seconds. Owner: platform team. Due: 30 April.) Tj
+T* (Action PM-4472: page the on-call engineer after 3 minutes of) Tj
+T* (primary unavailability instead of 10 minutes.) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000000993 00000 n 
+0000001119 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1637
+%%EOF

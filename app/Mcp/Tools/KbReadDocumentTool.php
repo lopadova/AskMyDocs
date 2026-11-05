@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Agent\DocumentLineReader;
 use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -23,10 +24,16 @@ class KbReadDocumentTool extends Tool
             'document_id' => $schema->integer()
                 ->description('Numeric ID of the knowledge document.')
                 ->required(),
+            'from_line' => $schema->integer()
+                ->description('Optional. Return only a LINE RANGE of the document, starting at this 1-based line (use a chunk\'s start_line from KbReadChunkTool). Omit both from_line and max_lines to get the whole document as chunks.')
+                ->nullable(),
+            'max_lines' => $schema->integer()
+                ->description('Optional. Number of lines to return with from_line (capped by KB_LINE_READ_MAX_LINES).')
+                ->nullable(),
         ];
     }
 
-    public function handle(Request $request): Response
+    public function handle(Request $request, DocumentLineReader $documentLineReader): Response
     {
         // R30 — scope the lookup to the MCP-resolved tenant so a client
         // bound to tenant A cannot read tenant B's documents by enumerating
@@ -37,6 +44,27 @@ class KbReadDocumentTool extends Tool
             ->forTenant(app(TenantContext::class)->current())
             ->with('chunks')
             ->findOrFail((int) $request->get('document_id'));
+
+        // v8.44/W4 (ADR 0035 §D6.2) — opt-in line-range read. Without either
+        // parameter the response is exactly what it has always been.
+        $from = $request->get('from_line');
+        $max = $request->get('max_lines');
+        if ($from !== null || $max !== null) {
+            return Response::json([
+                'document' => [
+                    'id' => $document->id,
+                    'project_key' => $document->project_key,
+                    'title' => $document->title,
+                    'source_path' => $document->source_path,
+                    'source_type' => $document->source_type,
+                ],
+                'lines' => $documentLineReader->read(
+                    $document,
+                    is_numeric($from) ? (int) $from : 1,
+                    is_numeric($max) ? (int) $max : null,
+                ),
+            ]);
+        }
 
         return Response::json([
             'document' => [

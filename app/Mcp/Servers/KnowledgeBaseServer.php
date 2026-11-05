@@ -55,6 +55,9 @@ use App\Mcp\Tools\KbWikiReviewTool;
 use App\Mcp\Tools\KbWikiRoutineStatusTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbRunReportTool;
+use App\Mcp\Tools\KbFacetsTool;
+use App\Mcp\Tools\KbPathContextsTool;
+use App\Mcp\Tools\KbRetrievalExplainTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
 use App\Mcp\Tools\KbSetEvidenceTierTool;
@@ -85,6 +88,11 @@ class KnowledgeBaseServer extends Server
         \App\Mcp\Tools\KbImportStatusTool::class,
         // Phase 1 — base retrieval
         KbSearchTool::class,
+        // v8.41/W1 (ADR 0035 D1) — per-result retrieval explain (R44 MCP surface).
+        KbRetrievalExplainTool::class,
+        // v8.44/W4 (ADR 0035 D6) — corpus facets + path contexts (R44 MCP surfaces).
+        KbFacetsTool::class,
+        KbPathContextsTool::class,
         KbReadDocumentTool::class,
         KbReadChunkTool::class,
         KbRecentChangesTool::class,

@@ -6,8 +6,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Agent\DocumentLineReader;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 /**
@@ -42,7 +44,7 @@ use Illuminate\Routing\Controller;
  */
 final class KbDocumentPreviewController extends Controller
 {
-    public function __invoke(int $documentId): JsonResponse
+    public function __invoke(Request $request, int $documentId): JsonResponse
     {
         $tenant = app(TenantContext::class)->current();
 
@@ -61,7 +63,26 @@ final class KbDocumentPreviewController extends Controller
             ->pluck('chunk_text')
             ->implode("\n\n");
 
-        return response()->json([
+        // v8.44/W4 (ADR 0035 §D6.2) — opt-in line-range read: `from_line` /
+        // `max_lines` slice `content` and add the `lines` block. Without them
+        // the payload is exactly what it has always been (R27).
+        $range = null;
+        if ($request->query('from_line') !== null || $request->query('max_lines') !== null) {
+            $validated = $request->validate([
+                'from_line' => ['nullable', 'integer', 'min:1'],
+                'max_lines' => ['nullable', 'integer', 'min:1'],
+            ]);
+            $range = app(DocumentLineReader::class)->read(
+                $doc,
+                (int) ($validated['from_line'] ?? 1),
+                isset($validated['max_lines']) ? (int) $validated['max_lines'] : null,
+            );
+            $content = $range['content'];
+        }
+
+        return response()->json(array_filter([
+            'lines' => $range === null ? null : array_diff_key($range, ['content' => true]),
+        ], static fn ($v) => $v !== null) + [
             'document_id' => $doc->id,
             'title' => $doc->title,
             'source_path' => $doc->source_path,

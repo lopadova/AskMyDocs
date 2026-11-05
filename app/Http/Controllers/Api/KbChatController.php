@@ -194,6 +194,9 @@ class KbChatController extends Controller
             'expanded' => $result->expanded,
             'rejected' => $result->rejected,
             'projectKey' => $projectKey,
+            // v8.44/W4 — admin-authored notes about where the cited documents live
+            // (delimited untrusted data in the prompt; [] when the feature is off).
+            'pathContexts' => $retrieval->promptContext($result)['pathContexts'],
             'retrievalInvestigation' => $investigationResult->answerPromptContext(),
         ])->render();
 

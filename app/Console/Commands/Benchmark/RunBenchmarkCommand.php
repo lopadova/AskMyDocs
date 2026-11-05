@@ -32,6 +32,7 @@ final class RunBenchmarkCommand extends Command
         {--gate : Exit non-zero when aggregate metrics miss the thresholds}
         {--project=benchmark : Project key to ingest the corpus under}
         {--k=5 : Cut-off k for nDCG@k / precision@k}
+        {--suite=v1 : Which benchmark suite to run: v1 (default, the v8.2 set) or v2 (ADR 0035 — harder, per-class)}
         {--corpus= : Override the corpus directory}
         {--queries= : Override the labelled queries YAML path}';
 
@@ -62,8 +63,16 @@ final class RunBenchmarkCommand extends Command
             }
         }
 
-        $corpus = (string) ($this->option('corpus') ?: base_path('resources/benchmark/corpus'));
-        $queries = (string) ($this->option('queries') ?: base_path('resources/benchmark/queries.yaml'));
+        $suite = strtolower(trim((string) $this->option('suite')));
+        if (! in_array($suite, ['v1', 'v2'], true)) {
+            $this->error("Unknown --suite [{$suite}]. Use v1 or v2.");
+
+            return self::FAILURE;
+        }
+
+        $suiteDir = $suite === 'v2' ? 'resources/benchmark/v2' : 'resources/benchmark';
+        $corpus = (string) ($this->option('corpus') ?: base_path($suiteDir.'/corpus'));
+        $queries = (string) ($this->option('queries') ?: base_path($suiteDir.'/queries.yaml'));
 
         if (! is_dir($corpus) || ! is_file($queries)) {
             $this->error("Corpus dir or queries file not found:\n  corpus:  {$corpus}\n  queries: {$queries}");
@@ -77,6 +86,7 @@ final class RunBenchmarkCommand extends Command
             projectKey: (string) $this->option('project'),
             k: max(1, (int) $this->option('k')),
             withAnswers: (bool) $this->option('with-answers'),
+            suite: $suite,
         );
 
         $this->renderScorecard($card);
@@ -87,6 +97,9 @@ final class RunBenchmarkCommand extends Command
             // reads and what the persisted scorecard records. This line says
             // WHICH files, so the operator can fix them (R14).
             $this->warn(sprintf('%d corpus file(s) could not be ingested and were NOT benchmarked — the run cannot pass: %s', count($card['corpus_failures']), implode(', ', $card['corpus_failures'])));
+        }
+        if (($card['skipped_queries'] ?? []) !== []) {
+            $this->warn(sprintf('%d labelled query(ies) were SKIPPED because their class needs a feature that is off (code → KB_CODE_INGESTION_ENABLED): %s', count($card['skipped_queries']), implode(', ', $card['skipped_queries'])));
         }
         $reportPath = $this->persist($card);
         $this->line("\nReport: {$reportPath}");
@@ -155,6 +168,21 @@ final class RunBenchmarkCommand extends Command
         $this->line('  refusal-accuracy : '.number_format($agg['refusal_accuracy'], 4).$mark('refusal_accuracy'));
         $this->line('  graph-recall     : '.number_format($agg['graph_recall'], 4));
         $this->line('  rejected-recall  : '.number_format($agg['rejected_recall'], 4));
+        if (($card['by_class'] ?? []) !== []) {
+            $this->line('<comment>By class</comment>');
+            $this->table(
+                ['class', 'n', 'nDCG', 'MRR', 'P@k', 'cite', 'refuse'],
+                array_map(static fn (string $class, array $m): array => [
+                    $class,
+                    $m['count'],
+                    number_format($m['ndcg_at_k'], 3),
+                    number_format($m['mrr'], 3),
+                    number_format($m['precision_at_k'], 3),
+                    number_format($m['citation_precision'], 3),
+                    number_format($m['refusal_accuracy'], 3),
+                ], array_keys($card['by_class']), array_values($card['by_class'])),
+            );
+        }
         // Show whenever --with-answers actually ran (any query carries a
         // non-null faithfulness), NOT only when the mean is > 0 — a run where
         // every answer refused/anti-correlated has a legitimate 0.0 mean that
@@ -198,6 +226,12 @@ final class RunBenchmarkCommand extends Command
         $md .= "\n## Aggregate\n\n";
         foreach ($agg as $key => $val) {
             $md .= "- {$key}: ".number_format((float) $val, 4)."\n";
+        }
+        if (($card['by_class'] ?? []) !== []) {
+            $md .= "\n## By class\n\n| class | n | nDCG | MRR | P@k | cite | refuse |\n|---|---|---|---|---|---|---|\n";
+            foreach ($card['by_class'] as $class => $m) {
+                $md .= sprintf("| %s | %d | %.3f | %.3f | %.3f | %.3f | %.3f |\n", $class, $m['count'], $m['ndcg_at_k'], $m['mrr'], $m['precision_at_k'], $m['citation_precision'], $m['refusal_accuracy']);
+            }
         }
         $md .= "\n## Per-query\n\n| id | refuse-ok | nDCG | P@k | RR | cite | graph | rej | top |\n";
         $md .= "|---|---|---|---|---|---|---|---|---|\n";
