@@ -40,7 +40,7 @@ one at a time on benchmark evidence ([ADR 0035](https://github.com/lopadova/AskM
 ```mermaid
 flowchart TB
     U[user message] --> INV["KbInvestigationService<br/>interpreter → round queries (kbQueries)"]
-    INV -->|"each round: model-written query<br/>RetrievalFilters::withoutExpansion()"| Q[round query]
+    INV -->|"each round: model-written query<br/>ModelWrittenQueries::run()"| Q[round query]
     D[direct callers<br/>kb:search · MCP · widget · benchmark direct] --> Q2[human query]
     Q2 -.->|"KB_QUERY_DOCUMENTS_ENABLED<br/>lex:/vec:/hyde: lines"| UQD[user query document]
     Q --> EMB[embed query]
@@ -85,7 +85,7 @@ Two consequences for the stages below:
 
 - **Expansion is skipped for model-written queries.** The round queries are already
   a model's rewrite, so `KbInvestigationService`, `AgentLoop` and
-  `AgentWaveKnowledgeSearch` pass `RetrievalFilters::withoutExpansion()`; the meta
+  `AgentWaveKnowledgeSearch` run their retrieval inside `ModelWrittenQueries::run()`; the meta
   reads `query_expansion = {status: "skipped", reason: "model_written_query"}` and no
   second LLM call is made. The vector/full-text lists, the fusion bonus, the
   reranker and the cross-encoder still act on every round.

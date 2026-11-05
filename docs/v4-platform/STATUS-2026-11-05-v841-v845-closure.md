@@ -65,7 +65,7 @@ product owner; assigned for review only after W5. **Closed:** 2026-11-05.
 
 | Deliverable | State |
 |---|---|
-| `RetrievalFilters::withoutExpansion()` (`skipExpansion`) set by `KbInvestigationService` (round queries), `AgentLoop` and `AgentWaveKnowledgeSearch`; `meta.query_expansion = {status: skipped, reason: model_written_query}` | shipped; zero provider calls asserted |
+| `ModelWrittenQueries::run()` scope around the retrieval of `KbInvestigationService` (round queries), `AgentLoop` and `AgentWaveKnowledgeSearch` (filters passed to `retrieve()` unchanged; `RetrievalFilters::withoutExpansion()` for callers building filters); `meta.query_expansion = {status: skipped, reason: model_written_query}` | shipped; zero provider calls asserted |
 | main's `$observe` diagnostics wrap `kb.query_expansion`, `kb.rerank`, `kb.cross_encoder` in `KbSearchService::search()` | shipped |
 | Explain traces the investigation: `kb:search --investigation`, explain HTTP `investigation=1`, `KbRetrievalExplainTool` `investigation: true` → `meta.investigation` (= `KbInvestigationResult::trace()`); `{status: disabled, flag: KB_RECURSIVE_RETRIEVAL_ENABLED}` when the switch is off | shipped, both states tested |
 | `kb:benchmark --path=direct\|investigation` (`BenchmarkRunner::PATH_*`); scorecard `path`, per-row `investigation` | shipped; unknown path rejected |

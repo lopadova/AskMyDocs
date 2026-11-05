@@ -625,14 +625,18 @@ built still sits *underneath* it; five integration decisions were needed.
 
 ### I1 — Model-written queries are never expanded again
 
-**Decision.** `RetrievalFilters` gains `skipExpansion` (not a filter — a
-caller declaration), set through `RetrievalFilters::withoutExpansion()` by every
-caller whose query was already written by a model:
-`KbInvestigationService::modelWrittenQueryFilters()`, the agent planner's search
-(`App\Agent\AgentLoop`) and the wave search
-(`App\Agent\Waves\AgentWaveKnowledgeSearch`). `KbSearchService::expansionLists()`
-then reports `meta.query_expansion = {status: "skipped", reason:
-"model_written_query"}` and makes no call.
+**Decision.** Every caller whose query was already written by a model runs its
+retrieval inside the scope `App\Services\Kb\Retrieval\Expansion\ModelWrittenQueries::run()`:
+the investigation rounds (`KbInvestigationService::retrieveModelWritten()` and the
+round loop), the agent planner's fallback search (`App\Agent\AgentLoop`) and the
+wave search (`App\Agent\Waves\AgentWaveKnowledgeSearch`). While the scope is
+active `KbSearchService::expansionLists()` reports `meta.query_expansion =
+{status: "skipped", reason: "model_written_query"}` and makes no call. A scope,
+not a new filter argument, so those callers keep handing `ChatRetrievalService::retrieve()`
+exactly the filters they always did (their contract and tests are unchanged; a
+first version that passed a modified `RetrievalFilters` broke main's
+`KbInvestigationServiceTest`). Callers that build their own filters can declare
+the same with `RetrievalFilters::withoutExpansion()` (`skipExpansion`).
 
 **Why.** D5 exists to repair a *human* query that shares few words with the
 document. A round query is already a model's rewrite: expanding it pays a second
@@ -640,6 +644,8 @@ LLM call for the same job and drifts further from the user's words (a rewrite of
 a rewrite). The skip is checked right after the master switch and **before**
 the strong-signal test and any model call; the test counts provider calls and
 asserts zero (R26 — `QmdParityStagesTest::test_a_model_written_query_is_never_expanded_again`);
+the scope is restored after use
+(`test_the_model_written_scope_skips_expansion_and_is_restored`) and
 `withoutExpansion()` preserves every other filter
 (`test_without_expansion_keeps_every_other_filter`).
 

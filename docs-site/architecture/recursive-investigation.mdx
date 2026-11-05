@@ -92,7 +92,7 @@ flowchart TD
     subgraph LOOP[Round loop, 1 ≤ round ≤ depth]
       direction TB
       Q[next unseen query] --> EX["Round 0 only:<br/>exactIdentifierCandidates()"]
-      Q --> SEM["ChatRetrievalService::retrieve()<br/>filters->withoutExpansion()"]
+      Q --> SEM["ChatRetrievalService::retrieve()<br/>inside ModelWrittenQueries::run()"]
       EX & SEM --> RD["KbSourceReader::readCandidate()<br/>≤ max_sources_per_round"]
       RD --> AS["assess(): strict JSON<br/>selected ids · supported / missing facts · complete · next_query"]
       AS -->|complete| STOP1[sufficient_evidence]
@@ -161,9 +161,8 @@ The retrieval-quality stack ([ADR 0035](https://github.com/lopadova/AskMyDocs/bl
 includes typed query expansion: an LLM rewrites a *human* query into lexical
 and semantic variants. A round query is already a model's rewrite; expanding it
 again pays a second LLM call for the same job and drifts further from the
-user's words. Every investigation query therefore travels with
-`RetrievalFilters::withoutExpansion()` (via
-`KbInvestigationService::modelWrittenQueryFilters()`), and
+user's words. Every investigation round query therefore runs inside
+`ModelWrittenQueries::run()` (the filters passed to `retrieve()` are unchanged), and
 `meta.query_expansion` reports
 `{status: "skipped", reason: "model_written_query"}`. The agent planner's
 searches (`AgentLoop`) and the wave search (`AgentWaveKnowledgeSearch`) do the
