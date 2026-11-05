@@ -47,6 +47,15 @@ class KbRetrievalExplainTool extends Tool
             'intent' => $schema->string()
                 ->description('Optional disambiguation hint (see the search tools).')
                 ->nullable(),
+            'min_score' => $schema->number()
+                ->description('Optional. Drop results scoring below this value (rerank score, else vector score).')
+                ->nullable(),
+            'line_numbers' => $schema->boolean()
+                ->description('Add each chunk\'s line range in the document view (for KbReadDocumentTool from_line).')
+                ->default(false),
+            'investigation' => $schema->boolean()
+                ->description('Trace the recursive investigation the chat runs (round queries, outcome, selected sources) instead of the direct retrieval.')
+                ->default(false),
         ];
     }
 
@@ -76,6 +85,9 @@ class KbRetrievalExplainTool extends Tool
             is_string($project) && $project !== '' ? $project : null,
             (int) ($request->get('limit') ?? 8),
             intent: is_string($request->get('intent')) ? $request->get('intent') : null,
+            investigation: filter_var($request->get('investigation', false), FILTER_VALIDATE_BOOLEAN),
+            minScore: is_numeric($request->get('min_score')) ? (float) $request->get('min_score') : null,
+            lineNumbers: filter_var($request->get('line_numbers', false), FILTER_VALIDATE_BOOLEAN),
         ));
     }
 }

@@ -25,6 +25,9 @@ final class RetrievalExplainRequest extends FormRequest
             'query' => ['required', 'string', 'min:1', 'max:500'],
             'project_key' => ['nullable', 'string', 'max:120'],
             'intent' => ['nullable', 'string', 'max:300'],
+            'investigation' => ['nullable', 'boolean'],
+            'min_score' => ['nullable', 'numeric'],
+            'line_numbers' => ['nullable', 'boolean'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:'.max(1, (int) config('kb.retrieval_explain.max_limit', 20))],
         ];
     }

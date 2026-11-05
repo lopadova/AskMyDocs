@@ -663,7 +663,8 @@ final readonly class AgentLoop
                 $search = $investigation->search;
             } else {
                 // Preserve the explicit incident-rollback path used by initial research.
-                $search = $this->retrieval->retrieve($query, $context->projectKey, $filters,
+                // The planner wrote this query: no second expansion LLM call (ADR 0035 §D5).
+                $search = $this->retrieval->retrieve($query, $context->projectKey, $filters->withoutExpansion(),
                     diagnostics: $this->diagnostics->observer($run));
             }
             $found = $this->evidenceFactory->fromSearchResult($search);

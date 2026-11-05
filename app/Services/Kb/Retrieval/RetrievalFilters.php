@@ -44,6 +44,9 @@ final readonly class RetrievalFilters
      *                                        steers the cross-encoder and disables the strong-signal skip of
      *                                        query expansion; it is NEVER sent to the expansion model (it
      *                                        gets copied into the sub-queries as meta-language).
+     * @param  bool          $skipExpansion   NOT a filter. Set by callers whose query was ALREADY written by
+     *                                        a model — the recursive investigation's `kbQueries` — so typed
+     *                                        query expansion does not spend a second LLM call rewriting it.
      */
     public function __construct(
         public array $projectKeys = [],
@@ -59,6 +62,8 @@ final readonly class RetrievalFilters
         public array $languages = [],
         public bool $explain = false,
         public ?string $intent = null,
+        public bool $skipExpansion = false,
+        public ?\App\Services\Kb\Retrieval\Expansion\QueryExpansion $presetExpansion = null,
     ) {}
 
     /**
@@ -97,6 +102,21 @@ final readonly class RetrievalFilters
         return $this->copy(['intent' => $intent === '' ? null : mb_substr($intent, 0, 300)]);
     }
 
+    /** Same filters, with typed query expansion suppressed (the query is already model-written). */
+    public function withoutExpansion(): self
+    {
+        return $this->copy(['skipExpansion' => true]);
+    }
+
+    /**
+     * Same filters, carrying the typed variants of a user-written query document
+     * (W6). NOT a filter: it replaces the model expansion, never narrows candidates.
+     */
+    public function withPresetExpansion(?\App\Services\Kb\Retrieval\Expansion\QueryExpansion $expansion): self
+    {
+        return $this->copy(['presetExpansion' => $expansion]);
+    }
+
     /** @param  array<string,mixed>  $overrides */
     private function copy(array $overrides): self
     {
@@ -114,6 +134,8 @@ final readonly class RetrievalFilters
             'languages' => $this->languages,
             'explain' => $this->explain,
             'intent' => $this->intent,
+            'skipExpansion' => $this->skipExpansion,
+            'presetExpansion' => $this->presetExpansion,
         ], $overrides));
     }
 

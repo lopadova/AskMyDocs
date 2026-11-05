@@ -1,4 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from '../../../lib/ui-locale';
 import { useKbProjects } from '../kb/kb-tree.api';
 import { toAdminError } from '../shared/errors';
 import { ToastHost, useToast } from '../shared/Toast';
@@ -36,6 +38,7 @@ type PageState = 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unavailable
 const FIELDS = ['project_key', 'path_prefix', 'description'] as const;
 
 export function PathContextsView(): ReactNode {
+    const { t } = useUiTranslation();
     const toast = useToast();
     const [projectFilter, setProjectFilter] = useState('');
     const [createOpen, setCreateOpen] = useState(false);
@@ -78,7 +81,7 @@ export function PathContextsView(): ReactNode {
         resetFormFeedback();
         upsert.mutate(payload, {
             onSuccess: () => {
-                toast.success(editing ? 'Path context updated.' : 'Path context saved.', 'admin-path-contexts-saved');
+                toast.success(editing ? t('Path context updated.') : t('Path context saved.'), 'admin-path-contexts-saved');
                 closeForm();
             },
             onError: (err: unknown) => {
@@ -96,7 +99,7 @@ export function PathContextsView(): ReactNode {
         setDeleteError(null);
         setConfirmingId(null);
         remove.mutate(id, {
-            onSuccess: () => toast.success('Path context deleted.', 'admin-path-contexts-deleted'),
+            onSuccess: () => toast.success(t('Path context deleted.'), 'admin-path-contexts-deleted'),
             // R14 — a failed DELETE is explained, not swallowed.
             onError: (err: unknown) => setDeleteError(pathContextsErrorMessage(err)),
         });
@@ -110,32 +113,32 @@ export function PathContextsView(): ReactNode {
             style={{ padding: 24 }}
         >
             <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Path contexts</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{t('Path contexts')}</h1>
                 {state !== 'unavailable' && (
                     <span data-testid="admin-path-contexts-count" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                        {rows.length} total
+                        {t('{count} total', { count: rows.length })}
                     </span>
                 )}
                 <span style={{ flex: 1 }} />
                 {state !== 'unavailable' && (
                     <>
                         <label htmlFor="admin-path-contexts-project-filter" style={{ color: 'var(--fg-2)', fontSize: 12 }}>
-                            Project
+                            {t('Project')}
                         </label>
-                        <select
+                        <SelectField
                             id="admin-path-contexts-project-filter"
                             data-testid="admin-path-contexts-project-filter"
                             value={projectFilter}
-                            onChange={(e) => setProjectFilter(e.target.value)}
+                            onValueChange={setProjectFilter}
                             style={selectStyle}
                         >
-                            <option value="">All projects</option>
+                            <SelectOption value="">{t('All projects')}</SelectOption>
                             {projectOptions.map((key) => (
-                                <option key={key} value={key}>
+                                <SelectOption key={key} value={key}>
                                     {key}
-                                </option>
+                                </SelectOption>
                             ))}
-                        </select>
+                        </SelectField>
                         <button
                             type="button"
                             data-testid="admin-path-contexts-add"
@@ -146,14 +149,13 @@ export function PathContextsView(): ReactNode {
                             }}
                             style={primaryButtonStyle}
                         >
-                            + Add path context
+                            {t('+ Add path context')}
                         </button>
                     </>
                 )}
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 640 }}>
-                Describe what a part of the corpus is. When an answer cites a document under a prefix, the matching
-                descriptions are given to the model as context (treated as untrusted data).
+                {t('Describe what a part of the corpus is. When an answer cites a document under a prefix, the matching descriptions are given to the model as context (treated as untrusted data).')}
             </p>
 
             {state === 'unavailable' && (
@@ -163,7 +165,7 @@ export function PathContextsView(): ReactNode {
                     role="status"
                     style={panelStyle('var(--panel-border)')}
                 >
-                    Path contexts are disabled on this deployment.
+                    {t('Path contexts are disabled on this deployment.')}
                 </div>
             )}
 
@@ -188,7 +190,7 @@ export function PathContextsView(): ReactNode {
 
             {state === 'loading' && (
                 <p data-testid="admin-path-contexts-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
-                    Loading…
+                    {t('Loading…')}
                 </p>
             )}
 
@@ -199,16 +201,19 @@ export function PathContextsView(): ReactNode {
                     role="alert"
                     style={panelStyle('var(--err)', 'var(--err)')}
                 >
-                    <p style={{ margin: '0 0 8px' }}>Failed to load path contexts. {pathContextsErrorMessage(query.error)}</p>
+                    <p style={{ margin: '0 0 8px' }}>
+                        {t('Failed to load path contexts.')} {pathContextsErrorMessage(query.error)}
+                    </p>
                     <button type="button" data-testid="admin-path-contexts-retry" onClick={() => query.refetch()} style={ghostButtonStyle}>
-                        Retry
+                        {t('Retry')}
                     </button>
                 </div>
             )}
 
             {state === 'empty' && (
                 <p data-testid="admin-path-contexts-empty" data-state="empty" style={panelStyle('var(--panel-border)')}>
-                    No path contexts yet. Click <code>+ Add path context</code> to describe a part of the corpus.
+                    {t('No path contexts yet. Click')} <code>{t('+ Add path context')}</code>{' '}
+                    {t('to describe a part of the corpus.')}
                 </p>
             )}
 
@@ -220,11 +225,11 @@ export function PathContextsView(): ReactNode {
                 >
                     <thead>
                         <tr style={{ textAlign: 'left', color: 'var(--fg-2)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                            <th style={cellStyle}>Project</th>
-                            <th style={cellStyle}>Prefix</th>
-                            <th style={cellStyle}>Description</th>
-                            <th style={cellStyle}>Updated</th>
-                            <th style={{ ...cellStyle, textAlign: 'right' }}>Actions</th>
+                            <th style={cellStyle}>{t('Project')}</th>
+                            <th style={cellStyle}>{t('Prefix')}</th>
+                            <th style={cellStyle}>{t('Description')}</th>
+                            <th style={cellStyle}>{t('Updated')}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right' }}>{t('Actions')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -262,6 +267,8 @@ interface PathContextRowProps {
 }
 
 function PathContextRow({ row, confirming, onEdit, onAskDelete, onCancelDelete, onConfirmDelete }: PathContextRowProps): ReactNode {
+    const { t } = useUiTranslation();
+    const labelValues = { prefix: row.path_prefix, project: row.project_key };
     return (
         <tr
             data-testid={`admin-path-context-row-${row.id}`}
@@ -279,20 +286,20 @@ function PathContextRow({ row, confirming, onEdit, onAskDelete, onCancelDelete, 
                         <button
                             type="button"
                             data-testid={`admin-path-context-row-${row.id}-edit`}
-                            aria-label={`Edit path context ${row.path_prefix} in ${row.project_key}`}
+                            aria-label={t('Edit path context {prefix} in {project}', labelValues)}
                             onClick={onEdit}
                             style={smallButtonStyle()}
                         >
-                            Edit
+                            {t('Edit')}
                         </button>
                         <button
                             type="button"
                             data-testid={`admin-path-context-row-${row.id}-delete`}
-                            aria-label={`Delete path context ${row.path_prefix} in ${row.project_key}`}
+                            aria-label={t('Delete path context {prefix} in {project}', labelValues)}
                             onClick={onAskDelete}
                             style={smallButtonStyle()}
                         >
-                            Delete
+                            {t('Delete')}
                         </button>
                     </>
                 )}
@@ -301,11 +308,11 @@ function PathContextRow({ row, confirming, onEdit, onAskDelete, onCancelDelete, 
                         <button
                             type="button"
                             data-testid={`admin-path-context-row-${row.id}-delete-confirm`}
-                            aria-label={`Confirm deleting path context ${row.path_prefix} in ${row.project_key}`}
+                            aria-label={t('Confirm deleting path context {prefix} in {project}', labelValues)}
                             onClick={onConfirmDelete}
                             style={smallButtonStyle('danger')}
                         >
-                            Confirm
+                            {t('Confirm')}
                         </button>
                         <button
                             type="button"
@@ -313,7 +320,7 @@ function PathContextRow({ row, confirming, onEdit, onAskDelete, onCancelDelete, 
                             onClick={onCancelDelete}
                             style={smallButtonStyle()}
                         >
-                            Cancel
+                            {t('Cancel')}
                         </button>
                     </>
                 )}
@@ -350,15 +357,9 @@ function formatUpdated(value?: string | null): string {
 
 const cellStyle: CSSProperties = { padding: '8px 10px', verticalAlign: 'top' };
 
-const selectStyle: CSSProperties = {
-    padding: '5px 10px',
-    borderRadius: 6,
-    border: '1px solid var(--panel-border, rgba(255,255,255,.15))',
-    background: 'var(--bg-3, rgba(255,255,255,.04))',
-    color: 'var(--fg-0)',
-    fontSize: 12,
-    minWidth: 160,
-};
+// The shadcn trigger carries the theme (border, background, focus ring);
+// only size it to fit the header row.
+const selectStyle: CSSProperties = { fontSize: 12, minWidth: 160 };
 
 const primaryButtonStyle: CSSProperties = {
     padding: '5px 12px',

@@ -104,6 +104,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/retrieval/explain' => ['admin', 'super-admin'],
             // v8.44/W4 / ADR 0035 §D6.4 — path contexts (GET list; PUT/DELETE share the controller + group).
             '/api/admin/kb/path-contexts' => ['admin', 'super-admin'],
+            '/api/admin/kb/expansion-learning' => ['admin', 'super-admin'],
             '/api/admin/kb/documents/1/versions' => ['admin', 'super-admin'],
             // v8.36 / ADR 0030 — a version's content, same allow-set as the timeline.
             '/api/admin/kb/documents/1/versions/1/content' => ['admin', 'super-admin'],

@@ -113,7 +113,8 @@ class KbInvestigationService
             return new KbInvestigationResult(
                 'ready',
                 'recursive_retrieval_disabled',
-                $observe('kb.retrieval', fn () => $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey, $filters,
+                $observe('kb.retrieval', fn () => $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey,
+                    isset($prepared->kbQueries[0]) ? $this->modelWrittenQueryFilters($filters, $projectKey) : $filters,
                     ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics])), ['wait_reason' => 'knowledge_retrieval']),
                 intent: $prepared === null ? null : new KbInvestigationIntent($prepared->intent, $prepared->targetIdentifiers(), [], [], [], $prepared->kbQueries, $prepared),
             );
@@ -189,7 +190,7 @@ class KbInvestigationService
                 // the assessor or the final answer prompt in this flow.
                 $search = $round === 0 && $anchoredToPreviousCitations && $understanding->requiresResearch === null
                     ? new SearchResult(collect(), collect(), collect())
-                    : $roundObserve('kb.semantic_lookup', fn () => $this->retrieval->retrieve($nextQuery, $projectKey, $filters,
+                    : $roundObserve('kb.semantic_lookup', fn () => $this->retrieval->retrieve($nextQuery, $projectKey, $this->modelWrittenQueryFilters($filters, $projectKey),
                         false, ...($roundDiagnostics === null ? [] : ['diagnostics' => $roundDiagnostics])),
                         ['wait_reason' => 'knowledge_retrieval', 'error_handled' => true]);
                 $attempt['primary_candidates'] = $search->primary->count();
@@ -338,6 +339,16 @@ class KbInvestigationService
             diagnostics: $diagnostics,
             onResearchProgress: $onResearchProgress,
         );
+    }
+
+    /**
+     * Every round query here was written by the understanding/assessment model,
+     * so the retrieval-quality stack must not spend another LLM call expanding
+     * it (ADR 0035 §D5 — integration with the recursive investigation).
+     */
+    private function modelWrittenQueryFilters(?RetrievalFilters $filters, ?string $projectKey): RetrievalFilters
+    {
+        return ($filters ?? RetrievalFilters::forLegacyProject($projectKey))->withoutExpansion();
     }
 
     private function profileFor(?string $projectKey, ?RetrievalFilters $filters): ?KbRetrievalProfile

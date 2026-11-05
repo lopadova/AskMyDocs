@@ -320,6 +320,10 @@ return [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_WIKI_EXPORTS_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_PRUNE_WIKI_EXPORTS_CRON', '0 * * * *'),
         ],
+        'kb_expansion_learn' => [
+            'enabled' => (bool) env('SCHEDULE_KB_EXPANSION_LEARN_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_EXPANSION_LEARN_CRON', '50 3 * * *'),
+        ],
         // `eval:nightly` is double-gated: an upstream
         // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
         // scheduler REGISTRATION in `bootstrap/app.php` — when false,

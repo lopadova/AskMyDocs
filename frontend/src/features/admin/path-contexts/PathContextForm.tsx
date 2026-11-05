@@ -1,4 +1,6 @@
 import { useEffect, useId, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from '../../../lib/ui-locale';
 import {
     DESCRIPTION_MAX,
     PATH_PREFIX_MAX,
@@ -18,8 +20,12 @@ import {
  *     project and prefix are read-only and only the description changes.
  *
  * R11: stable `data-testid`s on every actionable element.
- * R15: every control has a bound `<label htmlFor>`; errors are linked via
- * `aria-describedby` + `aria-invalid` and announced with `role="alert"`.
+ * R15: every control has a bound `<label htmlFor>` (the project control is the
+ * shared shadcn Select: the label targets its focusable combobox trigger);
+ * errors are linked via `aria-describedby` + `aria-invalid` and announced
+ * with `role="alert"`.
+ * Interface copy is localized via `useUiTranslation()`; client-side
+ * validation messages are translated, server 422 messages render verbatim.
  * Validation runs client-side (mirror of the backend rules) AND the server's
  * 422 field errors render in the very same `<field>-error` slots.
  */
@@ -53,6 +59,7 @@ export function PathContextForm({
     submitError,
     isSubmitting,
 }: PathContextFormProps): ReactNode {
+    const { t } = useUiTranslation();
     const uid = useId();
     const isEdit = context !== null;
     const [projectKey, setProjectKey] = useState(context?.project_key ?? defaultProjectKey ?? '');
@@ -69,7 +76,9 @@ export function PathContextForm({
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onCancel();
+            // An open Select menu consumes Escape (Radix prevents default) to
+            // close just itself — that must not also discard the whole form.
+            if (e.key === 'Escape' && !e.defaultPrevented) onCancel();
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
@@ -81,7 +90,11 @@ export function PathContextForm({
         ? [projectKey, ...projectOptions]
         : projectOptions;
 
-    const errorFor = (field: PathContextField): string | undefined => clientErrors[field] ?? serverErrors?.[field];
+    // Client messages are our own copy (translated); server messages are shown verbatim.
+    const errorFor = (field: PathContextField): string | undefined => {
+        const client = clientErrors[field];
+        return client !== undefined ? t(client) : serverErrors?.[field];
+    };
     const clearClientError = (field: PathContextField) =>
         setClientErrors((prev) => (prev[field] === undefined ? prev : { ...prev, [field]: undefined }));
 
@@ -115,33 +128,33 @@ export function PathContextForm({
             style={formStyle}
         >
             <h2 id={`${uid}-title`} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                {isEdit ? `Edit path context: ${context.path_prefix}` : 'Add path context'}
+                {isEdit ? t('Edit path context: {prefix}', { prefix: context.path_prefix }) : t('Add path context')}
             </h2>
 
             <div style={fieldStyle}>
                 <label htmlFor={`${uid}-project`} style={labelStyle}>
-                    Project
+                    {t('Project')}
                 </label>
-                <select
+                <SelectField
                     id={`${uid}-project`}
                     data-testid="path-context-project"
                     value={projectKey}
                     disabled={isEdit}
                     aria-invalid={projectError ? 'true' : 'false'}
                     aria-describedby={projectError ? `${uid}-project-error` : undefined}
-                    onChange={(e) => {
-                        setProjectKey(e.target.value);
+                    onValueChange={(next) => {
+                        setProjectKey(next);
                         clearClientError('project_key');
                     }}
-                    style={inputStyle(isEdit)}
+                    style={{ fontSize: 12 }}
                 >
-                    <option value="">Select a project…</option>
+                    <SelectOption value="">{t('Select a project…')}</SelectOption>
                     {options.map((key) => (
-                        <option key={key} value={key}>
+                        <SelectOption key={key} value={key}>
                             {key}
-                        </option>
+                        </SelectOption>
                     ))}
-                </select>
+                </SelectField>
                 {projectError && (
                     <FieldError id={`${uid}-project-error`} testid={FIELD_TESTID.project_key} message={projectError} />
                 )}
@@ -149,7 +162,7 @@ export function PathContextForm({
 
             <div style={fieldStyle}>
                 <label htmlFor={`${uid}-prefix`} style={labelStyle}>
-                    Path prefix
+                    {t('Path prefix')}
                 </label>
                 <input
                     id={`${uid}-prefix`}
@@ -170,8 +183,8 @@ export function PathContextForm({
                 />
                 <span id={`${uid}-prefix-hint`} style={hintStyle}>
                     {isEdit
-                        ? 'Project and prefix identify the context and cannot be changed. Delete and re-add to move it.'
-                        : `Relative to the project root, no leading slash, up to ${PATH_PREFIX_MAX} characters.`}
+                        ? t('Project and prefix identify the context and cannot be changed. Delete and re-add to move it.')
+                        : t('Relative to the project root, no leading slash, up to {max} characters.', { max: PATH_PREFIX_MAX })}
                 </span>
                 {prefixError && (
                     <FieldError id={`${uid}-prefix-error`} testid={FIELD_TESTID.path_prefix} message={prefixError} />
@@ -180,14 +193,14 @@ export function PathContextForm({
 
             <div style={fieldStyle}>
                 <label htmlFor={`${uid}-description`} style={labelStyle}>
-                    Description
+                    {t('Description')}
                 </label>
                 <textarea
                     id={`${uid}-description`}
                     data-testid="path-context-description"
                     value={description}
                     rows={4}
-                    placeholder="What this part of the corpus is, e.g. current HR policies approved by the DPO."
+                    placeholder={t('What this part of the corpus is, e.g. current HR policies approved by the DPO.')}
                     aria-invalid={descriptionError ? 'true' : 'false'}
                     aria-describedby={`${uid}-description-count${descriptionError ? ` ${uid}-description-error` : ''}`}
                     onChange={(e) => {
@@ -227,7 +240,7 @@ export function PathContextForm({
                     disabled={isSubmitting}
                     style={buttonStyle('secondary', !!isSubmitting)}
                 >
-                    Cancel
+                    {t('Cancel')}
                 </button>
                 <button
                     type="submit"
@@ -235,7 +248,7 @@ export function PathContextForm({
                     disabled={isSubmitting}
                     style={buttonStyle('primary', !!isSubmitting)}
                 >
-                    {isSubmitting ? 'Saving…' : 'Save'}
+                    {isSubmitting ? t('Saving…') : t('Save')}
                 </button>
             </div>
         </form>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Chunkers;
 
+use App\Services\Kb\Chunking\Support\TextBudgetSplitter;
 use App\Services\Kb\Chunking\Support\TokenCounter;
 use App\Services\Kb\Code\BreakPoint;
 use App\Services\Kb\Code\BreakPointDriverResolver;
@@ -53,11 +54,17 @@ final class CodeAstChunker implements ChunkerInterface
     private const MAX_SYMBOLS = 12;
     private const HEADING_MAX_CHARS = 250;
 
+    /** Mirrors {@see TokenCounter}'s 4-chars-per-token estimate when turning a token cap into bytes. */
+    private const BYTES_PER_TOKEN = 4;
+
     private TokenCounter $tokens;
 
-    public function __construct(private readonly BreakPointDriverResolver $drivers, ?TokenCounter $tokens = null)
+    private TextBudgetSplitter $splitter;
+
+    public function __construct(private readonly BreakPointDriverResolver $drivers, ?TokenCounter $tokens = null, ?TextBudgetSplitter $splitter = null)
     {
         $this->tokens = $tokens ?? new TokenCounter();
+        $this->splitter = $splitter ?? new TextBudgetSplitter();
     }
 
     public function name(): string
@@ -95,6 +102,10 @@ final class CodeAstChunker implements ChunkerInterface
         $points = $result['points'];
 
         $ranges = $this->ranges($lines, $points);
+        $hardCap = max(
+            $this->config('kb.chunking.target_tokens', self::TARGET_TOKENS_DEFAULT),
+            $this->config('kb.chunking.hard_cap_tokens', self::HARD_CAP_DEFAULT),
+        );
         $drafts = [];
         $order = 0;
         // The converter's redaction count rides on the FIRST chunk only, so the
@@ -122,12 +133,24 @@ final class CodeAstChunker implements ChunkerInterface
             if ($drafts === [] && $secretsRedacted > 0) {
                 $metadata['secrets_redacted'] = $secretsRedacted;
             }
-            $drafts[] = new ChunkDraft(
-                text: $text,
-                order: $order++,
-                headingPath: $this->headingPath($filePath, $symbol),
-                metadata: $metadata,
-            );
+            // The range builder never cuts INSIDE a line, so a single line over
+            // the hard cap (a minified bundle, an inlined data blob) would still
+            // become one oversized chunk. Split exactly that case on the shared
+            // byte budget — UTF-8 safe, no text dropped — and say so in metadata.
+            $pieces = $this->tokens->estimate($text) > $hardCap
+                ? $this->splitter->split($text, $hardCap * self::BYTES_PER_TOKEN)
+                : [$text];
+            foreach ($pieces as $part => $piece) {
+                $drafts[] = new ChunkDraft(
+                    text: $piece,
+                    order: $order++,
+                    headingPath: $this->headingPath($filePath, $symbol),
+                    metadata: count($pieces) > 1
+                        ? $metadata + ['split' => ['part' => $part + 1, 'of' => count($pieces)]]
+                        : $metadata,
+                );
+                unset($metadata['secrets_redacted']);
+            }
         }
 
         return $drafts;

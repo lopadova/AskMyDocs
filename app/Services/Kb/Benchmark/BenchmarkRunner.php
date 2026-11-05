@@ -44,6 +44,12 @@ final class BenchmarkRunner
         'txt' => 'text/plain',
     ];
 
+    public const PATH_DIRECT = 'direct';
+
+    public const PATH_INVESTIGATION = 'investigation';
+
+    private string $path = self::PATH_DIRECT;
+
     public function __construct(
         private readonly DocumentIngestor $ingestor,
         private readonly KbSearchService $search,
@@ -62,8 +68,12 @@ final class BenchmarkRunner
      *   thresholds: array<string,float>, passed: bool
      * }
      */
-    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5, bool $withAnswers = false, string $suite = 'v1'): array
+    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5, bool $withAnswers = false, string $suite = 'v1', string $path = self::PATH_DIRECT): array
     {
+        if (! in_array($path, [self::PATH_DIRECT, self::PATH_INVESTIGATION], true)) {
+            throw new \InvalidArgumentException("Unknown benchmark path [{$path}]; expected direct or investigation.");
+        }
+        $this->path = $path;
         $corpusCount = $this->ingestCorpus($corpusDir, $projectKey);
         $queries = $this->loadQueries($queriesFile);
 
@@ -91,6 +101,12 @@ final class BenchmarkRunner
             // v2), the per-class breakdown. Absent classes ⇒ empty array, so a
             // v1 scorecard keeps its exact previous keys plus these two.
             'suite' => $suite,
+            // Additive (R27): which retrieval path was measured. `direct` is the
+            // retrieval stack alone; `investigation` is the recursive path the
+            // chat runs when KB_RECURSIVE_RETRIEVAL_ENABLED is on (model-written
+            // round queries — it needs a configured chat provider and a
+            // retrieval profile, so it is a LIVE measurement, never --stub only).
+            'path' => $path,
             'by_class' => $this->byClass($rows, $k),
             'skipped_queries' => $this->skippedQueries,
             'thresholds' => $thresholds,
@@ -194,12 +210,20 @@ final class BenchmarkRunner
      */
     private function scoreQuery(array $q, string $projectKey, int $k, bool $withAnswers = false): array
     {
-        $result = $this->search->searchWithContext(
-            query: (string) $q['query'],
-            projectKey: $projectKey,
-            limit: $k,
-            minSimilarity: (float) config('kb.default_min_similarity', 0.30),
-        );
+        $investigationStatus = null;
+        if ($this->path === self::PATH_INVESTIGATION) {
+            $outcome = app(\App\Services\Kb\Investigation\KbInvestigationService::class)
+                ->investigate((string) $q['query'], $projectKey);
+            $result = new SearchResult($outcome->search->primary->take($k)->values(), $outcome->search->expanded, $outcome->search->rejected, $outcome->search->meta);
+            $investigationStatus = ['status' => $outcome->status, 'stop_reason' => $outcome->stopReason, 'rounds' => count($outcome->queries)];
+        } else {
+            $result = $this->search->searchWithContext(
+                query: (string) $q['query'],
+                projectKey: $projectKey,
+                limit: $k,
+                minSimilarity: (float) config('kb.default_min_similarity', 0.30),
+            );
+        }
 
         $rankedDocKeys = $this->rankedDocKeys($result->primary);
         $relevance = (array) ($q['relevance'] ?? []);
@@ -245,6 +269,8 @@ final class BenchmarkRunner
         return [
             'id' => (string) ($q['id'] ?? '?'),
             'query' => (string) $q['query'],
+            // Additive (R27): null on the direct path.
+            'investigation' => $investigationStatus,
             'expect_refusal' => $expectRefusal,
             'refused' => $refused,
             'refusal_correct' => $refused === $expectRefusal,

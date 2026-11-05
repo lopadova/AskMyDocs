@@ -31,6 +31,7 @@ export type SidebarSection =
     | 'collections'
     | 'synonyms'
     | 'path-contexts'
+    | 'expansion-learning'
     | 'kb-insights'
     | 'analysis-settings'
     | 'content-gaps'
@@ -156,6 +157,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'collections', label: 'Collections', icon: 'Folder', route: '/app/$teamHash/admin/collections' },
             { id: 'synonyms', label: 'Synonyms', icon: 'Tag', route: '/app/$teamHash/admin/kb/synonyms' },
             { id: 'path-contexts', label: 'Path contexts', icon: 'Folder', route: '/app/$teamHash/admin/path-contexts' },
+            { id: 'expansion-learning', label: 'Expansion learning', icon: 'Brain', route: '/app/$teamHash/admin/kb/expansion-learning' },
             { id: 'kb-insights', label: 'Doc Insights', icon: 'Eye', route: '/app/$teamHash/admin/kb/insights' },
             { id: 'analysis-settings', label: 'Analysis Gate', icon: 'Sliders', route: '/app/$teamHash/admin/kb/analysis-settings' },
             { id: 'content-gaps', label: 'Content Gaps', icon: 'Search', route: '/app/$teamHash/admin/kb/content-gaps' },

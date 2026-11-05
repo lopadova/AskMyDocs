@@ -3,9 +3,13 @@ import operational from './ui-messages-operational.it.json';
 import { SETTINGS_MESSAGES_IT } from '../features/admin/app-settings/settings-messages.it';
 import { MCP_TOKENS_MESSAGES_IT } from '../features/admin/mcp-tokens/mcp-tokens-messages.it';
 import { AI_USAGE_MESSAGES_IT } from '../features/admin/ai-usage/ai-usage.messages.it';
+import { PATH_CONTEXTS_MESSAGES_IT } from '../features/admin/path-contexts/path-contexts.messages.it';
+import { EXPANSION_LEARNING_MESSAGES_IT } from '../features/admin/expansion-learning/expansion-learning.messages.it';
 
 export const IT_MESSAGES: Record<string, string> = {
     ...AI_USAGE_MESSAGES_IT,
+    ...PATH_CONTEXTS_MESSAGES_IT,
+    ...EXPANSION_LEARNING_MESSAGES_IT,
     ...SETTINGS_MESSAGES_IT,
     ...MCP_TOKENS_MESSAGES_IT,
     ...MCP_TOOLS_MESSAGES_IT,

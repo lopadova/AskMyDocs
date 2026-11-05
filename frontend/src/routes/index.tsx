@@ -31,6 +31,7 @@ import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
 import { PathContextsView } from '../features/admin/path-contexts/PathContextsView';
+import { ExpansionLearningView } from '../features/admin/expansion-learning/ExpansionLearningView';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
 import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView';
@@ -907,6 +908,27 @@ const adminPathContextsRoute = createRoute({
     component: AdminPathContextsRoute,
 });
 
+// Admin Expansion learning — the query-expansion learning loop (proposals,
+// applied tuning, training runs). Same flat-RBAC RequireRole + AdminShell
+// wrapping as Path contexts; KB_EXPANSION_LEARNING_ENABLED is handled INSIDE
+// the view (R43: one clean "unavailable" panel when OFF). Train/promote are
+// further super-admin-gated by the backend.
+function AdminExpansionLearningRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="expansion-learning">
+                <ExpansionLearningView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminExpansionLearningRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/kb/expansion-learning',
+    component: AdminExpansionLearningRoute,
+});
+
 // v8.7/W3–W4 — Doc Insights (AI document-change analyses).
 function AdminKbInsightsRoute() {
     return (
@@ -1636,6 +1658,7 @@ const teamChildren = [
     adminTagsRoute,
     adminSynonymsRoute,
     adminPathContextsRoute,
+    adminExpansionLearningRoute,
     adminKbInsightsRoute,
     adminAnalysisSettingsRoute,
     adminContentGapsRoute,

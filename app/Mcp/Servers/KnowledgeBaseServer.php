@@ -56,6 +56,8 @@ use App\Mcp\Tools\KbWikiRoutineStatusTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbRunReportTool;
 use App\Mcp\Tools\KbFacetsTool;
+use App\Mcp\Tools\KbMultiGetTool;
+use App\Mcp\Tools\KbExpansionLearningTool;
 use App\Mcp\Tools\KbPathContextsTool;
 use App\Mcp\Tools\KbRetrievalExplainTool;
 use App\Mcp\Tools\KbSearchTool;
@@ -92,6 +94,8 @@ class KnowledgeBaseServer extends Server
         KbRetrievalExplainTool::class,
         // v8.44/W4 (ADR 0035 D6) — corpus facets + path contexts (R44 MCP surfaces).
         KbFacetsTool::class,
+        KbMultiGetTool::class,
+        KbExpansionLearningTool::class,
         KbPathContextsTool::class,
         KbReadDocumentTool::class,
         KbReadChunkTool::class,

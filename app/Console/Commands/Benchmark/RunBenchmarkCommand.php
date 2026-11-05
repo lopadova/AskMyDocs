@@ -34,12 +34,20 @@ final class RunBenchmarkCommand extends Command
         {--k=5 : Cut-off k for nDCG@k / precision@k}
         {--suite=v1 : Which benchmark suite to run: v1 (default, the v8.2 set) or v2 (ADR 0035 — harder, per-class)}
         {--corpus= : Override the corpus directory}
-        {--queries= : Override the labelled queries YAML path}';
+        {--queries= : Override the labelled queries YAML path}
+        {--path=direct : Retrieval path to measure: direct (the retrieval stack) or investigation (the recursive path the chat runs; LIVE — needs a chat provider + a retrieval profile)}';
 
     protected $description = 'Run the retrieval-quality benchmark (nDCG/MRR/precision/citation/refusal/graph).';
 
     public function handle(): int
     {
+        $path = (string) $this->option('path');
+        if (! in_array($path, [BenchmarkRunner::PATH_DIRECT, BenchmarkRunner::PATH_INVESTIGATION], true)) {
+            $this->error("--path must be 'direct' or 'investigation', got '{$path}'.");
+
+            return self::FAILURE;
+        }
+
         // R30: every ingest and search call inside BenchmarkRunner operates on
         // tenant-aware tables; the tenant must be set before any DB work starts.
         app(TenantContext::class)->set(config('kb.default_tenant', 'default'));
@@ -87,6 +95,7 @@ final class RunBenchmarkCommand extends Command
             k: max(1, (int) $this->option('k')),
             withAnswers: (bool) $this->option('with-answers'),
             suite: $suite,
+            path: $path,
         );
 
         $this->renderScorecard($card);

@@ -124,6 +124,14 @@ return [
             explode(',', (string) env('KB_FTS_SUPPORTED_LANGUAGES', 'english,italian')),
         ))),
         'rrf_k' => env('KB_RRF_K', 60),
+        // W6 (qmd parity) — protect the head of the ORIGINAL query's lists:
+        // +first for a rank-1 hit, +podium for ranks 2–3, added to the fused
+        // RRF score. Default OFF (R43): fusion is byte-identical when false.
+        'top_rank_bonus' => [
+            'enabled' => (bool) env('KB_RRF_TOP_RANK_BONUS_ENABLED', false),
+            'first' => (float) env('KB_RRF_TOP_RANK_BONUS_FIRST', 0.05),
+            'podium' => (float) env('KB_RRF_TOP_RANK_BONUS_PODIUM', 0.02),
+        ],
         'semantic_weight' => env('KB_HYBRID_SEMANTIC_WEIGHT', 0.70),
         'fts_weight' => env('KB_HYBRID_FTS_WEIGHT', 0.30),
         // v8.41/W1 (ADR 0035 §D3) — lexical query syntax. `plain` = the legacy
@@ -245,6 +253,22 @@ return [
     */
 
     'query_expansion' => [
+        // W6 (qmd parity) — accept a user/agent-written query document
+        // (lex:/vec:/hyde:/intent: lines) as the expansion, no model call.
+        // OFF (R43): such a text is searched literally, exactly as before.
+        'user_documents' => filter_var(env('KB_QUERY_DOCUMENTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // W6 — `provider` (default: the AiManager providers below) or
+        // `self_hosted` (an operator-run OpenAI-compatible endpoint; exact host
+        // allow-list, https unless allow_http, no third-party processor).
+        'profile' => env('KB_QUERY_EXPANSION_PROFILE', 'provider'),
+        'timeout' => (int) env('KB_QUERY_EXPANSION_TIMEOUT', 10),
+        'self_hosted' => [
+            'endpoint' => env('KB_QUERY_EXPANSION_SELF_HOSTED_URL'),
+            'model' => env('KB_QUERY_EXPANSION_SELF_HOSTED_MODEL'),
+            'api_key' => env('KB_QUERY_EXPANSION_SELF_HOSTED_API_KEY'),
+            'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_QUERY_EXPANSION_SELF_HOSTED_ALLOWED_HOSTS', ''))))),
+            'allow_http' => filter_var(env('KB_QUERY_EXPANSION_SELF_HOSTED_ALLOW_HTTP', false), FILTER_VALIDATE_BOOLEAN),
+        ],
         'enabled' => filter_var(env('KB_QUERY_EXPANSION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'provider' => env('KB_QUERY_EXPANSION_PROVIDER'),
         'model' => env('KB_QUERY_EXPANSION_MODEL'),
@@ -278,6 +302,40 @@ return [
     // Line-range reads (KbReadDocumentTool from_line/max_lines, kb:show, the preview endpoint).
     'line_read' => [
         'max_lines' => (int) env('KB_LINE_READ_MAX_LINES', 400),
+    ],
+
+    // W6 (qmd parity) — batch document reads (kb:multi-get · POST /api/kb/documents/multi
+    // · KbMultiGetTool). Selectors: #ref, glob, exact path. OFF = clean 404 / {disabled:true}.
+    'multi_get' => [
+        'enabled' => filter_var(env('KB_MULTI_GET_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'max_documents' => (int) env('KB_MULTI_GET_MAX_DOCUMENTS', 20),
+        'default_max_bytes' => (int) env('KB_MULTI_GET_MAX_BYTES', 65536),
+        'max_bytes_ceiling' => (int) env('KB_MULTI_GET_MAX_BYTES_CEILING', 262144),
+    ],
+
+    // W7 — the expansion learning loop (kb:expansion-learn · /api/admin/kb/expansion-learning
+    // · KbExpansionLearningTool). OFF (R43): no event is recorded, the applied
+    // tuning reads neutral, every endpoint answers 404 expansion_learning_disabled.
+    'expansion_learning' => [
+        'enabled' => filter_var(env('KB_EXPANSION_LEARNING_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Apply a proposal without a human ONLY when the benchmark gate passed.
+        'auto_apply' => filter_var(env('KB_EXPANSION_LEARNING_AUTO_APPLY', false), FILTER_VALIDATE_BOOLEAN),
+        'window_days' => (int) env('KB_EXPANSION_LEARNING_WINDOW_DAYS', 30),
+        'min_events' => (int) env('KB_EXPANSION_LEARNING_MIN_EVENTS', 30),
+        'retention_days' => (int) env('KB_EXPANSION_LEARNING_RETENTION_DAYS', 90),
+        'cache_ttl' => (int) env('KB_EXPANSION_LEARNING_CACHE_TTL', 300),
+        'gate_project' => env('KB_EXPANSION_LEARNING_GATE_PROJECT', 'expansion-gate'),
+        'gate_tolerance' => (float) env('KB_EXPANSION_LEARNING_GATE_TOLERANCE', 0.0),
+        'training' => [
+            // Tenants whose operator recorded consent (and a DPA) to send MASKED
+            // queries to the training provider. Empty = nobody (fail-closed).
+            'consented_tenants' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_EXPANSION_TRAINING_CONSENTED_TENANTS', ''))))),
+            'base_model' => env('KB_EXPANSION_TRAINING_BASE_MODEL', 'gpt-4.1-mini-2025-04-14'),
+            'min_rows' => (int) env('KB_EXPANSION_TRAINING_MIN_ROWS', 50),
+            'disk' => env('KB_EXPANSION_TRAINING_DISK', 'local'),
+            'openai_base_url' => env('KB_EXPANSION_TRAINING_OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+            'openai_allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_EXPANSION_TRAINING_OPENAI_ALLOWED_HOSTS', 'api.openai.com'))))),
+        ],
     ],
 
     // "Did you mean" suggestions on a missed slug / path.

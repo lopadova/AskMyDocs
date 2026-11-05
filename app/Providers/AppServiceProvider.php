@@ -82,6 +82,11 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(\App\Authorization\IamPdp::class, \App\Authorization\SpatieIamPdp::class);
+        // W7 — the expansion learning loop's "does not make retrieval worse" gate.
+        $this->app->bind(
+            \App\Services\Kb\Retrieval\Expansion\Learning\ExpansionTuningGate::class,
+            \App\Services\Kb\Retrieval\Expansion\Learning\BenchmarkExpansionTuningGate::class,
+        );
         $this->app->singleton(\App\Actions\ActionRegistry::class, static fn ($app): \App\Actions\ActionRegistry => new \App\Actions\ActionRegistry(
             (array) config('actions.tools', [
                 'search_knowledge_base' => ['effect' => 'read', 'executable' => true],
@@ -989,6 +994,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbReembedStaleCommand::class,
             // v8.44/W4 (ADR 0035 D6) — agent affordances CLI surfaces (R44).
             \App\Console\Commands\KbFacetsCommand::class,
+            \App\Console\Commands\KbMultiGetCommand::class,
+            \App\Console\Commands\KbExpansionLearnCommand::class,
             \App\Console\Commands\KbShowCommand::class,
             \App\Console\Commands\KbPathContextCommand::class,
             // PR3 — RBAC

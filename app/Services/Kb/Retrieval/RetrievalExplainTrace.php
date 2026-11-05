@@ -23,7 +23,7 @@ final class RetrievalExplainTrace
     /** @var array<int, list<array<string,mixed>>> chunk id → list contributions */
     private array $lists = [];
 
-    /** @var array<int, array{base: float, total: float}> chunk id → fused score (hybrid only) */
+    /** @var array<int, array{base: float, top_rank_bonus: float, total: float}> chunk id → fused score (hybrid only) */
     private array $rrf = [];
 
     /**
@@ -66,10 +66,7 @@ final class RetrievalExplainTrace
         }
 
         if ($fused) {
-            foreach ($trace->lists as $id => $contribs) {
-                $sum = array_sum(array_map(static fn (array $c): float => (float) $c['rrf_contribution'], $contribs));
-                $trace->rrf[$id] = ['base' => round($sum, 8), 'total' => round($sum, 8)];
-            }
+            $trace->totalise();
         }
 
         return $trace;
@@ -101,10 +98,7 @@ final class RetrievalExplainTrace
             }
         }
 
-        foreach ($trace->lists as $id => $contribs) {
-            $sum = array_sum(array_map(static fn (array $c): float => (float) $c['rrf_contribution'], $contribs));
-            $trace->rrf[$id] = ['base' => round($sum, 8), 'total' => round($sum, 8)];
-        }
+        $trace->totalise();
 
         return $trace;
     }
@@ -115,10 +109,28 @@ final class RetrievalExplainTrace
         return $this->lists[$chunkId] ?? [];
     }
 
-    /** @return array{base: float, total: float}|null */
+    /** @return array{base: float, top_rank_bonus: float, total: float}|null */
     public function rrfFor(int $chunkId): ?array
     {
         return $this->rrf[$chunkId] ?? null;
+    }
+
+    /**
+     * `base` = Σ list contributions; `total` adds the W6 top-rank bonus
+     * ({@see TopRankBonus}, original-query lists only) — exactly what the
+     * service fuses, so `total` is the chunk's `rrf_score`.
+     */
+    private function totalise(): void
+    {
+        foreach ($this->lists as $id => $contribs) {
+            $sum = array_sum(array_map(static fn (array $c): float => (float) $c['rrf_contribution'], $contribs));
+            $originalRanks = array_map(
+                static fn (array $c): int => (int) $c['rank'],
+                array_filter($contribs, static fn (array $c): bool => ($c['query'] ?? null) === 'original'),
+            );
+            $bonus = TopRankBonus::for($originalRanks === [] ? null : min($originalRanks));
+            $this->rrf[$id] = ['base' => round($sum, 8), 'top_rank_bonus' => round($bonus, 8), 'total' => round($sum + $bonus, 8)];
+        }
     }
 
     /** @param  array<string,mixed>  $contribution */

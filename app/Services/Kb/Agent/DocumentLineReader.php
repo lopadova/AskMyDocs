@@ -81,6 +81,15 @@ final class DocumentLineReader
         return null;
     }
 
+    /**
+     * The whole document view (chunks in order, blank-line separated) — the
+     * same text {@see read()} slices. Used by the batch reader (W6 multi_get).
+     */
+    public function content(KnowledgeDocument $document): string
+    {
+        return $this->view($document);
+    }
+
     private function view(KnowledgeDocument $document): string
     {
         return KnowledgeChunk::query()

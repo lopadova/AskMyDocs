@@ -152,6 +152,12 @@ const serveEnv = {
     // 404 / `unavailable` landing is covered by KbPathContextControllerTest
     // (phpunit) + the PathContextsView Vitest, per R43 (both states).
     KB_PATH_CONTEXTS_ENABLED: 'true',
+    // W7 — light up the expansion learning loop so
+    // admin-expansion-learning.spec.ts reaches the real status/analyze
+    // endpoints (R13). The OFF clean 404 / `unavailable` landing is covered
+    // by ExpansionLearningLoopTest (phpunit) + the
+    // ExpansionLearningView Vitest, per R43 (both states).
+    KB_EXPANSION_LEARNING_ENABLED: 'true',
     // PHP_CLI_SERVER_WORKERS spawns N worker children for
     // the PHP built-in dev server (PHP 7.4+). Without
     // this env var (AND `--no-reload` above so the var

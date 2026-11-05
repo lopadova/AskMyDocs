@@ -40,6 +40,9 @@ final class KbRetrievalExplainController extends Controller
             isset($validated['project_key']) && $validated['project_key'] !== '' ? (string) $validated['project_key'] : null,
             (int) ($validated['limit'] ?? 8),
             intent: isset($validated['intent']) ? (string) $validated['intent'] : null,
+            investigation: (bool) ($validated['investigation'] ?? false),
+            minScore: isset($validated['min_score']) ? (float) $validated['min_score'] : null,
+            lineNumbers: (bool) ($validated['line_numbers'] ?? false),
         ));
     }
 }

@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Agent\AmbiguousDocumentReference;
 use App\Services\Kb\Agent\DocumentLineReader;
+use App\Services\Kb\Agent\DocumentReferenceNotFound;
+use App\Services\Kb\Agent\DocumentReferenceResolver;
 use App\Services\Kb\Agent\SimilarDocumentFinder;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
@@ -22,7 +25,7 @@ use Illuminate\Console\Command;
 final class KbShowCommand extends Command
 {
     protected $signature = 'kb:show
-        {document : Document id, slug or source_path}
+        {document : Document id, #short-ref, slug or source_path}
         {--project= : Project key (needed to resolve a slug)}
         {--tenant=default : Tenant that owns the document}
         {--from=1 : First line to show (1-based)}
@@ -31,8 +34,11 @@ final class KbShowCommand extends Command
 
     protected $description = 'Show a document or a line range of it; suggests near misses when it is not found.';
 
-    public function handle(DocumentLineReader $documentLineReader, SimilarDocumentFinder $similarDocumentFinder, TenantContext $tenantContext): int
+    private DocumentReferenceResolver $references;
+
+    public function handle(DocumentLineReader $documentLineReader, SimilarDocumentFinder $similarDocumentFinder, TenantContext $tenantContext, DocumentReferenceResolver $documentReferenceResolver): int
     {
+        $this->references = $documentReferenceResolver;
         $needle = trim((string) $this->argument('document'));
         $tenant = trim((string) $this->option('tenant'));
         $project = trim((string) $this->option('project'));
@@ -61,7 +67,7 @@ final class KbShowCommand extends Command
         }
 
         if ($this->option('json')) {
-            $this->line((string) json_encode(['document' => ['id' => $document->id, 'source_path' => $document->source_path, 'title' => $document->title]] + $lines, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->line((string) json_encode(['document' => ['id' => $document->id, 'ref' => DocumentReferenceResolver::shortRef($document->document_hash), 'source_path' => $document->source_path, 'title' => $document->title]] + $lines, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
             return self::SUCCESS;
         }
@@ -81,6 +87,22 @@ final class KbShowCommand extends Command
 
         if (ctype_digit($needle)) {
             return (clone $q)->whereKey((int) $needle)->first();
+        }
+
+        // W6 (qmd parity) — `#3f9a1c` short reference (content-hash prefix).
+        if (DocumentReferenceResolver::parse($needle) !== null) {
+            try {
+                return $this->references->resolve($tenant, $needle, $project === '' ? null : $project);
+            } catch (AmbiguousDocumentReference $e) {
+                $this->warn('The reference matches several documents; use a longer prefix:');
+                foreach ($e->candidates as $c) {
+                    $this->line(sprintf('  - %s  %s  (%s)', (string) $c['ref'], (string) $c['source_path'], (string) $c['project_key']));
+                }
+
+                return null;
+            } catch (DocumentReferenceNotFound) {
+                return null;
+            }
         }
 
         return (clone $q)->where(fn ($w) => $w->where('source_path', $needle)->orWhere('slug', $needle))->orderBy('id')->first();

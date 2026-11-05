@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+import { chooseSelectOption, openSelect } from './helpers';
 
 /*
  * Admin "Path contexts" scenarios — admin-authored descriptions bound to a
@@ -15,7 +16,14 @@ import { test } from './fixtures';
  * `unavailable` panel, which is covered by the Vitest suite).
  *
  * The project is chosen from the select's REAL options (derived from the
- * projects API) — no hard-coded project key here either (R18).
+ * projects API) — no hard-coded project key here either (R18). The control
+ * is the shared shadcn Select, so options are picked by opening the real
+ * portalled menu (never by mutating the hidden native select).
+ *
+ * Locale: the admin's interface language depends on the seeded user, so
+ * assertions rely on testids / attributes, never on translated copy. The
+ * only text checks are locale-neutral (counter, server data, a server error
+ * message, or a regex accepting both the EN and IT validation message).
  */
 
 test.describe.configure({ timeout: 90_000 });
@@ -31,12 +39,17 @@ async function openPage(page: Page) {
     return root;
 }
 
-/** Selects the first real project option and returns its key. */
+/** Selects the first real project option (index 0 is "Select a project…") and returns its key. */
 async function pickFirstProject(page: Page): Promise<string> {
-    const select = page.getByTestId('path-context-project');
-    await expect(select.locator('option').nth(1)).toBeAttached({ timeout: 10_000 });
-    await select.selectOption({ index: 1 });
-    return select.inputValue();
+    const trigger = page.getByTestId('path-context-project');
+    const menu = await openSelect(trigger);
+    const firstProject = menu.getByRole('option').nth(1);
+    await expect(firstProject).toBeVisible({ timeout: 10_000 });
+    const projectKey = await firstProject.getAttribute('data-value');
+    if (!projectKey) throw new Error('No project option is available in the path-context form.');
+    await chooseSelectOption(trigger, projectKey);
+    await expect(trigger).toHaveAttribute('data-value', projectKey);
+    return projectKey;
 }
 
 test.describe('Admin Path contexts', () => {
@@ -128,7 +141,8 @@ test.describe('Admin Path contexts', () => {
         await page.getByTestId('path-context-prefix').fill('/absolute/');
         await page.getByTestId('path-context-description').fill('x');
         await page.getByTestId('path-context-save').click();
-        await expect(page.getByTestId('path-context-prefix-error')).toContainText('slash');
+        // EN "…must not start with a slash." / IT "…non deve iniziare con una barra (/)."
+        await expect(page.getByTestId('path-context-prefix-error')).toContainText(/slash|barra/);
         await expect(page.getByTestId('path-context-project-error')).toHaveCount(0);
         await expect(page.getByTestId('path-context-description-error')).toHaveCount(0);
     });

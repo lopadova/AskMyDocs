@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Retrieval\CrossEncoder;
 
+use App\Support\Http\AllowListedEndpoint;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\StreamInterface;
@@ -155,33 +156,19 @@ final class HttpCrossEncoderReranker implements CrossEncoderReranker
     private function assertAllowedEndpoint(string $endpoint): string
     {
         $parts = parse_url($endpoint);
-        if ($endpoint === '' || $parts === false || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
-            throw new CrossEncoderUnavailableException('endpoint_invalid', 'Cross-encoder endpoint is missing or malformed (no userinfo/query/fragment allowed).');
-        }
-
-        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
-        $host = strtolower((string) ($parts['host'] ?? ''));
-        if ($scheme === '' || $host === '') {
-            throw new CrossEncoderUnavailableException('endpoint_invalid', 'Cross-encoder endpoint has no scheme or host.');
-        }
-        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
-        $hostPort = $host.':'.$port;
-
+        $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
+        $scheme = is_array($parts) ? strtolower((string) ($parts['scheme'] ?? '')) : '';
+        $hostPort = $host.':'.(int) (is_array($parts) ? ($parts['port'] ?? ($scheme === 'https' ? 443 : 80)) : 0);
         $httpTolerated = $this->profileName === 'self_hosted' && (bool) ($this->profile['allow_http'] ?? false);
-        if ($scheme !== 'https' && ! ($scheme === 'http' && $httpTolerated)) {
-            throw new CrossEncoderUnavailableException('endpoint_scheme', 'Cross-encoder endpoint must be https (plain http is tolerated only for the self_hosted profile with allow_http).');
-        }
 
-        $allowed = array_values(array_filter(array_map(
-            static fn ($h): string => strtolower(trim((string) $h)),
-            (array) ($this->profile['allowed_hosts'] ?? []),
-        )));
-        // An entry is `host` (any port) or `host:port` (that port only).
-        if ($host === '' || (! in_array($host, $allowed, true) && ! in_array($hostPort, $allowed, true))) {
-            throw new CrossEncoderUnavailableException('endpoint_not_allowed', sprintf('Cross-encoder host "%s" is not in the profile allow-list.', $hostPort));
-        }
+        $reason = AllowListedEndpoint::violation($endpoint, (array) ($this->profile['allowed_hosts'] ?? []), $httpTolerated);
 
-        return $endpoint;
+        return match ($reason) {
+            null => $endpoint,
+            'endpoint_scheme' => throw new CrossEncoderUnavailableException('endpoint_scheme', 'Cross-encoder endpoint must be https (plain http is tolerated only for the self_hosted profile with allow_http).'),
+            'endpoint_not_allowed' => throw new CrossEncoderUnavailableException('endpoint_not_allowed', sprintf('Cross-encoder host "%s" is not in the profile allow-list.', $hostPort)),
+            default => throw new CrossEncoderUnavailableException('endpoint_invalid', 'Cross-encoder endpoint is missing or malformed (no userinfo/query/fragment allowed).'),
+        };
     }
 
     private function readBounded(StreamInterface $stream): string

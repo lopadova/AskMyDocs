@@ -227,4 +227,23 @@ final class CodeAstChunkerTest extends TestCase
         $this->assertSame('go', $go[0]->metadata['language']);
         $this->assertSame('web/api.ts > Api', $ts[0]->headingPath);
     }
+
+    #[Test]
+    public function a_single_line_over_the_hard_cap_is_split_on_the_shared_byte_budget_without_losing_text(): void
+    {
+        // hard cap 200 tokens ≈ 800 bytes; one minified-style line of ~3 KB.
+        $blob = 'const DATA = ['.implode(',', array_map(fn ($i) => '"item-'.$i.'"', range(1, 300))).'];';
+        $drafts = $this->chunk('src/data.js', "// generated table\n".$blob."\n");
+
+        $split = array_values(array_filter($drafts, fn (ChunkDraft $d) => isset($d->metadata['split'])));
+        $this->assertGreaterThan(1, count($split), 'the oversized line became several chunks');
+        foreach ($drafts as $d) {
+            $this->assertLessThanOrEqual(200 * 4, strlen($d->text), 'no chunk exceeds the hard cap');
+        }
+        $this->assertSame(count($split), $split[0]->metadata['split']['of']);
+        $this->assertSame(1, $split[0]->metadata['split']['part']);
+        $this->assertStringContainsString(implode('', array_map(fn (ChunkDraft $d) => $d->text, $split)), $blob."\n".'', 'concatenated parts are the original line, nothing dropped');
+        $orders = array_map(fn (ChunkDraft $d) => $d->order, $drafts);
+        $this->assertSame(range(0, count($drafts) - 1), $orders, 'chunk orders stay contiguous');
+    }
 }

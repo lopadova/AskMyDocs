@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\ResultScoreFloor;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -32,6 +33,9 @@ class KbSearchTool extends Tool
             'intent' => $schema->string()
                 ->description('Optional disambiguation hint, e.g. "web page load times" for the query "performance". It steers re-ranking; it is not searched on its own.')
                 ->nullable(),
+            'min_score' => $schema->number()
+                ->description('Optional. Drop results whose final score (rerank score, else vector score) is below this value.')
+                ->nullable(),
         ];
     }
 
@@ -48,8 +52,10 @@ class KbSearchTool extends Tool
                 : null,
         );
 
+        $minScore = $request->get('min_score');
+
         return Response::json([
-            'results' => $results->values()->all(),
+            'results' => ResultScoreFloor::apply($results->values(), is_numeric($minScore) ? (float) $minScore : null)->all(),
         ]);
     }
 }

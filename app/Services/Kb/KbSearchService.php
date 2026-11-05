@@ -7,7 +7,9 @@ namespace App\Services\Kb;
 use App\Models\KnowledgeChunk;
 use App\Services\Kb\Retrieval\CrossEncoder\CrossEncoderStage;
 use App\Services\Kb\Retrieval\Expansion\QueryExpansionService;
+use App\Services\Kb\Agent\DocumentReferenceResolver;
 use App\Services\Kb\Retrieval\FtsQueryBuilder;
+use App\Services\Kb\Retrieval\TopRankBonus;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Retrieval\GraphExpander;
 use App\Services\Kb\Retrieval\QueryLanguageDetector;
@@ -42,6 +44,9 @@ class KbSearchService
 
     /** @var array<string,mixed>|null */
     private ?array $lastExpansionMeta = null;
+
+    /** W7 — the expansion behind the current search's extra lists (null = none ran). */
+    private ?\App\Services\Kb\Retrieval\Expansion\QueryExpansion $lastExpansion = null;
 
     public function __construct(
         private readonly EmbeddingCacheService $embeddingCache,
@@ -138,6 +143,10 @@ class KbSearchService
     ): SearchResult {
         $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
+        // W6 (qmd parity) — a user-written query document: search its plain
+        // text, use its typed lines as the expansion (no model call).
+        [$query, $effectiveFilters] = $this->applyUserQueryDocument($query, $effectiveFilters);
+        $filters = $effectiveFilters;
         // Resolve a representative project_key for the legacy meta payload
         // and for the graph expander / rejected injector (which still take
         // a single ?string $projectKey today — extending them to filters
@@ -468,8 +477,12 @@ class KbSearchService
         // builder shape — the filters DTO's projectKeys narrows DOCUMENTS,
         // the chunk-level filter narrows CHUNKS).
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
+        // Idempotent: searchWithContext() already rewrote the query, so a
+        // second parse finds no typed line and changes nothing.
+        [$query, $effectiveFilters] = $this->applyUserQueryDocument($query, $effectiveFilters);
         $this->lastCrossEncoderMeta = null;
         $this->lastExpansionMeta = null;
+        $this->lastExpansion = null;
 
         // Generate query embedding (cached), or reuse the precomputed
         // embedding from searchWithContext() when provided. v8.7/W1 — the
@@ -646,6 +659,21 @@ class KbSearchService
                 ['wait_reason' => 'cross_encoder_provider']);
         }
 
+        // W7 — the reward signal of the expansion learning loop: what each
+        // variant type contributed to THIS final ranking. Off by default; never
+        // throws (the recorder swallows and logs its own failures).
+        if ($expansionLists !== [] && $this->lastExpansion !== null && \App\Services\Kb\Retrieval\Expansion\Learning\ExpansionSignalRecorder::enabled()) {
+            app(\App\Services\Kb\Retrieval\Expansion\Learning\ExpansionSignalRecorder::class)->record(
+                $query,
+                $projectKey ?? ($effectiveFilters->projectKeys[0] ?? null),
+                (string) ($this->lastExpansionMeta['source'] ?? $this->lastExpansionMeta['status'] ?? 'llm'),
+                $this->lastExpansion,
+                $lists ?? [],
+                $ranked,
+                \App\Services\Kb\Retrieval\RetrievalGrounding::shouldRefuse($ranked),
+            );
+        }
+
         if (! $effectiveFilters->explain) {
             return $ranked;
         }
@@ -681,8 +709,25 @@ class KbSearchService
         int $candidateCount,
         string $tenantId,
     ): array {
+        if ($filters->presetExpansion !== null) {
+            $this->lastExpansion = $filters->presetExpansion;
+            $lists = $this->listsFromExpansion($filters->presetExpansion, $projectKey, $filters, $minSimilarity, $candidateCount, $tenantId, $ftsChunks !== null);
+            $this->lastExpansionMeta = ['status' => 'user_document', 'lists' => count($lists)];
+
+            return $lists;
+        }
+
         $service = app(QueryExpansionService::class);
         if (! $service->enabled()) {
+            return [];
+        }
+
+        // The recursive investigation already asked a model to rewrite the
+        // question into `kbQueries`; expanding them again would pay a second
+        // LLM call for the same job (and drift further from the user's words).
+        if ($filters->skipExpansion) {
+            $this->lastExpansionMeta = ['status' => 'skipped', 'reason' => 'model_written_query'];
+
             return [];
         }
 
@@ -699,17 +744,50 @@ class KbSearchService
         if ($expansion === null) {
             return [];
         }
+        $this->lastExpansion = $expansion;
 
+        $lists = $this->listsFromExpansion($expansion, $projectKey, $filters, $minSimilarity, $candidateCount, $tenantId, $ftsChunks !== null);
+        $this->lastExpansionMeta['lists'] = count($lists);
+
+        // Every sub-query came back empty: evict the dud so it is not replayed
+        // on every warm repeat of the query.
+        if ($lists === []) {
+            $service->forget($query, $effectiveProject);
+        }
+
+        return $lists;
+    }
+
+    /**
+     * The ranked lists of one typed expansion — the model's or a user query
+     * document's. `lex` → full-text branch (only when it ran), `vec` + `hyde`
+     * → ONE batched embedding call → vector branch; each list at
+     * `expansion_weight_ratio` of its original counterpart's weight.
+     *
+     * @return list<array{source: string, query: string, chunks: Collection<int, KnowledgeChunk>, weight: float, score_field: string}>
+     */
+    private function listsFromExpansion(
+        \App\Services\Kb\Retrieval\Expansion\QueryExpansion $expansion,
+        ?string $projectKey,
+        RetrievalFilters $filters,
+        float $minSimilarity,
+        int $candidateCount,
+        string $tenantId,
+        bool $ftsRan,
+    ): array {
         $ratio = max(0.0, (float) config('kb.query_expansion.expansion_weight_ratio', 0.5));
         $semanticWeight = (float) config('kb.hybrid_search.semantic_weight', 0.7) * $ratio;
         $ftsWeight = (float) config('kb.hybrid_search.fts_weight', 0.3) * $ratio;
+        // W7 — per-type multipliers the learning loop applied for this project
+        // (neutral 1.0 everywhere when the loop is off or nothing is applied).
+        $learned = \App\Services\Kb\Retrieval\Expansion\Learning\ActiveExpansionTuning::for($tenantId, $projectKey ?? ($filters->projectKeys[0] ?? null))['weights'];
         $lists = [];
 
-        if ($ftsChunks !== null) {
+        if ($ftsRan) {
             foreach ($expansion->lex as $variant) {
                 $hits = $this->fullTextSearch($variant, $projectKey, $candidateCount, $tenantId, $filters);
                 if ($hits->isNotEmpty()) {
-                    $lists[] = ['source' => 'fts', 'query' => 'lex', 'chunks' => $hits, 'weight' => $ftsWeight, 'score_field' => 'fts_score'];
+                    $lists[] = ['source' => 'fts', 'query' => 'lex', 'chunks' => $hits, 'weight' => $ftsWeight * $learned['lex'], 'score_field' => 'fts_score'];
                 }
             }
         }
@@ -725,20 +803,36 @@ class KbSearchService
                 $hits = $this->semanticCandidates($tenantId, $vector, '['.implode(',', $vector).']', $projectKey, $minSimilarity, $filters, $candidateCount);
                 if ($hits->isNotEmpty()) {
                     $type = $text === $expansion->hyde ? 'hyde' : 'vec';
-                    $lists[] = ['source' => 'vector', 'query' => $type, 'chunks' => $hits, 'weight' => $semanticWeight, 'score_field' => 'vector_score'];
+                    $lists[] = ['source' => 'vector', 'query' => $type, 'chunks' => $hits, 'weight' => $semanticWeight * $learned[$type], 'score_field' => 'vector_score'];
                 }
             }
         }
 
-        $this->lastExpansionMeta['lists'] = count($lists);
+        return $lists;
+    }
 
-        // Every sub-query came back empty: evict the dud so it is not replayed
-        // on every warm repeat of the query.
-        if ($lists === []) {
-            $service->forget($query, $effectiveProject);
+    /**
+     * W6 — rewrite a user-written query document (lex:/vec:/hyde:/intent:
+     * lines) into its plain query + filters carrying the typed variants.
+     * Feature OFF, or no typed line → the inputs unchanged.
+     *
+     * @return array{0: string, 1: RetrievalFilters}
+     */
+    private function applyUserQueryDocument(string $query, RetrievalFilters $filters): array
+    {
+        if (! \App\Services\Kb\Retrieval\Expansion\UserQueryDocument::enabled()) {
+            return [$query, $filters];
+        }
+        $document = \App\Services\Kb\Retrieval\Expansion\UserQueryDocument::parse($query);
+        if ($document === null) {
+            return [$query, $filters];
+        }
+        $filters = $filters->withPresetExpansion($document->expansion->isEmpty() ? null : $document->expansion);
+        if ($document->intent !== null && $filters->intent === null) {
+            $filters = $filters->withIntent($document->intent);
         }
 
-        return $lists;
+        return [$document->original, $filters];
     }
 
     /**
@@ -785,6 +879,7 @@ class KbSearchService
         $scores = [];
         $chunks = [];
         $originalCosine = [];
+        $bestOriginalRank = [];
 
         foreach ($lists as $list) {
             foreach ($list['chunks']->values() as $rank => $chunk) {
@@ -794,7 +889,13 @@ class KbSearchService
                 if ($list['source'] === 'vector' && $list['query'] === 'original') {
                     $originalCosine[$id] = (float) $chunk->vector_score;
                 }
+                if ($list['query'] === 'original') {
+                    $bestOriginalRank[$id] = min($bestOriginalRank[$id] ?? PHP_INT_MAX, $rank + 1);
+                }
             }
+        }
+        foreach ($bestOriginalRank as $id => $rank) {
+            $scores[$id] += TopRankBonus::for($rank);
         }
 
         arsort($scores);
@@ -832,6 +933,9 @@ class KbSearchService
             'vector_score' => (float) ($chunk->vector_score ?? $chunk->rrf_score ?? 0),
             'document' => [
                 'id' => $chunk->document?->id,
+                // W6 (qmd parity) — `#docid` an agent can cite and re-open with
+                // kb:show / KbReadDocumentTool / multi_get (null when unknown).
+                'ref' => DocumentReferenceResolver::shortRef($chunk->document?->document_hash),
                 'title' => $chunk->document?->title,
                 'source_path' => $chunk->document?->source_path,
                 'source_type' => $chunk->document?->source_type,
@@ -1181,11 +1285,14 @@ class KbSearchService
         $scores = [];
         $chunks = [];
 
+        $bestRank = [];
+
         // Score semantic results
         foreach ($semanticResults->values() as $rank => $chunk) {
             $id = $chunk->id;
             $scores[$id] = ($scores[$id] ?? 0) + $semanticWeight / ($k + $rank + 1);
             $chunks[$id] = $chunk;
+            $bestRank[$id] = min($bestRank[$id] ?? PHP_INT_MAX, $rank + 1);
         }
 
         // Score FTS results
@@ -1195,6 +1302,12 @@ class KbSearchService
             if (! isset($chunks[$id])) {
                 $chunks[$id] = $chunk;
             }
+            $bestRank[$id] = min($bestRank[$id] ?? PHP_INT_MAX, $rank + 1);
+        }
+
+        // W6 — qmd's head protection (default OFF ⇒ adds 0.0 everywhere).
+        foreach ($bestRank as $id => $rank) {
+            $scores[$id] += TopRankBonus::for($rank);
         }
 
         // Sort by RRF score
