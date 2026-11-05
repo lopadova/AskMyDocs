@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../../lib/ui-locale";
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuthStore } from '../../../../lib/auth-store';
 import { UploadDropzone } from './UploadDropzone';
@@ -63,6 +65,7 @@ function errMessage(err: unknown): string {
 }
 
 export function UploadModal({ seed, defaultProject, projectOptions, onClose, onCommitted }: UploadModalProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const accept = useAuthStore((s) => acceptAttribute(s.kbUploadAcceptedExtensions));
     const [phase, setPhase] = useState<Phase>('selecting');
     const [projectKey, setProjectKey] = useState(seed?.projectKey ?? defaultProject ?? '');
@@ -84,15 +87,6 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     const progress = useBatchProgress(batchId, poll);
     // v8.36 / ADR 0029 §8 — the OCR cost line, read only in the review phase.
     const ocrEstimate = useOcrEstimate(batchId, phase === 'review', estimateRevision);
-
-    // Esc closes (mirror ProjectFormDialog).
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     // Transition to `done` once the polled batch is terminal, exactly once.
     useEffect(() => {
@@ -215,9 +209,6 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     return (
         <div
             data-testid="kb-upload-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -251,12 +242,11 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
             >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <h2 id="kb-upload-title" data-testid="kb-upload-title" style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
-                        Upload documents
-                    </h2>
+                        {translateInterface("Upload documents")}</h2>
                     <button
                         type="button"
                         data-testid="kb-upload-close"
-                        aria-label="Close"
+                        aria-label={translateInterface("Close")}
                         onClick={onClose}
                         style={ghostBtn}
                     >
@@ -270,22 +260,22 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                         <div style={{ display: 'flex', gap: 8 }}>
                             <label htmlFor="kb-upload-project-select" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <span style={labelTxt}>Target project</span>
-                                <select
+                                <SelectField
                                     id="kb-upload-project-select"
                                     data-testid="kb-upload-project-select"
                                     aria-label="Target project"
                                     value={projectKey}
                                     disabled={phase !== 'selecting'}
-                                    onChange={(e) => setProjectKey(e.target.value)}
+                                    onValueChange={(nextValue) => setProjectKey(nextValue)}
                                     style={fieldStyle}
                                 >
-                                    <option value="">Select a project…</option>
+                                    <SelectOption value="">{translateInterface("Select a project…")}</SelectOption>
                                     {projectOptions.map((key) => (
-                                        <option key={key} value={key}>
+                                        <SelectOption key={key} value={key}>
                                             {key}
-                                        </option>
+                                        </SelectOption>
                                     ))}
-                                </select>
+                                </SelectField>
                             </label>
                             <label htmlFor="kb-upload-target-path" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 <span style={labelTxt}>Subfolder (optional)</span>
@@ -424,8 +414,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                     {phase === 'review' && (
                         <>
                             <button type="button" data-testid="kb-upload-cancel" aria-label="Cancel batch" onClick={handleCancel} style={secondaryBtn}>
-                                Cancel
-                            </button>
+                                {translateInterface("Cancel")}</button>
                             <button type="button" data-testid="kb-upload-commit" disabled={stagedCount === 0 || commitMut.isPending} onClick={handleCommit} style={primaryBtn(stagedCount === 0)}>
                                 Commit &amp; ingest
                             </button>
@@ -438,8 +427,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                     )}
                     {phase === 'done' && (
                         <button type="button" data-testid="kb-upload-done-close" onClick={onClose} style={primaryBtn(false)}>
-                            Done
-                        </button>
+                            {translateInterface("Done")}</button>
                     )}
                 </div>
             </div>

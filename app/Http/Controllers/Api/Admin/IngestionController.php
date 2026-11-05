@@ -62,4 +62,11 @@ final class IngestionController extends Controller
             ],
         ], 202);
     }
+
+    public function cancelImapBackfill(int $installationId, int $backfillId): JsonResponse
+    {
+        $this->imapBackfills->cancel($installationId, $backfillId);
+
+        return $this->imapBackfill($installationId);
+    }
 }

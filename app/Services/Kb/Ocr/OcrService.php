@@ -462,7 +462,7 @@ final class OcrService
         // ADR 0030 §4 — the version actor is an audit identity: derived by the
         // trusted caller (authenticated principal, CLI, connector bridge),
         // never accepted from a client payload.
-        unset($metadata['version_actor']);
+        unset($metadata['version_actor'], $metadata['mcp_document_import_id']);
         // `disk` and `prefix` name the storage namespace the source was
         // written under: the host records them at ingest and a re-run
         // carries them from the row — a client or a connector must not, or
@@ -527,7 +527,7 @@ final class OcrService
      */
     public static function stripRunControlKeys(array $metadata): array
     {
-        unset($metadata['dry_run']);
+        unset($metadata['dry_run'], $metadata['mcp_document_import_id']);
         if (is_array($metadata['ocr'] ?? null)) {
             unset($metadata['ocr']['force'], $metadata['ocr']['rerun_lock']);
             if ($metadata['ocr'] === []) {

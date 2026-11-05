@@ -33,6 +33,7 @@ return [
         \App\Services\Kb\Converters\OcrConverter::class,
         \App\Services\Kb\Converters\PdfConverter::class,
         \App\Services\Kb\Converters\DocxConverter::class,
+        \App\Services\Kb\Converters\FreshdeskCaseStudyConverter::class,
         \App\Services\Kb\Converters\VendorMarkdownPassthroughConverter::class,
     ],
 
@@ -46,6 +47,7 @@ return [
      * order is structural, not a hidden ordering trap.
      */
     'chunkers' => [
+        \App\Services\Kb\Chunkers\FreshdeskCaseStudyChunker::class,
         \App\Services\Kb\Chunkers\PdfPageChunker::class,
         \App\Services\Kb\Chunkers\NotionBlockChunker::class,
         \App\Services\Kb\Chunkers\ConfluencePageChunker::class,
@@ -72,6 +74,7 @@ return [
      * @var array<string, string>
      */
     'mime_to_source_type' => [
+        'application/vnd.askmydocs.freshdesk-case+markdown' => 'freshdesk_case_study',
         'text/markdown'   => 'markdown',
         'text/x-markdown' => 'markdown',
         'text/plain'      => 'text',

@@ -1,3 +1,4 @@
+import { chooseSelectOption } from './helpers';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { seedDb } from './setup-helpers';
@@ -32,7 +33,7 @@ test.describe('Admin Auto-Wiki Settings', () => {
             (r) => r.url().includes('/api/admin/kb/autowiki-settings') && r.request().method() === 'PUT',
             { timeout: 15_000 },
         );
-        await engEnabled.selectOption('off');
+        await chooseSelectOption(engEnabled, 'off');
         const resp = await putResp;
         expect(resp.ok()).toBeTruthy();
 

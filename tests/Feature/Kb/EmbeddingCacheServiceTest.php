@@ -8,6 +8,7 @@ use App\Ai\EmbeddingsResponse;
 use App\Models\EmbeddingCache;
 use App\Services\Kb\EmbeddingCacheService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Mockery;
 use Tests\TestCase;
 
@@ -124,6 +125,40 @@ class EmbeddingCacheServiceTest extends TestCase
         $result = $service->generate(['hello']);
 
         $this->assertSame([[0.9, 0.8, 0.7]], $result->embeddings);
+    }
+
+    public function test_cached_batch_touches_only_matching_rows_once_and_preserves_duplicate_order(): void
+    {
+        config(['kb.embedding_cache.enabled' => true,
+            'ai.providers.openai.embeddings_model' => 'text-embedding-3-small']);
+        $this->freezeTime();
+        $old = now()->subDay();
+        foreach ([['first', 'openai', 'text-embedding-3-small', [0.1]],
+            ['second', 'openai', 'text-embedding-3-small', [0.2]],
+            ['first', 'other', 'text-embedding-3-small', [3.0]],
+            ['first', 'openai', 'other-model', [4.0]],
+            ['unused', 'openai', 'text-embedding-3-small', [5.0]]] as [$text, $provider, $model, $embedding]) {
+            EmbeddingCache::create(['text_hash' => hash('sha256', $text), 'provider' => $provider,
+                'model' => $model, 'embedding' => $embedding, 'last_used_at' => $old]);
+        }
+        $service = $this->makeService(expectCall: false);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $result = $service->generate(['second', 'first', 'second', 'first']);
+            $updates = collect(DB::getQueryLog())->filter(fn (array $q) => str_starts_with(strtolower($q['query']), 'update '));
+            DB::flushQueryLog();
+            $service->generate(['first', 'second']);
+            $this->assertCount(0, collect(DB::getQueryLog())->filter(fn (array $q) => str_starts_with(strtolower($q['query']), 'update ')),
+                'Already-current LRU timestamps should not cause another write.');
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+        $this->assertSame([[0.2], [0.1], [0.2], [0.1]], $result->embeddings);
+        $this->assertCount(1, $updates, 'LRU touches should be one write per batch, including repeated hits.');
+        $this->assertSame(2, EmbeddingCache::where('last_used_at', now())->count());
+        $this->assertSame(3, EmbeddingCache::where('last_used_at', $old)->count());
     }
 
     public function test_mixed_hit_and_miss_preserves_order(): void

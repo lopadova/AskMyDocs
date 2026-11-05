@@ -175,6 +175,20 @@ class IngestDocumentJob implements ShouldQueue
             // TenantContext::current(); without this re-bind every tenant-
             // aware insert would silently land under 'default'.
             $tenantContext->set($this->tenantId);
+            if (isset($this->metadata['mcp_document_import_id'])) {
+                $import = \App\Models\McpDocumentImport::where('tenant_id', $this->tenantId)
+                    ->where('project_key', $this->projectKey)->findOrFail($this->metadata['mcp_document_import_id']);
+                $priorUser = \Illuminate\Support\Facades\Auth::user();
+                try {
+                    $initiator = \App\Models\User::findOrFail($import->user_id);
+                    \Illuminate\Support\Facades\Auth::setUser($initiator);
+                    abort_unless($import->approved_at !== null, 403);
+                    app(\App\Services\Mcp\McpDocumentImportService::class)->authorizeImport($import);
+                } finally {
+                    if ($priorUser) \Illuminate\Support\Facades\Auth::setUser($priorUser);
+                    else \Illuminate\Support\Facades\Auth::forgetUser();
+                }
+            }
 
             // v8.36 — a forced OCR re-run carries a per-document lock; re-arm
             // it for this attempt (it may have lapsed while the job waited in
@@ -269,13 +283,19 @@ class IngestDocumentJob implements ShouldQueue
 
                     return;
                 }
-                throw new \RuntimeException($message);
+                // Keep the failing step's exception in the queue failure. The
+                // wrapper identifies the document; the cause explains why its
+                // provider, cache or storage operation failed.
+                throw new \RuntimeException($message, 0, $stepError);
             }
 
             $persistResult = $run->stepResults['persist-chunks'] ?? null;
             $documentId = $persistResult instanceof \Padosoft\LaravelFlow\FlowStepResult
                 ? ($persistResult->output['knowledge_document_id'] ?? null)
                 : null;
+            app(\App\Services\EmailTriage\EmailTriageService::class)->indexed(
+                $this->tenantId, $this->metadata, $documentId === null ? null : (int) $documentId,
+            );
 
             Log::info('IngestDocumentJob completed', [
                 'document_id' => $documentId,
@@ -357,6 +377,7 @@ class IngestDocumentJob implements ShouldQueue
         // carried by a forced OCR re-run is released here, never on a retry.
         // Owner-bound: a lock a newer re-run took over is left to its owner.
         OcrService::releaseRerunLock($this->metadata);
+        app(\App\Services\EmailTriage\EmailTriageService::class)->indexed($this->tenantId, $this->metadata, null, true);
 
         Log::error('IngestDocumentJob failed after retries', [
             'project_key' => $this->projectKey,

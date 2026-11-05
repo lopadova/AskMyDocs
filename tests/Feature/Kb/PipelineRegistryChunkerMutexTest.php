@@ -48,7 +48,7 @@ final class PipelineRegistryChunkerMutexTest extends TestCase
             // v8.36 / ADR 0029 — OCR'd images (PdfPageChunker claims `image` too)
             'image',
             // v4.5/W5.5 source-aware
-            'notion', 'notion_note',
+            'freshdesk_case_study', 'notion', 'notion_note',
             'confluence',
             // v4.5/W6 source-aware
             'jira',
@@ -84,7 +84,7 @@ final class PipelineRegistryChunkerMutexTest extends TestCase
         /** @var PipelineRegistry $registry */
         $registry = $this->app->make(PipelineRegistry::class);
         $tokens = [
-            'notion', 'notion_note', 'confluence',
+            'freshdesk_case_study', 'notion', 'notion_note', 'confluence',
             'jira',
             'evernote', 'fabric',
             'drive_gdoc', 'drive_gsheet', 'drive_gslide', 'onedrive_office',

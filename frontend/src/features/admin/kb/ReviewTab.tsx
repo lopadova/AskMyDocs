@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState } from 'react';
 import { useToast } from '../shared/Toast';
 import type { KbCorrectionCandidate } from '../admin.api';
@@ -254,6 +255,7 @@ function PageReviewNavigator({
     page: number;
     onPageChange: (next: number) => void;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const status = useKbPageReviewStatus(documentId, page);
     const toggleMut = useSetKbPageReviewStatus(documentId);
     const toast = useToast();
@@ -311,7 +313,7 @@ function PageReviewNavigator({
                         Prev
                     </button>
                     <span data-testid="kb-review-page-number" style={{ fontSize: 12.5, color: 'var(--fg-1)' }}>
-                        Page {page} of {total}
+                        {translateInterface("Page") + " "}{page} {" " + translateInterface("of") + " "}{total}
                     </span>
                     <button
                         type="button"
@@ -320,14 +322,12 @@ function PageReviewNavigator({
                         disabled={page >= total}
                         style={pagerBtnStyle(page >= total)}
                     >
-                        Next
-                    </button>
+                        {translateInterface("Next")}</button>
                 </div>
 
                 {status.isLoading ? (
                     <span data-testid="kb-review-page-status-loading" style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                        Loading…
-                    </span>
+                        {translateInterface("Loading…")}</span>
                 ) : status.isError || !status.data ? (
                     <span
                         data-testid="kb-review-page-status-error"
@@ -393,6 +393,7 @@ function CorrectionsSection({
     documentId: number;
     onDocumentReplaced?: (nextDocumentId: number) => void;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     const [offset, setOffset] = useState(0);
 
     // Same reasoning as PageReviewSection: a stale offset from the
@@ -541,8 +542,7 @@ function CorrectionsSection({
                         disabled={!meta.has_more}
                         style={pagerBtnStyle(!meta.has_more)}
                     >
-                        Next
-                    </button>
+                        {translateInterface("Next")}</button>
                 </div>
             ) : null}
         </section>

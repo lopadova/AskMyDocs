@@ -482,6 +482,9 @@ class DocumentIngestor
         ?CanonicalParsedDocument $canonical,
         bool $replaceExisting = false,
     ): KnowledgeDocument {
+        if ($sourceType === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->assertValid($metadata, $projectKey);
+        }
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
         $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
@@ -566,6 +569,9 @@ class DocumentIngestor
         bool $forceReembed = false,
         ?int $requireActiveDocumentId = null,
     ): KnowledgeDocument {
+        if ($sourceType === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->assertValid($metadata, $projectKey);
+        }
         $documentHash = hash('sha256', $markdown);
         $versionHash = $documentHash;
         $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
@@ -746,6 +752,9 @@ class DocumentIngestor
         bool $forceReembed = false,
         ?array $artifact = null,
     ): KnowledgeDocument {
+        if ($sourceType === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->assertValid($metadata, $projectKey, true);
+        }
         // If this is a canonical re-ingest with changed content, previous
         // versions still hold the (tenant_id, project_key, slug) /
         // (tenant_id, project_key, doc_id) unique slots. We must vacate those
@@ -779,6 +788,7 @@ class DocumentIngestor
         // still-trashed row would stay invisible to it and the insert would
         // die on `uq_kb_doc_tenant_version` — the same crash R10 point 4
         // describes for the ACL/canonical scopes, one guard short of here.
+        app(\App\Services\EmailTriage\EmailTriageService::class)->assertProjection($tenantId, $projectKey, $sourcePath, $metadata, lock: true);
         $existingVersion = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
         $isNewVersion = $existingVersion === null;
         if ($existingVersion !== null) {
@@ -817,6 +827,9 @@ class DocumentIngestor
             $attributes,
         );
 
+        if ($isNewVersion) {
+            app(\App\Services\EmailTriage\EmailTriageService::class)->inheritAccess($document, $metadata);
+        }
         $this->archivePreviousVersions($projectKey, $sourcePath, $document->id);
 
         // v8.23 (Ciclo 4, PR5) — on a forced re-embed the document row is the
@@ -919,7 +932,7 @@ class DocumentIngestor
                 // the `auto` tier (ADR 0014) until a person approves it (W3);
                 // set here, in the one core both ingest paths share. Text-layer
                 // and markdown documents keep the human default.
-                'generation_source' => (($metadata['converter']['provenance'] ?? null) === 'ocr')
+                'generation_source' => (($metadata['converter']['provenance'] ?? null) === 'ocr' || $sourceType === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE)
                     ? GenerationSource::Auto->value
                     : GenerationSource::Human->value,
             ]);

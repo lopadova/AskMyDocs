@@ -1,0 +1,163 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Kb\Investigation;
+
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
+use App\Models\User;
+use App\Services\Kb\Investigation\KbSourceReader;
+use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Support\TenantContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+final class ExactIdentifierCandidatesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        app(TenantContext::class)->set('local-tenant');
+    }
+
+    public function test_complete_identifiers_without_digits_are_candidates_but_prefix_collisions_are_not(): void
+    {
+        $match = $this->document('RO-LONGO, tracking RL-TRACK-9355.');
+        $this->document('RO-LONGO-OTHER e RL-TRACK-93550 non sono gli stessi codici.');
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['RO-LONGO', 'RL-TRACK-9355'], 'orders');
+
+        $this->assertSame([$match->id], $candidates->pluck('document.id')->all());
+        $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
+        $this->assertNotNull(app(KbSourceReader::class)->readCandidate($candidates->first(), 'orders'));
+    }
+
+    public function test_literal_lookup_keeps_tenant_project_status_and_current_filters(): void
+    {
+        $valid = $this->document('RL-TRACK-9355', ['source_type' => 'markdown']);
+        $this->document('RL-TRACK-9355', ['tenant_id' => 'other-tenant']);
+        $this->document('RL-TRACK-9355', ['project_key' => 'other-project']);
+        $this->document('RL-TRACK-9355', ['status' => 'archived']);
+        $this->document('RL-TRACK-9355', ['source_type' => 'text']);
+        $deleted = $this->document('RL-TRACK-9355');
+        $deleted->delete();
+        $filters = new RetrievalFilters(projectKeys: ['orders'], sourceTypes: ['markdown']);
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['RL-TRACK-9355'], 'orders', $filters);
+
+        $this->assertSame([$valid->id], $candidates->pluck('document.id')->all());
+        $this->assertTrue(app(KbSearchService::class)->exactIdentifierCandidates(['RL-TRACK-9355'], 'orders',
+            new RetrievalFilters(projectKeys: ['other-project']))->isEmpty());
+    }
+
+    public function test_source_reader_rechecks_actor_acl_and_revocation_before_any_assessment(): void
+    {
+        $document = $this->document('RO-LONGO', ['source_acl_enforced_at' => now()]);
+        $candidate = app(KbSearchService::class)->exactIdentifierCandidates(['RO-LONGO'], 'orders')->first();
+        $actor = User::create(['name' => 'No access', 'email' => 'denied@example.test', 'password' => bcrypt('test')]);
+        $reader = app(KbSourceReader::class);
+
+        $this->assertNotNull($candidate);
+        $this->assertNull($reader->readCandidate($candidate, 'orders', $actor));
+        $this->assertNull($reader->readCandidate($candidate, 'orders'));
+        $document->delete();
+        $this->assertNull($reader->readCandidate($candidate, 'orders', $actor));
+    }
+
+    public function test_sql_wildcards_are_literals_and_not_a_way_to_broaden_identifier_search(): void
+    {
+        $match = $this->document('CODE_A%9');
+        $this->document('CODEXA999');
+        $this->assertSame([$match->id], app(KbSearchService::class)->exactIdentifierCandidates(['CODE_A%9'], 'orders')->pluck('document.id')->all());
+        $this->assertTrue(app(KbSearchService::class)->exactIdentifierCandidates([], 'orders')->isEmpty());
+    }
+
+    public function test_a_literal_source_title_finds_its_original_body_without_embeddings_or_scope_leaks(): void
+    {
+        $title = 'Defective component';
+        $match = $this->document('The fastener does not stay locked. Support forwarded it to the responsible department.', ['title' => $title]);
+        $this->document('A different case.', ['title' => $title, 'tenant_id' => 'other-tenant']);
+        $this->document('Archived case.', ['title' => $title, 'status' => 'archived']);
+        $this->document('Foreign project.', ['title' => $title, 'project_key' => 'other']);
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates([$title], 'orders');
+
+        $this->assertSame([$match->id], $candidates->pluck('document.id')->all());
+        $source = app(KbSourceReader::class)->readCandidate($candidates->first(), 'orders');
+        $this->assertStringContainsString('fastener does not stay locked', $source['excerpt']);
+    }
+
+    public function test_a_single_distinct_identifier_does_not_count_or_rank_the_entire_corpus(): void
+    {
+        $body = $this->document('Confirmed shipment for U918031.');
+        $title = $this->document('The customer requested replacement laces.', ['title' => 'Re: U918031']);
+        $this->document('Another case U9180310.');
+        $queries = [];
+        DB::listen(static function ($event) use (&$queries): void {
+            $queries[] = strtolower($event->sql);
+        });
+
+        // The interpreter passes the same code as both target and mention.
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['U918031', 'U918031'], 'orders');
+
+        $this->assertSame([$body->id, $title->id], $candidates->pluck('document.id')->all());
+        $this->assertNotEmpty($queries);
+        foreach ($queries as $sql) {
+            $this->assertStringNotContainsString('count(', $sql, 'A single code needs no corpus-wide rarity aggregate.');
+            $this->assertStringNotContainsString('case when', $sql, 'A constant rank must not force sorting all matches.');
+        }
+    }
+
+    private function document(string $text, array $attributes = []): KnowledgeDocument
+    {
+        $document = KnowledgeDocument::create($attributes + [
+            'tenant_id' => 'local-tenant', 'project_key' => 'orders', 'source_type' => 'markdown',
+            'title' => 'Email fixture', 'source_path' => 'mail/'.uniqid(), 'mime_type' => 'text/plain',
+            'status' => 'active', 'document_hash' => hash('sha256', $text), 'version_hash' => bin2hex(random_bytes(16)),
+        ]);
+        KnowledgeChunk::create(['tenant_id' => $document->tenant_id, 'project_key' => $document->project_key,
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0, 'chunk_text' => $text,
+            'chunk_hash' => hash('sha256', $text)]);
+        return $document;
+    }
+
+    public function test_a_common_name_cannot_exhaust_the_bound_before_a_specific_subject_match(): void
+    {
+        for ($i = 0; $i < 65; $i++) {
+            $this->document('Merchant reply in an unrelated case.');
+        }
+        $specific = $this->document('Merchant replied to Ada Rossi about her refund.');
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['Merchant', 'Ada Rossi'], 'orders');
+        $this->assertSame($specific->id, $candidates->first()['document']['id']);
+        $this->assertCount(64, $candidates);
+        $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
+    }
+
+    public function test_an_actor_does_not_broaden_a_case_code_search_into_unrelated_cases(): void
+    {
+        $case = $this->document('CASE123: the parcel was received.');
+        $reply = $this->document('Courier requested collection.', ['title' => 'RE: CASE123']);
+        $unrelated = $this->document('Courier reply in an unrelated case.');
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(['CASE123', 'Courier'], 'orders');
+        $this->assertEqualsCanonicalizing([$case->id, $reply->id], $candidates->pluck('document.id')->all());
+        $this->assertNotContains($unrelated->id, $candidates->pluck('document.id')->all());
+        $nameOnly = app(KbSearchService::class)->exactIdentifierCandidates(['Courier'], 'orders');
+        $this->assertContains($unrelated->id, $nameOnly->pluck('document.id')->all(), 'Independent actor-only research remains possible.');
+    }
+
+    public function test_a_rare_subject_ranks_first_even_without_the_common_merchant_name(): void
+    {
+        for ($i = 0; $i < 65; $i++) {
+            $this->document('Very Long Merchant Company Name replied in an unrelated case.');
+        }
+        $specific = $this->document('A newsletter about transport.', ['title' => 'Harbor Weekly #2']);
+        $candidates = app(KbSearchService::class)->exactIdentifierCandidates(
+            ['Very Long Merchant Company Name', 'Harbor Weekly'], 'orders');
+        $this->assertSame($specific->id, $candidates->first()['document']['id']);
+        $this->assertCount(64, $candidates);
+        $this->assertSame(0.0, (float) $candidates->first()['vector_score']);
+    }
+}

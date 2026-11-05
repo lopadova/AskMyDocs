@@ -176,4 +176,24 @@ final class PdfPageChunkerTest extends TestCase
             $this->assertSame(1, $chunk->metadata['page']);
         }
     }
+
+    public function test_splits_a_single_oversized_table_row_without_losing_values(): void
+    {
+        config(['kb.chunking.hard_cap_tokens' => 80]);
+        $body = trim(str_repeat('RU123 quantité €185 日本語 ', 300));
+        $document = new ConvertedDocument(
+            markdown: "## Page 1\n\n".$body,
+            mediaItems: [],
+            extractionMeta: ['filename' => 'returns.pdf'],
+            sourceMimeType: 'application/pdf',
+        );
+        $chunks = (new PdfPageChunker)->chunk($document);
+        $this->assertGreaterThan(1, count($chunks));
+        $this->assertSame($body, implode(' ', array_map(fn ($chunk) => $chunk->text, $chunks)));
+        foreach ($chunks as $chunk) {
+            $this->assertLessThanOrEqual(320, strlen($chunk->text));
+            $this->assertSame('Page 1', $chunk->headingPath);
+            $this->assertTrue(mb_check_encoding($chunk->text, 'UTF-8'));
+        }
+    }
 }

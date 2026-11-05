@@ -46,6 +46,10 @@ final class EmbedChunksStep implements FlowStepHandler
             );
         }
 
+        if (($chunkOutput['source_type'] ?? null) === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
+            app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->assertValid((array) ($context->input['metadata'] ?? []), (string) ($context->input['project_key'] ?? ''));
+        }
+
         $drafts = $chunkOutput['chunk_drafts'] ?? [];
         if (! is_array($drafts)) {
             $drafts = [];

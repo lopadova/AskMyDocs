@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Kb;
 
 use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
 use App\Services\Kb\Retrieval\GraphExpander;
 use App\Services\Kb\Retrieval\QueryLanguageDetector;
 use App\Services\Kb\Retrieval\RejectedApproachInjector;
@@ -114,7 +115,10 @@ class KbSearchService
         int $limit = 8,
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
+        bool $includeAuxiliaryContext = true,
+        ?\Closure $diagnostics = null,
     ): SearchResult {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
         // Resolve a representative project_key for the legacy meta payload
         // and for the graph expander / rejected injector (which still take
@@ -131,18 +135,23 @@ class KbSearchService
         // v8.7/W1 — embed the synonym-expanded text so jargon queries reach
         // docs that only use the equivalent term. Key the synonym map on
         // the effective project (filters-derived when projectKey is null).
-        $embeddingsResponse = $this->embeddingCache->generate([
+        $embeddingsResponse = $observe('kb.embedding', fn () => $this->embeddingCache->generate([
             $this->embeddingTextFor($query, $this->synonymProject($projectKey, $effectiveFilters)),
-        ]);
+        ]), ['wait_reason' => 'embedding_cache_or_provider']);
         $queryEmbedding = $embeddingsResponse->embeddings[0];
 
-        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding);
+        $primary = $observe('kb.primary_search', fn () => $this->search(
+            $query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding,
+            ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics]),
+        ), ['wait_reason' => 'local_search']);
         // v8.0/W3.1 — Why-not-cited: fetch up to 15 candidates that
         // were considered but did NOT make the primary top-K cut.
         // Each runner-up carries a `reason` field so the FE can
         // surface "Considered but not used" with a demotion-cause
         // badge. NOT fed to the LLM — visible only in the chat UI.
-        $runnerUp = $this->fetchRunnerUp(
+        // Recursive investigations consume primary sources only. Do not make
+        // them wait for a second vector query or unused graph/context reads.
+        $runnerUp = $includeAuxiliaryContext ? $observe('kb.runner_up', fn () => $this->fetchRunnerUp(
             query: $query,
             primary: $primary,
             projectKey: $projectKey,
@@ -150,9 +159,11 @@ class KbSearchService
             filters: $effectiveFilters,
             limit: (int) config('kb.runner_up.limit', 15),
             precomputedEmbedding: $queryEmbedding,
-        );
-        $expanded = $this->graphExpander->expand($primary, $effectiveProject);
-        $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
+        ), ['wait_reason' => 'local_search']) : collect();
+        $expanded = $includeAuxiliaryContext ? $observe('kb.graph_context',
+            fn () => $this->graphExpander->expand($primary, $effectiveProject), ['wait_reason' => 'local_search']) : collect();
+        $rejected = $includeAuxiliaryContext ? $observe('kb.rejected_context',
+            fn () => $this->rejectedInjector->pick($query, $effectiveProject), ['wait_reason' => 'local_search_or_embedding']) : collect();
 
         $retrievalMs = (int) ((microtime(true) - $retrievalStart) * 1000);
 
@@ -218,8 +229,8 @@ class KbSearchService
                     'semantic_enabled' => true,  // pgvector is always on
                     'fts_enabled' => (bool) config('kb.hybrid_search.enabled', false),
                     'fusion_method' => $this->resolveFusionMethod(),
-                    'graph_expansion_enabled' => (bool) config('kb.graph.expansion_enabled', true),
-                    'rejected_injection_enabled' => (bool) config('kb.rejected.injection_enabled', true),
+                    'graph_expansion_enabled' => $includeAuxiliaryContext && (bool) config('kb.graph.expansion_enabled', true),
+                    'rejected_injection_enabled' => $includeAuxiliaryContext && (bool) config('kb.rejected.injection_enabled', true),
                     'filters_applied' => $filtersSelected,
                 ],
 
@@ -352,10 +363,7 @@ class KbSearchService
         $builder = KnowledgeChunk::query()
             ->forTenant($tenantId)
             ->with('document')
-            ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
-            ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $floor])
-            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
-            ->orderByDesc('vector_score');
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'));
 
         if ($projectKey !== null && $projectKey !== '') {
             $builder->where('knowledge_chunks.project_key', $projectKey);
@@ -369,7 +377,7 @@ class KbSearchService
             $builder->whereNotIn('knowledge_chunks.id', $primaryIds);
         }
 
-        $candidates = $builder->limit($limit)->get();
+        $candidates = $this->pgvectorCandidates($builder, $vectorString, $floor, $limit);
 
         // Copilot iter-1 #L280: `search()` applies `filterByFolderGlobs()`
         // post-fetch (folder globs aren't representable in portable
@@ -422,7 +430,9 @@ class KbSearchService
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
         ?array $precomputedEmbedding = null,
+        ?\Closure $diagnostics = null,
     ): Collection {
+        $observe = $diagnostics ?? static fn (string $phase, callable $operation, array $metadata = []) => $operation();
         // T2.1 — back-compat: legacy callers pass `?string $projectKey`;
         // when no filters DTO is provided, we synthesise one from the
         // legacy parameter so applyFilters() handles BOTH paths uniformly.
@@ -440,9 +450,9 @@ class KbSearchService
         // fallback); the searchWithContext() path already expanded before
         // precomputing, so we never double-expand.
         $queryEmbedding = $precomputedEmbedding
-            ?? $this->embeddingCache->generate([
+            ?? $observe('kb.embedding', fn () => $this->embeddingCache->generate([
                 $this->embeddingTextFor($query, $this->synonymProject($projectKey, $effectiveFilters)),
-            ])->embeddings[0];
+            ]), ['wait_reason' => 'embedding_cache_or_provider'])->embeddings[0];
         $vectorString = '[' . implode(',', $queryEmbedding) . ']';
         $tenantId = app(TenantContext::class)->current();
 
@@ -457,7 +467,7 @@ class KbSearchService
         // driver (SQLite in tests/benchmark) computes cosine similarity in
         // PHP. This lets the FULL RAG pipeline run end-to-end in CI without
         // mocking search() — the gap that let the P0.1 shape bug ship green.
-        $semanticChunks = $this->semanticCandidates(
+        $semanticChunks = $observe('kb.vector_query', fn () => $this->semanticCandidates(
             $tenantId,
             $queryEmbedding,
             $vectorString,
@@ -465,7 +475,7 @@ class KbSearchService
             $minSimilarity,
             $effectiveFilters,
             $candidateCount,
-        );
+        ), ['wait_reason' => 'local_database']);
 
         // ── Hybrid: merge full-text results if enabled ───────────
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
@@ -479,13 +489,13 @@ class KbSearchService
             // on the semantic branch. Folder globs are still applied
             // post-fetch (after the RRF merge) — same path as the
             // semantic results.
-            $ftsChunks = $this->fullTextSearch(
+            $ftsChunks = $observe('kb.full_text_query', fn () => $this->fullTextSearch(
                 $query,
                 $projectKey,
                 $candidateCount,
                 $tenantId,
                 $effectiveFilters,
-            );
+            ), ['wait_reason' => 'local_database']);
 
             // Merge via Reciprocal Rank Fusion (RRF). Cast the config values:
             // env() yields STRINGS ("60", "0.70"), which under strict_types
@@ -541,7 +551,8 @@ class KbSearchService
             ? $effectiveFilters->docIds
             : [];
 
-        return $this->reranker->rerank($query, $chunks, $limit, $boostDocIds);
+        return $observe('kb.rerank', fn () => $this->reranker->rerank($query, $chunks, $limit, $boostDocIds),
+            ['wait_reason' => 'local_computation']);
     }
 
     /**
@@ -569,6 +580,9 @@ class KbSearchService
                 'title' => $chunk->document?->title,
                 'source_path' => $chunk->document?->source_path,
                 'source_type' => $chunk->document?->source_type,
+                // Connector-owned message date is navigation only; it must not
+                // be inferred from import time or become a verified business fact.
+                'source_date' => data_get($chunk->document?->metadata, 'converter_hints.imap.date'),
                 // Canonical fields: consumed by Reranker (priority boost +
                 // status penalty) and by GraphExpander (seed node slugs).
                 'doc_id' => $chunk->document?->doc_id,
@@ -650,12 +664,7 @@ class KbSearchService
         }
 
         if (DB::connection()->getDriverName() === 'pgsql') {
-            return $base
-                ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
-                ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
-                ->orderByDesc('vector_score')
-                ->limit($candidateCount)
-                ->get();
+            return $this->pgvectorCandidates($base, $vectorString, $minSimilarity, $candidateCount);
         }
 
         // Non-pgsql: compute cosine in PHP. Bounded prefetch keeps memory
@@ -674,6 +683,41 @@ class KbSearchService
             ->sortByDesc('vector_score')
             ->take($candidateCount)
             ->values();
+    }
+
+    /** Execute only after tenant, document access and retrieval filters are applied. */
+    private function pgvectorCandidates(Builder $query, string $vectorString, float $minSimilarity, int $limit): Collection
+    {
+        $connection = $query->getConnection();
+        $extension = $connection->selectOne('SELECT extversion FROM pg_extension WHERE extname = ?', ['vector']);
+        // The database computes distance; mapping/reranking never reads the
+        // stored embedding. Avoid transferring and hydrating that large vector
+        // for each candidate (keep the FK for document eager loading).
+        $query->select([
+            'knowledge_chunks.id', 'knowledge_chunks.knowledge_document_id',
+            'knowledge_chunks.project_key', 'knowledge_chunks.heading_path',
+            'knowledge_chunks.chunk_text', 'knowledge_chunks.metadata',
+            'knowledge_chunks.chunk_hash', 'knowledge_chunks.chunk_order',
+        ])->selectRaw('(1 - (embedding <=> ?::vector)) as vector_score', [$vectorString]);
+
+        // HNSW requires the distance operator itself in ascending order. Older
+        // pgvector versions cannot continue scanning after tenant/ACL filtering,
+        // so preserve their exact-search behavior rather than lose candidates.
+        if (! version_compare((string) ($extension?->extversion ?? '0'), '0.8.0', '>=')) {
+            return $query->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
+                ->orderByDesc('vector_score')->limit($limit)->get();
+        }
+
+        $candidates = $connection->transaction(function () use ($connection, $query, $vectorString, $limit): Collection {
+            $connection->statement("SET LOCAL hnsw.iterative_scan = 'strict_order'");
+
+            return $query->orderByRaw('embedding <=> ?::vector ASC', [$vectorString])->limit($limit)->get();
+        });
+
+        // Filtering the ordered top K gives the same accepted candidates without
+        // making an iterative scan traverse the index when all scores are low.
+        return $candidates->filter(fn (KnowledgeChunk $chunk): bool => $chunk->vector_score !== null
+            && (float) $chunk->vector_score >= $minSimilarity)->values();
     }
 
     /**
@@ -880,6 +924,115 @@ class KbSearchService
      * a `connector_type` column is added (currently the value lives in
      * `metadata.connector` JSON which is brittle to query under SQLite).
      */
+    /** Read-only revalidation for memory references, using the SAME filters as fresh retrieval. */
+    public function allowsMemoryCandidate(int $documentId, int $chunkId, RetrievalFilters $filters): bool
+    {
+        $query = KnowledgeChunk::query()->forTenant(app(TenantContext::class)->current())
+            ->whereKey($chunkId)->where('knowledge_document_id', $documentId)->with('document');
+        $this->applyFilters($query, $filters);
+        return $this->filterByFolderGlobs($query->get(), $filters->folderGlobs)->isNotEmpty();
+    }
+
+    /**
+     * Literal navigation for server-validated identifiers, independent of embeddings.
+     * These are candidates, not grounded facts: KbSourceReader must recheck the actor
+     * and the assessor must establish relevance. No synthetic similarity score.
+     */
+    public function exactIdentifierCandidates(array $identifiers, ?string $projectKey, ?RetrievalFilters $filters = null): Collection
+    {
+        $identifiers = array_slice(array_values(array_unique(array_filter($identifiers,
+            fn ($id) => is_string($id) && trim($id) !== '' && mb_strlen($id) <= 120))), 0, 12);
+        if ($identifiers === []) {
+            return collect();
+        }
+        // A case code anchors this search. Actor/system names may rank its
+        // sources, but must not OR an entire merchant/carrier corpus into it.
+        // A separate name-only task still searches that name normally.
+        $hasExactCode = array_filter($identifiers, fn ($id) => preg_match('/^[\pL\pN_-]+$/u', $id) && preg_match('/[\pN_-]/u', $id));
+        $anchors = $hasExactCode !== [] ? array_values($hasExactCode) : $identifiers;
+        $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
+        $tenant = app(TenantContext::class)->current();
+        $query = KnowledgeChunk::query()->forTenant($tenant)
+            ->with(['document' => fn ($q) => $q->forTenant($tenant)])
+            ->whereHas('document', fn ($q) => $q->forTenant($tenant)->where('status', '!=', 'archived')
+                ->when($effectiveFilters->projectKeys !== [], fn ($q) => $q->whereIn('project_key', $effectiveFilters->projectKeys))
+                ->when($projectKey !== null, fn ($q) => $q->where('project_key', $projectKey)))
+            ->when($projectKey !== null, fn ($q) => $q->where('knowledge_chunks.project_key', $projectKey));
+        $this->applyFilters($query, $effectiveFilters);
+        // Keep body and title lookups separate so PostgreSQL can use each
+        // LOWER(...) trigram index. A correlated title EXISTS inside a body
+        // OR forces a scan of the chunk population even for a rare code.
+        $bodyIds = (clone $query)->withoutEagerLoads()->select('knowledge_chunks.id')
+            ->where(function ($q) use ($anchors): void {
+                foreach ($anchors as $id) {
+                    $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
+                    $q->orWhereRaw("LOWER(chunk_text) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+                }
+            });
+        $titleDocuments = KnowledgeDocument::query()->forTenant($tenant)->select('id')
+            ->where(function ($q) use ($anchors): void {
+                foreach ($anchors as $id) {
+                    $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id));
+                    $q->orWhereRaw("LOWER(title) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+                }
+            });
+        $titleIds = (clone $query)->withoutEagerLoads()->select('knowledge_chunks.id')
+            ->whereIn('knowledge_document_id', $titleDocuments);
+        // IN already removes duplicate membership; UNION ALL avoids an extra
+        // corpus-sized distinct/sort when a code occurs in both body and title.
+        $query->whereIn('knowledge_chunks.id', $bodyIds->unionAll($titleIds));
+        $matches = $matchBindings = $frequencySql = $frequencyBindings = $weights = [];
+        // With one identifier every candidate has the same rank. Do not count
+        // the whole corpus and sort it before applying the candidate limit.
+        foreach (count($identifiers) > 1 ? $identifiers : [] as $index => $id) {
+            $literal = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($id)).'%';
+            $matches[$index] = "LOWER(chunk_text) LIKE ? ESCAPE '!' OR knowledge_document_id IN (SELECT literal_doc.id FROM knowledge_documents AS literal_doc WHERE literal_doc.tenant_id = ? AND literal_doc.deleted_at IS NULL AND LOWER(literal_doc.title) LIKE ? ESCAPE '!')";
+            $matchBindings[$index] = [$literal, $tenant, $literal];
+            $frequencySql[] = "COUNT(DISTINCT CASE WHEN {$matches[$index]} THEN knowledge_document_id END) AS literal_{$index}";
+            $frequencyBindings = [...$frequencyBindings, ...$matchBindings[$index]];
+        }
+        // Rank rare literal subjects above a common company/sender even when
+        // the specific source does not repeat that company. Count at document
+        // grain so a long document's repeated chunks do not inflate rarity.
+        if ($matches !== []) {
+            $frequencies = (clone $query)->toBase()->selectRaw(implode(', ', $frequencySql), $frequencyBindings)->first();
+            $ranks = $bindings = [];
+            foreach ($matches as $index => $match) {
+                $weight = max(1, intdiv(1_000_000, max(1, (int) ($frequencies->{'literal_'.$index} ?? 0))));
+                $weights[$identifiers[$index]] = $weight;
+                $ranks[] = "CASE WHEN {$match} THEN ? ELSE 0 END";
+                $bindings = [...$bindings, ...$matchBindings[$index], $weight];
+            }
+            $query->orderByRaw('('.implode(' + ', $ranks).') DESC', $bindings);
+        }
+        // Bound returned candidates; an incomplete list must never imply global absence.
+        // A common actor cannot exhaust that bound before a more specific
+        // person/title/place match. This rank is navigation, never support.
+        $rankedChunks = (clone $query)->orderBy('knowledge_chunks.id')->limit(64)->get();
+        // A long quoted thread can occupy all 64 chunk slots before a later
+        // reply reaches the application-level source-date ranking. Supplement
+        // that bounded pool with one matching anchor from each recent document.
+        // MIN locates its opening matching window; MAX orders document arrivals
+        // only for this navigation pool, never as the business/source date.
+        $representatives = collect();
+        if ($rankedChunks->count() === 64 && $hasExactCode !== []) {
+            $representativeIds = (clone $query)->withoutEagerLoads()->reorder()
+                ->selectRaw('MIN(knowledge_chunks.id) AS id')->groupBy('knowledge_document_id')
+                ->orderByRaw('MAX(knowledge_chunks.id) DESC')->limit(64);
+            $representatives = (clone $query)->whereIn('knowledge_chunks.id', $representativeIds)->get();
+        }
+        $chunks = $this->filterByFolderGlobs($rankedChunks->concat($representatives)->unique('id'), $effectiveFilters->folderGlobs);
+        return $chunks->filter(fn ($chunk) => array_filter($identifiers,
+            fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
+                || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)) !== [])
+            ->map(fn ($chunk) => [...$this->mapChunkToArray($chunk), 'chunk_hash' => $chunk->chunk_hash,
+                'literal_rank' => array_sum(array_map(fn ($id) =>
+                    \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->chunk_text, $id)
+                    || \App\Services\Chat\Reasoning\EvidenceProjector::contains((string) $chunk->document?->title, $id)
+                        ? ($weights[$id] ?? 1_000_000) : 0, $identifiers)),
+                'retrieval_method' => 'exact_identifier'])->values();
+    }
+
     private function applyFilters(Builder $q, RetrievalFilters $f): void
     {
         if ($f->projectKeys !== []) {
@@ -992,6 +1145,10 @@ class KbSearchService
      */
     public function filterByFolderGlobs(Collection $chunks, array $globs): Collection
     {
+        // Shared by semantic, hybrid, runner-up, literal and remembered candidate reads.
+        $chunks = $chunks->filter(fn ($chunk): bool => data_get($chunk, 'document.source_type') !== \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE
+            || ($chunk->document instanceof \App\Models\KnowledgeDocument
+                && app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->allows($chunk->document)))->values();
         if ($globs === []) {
             return $chunks;
         }

@@ -167,9 +167,8 @@ final class PdfPageChunker implements ChunkerInterface
     /**
      * If `$text` fits the hard-cap, return it as a single piece. Otherwise
      * split on paragraph boundaries and accumulate pieces under the cap.
-     * A single paragraph larger than the cap is returned as-is — the
-     * embedding provider can truncate, but the chunker never silently
-     * drops content (same contract as MarkdownChunker).
+     * Oversized single paragraphs are split without dropping text, using
+     * the same UTF-8-safe byte budget as MarkdownChunker.
      *
      * @return list<string>
      */
@@ -179,7 +178,10 @@ final class PdfPageChunker implements ChunkerInterface
             return [$text];
         }
 
-        $paragraphs = preg_split(self::PARAGRAPH_SEP, $text) ?: [];
+        $paragraphs = array_merge(...array_map(
+            fn (string $paragraph): array => (new \App\Services\Kb\Chunking\Support\TextBudgetSplitter)->split($paragraph, $cap * self::CHARS_PER_TOKEN),
+            preg_split(self::PARAGRAPH_SEP, $text) ?: [$text],
+        ));
         $out = [];
         $buffer = '';
         foreach ($paragraphs as $para) {

@@ -1,6 +1,6 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { AnalysisSettingsView } from './AnalysisSettingsView';
@@ -54,7 +54,7 @@ describe('AnalysisSettingsView', () => {
         await waitFor(() => expect(screen.getByTestId('admin-analysis-setting-*')).toBeVisible());
         expect(screen.getByTestId('admin-analysis-setting-eng')).toBeVisible();
         // eng has enabled override = off; the select reflects 'off'.
-        expect(screen.getByTestId('admin-analysis-setting-eng-enabled')).toHaveValue('off');
+        expect(screen.getByTestId('admin-analysis-setting-eng-enabled')).toHaveAttribute('data-value', 'off');
         // effective canonical for eng resolves to off (because enabled=off).
         expect(screen.getByTestId('admin-analysis-setting-eng-enabled-effective')).toHaveTextContent('off');
     });
@@ -65,7 +65,7 @@ describe('AnalysisSettingsView', () => {
         render(withQueryClient(<AnalysisSettingsView />));
 
         await waitFor(() => expect(screen.getByTestId('admin-analysis-setting-eng-enabled')).toBeVisible());
-        await userEvent.selectOptions(screen.getByTestId('admin-analysis-setting-eng-enabled'), 'on');
+        await chooseSelectOption(screen.getByTestId('admin-analysis-setting-eng-enabled'), 'on');
 
         await waitFor(() => {
             expect(mockPut).toHaveBeenCalledWith('/api/admin/kb/analysis-settings', {
@@ -84,7 +84,7 @@ describe('AnalysisSettingsView', () => {
         render(withQueryClient(<AnalysisSettingsView />));
 
         await waitFor(() => expect(screen.getByTestId('admin-analysis-setting-eng-canonical')).toBeVisible());
-        await userEvent.selectOptions(screen.getByTestId('admin-analysis-setting-eng-canonical'), 'on');
+        await chooseSelectOption(screen.getByTestId('admin-analysis-setting-eng-canonical'), 'on');
 
         const err = await screen.findByTestId('admin-analysis-settings-save-error');
         expect(err).toHaveTextContent('save boom 500');

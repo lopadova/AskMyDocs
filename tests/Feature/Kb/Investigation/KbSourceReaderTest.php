@@ -1,0 +1,183 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Kb\Investigation;
+
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
+use App\Services\Kb\Investigation\KbSourceReader;
+use App\Support\TenantContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\TestCase;
+
+final class KbSourceReaderTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        app(TenantContext::class)->set('reader-tenant');
+    }
+
+    public function test_reads_a_short_email_source_in_full(): void
+    {
+        $document = $this->document('Email reso', ['connector' => 'imap']);
+        $first = $this->chunk($document, 0, 'Oggetto: reso ordine X effettuato con successo.');
+        $this->chunk($document, 1, 'Il rimborso sarà visibile entro cinque giorni lavorativi.');
+
+        $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $first));
+
+        $this->assertNotNull($source);
+        $this->assertTrue($source['complete_source']);
+        $this->assertStringContainsString('Oggetto: reso ordine X', $source['excerpt']);
+        $this->assertStringContainsString('cinque giorni lavorativi', $source['excerpt']);
+    }
+
+    public static function emailConnectors(): array
+    {
+        return ['IMAP' => ['imap'], 'Gmail' => ['gmail'], 'Microsoft Mail' => ['microsoft-mail']];
+    }
+
+    #[DataProvider('emailConnectors')]
+    public function test_automatic_triage_card_is_not_returned_as_the_senders_evidence(string $connector): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = "# Return request\n\nCould you please send me a return label?";
+        $document = $this->document('Triaged email', $this->triagedMetadata($connector, $original));
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $chunk = $this->chunk($document, 0, $original."\n\n## Scheda di triage automatica\nSentiment: arrabbiato");
+        $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk));
+        $this->assertTrue($source['complete_source']);
+        $this->assertSame($original, $source['excerpt']);
+        $this->assertSame('verified_email_original', $source['evidence_origin']);
+        $this->assertStringNotContainsString('arrabbiato', $source['excerpt']);
+    }
+
+    #[DataProvider('emailConnectors')]
+    public function test_changed_or_missing_original_is_rejected_without_using_the_derived_card(string $connector): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = "# Return request\n\nCould you please send me a return label?";
+        $document = $this->document('Triaged email', $this->triagedMetadata($connector, $original));
+        $chunk = $this->chunk($document, 0, $original."\n\n## Scheda di triage automatica\nSentiment: arrabbiato");
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, 'Changed original');
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk)));
+        \Illuminate\Support\Facades\Storage::disk('kb')->delete($document->source_path);
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk)));
+    }
+
+    #[DataProvider('emailConnectors')]
+    public function test_long_original_keeps_column_labels_with_the_matching_middle_row(string $connector): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        config(['kb.investigation.full_source_max_chars' => 200, 'kb.investigation.long_source_max_chars' => 600]);
+        $original = "# Report\n\nColumns: Record Reason\n\n".str_repeat('Earlier rows. ', 200)."CASE-2026 Wrong size\n".str_repeat('Later rows. ', 100);
+        $document = $this->document('Triaged report', $this->triagedMetadata($connector, $original));
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $anchor = $this->chunk($document, 1, "CASE-2026 Wrong size\n\n---");
+        $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $anchor));
+        $this->assertFalse($source['complete_source']);
+        $this->assertStringContainsString('Columns: Record Reason', $source['excerpt']);
+        $this->assertStringContainsString('CASE-2026 Wrong size', $source['excerpt']);
+        $this->assertStringContainsString('omitted source text', $source['excerpt']);
+        $this->assertLessThanOrEqual(600, mb_strlen($source['excerpt']));
+    }
+
+    public function test_anonymous_re_read_rejects_a_source_restricted_document(): void
+    {
+        $document = $this->document('Email privata');
+        $document->forceFill(['source_acl_enforced_at' => now()])->save();
+        $chunk = $this->chunk($document, 0, 'SPD-51230');
+
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk), 'orders'));
+    }
+
+    public function test_re_read_cannot_cross_tenant_boundary(): void
+    {
+        app(TenantContext::class)->set('other-tenant');
+        $document = KnowledgeDocument::create([
+            'tenant_id' => 'other-tenant', 'project_key' => 'orders', 'source_type' => 'text',
+            'title' => 'Foreign email', 'source_path' => 'mail/foreign', 'mime_type' => 'text/plain',
+            'status' => 'active', 'document_hash' => str_repeat('b', 64),
+            'version_hash' => bin2hex(random_bytes(16)),
+        ]);
+        $chunk = KnowledgeChunk::create([
+            'tenant_id' => 'other-tenant', 'project_key' => 'orders',
+            'knowledge_document_id' => $document->id, 'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'SPD-51230'), 'chunk_text' => 'SPD-51230',
+        ]);
+        app(TenantContext::class)->set('reader-tenant');
+
+        $this->assertNull(app(KbSourceReader::class)->readCandidate($this->candidate($document, $chunk), 'orders'));
+    }
+
+    public function test_reads_only_contiguous_sections_for_a_long_manual(): void
+    {
+        config()->set('kb.investigation.full_source_max_chars', 40);
+        config()->set('kb.investigation.long_source_neighbor_radius', 1);
+        $document = $this->document('Manuale esteso');
+        $this->chunk($document, 0, 'INTRODUZIONE LONTANA');
+        $before = $this->chunk($document, 1, 'SEZIONE CLIENTE PRIMA');
+        $anchor = $this->chunk($document, 2, 'SEZIONE ORDINE PERTINENTE');
+        $this->chunk($document, 3, 'SEZIONE CLIENTE DOPO');
+        $this->chunk($document, 4, 'APPENDICE LONTANA');
+
+        $source = app(KbSourceReader::class)->readCandidate($this->candidate($document, $anchor));
+
+        $this->assertNotNull($source);
+        $this->assertFalse($source['complete_source']);
+        $this->assertStringContainsString($before->chunk_text, $source['excerpt']);
+        $this->assertStringContainsString($anchor->chunk_text, $source['excerpt']);
+        $this->assertStringContainsString('SEZIONE CLIENTE DOPO', $source['excerpt']);
+        $this->assertStringNotContainsString('INTRODUZIONE LONTANA', $source['excerpt']);
+        $this->assertStringNotContainsString('APPENDICE LONTANA', $source['excerpt']);
+    }
+
+    /** @return array<string,mixed> */
+    private function triagedMetadata(string $connector, string $original): array
+    {
+        return ['connector' => $connector, 'disk' => 'kb', 'email_body_hash' => hash('sha256', $original),
+            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]];
+    }
+
+    /** @param array<string,mixed> $metadata */
+    private function document(string $title, array $metadata = []): KnowledgeDocument
+    {
+        return KnowledgeDocument::create([
+            'tenant_id' => 'reader-tenant',
+            'project_key' => 'orders',
+            'source_type' => 'text',
+            'title' => $title,
+            'source_path' => 'sources/'.strtolower(str_replace(' ', '-', $title)),
+            'mime_type' => 'text/plain',
+            'status' => 'active',
+            'document_hash' => str_repeat('a', 64),
+            'version_hash' => bin2hex(random_bytes(16)),
+            'metadata' => $metadata,
+        ]);
+    }
+
+    private function chunk(KnowledgeDocument $document, int $order, string $text): KnowledgeChunk
+    {
+        return KnowledgeChunk::create([
+            'tenant_id' => 'reader-tenant',
+            'knowledge_document_id' => $document->id,
+            'project_key' => 'orders',
+            'chunk_order' => $order,
+            'chunk_hash' => hash('sha256', $text),
+            'chunk_text' => $text,
+        ]);
+    }
+
+    /** @return array<string,mixed> */
+    private function candidate(KnowledgeDocument $document, KnowledgeChunk $chunk): array
+    {
+        return [
+            'chunk_id' => $chunk->id,
+            'document' => ['id' => $document->id],
+        ];
+    }
+}
