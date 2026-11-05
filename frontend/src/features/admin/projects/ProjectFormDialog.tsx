@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminProject, CreateProjectPayload, UpdateProjectPayload } from './admin-projects.api';
 
@@ -13,7 +14,7 @@ import type { AdminProject, CreateProjectPayload, UpdateProjectPayload } from '.
  *
  * R11: every interactive element carries a `data-testid`. R15: every input
  * has a bound `<label htmlFor>`; the form is `role="dialog"` +
- * `aria-modal="true"`; Esc closes via the keydown listener.
+ * `aria-modal="true"`; Only explicit controls close the dialog.
  */
 
 export interface ProjectFormDialogProps {
@@ -40,6 +41,7 @@ export function ProjectFormDialog({
     submitError,
     isSubmitting,
 }: ProjectFormDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = project !== null;
     const [name, setName] = useState(project?.name ?? '');
     const [projectKey, setProjectKey] = useState(project?.project_key ?? '');
@@ -54,14 +56,6 @@ export function ProjectFormDialog({
         setDescription(project?.description ?? '');
         setKeyTouched(project !== null);
     }, [project]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const handleNameChange = (value: string) => {
         setName(value);
@@ -91,11 +85,6 @@ export function ProjectFormDialog({
     return (
         <div
             data-testid="admin-project-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                    onClose();
-                }
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -131,7 +120,7 @@ export function ProjectFormDialog({
                 </h2>
 
                 <label htmlFor="admin-project-name" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Name</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Name")}</span>
                     <input
                         id="admin-project-name"
                         data-testid="admin-project-form-name"
@@ -146,7 +135,7 @@ export function ProjectFormDialog({
                 </label>
 
                 <label htmlFor="admin-project-key" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Project key</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Project key")}</span>
                     <input
                         id="admin-project-key"
                         data-testid="admin-project-form-key"
@@ -199,15 +188,14 @@ export function ProjectFormDialog({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="admin-project-form-submit"
                         disabled={isSubmitting}
                         style={buttonStyle('primary', !!isSubmitting)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save") : translateInterface("Create")}
                     </button>
                 </div>
             </form>

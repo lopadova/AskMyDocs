@@ -13,7 +13,10 @@ import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
 import { ChatView } from '../features/chat/ChatView';
 import { AnonymousChatView } from '../features/chat/AnonymousChatView';
+import { SessionsView } from '../features/chat/sessions/SessionsView';
+import { KnowledgeBrowseView } from '../features/kb-browse/KnowledgeBrowseView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
+import { AiUsageView } from '../features/admin/ai-usage/AiUsageView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { ProjectsList } from '../features/admin/projects/ProjectsList';
@@ -35,6 +38,7 @@ import { WikiHealthView } from '../features/admin/wiki-health/WikiHealthView';
 import { WikiIndicesView } from '../features/admin/wiki-indices/WikiIndicesView';
 import { WikiExplorerView } from '../features/admin/wiki-explorer/WikiExplorerView';
 import { AutoWikiSettingsView } from '../features/admin/autowiki-settings/AutoWikiSettingsView';
+import { RetrievalProfilesView } from '../features/admin/retrieval-profiles/RetrievalProfilesView';
 import { TimeMachineView } from '../features/admin/time-machine/TimeMachineView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
@@ -46,9 +50,11 @@ import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView'
 import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/EvidenceRiskReviewView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { ApiToolsView } from '../features/admin/api-tools/ApiToolsView';
 import { ApiConnectorsView } from '../features/admin/api-connectors/ApiConnectorsView';
 import { IngestionView } from '../features/admin/ingestion/IngestionView';
 import { AppSettingsView } from '../features/admin/app-settings/AppSettingsView';
+import { AppearanceView } from '../features/system-admin/appearance/AppearanceView';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
 import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
@@ -58,16 +64,23 @@ import { ComplianceReportsView } from '../features/admin/compliance/ComplianceRe
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
-import { DigestFeedCard } from '../features/digest/DigestFeedCard';
-import { DigestPreferences } from '../features/digest/DigestPreferences';
-import { MeDashboard } from '../features/dashboard/MeDashboard';
+import { DigestWorkspace } from '../features/digest/DigestWorkspace';
+import { WorkspaceHome } from '../features/navigation/WorkspaceHome';
+import { AreaHubView } from '../features/navigation/AreaHubView';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
+import { ConnectedAppsView } from '../features/mcp-connections/ConnectedAppsView';
+import { UiFoundationsDemo } from '../features/developer/ButtonSystemDemo';
+import { LocalIntegrationFixturesView } from '../features/developer/LocalIntegrationFixturesView';
 import { GamificationInsightsPanel } from '../features/admin/engagement/GamificationInsightsPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequirePermission, RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
+import { McpConnectPage } from '../features/oauth/McpConnectPage';
+import { McpImportReviewPage } from '../features/oauth/McpImportReviewPage';
+import { OAuthConsentPage } from '../features/oauth/OAuthConsentPage';
+import { OAuthConnectionsPage } from '../features/oauth/OAuthConnectionsPage';
 import { RegisterPage } from '../features/auth/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
@@ -109,6 +122,27 @@ const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
     component: LoginRoute,
+});
+
+const oauthConsentRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/oauth/consent',
+    validateSearch: z.object({ request: z.string().default('') }),
+    component: function OAuthConsentRoute() {
+        const { request } = oauthConsentRoute.useSearch();
+        return <OAuthConsentPage key={request} requestId={request} />;
+    },
+});
+
+const oauthConnectionsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/oauth/connections',
+    component: OAuthConnectionsPage,
+});
+
+const mcpConnectRoute = createRoute({ getParentRoute: () => rootRoute, path: '/mcp/connect', component: McpConnectPage });
+const mcpImportReviewRoute = createRoute({ getParentRoute: () => rootRoute, path: '/mcp/import-review/$importId',
+    component: function McpImportRoute() { const { importId } = mcpImportReviewRoute.useParams(); return <McpImportReviewPage key={importId} importId={importId} />; },
 });
 
 function RegisterRoute() {
@@ -237,7 +271,7 @@ function TeamRootRedirect() {
 
     useEffect(() => {
         if (hash !== null) {
-            navigate({ to: '/app/$teamHash/chat', params: { teamHash: hash }, replace: true });
+            navigate({ to: '/app/me', replace: true });
         } else if (isSystemAdmin) {
             navigate({ to: '/app/system/tenants', replace: true });
         } else if (onboardingRequired) {
@@ -309,13 +343,30 @@ function TeamGate() {
         return null; // redirecting (legacy URL) or syncing (deep link)
     }
 
+    // Every tenant surface keeps the same frame, including sessions and the reader library.
     return <AppShell />;
+}
+
+/** Backward-compatible predicate for clients that imported the former shell policy. */
+export function isStandaloneSurface(pathname: string): boolean {
+    // Kept for integrations importing the old predicate. All surfaces now share the app frame.
+    void pathname;
+    return false;
 }
 
 const teamRoute = createRoute({
     getParentRoute: () => appRoute,
     path: '$teamHash',
     component: TeamGate,
+});
+
+const areaHubRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'area/$hubId',
+    component: function AreaHubRoute() {
+        const { hubId } = areaHubRoute.useParams();
+        return <AreaHubView hubId={hubId} />;
+    },
 });
 
 // True only when the URL's `$teamHash` segment is a real team. The
@@ -334,7 +385,7 @@ function useHashIsKnownTeam(teamHash: string): boolean {
 function TeamIndexRedirect() {
     const { teamHash } = teamRoute.useParams();
     if (!useHashIsKnownTeam(teamHash)) return null;
-    return <Navigate to="/app/$teamHash/chat" params={{ teamHash }} replace />;
+    return <Navigate to="/app/me" replace />;
 }
 
 const teamIndexRoute = createRoute({
@@ -369,6 +420,67 @@ const chatConversationRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'chat/$conversationId',
     component: ChatView,
+});
+
+// v8.x — the ChatGPT-style Sessions workspace, alongside /chat rather
+// than replacing it. FLAT SIBLINGS for the same reason as the chat
+// routes above: SessionsView renders no <Outlet />, so a nested
+// `$conversationId` child would never mount.
+const sessionsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'sessions',
+    component: SessionsView,
+});
+const sessionsConversationRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'sessions/$conversationId',
+    component: SessionsView,
+});
+// Reader-side KB explorer. Deliberately NOT the `kb` path: that slot is
+// a legacy alias redirecting to /admin/kb, and admin-sidebar-nav.spec.ts
+// asserts exactly that redirect.
+// `?doc=` preselects a document, so a citation chip in the Sessions
+// thread can open the exact source a reader just cited.
+const knowledgeSearchSchema = z.object({
+    doc: z.coerce.number().int().positive().optional(),
+});
+
+const knowledgeRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'knowledge',
+    validateSearch: knowledgeSearchSchema,
+    component: KnowledgeBrowseView,
+});
+function UiFoundationsRoute() {
+    return (
+        <RequireRole roles={['super-admin', 'system-admin']}>
+            <UiFoundationsDemo />
+        </RequireRole>
+    );
+}
+
+const buttonSystemDemoRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'developer/buttons',
+    component: UiFoundationsRoute,
+});
+const uiFoundationsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'developer/ui',
+    component: UiFoundationsRoute,
+});
+function LocalIntegrationFixturesRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <LocalIntegrationFixturesView />
+        </RequireRole>
+    );
+}
+
+const localIntegrationFixturesRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'developer/local-integrations',
+    component: LocalIntegrationFixturesRoute,
 });
 // These five paths shipped as `Coming in Phase …` placeholders in early
 // phases. The real views now live under `/app/admin/*` (DashboardView,
@@ -487,6 +599,12 @@ const adminRoute = createRoute({
     component: AdminRoute,
 });
 
+const adminAiUsageRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/ai-usage',
+    component: () => <RequireRole roles={['admin', 'super-admin']}><AiUsageView /></RequireRole>,
+});
+
 // v8.9 — Admin Projects registry. Same flat-RBAC pattern: the
 // RequireRole gate lives inside the component so a viewer hitting
 // /app/{hash}/admin/projects sees <AdminForbidden />. AdminShell wraps
@@ -561,6 +679,22 @@ const systemAdminSuperAdminsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'system/super-admins',
     component: SystemAdminSuperAdminsRoute,
+});
+
+function SystemAppearanceRoute() {
+    return (
+        <AppShell tenantScoped={false}>
+            <RequireRole roles={['super-admin']}>
+                <AppearanceView />
+            </RequireRole>
+        </AppShell>
+    );
+}
+
+const systemAppearanceRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'system/appearance',
+    component: SystemAppearanceRoute,
 });
 
 function NoTenantAssignedRoute() {
@@ -888,6 +1022,22 @@ const adminAutoWikiSettingsRoute = createRoute({
     component: AdminAutoWikiSettingsRoute,
 });
 
+function AdminRetrievalProfilesRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="retrieval-profiles">
+                <RetrievalProfilesView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminRetrievalProfilesRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/kb/retrieval-profiles',
+    component: AdminRetrievalProfilesRoute,
+});
+
 // v8.7/W5 — Cloud Time Machine (per-document version timeline + diff + restore).
 function AdminKbTimeMachineRoute() {
     const params = useParams({ strict: false }) as { docId?: string };
@@ -1113,6 +1263,12 @@ const adminApiConnectorsRoute = createRoute({
     component: AdminApiConnectorsRoute,
 });
 
+const adminApiToolsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/api-tools',
+    component: () => <RequireRole roles={['admin', 'super-admin']}><ApiToolsView /></RequireRole>,
+});
+
 // v8.21 (Ciclo 2) — Ingestion & Sync observability. Same admin+super-admin gate
 // as connectors (the BE `manageConnectors` Gate is authoritative).
 function AdminIngestionRoute() {
@@ -1330,12 +1486,7 @@ function AdminNotificationPreferencesRoute() {
 // authenticated user (no RequireRole); AdminShell keeps the sidebar consistent.
 function DigestRoute() {
     return (
-        <AdminShell section="digest">
-            <div style={{ display: 'grid', gap: 20 }}>
-                <DigestFeedCard />
-                <DigestPreferences />
-            </div>
-        </AdminShell>
+        <AppShell tenantScoped={false}><DigestWorkspace /></AppShell>
     );
 }
 
@@ -1348,15 +1499,19 @@ const digestRoute = createRoute({
 // v8.15/W4.2 — personal "your KB" dashboard (any authenticated user).
 function MeDashboardRoute() {
     return (
-        <AdminShell section="my-kb">
-            <MeDashboard />
-        </AdminShell>
+        <AppShell tenantScoped={false}><WorkspaceHome /></AppShell>
     );
 }
 const meDashboardRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'me',
     component: MeDashboardRoute,
+});
+
+const connectedAppsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'connected-apps',
+    component: () => <AppShell tenantScoped={false}><ConnectedAppsView /></AppShell>,
 });
 
 // v8.15/W4.2 — admin engagement analytics. RequireRole wraps the panel here in
@@ -1429,9 +1584,16 @@ const adminEvalHarnessSplatRoute = createRoute({
 // /app redirector stays directly on appRoute.
 const teamChildren = [
     teamIndexRoute,
+    areaHubRoute,
     chatRoute,
     chatAnonymousRoute,
     chatConversationRoute,
+    sessionsRoute,
+    sessionsConversationRoute,
+    knowledgeRoute,
+    buttonSystemDemoRoute,
+    uiFoundationsRoute,
+    localIntegrationFixturesRoute,
     dashboardRoute,
     kbRoute,
     insightsRoute,
@@ -1439,6 +1601,7 @@ const teamChildren = [
     logsRoute,
     maintenanceRoute,
     adminRoute,
+    adminAiUsageRoute,
     adminProjectsRoute,
     adminTeamsRoute,
     adminUsersRoute,
@@ -1449,6 +1612,7 @@ const teamChildren = [
     adminWikiIndicesRoute,
     adminWikiExplorerRoute,
     adminAutoWikiSettingsRoute,
+    adminRetrievalProfilesRoute,
     adminTagsRoute,
     adminSynonymsRoute,
     adminKbInsightsRoute,
@@ -1468,6 +1632,7 @@ const teamChildren = [
     adminConnectorsRoute,
     adminConnectorCallbackRoute,
     adminApiConnectorsRoute,
+    adminApiToolsRoute,
     adminIngestionRoute,
     adminInvitationsRoute,
     adminAppSettingsRoute,
@@ -1488,6 +1653,10 @@ const teamChildren = [
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
+    oauthConsentRoute,
+    oauthConnectionsRoute,
+    mcpConnectRoute,
+    mcpImportReviewRoute,
     registerRoute,
     forgotRoute,
     resetRoute,
@@ -1495,12 +1664,14 @@ const routeTree = rootRoute.addChildren([
         appIndexRoute,
         systemAdminTenantControlRoute,
         systemAdminSuperAdminsRoute,
+        systemAppearanceRoute,
         companyOnboardingRoute,
         tenantWelcomeRoute,
         noTenantAssignedRoute,
         teamRoute.addChildren(teamChildren),
         digestRoute,
         meDashboardRoute,
+        connectedAppsRoute,
     ]),
 ]);
 

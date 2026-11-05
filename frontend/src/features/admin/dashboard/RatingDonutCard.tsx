@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Suspense } from 'react';
 import type { AdminRatingDistribution } from '../admin.api';
 import { ChartCard, ChartFallback, EmptyChart, type ChartState } from './ChartCard';
@@ -10,13 +11,14 @@ export interface RatingDonutCardProps {
 }
 
 export function RatingDonutCard({ distribution, state, days }: RatingDonutCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const hasData = distribution !== null && distribution.total > 0;
     const resolvedState: ChartState = state === 'ready' && !hasData ? 'empty' : state;
 
     return (
         <ChartCard
             slug="rating"
-            title="Rating distribution"
+            title={translateInterface("Rating distribution")}
             subtitle={`${days}-day window`}
             state={resolvedState}
         >

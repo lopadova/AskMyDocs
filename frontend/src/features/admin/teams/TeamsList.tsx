@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,6 +8,7 @@ import {
     type UpdateTeamPayload,
 } from './admin-teams.api';
 import { TeamFormDialog } from './TeamFormDialog';
+import { TeamLogoDialog } from './TeamLogoDialog';
 import { toAdminError } from '../shared/errors';
 import { me as fetchMe } from '../../auth/auth.api';
 import { useAuthStore } from '../../../lib/auth-store';
@@ -29,10 +31,12 @@ import { useAuthStore } from '../../../lib/auth-store';
  * the ROUTE level so this component stays Router-context-free for Vitest.
  */
 export function TeamsList(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [filter, setFilter] = useState('');
     const [editing, setEditing] = useState<AdminTeam | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
+    const [branding, setBranding] = useState<AdminTeam | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -100,18 +104,17 @@ export function TeamsList(): ReactNode {
     return (
         <div data-testid="admin-teams-view" style={{ padding: 24 }}>
             <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Teams</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Teams")}</h1>
                 <span data-testid="admin-teams-count" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
-                    {teams.length} total
-                </span>
+                    {teams.length} {" " + translateInterface("total")}</span>
                 <span style={{ flex: 1 }} />
                 <input
                     data-testid="admin-teams-filter"
                     type="text"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filter by name / slug"
-                    aria-label="Filter teams"
+                    placeholder={translateInterface("Filter by name / slug")}
+                    aria-label={translateInterface("Filter teams")}
                     style={{
                         padding: '5px 10px',
                         borderRadius: 6,
@@ -139,14 +142,12 @@ export function TeamsList(): ReactNode {
                         cursor: 'pointer',
                     }}
                 >
-                    + New team
-                </button>
+                    {translateInterface("+ New team")}</button>
             </header>
 
             {teamsQuery.isLoading && (
                 <p data-testid="admin-teams-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
             {teamsQuery.isError && (
                 <p data-testid="admin-teams-error" data-state="error" role="alert" style={{ color: 'var(--err)' }}>
@@ -165,13 +166,11 @@ export function TeamsList(): ReactNode {
                         borderRadius: 8,
                     }}
                 >
-                    No teams yet. Click <code>+ New team</code> to create one.
-                </p>
+                    {translateInterface("No teams yet. Click") + " "}<code>{translateInterface("+ New team")}</code> {" " + translateInterface("to create one.")}</p>
             )}
             {!teamsQuery.isLoading && teams.length > 0 && filtered.length === 0 && (
                 <p data-testid="admin-teams-no-match" style={{ color: 'var(--fg-3)' }}>
-                    No teams match the filter.
-                </p>
+                    {translateInterface("No teams match the filter.")}</p>
             )}
             {filtered.length > 0 && (
                 <table
@@ -189,12 +188,13 @@ export function TeamsList(): ReactNode {
                                 letterSpacing: '.04em',
                             }}
                         >
-                            <th style={cellStyle}>Name</th>
-                            <th style={cellStyle}>Slug</th>
-                            <th style={cellStyle}>Status</th>
-                            <th style={cellStyle}>Projects</th>
-                            <th style={cellStyle}>Members</th>
-                            <th style={{ ...cellStyle, textAlign: 'right' }}>Actions</th>
+                            <th style={cellStyle}>{translateInterface("Name")}</th>
+                            <th style={cellStyle}>Logo</th>
+                            <th style={cellStyle}>{translateInterface("Slug")}</th>
+                            <th style={cellStyle}>{translateInterface("Status")}</th>
+                            <th style={cellStyle}>{translateInterface("Projects")}</th>
+                            <th style={cellStyle}>{translateInterface("Members")}</th>
+                            <th style={{ ...cellStyle, textAlign: 'right' }}>{translateInterface("Actions")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -208,7 +208,19 @@ export function TeamsList(): ReactNode {
                                 <td style={{ ...cellStyle, color: 'var(--fg-0)' }}>
                                     {team.name}
                                     {team.is_default && (
-                                        <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--fg-3)' }}>(bootstrap)</span>
+                                        <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--fg-3)' }}>{translateInterface("(bootstrap)")}</span>
+                                    )}
+                                </td>
+                                <td style={cellStyle}>
+                                    {team.logo_url ? (
+                                        <img
+                                            src={team.logo_url}
+                                            alt={`${team.name} logo`}
+                                            data-testid={`admin-team-row-${team.slug}-logo-image`}
+                                            style={{ width: 54, height: 30, objectFit: 'contain', display: 'block' }}
+                                        />
+                                    ) : (
+                                        <span data-testid={`admin-team-row-${team.slug}-logo-empty`} style={{ color: 'var(--fg-3)' }}>—</span>
                                     )}
                                 </td>
                                 <td
@@ -235,18 +247,28 @@ export function TeamsList(): ReactNode {
                                 </td>
                                 <td style={{ ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
                                     {team.can_manage ? (
-                                        <button
-                                            type="button"
-                                            data-testid={`admin-team-row-${team.slug}-edit`}
-                                            aria-label={`Rename team ${team.name}`}
-                                            onClick={() => {
-                                                resetErrors();
-                                                setEditing(team);
-                                            }}
-                                            style={iconButtonStyle()}
-                                        >
-                                            Rename
-                                        </button>
+                                        <>
+                                            <button
+                                                type="button"
+                                                data-testid={`admin-team-row-${team.slug}-logo`}
+                                                aria-label={`Manage logo for ${team.name}`}
+                                                onClick={() => setBranding(team)}
+                                                style={iconButtonStyle()}
+                                            >
+                                                Logo
+                                            </button>
+                                            <button
+                                                type="button"
+                                                data-testid={`admin-team-row-${team.slug}-edit`}
+                                                aria-label={`Rename team ${team.name}`}
+                                                onClick={() => {
+                                                    resetErrors();
+                                                    setEditing(team);
+                                                }}
+                                                style={iconButtonStyle()}
+                                            >
+                                                {translateInterface("Rename")}</button>
+                                        </>
                                     ) : (
                                         <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>—</span>
                                     )}
@@ -277,6 +299,16 @@ export function TeamsList(): ReactNode {
                     submitError={submitError}
                     fieldErrors={fieldErrors}
                     isSubmitting={updateMutation.isPending}
+                />
+            )}
+            {branding !== null && (
+                <TeamLogoDialog
+                    team={branding}
+                    onClose={() => setBranding(null)}
+                    onChanged={async () => {
+                        await qc.invalidateQueries({ queryKey: ['admin-teams'] });
+                        await syncSwitcher();
+                    }}
                 />
             )}
         </div>

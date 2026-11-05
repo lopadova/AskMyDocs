@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -54,6 +56,7 @@ const KNOWN_EVENT_TYPES = [
 ];
 
 export function NotificationPanel(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [state, setState] = useState<NotificationState>('unread');
     const [eventType, setEventType] = useState<string>('');
@@ -157,7 +160,7 @@ export function NotificationPanel(): ReactNode {
         // `/event-types` is loading/errored AND the current page has
         // zero rows containing the selected type (e.g. switching to
         // an unread tab with no matches), the value would otherwise
-        // be absent and the <select> would render an empty
+        // be absent and the selector would render an empty
         // selection while the filter is still active.
         if (eventType && !sources.includes(eventType)) {
             sources.push(eventType);
@@ -179,7 +182,7 @@ export function NotificationPanel(): ReactNode {
             aria-busy={listQuery.isFetching}
             className="space-y-4 p-6"
         >
-            <h1 className="text-2xl font-semibold">Notifications</h1>
+            <h1 className="text-2xl font-semibold">{translateInterface("Notifications")}</h1>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2">
                 {(['unread', 'read', 'dismissed', 'all'] as NotificationState[]).map((s) => (
@@ -206,22 +209,22 @@ export function NotificationPanel(): ReactNode {
                     <label htmlFor="notif-panel-event-type-select" className="text-sm text-gray-600">
                         Event type:
                     </label>
-                    <select
+                    <SelectField
                         id="notif-panel-event-type-select"
                         data-testid="notif-panel-filter-event_type"
                         aria-label="Filter by event type"
                         value={eventType}
-                        onChange={(e) => {
-                            setEventType(e.target.value);
+                        onValueChange={(value) => {
+                            setEventType(value);
                             setPage(1);
                         }}
                         className="rounded border border-gray-300 px-2 py-1 text-sm"
                     >
-                        <option value="">All event types</option>
+                        <SelectOption value="">All event types</SelectOption>
                         {eventTypeOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            <SelectOption key={opt.value} value={opt.value}>{opt.label}</SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
 
                     <button
                         type="button"
@@ -252,15 +255,13 @@ export function NotificationPanel(): ReactNode {
                         }}
                         className="ml-2 underline"
                     >
-                        Dismiss
-                    </button>
+                        {translateInterface("Dismiss")}</button>
                 </div>
             )}
 
             {dataState === 'loading' && (
                 <p data-testid="notif-panel-loading" className="py-8 text-center text-gray-500">
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
 
             {dataState === 'error' && (
@@ -272,8 +273,7 @@ export function NotificationPanel(): ReactNode {
                         onClick={() => void listQuery.refetch()}
                         className="mt-2 text-sm text-red-700 underline"
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -317,8 +317,7 @@ export function NotificationPanel(): ReactNode {
                                             disabled={dismissMut.isPending}
                                             className="text-xs text-gray-600 hover:underline"
                                         >
-                                            Dismiss
-                                        </button>
+                                            {translateInterface("Dismiss")}</button>
                                     )}
                                 </div>
                             </div>
@@ -330,8 +329,7 @@ export function NotificationPanel(): ReactNode {
             {meta && (
                 <div className="flex items-center justify-between border-t border-gray-100 pt-2 text-sm text-gray-600">
                     <span data-testid="notif-panel-page-status">
-                        Page {currentPage} of {lastPage} ({total} total)
-                    </span>
+                        {translateInterface("Page") + " "}{currentPage} {" " + translateInterface("of") + " "}{lastPage} ({total} {" " + translateInterface("total)")}</span>
                     <div className="flex gap-2">
                         <button
                             type="button"
@@ -349,8 +347,7 @@ export function NotificationPanel(): ReactNode {
                             disabled={currentPage >= lastPage || listQuery.isFetching}
                             className="rounded border border-gray-300 px-3 py-1 text-sm disabled:text-gray-400"
                         >
-                            Next
-                        </button>
+                            {translateInterface("Next")}</button>
                     </div>
                 </div>
             )}

@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { ReactNode } from 'react';
 
 export type ChartState = 'loading' | 'ready' | 'error' | 'empty';
@@ -112,6 +113,7 @@ export function EmptyChart({ slug, message = 'No data yet for this window' }: Em
 }
 
 export function ChartFallback({ slug }: { slug: string }) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`${slug}-loading`}
@@ -125,7 +127,7 @@ export function ChartFallback({ slug }: { slug: string }) {
                 fontFamily: 'var(--font-mono)',
             }}
         >
-            <span className="shimmer">loading chart…</span>
+            <span className="shimmer">{translateInterface("loading chart…")}</span>
         </div>
     );
 }

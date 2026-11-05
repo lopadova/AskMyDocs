@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { Fragment, useState } from 'react';
 import { useAuditLogs, type AuditLogsQuery } from './logs.api';
 
@@ -21,6 +23,7 @@ const EVENT_TYPES = [
 ];
 
 export function AuditTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [project, setProject] = useState('');
     const [eventType, setEventType] = useState('');
     const [actor, setActor] = useState('');
@@ -54,7 +57,7 @@ export function AuditTab() {
         >
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={labelStyle}>Project</span>
+                    <span style={labelStyle}>{translateInterface("Project")}</span>
                     <input
                         data-testid="audit-filter-project"
                         value={project}
@@ -65,18 +68,18 @@ export function AuditTab() {
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Event type</span>
-                    <select
+                    <SelectField
                         data-testid="audit-filter-event-type"
                         value={eventType}
-                        onChange={(e) => setEventType(e.target.value)}
+                        onValueChange={(nextValue) => setEventType(nextValue)}
                         style={inputStyle}
                     >
                         {EVENT_TYPES.map((et) => (
-                            <option key={et} value={et}>
+                            <SelectOption key={et} value={et}>
                                 {et || 'any'}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Actor</span>
@@ -117,11 +120,11 @@ export function AuditTab() {
                     <thead>
                         <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
                             <Th>#</Th>
-                            <Th>Project</Th>
+                            <Th>{translateInterface("Project")}</Th>
                             <Th>Event</Th>
                             <Th>Actor</Th>
                             <Th>Slug / doc_id</Th>
-                            <Th>When</Th>
+                            <Th>{translateInterface("When")}</Th>
                         </tr>
                     </thead>
                     <tbody>
@@ -233,6 +236,7 @@ function Pagination({
     onPage: (p: number) => void;
     testidPrefix: string;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`${testidPrefix}-pagination`}
@@ -248,7 +252,7 @@ function Pagination({
                 ← Prev
             </button>
             <span>
-                Page {meta.current_page} / {meta.last_page} ({meta.total} rows)
+                {translateInterface("Page") + " "}{meta.current_page} / {meta.last_page} ({meta.total} rows)
             </span>
             <button
                 type="button"
@@ -256,8 +260,7 @@ function Pagination({
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >
-                Next →
-            </button>
+                {translateInterface("Next →")}</button>
         </div>
     );
 }

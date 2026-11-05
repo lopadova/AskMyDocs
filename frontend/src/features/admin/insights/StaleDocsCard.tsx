@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { StaleDoc } from './insights.api';
 
 export interface StaleDocsCardProps {
@@ -5,6 +6,7 @@ export interface StaleDocsCardProps {
 }
 
 export function StaleDocsCard({ items }: StaleDocsCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const state = items.length === 0 ? 'empty' : 'ready';
     return (
         <div
@@ -20,14 +22,13 @@ export function StaleDocsCard({ items }: StaleDocsCardProps) {
                 gap: 10,
             }}
         >
-            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>Stale canonical docs</h2>
+            <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>{translateInterface("Stale canonical docs")}</h2>
             {state === 'empty' ? (
                 <div
                     data-testid="insight-card-stale-docs-empty"
                     style={{ fontSize: 12, color: 'var(--fg-3)' }}
                 >
-                    No stale docs detected.
-                </div>
+                    {translateInterface("No stale docs detected.")}</div>
             ) : (
                 <ul
                     style={{
@@ -59,8 +60,8 @@ export function StaleDocsCard({ items }: StaleDocsCardProps) {
                                     fontFamily: 'var(--font-mono)',
                                 }}
                             >
-                                {item.project_key} · indexed {item.indexed_at ?? 'never'} ·
-                                {' '}neg ratio {(item.negative_rating_ratio * 100).toFixed(1)}%
+                                {item.project_key} {" " + translateInterface("· indexed") + " "}{item.indexed_at ?? 'never'} ·
+                                {' '}{translateInterface("neg ratio") + " "}{(item.negative_rating_ratio * 100).toFixed(1)}%
                             </div>
                         </li>
                     ))}

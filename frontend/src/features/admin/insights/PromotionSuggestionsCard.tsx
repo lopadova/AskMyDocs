@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import type { PromotionSuggestion } from './insights.api';
 import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 
@@ -13,6 +14,7 @@ export interface PromotionSuggestionsCardProps {
  * larger dialog in the canonical pipeline; the card link is a pivot.
  */
 export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProps) {
+    const { t: translateInterface } = useUiTranslation();
     const state = items.length === 0 ? 'empty' : 'ready';
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
     return (
@@ -30,15 +32,13 @@ export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProp
             }}
         >
             <h2 style={{ margin: 0, fontSize: 13, color: 'var(--fg-0)' }}>
-                Promotion candidates
-            </h2>
+                {translateInterface("Promotion candidates")}</h2>
             {state === 'empty' ? (
                 <div
                     data-testid="insight-card-promotions-empty"
                     style={{ fontSize: 12, color: 'var(--fg-3)' }}
                 >
-                    No non-canonical docs crossed the citation threshold.
-                </div>
+                    {translateInterface("No non-canonical docs crossed the citation threshold.")}</div>
             ) : (
                 <ul
                     style={{
@@ -81,8 +81,7 @@ export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProp
                                         fontFamily: 'var(--font-mono)',
                                     }}
                                 >
-                                    {item.project_key} · {item.score} citations
-                                </div>
+                                    {item.project_key} · {item.score} {" " + translateInterface("citations")}</div>
                             </div>
                             <button
                                 type="button"
@@ -111,8 +110,7 @@ export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProp
                                     flexShrink: 0,
                                 }}
                             >
-                                Promote
-                            </button>
+                                {translateInterface("Promote")}</button>
                         </li>
                     ))}
                 </ul>

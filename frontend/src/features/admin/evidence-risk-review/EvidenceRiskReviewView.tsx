@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 /*
  * EvidenceRiskReviewView — host mount for the native Evidence & Risk Review
  * admin surface (v8.13 / P11).
@@ -23,6 +24,7 @@ import './cross-mount/cross-mount.css';
 type LoadState = 'loading' | 'ready' | 'unavailable';
 
 export function EvidenceRiskReviewView() {
+    const { t: translateInterface } = useUiTranslation();
     const [state, setState] = useState<LoadState>('loading');
 
     useEffect(() => {
@@ -70,8 +72,7 @@ export function EvidenceRiskReviewView() {
                     }}
                 >
                     <span className="shimmer" style={{ padding: '6px 18px', borderRadius: 8 }}>
-                        Loading Evidence &amp; Risk Review…
-                    </span>
+                        {translateInterface("Loading Evidence &amp; Risk Review…")}</span>
                 </div>
             )}
 
@@ -90,17 +91,15 @@ export function EvidenceRiskReviewView() {
                 >
                     <div className="panel" style={{ maxWidth: 540, padding: '24px 24px 22px', textAlign: 'center' }}>
                         <h2 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
-                            Evidence &amp; Risk Review is not available
-                        </h2>
+                            {translateInterface("Evidence &amp; Risk Review is not available")}</h2>
                         <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, lineHeight: 1.55 }}>
-                            The{' '}
+                            {translateInterface("The")}{' '}
                             <code style={{ fontFamily: 'var(--font-mono)' }}>
                                 padosoft/laravel-evidence-risk-review
                             </code>{' '}
-                            admin API isn&rsquo;t reachable in this environment. Set{' '}
-                            <code>EVIDENCE_RISK_REVIEW_ADMIN_ENABLED=true</code> (then{' '}
-                            <code>php artisan config:clear</code>) to enable the review-log dashboards.
-                        </p>
+                            {translateInterface("admin API isn&rsquo;t reachable in this environment. Set")}{' '}
+                            <code>EVIDENCE_RISK_REVIEW_ADMIN_ENABLED=true</code> {" " + translateInterface("(then")}{' '}
+                            <code>php artisan config:clear</code>{translateInterface(") to enable the review-log dashboards.")}</p>
                     </div>
                 </div>
             )}

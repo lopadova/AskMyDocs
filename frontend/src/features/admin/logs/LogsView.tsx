@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useMemo, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { GlobalScopeBadge } from '../shared/GlobalScopeBadge';
@@ -57,6 +58,7 @@ function syncTabUrl(tab: LogsTab) {
 }
 
 export function LogsView() {
+    const { t: translateInterface } = useUiTranslation();
     const initial = useMemo(parseInitialTab, []);
     const [tab, setTab] = useState<LogsTab>(initial);
 
@@ -86,17 +88,14 @@ export function LogsView() {
                             color: 'var(--fg-0)',
                         }}
                     >
-                        Logs
-                    </h1>
+                        {translateInterface("Logs")}</h1>
                     <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        Chat telemetry, canonical audit trail, application log tail, activity
-                        log, and failed jobs — all read-only.
-                    </p>
+                        {translateInterface("Chat telemetry, canonical audit trail, application log tail, activity log, and failed jobs — all read-only.")}</p>
                 </div>
 
                 <div
                     role="tablist"
-                    aria-label="Log tabs"
+                    aria-label={translateInterface("Log tabs")}
                     style={{
                         display: 'flex',
                         gap: 4,

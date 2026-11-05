@@ -29,11 +29,12 @@ export const api: AxiosInstance = axios.create({
  * - `/api/auth/*` + `/sanctum/*`: a stale persisted team would otherwise
  *   403 the bootstrap `me()` call and lock the user out before the team
  *   list can re-sync.
- * - `/api/system-admin/*`: the global control plane administers the tenant
- *   registry itself; target scoping is explicit in its service queries.
+ * - `/api/system-admin/*` + `/api/system/*`: the global control plane
+ *   administers the tenant registry and installation settings themselves;
+ *   target scoping is explicit in its service queries.
  * - `/testing/*`: E2E reset/seed endpoints operate deployment-wide.
  */
-const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/system-admin/', '/sanctum/', '/testing/'];
+const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/api/oauth/', '/api/system-admin/', '/api/system/', '/sanctum/', '/testing/'];
 
 api.interceptors.request.use((config) => {
     const team = useTeamStore.getState().currentTeam;
@@ -45,7 +46,9 @@ api.interceptors.request.use((config) => {
         // config.headers can be undefined for ad-hoc request configs; initialise
         // it (without clobbering existing defaults) before stamping the header.
         config.headers ??= new AxiosHeaders();
-        config.headers['X-Tenant-Id'] = team;
+        // Background chat requests retain the tenant that owns the run,
+        // even if the user has since switched the foreground team.
+        config.headers['X-Tenant-Id'] ??= team;
     }
     return config;
 });
@@ -74,6 +77,7 @@ api.interceptors.response.use(
             axios.isAxiosError(error) &&
             error.response?.status === 403 &&
             (error.response.data as { error?: string } | undefined)?.error === 'tenant_forbidden'
+            && error.config?.headers?.['X-Tenant-Id'] === useTeamStore.getState().currentTeam
         ) {
             useTeamStore.getState().resetToFirstTeam();
             if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {

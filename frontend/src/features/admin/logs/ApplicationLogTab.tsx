@@ -1,3 +1,5 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState } from 'react';
 import { useApplicationLog } from './logs.api';
 
@@ -38,6 +40,7 @@ function syncLiveFlagToUrl(live: boolean): void {
 }
 
 export function ApplicationLogTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [file, setFile] = useState('laravel.log');
     const [customFile, setCustomFile] = useState('');
     const [level, setLevel] = useState('');
@@ -87,18 +90,18 @@ export function ApplicationLogTab() {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>File (preset)</span>
-                    <select
+                    <SelectField
                         data-testid="application-log-file"
                         value={file}
-                        onChange={(e) => setFile(e.target.value)}
+                        onValueChange={(nextValue) => setFile(nextValue)}
                         style={inputStyle}
                     >
                         {COMMON_FILES.map((f) => (
-                            <option key={f} value={f}>
+                            <SelectOption key={f} value={f}>
                                 {f}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Or custom filename</span>
@@ -112,18 +115,18 @@ export function ApplicationLogTab() {
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Level</span>
-                    <select
+                    <SelectField
                         data-testid="application-log-level"
                         value={level}
-                        onChange={(e) => setLevel(e.target.value)}
+                        onValueChange={(nextValue) => setLevel(nextValue)}
                         style={inputStyle}
                     >
                         {LEVELS.map((l) => (
-                            <option key={l} value={l}>
+                            <SelectOption key={l} value={l}>
                                 {l || 'any'}
-                            </option>
+                            </SelectOption>
                         ))}
-                    </select>
+                    </SelectField>
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={labelStyle}>Tail</span>
@@ -150,8 +153,7 @@ export function ApplicationLogTab() {
                         cursor: 'pointer',
                     }}
                 >
-                    Refresh
-                </button>
+                    {translateInterface("Refresh")}</button>
                 <label
                     data-testid="application-log-live-toggle"
                     style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
@@ -201,7 +203,7 @@ export function ApplicationLogTab() {
             {state === 'ready' ? (
                 <>
                     <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
-                        Showing {q.data?.lines.length ?? 0} lines (scanned{' '}
+                        {translateInterface("Showing") + " "}{q.data?.lines.length ?? 0} lines (scanned{' '}
                         {q.data?.total_scanned ?? 0}
                         {q.data?.truncated ? ', truncated' : ''})
                     </div>

@@ -1,6 +1,10 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import type { ReactNode } from 'react';
+import { Button } from '../../components/Button';
+import { EditorialArtwork } from '../../components/editorial/EditorialArtwork';
 import { useQuery } from '@tanstack/react-query';
 import { digestApi, DIGEST_LATEST_QUERY_KEY, type DigestLatest } from './digest.api';
+import './digest.css';
 
 /**
  * v8.15/W3.2 — "This week in your KB" in-app digest card. Reads
@@ -8,6 +12,7 @@ import { digestApi, DIGEST_LATEST_QUERY_KEY, type DigestLatest } from './digest.
  * (testids), R14 (error surfaced), explicit empty/loading/ready/error states.
  */
 export function DigestFeedCard(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const query = useQuery({
         queryKey: DIGEST_LATEST_QUERY_KEY,
         queryFn: () => digestApi.latest(),
@@ -33,82 +38,82 @@ export function DigestFeedCard(): ReactNode {
             data-testid="digest-feed-card"
             data-state={dataState}
             aria-busy={query.isFetching}
-            style={{ padding: 20, border: '1px solid var(--hairline)', borderRadius: 14 }}
+            className="digest-feed editorial-surface"
         >
-            <h3 style={{ marginTop: 0 }}>This week in your KB</h3>
+            <EditorialArtwork artwork="observatory" className="editorial-surface-art" resolution="small" />
+            <h2 className="digest-panel-title">{translateInterface("This week in your KB")}</h2>
 
-            {dataState === 'loading' && <p data-testid="digest-feed-loading">Loading…</p>}
+            {dataState === 'loading' && <p data-testid="digest-feed-loading">{translateInterface("Loading…")}</p>}
 
             {dataState === 'error' && (
-                <div data-testid="digest-feed-error" role="alert">
-                    Could not load the latest digest.{' '}
-                    <button type="button" data-testid="digest-feed-retry" onClick={() => void query.refetch()}>
-                        Retry
-                    </button>
+                <div className="digest-message" data-testid="digest-feed-error" role="alert">
+                    {translateInterface("Could not load the latest digest.")}{' '}
+                    <Button variant="quiet" size="sm" data-testid="digest-feed-retry" onClick={() => void query.refetch()}>
+                        {translateInterface("Retry")}</Button>
                 </div>
             )}
 
             {dataState === 'empty' && (
-                <p data-testid="digest-feed-empty">No digest yet — it will appear here after the next run.</p>
+                <p className="digest-message" data-testid="digest-feed-empty">{translateInterface("No digest yet — it will appear here after the next run.")}</p>
             )}
 
             {dataState === 'ready' && data?.digest && (
-                <div data-testid="digest-feed-content">
+                <div className="digest-feed-content" data-testid="digest-feed-content">
                     {typeof d.narrative === 'string' && d.narrative !== '' && (
-                        <p data-testid="digest-feed-narrative">{d.narrative}</p>
+                        <p className="digest-narrative" data-testid="digest-feed-narrative">{d.narrative}</p>
                     )}
 
                     {enabled('metrics') && (
-                        <ul data-testid="digest-feed-metrics" style={{ display: 'flex', gap: 16, listStyle: 'none', padding: 0, flexWrap: 'wrap' }}>
-                            <li>👥 {String(m.contributors ?? 0)} contributors</li>
-                            <li>🆕 {String(m.new_docs ?? 0)} new</li>
-                            <li>⬆ {String(m.promoted_docs ?? 0)} promoted</li>
-                            <li>❓ {String(m.open_gaps ?? 0)} open gaps</li>
-                        </ul>
+                        <dl data-testid="digest-feed-metrics" className="digest-metrics">
+                            <div><dt>{translateInterface("Contributors")}</dt><dd>{String(m.contributors ?? 0)}</dd></div>
+                            <div><dt>{translateInterface("New documents")}</dt><dd>{String(m.new_docs ?? 0)}</dd></div>
+                            <div><dt>{translateInterface("Promoted documents")}</dt><dd>{String(m.promoted_docs ?? 0)}</dd></div>
+                            <div><dt>{translateInterface("Open questions")}</dt><dd>{String(m.open_gaps ?? 0)}</dd></div>
+                        </dl>
                     )}
 
                     {enabled('new_docs') && (d.new_docs?.length ?? 0) > 0 && (
-                        <div data-testid="digest-feed-new-docs">
-                            <strong>🆕 New &amp; promoted</strong>
+                        <section className="digest-feed-section" data-testid="digest-feed-new-docs">
+                            <h3>{translateInterface("New & promoted")}</h3>
                             <ul>
                                 {d.new_docs!.map((doc, i) => (
                                     <li key={i}>{doc.title} <em>({doc.change})</em></li>
                                 ))}
                             </ul>
-                        </div>
+                        </section>
                     )}
 
                     {enabled('stale_docs') && (d.stale_docs?.length ?? 0) > 0 && (
-                        <div data-testid="digest-feed-stale">
-                            <strong>🕓 Needs review</strong>
+                        <section className="digest-feed-section" data-testid="digest-feed-stale">
+                            <h3>{translateInterface("Needs review")}</h3>
                             <ul>
                                 {d.stale_docs!.map((doc, i) => (
-                                    <li key={i}>{doc.title} <em>(debt {doc.debt_score})</em></li>
+                                    <li key={i}>{doc.title} <em>{translateInterface("(debt") + " "}{doc.debt_score})</em></li>
                                 ))}
                             </ul>
-                        </div>
+                        </section>
                     )}
 
                     {enabled('top_gaps') && (d.top_gaps?.length ?? 0) > 0 && (
-                        <div data-testid="digest-feed-gaps">
-                            <strong>❓ Top unanswered</strong>
+                        <section className="digest-feed-section" data-testid="digest-feed-gaps">
+                            <h3>{translateInterface("Top unanswered")}</h3>
                             <ul>
                                 {d.top_gaps!.map((gap, i) => (
                                     <li key={i}>{gap.question} <em>({gap.occurrences}×)</em></li>
                                 ))}
                             </ul>
-                        </div>
+                        </section>
                     )}
 
                     {enabled('leaderboard') && (d.leaderboard?.length ?? 0) > 0 && (
-                        <div data-testid="digest-feed-leaderboard">
-                            <strong>🏆 Top contributors</strong>
+                        <section className="digest-feed-section" data-testid="digest-feed-leaderboard">
+                            <h3>{translateInterface("Top contributors")}</h3>
                             <ul>
                                 {d.leaderboard!.map((c, i) => (
-                                    <li key={i}>{c.name} <em>({c.score} pts)</em></li>
+                                    <li key={i}>{c.name} <em>({c.score} {" " + translateInterface("pts)")}</em></li>
                                 ))}
                             </ul>
-                        </div>
+                        </section>
                     )}
                 </div>
             )}

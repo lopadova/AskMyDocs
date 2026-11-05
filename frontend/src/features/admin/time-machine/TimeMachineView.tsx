@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDiff, getVersions, restoreVersion, type DocVersion, type VersionContentIntegrity, type VersionContentSource } from './timemachine.api';
@@ -9,6 +10,7 @@ import { getDiff, getVersions, restoreVersion, type DocVersion, type VersionCont
  * R11 testids · R14 distinct loading/empty/error states · R15 a11y.
  */
 export function TimeMachineView({ docId }: { docId: number }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
     const [fromId, setFromId] = useState<number | null>(null);
     const [toId, setToId] = useState<number | null>(null);
@@ -78,17 +80,14 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
     return (
         <div data-testid="kb-time-machine-view" style={{ padding: 24 }}>
             <header style={{ marginBottom: 8 }}>
-                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Time Machine</h1>
+                <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>{translateInterface("Time Machine")}</h1>
                 {timeline.data && (
                     <p data-testid="kb-time-machine-source" style={{ margin: '2px 0 0', color: 'var(--fg-3)', fontSize: 11.5 }}>
-                        {timeline.data.meta.project_key} · {timeline.data.meta.source_path} · {timeline.data.meta.total} versions
-                    </p>
+                        {timeline.data.meta.project_key} · {timeline.data.meta.source_path} · {timeline.data.meta.total} {" " + translateInterface("versions")}</p>
                 )}
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 640 }}>
-                Every re-ingest keeps the previous version. Pick two versions to diff, or restore an archived
-                version to make it live again.
-            </p>
+                {translateInterface("Every re-ingest keeps the previous version. Pick two versions to diff, or restore an archived version to make it live again.")}</p>
 
             {restoreError && (
                 <p data-testid="kb-time-machine-restore-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
@@ -107,22 +106,20 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
             </p>
             {timeline.data && hasOlder && (
                 <p data-testid="kb-time-machine-truncated" role="note" style={{ fontSize: 11.5, color: 'var(--warn, #d29922)', margin: '0 0 8px' }}>
-                    Showing the newest {versions.length} of {familyTotal} versions.
-                </p>
+                    {translateInterface("Showing the newest") + " "}{versions.length} {" " + translateInterface("of") + " "}{familyTotal} {" " + translateInterface("versions.")}</p>
             )}
 
             {timeline.isLoading && (
-                <p data-testid="kb-time-machine-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Loading…</p>
+                <p data-testid="kb-time-machine-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>{translateInterface("Loading…")}</p>
             )}
             {!timeline.isLoading && timeline.isError && (
                 <p data-testid="kb-time-machine-error" data-state="error" role="alert" style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}>
-                    Failed to load the version timeline. {timeline.error instanceof Error ? timeline.error.message : ''}
+                    {translateInterface("Failed to load the version timeline.") + " "}{timeline.error instanceof Error ? timeline.error.message : ''}
                 </p>
             )}
             {!timeline.isLoading && !timeline.isError && versions.length === 0 && (
                 <p data-testid="kb-time-machine-empty" data-state="empty" style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}>
-                    No versions found for this document.
-                </p>
+                    {translateInterface("No versions found for this document.")}</p>
             )}
 
             {versions.length > 0 && (
@@ -162,11 +159,11 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
 
             {diffEnabled && (
                 <section data-testid="kb-time-machine-diff" data-state={diffState} aria-busy={diff.isLoading} style={{ marginTop: 20 }}>
-                    <h2 style={{ fontSize: 13, color: 'var(--fg-1)' }}>Diff</h2>
-                    {diff.isLoading && <p data-testid="kb-time-machine-diff-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Diffing…</p>}
+                    <h2 style={{ fontSize: 13, color: 'var(--fg-1)' }}>{translateInterface("Diff")}</h2>
+                    {diff.isLoading && <p data-testid="kb-time-machine-diff-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>{translateInterface("Diffing…")}</p>}
                     {diff.isError && (
                         <p data-testid="kb-time-machine-diff-error" data-state="error" role="alert" style={{ color: 'var(--err)', fontSize: 12 }}>
-                            Failed to load diff. {diff.error instanceof Error ? diff.error.message : ''}
+                            {translateInterface("Failed to load diff.") + " "}{diff.error instanceof Error ? diff.error.message : ''}
                         </p>
                     )}
                     {diff.data && (
@@ -264,6 +261,7 @@ function VersionRow({
     onRestore: () => void;
     restoring: boolean;
 }): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`kb-time-machine-version-${v.id}`}
@@ -291,9 +289,8 @@ function VersionRow({
                 {v.restored_by ? ` · restored by ${v.restored_by}` : ''}
             </span>
             {v.has_artifact && (
-                <span data-testid={`kb-time-machine-version-${v.id}-artifact`} title="The converted document of this version is stored and diffs are faithful" style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--ok, #3fb950)', color: 'var(--ok, #3fb950)' }}>
-                    stored
-                </span>
+                <span data-testid={`kb-time-machine-version-${v.id}-artifact`} title={translateInterface("The converted document of this version is stored and diffs are faithful")} style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--ok, #3fb950)', color: 'var(--ok, #3fb950)' }}>
+                    {translateInterface("stored")}</span>
             )}
             {(v.artifact_state === 'missing' || v.artifact_state === 'mismatch') && (
                 <span
@@ -308,8 +305,8 @@ function VersionRow({
                 </span>
             )}
             <span style={{ flex: 1 }} />
-            <button type="button" data-testid={`kb-time-machine-version-${v.id}-from`} onClick={onPickFrom} aria-pressed={isFrom} aria-label={`Diff from ${versionLabel(v)}`} style={pill(isFrom)}>From</button>
-            <button type="button" data-testid={`kb-time-machine-version-${v.id}-to`} onClick={onPickTo} aria-pressed={isTo} aria-label={`Diff to ${versionLabel(v)}`} style={pill(isTo)}>To</button>
+            <button type="button" data-testid={`kb-time-machine-version-${v.id}-from`} onClick={onPickFrom} aria-pressed={isFrom} aria-label={`Diff from ${versionLabel(v)}`} style={pill(isFrom)}>{translateInterface("From")}</button>
+            <button type="button" data-testid={`kb-time-machine-version-${v.id}-to`} onClick={onPickTo} aria-pressed={isTo} aria-label={`Diff to ${versionLabel(v)}`} style={pill(isTo)}>{translateInterface("To")}</button>
             {!v.is_live && (
                 <button
                     type="button"
@@ -319,8 +316,7 @@ function VersionRow({
                     aria-label={`Restore ${versionLabel(v)}`}
                     style={{ ...pill(false), border: '1px solid var(--accent, #6366f1)', color: 'var(--accent, #6366f1)' }}
                 >
-                    Restore
-                </button>
+                    {translateInterface("Restore")}</button>
             )}
         </div>
     );

@@ -39,6 +39,12 @@ export function useTheme(initial: Theme = 'dark'): [Theme, Setter<Theme>] {
     return [theme, setTheme];
 }
 
+export function useSidebarCollapsed(): [boolean, Setter<boolean>] {
+    const [collapsed, setCollapsed] = useState(() => readStorage<'true' | 'false'>('amd-sidebar-collapsed', 'false') === 'true');
+    useEffect(() => { writeStorage('amd-sidebar-collapsed', String(collapsed)); }, [collapsed]);
+    return [collapsed, setCollapsed];
+}
+
 export function useDensity(initial: Density = 'balanced'): [Density, Setter<Density>] {
     const [density, setDensity] = useState<Density>(() => readStorage<Density>('amd-density', initial));
     useEffect(() => {
@@ -60,11 +66,11 @@ export function useFontPair(initial: FontPair = 'geist'): [FontPair, Setter<Font
     useEffect(() => {
         const [sans, mono] = FONT_MAP[font] ?? FONT_MAP.geist;
         document.documentElement.style.setProperty(
-            '--font-sans',
+            '--user-font-sans',
             `${sans}, ui-sans-serif, system-ui, sans-serif`,
         );
         document.documentElement.style.setProperty(
-            '--font-mono',
+            '--user-font-mono',
             `${mono}, ui-monospace, Menlo, monospace`,
         );
         writeStorage('amd-font', font);

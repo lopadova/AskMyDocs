@@ -27,6 +27,7 @@ class SecurityHeadersTest extends TestCase
                 'Content-Type' => 'text/html; charset=UTF-8',
             ]));
             $router->get('/sec-json', fn () => response()->json(['ok' => true]));
+            $router->get('/sec-oauth', fn () => response()->json(['ok' => true])->header('Referrer-Policy', 'no-referrer'));
             $router->get('/sec-nocontent', fn () => response()->noContent());
         });
     }
@@ -39,8 +40,16 @@ class SecurityHeadersTest extends TestCase
         $response->assertHeader('X-Content-Type-Options', 'nosniff');
         $response->assertHeader('X-Frame-Options', 'DENY');
         $response->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-        $this->assertNotEmpty($response->headers->get('Permissions-Policy'));
+        $response->assertHeader(
+            'Permissions-Policy',
+            'camera=(), microphone=(self), geolocation=(), browsing-topics=()',
+        );
         $this->assertNotEmpty($response->headers->get('X-Request-Id'));
+    }
+
+    public function test_an_oauth_response_keeps_its_stricter_referrer_policy(): void
+    {
+        $this->get('/sec-oauth')->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
     }
 
     public function test_csp_report_only_header_carries_a_nonce_on_html(): void

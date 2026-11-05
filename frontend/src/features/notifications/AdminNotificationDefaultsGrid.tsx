@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -67,6 +68,7 @@ function buildCurrentMatrix(data: NotificationTenantDefaultsResponse): Record<st
 }
 
 export function AdminNotificationDefaultsGrid(): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const qc = useQueryClient();
 
     // BE rejects PUT for non-super-admin with 403. Mirror that in the
@@ -192,8 +194,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
 
             {dataState === 'loading' && (
                 <p data-testid="notif-defaults-loading" className="py-8 text-center text-gray-500">
-                    Loading…
-                </p>
+                    {translateInterface("Loading…")}</p>
             )}
 
             {dataState === 'error' && (
@@ -205,8 +206,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                         onClick={() => void query.refetch()}
                         className="mt-2 text-sm text-red-700 underline"
                     >
-                        Retry
-                    </button>
+                        {translateInterface("Retry")}</button>
                 </div>
             )}
 
@@ -232,8 +232,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                         onClick={() => saveMut.reset()}
                         className="ml-2 underline"
                     >
-                        Dismiss
-                    </button>
+                        {translateInterface("Dismiss")}</button>
                 </div>
             )}
 
@@ -281,8 +280,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                                 disabled={saveMut.isPending || !canMutate}
                                                                 className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                                                             >
-                                                                On
-                                                            </button>
+                                                                {translateInterface("On")}</button>
                                                             <button
                                                                 type="button"
                                                                 data-testid={`notif-defaults-column-${chan}-disable-all`}
@@ -291,8 +289,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                                 disabled={saveMut.isPending || !canMutate}
                                                                 className="text-xs text-gray-600 hover:underline disabled:text-gray-400"
                                                             >
-                                                                Off
-                                                            </button>
+                                                                {translateInterface("Off")}</button>
                                                         </div>
                                                     )}
                                                 </div>
@@ -374,8 +371,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                         <div className="text-sm text-gray-500">
                             {dirty && (
                                 <span data-testid="notif-defaults-dirty-indicator">
-                                    Unsaved changes
-                                </span>
+                                    {translateInterface("Unsaved changes")}</span>
                             )}
                         </div>
                         <div className="flex gap-2">
@@ -395,7 +391,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                 disabled={!dirty || saveMut.isPending}
                                 className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700 disabled:bg-gray-300"
                             >
-                                {saveMut.isPending ? 'Saving…' : 'Save'}
+                                {saveMut.isPending ? 'Saving…' : translateInterface("Save")}
                             </button>
                         </div>
                     </div>

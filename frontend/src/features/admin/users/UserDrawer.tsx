@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import type { AdminRole, AdminUser } from '../admin.api';
@@ -40,6 +41,7 @@ export function UserDrawer({
     projectKeys,
     onClose,
 }: UserDrawerProps) {
+    const { t: translateInterface } = useUiTranslation();
     const [tab, setTab] = useState<Tab>('profile');
     const [serverErrors, setServerErrors] = useState<Record<string, string> | undefined>(
         undefined,
@@ -129,18 +131,13 @@ export function UserDrawer({
                 pointerEvents: 'auto',
             }}
         >
-            <button
-                type="button"
-                aria-label="Close drawer"
+            <div
+                aria-hidden="true"
                 data-testid="user-drawer-backdrop"
-                onClick={onClose}
                 style={{
                     position: 'absolute',
                     inset: 0,
                     background: 'rgba(0,0,0,0.45)',
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
                 }}
             />
             <aside
@@ -183,7 +180,7 @@ export function UserDrawer({
                         data-testid="user-drawer-close"
                         onClick={onClose}
                         style={iconCloseStyle}
-                        aria-label="Close"
+                        aria-label={translateInterface("Close")}
                     >
                         <Icon.Close size={14} />
                     </button>

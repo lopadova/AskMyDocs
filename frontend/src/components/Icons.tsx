@@ -41,8 +41,8 @@ function Logo(p: IconProps): ReactElement {
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={p.style}>
             <defs>
                 <linearGradient id="lg" x1="0" x2="1" y1="0" y2="1">
-                    <stop offset="0" stopColor="#8b5cf6" />
-                    <stop offset="1" stopColor="#22d3ee" />
+                    <stop offset="0" stopColor="var(--accent-a)" />
+                    <stop offset="1" stopColor="var(--accent-b)" />
                 </linearGradient>
             </defs>
             <path
@@ -163,6 +163,30 @@ export const Icon = {
     Activity: (p: IconProps) => (
         <I {...p} d={<path d="M3 12h4l2-7 4 14 2-7h6" />} />
     ),
+    Api: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16" />
+                </>
+            }
+        />
+    ),
+    Mcp: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <circle cx="12" cy="12" r="2.5" />
+                    <circle cx="5" cy="5" r="2" />
+                    <circle cx="19" cy="5" r="2" />
+                    <circle cx="12" cy="20" r="2" />
+                    <path d="m10.2 10.2-3.8-3.8M13.8 10.2l3.8-3.8M12 14.5V18" />
+                </>
+            }
+        />
+    ),
     Bell: (p: IconProps) => (
         <I
             {...p}
@@ -209,6 +233,22 @@ export const Icon = {
                 </>
             }
         />
+    ),
+    Waveform: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+                </>
+            }
+        />
+    ),
+    StopCircle: (p: IconProps) => (
+        <I {...p} d={<><circle cx="12" cy="12" r="9" /><rect x="9" y="9" width="6" height="6" rx="1" /></>} />
+    ),
+    Refresh: (p: IconProps) => (
+        <I {...p} d={<><path d="M20 11a8 8 0 0 0-14-4L4 9" /><path d="M4 4v5h5" /><path d="M4 13a8 8 0 0 0 14 4l2-2" /><path d="M20 20v-5h-5" /></>} />
     ),
     Send: (p: IconProps) => <I {...p} d={<path d="M4 12 21 4l-8 17-2-7z" />} />,
     Chevron: (p: IconProps) => <I {...p} d={<path d="m9 6 6 6-6 6" />} />,
@@ -308,6 +348,17 @@ export const Icon = {
             }
         />
     ),
+    Info: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 11v6M12 7.5v.5" />
+                </>
+            }
+        />
+    ),
     Eye: (p: IconProps) => (
         <I
             {...p}
@@ -326,6 +377,41 @@ export const Icon = {
                 <>
                     <path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16z" />
                     <path d="M13 6l4 4" />
+                </>
+            }
+        />
+    ),
+    // v8.x — Sessions workspace row actions.
+    Pin: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M12 17v5" />
+                    <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
+                </>
+            }
+        />
+    ),
+    Archive: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M3 4h18v4H3z" />
+                    <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+                    <path d="M10 12h4" />
+                </>
+            }
+        />
+    ),
+    Flag: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M5 21V4" />
+                    <path d="M5 4h10l-1.5 4L15 12H5" />
                 </>
             }
         />

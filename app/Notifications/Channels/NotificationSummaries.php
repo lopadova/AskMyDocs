@@ -35,6 +35,7 @@ final class NotificationSummaries
             NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD => self::decisionDebtSummary($payload),
             NotificationEvent::EVENT_KB_DOC_STALE_REVIEW => self::staleReviewSummary($payload),
             NotificationEvent::EVENT_KB_DOC_ANALYSIS_READY => self::analysisReadySummary($payload),
+            NotificationEvent::EVENT_API_TOOL_STATE_CHANGED => (self::stringField($payload, 'name') ?? 'API tool').' · '.(self::stringField($payload, 'status') ?? 'updated'),
             NotificationEvent::EVENT_COLLECTION_NEW_MEMBER => self::collectionMemberSummary($payload),
             default => NotificationSubjects::forEventType($eventType),
         };

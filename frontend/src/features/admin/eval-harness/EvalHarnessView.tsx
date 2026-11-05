@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 /*
  * EvalHarnessView — cross-mount of the
  * `padosoft/eval-harness-ui` v0.1.0 SPA dashboard.
@@ -135,6 +136,7 @@ const FALLBACK_CONFIG: AppBootstrapConfig = {
 type LoadState = 'loading' | 'ready' | 'unavailable';
 
 export function EvalHarnessView() {
+    const { t: translateInterface } = useUiTranslation();
     const [config, setConfig] = useState<AppBootstrapConfig | null>(null);
     const [state, setState] = useState<LoadState>('loading');
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
@@ -193,8 +195,7 @@ export function EvalHarnessView() {
                     }}
                 >
                     <span className="shimmer" style={{ padding: '6px 18px', borderRadius: 8 }}>
-                        Loading Eval Harness…
-                    </span>
+                        {translateInterface("Loading Eval Harness…")}</span>
                 </div>
             )}
 
@@ -213,14 +214,10 @@ export function EvalHarnessView() {
                 >
                     <div className="panel" style={{ maxWidth: 520, padding: '24px 24px 22px', textAlign: 'center' }}>
                         <h2 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
-                            Eval Harness data API is not available
-                        </h2>
+                            {translateInterface("Eval Harness data API is not available")}</h2>
                         <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, lineHeight: 1.55 }}>
-                            The <code style={{ fontFamily: 'var(--font-mono)' }}>padosoft/eval-harness-ui</code> data
-                            endpoints aren&rsquo;t reachable in this environment. Set{' '}
-                            <code>EVAL_HARNESS_UI_ENABLED=true</code> and wire the package&rsquo;s JSON API
-                            (then <code>php artisan config:clear</code>) to enable the dashboards.
-                        </p>
+                            {translateInterface("The") + " "}<code style={{ fontFamily: 'var(--font-mono)' }}>padosoft/eval-harness-ui</code> {" " + translateInterface("data endpoints aren&rsquo;t reachable in this environment. Set")}{' '}
+                            <code>EVAL_HARNESS_UI_ENABLED=true</code> {" " + translateInterface("and wire the package&rsquo;s JSON API (then") + " "}<code>php artisan config:clear</code>{translateInterface(") to enable the dashboards.")}</p>
                     </div>
                 </div>
             )}

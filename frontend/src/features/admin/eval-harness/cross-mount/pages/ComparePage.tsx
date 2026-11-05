@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from '@/components/ui/select-field';
 /*
  * Cross-mount port of `vendor/padosoft/eval-harness-ui/resources/js/
  * pages/ComparePage.tsx`. Imports rewritten to relative paths;
@@ -114,51 +115,51 @@ const ComparePage = () => {
         <div className="flex flex-wrap gap-3">
           <label className="text-sm">
             {t('text_select_left')}
-            <select
+            <SelectField
               className="mt-1 block ehu-rounded border border-slate-200 p-2"
               value={leftValue}
-              onChange={(event) => setLeftValue(event.target.value)}
+              onValueChange={(nextValue) => setLeftValue(nextValue)}
               data-testid="eval-harness-compare-select-left"
             >
-              <option value="">seleziona</option>
+              <SelectOption value="">seleziona</SelectOption>
               {reportRows.map((item) => (
-                <option key={item.id} value={item.id}>
+                <SelectOption key={item.id} value={item.id}>
                   {item.dataset} / {item.id}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="text-sm">
             {t('text_select_right')}
-            <select
+            <SelectField
               className="mt-1 block ehu-rounded border border-slate-200 p-2"
               value={rightValue}
-              onChange={(event) => setRightValue(event.target.value)}
+              onValueChange={(nextValue) => setRightValue(nextValue)}
               data-testid="eval-harness-compare-select-right"
             >
-              <option value="">seleziona</option>
+              <SelectOption value="">seleziona</SelectOption>
               {reportRows.map((item) => (
-                <option key={`r-${item.id}`} value={item.id} disabled={!available.has(item.id)}>
+                <SelectOption key={`r-${item.id}`} value={item.id} disabled={!available.has(item.id)}>
                   {item.dataset} / {item.id}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="text-sm">
             {t('label_dataset')}
-            <select
+            <SelectField
               className="mt-1 block ehu-rounded border border-slate-200 p-2"
               value={datasetForAuto}
-              onChange={(event) => setDatasetForAuto(event.target.value)}
+              onValueChange={(nextValue) => setDatasetForAuto(nextValue)}
               data-testid="eval-harness-compare-select-dataset"
             >
-              <option value="">{t('text_select_dataset')}</option>
+              <SelectOption value="">{t('text_select_dataset')}</SelectOption>
               {datasetOptions.map((dataset) => (
-                <option key={dataset} value={dataset}>
+                <SelectOption key={dataset} value={dataset}>
                   {dataset}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectField>
           </label>
           <div className="self-end">
             <button

@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -125,8 +126,8 @@ describe('MembershipEditor', () => {
 
         // Open the add row, pick project + role, save.
         await user.click(screen.getByTestId('membership-add'));
-        await user.selectOptions(screen.getByTestId('membership-add-project'), 'engineering');
-        await user.selectOptions(screen.getByTestId('membership-add-role'), 'admin');
+        await chooseSelectOption(screen.getByTestId('membership-add-project'), 'engineering');
+        await chooseSelectOption(screen.getByTestId('membership-add-role'), 'admin');
         await user.click(screen.getByTestId('membership-add-save'));
 
         await waitFor(() => {
@@ -181,10 +182,11 @@ describe('MembershipEditor', () => {
 
         await user.click(screen.getByTestId('membership-add'));
 
-        const select = screen.getByTestId('membership-add-project') as HTMLSelectElement;
-        const optionValues = within(select)
+        const select = screen.getByTestId('membership-add-project');
+        await user.click(select);
+        const optionValues = within(await screen.findByRole('listbox'))
             .getAllByRole('option')
-            .map((o) => (o as HTMLOptionElement).value);
+            .map((o) => o.dataset.value);
         expect(optionValues).toEqual(injected);
     });
 
@@ -204,10 +206,11 @@ describe('MembershipEditor', () => {
 
         await user.click(screen.getByTestId('membership-add'));
 
-        const select = screen.getByTestId('membership-add-project') as HTMLSelectElement;
-        const optionValues = within(select)
+        const select = screen.getByTestId('membership-add-project');
+        await user.click(select);
+        const optionValues = within(await screen.findByRole('listbox'))
             .getAllByRole('option')
-            .map((o) => (o as HTMLOptionElement).value);
+            .map((o) => o.dataset.value);
         expect(optionValues).toEqual(['engineering']);
     });
 });

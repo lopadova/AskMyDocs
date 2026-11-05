@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { AdminTeam, CreateTeamPayload, UpdateTeamPayload } from './admin-teams.api';
 
@@ -11,7 +12,7 @@ import type { AdminTeam, CreateTeamPayload, UpdateTeamPayload } from './admin-te
  *
  * R11: every interactive element carries a `data-testid`. R15: every input
  * has a bound `<label htmlFor>`; the form is `role="dialog"` +
- * `aria-modal="true"`; Esc closes via the keydown listener. Per-field errors
+ * `aria-modal="true"`; Only explicit controls close the dialog. Per-field errors
  * render next to their input as `admin-team-form-<field>-error`.
  */
 
@@ -41,6 +42,7 @@ export function TeamFormDialog({
     fieldErrors,
     isSubmitting,
 }: TeamFormDialogProps): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
     const isEdit = team !== null;
     const [name, setName] = useState(team?.name ?? '');
     const [slug, setSlug] = useState(team?.slug ?? '');
@@ -53,14 +55,6 @@ export function TeamFormDialog({
         setSlug(team?.slug ?? '');
         setSlugTouched(team !== null);
     }, [team]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onClose]);
 
     const handleNameChange = (value: string) => {
         setName(value);
@@ -81,11 +75,6 @@ export function TeamFormDialog({
     return (
         <div
             data-testid="admin-team-form-backdrop"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                    onClose();
-                }
-            }}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -121,7 +110,7 @@ export function TeamFormDialog({
                 </h2>
 
                 <label htmlFor="admin-team-name" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Name</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Name")}</span>
                     <input
                         id="admin-team-name"
                         data-testid="admin-team-form-name"
@@ -145,7 +134,7 @@ export function TeamFormDialog({
                 </label>
 
                 <label htmlFor="admin-team-slug" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>Slug</span>
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>{translateInterface("Slug")}</span>
                     <input
                         id="admin-team-slug"
                         data-testid="admin-team-form-slug"
@@ -193,15 +182,14 @@ export function TeamFormDialog({
                         disabled={isSubmitting}
                         style={buttonStyle('secondary', !!isSubmitting)}
                     >
-                        Cancel
-                    </button>
+                        {translateInterface("Cancel")}</button>
                     <button
                         type="submit"
                         data-testid="admin-team-form-submit"
                         disabled={isSubmitting}
                         style={buttonStyle('primary', !!isSubmitting)}
                     >
-                        {isSubmitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+                        {isSubmitting ? 'Saving…' : isEdit ? translateInterface("Save") : translateInterface("Create")}
                     </button>
                 </div>
             </form>
