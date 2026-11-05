@@ -55,6 +55,24 @@ final class ApiToolExecutorTest extends TestCase
 
         $this->assertArrayHasKey('error', $result);
         $this->assertSame(200, $result['status']);
+        $this->assertSame('api_response_format_mismatch', $result['error_code']);
+        $this->assertFalse($result['retryable']);
+        $this->assertSame('html', $result['response_diagnostics']['detected_format']);
+        $log = \Padosoft\AskMyDocsConnectorApi\Models\ApiToolCallLog::query()->latest('id')->firstOrFail();
+        $this->assertSame($result, $log->response_excerpt);
+        $this->assertStringNotContainsString('<html>', json_encode($log->response_excerpt));
+    }
+
+    public function test_xml_requires_the_configured_envelope_and_is_not_silently_accepted(): void
+    {
+        Http::fake(['*' => Http::response('<orders><order><id>001</id></order></orders>', 200, ['Content-Type' => 'application/xml'])]);
+        $route = $this->makeRoute('http://api.example.test/orders');
+        $result = app(ApiToolExecutor::class)->execute($route, []);
+        $this->assertSame('xml', $result['response_diagnostics']['detected_format']);
+        $this->assertSame('json', $result['response_diagnostics']['expected_format']);
+        $route->forceFill(['output_transform' => ['response_format' => 'xml', 'xml_root' => 'orders',
+            'xml_list_paths' => ['orders.order']]])->save();
+        $this->assertSame(['orders' => ['order' => [['id' => '001']]]], app(ApiToolExecutor::class)->execute($route, []));
     }
 
     public function test_4xx_returns_error_with_status_and_does_not_retry(): void

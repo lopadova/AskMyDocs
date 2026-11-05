@@ -69,6 +69,8 @@ final class ApiToolCollectorTest extends TestCase
         $this->assertSame(2, $budget->snapshot()['physical_calls']);
         $this->assertSame('it-IT', $requests[0]->header('Accept-Language')[0] ?? null);
         $this->assertStringContainsString('page=2', $requests[1]->url());
+        $this->assertSame(1, $result->stats['initial_request']['query']['page']);
+        $this->assertSame(2, $result->stats['initial_request']['query']['per_page']);
     }
 
     public function test_cursor_collection_stops_on_end_token_and_rejects_cross_origin_next_urls(): void
