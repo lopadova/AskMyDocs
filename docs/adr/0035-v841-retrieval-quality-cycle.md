@@ -541,3 +541,54 @@ exception.
 4. A repository of PHP/TypeScript code can be ingested through the CLI, the API
    and the GitHub Action, chunked per symbol, cited with line ranges, with
    secrets redacted, and the code queries in benchmark v2 pass.
+
+---
+
+## Addendum — W5 spike note and as-built record (v8.45, 2026-11-05)
+
+### Spike result (plan W5.0)
+
+- **Pinned:** `web-tree-sitter` `0.25.10` + the prebuilt grammar pack
+  `tree-sitter-wasms` `0.1.13` (exact versions in `tools/code-chunker/package.json`;
+  no lockfile is committed, the exact pins are the reproducibility contract).
+  The helper needs no C toolchain; Node ≥ 18.
+- **Grammars shipped (11):** PHP, TypeScript, TSX, JavaScript (`js`/`jsx`/`mjs`/`cjs`),
+  Python, Go, Rust, Java, C#, Ruby, Bash. The pack ships **no SQL grammar** and YAML/JSON
+  carry no useful declaration structure, so those three languages use the heuristic
+  driver by design (moved to the heuristic, not dropped — as the plan required).
+- **Measured on the build machine** (Node 22, one process per file, which is the real
+  invocation model): ≈ 55 MB resident for the helper, ≈ 10 ms to parse a small PHP
+  file, **≈ 120 ms wall per file including WASM start-up** — 300 PHP files of this
+  repository in 36 s sequentially. A 2 000-file repository is therefore ≈ 4 minutes of
+  CPU, but spread across independent queue jobs it is invisible to the operator.
+  The 2 000-file figure is an extrapolation of the 300-file measurement, not a
+  separate run. If start-up ever dominates, a long-lived worker mode is a drop-in
+  behind the same driver contract.
+- Same break points from both drivers on the fixtures (PHP class + methods,
+  TypeScript exports/arrows, Python decorators, Go methods) — the heuristic is a
+  faithful floor, not a different algorithm.
+
+### As-built deviations from the text above
+
+| ADR text | As built | Why |
+|---|---|---|
+| Helper returns `{pos, line, …}` | Returns **`line` / `end_line`** only | JS offsets are UTF-16 code units, PHP's are bytes; lines are the only unit both agree on across multi-byte text |
+| `heading_path` uses `›` and kind words (`class Invoice › total()`) | `file > Invoice > total` | Matches `MarkdownChunker`'s `' > '` separator that the reranker's heading signal and the UI already parse; the break-point type is in `metadata`, not the path |
+| Secret pass "at the `ChunkRedactor` seam" | Redaction **in `CodePassthroughConverter`** (before the artifact exists), again at the seam, and before the raw file is written by `POST /api/kb/ingest` | A seam-only pass would still let the secret into the stored conversion artifact and the KB-disk copy |
+| Deny-listed files fail the run | They are **skipped with a reason** (`skipped_code`, API `status: "skipped"`) | A repository push legitimately contains `vendor/` and lockfiles; one must not 422 the other ninety-nine |
+| Code accepted wherever `SourceType` is known | `fromExtension()` maps code only on opt-in (`$includeCode`); the **default `--pattern` never includes code** | A docs folder with a few `.json`/`.yml` files must not start ingesting configuration when the flag is flipped |
+| Code embedding header "already supported" under D2's flag | Code chunks **always** use `file \| symbol \| lang \| code`, even with `KB_EMBEDDING_CONTEXTUAL_INPUT=false` | A bare function slice has nothing for the bi-encoder to match a "where is X defined" query against; prose behaviour is unchanged |
+| Unknown `KB_CODE_CHUNKER_DRIVER` | Resolves to `heuristic` | Unknown policy must not widen the process-execution surface |
+| Queued job after the flag is turned off | Completes; deny-list/size/binary/generated still apply to its bytes | The master switch is an entry-point gate (as for images); the controls are not |
+| Full text for code | Second code-only pass with `simple`, merged by chunk id, via the partial index `idx_chunks_fts_code` | The ADR specified the index; the query side had to be added for it to be used |
+
+### What was verified and what was not
+
+Verified here: the helper on PHP/TS/Python/Go; both drivers on real repository files;
+the degradation ladder with fake helpers (timeout, crash, garbage, oversize output);
+the partial-index plan on PostgreSQL 16 (`Bitmap Index Scan on idx_chunks_fts_code`);
+the GitHub Action collect and POST steps against a temporary git repository.
+**Not verified here:** retrieval quality on real embeddings — the benchmark's `code`
+class runs against the deterministic stub, so it proves ingestion and scoring work end
+to end, not that code questions are answered better. That measurement belongs to a
+live run with a real provider and pgvector (see the closure document).

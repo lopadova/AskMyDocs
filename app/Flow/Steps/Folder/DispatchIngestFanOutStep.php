@@ -6,6 +6,9 @@ namespace App\Flow\Steps\Folder;
 
 use App\Flow\Steps\StepTenantBinder;
 use App\Jobs\IngestDocumentJob;
+use App\Services\Kb\Code\CodeFileRefusedException;
+use App\Services\Kb\Code\CodeIngestionPolicy;
+use App\Services\Kb\Code\CodeLanguageMap;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\Kb\FileTypeSniffer;
@@ -86,6 +89,8 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
         $dispatched = 0;
         $failures = [];
         $artifactFailures = [];
+        $skippedCode = [];
+        $codePolicy = null;
         $storage = Storage::disk($disk);
 
         foreach ($files as $fullPath) {
@@ -107,7 +112,24 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
             }
 
             $extension = (string) pathinfo($relative, PATHINFO_EXTENSION);
-            $sourceType = SourceType::fromExtension($extension);
+            // v8.45 / ADR 0035 D7 — a code extension is a supported type only
+            // while code ingestion is on (R43); off, it is recorded as
+            // unsupported exactly as before.
+            $codePolicy ??= app(CodeIngestionPolicy::class);
+            $sourceType = SourceType::fromExtension($extension, $codePolicy->enabled());
+            if ($sourceType === SourceType::CODE) {
+                $size = null;
+                try {
+                    $size = $storage->size($fullPath);
+                } catch (\Throwable) {
+                    // unknown size: the byte-level check at ingest still applies
+                }
+                $verdict = $codePolicy->assessPath($relative, is_int($size) ? $size : null);
+                if (! $verdict->accepted) {
+                    $skippedCode[] = ['path' => $relative, 'reason' => $verdict->label()];
+                    continue;
+                }
+            }
             // v8.36 / ADR 0029 — an image is a supported type only while OCR
             // is on (R43); off, it is recorded as unsupported exactly as before.
             if ($sourceType === SourceType::IMAGE && ! (bool) config('kb.ocr.enabled', false)) {
@@ -123,9 +145,12 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
             // MIME reaches the converter registry and the document row as what
             // the bytes are. Bytes that are no known raster are a per-file
             // failure here (R14), never a job that dies in the converter.
-            $mimeType = $sourceType === SourceType::IMAGE
-                ? FileTypeSniffer::imageMimeOnDisk($storage, $fullPath)
-                : $sourceType->toMime();
+            $mimeType = match ($sourceType) {
+                SourceType::IMAGE => FileTypeSniffer::imageMimeOnDisk($storage, $fullPath),
+                // The language MIME (`text/x-php`), never the family label.
+                SourceType::CODE => CodeLanguageMap::mimeForPath($relative),
+                default => $sourceType->toMime(),
+            };
             if ($mimeType === null) {
                 $failures[] = ['path' => $relative, 'reason' => 'unrecognised_bytes: not a PNG, JPEG, TIFF or WebP image'];
                 continue;
@@ -157,6 +182,10 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                     'document_id' => $e->documentId,
                     'reason' => $e->getMessage(),
                 ];
+            } catch (CodeFileRefusedException $e) {
+                // Generated / binary code file refused on its BYTES (sync
+                // path): a skip with a reason, like the path-level refusals.
+                $skippedCode[] = ['path' => $relative, 'reason' => $e->getMessage()];
             } catch (\Throwable $e) {
                 $failures[] = [
                     'path' => $relative,
@@ -178,6 +207,10 @@ final class DispatchIngestFanOutStep implements FlowStepHandler
                 // was refused — done, degraded, repairable.
                 'artifact_failure_count' => count($artifactFailures),
                 'artifact_failures' => $artifactFailures,
+                // Additive (R27): code files the admission policy refused —
+                // not failures, the run stays green.
+                'skipped_code_count' => count($skippedCode),
+                'skipped_code' => $skippedCode,
             ],
             businessImpact: [
                 'dispatched_count' => $dispatched,

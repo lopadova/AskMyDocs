@@ -112,6 +112,13 @@ final class BenchmarkRunner
         foreach (glob(rtrim($corpusDir, '/').'/*') ?: [] as $path) {
             $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
             $mime = self::MIME[$ext] ?? null;
+            // v8.45 / ADR 0035 D7 — the benchmark's `code` corpus files go
+            // through the SAME admission policy and converters as production:
+            // only with code ingestion on are they ingested (and the matching
+            // `code` queries scored; see the skip below).
+            if ($mime === null && (bool) config('kb.code.ingestion_enabled', false)) {
+                $mime = \App\Services\Kb\Code\CodeLanguageMap::mimeForPath($path);
+            }
             if ($mime === null) {
                 continue;
             }

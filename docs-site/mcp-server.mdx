@@ -54,7 +54,9 @@ The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
   `super-admin` principals only (a baseline `mcp:read` token is not a role), and gated
   by `KB_RETRIEVAL_EXPLAIN_ENABLED` — off answers `{disabled: true}`. The ingestion-status
   tool also gains an additive `stale_embeddings` block (chunks whose vector recipe differs
-  from the active one).
+  from the active one) and, from v8.45, an additive `code_ingestion` block (feature on/off,
+  configured chunker driver, code documents, chunks per driver, documents with credentials
+  redacted — counts only).
 - **Document-intelligence read surface (v8.36):** `KbOcrStatusTool` reports whether a
   document was OCR'd, with which driver, per-page confidence and figure count — read-only
   by design; an agent cannot start an OCR run or spend (see

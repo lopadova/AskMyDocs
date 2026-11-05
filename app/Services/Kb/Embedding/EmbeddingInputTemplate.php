@@ -66,7 +66,21 @@ final class EmbeddingInputTemplate
         array $drafts,
         bool $previewSafe = false,
     ): array {
-        if (! $this->contextual()) {
+        $contextual = $this->contextual();
+        // v8.45 / ADR 0035 D7 — code chunks ALWAYS embed with the code header
+        // (`file | symbol | lang | code`), even while the prose template is
+        // off: a bare slice of a function carries no file or symbol for the
+        // bi-encoder to match a "where is X defined" query against. Prose
+        // drafts keep the flag's behaviour exactly.
+        $hasCode = false;
+        foreach ($drafts as $d) {
+            if (is_string($d->metadata['language'] ?? null) && $d->metadata['language'] !== '') {
+                $hasCode = true;
+
+                break;
+            }
+        }
+        if (! $contextual && ! $hasCode) {
             return array_map(static fn (ChunkDraft $d): string => $d->text, $drafts);
         }
         if ($drafts === []) {
@@ -98,9 +112,12 @@ final class EmbeddingInputTemplate
         }
         $type = $canonicalType !== null && $canonicalType !== '' ? $this->clean($canonicalType, 40) : null;
 
-        return array_map(function (ChunkDraft $d) use ($safeTitle, $safePath, $safeHeading, $type): string {
+        return array_map(function (ChunkDraft $d) use ($safeTitle, $safePath, $safeHeading, $type, $contextual): string {
             $heading = $safeHeading[$d->headingPath];
             $language = $d->metadata['language'] ?? null;
+            if (! $contextual && ! (is_string($language) && $language !== '')) {
+                return $d->text;
+            }
 
             if (is_string($language) && $language !== '') {
                 return sprintf(

@@ -115,9 +115,15 @@ A refusal returns the same shape with `confidence: 0` and a machine-readable
 ```
 
 Response — an envelope `{ queued, failed, documents[] }` where each entry is
-`{ source_path, status: "queued" | "failed", error? }`. The status code is
+`{ source_path, status: "queued" | "failed" | "skipped", error?, reason? }`, plus
+the counts `queued`, `failed` and — additive, v8.45 — `skipped` (source files the
+code admission policy refused: deny-listed path, over the size cap, generated or
+binary; `reason` carries the stable code and never file content). A skipped file
+does not change the status code. The status code is
 **`202`** when every document queued, or **`207` Multi-Status** when some disk
-writes failed. One `IngestDocumentJob` is dispatched per queued document. See the
+writes failed. With `KB_CODE_INGESTION_ENABLED=true`, `mime_type` also accepts the
+`text/x-<language>` code MIMEs (see [Ingesting source code](/ingesting-source-code));
+with it off they are the same `422` as before. One `IngestDocumentJob` is dispatched per queued document. See the
 [ingestion pipeline](/architecture/ingestion-pipeline).
 
 ## Promotion pipeline — `/api/kb/promotion`

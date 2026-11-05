@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Flow\Steps;
 
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Services\Kb\Code\CodeFileRefusedException;
+use App\Services\Kb\Code\CodeIngestionPolicy;
+use App\Services\Kb\Code\CodeLanguageMap;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\KbPath;
@@ -86,6 +89,19 @@ final class ParseMarkdownStep implements FlowStepHandler
             throw new RuntimeException(
                 "ParseMarkdownStep: disk [{$disk}] returned no bytes for {$fullPath}"
             );
+        }
+
+        // v8.45 / ADR 0035 D7 — the admission policy is re-applied to the BYTES
+        // here, the one point every queued ingest reads through: a deny-listed
+        // path, an oversize/binary/generated file that reached the queue by a
+        // route that skipped the entry-point checks never gets converted,
+        // chunked or embedded. The master switch is NOT re-checked (a job
+        // queued before the flag was turned off completes).
+        if (CodeLanguageMap::languageForMime($mimeType) !== null) {
+            $verdict = app(CodeIngestionPolicy::class)->assessContent($normalizedPath, (string) $bytes, checkEnabled: false);
+            if (! $verdict->accepted) {
+                throw new CodeFileRefusedException('ParseMarkdownStep: code file refused ('.$verdict->label().') for '.$normalizedPath);
+            }
         }
 
         $combinedMetadata = array_merge($metadata, [

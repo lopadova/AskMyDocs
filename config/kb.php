@@ -1246,6 +1246,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Source code as a content class (v8.45 / W5, ADR 0035 D7)
+    |--------------------------------------------------------------------------
+    |
+    | OFF by default (R43). `SourceType::CODE` is always a KNOWN type; whether a
+    | code file is ACCEPTED is decided at the three entry points (kb:ingest-folder,
+    | POST /api/kb/ingest, the GitHub Action `code-globs` input) by
+    | `ingestion_enabled` — with the flag off a `.php` upload is refused exactly as
+    | before. Path deny-list, secret redaction and the size cap are NOT knobs that
+    | can be turned off: they run before anything is stored or embedded.
+    |
+    |   chunker_driver  auto | tree_sitter | heuristic
+    |     auto         tree-sitter when the Node helper answers a health probe and
+    |                  the grammar exists, otherwise the pure-PHP heuristic driver.
+    |     tree_sitter  forced; helper/grammar unavailable ⇒ the ingest FAILS loudly
+    |                  (R14), never silently degrades. Languages that have no
+    |                  shipped grammar (sql, yaml, json) always use the heuristic.
+    |     heuristic    never spawns a process.
+    */
+    'code' => [
+        'ingestion_enabled' => (bool) env('KB_CODE_INGESTION_ENABLED', false),
+        'max_file_bytes' => (int) env('KB_CODE_MAX_FILE_BYTES', 524288),
+        'parse_timeout' => (int) env('KB_CODE_PARSE_TIMEOUT', 10),
+        'chunker_driver' => env('KB_CODE_CHUNKER_DRIVER', 'auto'),
+        'node_binary' => env('KB_CODE_NODE_BINARY', 'node'),
+        'helper_path' => env('KB_CODE_HELPER_PATH', base_path('tools/code-chunker/index.mjs')),
+        'max_helper_output_bytes' => (int) env('KB_CODE_HELPER_MAX_OUTPUT_BYTES', 1048576),
+        // Seconds a successful/failed health probe is remembered per process+cache.
+        'probe_ttl' => (int) env('KB_CODE_PROBE_TTL', 300),
+        // Operator ADDITIONS to the built-in deny-list (fnmatch globs, comma
+        // separated). They can add, never remove.
+        'extra_deny_globs' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_CODE_EXTRA_DENY', ''))))),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Background ingestion (queue)
     |--------------------------------------------------------------------------
     |

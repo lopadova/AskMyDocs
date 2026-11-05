@@ -27,6 +27,7 @@
         "pages": [
           "ingestion",
           "documents-and-ocr",
+          "ingesting-source-code",
           "digitization-review",
           "portable-wiki-export",
           "chat-and-retrieval",

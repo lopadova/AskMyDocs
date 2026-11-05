@@ -106,6 +106,8 @@ score, then applies a canonical boost and a status penalty. Defaults
 | Corpus facets (v8.44) | `KB_MCP_FACETS_ENABLED` | `false` | `GET /api/kb/facets`, `kb:facets`, `KbFacetsTool` |
 | Path contexts (v8.44) | `KB_PATH_CONTEXTS_ENABLED` | `false` | Admin-authored descriptions of corpus areas, in the prompt and the citations |
 | Line-range read cap (v8.44) | `KB_LINE_READ_MAX_LINES` | `400` | Upper bound of any `from_line`/`max_lines` read |
+| Source code ingestion (v8.45) | `KB_CODE_INGESTION_ENABLED` | `false` | Accept `text/x-<language>` source files at `kb:ingest-folder --pattern`, `POST /api/kb/ingest` and the Action `code_globs`; deny-list, size cap and secret redaction are not switchable — see [Ingesting source code](/ingesting-source-code) |
+| Code chunker driver (v8.45) | `KB_CODE_CHUNKER_DRIVER` | `auto` | `auto` (tree-sitter helper, heuristic fallback) \| `tree_sitter` (forced — unavailable ⇒ ingest fails loudly) \| `heuristic`; plus `KB_CODE_MAX_FILE_BYTES` (`524288`), `KB_CODE_PARSE_TIMEOUT` (`10`), `KB_CODE_EXTRA_DENY` |
 | Embedding cost estimate (v8.42) | `KB_EMBEDDING_PRICE_PER_MILLION_TOKENS` | unset | Turns the `kb:reembed-stale --dry-run` token estimate into a cost |
 | Vector weight | `KB_RERANK_VECTOR_WEIGHT` | `0.55` | Cosine similarity signal |
 | Keyword weight | `KB_RERANK_KEYWORD_WEIGHT` | `0.25` | Lexical overlap signal |

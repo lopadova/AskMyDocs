@@ -144,6 +144,36 @@ final class BenchmarkV2Test extends TestCase
         $this->assertSame($card['query_count'], array_sum(array_column($card['by_class'], 'count')));
     }
 
+    public function test_suite_v2_with_code_ingestion_on_ingests_the_code_corpus_and_scores_the_code_class(): void
+    {
+        config([
+            'kb.code.ingestion_enabled' => true,
+            'kb.code.chunker_driver' => 'heuristic',
+        ]);
+
+        $this->artisan('kb:benchmark', [
+            '--stub' => true,
+            '--suite' => 'v2',
+            '--corpus' => $this->root.'/resources/benchmark/v2/corpus',
+            '--queries' => $this->root.'/resources/benchmark/v2/queries.yaml',
+            '--project' => 'benchmark-v2',
+            '--k' => 5,
+        ])->assertExitCode(0);
+
+        $json = collect(Storage::disk('local')->allFiles('kb-benchmark'))->first(fn ($f) => str_ends_with($f, '.json'));
+        $card = json_decode(Storage::disk('local')->get($json), true);
+
+        $this->assertSame([], $card['corpus_failures'], 'the .php / .ts / .py corpus files ingest through the real code pipeline');
+        $this->assertSame([], $card['skipped_queries']);
+        $this->assertArrayHasKey('code', $card['by_class']);
+        $this->assertSame(10, $card['by_class']['code']['count']);
+        // The code files exist as code documents, not as prose.
+        $this->assertSame(
+            ['code'],
+            \App\Models\KnowledgeDocument::query()->where('project_key', 'benchmark-v2')->whereIn('source_path', ['stock-reservation.php', 'route-optimizer.ts', 'retention-sweeper.py'])->pluck('source_type')->unique()->values()->all(),
+        );
+    }
+
     public function test_v2_stub_baseline_passes_its_own_gate_and_a_raised_floor_fails_it(): void
     {
         config(['kb.code.ingestion_enabled' => false]);

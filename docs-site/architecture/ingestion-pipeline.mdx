@@ -107,6 +107,17 @@ chunk. `0` disables it (the pre-v8.18 behaviour). Two operational notes matter:
 Frontmatter is stripped first (the `CanonicalParser` consumes it); `[[wikilinks]]`
 are extracted and attached to chunk `metadata`.
 
+### Chunking code — `CodeAstChunker` (v8.45)
+
+Source code takes a different branch of the registry: `CodePassthroughConverter`
+claims the synthetic `text/x-<language>` MIMEs, redacts credentials inside the
+converter, and emits one fenced block; `CodeAstChunker` (the only chunker that
+claims the `code` source-type token — `PipelineRegistryChunkerMutexTest` pins it)
+cuts that block at scored syntax boundaries supplied by a break-point driver. The
+driver is the Node `web-tree-sitter` helper (out of process, argument-array
+`Process`, timeout) or the pure-PHP heuristic; the one actually used is recorded
+per chunk as `metadata.chunker`. See [Ingesting source code](/ingesting-source-code).
+
 ### Embedding cache
 
 `EmbeddingCacheService` keys on `(text_hash, provider, model)` — a composite

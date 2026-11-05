@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Pii;
 
+use App\Services\Kb\Code\SecretRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Support\TenantContext;
 use Padosoft\PiiRedactor\RedactorEngine;
@@ -35,6 +36,33 @@ final class ChunkRedactor
 
     /**
      * @param  list<ChunkDraft>  $drafts
+     * @return list<ChunkDraft>
+     */
+    private function redactSecrets(array $drafts): array
+    {
+        $redactor = null;
+
+        return array_map(function (ChunkDraft $draft) use (&$redactor): ChunkDraft {
+            if (($draft->metadata['source_type'] ?? null) !== 'code') {
+                return $draft;
+            }
+            $redactor ??= app(SecretRedactor::class);
+            $result = $redactor->redact($draft->text);
+            if ($result['count'] === 0) {
+                return $draft;
+            }
+
+            return new ChunkDraft(
+                text: $result['text'],
+                order: $draft->order,
+                headingPath: $draft->headingPath,
+                metadata: array_merge($draft->metadata, ['secrets_redacted' => (int) ($draft->metadata['secrets_redacted'] ?? 0) + $result['count']]),
+            );
+        }, $drafts);
+    }
+
+    /**
+     * @param  list<ChunkDraft>  $drafts
      * @param  bool  $previewSafe  When true (a dry-run preview), NEVER write to
      *        the token vault — force the one-way `mask` strategy so a preview /
      *        flow-audit row shows no raw PII without minting reversible tokens.
@@ -45,6 +73,14 @@ final class ChunkRedactor
         if ($drafts === []) {
             return $drafts;
         }
+        // v8.45 / ADR 0035 D7 — credentials in SOURCE CODE are removed at this
+        // seam regardless of the PII engine flags: the secret pass is a
+        // security control with no off-switch, and it runs before the first
+        // embedding and before persistence (the converter already redacted the
+        // text; this is the defence in depth for any path that reaches the seam
+        // with raw drafts). Idempotent.
+        $drafts = $this->redactSecrets($drafts);
+
         // The package engine no-ops while its own flag is off, so skip strategy
         // resolution entirely in that case — otherwise a typo'd config strategy
         // would throw even though no redaction would run.

@@ -1,0 +1,276 @@
+---
+title: "Ingesting source code"
+description: "How a repository becomes a searchable, cited knowledge source — syntax-aware chunking in an out-of-process Node helper, secrets stripped before anything is stored or embedded, and every step behind a switch that ships off."
+icon: "code"
+---
+
+## Motivation
+
+Until v8.45 a `.php` file was an `Unsupported mime_type` at every entry point.
+That was the right default for a knowledge base fed by wikis and PDFs, and the
+wrong one for the question engineers actually ask an internal assistant:
+*"where do we round VAT half-up?"*, *"which class enforces the refund cap?"*.
+The answer lives in a function body, not in the wiki page that was supposed to
+describe it.
+
+Putting source files through the prose pipeline would make the answer *worse*,
+not better, for three independent reasons:
+
+1. **A markdown chunker cuts code at the wrong places.** It splits on headings
+   and paragraphs; code has neither. A function is sliced mid-body and the
+   chunk that survives has no name, no file and no neighbours.
+2. **A language stemmer mangles identifiers.** `calculateVatRounding` is not an
+   Italian word; stemming it to a root makes the exact symbol you searched for
+   miss.
+3. **Source is the one content class that routinely contains live
+   credentials.** A knowledge base that embeds `config/services.php` verbatim
+   has copied the production Stripe key into a vector store.
+
+This page describes the content class that answers all three. The design
+rationale is [ADR 0035 §D7](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0035-v841-retrieval-quality-cycle.md).
+
+<Note>
+Everything on this page is **off by default** (`KB_CODE_INGESTION_ENABLED=false`,
+R43). With the flag off a code file is refused exactly as in v8.44 — the same
+`422`, the same "Supported:" list — and nothing in the retrieval path changes.
+The admission rules (deny-list, size cap, secret redaction) are **not**
+switchable: they are security controls, not features.
+</Note>
+
+## Theory & background
+
+A syntax tree gives you something a regular expression cannot: *where a unit of
+meaning ends*. The classic way to chunk by structure is to compute **break
+points** — positions where a chunk may start — give each a **score** that
+reflects how good a boundary it is (a class boundary is better than a method
+boundary, which is better than a blank line), and cut inside a look-back
+window at the best-scoring one, with the score decayed by distance so a
+slightly-better boundary far away does not beat a good boundary close by.
+
+| Boundary | Score |
+|---|---|
+| Class / interface / trait / enum / struct | 100 |
+| Top-level function | 90 |
+| Method | 80 |
+| Import block | 60 |
+| Other top-level statement | 40 |
+| Blank line (added by the chunker, not the parser) | 20 |
+
+The look-back window is the last 35 % of a chunk; the decay is
+`score × (1 − 0.7 × d²)` with `d` the normalised distance from the greedy end.
+The **squared** distance is deliberate: it is nearly flat close to the target
+(so structure wins) and falls off steeply far from it (so a chunk is never
+shrunk to a sliver to reach a perfect boundary).
+
+The parser itself is the problem of this feature. `tree-sitter` has no
+maintained PHP binding, and a native parser inside a queue worker is a
+process-wide fault domain: one malformed file and the worker dies, taking every
+other queued job with it.
+
+## Design
+
+```mermaid
+flowchart TD
+    subgraph entry[Entry points — gated by KB_CODE_INGESTION_ENABLED]
+        CLI["kb:ingest-folder --pattern=php,ts"]
+        API["POST /api/kb/ingest (mime_type text/x-php)"]
+        GHA["GitHub Action — code_globs"]
+    end
+    entry --> POL{"CodeIngestionPolicy<br/>deny-list · size · binary · generated"}
+    POL -->|refused| SKIP["skipped + reason<br/>(never fails the run)"]
+    POL -->|admitted| JOB[IngestDocumentJob]
+    JOB --> CONV["CodePassthroughConverter<br/>SecretRedactor → one fenced block"]
+    CONV --> CH[CodeAstChunker]
+    CH --> RES{BreakPointDriverResolver}
+    RES -->|"auto / tree_sitter"| TS["TreeSitterBreakPointDriver"]
+    TS -->|"Process(argv array), stdin, timeout"| NODE["tools/code-chunker<br/>web-tree-sitter (WASM)"]
+    NODE -->|"JSON break points only — never code"| TS
+    RES -->|"heuristic, or auto fallback"| HEU[HeuristicBreakPointDriver]
+    TS --> CH
+    HEU --> CH
+    CH --> RED["ChunkRedactor seam<br/>(secret pass again, PII pass)"]
+    RED --> EMB["Embed with the code header<br/>file · symbol · lang · code"]
+    EMB --> DB[(knowledge_chunks)]
+```
+
+### The five pieces
+
+**Admission (`CodeIngestionPolicy`).** Decided before a byte is converted:
+the master switch; a known extension; a **non-overridable path deny-list**
+(`vendor/`, `node_modules/`, `.git/`, `dist/`, `build/`, `storage/`, `*.min.*`,
+lockfiles, `.env*`, `*.pem`, `*.key`, `*.p12`, `id_rsa*` …) — operators can
+*add* globs through `KB_CODE_EXTRA_DENY`, never remove one; the size cap
+(`KB_CODE_MAX_FILE_BYTES`, 512 KB); binary content; and a generated-file
+heuristic that reads only the *header comment lines* (`@generated`,
+`DO NOT EDIT`, `Code generated …`), so a variable called `$autoGenerated` does
+not exclude a hand-written file. A refused file is **skipped with a reason**,
+not a failure: a repository push legitimately contains a few of them.
+
+**Conversion (`CodePassthroughConverter`).** The source becomes a single
+fenced block tagged with its language, so the stored conversion artifact renders
+as code and source line *N* is artifact line *N + 1*. The fence is longer than
+the longest backtick run in the source, so code that itself contains a markdown
+fence cannot close it early. CRLF and BOM are normalised — hashes and line
+numbers are stable across checkouts.
+
+**Secrets (`SecretRedactor`).** Known credential formats (cloud, VCS, payment
+and LLM-provider keys, JWTs, PEM private-key blocks, `scheme://user:pass@host`)
+and high-entropy literals assigned to secret-like names are replaced by
+`[REDACTED_SECRET]` *inside the converter* — before the artifact, the chunks,
+the embeddings or the document row exist. The pass runs again at the
+`ChunkRedactor` seam as defence in depth, and on `POST /api/kb/ingest` before
+the raw file is written to the KB disk. Only a **count** ever leaves the class.
+
+**Parsing (the helper).** `tools/code-chunker/index.mjs` reads source on
+`stdin` and prints break points as JSON. It has no network and no filesystem
+writes, and it never prints source text. PHP talks to it through Symfony
+`Process` built from an **argument array** with a timeout and an output cap
+(an architecture test fails the build on a string command).
+
+**Chunking (`CodeAstChunker`).** Greedy fill to `KB_CHUNK_TARGET_TOKENS`; a
+declaration that *straddles* the boundary and still fits `KB_CHUNK_HARD_CAP_TOKENS`
+is kept whole; otherwise the best scored break point in the look-back window
+wins; a single enormous function is cut with `KB_CHUNK_OVERLAP_TOKENS` of tail
+overlap and every slice keeps the function's symbol. `heading_path` is the file
+path followed by the symbol path (`src/Billing/Invoice.php > Invoice > total`).
+
+## Data model & contracts
+
+A code chunk is an ordinary `knowledge_chunks` row. What distinguishes it is its
+metadata:
+
+| Key | Meaning |
+|---|---|
+| `language` | `php`, `typescript`, `python`, … — also what routes the embedding template and the full-text index |
+| `chunker` | `tree_sitter` or `heuristic`: the driver that **actually** produced the chunk |
+| `symbol` / `symbols` | The primary symbol path and the declarations inside the chunk |
+| `start_line` / `end_line` | 1-based **source** lines — what `kb:show --from/--lines` and the line-range MCP reads consume |
+| `secrets_redacted` | Count on the first chunk of a document (a number, never a value) |
+
+The document's `source_type` is `code` and its `mime_type` is the language MIME
+`text/x-<language>`. Supported languages: PHP, TypeScript/TSX, JavaScript
+(`js`, `jsx`, `mjs`, `cjs`), Python, Go, Rust, Java, C#, Ruby, SQL, YAML, JSON
+and shell. The first nine plus Bash have a pinned tree-sitter grammar; **SQL,
+YAML and JSON use the heuristic driver by design**, not as a degradation.
+
+### Retrieval specifics
+
+- **Embeddings** always use the code header
+  `file: … | symbol: … | lang: … | code: …`, even while the prose
+  contextual-embedding template is off — a bare slice of a function carries no
+  file or symbol for the bi-encoder to match a "where is X defined" query against.
+- **Full text** searches code chunks a second time with the `simple` text-search
+  configuration through a *partial* expression index
+  (`idx_chunks_fts_code … WHERE (metadata->>'language') IS NOT NULL`, PostgreSQL
+  only). The prose pass and the code pass are merged by chunk id, best score wins.
+- Everything downstream — Reranker, cross-encoder, graph expansion, path
+  contexts, citations — treats a code chunk like any other.
+
+## Configuration
+
+| Variable | Default | Effect |
+|---|---|---|
+| `KB_CODE_INGESTION_ENABLED` | `false` | Accept code at the three entry points |
+| `KB_CODE_MAX_FILE_BYTES` | `524288` | Larger files are skipped |
+| `KB_CODE_CHUNKER_DRIVER` | `auto` | `auto` · `tree_sitter` · `heuristic` |
+| `KB_CODE_PARSE_TIMEOUT` | `10` | Seconds before the helper is killed |
+| `KB_CODE_NODE_BINARY` | `node` | The Node executable |
+| `KB_CODE_HELPER_PATH` | `tools/code-chunker/index.mjs` | The helper entry point |
+| `KB_CODE_EXTRA_DENY` | *(empty)* | Comma-separated `fnmatch` globs **added** to the deny-list |
+
+Setup on an ingestion worker: `npm install --prefix tools/code-chunker`
+(exact-pinned `web-tree-sitter` and the prebuilt grammar pack; no C toolchain).
+
+## Decision rationale (ADR 0035 §D7)
+
+| Option | Verdict |
+|---|---|
+| **`web-tree-sitter` (WASM) in a Node helper via `Process`** | **Chosen.** Memory-safe sandbox; a malformed file cannot crash the PHP worker; prebuilt grammars; timeout and kill are trivial. |
+| PHP FFI to `libtree-sitter` | Rejected: a native fault kills the queue worker; grammars compile per platform; `ffi.enable` policy varies by SAPI. |
+| `tree-sitter` CLI | Rejected: grammars compiled at deploy (a C compiler on the image); output format is not a stable contract across CLI versions. |
+| `nikic/php-parser` and per-language PHP parsers | Rejected as the general solution (one language each); acceptable later as a pure-PHP fast path for PHP only. |
+
+Two choices deserve a note. The helper returns **line numbers, not byte offsets**:
+JavaScript offsets are UTF-16 code units and PHP's are bytes, so the two disagree
+on every multi-byte character — lines are the only unit both sides can agree on.
+And the degradation policy is **explicit and per-chunk observable**: `auto` falls
+back to the heuristic driver and records `chunker: heuristic` on every chunk it
+produced; `tree_sitter` is a promise, and a promise that cannot be kept fails the
+ingest loudly (R14) instead of quietly shipping worse chunks.
+
+## Worked example
+
+```bash
+# 1. Turn it on and install the helper on the ingestion worker
+echo 'KB_CODE_INGESTION_ENABLED=true' >> .env
+npm install --prefix tools/code-chunker
+
+# 2. Dry-run: what would be picked up? (vendor/ and lockfiles are already pruned)
+php artisan kb:ingest-folder repo/ --project=billing --recursive --pattern=php,ts,json --dry-run
+
+# 3. Ingest
+php artisan kb:ingest-folder repo/ --project=billing --recursive --pattern=php,ts,json --sync
+#   Found 212 file(s) ...
+#   Skipped 41 code file(s) by the admission policy (deny-list / size / generated):
+#     - repo/vendor/laravel/framework/src/Foo.php [denied_path: vendor/]
+#     - repo/package-lock.json [denied_path: package-lock.json]
+
+# 4. Ask, and see why a chunk ranked
+php artisan kb:search "where is VAT rounded half up" --project=billing --explain
+```
+
+From CI, the GitHub Action ingests changed code the same way:
+
+```yaml
+- uses: lopadova/AskMyDocs/.github/actions/ingest-to-askmydocs@main
+  with:
+    server_url: ${{ secrets.ASKMYDOCS_URL }}
+    api_token: ${{ secrets.ASKMYDOCS_TOKEN }}
+    project_key: billing
+    docs_path: .
+    code_globs: "php,ts"
+```
+
+`POST /api/kb/ingest` answers `202` with a new additive `skipped` count, and each
+refused file appears in `documents[]` with `status: "skipped"` and a `reason`.
+
+## Operations
+
+`ingestion:status`, `GET /api/admin/ingestion/queue` and the `KbIngestionStatusTool` MCP
+tool carry an additive `code_ingestion` block: whether the feature is on, the
+configured driver, the number of code documents, **chunks per driver**, and how
+many documents had credentials redacted (counts only). The admin health check
+adds `code_chunker_ok` — `disabled` · `ok` · `degraded` (auto, falling back) ·
+`down` (forced `tree_sitter` with an unusable helper) — plus the grammars the
+helper answered for.
+
+## Gotchas
+
+- **The default `--pattern` never includes code**, even with the flag on. A
+  folder of docs that happens to contain `.json` or `.yml` files must not start
+  ingesting configuration by surprise; ask for code explicitly.
+- A code file needs the `mime_type` of its **own** language. `src/a.php` declared
+  as `text/x-python` is a `422`, because it would be chunked as Python.
+- A job queued **before** the flag was turned off still completes (the switch is
+  an entry-point gate, like images); the deny-list, size and generated checks
+  still apply to every byte it reads.
+- Redaction changes the stored text, so a file whose only edit is rotating a
+  credential keeps a stable version hash — and a file that gains a secret never
+  has it in the index.
+- `idx_chunks_fts_code` is created by a migration that is a no-op outside
+  PostgreSQL; on SQLite and MySQL the hybrid full-text branch is off anyway.
+
+<CardGroup cols={2}>
+  <Card title="Ingestion" icon="download" href="/ingestion">
+    The entry points this feature plugs into.
+  </Card>
+  <Card title="Ingestion pipeline" icon="diagram-project" href="/architecture/ingestion-pipeline">
+    Converters, chunkers and the registry that resolves them.
+  </Card>
+  <Card title="Retrieval pipeline" icon="magnifying-glass" href="/architecture/retrieval-pipeline">
+    Where code chunks go after they are indexed.
+  </Card>
+  <Card title="Self-hosting" icon="server" href="/self-hosting">
+    Node on the ingestion workers.
+  </Card>
+</CardGroup>

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Support\Kb;
 
+use App\Services\Kb\Code\CodeLanguageMap;
+
 /**
  * Typed enum for the v3 ingestion pipeline source-type token (T1.8).
  *
@@ -54,6 +56,12 @@ enum SourceType: string
     // decided by `kb.ocr.enabled` through `supportedMimes(true)` /
     // `knownExtensions(true)` (R43 — the OFF path is the shipped default).
     case IMAGE = 'image';
+    // v8.45 / ADR 0035 D7 — source code (`text/x-<language>` MIME tokens, one
+    // chunker, one converter). Always a KNOWN type; whether a code file is
+    // ACCEPTED is decided at the entry points by `kb.code.ingestion_enabled`
+    // (R43), exactly like images — `fromExtension()` therefore only maps a code
+    // extension when the caller opts in with `$includeCode`.
+    case CODE = 'code';
     case UNKNOWN = 'unknown';
 
     /**
@@ -90,7 +98,8 @@ enum SourceType: string
             'application/vnd.onedrive.office+json' => self::ONEDRIVE_OFFICE,
             // v8.36 — images (ADR 0029). Same list as kb.ocr.image_mimes.
             'image/png', 'image/jpeg', 'image/tiff', 'image/webp' => self::IMAGE,
-            default => self::UNKNOWN,
+            // v8.45 — `text/x-<language>` for the shipped language set.
+            default => CodeLanguageMap::languageForMime($normalizedMimeType) !== null ? self::CODE : self::UNKNOWN,
         };
     }
 
@@ -100,9 +109,14 @@ enum SourceType: string
      * a disk and resolving each file's source type from its extension
      * before dispatching the ingestion job.
      */
-    public static function fromExtension(string $extension): self
+    public static function fromExtension(string $extension, bool $includeCode = false): self
     {
-        return match (strtolower(ltrim($extension, '.'))) {
+        $normalised = strtolower(ltrim($extension, '.'));
+        if ($includeCode && CodeLanguageMap::languageForExtension($normalised) !== null && ! in_array($normalised, ['md', 'markdown', 'txt', 'pdf', 'docx'], true)) {
+            return self::CODE;
+        }
+
+        return match ($normalised) {
             'md', 'markdown' => self::MARKDOWN,
             'txt' => self::TEXT,
             'pdf' => self::PDF,
@@ -126,6 +140,10 @@ enum SourceType: string
             self::PDF => 'application/pdf',
             self::DOCX => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             self::IMAGE => 'image/png',
+            // A code file's MIME is per LANGUAGE (`text/x-php`): resolve it with
+            // CodeLanguageMap::mimeForPath(). This family label is deliberately
+            // one no converter claims, so a call site that forgets fails loudly.
+            self::CODE => 'text/x-code',
             self::UNKNOWN => 'application/octet-stream',
         };
     }
@@ -167,11 +185,14 @@ enum SourceType: string
      * site). The enum stays pure (no container access) so it remains
      * unit-testable and so the OFF path is byte-identical to v8.35.
      */
-    public static function knownExtensions(bool $includeImages = false): array
+    public static function knownExtensions(bool $includeImages = false, bool $includeCode = false): array
     {
         $base = ['md', 'markdown', 'txt', 'pdf', 'docx'];
+        if ($includeImages) {
+            $base = array_merge($base, self::imageExtensions());
+        }
 
-        return $includeImages ? array_merge($base, self::imageExtensions()) : $base;
+        return $includeCode ? array_values(array_unique(array_merge($base, CodeLanguageMap::extensions()))) : $base;
     }
 
     /**
@@ -187,7 +208,7 @@ enum SourceType: string
      * v8.36 — image MIMEs are listed only when `includeImages = true`
      * (see knownExtensions()).
      */
-    public static function supportedMimes(bool $includeImages = false): array
+    public static function supportedMimes(bool $includeImages = false, bool $includeCode = false): array
     {
         $base = [
             'text/markdown',
@@ -197,7 +218,11 @@ enum SourceType: string
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ];
 
-        return $includeImages ? array_merge($base, self::imageMimes()) : $base;
+        if ($includeImages) {
+            $base = array_merge($base, self::imageMimes());
+        }
+
+        return $includeCode ? array_merge($base, CodeLanguageMap::mimes()) : $base;
     }
 
     /**

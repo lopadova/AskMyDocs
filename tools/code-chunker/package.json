@@ -1,0 +1,16 @@
+{
+  "name": "askmydocs-code-chunker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Syntax-aware break-point helper for AskMyDocs code ingestion (ADR 0035 D7). Reads source on stdin, prints JSON break points on stdout. No network, no filesystem writes.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "probe": "node index.mjs --probe"
+  },
+  "dependencies": {
+    "tree-sitter-wasms": "0.1.13",
+    "web-tree-sitter": "0.25.10"
+  }
+}

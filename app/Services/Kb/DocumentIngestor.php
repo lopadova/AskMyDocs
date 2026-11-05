@@ -120,6 +120,17 @@ class DocumentIngestor
                 metadata: $source->metadata,
             );
 
+        // v8.45 / ADR 0035 D7 — the direct path's counterpart of the guard in
+        // ParseMarkdownStep: code bytes are admitted (deny-list, size, binary,
+        // generated) before anything is converted. The master switch is an
+        // entry-point gate and is not re-checked here.
+        if (\App\Services\Kb\Code\CodeLanguageMap::languageForMime($normalizedSource->mimeType) !== null) {
+            $verdict = app(\App\Services\Kb\Code\CodeIngestionPolicy::class)->assessContent($normalizedSource->sourcePath, $normalizedSource->bytes, checkEnabled: false);
+            if (! $verdict->accepted) {
+                throw new \App\Services\Kb\Code\CodeFileRefusedException('DocumentIngestor: code file refused ('.$verdict->label().') for '.$normalizedSource->sourcePath);
+            }
+        }
+
         $converter = $this->registry->resolveConverter($normalizedSource->mimeType);
         $converted = $converter->convert($normalizedSource);
 

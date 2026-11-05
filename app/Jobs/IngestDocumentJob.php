@@ -270,7 +270,9 @@ class IngestDocumentJob implements ShouldQueue
                 // fail now instead of re-parsing a 25 MiB scan three times.
                 // A process or provider timeout the driver did not already
                 // normalise is the same deterministic refusal (`run_too_long`).
-                if ($stepError instanceof OcrLimitExceededException || $stepError instanceof OcrDriverUnavailableException || $stepError instanceof \Symfony\Component\Process\Exception\ProcessTimedOutException) {
+                // v8.45 — a code file the admission policy refuses (deny-listed,
+                // oversize, binary, generated) is just as deterministic.
+                if ($stepError instanceof OcrLimitExceededException || $stepError instanceof OcrDriverUnavailableException || $stepError instanceof \Symfony\Component\Process\Exception\ProcessTimedOutException || $stepError instanceof \App\Services\Kb\Code\CodeFileRefusedException) {
                     $refusal = new \RuntimeException($message.': '.$stepError->getMessage(), 0, $stepError);
                     if ($this->job === null) {
                         // Bare handle() / dispatchNow: there is no queue job to

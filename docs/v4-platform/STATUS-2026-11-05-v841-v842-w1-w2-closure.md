@@ -11,7 +11,7 @@ decision of the product owner; the PR is assigned for review only after W5).
 
 | Deliverable | State |
 |---|---|
-| Benchmark v2 — `resources/benchmark/v2/` (40 corpus files: 34 markdown incl. 15 canonical + 2 rejected-approach, 6 source files, plus a generated PDF and DOCX; 86 labelled queries in 7 classes, IT + EN) | shipped |
+| Benchmark v2 — `resources/benchmark/v2/` (40 corpus files: 34 markdown incl. 15 canonical + 2 rejected-approach, 6 source files, plus a generated PDF and DOCX; 90 labelled queries in 7 classes (80 non-code + 10 code), IT + EN) | shipped |
 | `kb:benchmark --suite=v1\|v2`, per-class breakdown (`by_class`), `skipped_queries`, v2-specific gate | shipped |
 | Gate in CI | `BenchmarkV2Test` runs `--stub --suite=v2 --gate` on every PHPUnit run, and proves the floor is real (a raised floor fails the gate) |
 | `explain` — `RetrievalExplainService` over the tri-surface: `kb:search --explain`, `GET /api/admin/kb/retrieval/explain`, `KbRetrievalExplainTool` | shipped, default OFF on HTTP/MCP |

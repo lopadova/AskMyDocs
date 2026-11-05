@@ -73,6 +73,13 @@ jobs:
           mkdir -p vendor/orchestra/testbench-core/laravel/bootstrap/cache
           mkdir -p bootstrap/cache
 
+      # v8.45 / ADR 0035 D7 — the code-chunker helper's two pinned deps
+      # (web-tree-sitter + the prebuilt grammar pack) so the REAL-helper tests
+      # run instead of skipping. Exact versions, no lockfile to commit; the
+      # runner's preinstalled Node is enough (>= 18).
+      - name: Install code-chunker helper deps
+        run: npm install --prefix tools/code-chunker --no-audit --no-fund
+
       - name: Run PHPUnit
         run: vendor/bin/phpunit --testdox
 

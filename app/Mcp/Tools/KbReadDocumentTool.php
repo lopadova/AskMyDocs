@@ -33,7 +33,7 @@ class KbReadDocumentTool extends Tool
         ];
     }
 
-    public function handle(Request $request, DocumentLineReader $documentLineReader): Response
+    public function handle(Request $request, ?DocumentLineReader $documentLineReader = null): Response
     {
         // R30 — scope the lookup to the MCP-resolved tenant so a client
         // bound to tenant A cannot read tenant B's documents by enumerating
@@ -50,6 +50,8 @@ class KbReadDocumentTool extends Tool
         $from = $request->get('from_line');
         $max = $request->get('max_lines');
         if ($from !== null || $max !== null) {
+            $documentLineReader ??= app(DocumentLineReader::class);
+
             return Response::json([
                 'document' => [
                     'id' => $document->id,

@@ -35,7 +35,7 @@ class KbDocumentBySlugTool extends Tool
         ];
     }
 
-    public function handle(Request $request, SimilarDocumentFinder $similarDocumentFinder): Response
+    public function handle(Request $request, ?SimilarDocumentFinder $similarDocumentFinder = null): Response
     {
         $slug = (string) $request->get('slug');
         $projectKey = (string) $request->get('project_key');
@@ -62,7 +62,7 @@ class KbDocumentBySlugTool extends Tool
                 'error' => 'not_found',
                 'slug' => $slug,
                 'project_key' => $projectKey,
-                'suggestions' => $similarDocumentFinder->suggest(app(TenantContext::class)->current(), $slug, $projectKey),
+                'suggestions' => ($similarDocumentFinder ?? app(SimilarDocumentFinder::class))->suggest(app(TenantContext::class)->current(), $slug, $projectKey),
             ]);
         }
 

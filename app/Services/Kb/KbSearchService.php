@@ -1016,6 +1016,15 @@ class KbSearchService
      * non-pgsql drivers (SQLite has no tsvector) — hybrid degrades to
      * semantic-only there, which is fine for the deterministic test path.
      */
+    /**
+     * Full-text branch. v8.45/W5 (ADR 0035 D7): with code ingestion ON, a second
+     * pass searches the CODE chunks only, with the `simple` configuration (a
+     * language stemmer mangles identifiers: `calculateVatRounding` must not be
+     * stemmed as Italian prose) through the partial expression index
+     * `idx_chunks_fts_code`, and the two result sets are merged by chunk id
+     * (best score wins). With the flag OFF this is exactly the single prose
+     * query it has always been (R43).
+     */
     private function fullTextSearch(
         string $query,
         ?string $projectKey,
@@ -1023,13 +1032,39 @@ class KbSearchService
         string $tenantId,
         ?RetrievalFilters $filters = null,
     ): Collection {
+        $prose = $this->fullTextSearchOnce($query, $projectKey, $limit, $tenantId, $filters, false);
+        if (! (bool) config('kb.code.ingestion_enabled', false)) {
+            return $prose;
+        }
+        $code = $this->fullTextSearchOnce($query, $projectKey, $limit, $tenantId, $filters, true);
+        if ($code->isEmpty()) {
+            return $prose;
+        }
+
+        return $prose->concat($code)
+            ->groupBy('id')
+            ->map(static fn (Collection $group) => $group->sortByDesc(static fn ($c): float => (float) ($c->fts_score ?? 0.0))->first())
+            ->sortByDesc(static fn ($c): float => (float) ($c->fts_score ?? 0.0))
+            ->take($limit)
+            ->values();
+    }
+
+    protected function fullTextSearchOnce(
+        string $query,
+        ?string $projectKey,
+        int $limit,
+        string $tenantId,
+        ?RetrievalFilters $filters,
+        bool $codeOnly,
+    ): Collection {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             return collect();
         }
 
         // v8.8/W5 — per-query language: detect among the supported set, else
-        // fall back to the fixed config language.
-        $lang = $this->resolveFtsLanguage($query);
+        // fall back to the fixed config language. Code chunks always use
+        // `simple` (v8.45/W5).
+        $lang = $codeOnly ? 'simple' : $this->resolveFtsLanguage($query);
 
         // v8.7/W1 — OR-expand the tsquery with registered synonyms so a
         // lexical query for an in-house term also matches docs that only
@@ -1065,6 +1100,11 @@ class KbSearchService
             )
             ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
             ->orderByDesc('fts_score');
+
+        if ($codeOnly) {
+            // Must match the partial index predicate exactly for the planner.
+            $builder->whereRaw("(knowledge_chunks.metadata->>'language') IS NOT NULL");
+        }
 
         if ($projectKey !== null && $projectKey !== '') {
             $builder->where('project_key', $projectKey);

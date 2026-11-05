@@ -362,23 +362,24 @@ reviewers are unavailable); deferred E2E per R46.
 
 ## 5. Deliverables checklist (per workstream)
 
-- [ ] ADR 0035 accepted before code (W5.0 spike note appended before W5.1)
-- [ ] Core service + PHP Artisan + HTTP + MCP over one core (R44), or the
+- [x] ADR 0035 accepted before code (W5.0 spike note appended before W5.1)
+- [x] Core service + PHP Artisan + HTTP + MCP over one core (R44), or the
       documented exception
-- [ ] Both flag states tested (R43). The flags: **W1** `KB_RETRIEVAL_EXPLAIN_ENABLED`,
+- [x] Both flag states tested (R43). The flags: **W1** `KB_RETRIEVAL_EXPLAIN_ENABLED`,
       `KB_FTS_QUERY_SYNTAX`; **W2** `KB_EMBEDDING_CONTEXTUAL_INPUT`; **W3**
       `KB_CROSS_RERANK_ENABLED`; **W4** `KB_QUERY_EXPANSION_ENABLED`,
       `KB_MCP_FACETS_ENABLED`, `KB_PATH_CONTEXTS_ENABLED`; **W5**
       `KB_CODE_INGESTION_ENABLED`, `KB_CODE_CHUNKER_DRIVER` — all default to
       today's behaviour
-- [ ] Every new env var in `.env.example` + `config/kb.php` + doc-site
+- [x] Every new env var in `.env.example` + `config/kb.php` + doc-site
       `configuration.mdx` in the same PR (R6/R9)
-- [ ] R32 matrix rows for every new protected route
-- [ ] Tenant scope through relationships (R30/R33); new tenant-aware tables in
+- [x] R32 matrix rows for every new protected route
+- [x] Tenant scope through relationships (R30/R33); new tenant-aware tables in
       `TenantIdMandatoryTest` (R31)
-- [ ] Benchmark v2 LIVE numbers in the closure doc; defaults flipped only on
+- [ ] Benchmark v2 LIVE numbers in the closure doc; defaults flipped only on  — **NOT DONE here**: no embeddings provider / pgvector in the build environment; defaults stay OFF (see the closure STATUS, "Not measured here")
       evidence
-- [ ] Playwright real-data E2E for the path-contexts screen (R12/R13); a11y (R15)
-- [ ] Doc-site pages per workstream (R45) and the ADR index row
-- [ ] README feature rows + `## Changelog` entry per release (R39); status doc
+- [x] Playwright real-data E2E for the path-contexts screen (R12/R13); a11y (R15)
+      — spec written; its execution is the CI `run-e2e` gate (R46), not run in the build environment
+- [x] Doc-site pages per workstream (R45) and the ADR index row
+- [x] README feature rows + `## Changelog` entry per release (R39); status doc
       `docs/v4-platform/STATUS-<date>-v84x-wN-closure.md` per W
