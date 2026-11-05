@@ -7,6 +7,7 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import type {
   ChatResponse,
+  KbTreeResponse,
   DocSearchResult,
   DocumentPreview,
   MePayload,
@@ -207,6 +208,32 @@ export async function searchDocs(
   return Array.isArray(data) ? data : [];
 }
 
+/** Download an authenticated tenant logo and expose it as a CSP-safe blob URL. */
+export async function fetchTenantLogo(
+  token: string,
+  logoUrl: string,
+): Promise<string> {
+  const apiOrigin = new URL(`${API_BASE}/`);
+  const absolute = new URL(logoUrl, apiOrigin);
+  if (absolute.origin !== apiOrigin.origin) {
+    throw new ApiError(
+      0,
+      "Tenant logo URL is outside the configured API origin",
+      null,
+    );
+  }
+  const res = await http(absolute.toString(), { headers: authHeaders(token) });
+  if (!res.ok) {
+    const body = await parseBody(res);
+    throw new ApiError(
+      res.status,
+      errorMessage(body, "Could not load tenant logo"),
+      body,
+    );
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 /** Full source text + metadata of a single document, for the fullpage MD
  *  viewer. Reachable by any authenticated reader and scoped to the caller's
  *  tenant + AccessScope (R30) — a 404 means "not found OR not yours", with no
@@ -240,4 +267,15 @@ export async function logout(token: string): Promise<void> {
   } catch {
     // ignore — local logout still proceeds
   }
+}
+
+/** Reader tree: same scoped endpoint as the web Browse KB surface. */
+export async function fetchKnowledgeTree(token: string, tenantId: string, projectKey: string): Promise<KbTreeResponse> {
+  const params = new URLSearchParams({ project: projectKey, mode: "all" });
+  const res = await http(`${API_BASE}/api/kb/tree?${params}`, {
+    headers: authHeaders(token, tenantId, projectKey),
+  });
+  const body = await parseBody(res);
+  if (!res.ok) throw new ApiError(res.status, errorMessage(body, "Could not load knowledge base"), body);
+  return body as KbTreeResponse;
 }

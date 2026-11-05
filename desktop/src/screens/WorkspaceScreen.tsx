@@ -1,7 +1,11 @@
+import { Button } from "../components/Button";
+import { Icon } from "../components/Icon";
 import { useState } from "react";
+import { TenantLogo } from "../components/TenantLogo";
 import type { AuthUser, Team } from "../lib/types";
 
 interface Props {
+  token: string;
   user: AuthUser;
   teams: Team[];
   initialTenantId?: string | null;
@@ -12,6 +16,7 @@ interface Props {
 type Step = "tenant" | "project";
 
 export function WorkspaceScreen({
+  token,
   user,
   teams,
   initialTenantId = null,
@@ -48,19 +53,19 @@ export function WorkspaceScreen({
   return (
     <div className="workspace-screen" data-testid="workspace-screen">
       <header className="workspace-header">
-        <div className="brand">AskMyDocs</div>
+        <div className="brand"><img className="brand-mark" src="/brand-icon.png" alt="" width="32" height="32" />AskMyDocs</div>
         <div className="workspace-user">
           <span className="muted" title={user.email}>
             {user.name}
           </span>
-          <button
+          <Button
             type="button"
-            className="btn ghost"
+            variant="quiet"
             onClick={onLogout}
             data-testid="workspace-logout"
           >
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -117,9 +122,12 @@ export function WorkspaceScreen({
                       aria-pressed={team.tenant_id === tenantId}
                       data-testid={`workspace-tenant-${team.tenant_id}`}
                     >
-                      <span className="workspace-option-mark" aria-hidden="true">
-                        {team.name.trim().charAt(0).toUpperCase() || "T"}
-                      </span>
+                      <TenantLogo
+                        token={token}
+                        tenantName={team.name}
+                        logoUrl={team.logo_url}
+                        className="workspace-logo"
+                      />
                       <span className="workspace-option-copy">
                         <strong>{team.name}</strong>
                         <span className="muted small">
@@ -128,7 +136,7 @@ export function WorkspaceScreen({
                         </span>
                       </span>
                       <span className="workspace-option-arrow" aria-hidden="true">
-                        →
+                        <Icon name="arrow" />
                       </span>
                     </button>
                   ))}
@@ -136,26 +144,36 @@ export function WorkspaceScreen({
               )}
 
               <div className="workspace-actions">
-                <button
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={!selectedTeam}
                   onClick={continueToProjects}
                   data-testid="workspace-tenant-continue"
                 >
                   Continue
-                </button>
+                </Button>
               </div>
             </>
           ) : (
             <>
-              <div className="workspace-copy">
-                <p className="workspace-eyebrow">{selectedTeam?.name}</p>
-                <h1 id="workspace-title">Choose a project</h1>
-                <p className="muted">
-                  Chat, search, sources, and local conversations will use this
-                  project.
-                </p>
+              <div className="workspace-tenant-heading">
+                {selectedTeam && (
+                  <TenantLogo
+                    token={token}
+                    tenantName={selectedTeam.name}
+                    logoUrl={selectedTeam.logo_url}
+                    className="workspace-logo"
+                  />
+                )}
+                <div className="workspace-copy">
+                  <p className="workspace-eyebrow">{selectedTeam?.name}</p>
+                  <h1 id="workspace-title">Choose a project</h1>
+                  <p className="muted">
+                    Chat, search, sources, and local conversations will use this
+                    project.
+                  </p>
+                </div>
               </div>
 
               {!selectedTeam || selectedTeam.projects.length === 0 ? (
@@ -191,14 +209,14 @@ export function WorkspaceScreen({
                         className="workspace-option-mark project"
                         aria-hidden="true"
                       >
-                        #
+                        <Icon name="folder" />
                       </span>
                       <span className="workspace-option-copy">
                         <strong>{project.project_key}</strong>
                         <span className="muted small">Role: {project.role}</span>
                       </span>
                       <span className="workspace-option-arrow" aria-hidden="true">
-                        →
+                        <Icon name="arrow" />
                       </span>
                     </button>
                   ))}
@@ -206,9 +224,9 @@ export function WorkspaceScreen({
               )}
 
               <div className="workspace-actions split">
-                <button
+                <Button
                   type="button"
-                  className="btn ghost"
+                  variant="quiet"
                   onClick={() => {
                     setProjectKey("");
                     setStep("tenant");
@@ -216,16 +234,16 @@ export function WorkspaceScreen({
                   data-testid="workspace-project-back"
                 >
                   Back
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn primary"
+                  variant="primary"
                   disabled={!selectedProject}
                   onClick={openProject}
                   data-testid="workspace-project-open"
                 >
                   Open project
-                </button>
+                </Button>
               </div>
             </>
           )}

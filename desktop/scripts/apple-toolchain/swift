@@ -1,0 +1,10 @@
+#!/bin/sh
+# swift-rs passes iOS flags through -Xswiftc. Swift 6.4's new default
+# engine appends host SDK flags, so keep the native engine for these builds.
+# This shim is scoped to the npm iOS commands; it never replaces system Swift.
+swift_binary=$(/usr/bin/xcrun --find swift) || exit 1
+if [ "$1" = "build" ]; then
+    shift
+    exec "$swift_binary" build --build-system native "$@"
+fi
+exec "$swift_binary" "$@"

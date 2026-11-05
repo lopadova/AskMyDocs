@@ -53,7 +53,7 @@
         "minimumSystemVersion": "10.13"
     },
     "iOS": {
-      "minimumSystemVersion": "13.0",
+      "minimumSystemVersion": "15.0",
       "developmentTeam": "8749Q438Y6"
     }
   }
