@@ -66,7 +66,10 @@ test.describe('Admin Path contexts', () => {
         const row = page.getByTestId(`admin-path-context-row-${id}`);
         await expect(row).toBeVisible({ timeout: 10_000 });
         await expect(row).toContainText(projectKey);
-        await expect(row).toContainText('e2e-policies/');
+        // The server normalises the prefix through KbPath (R1): the trailing
+        // slash typed in the form is not stored, so the row shows `e2e-policies`.
+        await expect(row).toHaveAttribute('data-path-prefix', 'e2e-policies');
+        await expect(row).toContainText('e2e-policies');
         await expect(row).toContainText('Current policies approved by the DPO.');
         await expect(page.getByTestId('path-context-form')).toHaveCount(0);
 
