@@ -3,7 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
+use App\Http\Requests\Api\UpdateConversationRequest;
+use App\Http\Resources\Chat\ConversationResource;
 use App\Models\Conversation;
+use App\Services\Chat\ConversationOrganizerService;
+use App\Support\Chat\ConversationArchiveScope;
+use App\Support\Chat\ConversationImportance;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,15 +28,19 @@ class ConversationController extends Controller
      * Implicit-binding routes (update/destroy/messages) are already
      * tenant-scoped via Conversation::resolveRouteBinding().
      */
-    public function index(Request $request, TenantContext $tenant): JsonResponse
-    {
-        $conversations = $request->user()
-            ->conversations()
-            ->forTenant($tenant->current())
-            ->orderByDesc('updated_at')
-            ->get(['id', 'title', 'project_key', 'created_at', 'updated_at']);
+    public function index(
+        Request $request,
+        TenantContext $tenant,
+        ConversationOrganizerService $organizer,
+    ): JsonResponse {
+        $conversations = $organizer->list(
+            (int) $request->user()->id,
+            $tenant->current(),
+            ConversationArchiveScope::fromRequest($request->query('archived')),
+        );
 
-        return response()->json($conversations);
+        // Bare array, NOT `{data: …}` — see ConversationResource (R27).
+        return response()->json(ConversationResource::collection($conversations));
     }
 
     /**
@@ -48,25 +57,49 @@ class ConversationController extends Controller
             'project_key' => $validated['project_key'] ?? null,
         ]);
 
-        return response()->json($conversation, 201);
+        return response()->json(new ConversationResource($conversation), 201);
     }
 
     /**
      * Rename a conversation.
      */
-    public function update(Request $request, Conversation $conversation): JsonResponse
-    {
+    public function update(
+        UpdateConversationRequest $request,
+        Conversation $conversation,
+        ConversationOrganizerService $organizer,
+    ): JsonResponse {
         if ($conversation->user_id !== $request->user()->id) {
             abort(403);
         }
 
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-        ]);
+        // Rename FIRST and on its own: it is activity on the thread, so it
+        // keeps bumping `updated_at`, while every organisation write below
+        // deliberately does not (see ConversationOrganizerService).
+        if ($request->has('title')) {
+            $conversation->update(['title' => $request->string('title')->toString()]);
+        }
 
-        $conversation->update(['title' => $validated['title']]);
+        if ($request->has('chat_folder_id')) {
+            $folderId = $request->input('chat_folder_id');
+            $organizer->setFolder($conversation, $folderId === null ? null : (int) $folderId);
+        }
 
-        return response()->json($conversation);
+        if ($request->has('pinned')) {
+            $organizer->setPinned($conversation, $request->boolean('pinned'));
+        }
+
+        if ($request->has('archived')) {
+            $organizer->setArchived($conversation, $request->boolean('archived'));
+        }
+
+        if ($request->has('importance')) {
+            $organizer->setImportance(
+                $conversation,
+                ConversationImportance::from($request->string('importance')->toString()),
+            );
+        }
+
+        return response()->json(new ConversationResource($conversation->refresh()));
     }
 
     /**

@@ -1,0 +1,213 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
+import type { Message } from './chat.api';
+import { MessageThread } from './MessageThread';
+import { findingEvent } from './progressive-answer.test-fixtures';
+
+const completedEvent: AgentRunEvent = {
+    run_id: 'run-1',
+    sequence: 2,
+    type: 'run.completed',
+    phase: 'run',
+    locale: 'it-IT',
+    message_key: 'run.completed',
+    message_params: {},
+    message: 'La risposta è pronta.',
+    progress: null,
+    can_cancel: false,
+    data: {},
+    created_at: '2026-08-30T10:00:01+00:00',
+};
+
+function message(
+    id: number,
+    role: Message['role'],
+    content: string,
+    metadata: Message['metadata'] = null,
+): Message {
+    return {
+        id,
+        role,
+        content,
+        metadata,
+        rating: null,
+        created_at: '2026-08-30T10:00:00+00:00',
+    };
+}
+
+function renderThread(node: ReactElement) {
+    const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+    });
+
+    return render(
+        <QueryClientProvider client={queryClient}>
+            {node}
+        </QueryClientProvider>,
+    );
+}
+
+describe('MessageThread agent activity', () => {
+    beforeEach(() => {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+            configurable: true,
+            value: vi.fn(),
+        });
+    });
+
+    it('restores interrupted findings from history and replaces them with the consolidated answer', () => {
+        const user = message(10, 'user', 'Informazioni sul reso', { agent_run_id: 'run-1', agent_activity: [findingEvent,
+            { ...completedEvent, type: 'run.failed' }] });
+        const { rerender } = renderThread(<MessageThread conversationId={1} messages={[user]} sdkStatus="ready" />);
+        expect(screen.getByTestId('agent-progressive-answer')).toHaveAttribute('data-state', 'interrupted');
+        const assistant = message(11, 'assistant', 'Il cliente ha poi trovato il barcode.', { agent_run_id: 'run-1' });
+        rerender(<QueryClientProvider client={new QueryClient()}><MessageThread conversationId={1} messages={[user, assistant]} sdkStatus="ready" /></QueryClientProvider>);
+        expect(screen.queryByTestId('agent-progressive-answer')).not.toBeInTheDocument();
+        expect(screen.getByText('Il cliente ha poi trovato il barcode.')).toBeInTheDocument();
+    });
+
+    it('merges persisted and live finding events without duplicating results', () => {
+        const user = message(10, 'user', 'Informazioni sul reso', { agent_run_id: 'run-1', agent_activity: [findingEvent] });
+        renderThread(<MessageThread conversationId={1} messages={[user]} sdkStatus="streaming" activeAgentRunId="run-1"
+            agentEvents={[findingEvent]} />);
+        expect(screen.getAllByText('Il cliente segnala il barcode mancante il 3 luglio.')).toHaveLength(1);
+        expect(screen.getByTestId('agent-activity-bar')).toBeInTheDocument();
+    });
+
+    it('does not force-scroll new findings while the user is reading earlier results', () => {
+        const user = message(10, 'user', 'Informazioni sul reso', { agent_run_id: 'run-1' });
+        const client = new QueryClient();
+        const { container, rerender } = render(<QueryClientProvider client={client}><MessageThread conversationId={1}
+            messages={[user]} sdkStatus="streaming" activeAgentRunId="run-1" agentEvents={[findingEvent]} /></QueryClientProvider>);
+        const thread = container.querySelector<HTMLElement>('[data-testid="chat-thread"]')!;
+        Object.defineProperties(thread, { scrollHeight: { configurable: true, value: 2000 }, clientHeight: { configurable: true, value: 600 } });
+        thread.scrollTop = 50;
+        fireEvent.scroll(thread);
+        vi.mocked(thread.scrollTo).mockClear();
+        rerender(<QueryClientProvider client={client}><MessageThread conversationId={1} messages={[user]} sdkStatus="streaming"
+            activeAgentRunId="run-1" agentEvents={[findingEvent, { ...findingEvent, sequence: 2 }]} /></QueryClientProvider>);
+        expect(thread.scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('keeps the empty chat illustration in sync with the rendered theme', async () => {
+        const originalTheme = document.documentElement.getAttribute('data-theme');
+        try {
+            document.documentElement.dataset.theme = 'dark';
+            renderThread(<MessageThread conversationId={1} messages={[]} sdkStatus="ready" />);
+            const image = screen.getByTestId('chat-thread-empty').querySelector('img')!;
+            expect(image).toHaveClass('chat-empty-art');
+            expect(image).toHaveAttribute('src', '/editorial/dialogue-night-small.webp');
+            await act(async () => { document.documentElement.dataset.theme = 'light'; });
+            expect(image).toHaveAttribute('src', '/editorial/dialogue-day-small.webp');
+        } finally {
+            await act(async () => {
+                if (originalTheme) document.documentElement.setAttribute('data-theme', originalTheme);
+                else document.documentElement.removeAttribute('data-theme');
+            });
+        }
+    });
+
+    it('moves persisted activity into the answer footer and opens its timeline in a modal', async () => {
+        const user = message(10, 'user', 'Dove si trova la spedizione?', { agent_run_id: 'run-1' });
+        const assistant = message(11, 'assistant', 'La spedizione è stata consegnata.', {
+            agent_run_id: 'run-1',
+            agent_activity: [completedEvent],
+            tool_calls: [
+                { id: 'tool-orders', name: 'mcp_hubhive_orders_list', status: 'completed' },
+                { id: 'tool-orders', name: 'mcp_hubhive_orders_list', status: 'completed' },
+            ],
+        });
+
+        const { container } = renderThread(
+            <MessageThread
+                conversationId={4}
+                messages={[user, assistant]}
+                sdkStatus="ready"
+            />,
+        );
+
+        const content = container.querySelector('.chat-thread-content');
+        expect(content).not.toBeNull();
+        expect(Array.from(content!.querySelectorAll('[data-role], [data-testid="agent-activity-bar"]')).map((node) => (
+            node.getAttribute('data-role') ?? node.getAttribute('data-testid')
+        ))).toEqual(['user', 'agent-activity-bar', 'assistant']);
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Risultato pronto');
+        expect(screen.getByText('La spedizione è stata consegnata.')).toBeInTheDocument();
+        expect(screen.queryByTestId('chat-message-11-tool-calls')).not.toBeInTheDocument();
+        expect(screen.queryByText('mcp_hubhive_orders_list')).not.toBeInTheDocument();
+        const info = await within(screen.getByTestId('chat-message-11')).findByRole('button', { name: 'Informazioni sulla risposta' });
+        fireEvent.click(info);
+        expect(within(screen.getByRole('dialog')).getByTestId('agent-activity-timeline')).toHaveTextContent('La risposta è pronta.');
+    });
+
+    it('shows the live activity immediately after the active user request', () => {
+        const startedEvent: AgentRunEvent = {
+            ...completedEvent,
+            sequence: 1,
+            type: 'tool.started',
+            message: 'Sto chiamando shipments-get.',
+            data: {
+                tool: 'mcp_hubhive_shipments_get',
+                tool_kind: 'mcp',
+                tool_display_name: 'shipments-get',
+                mcp_server_name: 'HubHive',
+                mcp_tool_name: 'shipments-get',
+            },
+        };
+        const user = message(20, 'user', 'Controlla la spedizione.', { agent_run_id: 'run-live' });
+
+        const { container } = renderThread(
+            <MessageThread
+                conversationId={4}
+                messages={[user]}
+                sdkStatus="streaming"
+                agentEvents={[{ ...startedEvent, run_id: 'run-live' }]}
+                activeAgentRunId="run-live"
+                onCancelAgent={vi.fn()}
+            />,
+        );
+
+        const content = container.querySelector('.chat-thread-content');
+        expect(Array.from(content!.children).map((node) => (
+            node.getAttribute('data-role') ?? node.getAttribute('data-testid')
+        ))).toEqual(['user', 'agent-activity-bar']);
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Chiamata MCP');
+        expect(screen.getByTestId('agent-activity-message')).toHaveTextContent('HubHive · shipments-get');
+        expect(screen.getByTestId('agent-activity-bar')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('presents failures through the shared destructive alert structure', () => {
+        const user = message(30, 'user', 'Mostrami gli ultimi ordini.');
+
+        renderThread(
+            <MessageThread
+                conversationId={4}
+                messages={[user]}
+                sdkStatus="error"
+                error={new Error('The live source did not respond.')}
+            />,
+        );
+
+        const alert = screen.getByTestId('chat-thread-error');
+        expect(alert).toHaveAttribute('data-variant', 'destructive');
+        expect(alert).toHaveTextContent('We couldn’t complete that request');
+        expect(alert).toHaveTextContent('The live source did not respond.');
+        expect(alert.querySelector('[data-slot="alert-icon"]')).not.toBeNull();
+    });
+
+    it('keeps the interrupted research visible without a false ready badge after stream failure', () => {
+        const started = { ...completedEvent, type: 'research.planned', sequence: 1,
+            data: { tasks: [{ id: 0, question: 'Hub?' }, { id: 1, question: 'Spedizione?' }] } };
+        renderThread(<MessageThread conversationId={4}
+            messages={[message(30, 'user', 'Hub e spedizione', { agent_run_id: 'run-1' })]}
+            sdkStatus="error" error={new Error('Event stream disconnected')}
+            activeAgentRunId="run-1" agentEvents={[started]} />);
+        expect(screen.getByTestId('agent-research-tasks')).toHaveTextContent('Hub?');
+        expect(screen.getByTestId('agent-activity-heading')).toHaveTextContent('Aggiornamenti interrotti');
+        expect(screen.getByTestId('chat-thread-error')).toHaveTextContent('Event stream disconnected');
+        expect(screen.queryByText('Risultato pronto')).not.toBeInTheDocument();
+    });
+});

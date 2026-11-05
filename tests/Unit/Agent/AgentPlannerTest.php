@@ -1,0 +1,204 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Unit\Agent;
+
+use App\Agent\AgentExecutionContext;
+use App\Agent\Evidence\AgentEvidenceFactory;
+use App\Agent\Evidence\AgentEvidenceSummarizer;
+use App\Agent\Planning\AgentLiveSourceCoverage;
+use App\Agent\Planning\AgentPlanner;
+use App\Agent\Planning\AgentPlanParser;
+use App\Ai\AiManager;
+use App\Ai\AiResponse;
+use Mockery;
+use Tests\TestCase;
+
+/**
+ * "Livello di approfondimento": AgentPlanner::depthInstruction() is what
+ * actually makes a higher depth DO more cascading knowledge-base searches
+ * — AgentBudgetTracker only raises the ceiling of how many calls are
+ * ALLOWED, it does not make the planner want to use them. These tests pin
+ * that the depth-specific instruction text actually reaches the model
+ * prompt, varies by level, and defaults to level 3 (today's unscaled
+ * behaviour) when the caller doesn't pass one.
+ */
+final class AgentPlannerTest extends TestCase
+{
+    public function test_repeated_wrong_namespace_does_not_discard_an_independent_valid_read(): void
+    {
+        $orders = new \App\Agent\Tools\AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
+            inputSchema: ['type' => 'object', 'properties' => ['reference' => ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$']]],
+            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $ai = Mockery::mock(AiManager::class);
+        $payload = ['decision' => 'tools', 'actions' => array_map(fn ($id, $value) => [
+            'id' => $id, 'tool' => 'orders', 'arguments' => ['reference' => $value], 'depends_on' => [], 'purpose' => 'Read record',
+        ], ['valid', 'invalid'], ['ORDER-42', 'RETURN-42'])];
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(new AiResponse('', 'fake', 'planner',
+            toolCalls: [['name' => 'submit_agent_plan', 'arguments' => $payload]]));
+        $planner = new AgentPlanner($ai, app(AgentPlanParser::class), app(AgentEvidenceSummarizer::class), app(AgentLiveSourceCoverage::class));
+        $plan = $planner->decide('Read ORDER-42 and RETURN-42', $this->context(), ['orders' => $orders], app(AgentEvidenceFactory::class)->empty());
+        $this->assertSame(['valid'], array_column($plan->actions, 'id'));
+        $this->assertSame(['invalid'], array_column($plan->rejectedActions, 'id'));
+        $this->assertSame('RETURN-42', $plan->jsonSerialize()['rejected_actions'][0]['arguments']['reference']);
+    }
+
+    public function test_a_declared_identifier_pattern_triggers_correction_before_selecting_the_wrong_api(): void
+    {
+        $orders = new \App\Agent\Tools\AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
+            inputSchema: ['type' => 'object', 'properties' => ['reference' => ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$']]],
+            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $returns = new \App\Agent\Tools\AgentToolDefinition(name: 'returns', displayName: 'Returns', description: 'Read returns', kind: 'api',
+            inputSchema: ['type' => 'object'], readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $response = fn ($tool) => new AiResponse('', 'fake', 'planner', toolCalls: [['name' => 'submit_agent_plan',
+            'arguments' => ['decision' => 'tools', 'actions' => [['id' => 'step_1', 'tool' => $tool,
+                'arguments' => ['reference' => 'RETURN-42'], 'depends_on' => [], 'purpose' => 'Read the requested return']]]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn($response('orders'), $response('returns'));
+        $planner = new AgentPlanner($ai, app(AgentPlanParser::class), app(AgentEvidenceSummarizer::class), app(AgentLiveSourceCoverage::class));
+        $plan = $planner->decide('Read RETURN-42', $this->context(), ['orders' => $orders, 'returns' => $returns], app(AgentEvidenceFactory::class)->empty());
+        $this->assertSame('returns', $plan->actions[0]->tool);
+        $this->assertSame('RETURN-42', $plan->actions[0]->arguments['reference']);
+    }
+
+    public function test_an_unreferenced_reused_action_key_does_not_abort_the_missing_live_read(): void
+    {
+        $tool = new \App\Agent\Tools\AgentToolDefinition(name: 'get_returns', displayName: 'Returns',
+            description: 'Read returns', kind: 'api', inputSchema: ['type' => 'object'], readOnly: true,
+            idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'planner', toolCalls: [[
+            'name' => 'submit_agent_plan', 'arguments' => ['decision' => 'tools', 'actions' => [[
+                'id' => 'step_1', 'tool' => 'get_returns', 'arguments' => ['id' => 'RETURN-A'],
+                'depends_on' => [], 'purpose' => 'Read the requested return',
+            ]]],
+        ]]));
+        $planner = new AgentPlanner($ai, app(AgentPlanParser::class), app(AgentEvidenceSummarizer::class), app(AgentLiveSourceCoverage::class));
+        $plan = $planner->decide('Read RETURN-A', $this->context(), ['get_returns' => $tool],
+            app(AgentEvidenceFactory::class)->empty(), [['id' => 'step_1', 'tool' => 'get_orders', 'status' => 'completed']]);
+        $this->assertSame('step_2', $plan->actions[0]->id);
+        $this->assertSame('get_returns', $plan->actions[0]->tool);
+        $this->assertSame(['id' => 'RETURN-A'], $plan->actions[0]->arguments);
+    }
+
+    public function test_default_depth_is_3_balanced(): void
+    {
+        $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(
+            'Parlami di SizeCharts',
+            $this->context(),
+            [],
+            app(AgentEvidenceFactory::class)->empty(),
+        ));
+
+        $this->assertStringContainsString('Investigation depth is 3/5 (balanced)', $prompt);
+    }
+
+    /**
+     * Regression: the catalog-vs-content-search tool disambiguation was
+     * first added ONLY inside the depth 4/5 paragraph — at the default
+     * depth (3) and below, the planner had no guidance at all and kept
+     * defaulting to search_knowledge_base for a catalog-shaped question
+     * ("Fammi un riassunto sintetico dei manuali che abbiamo" still
+     * refused after the depth-4/5 fix). The rule must be depth-independent.
+     */
+    public function test_catalog_tool_guidance_is_present_at_every_depth_not_only_4_and_5(): void
+    {
+        foreach ([1, 2, 3, 4, 5] as $depth) {
+            $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(
+                'Fammi un riassunto sintetico dei manuali che abbiamo',
+                $this->context(),
+                [],
+                app(AgentEvidenceFactory::class)->empty(),
+                depth: $depth,
+            ));
+
+            $this->assertStringContainsString(
+                'list_knowledge_documents',
+                $prompt,
+                "Catalog tool guidance missing from the prompt at depth {$depth}",
+            );
+            $this->assertStringContainsString('are NOT interchangeable, regardless of investigation depth', $prompt);
+        }
+    }
+
+    public function test_depth_1_asks_for_a_quick_single_source_answer(): void
+    {
+        $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(
+            'Parlami di SizeCharts',
+            $this->context(),
+            [],
+            app(AgentEvidenceFactory::class)->empty(),
+            depth: 1,
+        ));
+
+        $this->assertStringContainsString('Investigation depth is 1/5 (quick)', $prompt);
+        $this->assertStringContainsString('Do not plan a follow-up knowledge-base search', $prompt);
+    }
+
+    public function test_depth_5_asks_for_cascading_sub_question_searches(): void
+    {
+        $prompt = $this->capturedPrompt(fn (AgentPlanner $planner) => $planner->decide(
+            'Parlami di SizeCharts',
+            $this->context(),
+            [],
+            app(AgentEvidenceFactory::class)->empty(),
+            depth: 5,
+        ));
+
+        $this->assertStringContainsString('Investigation depth is 5/5 (exhaustive)', $prompt);
+        $this->assertStringContainsString('issue a separate tool call for EACH one', $prompt);
+        // R: must not steer every sub-question toward the SAME content-search
+        // tool by name — a catalog-shaped sub-question needs a different tool.
+        $this->assertStringContainsString('pick the RIGHT tool per sub-question', $prompt);
+        $this->assertStringContainsString('list_knowledge_documents instead', $prompt);
+    }
+
+    private function capturedPrompt(callable $call): string
+    {
+        $captured = null;
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')
+            ->once()
+            ->with(Mockery::on(function (string $systemPrompt) use (&$captured): bool {
+                $captured = $systemPrompt;
+
+                return true;
+            }), Mockery::any(), Mockery::any())
+            ->andReturn(new AiResponse(
+                content: '',
+                provider: 'fake',
+                model: 'fake-planner',
+                toolCalls: [[
+                    'name' => 'submit_agent_plan',
+                    'arguments' => ['decision' => 'answer', 'actions' => []],
+                ]],
+            ));
+
+        $planner = new AgentPlanner(
+            $ai,
+            app(AgentPlanParser::class),
+            app(AgentEvidenceSummarizer::class),
+            app(AgentLiveSourceCoverage::class),
+        );
+        $call($planner);
+
+        $this->assertNotNull($captured, 'AiManager::chatWithHistory was never called.');
+
+        return $captured;
+    }
+
+    private function context(): AgentExecutionContext
+    {
+        return new AgentExecutionContext(
+            runId: 'b03a7c27-daae-43cb-8ea2-fbe85cf66aaf',
+            tenantId: 'acme',
+            projectKey: 'crm',
+            channel: 'chat',
+            actorType: 'user',
+            actorId: '1',
+            locale: 'it-IT',
+            timezone: 'Europe/Rome',
+        );
+    }
+}

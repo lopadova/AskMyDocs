@@ -1,3 +1,4 @@
+import { chooseSelectOption } from '@/test-utils/select';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -163,7 +164,7 @@ describe('WidgetAppearanceDialog', () => {
         expect(screen.getByTestId('admin-widget-appearance-import-success')).toHaveTextContent(
             'save explicitly',
         );
-        expect(screen.getByTestId('admin-widget-appearance-field-mode')).toHaveValue('inline');
+        expect(screen.getByTestId('admin-widget-appearance-field-mode')).toHaveAttribute('data-value', 'inline');
         expect(screen.getByTestId('admin-widget-appearance-hex-accent')).toHaveValue('#123456');
         expect(mockedApi.patch).not.toHaveBeenCalled();
 
@@ -355,7 +356,7 @@ describe('WidgetAppearanceDialog', () => {
         await user.click(screen.getByTestId('admin-widget-appearance-tab-launcher'));
         expect(screen.queryByTestId('admin-widget-appearance-launcher-inline-note')).toBeNull();
 
-        await user.selectOptions(
+        await chooseSelectOption(
             screen.getByTestId('admin-widget-appearance-field-mode'),
             'inline',
         );

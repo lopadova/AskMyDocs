@@ -9,10 +9,26 @@ use App\Models\AgentRun;
 
 final class AgentBudgetTracker
 {
+    /**
+     * Limit keys scaled by the run's investigation depth (config
+     * `agent.depth.multipliers`, input_json.depth, 1-5, default 3 = 1.0x =
+     * unscaled). Loop-safety guards (consecutive_errors, duplicate_calls)
+     * are deliberately excluded — they must hold regardless of depth.
+     */
+    private const DEPTH_SCALED_LIMITS = [
+        'iterations',
+        'logical_soft',
+        'logical_hard',
+        'physical_hard',
+        'interactive_time_seconds',
+        'bulk_time_seconds',
+        'evidence_bytes',
+    ];
+
     /** @var array<string,mixed> */
     private array $state;
 
-    public function __construct(private readonly AgentRun $run)
+    public function __construct(private readonly AgentRun $run, private readonly bool $persist = true)
     {
         $this->state = array_merge([
             'iterations' => 0,
@@ -22,15 +38,16 @@ final class AgentBudgetTracker
             'evidence_bytes' => 0,
             'signatures' => [],
             'auto_extended' => false,
+            'consecutive_unproductive_searches' => 0,
         ], is_array($run->counters_json) ? $run->counters_json : []);
     }
 
-    public function beginIteration(): AgentBudgetDecision
+    public function beginIteration(float $expectedPlanningSeconds = 0): AgentBudgetDecision
     {
         if ((int) $this->state['iterations'] >= $this->limit('iterations', 8)) {
             return AgentBudgetDecision::stop('iteration_limit');
         }
-        if ($this->elapsedSeconds() >= $this->timeLimit()) {
+        if ($this->elapsedSeconds() + max(0, $expectedPlanningSeconds) >= $this->timeLimit()) {
             return AgentBudgetDecision::stop('time_limit');
         }
 
@@ -45,6 +62,15 @@ final class AgentBudgetTracker
     {
         if ((int) $this->state['consecutive_errors'] >= $this->limit('consecutive_errors', 3)) {
             return AgentBudgetDecision::stop('consecutive_error_limit');
+        }
+        // Fixed regardless of investigation depth (NOT in DEPTH_SCALED_LIMITS
+        // — see recordKnowledgeSearchResult()): a higher depth should search
+        // MORE when each round is finding something, never search blindly
+        // longer once it demonstrably isn't. Only gates the knowledge tool —
+        // the planner may still pivot to an MCP/API tool instead.
+        if ($tool->kind === 'knowledge'
+            && (int) $this->state['consecutive_unproductive_searches'] >= $this->limit('consecutive_unproductive_searches', 3)) {
+            return AgentBudgetDecision::stop('unproductive_search_limit');
         }
         if ((int) $this->state['evidence_bytes'] >= $this->limit('evidence_bytes', 524288)) {
             return AgentBudgetDecision::stop('evidence_size_limit');
@@ -104,6 +130,35 @@ final class AgentBudgetTracker
         $this->persist();
     }
 
+    /**
+     * Call after every knowledge-base search (the always-on initial one
+     * included) with whether it added at least one document the run didn't
+     * already have. Resets on a productive search, increments otherwise —
+     * `reserve()` stops the knowledge tool once this run of DIFFERENT
+     * queries in a row that all failed to surface anything new crosses
+     * `consecutive_unproductive_searches`. Distinct from
+     * `duplicate_call_limit`, which only catches the SAME query repeated;
+     * this catches N different guesses that are each individually useless.
+     */
+    public function recordKnowledgeSearchResult(bool $addedNewEvidence): void
+    {
+        $this->state['consecutive_unproductive_searches'] = $addedNewEvidence
+            ? 0
+            : (int) $this->state['consecutive_unproductive_searches'] + 1;
+        $this->persist();
+    }
+
+    public function recordPlanningDuration(int $milliseconds): void
+    {
+        $this->state['last_planning_ms'] = max(0, $milliseconds);
+        $this->persist();
+    }
+
+    public function remainingCollectionSeconds(): float
+    {
+        return max(0, $this->timeLimit() - $this->elapsedSeconds());
+    }
+
     /** @return array<string,mixed> */
     public function snapshot(): array
     {
@@ -129,21 +184,71 @@ final class AgentBudgetTracker
 
     private function timeLimit(): int
     {
-        return (int) $this->state['physical_calls'] > 1
+        $collectionLimit = (int) $this->state['physical_calls'] > 1
             ? $this->limit('bulk_time_seconds', 90)
             : $this->limit('interactive_time_seconds', 60);
+
+        // Depth may expand collection, but cannot expand the queue worker's
+        // hard timeout. Leave room for drafting, validation and presentation.
+        $workerLimit = max(30, (int) config('agent.job_timeout_seconds', 120));
+        $answerReserve = max(0, (int) config('agent.synthesis.time_reserve_seconds', 60));
+
+        return min($collectionLimit, max(1, $workerLimit - $answerReserve));
     }
 
     private function elapsedSeconds(): float
     {
         $start = $this->run->started_at ?? $this->run->created_at ?? now();
 
-        return max(0, now()->floatDiffInSeconds($start));
+        // Carbon 3 returns a signed difference: now -> past is negative.
+        return max(0, $start->floatDiffInSeconds(now()));
     }
 
     private function limit(string $key, int $default): int
     {
-        return max(1, (int) config('agent.limits.'.$key, $default));
+        $allocation = data_get($this->run->budget_json, 'research_allocation.'.$key);
+        if (is_int($allocation)) {
+            return max(0, $allocation);
+        }
+        $base = max(1, (int) config('agent.limits.'.$key, $default));
+        if (! in_array($key, self::DEPTH_SCALED_LIMITS, true)) {
+            return $base;
+        }
+
+        return max(1, (int) round($base * $this->depthMultiplier()));
+    }
+
+    /** Divide a parent budget between independent branches instead of multiplying it. */
+    public function researchAllocation(int $index, int $count): array
+    {
+        $limits = [];
+        foreach (['logical_soft' => 12, 'logical_hard' => 25, 'physical_hard' => 100, 'evidence_bytes' => 524288] as $key => $default) {
+            $total = $this->limit($key, $default);
+            $limits[$key] = intdiv($total, $count) + ($index < $total % $count ? 1 : 0);
+        }
+        return $limits;
+    }
+
+    /**
+     * "Livello di approfondimento": 1-5, defaults to `agent.depth.default`
+     * (3 = 1.0x) when the caller never set one. Stamped on the run's own
+     * input_json at turn-start (AgentMessageController) rather than read
+     * live from the request, so a run's effective budget stays fixed for
+     * its whole (possibly resumed-after-confirmation) lifetime.
+     */
+    private function depthLevel(): int
+    {
+        $depth = (int) data_get($this->run->input_json, 'depth', (int) config('agent.depth.default', 3));
+
+        return max(1, min(5, $depth));
+    }
+
+    private function depthMultiplier(): float
+    {
+        $multipliers = config('agent.depth.multipliers', []);
+        $value = is_array($multipliers) ? ($multipliers[$this->depthLevel()] ?? null) : null;
+
+        return is_numeric($value) ? max(0.1, (float) $value) : 1.0;
     }
 
     /** @param array<string,mixed> $arguments */
@@ -164,6 +269,9 @@ final class AgentBudgetTracker
 
     private function persist(): void
     {
-        $this->run->forceFill(['counters_json' => $this->state])->save();
+        $this->run->forceFill(['counters_json' => $this->state]);
+        if ($this->persist) {
+            $this->run->save();
+        }
     }
 }

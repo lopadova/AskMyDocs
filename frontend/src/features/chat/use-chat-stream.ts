@@ -92,6 +92,13 @@ export interface UseChatStreamOptions {
     filters: FilterState;
 
     /**
+     * Shared recursive KB-investigation budget. The server defaults to 3 when
+     * omitted; keeping it here means the standard streaming channel follows
+     * the same picker contract as agent turns.
+     */
+    depth?: number;
+
+    /**
      * Existing message history (typically from the TanStack Query
      * cache `['messages', conversationId]`). Mapped to the SDK's
      * `UIMessage` shape via `appMessageToUiMessage()`.
@@ -162,7 +169,7 @@ export function appMessageToUiMessage(m: AppMessage): UIMessage {
 }
 
 export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIMessage> {
-    const { conversationId, filters, initialMessages, onFinish, onError } = options;
+    const { conversationId, filters, depth = 3, initialMessages, onFinish, onError } = options;
 
     // `filters` flows into `prepareSendMessagesRequest` through a ref
     // so the transport stays stable across filter changes. Closing
@@ -177,6 +184,10 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
     useEffect(() => {
         filtersRef.current = filters;
     }, [filters]);
+    const depthRef = useRef(depth);
+    useEffect(() => {
+        depthRef.current = depth;
+    }, [depth]);
 
     // Prime the XSRF-TOKEN cookie at hook mount so the first
     // `sendMessage()` doesn't 419. Idempotent (`csrfPrimed` flag
@@ -220,16 +231,23 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
             // call as an SPA request via
             // `EnsureFrontendRequestsAreStateful` — match the axios
             // instance's default header set.
-            prepareSendMessagesRequest: ({ messages }) => {
+            prepareSendMessagesRequest: ({ messages, body: requestBody }) => {
                 const last = messages[messages.length - 1];
                 const content = last?.parts
                     ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
                     .map((p) => p.text)
                     .join('') ?? '';
                 const liveFilters = filtersRef.current;
-                const body: { content: string; filters?: FilterState } = { content };
+                const body: { content: string; depth: number; filters?: FilterState; mcp_app_id?: string } = {
+                    content,
+                    depth: depthRef.current,
+                };
                 if (liveFilters && !isFilterStateEmpty(liveFilters)) {
                     body.filters = liveFilters;
+                }
+                const appId = requestBody?.mcp_app_id;
+                if (typeof appId === 'string' && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(appId)) {
+                    body.mcp_app_id = appId;
                 }
                 // Multi-value Accept: SSE on the success path, JSON
                 // on the auth/error path. Laravel's auth + Sanctum

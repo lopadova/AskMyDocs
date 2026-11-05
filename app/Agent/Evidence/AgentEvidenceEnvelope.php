@@ -58,6 +58,7 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         array $arguments,
         array $result,
         ?int $executionId = null,
+        array $argumentBindings = [],
     ): void {
         $maskedArguments = $this->masker->maskArray($arguments) ?? [];
         $maskedResult = $this->masker->maskArray($result) ?? [];
@@ -67,10 +68,12 @@ final class AgentEvidenceEnvelope implements JsonSerializable
             'display_name' => $tool->displayName,
             'kind' => $tool->kind,
             'executor_reference' => $tool->executorReference,
+            'presentation' => $this->presentation($tool),
             'arguments' => $maskedArguments,
             'result' => $maskedResult,
             'evidence_hash' => hash('sha256', (string) json_encode($maskedResult, JSON_UNESCAPED_UNICODE)),
             'retrieved_at' => now()->toIso8601String(),
+            ...($argumentBindings === [] ? [] : ['argument_bindings' => $argumentBindings]),
         ];
     }
 
@@ -131,6 +134,54 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         ];
     }
 
+    /** @return array{collection_path:string|null,operation:string|null,identity_fields:list<string>,field_aliases:array<string,string>} */
+    private function presentation(AgentToolDefinition $tool): array
+    {
+        $hint = is_array($tool->metadata['agent_capability_hint'] ?? null)
+            ? $tool->metadata['agent_capability_hint']
+            : [];
+        $path = $hint['collection_path'] ?? $tool->metadata['items_path'] ?? null;
+        if (! is_string($path) || preg_match('/^(?:\$|[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_*-]+)*)$/', $path) !== 1) {
+            $path = null;
+        }
+        $operation = $hint['operation'] ?? $tool->metadata['endpoint_type'] ?? null;
+        if (! is_string($operation) || ! in_array($operation, ['search', 'list', 'get', 'detail', 'summary', 'count', 'check'], true)) {
+            $operation = null;
+        }
+
+        $builder = app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class);
+        $capability = $builder->build([$tool->name => $tool])->get($tool->name);
+        $aliases = $duplicates = [];
+        $recordProperties = $builder->recordProperties($capability?->outputSchema, $path);
+        foreach ($recordProperties as $field => $property) {
+            if (! is_array($property)) {
+                continue;
+            }
+            $roles = $property['x-field'] ?? [];
+            foreach (is_string($roles) ? [$roles] : (is_array($roles) ? $roles : []) as $role) {
+                if (! is_string($role) || ! preg_match('/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/', $role)
+                    || ! is_string($field) || ! preg_match('/^[a-zA-Z0-9_-]+$/', $field)
+                    || array_intersect((array) ($property['type'] ?? []), ['string', 'integer', 'number', 'boolean']) === []) {
+                    continue;
+                }
+                if (isset($aliases[$role])) {
+                    $duplicates[$role] = true;
+                }
+                $aliases[$role] = $field;
+            }
+        }
+        $aliases = array_diff_key($aliases, $duplicates);
+
+        $limits = $capability?->outputSchema['x-evidence-limitations'] ?? [];
+        $limits = array_values(array_unique(array_filter(is_array($limits) ? $limits : [],
+            \App\Agent\AgentSourceLimitations::supports(...))));
+        $collections = DeclaredRecordCollections::describe($recordProperties);
+        return ['collection_path' => $path, 'operation' => $operation,
+            'identity_fields' => $capability?->identityFields ?? [], 'field_aliases' => $aliases,
+            ...($collections === [] ? [] : ['record_collections' => $collections]),
+            ...($limits === [] ? [] : ['evidence_limitations' => $limits])];
+    }
+
     /** @param list<mixed> $items @return list<array<string,mixed>> */
     private function uniqueEvidence(array $items): array
     {
@@ -140,6 +191,28 @@ final class AgentEvidenceEnvelope implements JsonSerializable
                 continue;
             }
             $hash = (string) ($item['evidence_hash'] ?? hash('sha256', (string) json_encode($item)));
+            foreach ($unique as $existingHash => $existing) {
+                if (! isset($item['chunk_id'], $existing['chunk_id']) || $item['chunk_id'] !== $existing['chunk_id']
+                    || ! is_string($item['content'] ?? null) || $item['content'] === ''
+                    || ! is_string($existing['content'] ?? null) || $existing['content'] === '') {
+                    continue;
+                }
+                if (str_contains($existing['content'], $item['content'])) {
+                    $unique[$existingHash]['research_flow_ids'] = array_values(array_unique([
+                        ...($existing['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? []),
+                    ]));
+                    continue 2;
+                }
+                if (str_contains($item['content'], $existing['content'])) {
+                    $item['research_flow_ids'] = array_values(array_unique([
+                        ...($existing['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? []),
+                    ]));
+                    unset($unique[$existingHash]);
+                }
+            }
+            if (isset($unique[$hash]['research_flow_ids']) || isset($item['research_flow_ids'])) {
+                $item['research_flow_ids'] = array_values(array_unique([...($unique[$hash]['research_flow_ids'] ?? []), ...($item['research_flow_ids'] ?? [])]));
+            }
             $unique[$hash] = $item;
         }
 

@@ -96,6 +96,31 @@ The following are examples of answers that users rated positively. Use them as a
 
 Project: {{ $projectKey ?? 'all' }}
 
+@if(!empty($retrievalInvestigation['language'] ?? null))
+Answer in {{ $retrievalInvestigation['language'] }}. Keep names, identifiers and citations unchanged.
+@endif
+
+@if(!empty($retrievalInvestigation['partial'] ?? false))
+## Evidence limits from the KB investigation
+
+The retrieval assessment did not establish all material facts needed for this request. Answer only the parts directly supported by the Context below and explicitly say what remains unknown; do not infer or fill any gap.
+@if(!empty($retrievalInvestigation['missing_facts'] ?? []))
+The KB did not establish: {{ implode('; ', $retrievalInvestigation['missing_facts']) }}.
+@endif
+@endif
+
+@if(isset($sessionRecap) && is_array($sessionRecap) && !empty($sessionRecap['summary'] ?? null))
+## Session Recap (carried over from earlier turns in this conversation)
+{{ $sessionRecap['summary'] }}
+@if(!empty($sessionRecap['topics'] ?? []))
+Topics so far: {{ implode(', ', $sessionRecap['topics']) }}
+@endif
+@if(!empty($sessionRecap['open_questions'] ?? []))
+Open questions: {{ implode(', ', $sessionRecap['open_questions']) }}
+@endif
+
+@endif
+
 @if(isset($rejected) && $rejected->isNotEmpty())
 ## ⚠ REJECTED APPROACHES (do NOT repeat — these were deliberately dismissed)
 

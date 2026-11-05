@@ -16,7 +16,24 @@ final class AgentRunDispatcher
      */
     public function dispatch(AgentExecutionContext $context, array $input, array $links = []): AgentRun
     {
-        $run = DB::transaction(fn (): AgentRun => AgentRun::create([
+        $run = DB::transaction(fn (): AgentRun => $this->create($context, $input, $links));
+
+        $this->enqueue($run);
+
+        return $run;
+    }
+
+    /**
+     * Persist a run without choosing its execution transport. Realtime turns
+     * use this seam to execute the exact same handler inline, while ordinary
+     * chat turns continue through the durable queue.
+     *
+     * @param  array<string,mixed>  $input
+     * @param  array{user_id?:int,conversation_id?:int,widget_identity_id?:int,widget_session_id?:int}  $links
+     */
+    public function create(AgentExecutionContext $context, array $input, array $links = []): AgentRun
+    {
+        return AgentRun::create([
             'run_id' => $context->runId,
             'tenant_id' => $context->tenantId,
             'project_key' => $context->projectKey,
@@ -32,10 +49,26 @@ final class AgentRunDispatcher
             'status' => AgentRun::STATUS_QUEUED,
             'input_json' => $input,
             'counters_json' => [],
-        ]));
+        ]);
+    }
 
-        ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id);
-
-        return $run;
+    public function enqueue(AgentRun $run): void
+    {
+        $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
+        $runtime = $diagnostics->runtime();
+        $span = $diagnostics->begin($run, 'queue.wait', [
+            'wait_for' => 'worker_receipt', 'queue_connection' => $runtime['queue_connection'] ?? null,
+            'queue_driver' => $runtime['queue_driver'] ?? null, 'queue_name' => $runtime['queue_name'] ?? null,
+            'runtime' => $runtime,
+        ]);
+        try {
+            // Force PendingDispatch destruction inside this try, so dispatch errors
+            // are observed without changing Laravel's transport/after-commit policy.
+            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span);
+            unset($pending);
+        } catch (\Throwable $exception) {
+            $diagnostics->failure($run, $span, $exception);
+            throw $exception;
+        }
     }
 }

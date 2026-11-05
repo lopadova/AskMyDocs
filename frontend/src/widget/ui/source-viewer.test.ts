@@ -58,6 +58,25 @@ describe('SourceViewer', () => {
         vi.restoreAllMocks();
     });
 
+    it('keeps the source and its request open on backdrop click and native cancel', () => {
+        const fetcher = vi.fn((_id: number, _signal: AbortSignal) => new Promise<SourceDocumentPreview>(() => {}));
+        const viewer = new SourceViewer(root, fetcher);
+        viewer.open(CITATIONS, 7, trigger);
+        const dialog = root.querySelector<HTMLDialogElement>('dialog')!;
+        const cancel = new Event('cancel', { cancelable: true });
+
+        dialog.click();
+        dialog.dispatchEvent(cancel);
+
+        expect(cancel.defaultPrevented).toBe(true);
+        expect(dialog).toHaveAttribute('open');
+        expect(fetcher.mock.calls[0][1].aborted).toBe(false);
+        root.querySelector<HTMLButtonElement>('[data-testid="askmydocs-widget-source-close"]')!.click();
+        expect(dialog).not.toHaveAttribute('open');
+        expect(fetcher.mock.calls[0][1].aborted).toBe(true);
+        expect(trigger).toHaveFocus();
+    });
+
     it('deduplicates sources, merges evidence, and renders the selected full document', async () => {
         const fetcher = vi.fn(async (id: number) => preview(id));
         const viewer = new SourceViewer(root, fetcher);

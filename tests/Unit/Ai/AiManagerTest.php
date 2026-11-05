@@ -346,4 +346,22 @@ class AiManagerTest extends TestCase
 
         (new AiManager())->chat('s', 'u', ['tools' => [['type' => 'function', 'function' => ['name' => 'x']]]]);
     }
+
+    public function test_bridge_meters_dedicated_strict_preprocessor_turn(): void
+    {
+        config()->set('ai.default', 'openai');
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'openai/gpt-4o-mini',
+            'choices' => [['message' => ['role' => 'assistant', 'content' => '{"language":"it"}'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 5, 'completion_tokens' => 2, 'total_tokens' => 7],
+        ])]);
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldReceive('meterChat')->once();
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->chatWithProvider('openrouter', 'interpret', [['role' => 'user', 'content' => 'ciao']], [
+            'model' => 'openai/gpt-4o-mini',
+            'response_format' => ['type' => 'json_schema', 'json_schema' => ['name' => 'test', 'strict' => true, 'schema' => ['type' => 'object']]],
+        ]);
+    }
 }

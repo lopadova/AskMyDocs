@@ -29,7 +29,7 @@ final readonly class AgentToolDefinition implements JsonSerializable
         if ($name === '' || preg_match('/^[a-zA-Z0-9_-]+$/', $name) !== 1) {
             throw new \InvalidArgumentException("Invalid agent tool name [{$name}].");
         }
-        if (! in_array($kind, ['knowledge', 'api', 'mcp', 'client'], true)) {
+        if (! in_array($kind, ['knowledge', 'catalog', 'api', 'mcp', 'client'], true)) {
             throw new \InvalidArgumentException("Invalid agent tool kind [{$kind}].");
         }
         if ($physicalMinimum < 0 || $physicalMinimum > $physicalLikely || $physicalLikely > $physicalMaximum) {
@@ -57,6 +57,23 @@ final readonly class AgentToolDefinition implements JsonSerializable
             ],
             'metadata' => $this->metadata,
         ];
+    }
+
+    /**
+     * Planner-safe representation. Remote metadata is intentionally reduced to
+     * host-enforced execution facts; arbitrary MCP _meta never reaches the LLM.
+     *
+     * @return array<string,mixed>
+     */
+    public function plannerPayload(): array
+    {
+        $payload = $this->jsonSerialize();
+        $metadata = $this->metadata;
+        unset($metadata['meta'], $metadata['provenance'], $metadata['agent_capability_hint']);
+        $payload['metadata'] = $metadata;
+        $payload['trust'] = ['description' => 'untrusted_remote_data'];
+
+        return $payload;
     }
 
     /** @return array<string,mixed> */

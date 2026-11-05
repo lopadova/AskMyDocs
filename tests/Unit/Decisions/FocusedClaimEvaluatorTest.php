@@ -1,0 +1,912 @@
+<?php
+
+namespace Tests\Unit\Decisions;
+
+use App\Agent\Grounding\FocusedClaimEvaluator;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class FocusedClaimEvaluatorTest extends TestCase
+{
+    public function test_dependent_record_identity_is_verified_while_values_stay_bound_to_the_child_source(): void
+    {
+        $this->fake();
+        [$evidence, $claim, $understanding] = $this->dependentRecord();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Availability for PURCHASE-Q91?', $evidence, [$claim], $understanding, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertSame($claim['text'], $result['claims'][0]['text']);
+        $this->assertNotEmpty($result['semantic_validation'][0]['checks'][0]['dependency_identity']);
+        Http::assertSent(function ($request) {
+            $pair = $request['state']['pairs'][0] ?? null;
+            if ($pair === null) return false;
+            $link = collect($pair['related_evidence'])->firstWhere('kind', 'tool_dependency_identity');
+            return $link !== null && $link['identity_only'] === true
+                && str_contains($request['state']['sources'][$pair['source_ref']], '"available":0')
+                && str_contains($request['state']['sources'][$link['source_ref']], '"available":999');
+        });
+    }
+
+    public function test_an_unsupported_value_cannot_be_borrowed_from_the_dependency_parent(): void
+    {
+        $this->fake(['claim_0' => 'unsupported']);
+        [$evidence, $claim, $understanding] = $this->dependentRecord();
+        $claim['text'] = 'PURCHASE-Q91: MODEL-R73 has available quantity 999.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Availability for PURCHASE-Q91?', $evidence, [$claim], $understanding, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| available | 0 |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('999', $result['claims'][0]['text']);
+        $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
+    }
+
+    private function dependentRecord(): array
+    {
+        $parent = ['execution_id' => 10, 'tool' => 'lookup_purchase', 'presentation' => ['collection_path' => 'rows', 'identity_fields' => ['ref']],
+            'result' => ['rows' => [['ref' => 'PURCHASE-Q91', 'items' => [['model' => 'MODEL-R73', 'key' => 72345, 'available' => 999]]]]]];
+        $parent['evidence_hash'] = hash('sha256', json_encode($parent['result'], JSON_UNESCAPED_UNICODE));
+        $child = ['execution_id' => 11, 'tool' => 'lookup_resource', 'presentation' => ['collection_path' => 'rows', 'identity_fields' => ['resource_key']],
+            'arguments' => ['lookup' => 72345], 'result' => ['rows' => [['resource_key' => 72345, 'available' => 0]]]];
+        $child['evidence_hash'] = hash('sha256', json_encode($child['result'], JSON_UNESCAPED_UNICODE));
+        $child['argument_bindings'] = (new \App\Agent\Evidence\ToolResultLineage)->capture(
+            ['lookup' => ['$from' => 'purchase', 'path' => 'rows.0.items.0.key']], $child['arguments'],
+            [['id' => 'purchase', 'status' => 'completed', 'execution_id' => 10]], ['api_tools' => [$parent]]);
+        $sub = ['identifiers' => ['PURCHASE-Q91', 'MODEL-R73'], 'fields' => ['available'], 'aspect' => 'availability'];
+        return [['api_tools' => [$parent, $child]], ['text' => 'PURCHASE-Q91: MODEL-R73 has available quantity 0.',
+            'tool_execution_id' => 11, 'evidence_hash' => $child['evidence_hash'], 'record_path' => 'rows.0'], ['focus' => $sub, 'subquestions' => [$sub]]];
+    }
+
+    public function test_one_inconsistent_choice_cannot_erase_another_independent_document_claim(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8,
+            'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (isset($request['state']['original_question'])) {
+                return Http::response(['model' => 'jev-test', 'answers' => ['relevance_0' => ['type' => 'noul', 'noul' => .95]]]);
+            }
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                $probabilities = array_fill_keys(array_keys($question['criteria']), 0);
+                $probabilities['supported_relevant'] = $key === 'claim_0' ? .99 : .34;
+                $probabilities['unsupported'] = $key === 'claim_0' ? .01 : .66;
+                $answers[$key] = ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .95, 'probabilities' => $probabilities];
+            }
+            return Http::response(['model' => 'jev-test', 'answers' => $answers]);
+        });
+        $source = 'CASE-A: the customer requested a refund. The merchant promised a response.';
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [[
+            'content' => $source, 'evidence_hash' => 'h', 'complete_source' => true,
+        ]]]]];
+        $sub = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'fields' => ['*']];
+        $claims = array_map(fn ($text) => ['text' => $text, 'document_id' => 1, 'evidence_hash' => 'h'],
+            ['The CASE-A customer requested a refund.', 'The CASE-A merchant promised a response.']);
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What happened in CASE-A?', $evidence, $claims,
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
+        $this->assertSame('partial', $result['semantic_validation'][0]['status']);
+        $this->assertArrayHasKey('claim_1', $result['semantic_validation'][0]['answer_errors']);
+        $this->assertSame('inconclusive', $result['semantic_validation'][0]['checks'][1]['status']);
+    }
+
+    public function test_rejected_api_prose_is_replaced_only_by_authorized_requested_literal_fields(): void
+    {
+        $this->fake(['claim_0' => 'unsupported']);
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 is delivered and the refund was paid.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('refund was paid', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('ORDER-22', $result['claims'][0]['text']);
+        $check = $result['semantic_validation'][0]['checks'][0];
+        $this->assertSame('unsupported', $check['category']);
+        $this->assertSame('exact_record_fields', $check['fallback']);
+        $this->assertSame($claims[0]['text'], $check['candidate_text']);
+        $this->assertSame($result['claims'][0]['text'], $check['text']);
+        $this->assertTrue($result['partial']);
+    }
+
+    public function test_a_cross_record_reference_veto_preserves_only_requested_fields_from_the_bound_record(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 is scheduled, unlike product AB12 in another order.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('AB12', $result['claims'][0]['text']);
+        $this->assertSame('unattested_literal_reference', $result['semantic_validation'][0]['checks'][0]['rejected_prose']['reason']);
+        $this->assertSame('bound_record_projection', $result['semantic_validation'][0]['checks'][0]['recovery']);
+        $this->assertArrayHasKey('literal_projection', $result['claims'][0]);
+    }
+
+    public function test_cross_record_prose_recovery_cannot_bypass_record_identity(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['text'] = 'TRACK-55 has product AB12.';
+        $u['focus']['identifiers'] = $u['subquestions'][0]['identifiers'] = ['OTHER-99'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of OTHER-99?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        Http::assertNothingSent();
+    }
+
+    public function test_an_ambiguous_supported_document_gets_source_support_then_original_question_checks(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::fake(function ($request) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                $answers[$key] = $question['type'] === 'noul' ? ['type' => 'noul', 'noul' => .97]
+                    : ['type' => 'choice', 'choice' => 'supported_relevant', 'confidence' => .79,
+                        'probabilities' => ['supported_relevant' => .79, 'supported_off_topic' => .05,
+                            'unsupported' => .06, 'conflicting' => .05, 'insufficient_context' => .05]];
+            }
+            return Http::response(['id' => 'd', 'model' => 'test', 'answers' => $answers]);
+        });
+        $text = 'CASE-A: Ada confirmed collection on June 7.';
+        $sub = ['identifiers' => ['CASE-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What did Ada confirm in CASE-A?',
+            ['documents' => [['document_id' => 1, 'title' => 'CASE-A', 'evidence' => [['content' => $text, 'evidence_hash' => 'h']]]]],
+            [['text' => $text, 'document_id' => 1, 'evidence_hash' => 'h']], ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertSame($text, $result['claims'][0]['text']);
+        $this->assertSame(.79, $result['semantic_validation'][0]['source_support_reassessment']['claim_0']['initial_decision']['probabilities']['supported_relevant']);
+        $this->assertSame('original_question_relevance', $result['semantic_validation'][1]['stage']);
+        Http::assertSent(fn ($r) => isset($r['questions']['supported']) && count($r['state']['sources']) === 1);
+    }
+
+    public static function literalVetoes(): array
+    {
+        return [['conflicting'], ['supported_off_topic']];
+    }
+
+    public function test_uncertain_task_purpose_cannot_turn_unverified_prose_into_literal_api_fields(): void
+    {
+        $this->fake([], .58);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus']['aspect'] = $u['subquestions'][0]['aspect'] = 'source_assessment';
+        $u['focus']['fields'] = $u['subquestions'][0]['fields'] = [];
+        $claims[0]['text'] = 'TRACK-55 was delivered and needs no action.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Can I say the shipment arrived?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+        $this->assertSame(.8, $result['semantic_validation'][0]['checks'][0]['threshold']);
+    }
+
+    public function test_a_negative_case_receipt_claim_cannot_override_a_supported_historical_receipt(): void
+    {
+        $this->fake(['claim_1' => 'unsupported']);
+        $receipt = 'CASE-A ORDER-A: on September 28 the correct article arrived and the mission was closed.';
+        $pickup = 'CASE-A ORDER-A: on October 2 the rejected article was picked up.';
+        $evidence = ['documents' => [
+            ['document_id' => 1, 'title' => 'CASE-A ORDER-A', 'evidence' => [['content' => $receipt, 'evidence_hash' => 'r', 'complete_source' => true]]],
+            ['document_id' => 2, 'title' => 'CASE-A ORDER-A update', 'evidence' => [['content' => $pickup, 'evidence_hash' => 'p', 'complete_source' => true]]],
+        ]];
+        $claims = [
+            ['text' => 'The correct article for ORDER-A arrived on September 28 and its mission was closed.', 'document_id' => 1, 'evidence_hash' => 'r'],
+            ['text' => 'The CASE-A correspondence does not document receipt or closure of the correct return.', 'document_id' => 2, 'evidence_hash' => 'p'],
+        ];
+        $sub = ['topic' => 'case', 'identifiers' => ['CASE-A', 'ORDER-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Compare receipt and pickup for CASE-A.', $evidence, $claims,
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
+        $this->assertTrue($result['partial']);
+        Http::assertSent(fn ($request) => isset($request['state']['sources'])
+            && in_array($receipt, $request['state']['sources'], true) && in_array($pickup, $request['state']['sources'], true));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('literalVetoes')]
+    public function test_literal_projection_does_not_override_a_confident_conflict_or_off_topic_decision(string $category): void
+    {
+        $this->fake(['claim_0' => $category]);
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+        $this->assertSame($category, $result['semantic_validation'][0]['checks'][0]['category']);
+    }
+
+    public function test_rejected_prose_cannot_project_a_record_with_a_bad_source_hash(): void
+    {
+        $this->fake(['claim_0' => 'unsupported']);
+        [$evidence, $claims, $u] = $this->fixture();
+        $claims[0]['evidence_hash'] = 'invented';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame([], $result['claims']);
+        $this->assertSame('source_hash_mismatch', $result['semantic_validation'][0]['checks'][0]['reason']);
+    }
+
+    public function test_api_observation_time_comes_from_the_bound_envelope_not_the_model_claim(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $time = '2026-10-22T07:52:08+02:00';
+        $evidence['api_tools'][0]['retrieved_at'] = $time;
+        $claims[0]['observed_at'] = '2099-01-01T00:00:00Z';
+        $claims[0]['text'] = 'TRACK-55 is scheduled, observed at '.$time.'.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Current status of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        Http::assertSent(function ($request) use ($time) {
+            return ($request['state']['pairs'][0]['observed_at'] ?? null) === $time
+                && ! str_contains(json_encode($request['state']['sources']), '2099');
+        });
+    }
+
+    public function test_declared_custom_fields_render_exact_requested_values_when_decision_is_unavailable(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
+        Http::fake(fn ($request) => isset($request['state']['original_question'])
+            ? Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => ['relevance_0' => ['type' => 'noul', 'noul' => .95]]])
+            : Http::response([], 503));
+        $record = ['erp_id' => 123, 'erp_reference' => 'ORDER-A', 'order_state' => 'SHIPPED', 'order_total' => 245, 'order_currency' => 'USD', 'unrequested_field' => 'omit me'];
+        $evidence = ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'h', 'presentation' => [
+            'collection_path' => 'items', 'identity_fields' => ['erp_id', 'erp_reference'],
+            'field_aliases' => ['status' => 'order_state', 'total' => 'order_total', 'currency' => 'order_currency'],
+        ], 'result' => ['items' => [$record]]]]];
+        $sub = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status and total', 'fields' => ['status', 'total']];
+        $claim = ['text' => 'ORDER-A is shipped and totals 245 USD.', 'tool_execution_id' => 42, 'evidence_hash' => 'h', 'record_path' => 'items.0'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status and total for ORDER-A?', $evidence, [$claim], ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| erp_reference | ORDER-A |', $text);
+        $this->assertStringContainsString('| Status | SHIPPED |', $text);
+        $this->assertStringContainsString('| Total | 245 |', $text);
+        $this->assertStringContainsString('| Currency | USD |', $text);
+        $this->assertStringNotContainsString('unrequested_field', $text);
+        $projection = $result['claims'][0]['literal_projection'];
+        $this->assertSame('items.0', $projection['record_path']);
+        $this->assertSame(['erp_id' => 123, 'erp_reference' => 'ORDER-A', 'order_state' => 'SHIPPED', 'order_total' => 245, 'order_currency' => 'USD'], $projection['fields']);
+        $this->assertSame(['status' => 'order_state', 'total' => 'order_total', 'currency' => 'order_currency'], $projection['roles']);
+        $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
+    }
+
+    private function fixture(): array
+    {
+        $record = ['id' => 'SHIP-12', 'trackingCode' => 'TRACK-55', 'status' => 'scheduled', 'orderId' => 'ORDER-22', 'customerId' => 'RO-LONGO'];
+        $hub = 'HUB-MI-07 accepts ADR class 3 freight.';
+        $evidence = ['documents' => [['document_id' => 26, 'tenant_id' => 'acme', 'project_key' => 'demo', 'evidence' => [['chunk_id' => 1, 'evidence_hash' => 'hub', 'content' => $hub]]]],
+            'api_tools' => [['execution_id' => 67, 'evidence_hash' => 'tool', 'result' => ['query' => 'TRACK-55', 'records' => [$record]]]]];
+        $claims = [['text' => 'TRACK-55 is scheduled.', 'quote' => 'paraphrased', 'tool_execution_id' => 67, 'evidence_hash' => 'tool'],
+            ['text' => 'HUB-MI-07 accepts ADR class 3 freight.', 'quote' => 'paraphrased', 'document_id' => 26, 'evidence_hash' => 'hub']];
+        $focus = ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'status', 'fields' => ['status']];
+        return [$evidence, $claims, ['focus' => $focus, 'subquestions' => [$focus], 'transition' => 'switch']];
+    }
+
+    private function fake(array $categories = [], float $probability = .95): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8,
+            'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
+        Http::fake(function ($request) use ($categories, $probability) {
+            $answers = [];
+            foreach ($request['questions'] as $key => $question) {
+                if ($question['type'] === 'noul') {
+                    $answers[$key] = ['type' => 'noul', 'noul' => .95];
+                    continue;
+                }
+                $category = $categories[$key] ?? 'supported_relevant';
+                $probabilities = array_fill_keys(array_keys($question['criteria']), (1 - $probability) / 4);
+                $probabilities[$category] = $probability;
+                $answers[$key] = ['type' => 'choice', 'choice' => $category, 'confidence' => $probability, 'probabilities' => $probabilities];
+            }
+            return Http::response(['id' => 'decision', 'model' => 'typesafe/jev-test', 'answers' => $answers, 'usage' => ['cost' => .001]]);
+        });
+    }
+
+    public function test_multi_topic_failure_preserves_valid_shipment_and_does_not_claim_the_hub_is_absent(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['subquestions'][] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'details', 'fields' => []];
+        $claims[1]['evidence_hash'] = 'nonexistent';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Hub and shipment', $evidence, $claims, $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertCount(1, $result['claims']);
+        $this->assertTrue($result['partial']);
+        $this->assertSame('unverified', $result['subquestions'][1]['status']);
+        $this->assertContains('source_hash_mismatch', array_column($result['semantic_validation'][0]['checks'], 'reason'));
+        Http::assertSentCount(2);
+    }
+
+    public function test_prose_subject_formatting_is_evaluated_semantically_with_document_title_context(): void
+    {
+        $this->fake();
+        $source = 'The customer reports prices of 100 and 120 euros. Support replies: the selected product costs 125 euros.';
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'ALPINE WC RACE + BINDING',
+            'evidence' => [['chunk_id' => 1, 'evidence_hash' => 'h', 'content' => $source]]],
+            ['document_id' => 2, 'title' => 'OTHER PRODUCT', 'evidence' => [['chunk_id' => 2, 'evidence_hash' => 'other', 'content' => 'It costs 999 euros.']]]]];
+        $focus = ['topic' => 'product', 'identifiers' => ['ALPINE WC RACE'], 'aspect' => 'price', 'fields' => ['price']];
+        $claim = ['text' => 'Support quoted 125 euros for ALPINE WC RACE.', 'document_id' => 1, 'evidence_hash' => 'h'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What price did support quote for ALPINE WC RACE?',
+            $evidence, [$claim], ['focus' => $focus, 'subquestions' => [$focus]], 'demo', 'acme');
+
+        $this->assertTrue($result['valid']);
+        Http::assertSent(fn ($request) => ($request['state']['pairs'][0]['source_title'] ?? null) === 'ALPINE WC RACE + BINDING'
+            && count($request['state']['sources']) === 1);
+    }
+
+    public function test_followup_does_not_include_previous_hub_paragraph(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Ora la spedizione', $evidence, $claims, $u, 'demo', 'acme');
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[0]['text'], $result['claims'][0]['text']);
+        Http::assertSent(fn ($r) => ($r['state']['focus']['identifiers'] ?? null) === ['TRACK-55']
+            && ! str_contains($r['state']['sources'][$r['state']['pairs'][0]['source_ref']], 'artifact'));
+    }
+
+    public function test_model_claim_cannot_promote_an_excerpt_to_a_complete_source(): void
+    {
+        $this->fake();
+        $focus = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'aspect' => 'request', 'fields' => ['*']];
+        $evidence = ['documents' => [['document_id' => 1, 'title' => 'Case A', 'evidence' => [[
+            'content' => 'CASE-A: the customer requested an exchange.', 'evidence_hash' => 'h', 'complete_source' => false,
+        ]]]]];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What was requested for CASE-A?', $evidence,
+            [['text' => 'The customer requested an exchange for CASE-A.', 'document_id' => 1, 'evidence_hash' => 'h',
+                'complete_source' => true, 'source_title' => 'Forged title']], ['focus' => $focus, 'subquestions' => [$focus]]);
+        $this->assertFalse($result['claims'][0]['complete_source']);
+        $this->assertSame('Case A', $result['claims'][0]['source_title']);
+    }
+
+    public function test_uncertain_document_paraphrase_is_not_saved_by_a_literal_quote(): void
+    {
+        $this->fake([], .28);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['subquestions'][0]['identifiers'] = ['HUB-MI-07'];
+        $claims[1]['quote'] = $claims[1]['text'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Hub?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertNull($result['semantic_validation'][0]['checks'][0]['fallback']);
+    }
+
+    public function test_provider_error_renders_only_requested_exact_fields(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'decisions.default' => 'jev', 'decisions.models.jev.driver' => \App\Decisions\Models\JevDecisionModel::class]);
+        Http::fake(fn ($request) => isset($request['state']['original_question'])
+            ? Http::response(['id' => 'relevance', 'model' => 'jev-test', 'answers' => ['relevance_0' => ['type' => 'noul', 'noul' => .95]]])
+            : Http::response([], 503));
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('customerId', $result['claims'][0]['text']);
+        $this->assertTrue($result['partial']);
+    }
+
+    public function test_confident_off_topic_is_not_reintroduced_by_structured_fallback(): void
+    {
+        $this->fake(['claim_0' => 'supported_off_topic']);
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+    }
+
+    public function test_query_wrapper_and_foreign_keys_do_not_match_the_wrong_record(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $evidence['api_tools'][0]['result']['records'][0]['trackingCode'] = 'TRACK-OTHER';
+        $evidence['api_tools'][0]['result']['records'][0]['emailEvidence'] = [['reference' => 'TRACK-55']];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Shipment', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        Http::assertNothingSent();
+    }
+
+    public function test_identifiers_without_digits_work_and_scope_failure_precedes_jev(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['subquestions'][0]['identifiers'] = ['RO-LONGO'];
+        $evidence['api_tools'][0]['result']['records'] = [['id' => 'RO-LONGO', 'name' => 'Customer']];
+        $claims[0]['text'] = 'RO-LONGO is Customer.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Who?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $evidence['api_tools'][0]['tenant_id'] = 'other';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Who?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_size_limits_do_not_truncate_a_necessary_passage(): void
+    {
+        $this->fake();
+        config(['decisions.max_state_bytes' => 32768]);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['subquestions'][0]['identifiers'] = ['HUB-MI-07'];
+        $evidence['documents'][0]['evidence'][0]['content'] .= str_repeat(' necessary text', 4000);
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Hub', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame('state_limit', $result['semantic_validation'][0]['checks'][0]['reason']);
+        $meta = $result['semantic_validation'][0];
+        $this->assertSame(1, $meta['state_limit_count']);
+        $this->assertSame(0, $meta['claim_limit_count']);
+        $this->assertSame($meta['checks'][0]['state_bytes_with_candidate'] - 32768, $meta['checks'][0]['state_overflow_bytes']);
+        Http::assertNothingSent();
+    }
+
+    public function test_uncited_conflicting_source_is_included_in_the_same_decision(): void
+    {
+        $this->fake(['claim_0' => 'conflicting']);
+        [$evidence, $claims, $u] = $this->fixture();
+        $evidence['documents'][0]['evidence'][0]['content'] = 'TRACK-55 was delivered today.';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Shipment status', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertFalse($result['valid']);
+        $this->assertSame('conflicting_evidence', $result['reason']);
+        Http::assertSent(fn ($r) => count($r['state']['pairs'][0]['related_evidence']) === 1);
+    }
+
+    public function test_more_than_ten_candidates_are_explicitly_unassessed_without_more_calls(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status', $evidence, array_fill(0, 11, $claims[0]), $u, 'demo', 'acme');
+        $this->assertContains('claim_limit', array_column($result['semantic_validation'][0]['checks'], 'reason'));
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($r) => count($r['questions']) === 10);
+    }
+
+    public function test_tables_are_scoped_to_requested_record_or_explicit_foreign_key(): void
+    {
+        [$evidence, , $u] = $this->fixture();
+        $evidence['api_tools'][0]['result']['records'][] = ['id' => 'OTHER', 'trackingCode' => 'TRACK-OTHER'];
+        $tools = app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forTable($evidence['api_tools'], $u, 'acme', 'demo');
+        $this->assertCount(1, $tools[0]['result']['records']);
+        $this->assertSame('TRACK-55', $tools[0]['result']['records'][0]['trackingCode']);
+    }
+
+    public function test_duplicate_facts_are_rendered_once_without_a_false_partial_warning(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0], $claims[0]], $u, 'demo', 'acme');
+        $this->assertCount(1, $result['claims']);
+        $this->assertFalse($result['partial']);
+        $this->assertSame('duplicate_fact', $result['semantic_validation'][0]['checks'][1]['reason']);
+    }
+
+    public function test_already_communicated_fact_is_not_reported_as_unverifiable(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $first = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $u['transition'] = 'continue';
+        $u['action'] = 'refine';
+        $next = app(FocusedClaimEvaluator::class)->evaluate('Altri dettagli?', $evidence, [$claims[0]], $u, 'demo', 'acme', [$first['claims'][0]['fact_id']]);
+        $this->assertFalse($next['valid']);
+        $this->assertSame('no_new_detail', $next['reason']);
+    }
+
+    public function test_a_new_question_or_recheck_can_reuse_a_fact_after_fresh_source_validation(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $first = app(FocusedClaimEvaluator::class)->evaluate('Status?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        foreach ([['new', 'research'], ['continue', 'research'], ['continue', 'recheck']] as [$transition, $action]) {
+            $u['transition'] = $transition;
+            $u['action'] = $action;
+            $next = app(FocusedClaimEvaluator::class)->evaluate('Verify TRACK-55 status', $evidence, [$claims[0]], $u,
+                'demo', 'acme', [$first['claims'][0]['fact_id']]);
+            $this->assertTrue($next['valid']);
+            $this->assertCount(1, $next['claims']);
+        }
+    }
+
+    public function test_chat_28_keeps_primary_hub_and_routes_shipment_by_exact_identifier(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus'] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'details', 'fields' => []];
+        // Captured failure shape: only the secondary shipment is in subquestions,
+        // and the generator assigns both claims the same subquestion index.
+        $claims[0]['subquestion_id'] = $claims[1]['subquestion_id'] = 0;
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Hub and shipment?', $evidence, $claims, $u, 'demo', 'acme');
+        $this->assertCount(2, $result['claims']);
+        $this->assertSame(['answered', 'answered'], array_column($result['subquestions'], 'status'));
+        $this->assertNotContains('entity_mismatch', array_column($result['semantic_validation'][0]['checks'], 'reason'));
+        Http::assertSentCount(4);
+    }
+
+    public function test_partial_field_availability_does_not_erase_the_existing_requested_field(): void
+    {
+        $this->fake([], .58);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus']['fields'] = $u['subquestions'][0]['fields'] = ['status', 'carrier', 'estimatedDelivery'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Status and carrier?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('customerId', $result['claims'][0]['text']);
+        $check = $result['semantic_validation'][0]['checks'][0];
+        $this->assertSame(['carrier', 'estimatedDelivery'], $check['missing_fields']);
+    }
+
+    public function test_general_details_fallback_renders_original_scalar_fields_not_model_paraphrase(): void
+    {
+        $this->fake([], .58);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus']['fields'] = $u['subquestions'][0]['fields'] = ['*'];
+        $claims[0]['text'] = 'TRACK-55 will arrive tomorrow (unsupported).';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Details of TRACK-55?', $evidence, [$claims[0]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertStringContainsString('| status | scheduled |', $result['claims'][0]['text']);
+        $this->assertStringContainsString('| orderId | ORDER-22 |', $result['claims'][0]['text']);
+        $this->assertStringNotContainsString('tomorrow', $result['claims'][0]['text']);
+        $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
+    }
+
+    public function test_general_order_fallback_uses_declared_business_fields_and_omits_internal_scalars(): void
+    {
+        $this->fake([], .58);
+        $record = ['ord_codiceweb' => 'ORDER-A', 'stato_ordine' => 'SPEDITO', 'ord_totale_finale' => 180,
+            'valute_codice' => 'EUR', 'ord_data' => '2026-04-02', 'ipaddress' => '192.0.2.20', 'device_id' => 'internal-device', 'ord_in_verifica' => 1];
+        $evidence = ['api_tools' => [['execution_id' => 42, 'evidence_hash' => 'hash', 'presentation' => [
+            'collection_path' => 'order', 'identity_fields' => ['ord_codiceweb'], 'field_aliases' => [
+                'reference' => 'ord_codiceweb', 'status' => 'stato_ordine', 'total' => 'ord_totale_finale',
+                'currency' => 'valute_codice', 'date' => 'ord_data',
+            ]], 'result' => ['order' => [$record]]]]];
+        $sub = ['identifiers' => ['ORDER-A'], 'fields' => ['*']];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Recupera ordine ORDER-A', $evidence,
+            [['text' => 'ORDER-A unsupported draft.', 'tool_execution_id' => 42, 'evidence_hash' => 'hash']],
+            ['language' => 'it', 'focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| Stato | SPEDITO |', $text);
+        $this->assertStringContainsString('| Totale | 180 |', $text);
+        $this->assertStringContainsString('| Valuta | EUR |', $text);
+        $this->assertStringNotContainsString('ipaddress', $text);
+        $this->assertStringNotContainsString('internal-device', $text);
+        $this->assertStringNotContainsString('ord_in_verifica', $text);
+        $this->assertTrue($result['partial']);
+    }
+
+    public function test_literal_order_fallback_keeps_declared_item_comparison_without_dumping_internal_fields(): void
+    {
+        $this->fake([], .58);
+        $record = ['ref' => 'ORDER-A', 'state' => 'shipped', 'items' => [
+            ['sku' => 'SKU-A', 'size' => 40, 'qty' => 1, 'margin' => 97],
+            ['sku' => 'SKU-B', 'size' => 41, 'qty' => 2, 'margin' => 98],
+        ]];
+        $tool = ['execution_id' => 42, 'evidence_hash' => 'h', 'presentation' => [
+            'collection_path' => 'orders', 'identity_fields' => ['ref'], 'field_aliases' => ['reference' => 'ref', 'status' => 'state'],
+            'record_collections' => [['role' => 'items', 'path' => 'items.*', 'fields' => ['reference' => 'sku', 'variant' => 'size', 'quantity' => 'qty']]],
+        ], 'result' => ['orders' => [$record]]];
+        $sub = ['identifiers' => ['ORDER-A'], 'fields' => ['*']];
+        $claim = ['text' => 'ORDER-A unverified summary.', 'tool_execution_id' => 42, 'evidence_hash' => 'h'];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Order and items?', ['api_tools' => [$tool]], [$claim],
+            ['language' => 'it', 'focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertTrue($result['valid']);
+        $text = $result['claims'][0]['text'];
+        $this->assertStringContainsString('| SKU-A | 40 | 1 |', $text);
+        $this->assertStringContainsString('| SKU-B | 41 | 2 |', $text);
+        $this->assertStringNotContainsString('margin', $text);
+        $this->assertSame($record['items'][0]['sku'], $result['claims'][0]['literal_projection']['collections'][0]['rows'][0]['sku']);
+        $sub['fields'] = [];
+        $sub['aspect'] = 'source_assessment';
+        $assessment = app(FocusedClaimEvaluator::class)->evaluate('Can I say this is complete?', ['api_tools' => [$tool]], [$claim],
+            ['focus' => $sub, 'subquestions' => [$sub]]);
+        $this->assertFalse($assessment['valid']);
+        $this->assertSame([], $assessment['claims']);
+    }
+
+    public function test_independent_task_cannot_borrow_a_siblings_source_or_be_reassigned_to_that_task(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $evidence['api_tools'][0]['research_flow_ids'] = [0];
+        $evidence['documents'][0]['evidence'][0]['research_flow_ids'] = [1];
+        $u['subquestions'][] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'details', 'fields' => []];
+        $u['independent_research'] = true;
+        $claims[0]['subquestion_id'] = 0;
+        // This fact is valid in task 1, but the draft from task 0 has no authority to borrow it.
+        $claims[1]['subquestion_id'] = 0;
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Shipment and hub', $evidence, $claims, $u, 'demo', 'acme');
+        $this->assertCount(1, $result['claims']);
+        $excluded = collect($result['semantic_validation'][0]['checks'])->firstWhere('claim_index', 1);
+        $this->assertSame('source_not_in_authorized_evidence', $excluded['reason']);
+        $this->assertSame(0, $excluded['subquestion_id']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($r) => count($r['state']['pairs'] ?? []) === 1);
+    }
+
+    public function test_chat_37_validates_all_nine_candidates_without_repeating_original_passages(): void
+    {
+        $this->fake();
+        config(['decisions.max_state_bytes' => 16000]);
+        $fixture = json_decode(file_get_contents(dirname(__DIR__, 2).'/Fixtures/Agent/multi-question-source-validation.json'), true, flags: JSON_THROW_ON_ERROR);
+        $result = app(FocusedClaimEvaluator::class)->evaluate($fixture['question'], $fixture['evidence'], $fixture['claims'],
+            $fixture['understanding'], $fixture['project'], $fixture['tenant']);
+        $meta = $result['semantic_validation'][0];
+        $this->assertSame('completed', $meta['status']);
+        $this->assertCount(9, $result['claims']);
+        $this->assertSame(['answered', 'answered', 'answered', 'answered'], array_column($result['subquestions'], 'status'));
+        $this->assertNotContains('state_limit', array_column($meta['checks'], 'reason'));
+        $this->assertNotContains('invalid_source_identity', array_column($meta['checks'], 'reason'));
+        $this->assertSame('shared_sources_v1', $meta['state_layout']);
+        $this->assertSame(9, $meta['pair_count']);
+        $this->assertLessThanOrEqual(15000, $meta['state_bytes']);
+        $recovered = array_values(array_filter($meta['checks'], fn ($c) => isset($c['source_resolution'])));
+        $this->assertCount(3, $recovered);
+        foreach ($recovered as $check) {
+            $this->assertSame('unique_evidence_hash', $check['source_resolution']['method']);
+            $this->assertSame(4101, $check['source']['tool_execution_id']);
+            $this->assertSame('passed', $check['deterministic']['status']);
+        }
+        Http::assertSentCount(4);
+        $state = Http::recorded()[0][0]['state'];
+        $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
+        $this->assertCount(4, $state['sources']); // Three complete documents + one identical MCP record, from two executions.
+        $this->assertCount(9, Http::recorded()[0][0]['questions']);
+        foreach ($fixture['evidence']['documents'] as $doc) {
+            $this->assertContains($doc['evidence'][0]['content'], $state['sources']);
+        }
+        $record = json_encode($fixture['evidence']['api_tools'][0]['result']['records'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->assertContains($record, $state['sources']);
+        $oldLayout = array_diff_key($state, ['sources' => true, 'subquestions' => true]);
+        foreach ($state['pairs'] as $i => $pair) {
+            $this->assertArrayHasKey($pair['source_ref'], $state['sources']);
+            $this->assertArrayHasKey($pair['subquestion_id'], $state['subquestions']);
+            $oldLayout['pairs'][$i] = [...array_diff_key($pair, ['source_ref' => true]),
+                'source' => $state['sources'][$pair['source_ref']], 'subquestion' => $state['subquestions'][$pair['subquestion_id']]];
+            foreach ($pair['related_evidence'] as $j => $related) {
+                $this->assertArrayHasKey($related['source_ref'], $state['sources']);
+                $oldLayout['pairs'][$i]['related_evidence'][$j] = [...array_diff_key($related, ['source_ref' => true]),
+                    'source' => $state['sources'][$related['source_ref']]];
+            }
+        }
+        $this->assertGreaterThan(16000, strlen(json_encode($oldLayout, JSON_UNESCAPED_UNICODE)));
+        $repairedClaims = array_filter($result['claims'], fn ($c) => ($c['tool_execution_id'] ?? null) === 4101);
+        $this->assertCount(3, $repairedClaims);
+        foreach ($repairedClaims as $claim) {
+            $this->assertSame($record, $claim['quote']);
+        }
+    }
+
+    public function test_recovered_identity_still_cannot_cross_scope_or_select_the_wrong_record(): void
+    {
+        $this->fake();
+        foreach (['tenant', 'project', 'record', 'record_path', 'flow'] as $failure) {
+            [$evidence, $claims, $u] = $this->fixture();
+            unset($claims[0]['tool_execution_id']);
+            $claims[0]['document_id=null,'] = 67;
+            match ($failure) {
+                'tenant' => $evidence['api_tools'][0]['tenant_id'] = 'other',
+                'project' => $evidence['api_tools'][0]['project_key'] = 'other',
+                'record' => $evidence['api_tools'][0]['result']['records'][0]['trackingCode'] = 'TRACK-OTHER',
+                'record_path' => $claims[0]['record_path'] = 'records.99',
+                'flow' => $evidence['api_tools'][0]['research_flow_ids'] = [1],
+            };
+            if ($failure === 'flow') {
+                $u['independent_research'] = true;
+                $claims[0]['subquestion_id'] = 0;
+            }
+            $result = app(FocusedClaimEvaluator::class)->evaluate('Shipment', $evidence, [$claims[0]], $u, 'demo', 'acme');
+            $this->assertFalse($result['valid'], $failure);
+            $this->assertSame('failed', $result['semantic_validation'][0]['checks'][0]['deterministic']['status'], $failure);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_current_source_reference_resolves_full_identity_without_overwriting_explicit_keys(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_ref'];
+        $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $evidence, [$claim], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertSame(67, $result['claims'][0]['tool_execution_id']);
+        $this->assertSame('tool', $result['claims'][0]['evidence_hash']);
+        $this->assertSame('current_source_reference', $result['semantic_validation'][0]['checks'][0]['source_resolution']['method']);
+        $unknown = [...$claim, 'source_ref' => 'unknown'];
+        $this->assertSame($unknown, $projector->resolveSourceIdentity($evidence, $unknown));
+    }
+
+    public function test_literal_navigation_excerpt_preserves_the_full_original_for_judgment(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['focus'] = $u['subquestions'][0] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'rules', 'fields' => ['*']];
+        $claims[1]['quote'] = 'accepts ADR class 3';
+        $result = app(FocusedClaimEvaluator::class)->evaluate('HUB-MI-07 rules?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        Http::assertSent(function ($request) use ($evidence) {
+            return isset($request['state']['pairs'][0])
+                && ($request['state']['pairs'][0]['literal_excerpt'] ?? null) === 'accepts ADR class 3'
+                && in_array($evidence['documents'][0]['evidence'][0]['content'], $request['state']['sources'], true);
+        });
+    }
+
+    public function test_numeric_source_choice_keeps_the_full_original_record_and_existing_gates(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $choice = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_choice'];
+        $candidate = [...array_diff_key($claims[0], array_flip(['document_id', 'tool_execution_id', 'evidence_hash'])), 'source_choice' => $choice];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $evidence, [$candidate], $u, 'demo', 'acme');
+        $this->assertTrue($result['valid']);
+        $this->assertSame(67, $result['claims'][0]['tool_execution_id']);
+        $this->assertSame('tool', $result['claims'][0]['evidence_hash']);
+        $this->assertSame('current_prompt_choice', $result['semantic_validation'][0]['checks'][0]['source_resolution']['method']);
+    }
+
+    public function test_invalid_numeric_choices_and_explicit_conflicts_cannot_be_repaired_by_guessing(): void
+    {
+        Http::preventStrayRequests();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $choice = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_choice'];
+        foreach (['unknown', 'string', 'explicit_hash', 'explicit_id', 'record', 'scope'] as $failure) {
+            $candidate = [...array_diff_key($claims[0], array_flip(['document_id', 'tool_execution_id', 'evidence_hash'])), 'source_choice' => $choice];
+            $current = $evidence;
+            match ($failure) {
+                'unknown' => $candidate['source_choice'] = 999,
+                'string' => $candidate['source_choice'] = (string) $choice,
+                'explicit_hash' => $candidate['evidence_hash'] = 'wrong',
+                'explicit_id' => $candidate['tool_execution_id'] = 999,
+                'record' => $current['api_tools'][0]['result']['records'][0]['trackingCode'] = 'TRACK-OTHER',
+                'scope' => $current['api_tools'][0]['project_key'] = 'other',
+            };
+            $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $current, [$candidate], $u, 'demo', 'acme');
+            $this->assertFalse($result['valid'], $failure);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_navigation_recovers_raw_spacing_without_replacing_the_source(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $evidence['documents'][0]['evidence'][0]['content'] = 'HUB-MI-07 accepts   ADR class 3 freight.';
+        $u['focus'] = $u['subquestions'][0] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'rules', 'fields' => ['*']];
+        $claims[1]['quote'] = 'accepts ADR class 3';
+        app(FocusedClaimEvaluator::class)->evaluate('HUB-MI-07 rules?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        Http::assertSent(fn ($request) => isset($request['state']['pairs'][0])
+            && ($request['state']['pairs'][0]['literal_excerpt'] ?? null) === 'accepts   ADR class 3'
+            && in_array('HUB-MI-07 accepts   ADR class 3 freight.', $request['state']['sources'], true));
+    }
+
+    public function test_source_reference_cannot_override_hash_identity_scope_or_record_membership(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $reference = $projector->forPrompt($evidence)['api_tools'][0]['record_sources'][0]['source_ref'];
+        $claim = [...$claims[0], 'source_ref' => $reference, 'document_id' => null, 'tool_execution_id' => null, 'evidence_hash' => ''];
+        foreach (['unknown', 'explicit_hash', 'explicit_id', 'project', 'record', 'flow'] as $failure) {
+            $candidate = $claim;
+            $current = $evidence;
+            $understanding = $u;
+            match ($failure) {
+                'unknown' => $candidate['source_ref'] = 'unknown',
+                'explicit_hash' => $candidate['evidence_hash'] = 'incorrect',
+                'explicit_id' => $candidate['tool_execution_id'] = 999,
+                'project' => $current['api_tools'][0]['project_key'] = 'another',
+                'record' => $current['api_tools'][0]['result']['records'][0]['trackingCode'] = 'TRACK-OTHER',
+                'flow' => $current['api_tools'][0]['research_flow_ids'] = [1],
+            };
+            if ($failure === 'flow') {
+                $understanding['independent_research'] = true;
+                $candidate['subquestion_id'] = 0;
+            }
+            $result = app(FocusedClaimEvaluator::class)->evaluate('TRACK-55 status?', $current, [$candidate], $understanding, 'demo', 'acme');
+            $this->assertFalse($result['valid'], $failure);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_oversized_related_source_is_not_dropped_and_does_not_pollute_other_pairs(): void
+    {
+        $this->fake();
+        config(['decisions.max_state_bytes' => 16000]);
+        [$evidence, $claims, $u] = $this->fixture();
+        $u['subquestions'][] = ['topic' => 'hub', 'identifiers' => ['HUB-MI-07'], 'aspect' => 'details', 'fields' => []];
+        $evidence['documents'][] = ['document_id' => 27, 'evidence' => [[
+            'evidence_hash' => 'conflicting', 'content' => 'TRACK-55 has been delivered.'.str_repeat(' Full necessary context.', 1000),
+        ]]];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('Shipment and hub', $evidence, $claims, $u, 'demo', 'acme');
+        $this->assertCount(1, $result['claims']);
+        $this->assertSame($claims[1]['text'], $result['claims'][0]['text']);
+        $this->assertSame('state_limit', collect($result['semantic_validation'][0]['checks'])->firstWhere('claim_index', 0)['reason']);
+        Http::assertSentCount(2);
+        $state = Http::recorded()[0][0]['state'];
+        $this->assertSame([$evidence['documents'][0]['evidence'][0]['content']], array_values($state['sources']));
+        $this->assertCount(1, $state['pairs']);
+    }
+
+    public function test_chat_39_nine_facts_and_all_same_document_context_fit_the_default_in_one_call(): void
+    {
+        $this->fake();
+        $this->assertSame(131072, config('decisions.max_state_bytes'));
+        $fixture = json_decode(file_get_contents(dirname(__DIR__, 2).'/Fixtures/Agent/multi-question-state-budget.json'), true, flags: JSON_THROW_ON_ERROR);
+        $result = app(FocusedClaimEvaluator::class)->evaluate($fixture['question'], $fixture['evidence'], $fixture['claims'],
+            $fixture['understanding'], $fixture['project'], $fixture['tenant']);
+        $meta = $result['semantic_validation'][0];
+        $this->assertSame('completed', $meta['status']);
+        $this->assertSame(9, $meta['pair_count']);
+        $this->assertSame(12, $meta['source_count']);
+        $this->assertSame(0, $meta['state_limit_count']);
+        $this->assertSame('sanitized_json_utf8', $meta['state_byte_encoding']);
+        $this->assertGreaterThan(16000, $meta['state_bytes']);
+        $this->assertLessThanOrEqual(32768, $meta['state_bytes']);
+        $this->assertCount(9, $result['claims']);
+        $this->assertFalse($result['partial']);
+        $this->assertSame(['answered', 'answered', 'answered', 'answered'], array_column($result['subquestions'], 'status'));
+        Http::assertSentCount(4);
+        $state = Http::recorded()[0][0]['state'];
+        $this->assertSame($meta['state_bytes'], strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
+        // Full documents AND overlapping passages remain original and distinct.
+        foreach ($state['sources'] as $source) {
+            $originals = array_merge(...array_map(fn ($d) => array_column($d['evidence'], 'content'), $fixture['evidence']['documents']));
+            $record = json_encode($fixture['evidence']['api_tools'][0]['result']['records'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $this->assertContains($source, [...$originals, $record]);
+        }
+    }
+
+    public function test_exact_sanitized_budget_is_used_without_a_hidden_reserve(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        // The mask grows a short email; Unicode is counted in bytes, not chars.
+        $evidence['documents'][0]['evidence'][0]['content'] .= ' Contatto a@b.it. Città 東京.';
+        $u['focus']['identifiers'] = $u['subquestions'][0]['identifiers'] = ['HUB-MI-07'];
+        $first = app(FocusedClaimEvaluator::class)->evaluate('Hub?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $bytes = $first['semantic_validation'][0]['state_bytes'];
+        $state = Http::recorded()[0][0]['state'];
+        $this->assertSame($bytes, strlen(json_encode($state, JSON_UNESCAPED_UNICODE)));
+        $this->assertStringContainsString('[EMAIL]', implode('', $state['sources']));
+        config(['decisions.max_state_bytes' => $bytes]);
+        $exact = app(FocusedClaimEvaluator::class)->evaluate('Hub?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $this->assertTrue($exact['valid']);
+        $this->assertSame(0, $exact['semantic_validation'][0]['state_limit_count']);
+        Http::assertSentCount(4);
+
+        config(['decisions.max_state_bytes' => $bytes - 1]);
+        $tooLarge = app(FocusedClaimEvaluator::class)->evaluate('Hub?', $evidence, [$claims[1]], $u, 'demo', 'acme');
+        $this->assertFalse($tooLarge['valid']);
+        $this->assertSame('state_limit', $tooLarge['semantic_validation'][0]['checks'][0]['reason']);
+        $this->assertSame(1, $tooLarge['semantic_validation'][0]['checks'][0]['state_overflow_bytes']);
+        Http::assertSentCount(4); // No provider attempt for the over-budget candidate.
+    }
+
+    public function test_default_budget_keeps_large_original_threads_and_their_contradictory_context(): void
+    {
+        $this->fake();
+        $evidence = ['documents' => []];
+        $claims = [];
+        foreach (['A refund was requested.', 'Repayment was promised, but has not been confirmed.', 'The customer is still waiting.'] as $index => $fact) {
+            $source = 'CASE-A: '.$fact.str_repeat(' Original recorded thread context; no completed payment is established. ', 350);
+            $evidence['documents'][] = ['document_id' => $index + 1, 'title' => 'CASE-A', 'evidence' => [[
+                'content' => $source, 'evidence_hash' => 'large-'.$index, 'complete_source' => true,
+            ]]];
+            $claims[] = ['text' => 'CASE-A: '.$fact, 'document_id' => $index + 1, 'evidence_hash' => 'large-'.$index];
+        }
+        $focus = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'fields' => []];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What is documented for CASE-A?', $evidence, $claims,
+            ['focus' => $focus, 'subquestions' => [$focus]]);
+        $this->assertCount(3, $result['claims']);
+        $meta = $result['semantic_validation'][0];
+        $this->assertGreaterThan(65536, $meta['state_bytes']);
+        $this->assertLessThanOrEqual(131072, $meta['state_bytes']);
+        $this->assertSame(0, $meta['state_limit_count']);
+        $state = Http::recorded()[0][0]['state'];
+        foreach ($evidence['documents'] as $document) $this->assertContains($document['evidence'][0]['content'], $state['sources']);
+        // An operator's lower bound still applies; no source is silently cut
+        // down or contradiction discarded to obtain an approval.
+        config(['decisions.max_state_bytes' => 32768]);
+        $bounded = app(FocusedClaimEvaluator::class)->evaluate('What is documented for CASE-A?', $evidence, $claims,
+            ['focus' => $focus, 'subquestions' => [$focus]]);
+        $this->assertFalse($bounded['valid']);
+        $this->assertSame(3, $bounded['semantic_validation'][0]['state_limit_count']);
+        Http::assertSentCount(4);
+    }
+}

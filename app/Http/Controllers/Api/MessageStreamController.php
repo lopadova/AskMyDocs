@@ -7,6 +7,8 @@ use App\Ai\StreamChunk;
 use App\Ai\AiResponse;
 use App\FinOps\ChatTraceContext;
 use App\FinOps\ChatTurnCostResolver;
+use App\Jobs\UpdateConversationRecapJob;
+use App\Mcp\Apps\McpAppTurnContext;
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\ChatLog;
 use App\Models\Conversation;
@@ -16,6 +18,7 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\Provenance\ProvenanceToolFirewall;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\Canonical\CanonicalType;
@@ -87,6 +90,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MessageStreamController extends Controller
 {
+    use \App\Http\Controllers\Api\Concerns\RespondsWithProvenance;
+
     /**
      * Mirror of MessageController::SELF_REFUSAL_SENTINEL — the LLM
      * emits this token when it can't ground the answer in the
@@ -101,9 +106,11 @@ class MessageStreamController extends Controller
         AiManager $ai,
         McpToolCallingService $toolCallingService,
         ChatRetrievalService $retrieval,
+        KbInvestigationService $investigation,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
+        McpAppTurnContext $mcpAppContext,
     ): Response {
         // Force JSON for both authorization (403) and validation
         // (422) failures: SSE clients send `Accept: text/event-stream`,
@@ -123,7 +130,11 @@ class MessageStreamController extends Controller
 
         try {
             $validated = $request->validate(array_merge(
-                ['content' => ['required', 'string', 'max:10000']],
+                [
+                    'content' => ['required', 'string', 'max:10000'],
+                    'depth' => ['nullable', 'integer', 'min:1', 'max:5'],
+                    'mcp_app_id' => ['sometimes', 'string', 'ulid'],
+                ],
                 $this->retrievalFilterRules(),
             ));
         } catch (ValidationException $e) {
@@ -137,6 +148,14 @@ class MessageStreamController extends Controller
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
         $filters = $this->buildRetrievalFilters($request, $projectKey);
+        $previousCitations = $conversation->messages()->where('role', 'assistant')->latest('id')->limit(10)->get()
+            ->map(static fn ($message): mixed => data_get($message->metadata, 'citations'))
+            ->first(static fn (mixed $citations): bool => is_array($citations) && $citations !== []) ?? [];
+        $appContext = $mcpAppContext->resolve(
+            is_string($validated['mcp_app_id'] ?? null) ? $validated['mcp_app_id'] : null,
+            $request->user(),
+            $conversation,
+        );
 
         // Persist user message BEFORE the stream starts. If the client
         // disconnects mid-stream the user turn is still saved and the
@@ -156,14 +175,48 @@ class MessageStreamController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // RAG: v8.1 P0.2 — unified retrieval via ChatRetrievalService, the
-        // SAME searchWithContext() path as /api/kb/chat + MessageController
-        // (primary + graph-expanded + rejected). $chunks stays the primary
-        // set so the downstream streaming/persistence logic is unchanged.
-        $result = $retrieval->retrieve($question, $projectKey, $filters);
-        $chunks = $result->primary;
+        // Match the synchronous channel exactly: first interpret against the
+        // admin profile, then retrieve/read/assess inside the KB. The original
+        // question is never sent as a direct vector query.
+        $investigationResult = $investigation->investigate(
+            question: $question,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: (int) ($validated['depth'] ?? 3),
+            conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
+            previousCitations: is_array($previousCitations) ? $previousCitations : [],
+            actor: $request->user(),
+            memoryOwner: $conversation,
+            turnRecord: $userMessage,
+        );
+        $result = $investigationResult->search;
+        $memoryEvidence = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled()
+            ? app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult($result)->jsonSerialize() : [];
+        if ($investigationResult->memoryAnswer !== null) {
+            return $this->serverAnswerResponse($request, $conversation, $userMessage, $investigationResult->memoryAnswer,
+                $chatLog, $startTime, true, 'verified-session-memory');
+        }
+        if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
+            return $this->assistantConversationResponse($request, $conversation, $userMessage,
+                $investigationResult->intent->understanding, $chatLog, $startTime, stream: true);
+        }
 
-        $shouldRefuse = $retrieval->shouldRefuse($result);
+        if ($investigationResult->stopReason === 'answer_provenance') {
+            return $this->provenanceResponse($request, $conversation, $userMessage, $filters,
+                $investigationResult->intent?->understanding?->language, $chatLog, $startTime, stream: true);
+        }
+        if (config('reasoning.enabled')) {
+            $history = array_values(array_filter($history, fn ($message) => $message['role'] === 'user'));
+            $history[] = ['role' => 'user', 'content' => json_encode([
+                'server_turn_context' => $investigationResult->intent?->understanding?->toArray(),
+                'reasoning' => $investigationResult->intent?->understanding?->available && $conversation->project_key === $projectKey
+                    ? app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->context($conversation, $request->user(), $filters) : [],
+                'policy' => 'Answer the active focus. Already communicated text is ONLY a repetition hint, not evidence. Do not repeat it unless explicitly requested or needed to explain an update. Use only current retrieved sources for facts. '.\App\Services\Chat\QuestionAction::ANSWER_INSTRUCTIONS,
+            ])];
+        }
+        $chunks = $result->primary;
+        $hasLiveTools = $investigationResult->isReady() && ($investigationResult->intent?->understanding?->needsResearch() ?? true)
+            && $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
 
         // Capture session id at controller entry — header() reads from
         // request state which we want to lock before the streaming
@@ -173,7 +226,11 @@ class MessageStreamController extends Controller
         $clientIp = $request->ip();
         $userAgent = $request->userAgent();
 
-        if ($shouldRefuse) {
+        if (! $investigationResult->isReady() || (
+            $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            && $retrieval->shouldRefuse($result)
+            && ! $hasLiveTools
+        )) {
             return $this->streamRefusal(
                 request: $request,
                 conversation: $conversation,
@@ -182,21 +239,38 @@ class MessageStreamController extends Controller
                 projectKey: $projectKey,
                 userId: $userId,
                 startTime: $startTime,
-                reason: 'no_relevant_context',
+                reason: $investigationResult->refusalReason(),
                 sessionId: $sessionId,
                 clientIp: $clientIp,
                 userAgent: $userAgent,
+                language: $investigationResult->intent?->understanding?->language,
+                clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );
         }
 
-        $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
+        // A recursively grounded answer receives no historical answer text:
+        // selected KB evidence is its only factual context.
+        $fewShotExamples = $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            ? $fewShot->getExamples($userId, $projectKey)
+            : [];
 
         // v8.1 P0.2 — typed-block prompt context (chunks + expanded +
         // rejected) so the stream prompt matches the sync + chat channels.
         $systemPrompt = view('prompts.kb_rag', array_merge(
             $retrieval->promptContext($result),
-            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+            [
+                'projectKey' => $projectKey,
+                'fewShotExamples' => $fewShotExamples,
+                'retrievalInvestigation' => $investigationResult->answerPromptContext(),
+                // Recap from the PREVIOUS turn — mirrors MessageController;
+                // keeps the two conversational surfaces in lockstep (same
+                // reason ChatRetrievalService is shared between them).
+                'sessionRecap' => config('reasoning.enabled') ? null : $conversation->session_recap,
+            ],
         ))->render();
+        if ($appContext !== null) {
+            $systemPrompt .= "\n\n## Current MCP App context\n".$appContext;
+        }
 
         $citations = $retrieval->buildCitations($result);
 
@@ -205,7 +279,7 @@ class MessageStreamController extends Controller
         // metered call + this turn's chat_logs row share it.
         $traceId = ChatTraceContext::newTraceId();
         $toolResponse = null;
-        if ($toolCallingService->canHandleToolCalling($request->user())) {
+        if ($hasLiveTools) {
             $toolResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $toolCallingService->chatWithTools(
                 systemPrompt: $systemPrompt,
                 messages: $history,
@@ -217,6 +291,7 @@ class MessageStreamController extends Controller
                     // ADR 0028 phase 3 - same verdict as the sync channel, so
                     // streaming is not a way around the firewall.
                     'provenance_firewall' => app(ProvenanceToolFirewall::class)->assess($result)->toArray(),
+                    'project_key' => $projectKey,
                 ],
             ));
         }
@@ -232,6 +307,7 @@ class MessageStreamController extends Controller
             history: $history,
             chunks: $chunks,
             citations: $citations,
+            investigationTrace: array_merge(is_array($result->meta['investigation'] ?? null) ? $result->meta['investigation'] : [], ['reasoning_user_message_id' => $userMessage->id]),
             question: $question,
             projectKey: $projectKey,
             userId: $userId,
@@ -241,6 +317,7 @@ class MessageStreamController extends Controller
             clientIp: $clientIp,
             userAgent: $userAgent,
             aiResponse: $toolResponse,
+            memoryEvidence: $memoryEvidence,
         );
     }
 
@@ -266,8 +343,14 @@ class MessageStreamController extends Controller
         string $sessionId,
         ?string $clientIp,
         ?string $userAgent,
+        ?string $language = null,
+        ?string $clarification = null,
     ): StreamedResponse {
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
+        if ($clarification !== null && $clarification !== '') {
+            $answer = $clarification;
+            $reason = 'focus_ambiguous';
+        }
 
         return $this->streamingResponse($request, function () use (
             $reason, $answer, $conversation, $chatLog, $question,
@@ -401,6 +484,7 @@ class MessageStreamController extends Controller
         array $history,
         Collection $chunks,
         array $citations,
+        array $investigationTrace,
         string $question,
         ?string $projectKey,
         int $userId,
@@ -411,11 +495,12 @@ class MessageStreamController extends Controller
         ?string $userAgent,
         ?AiResponse $aiResponse = null,
         ?string $traceId = null,
+        array $memoryEvidence = [],
     ): StreamedResponse {
         return $this->streamingResponse($request, function () use (
             $ai, $confidence, $conversation, $chatLog, $systemPrompt, $history,
-            $chunks, $citations, $question, $projectKey, $userId, $startTime,
-            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse, $traceId
+            $chunks, $citations, $investigationTrace, $question, $projectKey, $userId, $startTime,
+            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse, $traceId, $memoryEvidence
         ): void {
             // SDK v6 envelope opener — every UIMessage stream MUST
             // begin with a `start` chunk before any text/data parts.
@@ -585,7 +670,7 @@ class MessageStreamController extends Controller
             // the persisted shape and reconciles via the optimistic
             // dedupe path (R25).
             $persistedContent = $isSelfRefusal
-                ? $this->localizedRefusalMessage('llm_self_refusal')
+                ? $this->localizedRefusalMessage('llm_self_refusal', is_string($investigationTrace['language'] ?? null) ? $investigationTrace['language'] : null)
                 : $assistantContent;
 
             // v8.16/W3 — resolve the real per-turn cost on the grounded path. This
@@ -605,7 +690,11 @@ class MessageStreamController extends Controller
                 traceId: $traceId,
             );
 
-            $assistantMessage = $conversation->messages()->create([
+            $reasoningTurn = $conversation->messages()->find($investigationTrace['reasoning_user_message_id'] ?? 0);
+            $understanding = $reasoningTurn === null ? null : \App\Services\Chat\QuestionUnderstanding::fromArray((array) data_get($reasoningTurn->metadata, 'reasoning.understanding', []));
+            $memoryClaims = $isSelfRefusal ? [] : app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->extract(
+                $memoryEvidence, $understanding, (string) $conversation->tenant_id, $projectKey);
+            $assistantMessage = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->saveMessage($conversation, $reasoningTurn, [
                 'role' => 'assistant',
                 'content' => $persistedContent,
                 'confidence' => $confidenceScore,
@@ -626,13 +715,21 @@ class MessageStreamController extends Controller
                     'few_shot_count' => $fewShotCount,
                     'tool_calls_count' => count($toolCallsSummary),
                     'tool_calls' => $toolCallsSummary,
+                    'retrieval_investigation' => $investigationTrace === [] ? null : $investigationTrace,
                     'confidence' => $confidenceScore,
                     'refusal_reason' => $refusalReason,
                     'streamed' => true,
                 ],
-            ]);
+            ], $isSelfRefusal ? [] : ($memoryEvidence !== [] ? $memoryEvidence : ['documents' => $citations]), $memoryClaims);
 
-            $conversation->touch();
+            // Async, incremental session-recap update — off the request
+            // path (streaming has already flushed the response). Skipped on
+            // a self-refusal turn: nothing new was actually established,
+            // mirrors MessageController which never reaches its own
+            // dispatch call on that path either.
+            if (! $isSelfRefusal && (bool) config('kb.session_recap.enabled', true)) {
+                UpdateConversationRecapJob::dispatch($conversation->id, (string) $conversation->tenant_id);
+            }
 
             // v6.0/W7 — record token-level provenance for the assistant
             // turn (best-effort; logged on failure, never propagates).
@@ -689,6 +786,7 @@ class MessageStreamController extends Controller
                     'citations_count' => $isSelfRefusal ? 0 : count($citations),
                     'tool_calls_count' => count($toolCallsSummary),
                     'tool_calls' => $toolCallsSummary,
+                    'retrieval_investigation' => $investigationTrace === [] ? null : $investigationTrace,
                     'refusal_reason' => $refusalReason,
                     'confidence' => $confidenceScore,
                     'streamed' => true,
@@ -875,6 +973,12 @@ class MessageStreamController extends Controller
                 'status' => (string) ($toolCall['status'] ?? 'completed'),
                 'server_id' => $toolCall['server_id'] ?? null,
                 'server_name' => $toolCall['server_name'] ?? null,
+                'source' => $toolCall['source'] ?? null,
+                'provenance' => is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
+                'pending_interaction_id' => $toolCall['pending_interaction_id'] ?? null,
+                'prompt' => is_array($toolCall['prompt'] ?? null) ? $toolCall['prompt'] : null,
+                'task_id' => $toolCall['task_id'] ?? null,
+                'task' => is_array($toolCall['task'] ?? null) ? $toolCall['task'] : null,
                 'error' => $toolCall['error'] ?? null,
             ],
             $toolCalls,
@@ -892,16 +996,16 @@ class MessageStreamController extends Controller
      * `kb.refusal.{reason}` first, degrades to `kb.no_grounded_answer`
      * if the per-reason key is missing.
      */
-    private function localizedRefusalMessage(string $reason): string
+    private function localizedRefusalMessage(string $reason, ?string $language = null): string
     {
         $perReasonKey = "kb.refusal.{$reason}";
-        $perReasonMessage = __($perReasonKey);
+        $perReasonMessage = __($perReasonKey, [], $language);
 
         if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
             return $perReasonMessage;
         }
 
-        return (string) __('kb.no_grounded_answer');
+        return (string) __('kb.no_grounded_answer', [], $language);
     }
 
     /**

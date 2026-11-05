@@ -1,0 +1,276 @@
+<?php
+
+namespace Tests\Feature\Chat;
+
+use App\Agent\AgentExecutionContext;
+use App\Agent\Evidence\AgentEvidenceAccess;
+use App\Agent\Tools\AgentToolRegistry;
+use App\Models\AgentRun;
+use App\Models\Conversation;
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
+use App\Models\User;
+use App\Services\Chat\Reasoning\ConversationReasoning;
+use App\Support\TenantContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class EvidenceAccessTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_dependency_metadata_is_reloaded_from_the_host_execution_instead_of_the_checkpoint(): void
+    {
+        $run = $this->runFixture();
+        $tool = $this->tool($run);
+        $tool['argument_bindings'] = [['parent_execution_id' => 999, 'value_hash' => 'forged']];
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), ['api_tools' => [$tool]]);
+        $this->assertArrayNotHasKey('argument_bindings', $safe['api_tools'][0]);
+        $recorded = [['parent_execution_id' => 123, 'value_hash' => 'host-recorded']];
+        $run->toolExecutions()->whereKey($tool['execution_id'])->firstOrFail()->update(['result_meta_json' => ['argument_bindings' => $recorded]]);
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), ['api_tools' => [$tool]]);
+        $this->assertSame($recorded, $safe['api_tools'][0]['argument_bindings']);
+    }
+
+    private function runFixture(?Conversation $conversation = null): AgentRun
+    {
+        app(TenantContext::class)->set('default');
+        config(['reasoning.enabled' => true]);
+        if ($conversation === null) {
+            $user = User::create(['name' => 'Tester', 'email' => Str::uuid().'@example.test', 'password' => bcrypt('test')]);
+            $conversation = Conversation::create(['user_id' => $user->id, 'project_key' => 'demo']);
+            \App\Models\ProjectMembership::create(['user_id' => $user->id, 'project_key' => 'demo', 'role' => 'member', 'scope_allowlist' => []]);
+        }
+        return AgentRun::create(['run_id' => (string) Str::uuid(), 'tenant_id' => 'default', 'project_key' => 'demo',
+            'user_id' => $conversation->user_id, 'conversation_id' => $conversation->id, 'channel' => 'chat',
+            'actor_type' => 'user', 'actor_id' => (string) $conversation->user_id, 'locale' => 'it', 'timezone' => 'UTC',
+            'status' => 'running', 'input_json' => ['question' => 'TRACK-55']]);
+    }
+
+    private function context(AgentRun $run): AgentExecutionContext
+    {
+        return AgentExecutionContext::fromArray($run->getAttributes());
+    }
+
+    private function tool(AgentRun $run, bool $customIdentity = false): array
+    {
+        $definition = app(AgentToolRegistry::class)->forContext($this->context($run), $run->user)['search_knowledge_base'];
+        $execution = $run->toolExecutions()->create(['logical_index' => 1, 'tool_name' => $definition->name,
+            'tool_kind' => $definition->kind, 'status' => 'completed']);
+        $body = ['records' => [[($customIdentity ? 'erp_reference' : 'id') => 'TRACK-55', 'customerId' => 'CUSTOMER-X', 'status' => 'scheduled']]];
+        return ['execution_id' => $execution->id, 'tool' => $definition->name, 'executor_reference' => $definition->executorReference,
+            ...($customIdentity ? ['presentation' => ['identity_fields' => ['erp_reference']]] : []),
+            'result' => $body, 'evidence_hash' => hash('sha256', json_encode($body, JSON_UNESCAPED_UNICODE)), 'retrieved_at' => now()->toIso8601String()];
+    }
+
+    public static function identityContracts(): array
+    {
+        return ['standard' => [false], 'declared' => [true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('identityContracts')]
+    public function test_live_snapshot_is_not_reused_for_a_new_question_but_an_explicit_recap_can_use_it(bool $customIdentity): void
+    {
+        $previous = $this->runFixture();
+        $tool = $this->tool($previous, $customIdentity);
+        $previous->forceFill(['result_json' => ['evidence' => ['api_tools' => [$tool]]]])->save();
+        $conversation = $previous->conversation;
+        $memory = app(ConversationReasoning::class);
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $memory->references($conversation, ['api_tools' => [$tool]])]])->save();
+        $current = $this->runFixture($conversation);
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertSame([], $memory->recapEvidence($current));
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => [$tool]])['api_tools']);
+        $current->forceFill(['result_json' => ['question_understanding' => ['transition' => 'recap', 'focus' => ['identifiers' => ['TRACK-55']]]]])->save();
+        $recalled = $memory->recapEvidence($current);
+        $this->assertCount(1, $recalled);
+        $this->assertCount(1, $access->current($current, $this->context($current), ['api_tools' => $recalled], true)['api_tools']);
+        $other = $this->runFixture();
+        $this->assertSame([], $access->current($other, $this->context($other), ['api_tools' => [$tool]], true)['api_tools']);
+    }
+
+    public function test_disabled_tool_or_corrupted_payload_is_excluded_before_the_model(): void
+    {
+        $run = $this->runFixture();
+        $tool = $this->tool($run);
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertCount(1, $access->current($run, $this->context($run), ['api_tools' => [$tool]])['api_tools']);
+        $changed = $tool;
+        $changed['result']['records'][0]['status'] = 'invented';
+        $this->assertSame([], $access->current($run, $this->context($run), ['api_tools' => [$changed]])['api_tools']);
+        $tool['tool'] = 'disabled_connector';
+        $this->assertSame([], $access->current($run, $this->context($run), ['api_tools' => [$tool]])['api_tools']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('identityContracts')]
+    public function test_mixed_turn_reuses_observations_only_for_its_contextual_task_and_current_permissions(bool $customIdentity): void
+    {
+        $previous = $this->runFixture();
+        $tool = $this->tool($previous, $customIdentity);
+        $previous->forceFill(['result_json' => ['evidence' => ['api_tools' => [$tool]]]])->save();
+        $memory = app(ConversationReasoning::class);
+        $conversation = $previous->conversation;
+        $conversation->forceFill(['reasoning_state' => ['evidence' => $memory->references($conversation, ['api_tools' => [$tool]])]])->save();
+        $current = $this->runFixture($conversation);
+        $tasks = [
+            ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'explanation', 'fields' => [],
+                'question' => 'Spiega il risultato precedente', 'kb_queries' => [], 'context_mode' => 'conversation', 'requires_research' => false],
+            ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'current', 'fields' => ['status'],
+                'question' => 'Controlla anche lo stato attuale', 'kb_queries' => ['TRACK-55 stato attuale'],
+                'context_mode' => 'conversation', 'requires_research' => true],
+        ];
+        $u = new \App\Services\Chat\QuestionUnderstanding('it', 'Spiega e aggiorna', [], [], true, subquestions: $tasks,
+            contextMode: \App\Services\Chat\QuestionContextMode::Conversation, requiresResearch: true);
+        $current->forceFill(['result_json' => ['question_understanding' => $u->toArray()]])->save();
+        $recalled = $memory->recapEvidence($current);
+        $this->assertCount(1, $recalled);
+        $this->assertTrue($recalled[0]['historical_context']);
+        $scoped = \App\Agent\Evidence\ResearchEvidence::recapTools($recalled, $tasks);
+        $this->assertSame([0], $scoped[0]['research_flow_ids']);
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertCount(1, $access->current($current, $this->context($current), ['api_tools' => $scoped])['api_tools']);
+        $current->forceFill(['result_json' => ['question_understanding' => $u->forSubquestion(1)->toArray()]])->save();
+        $this->assertSame([], $memory->recapEvidence($current));
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => $scoped])['api_tools']);
+        $current->forceFill(['result_json' => ['question_understanding' => $u->forSubquestion(0)->toArray()]])->save();
+        $corrupted = $recalled[0];
+        $corrupted['result']['records'][0]['status'] = 'invented';
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => [$corrupted]])['api_tools']);
+        $current->forceFill(['input_json' => ['question' => 'Spiegami', 'live_sources' => ['api' => [], 'mcp' => []]]])->save();
+        // Knowledge tools remain available independently of live connector selection.
+        $scoped[0]['tool'] = 'revoked_connector';
+        $this->assertSame([], $access->current($current, $this->context($current), ['api_tools' => $scoped])['api_tools']);
+    }
+
+    public function test_only_registered_child_runs_can_supply_live_evidence_to_their_parent(): void
+    {
+        $parent = $this->runFixture();
+        $child = $this->runFixture($parent->conversation);
+        $tool = $this->tool($child);
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertSame([], $access->current($parent, $this->context($parent), ['api_tools' => [$tool]])['api_tools']);
+        $parent->forceFill(['result_json' => ['research_runs' => [$child->id]]])->save();
+        $this->assertSame([], $access->current($parent, $this->context($parent), ['api_tools' => [$tool]])['api_tools']);
+        $child->forceFill(['input_json' => ['research_parent_id' => $parent->id]])->save();
+        $this->assertCount(1, $access->current($parent, $this->context($parent), ['api_tools' => [$tool]])['api_tools']);
+        $child->forceFill(['project_key' => 'other'])->save();
+        $this->assertSame([], $access->current($parent, $this->context($parent), ['api_tools' => [$tool]])['api_tools']);
+    }
+
+    public function test_verified_immutable_email_replaces_an_indexed_card_without_reusing_its_hash(): void
+    {
+        $run = $this->runFixture();
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = "# TRACK-55\n\nThe customer requests a return label.";
+        $indexed = $original."\n\n## Automatic triage\nRefund already paid.";
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'markdown',
+            'title' => 'TRACK-55 email', 'source_path' => 'fixture/original.md', 'status' => 'active', 'document_hash' => str_repeat('a', 64),
+            'metadata' => ['connector' => 'imap', 'disk' => 'kb', 'email_body_hash' => hash('sha256', $original),
+                'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]]);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => $indexed, 'chunk_hash' => hash('sha256', $indexed)]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $indexed, 'evidence_hash' => $chunk->chunk_hash, 'research_flow_ids' => [2]]]]]];
+        $access = app(AgentEvidenceAccess::class);
+        $safe = $access->current($run, $this->context($run), $evidence);
+        $fresh = $safe['documents'][0]['evidence'][0];
+        $this->assertSame($original, $fresh['content']);
+        $this->assertNotSame($chunk->chunk_hash, $fresh['evidence_hash']);
+        $this->assertSame(hash('sha256', $original), $fresh['evidence_hash']);
+        $this->assertTrue($fresh['complete_source']);
+        $this->assertSame([2], $fresh['research_flow_ids']);
+        $this->assertStringNotContainsString('already paid', $fresh['content']);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, 'Changed original');
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($document->source_path, $original);
+        $document->update(['status' => 'archived']);
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+    }
+
+    public function test_document_revalidation_rejects_change_revocation_and_cross_project(): void
+    {
+        $run = $this->runFixture();
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'text',
+            'title' => 'Shipment', 'source_path' => 'fixture/shipment', 'mime_type' => 'text/plain', 'status' => 'active',
+            'document_hash' => str_repeat('a', 64), 'version_hash' => Str::random(32)]);
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => 'TRACK-55 scheduled.', 'chunk_hash' => hash('sha256', 'TRACK-55 scheduled.')]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $chunk->chunk_text, 'evidence_hash' => $chunk->chunk_hash]]]]];
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertCount(1, $access->current($run, $this->context($run), $evidence)['documents']);
+        $chunk->update(['chunk_text' => 'TRACK-55 cancelled.']);
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+        $chunk->update(['chunk_text' => 'TRACK-55 scheduled.']);
+        $document->update(['status' => 'archived']);
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+        $document->update(['status' => 'active', 'project_key' => 'private']);
+        $this->assertSame([], $access->current($run, $this->context($run), $evidence)['documents']);
+    }
+
+    public function test_exact_source_identity_is_verified_before_masking_and_forged_matches_are_replaced(): void
+    {
+        $run = $this->runFixture();
+        $requested = '3331234567';
+        $other = '987654321098';
+        $run->forceFill(['result_json' => ['question_understanding' => ['focus' => ['identifiers' => [$requested, $other]]]]])->save();
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'text',
+            'title' => 'Order '.$requested, 'source_path' => 'fixture/order', 'status' => 'active', 'document_hash' => str_repeat('a', 64)]);
+        $text = 'The merchant has accepted the refund request.';
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => $text, 'chunk_hash' => hash('sha256', $text)]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $text, 'evidence_hash' => $chunk->chunk_hash, 'verified_identifier_hashes' => [hash('sha256', $other)]]]]]];
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), $evidence);
+
+        $this->assertSame([hash('sha256', $requested)], $safe['documents'][0]['evidence'][0]['verified_identifier_hashes']);
+        $this->assertTrue($safe['documents'][0]['evidence'][0]['complete_source']);
+        $this->assertStringNotContainsString($requested, $safe['documents'][0]['evidence'][0]['source_title']);
+        $projector = app(\App\Services\Chat\Reasoning\EvidenceProjector::class);
+        $claim = ['document_id' => $document->id, 'evidence_hash' => $chunk->chunk_hash];
+        $this->assertSame($text, $projector->bind($safe, $claim, [$requested], 'default', 'demo')['quote']);
+        $this->assertSame('entity_mismatch', $projector->bind($safe, $claim, [$other], 'default', 'demo')['reason']);
+    }
+
+    public function test_revalidated_excerpt_expands_to_a_fresh_complete_short_source_with_its_own_hash(): void
+    {
+        $run = $this->runFixture();
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'text',
+            'title' => 'Case history', 'source_path' => 'fixture/history', 'status' => 'active', 'document_hash' => str_repeat('a', 64)]);
+        $opening = 'The customer requested a refund.';
+        $chunk = KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 0, 'chunk_text' => $opening, 'chunk_hash' => hash('sha256', $opening)]);
+        KnowledgeChunk::create(['tenant_id' => 'default', 'project_key' => 'demo', 'knowledge_document_id' => $document->id,
+            'chunk_order' => 1, 'chunk_text' => 'The merchant accepted the request.', 'chunk_hash' => str_repeat('b', 64)]);
+        $evidence = ['documents' => [['document_id' => $document->id, 'evidence' => [['chunk_id' => $chunk->id,
+            'content' => $opening, 'evidence_hash' => $chunk->chunk_hash, 'research_flow_ids' => [2]]]]]];
+        $safe = app(AgentEvidenceAccess::class)->current($run, $this->context($run), $evidence);
+        $full = $safe['documents'][0]['evidence'][0];
+
+        $this->assertCount(1, $safe['documents'][0]['evidence']);
+        $this->assertTrue($full['complete_source']);
+        $this->assertStringContainsString('merchant accepted', $full['content']);
+        $this->assertSame(hash('sha256', $full['content']), $full['evidence_hash']);
+        $this->assertNotSame($chunk->chunk_hash, $full['evidence_hash']);
+        $this->assertSame([2], $full['research_flow_ids']);
+    }
+
+    public function test_revoked_document_is_also_removed_from_a_catalog_tool_result(): void
+    {
+        $run = $this->runFixture();
+        $document = KnowledgeDocument::create(['tenant_id' => 'default', 'project_key' => 'demo', 'source_type' => 'text',
+            'title' => 'Manual', 'source_path' => 'fixture/manual', 'mime_type' => 'text/plain', 'status' => 'active',
+            'document_hash' => str_repeat('a', 64), 'version_hash' => Str::random(32)]);
+        $definition = app(AgentToolRegistry::class)->forContext($this->context($run), $run->user)['list_knowledge_documents'];
+        $execution = $run->toolExecutions()->create(['logical_index' => 1, 'tool_name' => $definition->name, 'tool_kind' => 'catalog', 'status' => 'completed']);
+        $result = ['documents' => [['id' => $document->id, 'title' => 'Manual']]];
+        $tool = ['execution_id' => $execution->id, 'tool' => $definition->name, 'executor_reference' => $definition->executorReference,
+            'result' => $result, 'evidence_hash' => hash('sha256', json_encode($result, JSON_UNESCAPED_UNICODE))];
+        $access = app(AgentEvidenceAccess::class);
+        $this->assertCount(1, $access->current($run, $this->context($run), ['api_tools' => [$tool]])['api_tools']);
+        $document->update(['status' => 'archived']);
+        $this->assertSame([], $access->current($run, $this->context($run), ['api_tools' => [$tool]])['api_tools']);
+    }
+}

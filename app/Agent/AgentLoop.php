@@ -5,40 +5,60 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Planning\AgentArgumentResolver;
+use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlannedAction;
-use App\Agent\Planning\AgentPlanner;
+use App\Agent\Planning\AgentPlanningCoordinator;
+use App\Agent\Tools\AgentLiveSourceSelection;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
+use App\Agent\Tools\AgentToolFailure;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Agent\Debug\KbActivityDebugPayload;
+use App\Agent\Debug\RunDiagnostics;
+use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Widget\WidgetPiiMasker;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /** Bounded plan → act → observe → re-plan data-retrieval loop. */
 final readonly class AgentLoop
 {
     public function __construct(
-        private AgentPlanner $planner,
+        private AgentPlanningCoordinator $planner,
+        private AgentCapabilitySnapshotBuilder $capabilities,
         private AgentToolRegistry $registry,
+        private AgentLiveSourceSelection $liveSources,
         private AgentArgumentResolver $arguments,
+        private AgentAmbiguousSelectionGuard $ambiguousSelection,
         private AgentServerToolRunner $serverTools,
         private ChatRetrievalService $retrieval,
+        private KbInvestigationService $investigation,
         private AgentEvidenceFactory $evidenceFactory,
         private AgentEventPublisher $events,
         private AgentRunControl $control,
         private WidgetPiiMasker $masker,
         private AgentRetrievalFiltersFactory $retrievalFilters,
+        private McpActivityDebugPayload $mcpDebug,
+        private KbActivityDebugPayload $kbDebug,
+        private RunDiagnostics $diagnostics,
     ) {}
 
-    public function run(AgentRun $run, AgentExecutionContext $context): AgentLoopOutcome
+    public function run(
+        AgentRun $run,
+        AgentExecutionContext $context,
+        ?string $turnContext = null,
+    ): AgentLoopOutcome
     {
         $question = trim((string) data_get($run->input_json, 'question', ''));
         if ($question === '') {
@@ -48,35 +68,234 @@ final readonly class AgentLoop
         $budget = new AgentBudgetTracker($run);
         $filters = $this->retrievalFilters->forRun($run, $context);
         [$evidence, $completed, $results, $retrieved] = $this->restore($run);
+        $selectedRecord = data_get($run->input_json, 'selection.record');
+        if (is_array($selectedRecord)) {
+            if (config('reasoning.enabled')) {
+                $selectedRecord = array_intersect_key($selectedRecord, array_flip(['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode']));
+            }
+            // A row selected in a prior turn is a first-class dependency source.
+            // The planner may refer to it as {"$from":"current_selection","path":"id"}.
+            $results['current_selection'] = $selectedRecord;
+            $results['selected_row'] = $selectedRecord;
+        }
         $user = $run->user;
-        $tools = $this->registry->forContext($context, $user instanceof User ? $user : null);
+        $tools = array_filter(
+            $this->registry->forContext($context, $user instanceof User ? $user : null),
+            static fn (AgentToolDefinition $tool): bool => $tool->readOnly
+                && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
+        );
+        $tools = $this->liveSources->apply($tools, data_get($run->input_json, 'live_sources'));
+        $capabilitySnapshot = $this->capabilities->build($tools);
 
+        if (config('reasoning.enabled')) {
+            $evidence = $this->authorizedEvidence($run, $context, $evidence);
+            // Old action payloads are a second route into the planner. Keep only freshly
+            // authorized observations; dependencies can still address their original action IDs.
+            foreach ($completed as &$action) {
+                $matching = array_values(array_filter($evidence->apiTools(), fn ($tool) => $tool['tool'] === ($action['tool'] ?? '')
+                    && ($tool['execution_id'] ?? null) === ($action['execution_id'] ?? null)));
+                unset($results[$action['id'] ?? '']);
+                $action['result'] = [];
+                if (count($matching) === 1) {
+                    $results[$action['id']] = $matching[0]['result'];
+                }
+            }
+            unset($action);
+        }
+
+        $understanding = is_array(data_get($run->result_json, 'question_understanding'))
+            ? \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding')) : null;
+        if (! $retrieved && $understanding === null) {
+            $this->control->ensureActive($run);
+            $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
+            $initialPlanning = app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
+            $understanding = $this->diagnostics->measure($run, $initialPlanning === null ? 'question.interpretation' : 'question.initial_plan',
+                fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
+                    $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot,
+                    initialPlanning: $initialPlanning),
+                ['wait_reason' => 'provider_response']);
+            if ($understanding !== null) {
+                \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $capabilitySnapshot): void {
+                    $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                    $run->forceFill(['result_json' => [...($locked->result_json ?? []), 'question_understanding' => $understanding->toArray(),
+                        'capability_manifest' => ['hash' => $capabilitySnapshot->hash, 'capabilities' => $capabilitySnapshot->compact()],
+                        ...$understanding->initialPlan === null ? [] : ['initial_plan' => ['proposal' => $understanding->initialPlan,
+                            'capability_hash' => $capabilitySnapshot->hash, 'status' => 'pending']]]])->save();
+                });
+            }
+        }
+        $factMemory = app(\App\Services\Chat\Reasoning\SessionFactMemory::class);
+        $memoryOwner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
+        if ($factMemory->enabled() && $memoryOwner !== null && $understanding !== null) {
+            // A retry keeps the interpretation but rechecks the original acquisition clocks.
+            $turn = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runTurn($run);
+            $understanding = $factMemory->resolve($memoryOwner, $understanding, $run->user, $filters, array_keys($tools), $turn?->getKey());
+            $evidence->import($factMemory->evidence($memoryOwner, $understanding, $run->user, $filters, array_keys($tools)));
+            \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $evidence): void {
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                $state = (array) $locked->result_json;
+                $state['question_understanding'] = $understanding->toArray();
+                $state['session_memory'] = $understanding->memoryResolution;
+                if (($understanding->memoryResolution['fact_ids'] ?? []) !== [] && isset($state['initial_plan'])) $state['initial_plan']['status'] = 'discarded';
+                $state['evidence'] = $evidence->jsonSerialize();
+                $run->forceFill(['result_json' => $state])->save();
+            });
+            if (($understanding->memoryResolution['complete'] ?? false)
+                && $factMemory->answer($memoryOwner, $understanding, $run->user, $filters, array_keys($tools)) !== null) {
+                return $this->outcome('answer', $evidence, [], 'session_memory');
+            }
+        }
+        if (config('reasoning.enabled') && $understanding !== null && ! data_get($run->result_json, 'context_document_reread.completed', false)) {
+            $beforeBytes = $evidence->byteSize();
+            $reread = $this->diagnostics->measure($run, 'kb.conversation_source_reread',
+                fn () => app(\App\Services\Chat\Reasoning\ConversationSourceEvidence::class)->forRun($run, $understanding, $filters,
+                    max(0, (int) config('agent.limits.evidence_bytes', 524288) - $beforeBytes)),
+                ['operation' => 'read_registered_sources', 'wait_reason' => 'source_store_read']);
+            $evidence->import($reread);
+            $addedBytes = max(0, $evidence->byteSize() - $beforeBytes);
+            if ($addedBytes > 0) $budget->recordResult(0, $addedBytes, true);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($run, $evidence, $reread): void {
+                $locked = AgentRun::query()->forTenant($run->tenant_id)->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                $state = (array) $locked->result_json;
+                $state['evidence'] = $evidence->jsonSerialize();
+                $state['context_document_reread'] = ['completed' => true, 'documents' => count($reread['documents']),
+                    'warnings' => $reread['warnings']];
+                $run->forceFill(['result_json' => $state])->save();
+            });
+        }
+        if (config('agent.waves.enabled', true) && $understanding?->available && $understanding->needsResearch()
+            && ! $understanding->needsClarification) {
+            return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
+        }
         if (! $retrieved) {
             $this->control->ensureActive($run);
-            $this->events->publish($run, 'retrieval.started', 'retrieval.started');
+            if ($understanding === null || $understanding->needsResearch()) {
+                $this->events->publish($run, 'retrieval.started', 'retrieval.started');
+            }
+            $investigationResult = null;
+            $researchStarted = $understanding === null || $understanding->needsResearch();
+            $investigationSpan = $this->diagnostics->begin($run, 'kb.investigation', ['wait_reason' => 'knowledge_investigation']);
             try {
-                $search = $this->retrieval->retrieve($question, $context->projectKey, $filters);
+                // The initial agent evidence follows the exact same
+                // profile-guided KB-only investigation as ordinary chat. The
+                // planner's later explicit tools remain governed by the agent
+                // contract; this recursive retrieval phase has no connector,
+                // external API or MCP dependency to invoke.
+                $investigationResult = $this->investigation->investigate(
+                    question: $question,
+                    projectKey: $context->projectKey,
+                    filters: $filters,
+                    depth: (int) data_get($run->input_json, 'depth', 3),
+                    conversationContext: $turnContext,
+                    previousCitations: $this->previousCitations($run),
+                    actor: $user instanceof User ? $user : null,
+                    memoryOwner: app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run),
+                    turnRecord: app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runTurn($run),
+                    onResearchProgress: app(AgentResearchProgress::class)->observer($run),
+                    preparedUnderstanding: $understanding,
+                    diagnostics: $this->diagnostics->observer($run),
+                );
+                $understanding = $investigationResult->intent?->understanding;
+                $recap = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->recapEvidence($run);
+                if ($recap !== []) {
+                    $recap = app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, ['api_tools' => $recap],
+                        $understanding?->transition === 'recap')['api_tools'];
+                    if (count($understanding?->subquestions ?? []) > 1) {
+                        $recap = \App\Agent\Evidence\ResearchEvidence::recapTools($recap, $understanding->subquestions);
+                    }
+                    if ($recap !== [] && $investigationResult->status === 'context_unavailable') {
+                        $investigationResult = new \App\Services\Kb\Investigation\KbInvestigationResult('ready', 'context_only',
+                            $investigationResult->search, intent: $investigationResult->intent);
+                    }
+                    $evidence->import(['api_tools' => $recap]);
+                }
+                \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $investigationResult): void {
+                    $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+                    $updates = ['knowledge_investigation' => $investigationResult->trace()];
+                    if ($understanding !== null) {
+                        $updates['question_understanding'] = [...$understanding->toArray(), 'mentions' => $understanding->mentionTexts()];
+                    }
+                    if ($investigationResult->researchFlows !== []) {
+                        $updates['research_flows'] = $investigationResult->researchFlows;
+                    }
+                    $run->forceFill(['result_json' => array_merge((array) $locked->result_json, $updates)])->save();
+                });
+                $search = $investigationResult->search;
                 $documents = $this->evidenceFactory->fromSearchResult($search);
                 $evidence->import($documents->jsonSerialize());
                 $budget->recordResult(0, $documents->byteSize(), true);
-                $this->events->publish(
-                    $run,
-                    'retrieval.completed',
-                    'retrieval.completed',
-                    ['count' => count($evidence->documents())],
-                    ['sources' => count($evidence->documents())],
-                );
-            } catch (Throwable) {
+                $budget->recordKnowledgeSearchResult($documents->documents() !== []);
+                if (! $investigationResult->isReady()) {
+                    $evidence->addWarning($investigationResult->stopReason, 'recursive_kb_retrieval');
+                }
+                if ($researchStarted) {
+                    $this->events->publish(
+                        $run,
+                        'retrieval.completed',
+                        'retrieval.completed',
+                        ['count' => count($evidence->documents())],
+                        ['sources' => count($evidence->documents())],
+                    );
+                }
+                $this->diagnostics->end($run, $investigationSpan, metadata: [
+                    'result_count' => $investigationResult->search->primary->count(),
+                    'operation' => $investigationResult->status,
+                ]);
+            } catch (Throwable $exception) {
+                $this->diagnostics->failure($run, $investigationSpan, $exception, ['error_handled' => true]);
                 $evidence->addWarning('knowledge_retrieval_failed', 'search_knowledge_base');
                 $this->events->publish($run, 'retrieval.failed', 'tool.failed', ['tool' => 'Knowledge base']);
             }
             $retrieved = true;
             $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
         }
+        if (data_get($run->result_json, 'knowledge_investigation.status') === 'conversational') {
+            return $this->outcome('answer', $evidence, [], 'assistant_conversation');
+        }
+        if (in_array(data_get($run->result_json, 'knowledge_investigation.status'), ['profile_required', 'clarify', 'context_unavailable'], true)) {
+            // Keep mandatory scope/clarification gates across resumed turns too.
+            // Empty KB evidence is not a connector authorization failure: the
+            // bounded planner may still use its authorized tools.
+            return $this->outcome('answer', $evidence, $completed, data_get($run->result_json, 'knowledge_investigation.stop_reason'));
+        }
+
+        $understanding = data_get($run->result_json, 'question_understanding');
+        if (is_array($understanding) && \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->asksForProvenance()) {
+            return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
+        }
+        if (is_array($understanding) && ! \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->needsResearch()
+            && (count($understanding['subquestions'] ?? []) <= 1 || ! config('reasoning.parallel_research') || ! config('reasoning.enabled'))) {
+            return $this->outcome('answer', $evidence, $completed, 'context_only');
+        }
+        if (config('reasoning.parallel_research') && config('reasoning.enabled') && is_array($understanding)
+            && ($understanding['available'] ?? false) && count($understanding['subquestions'] ?? []) > 1
+            && data_get($run->input_json, 'research_parent_id') === null) {
+            return app(AgentResearchCoordinator::class)->collect($run, $evidence, \App\Services\Chat\QuestionUnderstanding::fromArray($understanding));
+        }
+        if (($understanding['available'] ?? false) && count($understanding['subquestions'] ?? []) === 1) {
+            // The planner researches the resolved task, not a fragment such as "so?".
+            $question = \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->forSubquestion(0)->intent;
+        }
 
         while (true) {
             $this->control->ensureActive($run);
-            $iteration = $budget->beginIteration();
+            if (config('reasoning.enabled')) {
+                $evidence = $this->authorizedEvidence($run, $context, $evidence);
+                // Evidence is the only factual planner input; stale action bodies are not a second source.
+                foreach ($completed as &$action) {
+                    $matching = array_values(array_filter($evidence->apiTools(), fn ($tool) => ($tool['execution_id'] ?? null) === ($action['execution_id'] ?? null)));
+                    unset($results[$action['id'] ?? '']);
+                    $action['result'] = [];
+                    if (count($matching) === 1) {
+                        $results[$action['id']] = $matching[0]['result'];
+                    }
+                }
+                unset($action);
+            }
+            $iteration = $budget->beginIteration(max(
+                (float) config('agent.planner.time_reserve_seconds', 30),
+                (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000,
+            ));
             if (! $iteration->allowed()) {
                 return $this->outcome('partial', $evidence, $completed, $iteration->reason);
             }
@@ -86,8 +305,62 @@ final readonly class AgentLoop
                 $completed === [] ? 'plan.created' : 'plan.updated',
                 $completed === [] ? 'plan.created' : 'plan.updated',
             );
-            $plan = $this->planner->decide($question, $context, $tools, $evidence, $this->plannerHistory($completed));
+            $planningSpan = $this->diagnostics->begin($run, 'planner.decide', [
+                'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                'wait_reason' => 'provider_response',
+            ]);
+            $planningStarted = microtime(true);
+            try {
+                $plan = $this->planner->decide(
+                    $run,
+                    (int) ($budget->snapshot()['iterations'] ?? 1),
+                    $question,
+                    $context,
+                    $tools,
+                    $capabilitySnapshot,
+                    $evidence,
+                    $this->plannerHistory($completed),
+                    $results,
+                    json_encode(['previous_context' => data_get($run->result_json, 'question_understanding.available') === false ? null : $turnContext,
+                        'question_understanding' => data_get($run->result_json, 'question_understanding')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                );
+                $this->diagnostics->end($run, $planningSpan);
+                $budget->recordPlanningDuration((int) round((microtime(true) - $planningStarted) * 1000));
+            } catch (Throwable $exception) {
+                // Initial KB reads are evidence too. A malformed plan must never
+                // dispatch actions, but it need not discard already read sources.
+                if (! $evidence->hasEvidence()
+                    || (! $this->hasSuccessfulAction($completed)
+                        && (! $exception instanceof \UnexpectedValueException
+                            || $exception instanceof \App\Agent\Planning\AgentPlanValidationException))) {
+                    $this->diagnostics->failure($run, $planningSpan, $exception, ['error_handled' => false]);
+                    throw $exception;
+                }
+                $this->diagnostics->failure($run, $planningSpan, $exception, ['error_handled' => true]);
+
+                Log::warning('Agent planning failed after evidence was collected; continuing to synthesis.', [
+                    'run_id' => $run->run_id,
+                    'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                    'completed_action_count' => count($completed),
+                    'exception_class' => $exception::class,
+                    'exception_message' => $this->masker->maskString(mb_substr($exception->getMessage(), 0, 1000)),
+                    'exception_trace' => $exception->getTraceAsString(),
+                ]);
+                $evidence->addWarning('planner_recovery', 'agent_planner');
+                $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                return $this->outcome('partial', $evidence, $completed, 'planner_recovery');
+            }
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
+            foreach ($plan->rejectedActions as $rejected) {
+                $tool = $tools[$rejected->tool];
+                $evidence->addWarning('input_pattern_branch_rejected', $tool->name);
+                $completed[] = ['id' => $rejected->id, 'tool' => $tool->name, 'purpose' => $rejected->purpose,
+                    'status' => 'skipped', 'error_code' => 'input_pattern_branch_rejected'];
+                $this->recordSkippedExecution($run, $rejected, $tool, 'input_pattern_branch_rejected');
+                $this->events->publish($run, 'tool.failed', 'tool.failed', ['tool' => $tool->displayName],
+                    ['tool' => $tool->name, 'action_id' => $rejected->id, 'error_code' => 'input_pattern_branch_rejected']);
+            }
             $this->events->publish(
                 $run,
                 'plan.ready',
@@ -100,6 +373,8 @@ final readonly class AgentLoop
                 return $this->outcome($plan->decision, $evidence, $completed);
             }
 
+            $terminalFailureAvoided = false;
+            $issuedAction = false;
             foreach ($plan->actions as $action) {
                 $this->control->ensureActive($run);
                 $tool = $tools[$action->tool];
@@ -121,11 +396,38 @@ final readonly class AgentLoop
                         'tool.failed',
                         'tool.failed',
                         ['tool' => $tool->displayName],
-                        ['tool' => $tool->name, 'action_id' => $action->id, 'error_code' => $code],
+                        [
+                            'tool' => $tool->name,
+                            'action_id' => $action->id,
+                            'error_code' => $code,
+                        ] + $this->activityToolData($tool),
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                     continue;
+                }
+                if ($this->hasSuccessfulObservation($evidence, $tool->name, $resolved)) {
+                    $evidence->addWarning('duplicate_call_avoided', $tool->name);
+                    $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    return $this->outcome('answer', $evidence, $completed, 'duplicate_call_avoided');
+                }
+                if ($this->hasTerminalFailure($completed, $tool->name, $resolved)) {
+                    $evidence->addWarning('non_retryable_tool_failure', $tool->name);
+                    $terminalFailureAvoided = true;
+
+                    continue;
+                }
+                $selection = data_get($run->input_json, 'selection');
+                if ($this->ambiguousSelection->blocks(
+                    $evidence->apiTools(),
+                    $resolved,
+                    is_array($selection) ? $selection : null,
+                )) {
+                    $evidence->addWarning('ambiguous_selection_required', $tool->name);
+                    $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    return $this->outcome('answer', $evidence, $completed, 'ambiguous_selection_required');
                 }
                 $decision = $budget->reserve($tool, $resolved, $tool->physicalLikely);
                 if ($decision->requiresConfirmation()) {
@@ -143,8 +445,18 @@ final readonly class AgentLoop
                     $this->events->publish($run, 'budget.extended', 'budget.extended');
                 }
 
+                $issuedAction = true;
                 $execution = $this->startExecution($run, $action, $tool, $resolved, $budget, $plan);
+                $execution->forceFill(['result_meta_json' => ['argument_bindings' => app(\App\Agent\Evidence\ToolResultLineage::class)
+                    ->capture($action->arguments, $resolved, $completed, $evidence->jsonSerialize())]])->save();
                 $started = microtime(true);
+                $toolSpan = $this->diagnostics->begin($run, 'tool.execute', [
+                    'tool_kind' => $tool->kind,
+                    'tool_name' => $tool->name,
+                    'logical_index' => $execution->logical_index,
+                    'iteration' => (int) ($budget->snapshot()['iterations'] ?? 1),
+                    'wait_reason' => $tool->kind === 'knowledge' ? 'knowledge_retrieval' : 'tool_response',
+                ]);
                 try {
                     $result = $this->executeAction(
                         $run,
@@ -157,20 +469,73 @@ final readonly class AgentLoop
                         $plan,
                         $filters,
                     );
+                    if (is_string($result->body['_api_tool_pending'] ?? null)) {
+                        // An accepted asynchronous call is not a completed observation.
+                        $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+                        app(\App\ApiTools\ToolContinuation::class)->attachAgent($result->body['_api_tool_pending'], $run, [
+                            'action_id' => $action->id, 'purpose' => $action->purpose,
+                            'execution_id' => $execution->id, 'arguments' => $resolved,
+                            'tool' => [
+                                'name' => $tool->name, 'display_name' => $tool->displayName, 'kind' => $tool->kind,
+                                'executor_reference' => $tool->executorReference, 'metadata' => $tool->metadata,
+                            ],
+                        ]);
+                        $this->diagnostics->end($run, $toolSpan, metadata: ['operation' => 'api_tool_handoff']);
+                        return $this->outcome('waiting_api_tool', $evidence, $completed, 'api_tool_pending');
+                    }
                     $this->finishExecution($execution, $result, $started);
+                    $this->diagnostics->end($run, $toolSpan, $result->successful() ? 'completed' : 'failed');
                     $results[$action->id] = $result->body;
                     $completed[] = [
                         'id' => $action->id,
+                        'execution_id' => $execution->id,
                         'tool' => $tool->name,
+                        'kind' => $tool->kind,
                         'purpose' => $action->purpose,
                         'status' => $result->successful() ? 'completed' : 'failed',
                         'result' => $this->masker->maskArray($result->body) ?? [],
+                        // Hash before masking: two different emails/IDs must
+                        // not collapse into the same failed-call signature.
+                        'arguments_hash' => $this->stableSignature($resolved),
+                        ...$result->successful() ? [] : ['failure' => AgentToolFailure::summarize($result->body, $tool->inputSchema)],
                     ];
                     if ($tool->kind !== 'knowledge') {
-                        $evidence->addToolResult($tool, $resolved, $result->body, $execution->id);
+                        $evidence->addToolResult($tool, $resolved, $result->body, $execution->id,
+                            $execution->result_meta_json['argument_bindings'] ?? []);
                     }
                     if (! $result->complete && $result->stopReason !== null) {
                         $evidence->addWarning($result->stopReason, $tool->name);
+                    }
+
+                    $eventData = [
+                        'tool' => $tool->name,
+                        'action_id' => $action->id,
+                        'physical_requests' => $result->physicalRequests,
+                        'complete' => $result->complete,
+                        'stop_reason' => $result->stopReason,
+                    ] + $this->activityToolData($tool);
+                    if (! $result->complete && is_array($result->stats['mcp'] ?? null)) {
+                        $eventData['mcp_interaction'] = $result->stats['mcp'];
+                    }
+                    $debug = $this->mcpDebug->capture(
+                        $tool,
+                        $resolved,
+                        $result->body,
+                        (int) round((microtime(true) - $started) * 1000),
+                        $result->successful() ? 'ok' : 'error',
+                    );
+                    if ($debug !== null) {
+                        $eventData['mcp_debug'] = $debug;
+                    }
+                    $kbDebug = $this->kbDebug->capture(
+                        $tool,
+                        $resolved,
+                        $result->body,
+                        (int) round((microtime(true) - $started) * 1000),
+                        $result->successful() ? 'ok' : 'error',
+                    );
+                    if ($kbDebug !== null) {
+                        $eventData['kb_debug'] = $kbDebug;
                     }
 
                     $this->events->publish(
@@ -178,16 +543,26 @@ final readonly class AgentLoop
                         $result->successful() ? 'tool.completed' : 'tool.failed',
                         $result->successful() ? 'tool.completed' : 'tool.failed',
                         ['tool' => $tool->displayName],
-                        [
-                            'tool' => $tool->name,
-                            'action_id' => $action->id,
-                            'physical_requests' => $result->physicalRequests,
-                            'complete' => $result->complete,
-                            'stop_reason' => $result->stopReason,
-                        ],
+                        $eventData,
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                    if (in_array($result->stopReason, [
+                        'mcp_confirmation_required',
+                        'mcp_input_required',
+                        'mcp_task_accepted',
+                    ], true)) {
+                        $interaction = is_array($result->stats['mcp'] ?? null) ? $result->stats['mcp'] : [];
+                        $this->control->awaitMcpInteraction($run, $result->stopReason, $interaction);
+                        $decision = match ($result->stopReason) {
+                            'mcp_confirmation_required' => 'awaiting_mcp_confirmation',
+                            'mcp_input_required' => 'awaiting_mcp_input',
+                            default => 'waiting_mcp_task',
+                        };
+
+                        return $this->outcome($decision, $evidence, $completed, $result->stopReason);
+                    }
 
                     if ($result->stopReason === 'physical_hard_limit') {
                         $this->control->awaitConfirmation($run, $this->extensionFor($result->stopReason));
@@ -195,8 +570,10 @@ final readonly class AgentLoop
                         return $this->outcome('awaiting_confirmation', $evidence, $completed, $result->stopReason);
                     }
                 } catch (AgentRunCancelledException $exception) {
+                    $this->diagnostics->failure($run, $toolSpan, $exception);
                     throw $exception;
                 } catch (Throwable $exception) {
+                    $this->diagnostics->failure($run, $toolSpan, $exception, ['error_handled' => true]);
                     $this->failExecution($execution, $exception, $started);
                     $budget->recordResult(0, 0, false);
                     $evidence->addWarning($this->errorCode($exception), $tool->name);
@@ -207,16 +584,49 @@ final readonly class AgentLoop
                         'status' => 'failed',
                         'error_code' => $this->errorCode($exception),
                     ];
+                    $eventData = [
+                        'tool' => $tool->name,
+                        'action_id' => $action->id,
+                        'error_code' => $this->errorCode($exception),
+                    ] + $this->activityToolData($tool);
+                    $debug = $this->mcpDebug->capture(
+                        $tool,
+                        $resolved,
+                        null,
+                        (int) round((microtime(true) - $started) * 1000),
+                        'error',
+                        $exception,
+                    );
+                    if ($debug !== null) {
+                        $eventData['mcp_debug'] = $debug;
+                    }
+                    $kbDebug = $this->kbDebug->capture(
+                        $tool,
+                        $resolved,
+                        null,
+                        (int) round((microtime(true) - $started) * 1000),
+                        'error',
+                        $exception,
+                    );
+                    if ($kbDebug !== null) {
+                        $eventData['kb_debug'] = $kbDebug;
+                    }
+
                     $this->events->publish(
                         $run,
                         'tool.failed',
                         'tool.failed',
                         ['tool' => $tool->displayName],
-                        ['tool' => $tool->name, 'action_id' => $action->id, 'error_code' => $this->errorCode($exception)],
+                        $eventData,
                         $this->progress($budget, $plan),
                     );
                     $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                 }
+            }
+            if ($terminalFailureAvoided && ! $issuedAction) {
+                $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+
+                return $this->outcome('partial', $evidence, $completed, 'non_retryable_tool_failure');
             }
         }
     }
@@ -237,15 +647,40 @@ final readonly class AgentLoop
             if ($query === '') {
                 throw new \InvalidArgumentException('knowledge_query_required');
             }
-            $search = $this->retrieval->retrieve($query, $context->projectKey, $filters);
+            $evidenceBefore = $this->knowledgeEvidenceSignatures($evidence);
+            $investigation = null;
+            if (config('kb.investigation.enabled', true)) {
+                $investigation = $this->investigation->followUp(
+                    query: $query,
+                    understanding: \App\Services\Chat\QuestionUnderstanding::fromArray(
+                        (array) data_get($run->result_json, 'question_understanding', [])),
+                    projectKey: $context->projectKey,
+                    filters: $filters,
+                    actor: $run->user instanceof User ? $run->user : null,
+                    diagnostics: $this->diagnostics->observer($run),
+                    onResearchProgress: app(AgentResearchProgress::class)->observer($run),
+                );
+                $search = $investigation->search;
+            } else {
+                // Preserve the explicit incident-rollback path used by initial research.
+                $search = $this->retrieval->retrieve($query, $context->projectKey, $filters,
+                    diagnostics: $this->diagnostics->observer($run));
+            }
             $found = $this->evidenceFactory->fromSearchResult($search);
             $evidence->import($found->jsonSerialize());
             $body = ['documents' => $found->documents()];
             $budget->recordResult(0, strlen((string) json_encode($body)), true);
+            // Only new, selected source content is progress. A new unrelated
+            // document is not evidence; another excerpt of a known source can be.
+            $budget->recordKnowledgeSearchResult(array_diff($this->knowledgeEvidenceSignatures($evidence), $evidenceBefore) !== []);
 
-            return new AgentToolActionResult($body, 0);
+            return new AgentToolActionResult($body, 0,
+                stats: $investigation === null ? [] : ['investigation' => $investigation->trace()]);
         }
 
+        $identifierGuard = app(\App\Agent\Planning\AgentIdentifierSources::class);
+        app(\App\Agent\Planning\AgentPlanArgumentConstraints::class)->validateArguments($tool, $arguments,
+            identifierSources: $identifierGuard->required([$tool]) ? $identifierGuard->forRun($run, $evidence) : []);
         return $this->serverTools->execute(
             $tool,
             $arguments,
@@ -260,12 +695,28 @@ final readonly class AgentLoop
                     'tool.progress',
                     'tool.progress',
                     ['completed' => $completed, 'estimated' => $estimated],
-                    ['tool' => $tool->name, 'action_id' => $action->id] + $event,
+                    ['tool' => $tool->name, 'action_id' => $action->id]
+                        + $this->activityToolData($tool)
+                        + $event,
                     $this->progress($budget, $plan),
                 );
                 $this->control->ensureActive($run);
             },
         );
+    }
+
+    /** @return list<string> */
+    private function knowledgeEvidenceSignatures(AgentEvidenceEnvelope $evidence): array
+    {
+        $signatures = [];
+        foreach ($evidence->documents() as $document) {
+            foreach ($document['evidence'] ?? [] as $chunk) {
+                $signatures[] = ($document['document_id'] ?? $document['source_path'] ?? '').':'
+                    .hash('sha256', (string) ($chunk['content'] ?? ''));
+            }
+        }
+
+        return array_values(array_unique($signatures));
     }
 
     private function startExecution(
@@ -281,7 +732,7 @@ final readonly class AgentLoop
             'logical_index' => $index,
             'tool_name' => $tool->name,
             'tool_kind' => $tool->kind,
-            'api_route_id' => $tool->kind === 'api' ? (int) $tool->executorReference : null,
+            'api_route_id' => $tool->kind === 'api' && is_int($tool->executorReference) ? $tool->executorReference : null,
             'status' => 'running',
             'depends_on_json' => $action->dependsOn,
             'arguments_json' => $this->masker->maskArray($arguments) ?? [],
@@ -292,7 +743,11 @@ final readonly class AgentLoop
             'tool.started',
             'tool.started',
             ['tool' => $tool->displayName],
-            ['tool' => $tool->name, 'action_id' => $action->id, 'purpose' => $action->purpose],
+            [
+                'tool' => $tool->name,
+                'action_id' => $action->id,
+                'purpose' => $action->purpose,
+            ] + $this->activityToolData($tool),
             $this->progress($budget, $plan),
         );
 
@@ -304,10 +759,12 @@ final readonly class AgentLoop
         $execution->forceFill([
             'status' => $result->successful() ? 'completed' : 'failed',
             'result_meta_json' => [
+                ...((array) $execution->result_meta_json),
+                'request' => $result->stats['initial_request'] ?? null,
                 'result' => $this->masker->maskArray($result->body) ?? [],
                 'complete' => $result->complete,
                 'stop_reason' => $result->stopReason,
-                'stats' => $result->stats,
+                'stats' => array_diff_key($result->stats, ['initial_request' => true]),
             ],
             'error_code' => $result->successful() ? null : ($result->stopReason ?? 'tool_error'),
             'physical_request_count' => $result->physicalRequests,
@@ -326,6 +783,32 @@ final readonly class AgentLoop
         ])->save();
     }
 
+    /** @return array<string,string> */
+    private function activityToolData(AgentToolDefinition $tool): array
+    {
+        $data = [
+            'tool_kind' => $tool->kind,
+            'tool_display_name' => $tool->displayName,
+        ];
+        if ($tool->kind !== 'mcp') {
+            return $data;
+        }
+
+        $provenance = is_array($tool->metadata['provenance'] ?? null)
+            ? $tool->metadata['provenance']
+            : [];
+        $serverName = $provenance['server_name'] ?? $tool->metadata['server_name'] ?? null;
+        $remoteName = $provenance['tool_remote_name'] ?? $tool->displayName;
+        if (is_string($serverName) && $serverName !== '') {
+            $data['mcp_server_name'] = $serverName;
+        }
+        if (is_string($remoteName) && $remoteName !== '') {
+            $data['mcp_tool_name'] = $remoteName;
+        }
+
+        return $data;
+    }
+
     private function recordSkippedExecution(
         AgentRun $run,
         AgentPlannedAction $action,
@@ -336,7 +819,7 @@ final readonly class AgentLoop
             'logical_index' => (int) $run->toolExecutions()->max('logical_index') + 1,
             'tool_name' => $tool->name,
             'tool_kind' => $tool->kind,
-            'api_route_id' => $tool->kind === 'api' ? (int) $tool->executorReference : null,
+            'api_route_id' => $tool->kind === 'api' && is_int($tool->executorReference) ? $tool->executorReference : null,
             'status' => 'skipped',
             'depends_on_json' => $action->dependsOn,
             'arguments_json' => $this->masker->maskArray($action->arguments) ?? [],
@@ -363,6 +846,14 @@ final readonly class AgentLoop
         ];
     }
 
+    private function authorizedEvidence(AgentRun $run, AgentExecutionContext $context, AgentEvidenceEnvelope $evidence): AgentEvidenceEnvelope
+    {
+        $safe = $this->evidenceFactory->empty();
+        $safe->import(app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $evidence->jsonSerialize(),
+            data_get($run->result_json, 'question_understanding.transition') === 'recap'));
+        return $safe;
+    }
+
     /** @param list<array<string,mixed>> $completed @param array<string,array<string,mixed>> $results */
     private function checkpoint(
         AgentRun $run,
@@ -371,13 +862,49 @@ final readonly class AgentLoop
         array $results,
         bool $retrieved,
     ): void {
-        $run->forceFill(['result_json' => [
-            'phase' => 'collection',
-            'retrieval_completed' => $retrieved,
-            'evidence' => $evidence->jsonSerialize(),
-            'completed_actions' => $this->masker->maskArray($completed) ?? [],
-            'action_results' => $this->masker->maskArray($results) ?? [],
-        ]])->save();
+        \Illuminate\Support\Facades\DB::transaction(function () use ($run, $evidence, $completed, $results, $retrieved): void {
+            $locked = AgentRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+            if ($locked->isTerminal()) {
+                return;
+            }
+            // Preserve only explicitly named state and the bounded progressive decision slots.
+            $persisted = (array) $locked->result_json;
+            $progressive = array_filter($persisted, static fn ($key) => is_string($key)
+                && preg_match('/\Aprogressive_decision_[a-f0-9]{64}\z/', $key) === 1, ARRAY_FILTER_USE_KEY);
+            $run->forceFill(['result_json' => array_merge($progressive, array_intersect_key($persisted, ['session_memory' => true, 'session_memory_decision' => true, 'session_memory_decision_relevance' => true, 'session_memory_validation' => true, 'question_understanding' => true, 'capability_manifest' => true, 'knowledge_investigation' => true, 'focused_decision' => true, 'original_question_relevance_decision' => true, 'research_runs' => true, 'research_flows' => true, 'research_kb_flows' => true, 'research_drafts' => true, 'pending_api_tool' => true, 'pending_api_tools' => true, 'wave_dispatching' => true, 'waves' => true, 'api_tool_resumptions' => true, 'progressive_audit' => true]), [
+                'phase' => 'collection',
+                'retrieval_completed' => $retrieved,
+                'evidence' => $evidence->jsonSerialize(),
+                'completed_actions' => $this->masker->maskArray($completed) ?? [],
+                'action_results' => $this->masker->maskArray($results) ?? [],
+            ])])->save();
+        });
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function previousCitations(AgentRun $run): array
+    {
+        if ($run->conversation_id === null) {
+            return [];
+        }
+        $messages = $run->conversation?->messages()
+            ->when((int) data_get($run->input_json, 'user_message_id', 0) > 0,
+                fn ($query) => $query->where('id', '<', (int) data_get($run->input_json, 'user_message_id')))
+            ->where('role', 'assistant')->latest('id')->limit(10)->get();
+        foreach ($messages ?? [] as $message) {
+            $messageCitations = data_get($message->metadata, 'citations');
+            if (is_array($messageCitations) && $messageCitations !== []) {
+                return $messageCitations;
+            }
+        }
+        $previous = AgentRun::query()->forTenant($run->tenant_id)
+            ->where('conversation_id', $run->conversation_id)
+            ->where('id', '<', $run->id)
+            ->whereIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL])
+            ->latest('id')->first();
+        $citations = data_get($previous?->result_json, 'response.citations', []);
+
+        return is_array($citations) ? $citations : [];
     }
 
     /** @param list<array<string,mixed>> $completed */
@@ -387,11 +914,92 @@ final readonly class AgentLoop
             'id' => $action['id'] ?? null,
             'tool' => $action['tool'] ?? null,
             'status' => $action['status'] ?? null,
-            'result_summary' => is_array($action['result'] ?? null)
-                ? array_slice($action['result'], 0, 10, true)
-                : null,
+            'result_top_level_keys' => is_array($action['result'] ?? null)
+                ? array_slice(array_keys($action['result']), 0, 20)
+                : [],
             'error_code' => $action['error_code'] ?? null,
+            'failure' => $action['failure'] ?? null,
         ], array_slice($completed, -20));
+    }
+
+    /** Failed calls remain operational observations after factual evidence is reauthorized. */
+    private function hasTerminalFailure(array $completed, string $toolName, array $arguments): bool
+    {
+        $signature = $this->stableSignature($arguments);
+        foreach ($completed as $action) {
+            if (($action['status'] ?? null) === 'failed' && ($action['tool'] ?? null) === $toolName
+                && ($action['failure']['retryable'] ?? null) === false
+                && ($action['arguments_hash'] ?? null) === $signature) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param list<array<string,mixed>> $completed */
+    private function hasSuccessfulAction(array $completed): bool
+    {
+        foreach ($completed as $action) {
+            if (($action['status'] ?? null) === 'completed') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string,mixed> $arguments */
+    private function hasSuccessfulObservation(
+        AgentEvidenceEnvelope $evidence,
+        string $toolName,
+        array $arguments,
+    ): bool {
+        $maskedArguments = $this->masker->maskArray($arguments) ?? [];
+        $signature = $this->stableSignature($maskedArguments);
+
+        foreach ($evidence->apiTools() as $observation) {
+            if (($observation['tool'] ?? null) !== $toolName) {
+                continue;
+            }
+            $result = is_array($observation['result'] ?? null) ? $observation['result'] : [];
+            $status = strtolower((string) ($result['status'] ?? ''));
+            if (isset($result['error']) || in_array($status, ['error', 'failed', 'cancelled'], true)) {
+                continue;
+            }
+            $observedArguments = is_array($observation['arguments'] ?? null)
+                ? $observation['arguments']
+                : [];
+            if (hash_equals($signature, $this->stableSignature($observedArguments))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string,mixed> $value */
+    private function stableSignature(array $value): string
+    {
+        return hash('sha256', json_encode(
+            $this->stableValue($value),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        ));
+    }
+
+    private function stableValue(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+        foreach ($value as $key => $nested) {
+            $value[$key] = $this->stableValue($nested);
+        }
+
+        return $value;
     }
 
     private function progress(AgentBudgetTracker $budget, AgentPlan $plan): AgentProgress

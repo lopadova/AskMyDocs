@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WidgetSessionsView } from './WidgetSessionsView';
 
@@ -31,12 +32,12 @@ describe('WidgetSessionsView', () => {
         expect(screen.getByTestId('admin-widget-sessions-view')).toBeDefined();
     });
 
-    it('status filter includes all 7 statuses incl. waiting_tool/waiting_user (#33)', () => {
+    it('status filter includes all 7 statuses incl. waiting_tool/waiting_user (#33)', async () => {
         mockedApi.get.mockResolvedValueOnce({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
         renderWithQuery(<WidgetSessionsView />);
 
-        const select = screen.getByTestId('admin-widget-sessions-filter-status');
-        const values = Array.from(select.querySelectorAll('option')).map((o) => o.getAttribute('value'));
+        await userEvent.click(screen.getByTestId('admin-widget-sessions-filter-status'));
+        const values = screen.getAllByRole('option').map((option) => option.dataset.value);
         expect(values).toEqual(
             expect.arrayContaining(['', 'active', 'waiting_user', 'waiting_tool', 'completed', 'blocked', 'aborted', 'error']),
         );

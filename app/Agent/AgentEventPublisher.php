@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Agent\Debug\KbActivityDebugPayload;
+use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentRunEvent;
 use App\Services\Widget\WidgetPiiMasker;
@@ -14,6 +16,8 @@ final readonly class AgentEventPublisher
     public function __construct(
         private AgentMessageCatalog $messages,
         private WidgetPiiMasker $masker,
+        private McpActivityDebugPayload $mcpDebug,
+        private KbActivityDebugPayload $kbDebug,
     ) {}
 
     /**
@@ -31,6 +35,22 @@ final readonly class AgentEventPublisher
     ): AgentRunEvent {
         $this->assertEventName($type);
 
+        // Surface progress of every independent branch in the original chat event stream.
+        $parentId = data_get($run->input_json, 'research_parent_id');
+        if ($parentId !== null) {
+            $parent = AgentRun::query()->forTenant($run->tenant_id)->find($parentId);
+            $flow = data_get($run->input_json, 'research_flow_id');
+            if ($parent !== null && data_get($parent->result_json, 'research_runs.'.$flow) === $run->id) {
+                $data = [...$data, 'research_flow_id' => $flow, 'research_run_id' => $run->run_id];
+                if (in_array($type, ['run.awaiting_confirmation', 'run.mcp_interaction_required'], true)) {
+                    $data['branch_event'] = $type;
+                    $type = 'research.limited';
+                    $messageKey = null;
+                }
+                $run = $parent;
+            }
+        }
+
         return DB::transaction(function () use (
             $run, $type, $messageKey, $messageParameters, $data, $progress, $canCancel,
         ): AgentRunEvent {
@@ -40,8 +60,36 @@ final readonly class AgentEventPublisher
                 ->whereKey($run->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $sequence = $locked->last_sequence + 1;
+            // Terminal progress and durable tool state commit together. Emit each
+            // interrupted tool before the terminal event so connected clients close it too.
+            if ($locked->isTerminal() && in_array($type, ['run.failed', 'run.cancelled', 'run.completed', 'run.partial'], true)) {
+                foreach (app(AgentTerminalExecutionFinalizer::class)->close($locked) as $outcome) {
+                    $this->publish($locked, 'tool.failed', 'tool.failed', ['tool' => $outcome['tool']],
+                        [...$outcome, 'outcome_unknown' => true], canCancel: false);
+                }
+            }
+            // The append log is authoritative, including runs affected by an older
+            // stale-model save. The run-row lock serializes all branch publishers.
+            $sequence = max((int) $locked->last_sequence, (int) $locked->events()->max('sequence')) + 1;
             $safeParameters = $this->masker->maskArray($messageParameters) ?? [];
+            if (array_key_exists('mcp_debug', $data)) {
+                if (! $this->mcpDebug->enabled()) {
+                    unset($data['mcp_debug']);
+                } elseif (is_array($data['mcp_debug'])) {
+                    $data['mcp_debug'] = $this->mcpDebug->sanitize($data['mcp_debug']);
+                } else {
+                    unset($data['mcp_debug']);
+                }
+            }
+            if (array_key_exists('kb_debug', $data)) {
+                if (! $this->kbDebug->enabled()) {
+                    unset($data['kb_debug']);
+                } elseif (is_array($data['kb_debug'])) {
+                    $data['kb_debug'] = $this->mcpDebug->sanitize($data['kb_debug']);
+                } else {
+                    unset($data['kb_debug']);
+                }
+            }
             $safeData = $this->masker->maskArray($data) ?? [];
             $copy = $messageKey === null
                 ? ['locale' => $locked->locale, 'message_key' => null, 'message_params' => [], 'message' => null]
@@ -66,7 +114,10 @@ final readonly class AgentEventPublisher
             ]);
 
             $locked->forceFill(['last_sequence' => $sequence])->save();
-            $run->setAttribute('last_sequence', $sequence);
+            // This value has ALREADY been saved by $locked. Leaving it dirty on
+            // the caller would overwrite newer events when the caller next saves
+            // a retrieval checkpoint after the parallel observers have advanced it.
+            $run->setAttribute('last_sequence', $sequence)->syncOriginalAttribute('last_sequence');
 
             return $event;
         }, 3);

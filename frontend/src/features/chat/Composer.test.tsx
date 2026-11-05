@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { Composer } from './Composer';
@@ -26,6 +26,8 @@ function makeProps(overrides: Partial<{
     conversationId: number | null;
     filters: FilterState;
     onFiltersChange: (next: FilterState | ((p: FilterState) => FilterState)) => void;
+    depth: number;
+    onDepthChange: (next: number) => void;
     onSend: (content: string) => void | Promise<void>;
     onStop: () => void;
     isStreaming: boolean;
@@ -35,6 +37,8 @@ function makeProps(overrides: Partial<{
         conversationId: 1,
         filters: {},
         onFiltersChange: vi.fn(),
+        depth: 3,
+        onDepthChange: vi.fn(),
         onSend: vi.fn(),
         onStop: vi.fn(),
         isStreaming: false,
@@ -54,12 +58,13 @@ describe('Composer', () => {
         });
     });
 
-    it('rejects an empty draft with a client-side validation error', () => {
+    it('rejects an empty draft and opens accessible validation details', async () => {
         const props = makeProps();
         renderWithClient(<Composer {...props} />);
         const send = screen.getByTestId('chat-composer-send');
         fireEvent.click(send);
-        expect(screen.getByTestId('message-error')).toHaveTextContent('required');
+        expect(await screen.findByTestId('message-error')).toHaveTextContent('required');
+        expect(screen.getByTestId('message-error-trigger')).toHaveAttribute('aria-expanded', 'true');
         expect(props.onSend).not.toHaveBeenCalled();
     });
 
@@ -73,6 +78,56 @@ describe('Composer', () => {
         fireEvent.submit(input.closest('form') as HTMLFormElement);
 
         expect(onSend).toHaveBeenCalledWith('Hello');
+    });
+
+    it('allows a new session to send while the previous send is pending and preserves its draft on a background error', async () => {
+        let failFirst!: (error: Error) => void;
+        let finishSecond!: () => void;
+        const onSend = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { failFirst = reject; }))
+            .mockImplementationOnce(() => new Promise<void>((resolve) => { finishSecond = resolve; }));
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const view = (conversationId: number) => <QueryClientProvider client={client}>
+            <Composer {...makeProps({ conversationId, onSend })} />
+        </QueryClientProvider>;
+        const { rerender } = render(view(1));
+        const submit = (text: string) => {
+            fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: text } });
+            fireEvent.submit(screen.getByTestId('chat-composer'));
+        };
+        submit('First question');
+        rerender(view(2));
+        submit('Second question');
+        expect(onSend).toHaveBeenCalledTimes(2);
+        // Returning to an in-flight session still rejects duplicate submits.
+        rerender(view(1));
+        submit('Duplicate');
+        expect(onSend).toHaveBeenCalledTimes(2);
+        rerender(view(2));
+        fireEvent.change(screen.getByTestId('chat-composer-input'), { target: { value: 'New draft' } });
+        await act(async () => { failFirst(new Error('First run failed')); });
+        expect(screen.getByTestId('chat-composer-input')).toHaveValue('New draft');
+        expect(screen.queryByTestId('message-error-trigger')).not.toBeInTheDocument();
+        await act(async () => finishSecond());
+    });
+
+    it('uses a restrained container focus state and canonical action buttons', () => {
+        renderWithClient(<Composer {...makeProps()} />);
+
+        const form = screen.getByTestId('chat-composer');
+        const input = screen.getByTestId('chat-composer-input');
+        const attach = screen.getByTestId('chat-composer-attach');
+        const voice = screen.getByTestId('chat-composer-voice');
+        const send = screen.getByTestId('chat-composer-send');
+
+        expect(form).not.toHaveClass('glow-frame');
+        fireEvent.focus(input);
+        expect(form).toHaveClass('is-focused');
+        fireEvent.blur(input);
+        expect(form).not.toHaveClass('is-focused');
+        expect(attach).toHaveClass('ui-button');
+        expect(voice).toHaveClass('ui-button');
+        expect(send).toHaveClass('ui-button');
+        expect(send).toHaveAttribute('data-variant', 'primary');
     });
 
     it('renders chat-composer-stop instead of chat-composer-send while isStreaming', () => {
@@ -93,6 +148,30 @@ describe('Composer', () => {
     it('surfaces an external error via chat-composer-error', () => {
         const props = makeProps({ error: new Error('Provider rate limited') });
         renderWithClient(<Composer {...props} />);
+        const trigger = screen.getByTestId('chat-composer-error-trigger');
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(trigger);
         expect(screen.getByTestId('chat-composer-error')).toHaveTextContent('Provider rate limited');
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('does not repeat the same send error as both local and external feedback', async () => {
+        const message = 'I could not complete the search.';
+        const props = makeProps({
+            error: new Error(message),
+            onSend: vi.fn().mockRejectedValue(new Error(message)),
+        });
+        renderWithClient(<Composer {...props} />);
+
+        const input = screen.getByTestId('chat-composer-input');
+        fireEvent.change(input, { target: { value: 'Try this' } });
+        fireEvent.submit(screen.getByTestId('chat-composer'));
+
+        await waitFor(() => expect(input).toHaveValue('Try this'));
+        expect(props.onSend).toHaveBeenCalledOnce();
+        expect(screen.queryByTestId('message-error')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('chat-composer-error-trigger'));
+        expect(screen.getByTestId('chat-composer-error')).toHaveTextContent(message);
+        expect(screen.getAllByText(message)).toHaveLength(1);
     });
 });

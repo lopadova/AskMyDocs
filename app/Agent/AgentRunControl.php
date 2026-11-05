@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
-use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
 use Illuminate\Support\Facades\DB;
 
@@ -34,6 +33,14 @@ final readonly class AgentRunControl
             return $locked;
         });
 
+        $pendingTools = array_keys((array) data_get($updated->result_json, 'pending_api_tools', []));
+        $legacyPending = data_get($updated->result_json, 'pending_api_tool.run_id');
+        if (is_string($legacyPending)) { $pendingTools[] = $legacyPending; }
+        foreach (array_unique($pendingTools) as $pendingTool) {
+            $toolRun = \App\ApiTools\Models\ApiToolRun::query()->forTenant($updated->tenant_id)->find($pendingTool);
+            if ($toolRun !== null) { app(\App\ApiTools\ToolRuntime::class)->cancel($toolRun); }
+        }
+
         $this->events->publish($updated, 'run.cancelled', 'run.cancelled', canCancel: false);
 
         return $updated->refresh();
@@ -52,6 +59,34 @@ final readonly class AgentRunControl
             'run.awaiting_confirmation',
             'run.awaiting_confirmation',
             data: ['requested_extension' => $required],
+            canCancel: true,
+        );
+
+        return $run->refresh();
+    }
+
+    /** @param array<string,mixed> $interaction */
+    public function awaitMcpInteraction(AgentRun $run, string $reason, array $interaction): AgentRun
+    {
+        $status = match ($reason) {
+            'mcp_confirmation_required' => AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
+            'mcp_input_required' => AgentRun::STATUS_AWAITING_MCP_INPUT,
+            'mcp_task_accepted' => AgentRun::STATUS_WAITING_MCP_TASK,
+            default => throw new \InvalidArgumentException("Unsupported MCP interaction [{$reason}]."),
+        };
+        $checkpoint = is_array($run->result_json) ? $run->result_json : [];
+        $run->forceFill([
+            'status' => $status,
+            'result_json' => array_merge($checkpoint, [
+                'pending_mcp_interaction' => $interaction + ['reason' => $reason],
+            ]),
+        ])->save();
+
+        $this->events->publish(
+            $run,
+            'run.mcp_interaction_required',
+            null,
+            data: ['status' => $status, 'reason' => $reason, 'interaction' => $interaction],
             canCancel: true,
         );
 
@@ -101,19 +136,29 @@ final readonly class AgentRunControl
                 'physical_extension' => $physicalExtension,
             ],
         );
-        ExecuteAgentRunJob::dispatch($updated->id, $updated->tenant_id);
+        app(AgentRunDispatcher::class)->enqueue($updated);
 
         return $updated->refresh();
     }
 
     public function ensureActive(AgentRun $run): void
     {
+        $parentId = data_get($run->input_json, 'research_parent_id');
+        if ($parentId !== null) {
+            $parent = AgentRun::query()->forTenant($run->tenant_id)->find($parentId);
+            if ($parent === null || $parent->isTerminal()) {
+                throw new AgentRunCancelledException($run->run_id);
+            }
+        }
         $status = AgentRun::query()
             ->forTenant($run->tenant_id)
             ->whereKey($run->id)
             ->value('status');
         if ($status === AgentRun::STATUS_CANCELLED) {
             throw new AgentRunCancelledException($run->run_id);
+        }
+        if ($status === null || in_array($status, [AgentRun::STATUS_FAILED, AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)) {
+            throw new \DomainException('agent_run_not_active');
         }
     }
 }

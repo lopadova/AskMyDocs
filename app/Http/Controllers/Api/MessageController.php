@@ -2,16 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Agent\AgentEventPublisher;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\FinOps\ChatTraceContext;
 use App\FinOps\ChatTurnCostResolver;
+use App\Jobs\UpdateConversationRecapJob;
 use App\Mcp\Client\McpToolCallingService;
+use App\Models\AgentRunEvent;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Provenance\ProvenanceToolFirewall;
@@ -26,6 +30,8 @@ use Illuminate\Support\Str;
 
 class MessageController extends Controller
 {
+    use \App\Http\Controllers\Api\Concerns\RespondsWithProvenance;
+
     /**
      * T3.4 — same sentinel as KbChatController. Centralizing on a class
      * constant per controller (not pulling into a shared trait yet) so
@@ -34,17 +40,70 @@ class MessageController extends Controller
      */
     private const SELF_REFUSAL_SENTINEL = '__NO_GROUNDED_ANSWER__';
 
-    public function index(Request $request, Conversation $conversation): JsonResponse
-    {
+    private const AGENT_ACTIVITY_DATA_KEYS = [
+        'tool', 'tool_kind', 'tool_display_name', 'mcp_server_name',
+        'mcp_tool_name', 'mcp_debug', 'kb_debug', 'action_id', 'error_code',
+        'tasks', 'research_flow_id', 'task_status',
+        'findings', 'validation',
+    ];
+
+    public function index(
+        Request $request,
+        Conversation $conversation,
+        AgentEventPublisher $agentEvents,
+    ): JsonResponse {
         if ($conversation->user_id !== $request->user()->id) {
             abort(403);
         }
 
         $messages = $conversation->messages()
             ->orderBy('id')
-            ->get(['id', 'role', 'content', 'metadata', 'rating', 'created_at']);
+            ->get(['id', 'agent_run_id', 'role', 'content', 'metadata', 'rating', 'created_at']);
+
+        $runIds = $messages->pluck('agent_run_id')->filter()->unique()->values();
+        $toolReferences = app(\App\Agent\AgentToolReferences::class)->forConversation($conversation, $runIds->all());
+        $activityByRun = $runIds->isEmpty()
+            ? collect()
+            : AgentRunEvent::query()
+                ->with('run:id,run_id')
+                ->whereIn('agent_run_id', $runIds)
+                ->orderBy('agent_run_id')
+                ->orderBy('sequence')
+                ->get()
+                ->groupBy('agent_run_id')
+                ->map(fn (Collection $events): array => $events
+                    ->map(fn (AgentRunEvent $event): array => $this->agentActivityEvent($event, $agentEvents))
+                    ->values()
+                    ->all());
+
+        $messages->each(function (Message $message) use ($activityByRun, $toolReferences): void {
+            $activity = $message->agent_run_id === null
+                ? []
+                : ($activityByRun->get($message->agent_run_id) ?? []);
+            if ($activity !== []) {
+                $message->setAttribute('metadata', array_merge(
+                    is_array($message->metadata) ? $message->metadata : [],
+                    ['agent_activity' => $activity],
+                ));
+            }
+            if ($message->role === 'assistant' && isset($toolReferences[$message->agent_run_id])) {
+                $message->setAttribute('metadata', [...($message->metadata ?? []),
+                    'tool_references' => $toolReferences[$message->agent_run_id]]);
+            }
+            $message->makeHidden('agent_run_id');
+        });
 
         return response()->json($messages);
+    }
+
+    /** @return array<string,mixed> */
+    private function agentActivityEvent(AgentRunEvent $event, AgentEventPublisher $publisher): array
+    {
+        $serialized = $publisher->serialize($event);
+        $data = is_array($serialized['data'] ?? null) ? $serialized['data'] : [];
+        $serialized['data'] = array_intersect_key($data, array_flip(self::AGENT_ACTIVITY_DATA_KEYS));
+
+        return $serialized;
     }
 
     public function store(
@@ -53,6 +112,7 @@ class MessageController extends Controller
         AiManager $ai,
         McpToolCallingService $toolCallingService,
         ChatRetrievalService $retrieval,
+        KbInvestigationService $investigation,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
@@ -63,7 +123,10 @@ class MessageController extends Controller
         }
 
         $validated = $request->validate(array_merge(
-            ['content' => ['required', 'string', 'max:10000']],
+            [
+                'content' => ['required', 'string', 'max:10000'],
+                'depth' => ['nullable', 'integer', 'min:1', 'max:5'],
+            ],
             // T2.7 — accept the same `filters.*` payload shape as
             // /api/kb/chat (validated by KbChatRequest). Inline here
             // rather than via FormRequest because MessageController
@@ -79,6 +142,9 @@ class MessageController extends Controller
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
         $filters = $this->buildRetrievalFilters($request, $projectKey);
+        $previousCitations = $conversation->messages()->where('role', 'assistant')->latest('id')->limit(10)->get()
+            ->map(static fn ($message): mixed => data_get($message->metadata, 'citations'))
+            ->first(static fn (mixed $citations): bool => is_array($citations) && $citations !== []) ?? [];
 
         // 1. Save user message
         $userMessage = $conversation->messages()->create([
@@ -95,21 +161,59 @@ class MessageController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // 3. RAG: v8.1 P0.2 — unified retrieval. The conversation flow now
-        // runs the SAME searchWithContext() path as /api/kb/chat (primary +
-        // graph-expanded + rejected-approach context) via the shared
-        // ChatRetrievalService, so the same question yields identical
-        // grounding context + citations across the sync / stream / chat
-        // channels. T2.7 threads the user-selected filters; with no filters
-        // it falls back to the legacy single-project DTO.
-        $result = $retrieval->retrieve($question, $projectKey, $filters);
-        $chunks = $result->primary;
+        // Raw user text is deliberately NOT a vector query. The investigation
+        // first interprets it using the mandatory admin profile, then performs
+        // its bounded KB-only retrieve/read/filter loop. Its SearchResult has
+        // only explicitly selected sources — no graph/rejected context can
+        // reach the final prompt.
+        $investigationResult = $investigation->investigate(
+            question: $question,
+            projectKey: $projectKey,
+            filters: $filters,
+            depth: (int) ($validated['depth'] ?? 3),
+            conversationContext: is_array($conversation->session_recap) ? (string) ($conversation->session_recap['summary'] ?? '') : null,
+            previousCitations: is_array($previousCitations) ? $previousCitations : [],
+            actor: $request->user(),
+            memoryOwner: $conversation,
+            turnRecord: $userMessage,
+        );
+        $result = $investigationResult->search;
+        $memoryEvidence = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->enabled()
+            ? app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult($result)->jsonSerialize() : [];
+        if ($investigationResult->memoryAnswer !== null) {
+            return $this->serverAnswerResponse($request, $conversation, $userMessage, $investigationResult->memoryAnswer,
+                $chatLog, $startTime, false, 'verified-session-memory');
+        }
+        if ($investigationResult->intent?->understanding?->isAssistantConversation()) {
+            return $this->assistantConversationResponse($request, $conversation, $userMessage,
+                $investigationResult->intent->understanding, $chatLog, $startTime);
+        }
 
-        // 3b. T3.3 — deterministic refusal short-circuit. If too few chunks
-        // pass the shared grounding gate (rerank_score OR vector floor, read
-        // shape-agnostically — see RetrievalGrounding), save a refusal
-        // assistant message and return WITHOUT calling the LLM.
-        if ($retrieval->shouldRefuse($result)) {
+        if ($investigationResult->stopReason === 'answer_provenance') {
+            return $this->provenanceResponse($request, $conversation, $userMessage, $filters,
+                $investigationResult->intent?->understanding?->language, $chatLog, $startTime);
+        }
+        if (config('reasoning.enabled')) {
+            $history = array_values(array_filter($history, fn ($message) => $message['role'] === 'user'));
+            $history[] = ['role' => 'user', 'content' => json_encode([
+                'server_turn_context' => $investigationResult->intent?->understanding?->toArray(),
+                'reasoning' => $investigationResult->intent?->understanding?->available && $conversation->project_key === $projectKey
+                    ? app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->context($conversation, $request->user(), $filters) : [],
+                'policy' => 'Answer the active focus. Already communicated text is ONLY a repetition hint, not evidence. Do not repeat it unless explicitly requested or needed to explain an update. Use only current retrieved sources for facts. '.\App\Services\Chat\QuestionAction::ANSWER_INSTRUCTIONS,
+            ])];
+        }
+        $chunks = $result->primary;
+        $hasLiveTools = $investigationResult->isReady() && ($investigationResult->intent?->understanding?->needsResearch() ?? true)
+            && $toolCallingService->canHandleToolCalling($request->user(), $projectKey);
+
+        // A project without a profile fails closed with a configuration message;
+        // insufficient or invalid investigation evidence never falls back to
+        // the old generic semantic search or an MCP tool loop.
+        if (! $investigationResult->isReady() || (
+            $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            && $retrieval->shouldRefuse($result)
+            && ! $hasLiveTools
+        )) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -118,12 +222,18 @@ class MessageController extends Controller
                 projectKey: $projectKey,
                 userId: $userId,
                 startTime: $startTime,
-                reason: 'no_relevant_context',
+                reason: $investigationResult->refusalReason(),
+                language: $investigationResult->intent?->understanding?->language,
+                clarification: $investigationResult->intent?->understanding?->needsClarification ? $investigationResult->intent->understanding->clarification : null,
             );
         }
 
-        // 4. Get few-shot examples from positively-rated past answers
-        $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
+        // Historical answers are not retrieval evidence. In the recursive
+        // path, omit them entirely so every factual input to the answer comes
+        // from a source selected by the investigation.
+        $fewShotExamples = $investigationResult->stopReason === 'recursive_retrieval_disabled'
+            ? $fewShot->getExamples($userId, $projectKey)
+            : [];
 
         // 5. Build system prompt with RAG context + few-shot examples.
         // v8.1 P0.2 — pass the typed blocks (expanded + rejected) so the
@@ -131,7 +241,16 @@ class MessageController extends Controller
         // identically to /api/kb/chat.
         $systemPrompt = view('prompts.kb_rag', array_merge(
             $retrieval->promptContext($result),
-            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+            [
+                'projectKey' => $projectKey,
+                'fewShotExamples' => $fewShotExamples,
+                'retrievalInvestigation' => $investigationResult->answerPromptContext(),
+                // The recap from the PREVIOUS turn — this turn's own update
+                // (below, after the assistant message is saved) only takes
+                // effect starting next turn, by design (async, off the
+                // request path).
+                'sessionRecap' => config('reasoning.enabled') ? null : $conversation->session_recap,
+            ],
         ))->render();
 
         // 6. Send full history to AI provider
@@ -176,6 +295,7 @@ class MessageController extends Controller
                 aiResponse: $aiResponse,
                 latencyMs: $latencyMs,
                 traceId: $traceId,
+                language: $investigationResult->intent?->understanding?->language,
             );
         }
 
@@ -210,7 +330,9 @@ class MessageController extends Controller
         );
 
         // 8. Save assistant message
-        $assistantMessage = $conversation->messages()->create([
+        $memoryClaims = app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->extract($memoryEvidence,
+            $investigationResult->intent?->understanding, (string) $conversation->tenant_id, $projectKey);
+        $assistantMessage = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->saveMessage($conversation, $userMessage, [
             'role' => 'assistant',
             'content' => $aiResponse->content,
             // T3.5 — populate the dedicated columns (T3.1) so SQL
@@ -233,15 +355,21 @@ class MessageController extends Controller
                 'few_shot_count' => count($fewShotExamples),
                 'tool_calls_count' => count($toolCalls),
                 'tool_calls' => $toolCalls,
+                'retrieval_investigation' => $result->meta['investigation'] ?? null,
                 // T3.5 — confidence mirrored in metadata so the FE can
                 // render the badge from a single read of the message
                 // payload (no separate /confidence endpoint needed).
                 'confidence' => $confidenceScore,
                 'refusal_reason' => null,
             ],
-        ]);
+        ], $memoryEvidence !== [] ? $memoryEvidence : ['documents' => $citations], $memoryClaims);
 
-        $conversation->touch();
+        // 8b. Async, incremental session-recap update — off the request
+        // path so a slow/failed update never adds latency to (or breaks)
+        // the turn just answered. Config-gated (kb.session_recap.enabled).
+        if ((bool) config('kb.session_recap.enabled', true)) {
+            UpdateConversationRecapJob::dispatch($conversation->id, (string) $conversation->tenant_id);
+        }
 
         // 9. Log chat interaction (if enabled)
         $chatLog->log(new ChatLogEntry(
@@ -265,6 +393,7 @@ class MessageController extends Controller
                 'citations_count' => count($citations),
                 'tool_calls_count' => count($toolCalls),
                 'tool_calls' => $toolCalls,
+                'retrieval_investigation' => $result->meta['investigation'] ?? null,
             ],
             traceId: $traceId,
         ));
@@ -303,9 +432,15 @@ class MessageController extends Controller
         int $userId,
         float $startTime,
         string $reason,
+        ?string $language = null,
+        ?string $clarification = null,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
+        if ($clarification !== null && $clarification !== '') {
+            $answer = $clarification;
+            $reason = 'focus_ambiguous';
+        }
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
@@ -389,16 +524,16 @@ class MessageController extends Controller
      * key on a miss — we use that as the sentinel and never leak the
      * key to the user.
      */
-    private function localizedRefusalMessage(string $reason): string
+    private function localizedRefusalMessage(string $reason, ?string $language = null): string
     {
         $perReasonKey = "kb.refusal.{$reason}";
-        $perReasonMessage = __($perReasonKey);
+        $perReasonMessage = __($perReasonKey, [], $language);
 
         if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
             return $perReasonMessage;
         }
 
-        return (string) __('kb.no_grounded_answer');
+        return (string) __('kb.no_grounded_answer', [], $language);
     }
 
     /**
@@ -429,9 +564,10 @@ class MessageController extends Controller
         AiResponse $aiResponse,
         int $latencyMs,
         ?string $traceId = null,
+        ?string $language = null,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
-        $answer = $this->localizedRefusalMessage($reason);
+        $answer = $this->localizedRefusalMessage($reason, $language);
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
@@ -606,6 +742,12 @@ class MessageController extends Controller
                 'status' => (string) ($toolCall['status'] ?? 'completed'),
                 'server_id' => $toolCall['server_id'] ?? null,
                 'server_name' => $toolCall['server_name'] ?? null,
+                'source' => $toolCall['source'] ?? null,
+                'provenance' => is_array($toolCall['provenance'] ?? null) ? $toolCall['provenance'] : [],
+                'pending_interaction_id' => $toolCall['pending_interaction_id'] ?? null,
+                'prompt' => is_array($toolCall['prompt'] ?? null) ? $toolCall['prompt'] : null,
+                'task_id' => $toolCall['task_id'] ?? null,
+                'task' => is_array($toolCall['task'] ?? null) ? $toolCall['task'] : null,
                 'error' => $toolCall['error'] ?? null,
             ],
             $toolCalls,

@@ -45,7 +45,7 @@ class AiManager
      * raw `Http::` (metered by the {@see AiCallMeter} bridge).
      *
      * The bridge therefore meters these providers ONLY on a raw-Http turn (tools
-     * present OR the history carries a tool turn — see {@see bridgeShouldMeterChat});
+     * present, a strict response_format, OR tool history — see {@see bridgeShouldMeterChat});
      * a no-tools call or an embeddings call is already SDK-metered and bridging it
      * would DOUBLE-COUNT. Mirrors `McpToolCallingService::TOOL_CAPABLE_PROVIDERS`.
      * openai + openrouter were migrated to HYBRID in v8.16/W2; anthropic + gemini
@@ -196,6 +196,7 @@ class AiManager
     {
         if (in_array($provider, self::SDK_HYBRID_TOOL_PROVIDERS, true)) {
             return array_key_exists('tools', $options)
+                || array_key_exists('response_format', $options)
                 || ToolTurnDetector::historyHasToolTurn($messages);
         }
 
@@ -204,6 +205,8 @@ class AiManager
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
+        $options = app(AgentChatModelScope::class)->options($options);
+        $measurementStart = microtime(true);
         $response = $this->provider()->chat($systemPrompt, $userMessage, $options);
 
         // FinOps full-coverage metering (R44). Non-blocking + SDK-skipping; see
@@ -215,6 +218,8 @@ class AiManager
         if ($this->bridgeShouldMeterChat($response->provider, [], $options)) {
             app(AiCallMeter::class)->meterChat($response, $userMessage);
         }
+
+        app(\App\ApiTools\ToolMeasurements::class)->record($response, (int) round((microtime(true)-$measurementStart)*1000));
 
         return $response;
     }
@@ -237,11 +242,31 @@ class AiManager
      */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
+        $options = app(AgentChatModelScope::class)->options($options);
+        $measurementStart = microtime(true);
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
 
         if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
             app(AiCallMeter::class)->meterChat($response, $messages);
         }
+
+        app(\App\ApiTools\ToolMeasurements::class)->record($response, (int) round((microtime(true)-$measurementStart)*1000));
+
+        return $response;
+    }
+
+    /** A separately configured, metered provider for strict structured chat turns. */
+    public function chatWithProvider(string $provider, string $systemPrompt, array $messages, array $options = []): AiResponse
+    {
+        $options = app(AgentChatModelScope::class)->options($options);
+        $measurementStart = microtime(true);
+        $response = $this->provider($provider)->chatWithHistory($systemPrompt, $messages, $options);
+
+        if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
+            app(AiCallMeter::class)->meterChat($response, $messages);
+        }
+
+        app(\App\ApiTools\ToolMeasurements::class)->record($response, (int) round((microtime(true)-$measurementStart)*1000));
 
         return $response;
     }
@@ -255,6 +280,7 @@ class AiManager
      */
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
     {
+        $options = app(AgentChatModelScope::class)->options($options);
         // NOTE: streaming responses are NOT yet metered here — capturing the
         // terminal usage of a Generator without wrapping the live SSE path is a
         // scoped follow-up (FinOps streaming coverage). Sync chat +
@@ -278,6 +304,7 @@ class AiManager
 
     private function resolve(string $name): AiProviderInterface
     {
+        app(\App\Services\Qa\CampaignScope::class)->assertProvider($name);
         $config = config("ai.providers.{$name}");
 
         if (! $config) {

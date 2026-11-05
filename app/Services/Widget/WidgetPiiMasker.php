@@ -18,6 +18,14 @@ namespace App\Services\Widget;
  */
 final class WidgetPiiMasker
 {
+    /** Display placeholders as unavailable data, never as usable reference values. */
+    public function maskForDisplay(string $input, string $locale): string
+    {
+        $label = str_starts_with($locale, 'it') ? '(dato mascherato)' : '(redacted value)';
+        return strtr($this->maskString($input), array_fill_keys(
+            ['[EMAIL]', '[IBAN]', '[CARD]', '[PHONE]', '[TOKEN]', '[JWT]', '[CF]', '[VAT]'], $label));
+    }
+
     /**
      * Mask una stringa rimpiazzando i pattern PII con placeholder.
      * I pattern coprono: email, telefono (IT/intl), IBAN, numeri carta,
@@ -27,6 +35,53 @@ final class WidgetPiiMasker
      */
     public function maskString(string $input): string
     {
+        // An explicitly labelled logistics reference can resemble an IBAN.
+        // Exempt only a contiguous code with an invalid IBAN checksum, never
+        // a bank/payment line or an actual valid account number.
+        $references = [];
+        // Several short case codes are separate identifiers, not one IBAN.
+        // Keep this exception bounded below IBAN length and out of financial
+        // contexts; formatted/unformatted bank accounts remain protected.
+        $input = preg_replace_callback('/^.*$/mu', function (array $line) use (&$references): string {
+            if (preg_match('/\b(?:IBAN|bank|banca|conto|account|payment|pagamento|card|carta)\b/iu', $line[0])) return $line[0];
+            return preg_replace_callback('/(?<![\pL\pN_-])[A-Z]{1,3}\d{3,9}(?:[\t ]+[A-Z]{1,3}\d{3,9})+(?![\pL\pN_-])/u',
+                function (array $match) use (&$references): string {
+                    if ($this->hasIbanChecksum(preg_replace('/[\t ]/', '', $match[0]))) return $match[0];
+                    $token = '__AMD_CASE_'.hash('sha256', $match[0]).'__';
+                    $references[$token] = $match[0];
+                    return $token;
+                }, $line[0]) ?? $line[0];
+        }, $input) ?? $input;
+        $input = preg_replace_callback('/^.*\b(?:tracking|AWB|waybill|Packlink)\b.*$/imu', function (array $line) use (&$references): string {
+            if (preg_match('/\b(?:IBAN|bank|banca|conto|account|payment|pagamento|card|carta)\b/iu', $line[0])) return $line[0];
+            return preg_replace_callback('/\b(?:tracking|AWB|waybill|Packlink)\b[\t :#*_`-]*(?:(?:reference|riferimento|ref|code|codice|ID)[\t :#*_`-]*)?([A-Z]{2}\d{2}[A-Z0-9]{11,30})\b/i',
+                function (array $match) use (&$references): string {
+                    if ($this->hasIbanChecksum($match[1])) return $match[0];
+                    $token = '__AMD_LOGISTICS_'.hash('sha256', $match[1]).'__';
+                    $references[$token] = $match[1];
+                    return substr($match[0], 0, -strlen($match[1])).$token;
+                }, $line[0]) ?? $line[0];
+        }, $input) ?? $input;
+        // Retail identifiers need both a barcode field and a valid GTIN-13
+        // checksum. Unlabelled numbers and payment fields remain protected.
+        $barcodes = [];
+        $input = preg_replace_callback('/^.*\b(?:barcode|EAN|GTIN)\b.*$/imu', function (array $line) use (&$barcodes): string {
+            if (preg_match('/\b(?:card|carta|credit|credito|payment|pagamento|IBAN)\b/iu', $line[0])) {
+                return $line[0];
+            }
+            return preg_replace_callback('/\b\d{13}\b/', function (array $match) use (&$barcodes): string {
+                $sum = 0;
+                for ($i = 0; $i < 12; $i++) {
+                    $sum += (int) $match[0][$i] * ($i % 2 === 0 ? 1 : 3);
+                }
+                if ((10 - $sum % 10) % 10 !== (int) $match[0][12]) {
+                    return $match[0];
+                }
+                $token = '__AMD_GTIN_'.hash('sha256', $match[0]).'__';
+                $barcodes[$token] = $match[0];
+                return $token;
+            }, $line[0]) ?? $line[0];
+        }, $input) ?? $input;
         // 1. Email — qualunque <local>@<domain>
         $result = preg_replace(
             '/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/',
@@ -96,7 +151,19 @@ final class WidgetPiiMasker
             $result,
         ) ?? $result;
 
-        return $result;
+        return strtr($result, [...$barcodes, ...$references]);
+    }
+
+    private function hasIbanChecksum(string $code): bool
+    {
+        $code = strtoupper($code);
+        if (strlen($code) < 15 || strlen($code) > 34) return false;
+        $remainder = 0;
+        foreach (str_split(substr($code, 4).substr($code, 0, 4)) as $character) {
+            $digits = ctype_digit($character) ? $character : (string) (ord($character) - 55);
+            foreach (str_split($digits) as $digit) $remainder = ($remainder * 10 + (int) $digit) % 97;
+        }
+        return $remainder === 1;
     }
 
     /**

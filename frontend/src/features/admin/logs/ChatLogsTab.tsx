@@ -1,3 +1,4 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
 import { useChatLog, useChatLogs, type ChatLogRow, type ChatLogsQuery } from './logs.api';
 
@@ -13,6 +14,7 @@ import { useChatLog, useChatLogs, type ChatLogRow, type ChatLogsQuery } from './
  */
 
 export function ChatLogsTab() {
+    const { t: translateInterface } = useUiTranslation();
     const [project, setProject] = useState('');
     const [model, setModel] = useState('');
     const [minLatency, setMinLatency] = useState('');
@@ -56,14 +58,14 @@ export function ChatLogsTab() {
             >
                 <FilterInput
                     testid="chat-filter-project"
-                    label="Project"
+                    label={translateInterface("Project")}
                     value={project}
                     onChange={setProject}
                     placeholder="hr-portal"
                 />
                 <FilterInput
                     testid="chat-filter-model"
-                    label="Model"
+                    label={translateInterface("Model")}
                     value={model}
                     onChange={setModel}
                     placeholder="gpt-4o"
@@ -86,14 +88,14 @@ export function ChatLogsTab() {
                 />
                 <FilterInput
                     testid="chat-filter-from"
-                    label="From"
+                    label={translateInterface("From")}
                     value={from}
                     onChange={setFrom}
                     placeholder="YYYY-MM-DD"
                 />
                 <FilterInput
                     testid="chat-filter-to"
-                    label="To"
+                    label={translateInterface("To")}
                     value={to}
                     onChange={setTo}
                     placeholder="YYYY-MM-DD"
@@ -138,12 +140,12 @@ export function ChatLogsTab() {
                     <thead>
                         <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
                             <Th>#</Th>
-                            <Th>Project</Th>
-                            <Th>Model</Th>
+                            <Th>{translateInterface("Project")}</Th>
+                            <Th>{translateInterface("Model")}</Th>
                             <Th>Question</Th>
                             <Th>Tokens</Th>
                             <Th>Latency</Th>
-                            <Th>When</Th>
+                            <Th>{translateInterface("When")}</Th>
                         </tr>
                     </thead>
                     <tbody>
@@ -186,6 +188,7 @@ export function ChatLogsTab() {
 }
 
 function ChatLogDrawer({ id, onClose }: { id: number; onClose: () => void }) {
+    const { t: translateInterface } = useUiTranslation();
     const q = useChatLog(id);
     const row: ChatLogRow | undefined = q.data?.data;
 
@@ -226,7 +229,7 @@ function ChatLogDrawer({ id, onClose }: { id: number; onClose: () => void }) {
                 </button>
             </div>
 
-            {q.isLoading ? <div style={{ color: 'var(--fg-3)', padding: 10 }}>Loading…</div> : null}
+            {q.isLoading ? <div style={{ color: 'var(--fg-3)', padding: 10 }}>{translateInterface("Loading…")}</div> : null}
             {q.isError ? (
                 <div style={{ color: 'var(--danger-fg, #b91c1c)', padding: 10 }}>
                     Failed to load chat log.
@@ -270,7 +273,7 @@ function ChatLogDrawer({ id, onClose }: { id: number; onClose: () => void }) {
                             {row.answer}
                         </pre>
                     </DrawerField>
-                    <DrawerField label="Citations">
+                    <DrawerField label={translateInterface("Citations")}>
                         <pre
                             style={{
                                 fontSize: 11,
@@ -364,6 +367,7 @@ function Pagination({
     onPage: (p: number) => void;
     testidPrefix: string;
 }) {
+    const { t: translateInterface } = useUiTranslation();
     return (
         <div
             data-testid={`${testidPrefix}-pagination`}
@@ -384,7 +388,7 @@ function Pagination({
                 ← Prev
             </button>
             <span>
-                Page {meta.current_page} / {meta.last_page} ({meta.total} rows)
+                {translateInterface("Page") + " "}{meta.current_page} / {meta.last_page} ({meta.total} rows)
             </span>
             <button
                 type="button"
@@ -392,8 +396,7 @@ function Pagination({
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >
-                Next →
-            </button>
+                {translateInterface("Next →")}</button>
         </div>
     );
 }

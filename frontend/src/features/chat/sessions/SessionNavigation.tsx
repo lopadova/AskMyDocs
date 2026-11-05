@@ -1,0 +1,88 @@
+import { useUiTranslation } from "../../../lib/ui-locale";
+import { useState, type ReactNode } from 'react';
+import { Button } from '../../../components/Button';
+import { Icon } from '../../../components/Icons';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
+    DialogTrigger,
+} from '../../../components/ui/dialog';
+import { SessionSidebar, type SessionSidebarProps } from './SessionSidebar';
+import { ResizableChatHistory } from '../ResizableChatHistory';
+
+/**
+ * Keep the session list beside the thread on desktop and in a
+ * keyboard-accessible drawer on small screens.
+ *
+ * Same shape as {@link ../ConversationNavigation}, which serves the
+ * older /chat sidebar: a render-prop hands the drawer trigger to the
+ * main column so the toggle can sit inside the thread header. The two
+ * are separate because the panels they wrap differ — sharing would mean
+ * a generic wrapper whose only job is to pick a child.
+ */
+export function SessionNavigation({
+    children,
+    ...props
+}: SessionSidebarProps & {
+    children: (historyToggle: ReactNode) => ReactNode;
+}): ReactNode {
+    const { t: translateInterface } = useUiTranslation();
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <ResizableChatHistory>
+                <SessionSidebar {...props} />
+            </ResizableChatHistory>
+            {children(
+                <DialogTrigger asChild>
+                    <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        className="chat-history-toggle"
+                        data-testid="chat-sessions-drawer-toggle"
+                        aria-label={translateInterface("Show sessions")}
+                        title={translateInterface("Show sessions")}
+                    >
+                        <Icon.Menu size={16} />
+                    </Button>
+                </DialogTrigger>,
+            )}
+            <DialogContent className="chat-history-dialog chat-sessions-history-dialog" showCloseButton={false}>
+                <header className="chat-sessions-drawer-header">
+                    <DialogTitle>{translateInterface("Sessions")}</DialogTitle>
+                    <DialogClose asChild>
+                        <Button
+                            variant="quiet"
+                            size="sm"
+                            iconOnly
+                            aria-label={translateInterface("Close sessions")}
+                            title={translateInterface("Close sessions")}
+                        >
+                            <Icon.Close size={15} />
+                        </Button>
+                    </DialogClose>
+                </header>
+                <DialogDescription className="sr-only">
+                    {translateInterface("Browse the knowledge base, search your sessions or start a new one.")}</DialogDescription>
+                <SessionSidebar
+                    {...props}
+                    // Picking a session or opening the KB must dismiss the
+                    // drawer, or the user lands on content hidden behind it.
+                    onSelect={(id) => {
+                        setOpen(false);
+                        props.onSelect(id);
+                    }}
+                    onOpenKnowledgeBase={() => {
+                        setOpen(false);
+                        props.onOpenKnowledgeBase();
+                    }}
+                />
+            </DialogContent>
+        </Dialog>
+    );
+}

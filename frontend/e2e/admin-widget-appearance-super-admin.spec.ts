@@ -1,3 +1,4 @@
+import { chooseSelectOption, openSelect } from './helpers';
 import type { Page } from '@playwright/test';
 import { test as baseTest, expect } from '@playwright/test';
 import { createWidgetThemeProfile } from '../src/features/admin/widget/widget-theme-exchange';
@@ -43,12 +44,13 @@ async function createKey(page: Page, label: string): Promise<number> {
     await page.getByTestId('admin-widget-keys-label').fill(label);
     const project = page.getByTestId('admin-widget-keys-project');
     await expect(project).toBeEnabled({ timeout: 15_000 });
-    await expect(project).toHaveJSProperty('tagName', 'SELECT');
-    expect(await project.locator('option').allTextContents()).toEqual(
+    await expect(project).toHaveRole('combobox');
+    const projects = await openSelect(project);
+    expect(await projects.getByRole('option').allTextContents()).toEqual(
         expect.arrayContaining(['hr-portal', 'engineering']),
     );
-    await project.selectOption('hr-portal');
-    await expect(project).toHaveValue('hr-portal');
+    await chooseSelectOption(project, 'hr-portal');
+    await expect(project).toHaveAttribute('data-value', 'hr-portal');
 
     const createPost = page.waitForResponse(
         (r) => r.url().endsWith('/api/admin/widget-keys') && r.request().method() === 'POST',
@@ -79,7 +81,7 @@ baseTest.describe('Widget appearance editor — super-admin', () => {
 
         await page.getByTestId('admin-widget-appearance-tab-launcher').click();
         await page.getByTestId('admin-widget-appearance-field-launcherSize').fill('72');
-        await page.getByTestId('admin-widget-appearance-field-launcherShadow').selectOption('strong');
+        await chooseSelectOption(page.getByTestId('admin-widget-appearance-field-launcherShadow'), 'strong');
 
         await page.getByTestId('admin-widget-appearance-tab-chat').click();
         await page.getByTestId('admin-widget-appearance-field-panelWidth').fill('680');
