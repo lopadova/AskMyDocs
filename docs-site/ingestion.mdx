@@ -66,7 +66,9 @@ syntax tree, scrubbed of credentials before anything is stored or embedded, and
 refused paths (`vendor/`, lockfiles, `.env`, oversize or generated files) come
 back as `status: "skipped"` rather than failing the batch. See
 [Ingesting source code](/ingesting-source-code).
-</Info> Binary formats
+</Info>
+
+Binary formats
 (`application/pdf`, `.docx`) require `content` **base64-encoded** with a
 `mime_type`; the controller decodes-or-422 before writing.
 
