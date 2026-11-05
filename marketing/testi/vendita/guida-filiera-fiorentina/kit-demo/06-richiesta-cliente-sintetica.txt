@@ -1,0 +1,19 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+RICHIESTA CLIENTE SINTETICA / CASO CF-01
+Documento: RICH-DEMO-014
+Data fittizia: 2026-10-21.
+Mittente: Cliente DEMO A, soggetto inventato senza contatti o identità reali.
+Destinatario: Ufficio prodotto DEMO, ruolo inventato.
+Oggetto: ricostruzione documentale dell'articolo TESS-DEMO-014.
+
+TESTO INVENTATO DELLA RICHIESTA
+Per TESS-DEMO-014 vorremmo sapere quale revisione risulti approvata nella
+vostra documentazione e quali differenze dichiarate vi siano rispetto ad A.
+Ci servirebbe inoltre l'istruzione di lavaggio, se presente nelle fonti.
+Chiediamo di indicare cosa sia documentato e cosa richieda un'informazione ulteriore.
+
+NOTA SULLA COPERTURA DEL KIT
+La richiesta di un dato non dimostra che quel dato esista.
+Istruzioni di lavaggio per TESS-DEMO-014: NON DOCUMENTATE nel kit.
+Non usare la composizione fittizia per inventare una raccomandazione di cura.
+La richiesta non è un ordine, una conferma tecnica o una comunicazione realmente inviata.

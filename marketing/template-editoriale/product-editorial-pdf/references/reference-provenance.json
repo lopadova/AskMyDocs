@@ -1,0 +1,18 @@
+{
+  "kind": "PDF workflow reference; not an Artifact Template Gallery package",
+  "source_product": "AskMyDocs",
+  "source_file": "marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+  "source_revision": "8003ca793c0218ec13451b449fa02a874de762a0",
+  "sha256": "3460aad4c593e874685e13e38295ee4f150c9cbc9ed92f6633690900ef08fcfb",
+  "retained_reference": "assets/reference-product.pdf",
+  "sample_pages": [
+    1,
+    2,
+    7,
+    13,
+    14,
+    30,
+    32
+  ],
+  "scope": "Reuse structure and editorial hierarchy; derive each destination product brand from its landing. The sales manual is not the default reference."
+}

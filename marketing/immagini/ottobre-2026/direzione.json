@@ -1,0 +1,52 @@
+{
+  "artifact": "askmydocs-ottobre-2026",
+  "language": "it",
+  "audience": "Marco e lettori del riepilogo di prodotto",
+  "idea": "Un diario editoriale che collega archivio, fonti operative e qualità della risposta.",
+  "palette": {
+    "paper": "#fbf8f1",
+    "warm_paper": "#f4f0e7",
+    "ink": "#23312d",
+    "forest": "#224c40",
+    "rust": "#a35539",
+    "pale_green": "#e5ebdf"
+  },
+  "type": {
+    "display": "Georgia: font locale macOS, incorporato nel PDF",
+    "body": "Arial: font locale macOS, incorporato nel PDF",
+    "html": "Georgia e Arial di sistema, senza download esterni"
+  },
+  "layout": {
+    "pdf": "A4 verticale, margini 45 pt, due colonne, titoli serif, foliazione e registro fonti",
+    "html": "Documento responsive con illustrazioni incorporate, navigazione per capitoli e registro filtrabile",
+    "images": "Ritaglio di impaginazione; nessuna modifica ai file sorgente del prodotto"
+  },
+  "assets": [
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "role": "Marchio in copertina",
+      "origin": "Asset versionato AskMyDocs; docs/brand/README.md",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "path": "public/editorial/connections.webp",
+      "role": "Immagine di copertina: archivi collegati da ponti",
+      "origin": "Asset editoriale già presente nella repository AskMyDocs",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "path": "public/editorial/themes/cartographic/knowledge-day.webp",
+      "role": "Esempio del mondo cartografico, giorno",
+      "origin": "Manifest temi del prodotto, 16 ottobre 2026; generazione built-in image_gen registrata nel manifest",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "path": "public/editorial/themes/semantic-orbits/knowledge-night.webp",
+      "role": "Esempio astratto orbite semantiche, notte",
+      "origin": "Manifest temi del prodotto, 16 ottobre 2026; generazione built-in image_gen registrata nel manifest",
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    }
+  ],
+  "provenance_limit": "Riuso locale di asset di progetto; autore individuale e licenza separata degli artwork non verificati. Nessuna nuova immagine generata o acquisita dal web per il report.",
+  "meaning": "Le illustrazioni sono dichiarate decorative e non simulano schermate o flussi verificati."
+}

@@ -1,0 +1,69 @@
+ASKMYDOCS / STRUTTURA E TESTI POWERPOINT
+Esito: pronto per la produzione locale del PPTX da un agente distinto.
+
+PERIMETRO
+La presentazione deriva esclusivamente dalla brochure prodotto di 32 pagine
+askmydocs-presentazione-prodotto.pdf e dal catalogo prodotto 8003ca793.
+Mantiene lo stesso titolo e la stessa linea umanistica Georgia/Arial, avorio,
+verde e ruggine. Non aggiunge contenuti territoriali o verticali moda.
+Questo incarico non ha prodotto il file PPTX, modificato altri materiali o
+eseguito commit.
+
+SEQUENZA DEL RACCONTO
+01  Il sapere che entra nel lavoro.
+02  Riunire. Chiedere. Ritrovare.
+03  Una domanda apre un percorso verificabile.
+04  Chi cerca, chi cura, chi governa.
+05  Il ticket di oggi incontra l'esperienza di ieri.
+06  La regola incontra il dato di adesso.
+07  Una pratica ritrova il suo filo.
+08  Chi entra trova anche il perché.
+09  Il progetto accompagna il lavoro.
+10  Ogni fonte entra con identità e storia.
+11  L'autorevolezza conserva una storia.
+12  La stessa domanda attraversa più documenti.
+13  Il canale segue il contesto.
+14  Ogni collegamento ha un compito.
+15  Definire chi può vedere e governare.
+16  Il patrimonio vive nel contributo del team.
+17  Scegliere l'intelligenza, osservarne il consumo.
+18  Sapere come sta il sistema che risponde.
+19  Ogni capacità ha le sue condizioni.
+20  Partiamo da una domanda che conta.
+
+RITMO E DENSITÀ
+20 slide 16:9. Durata parlata indicativa: 17 minuti e 25 secondi, più domande.
+Il conteggio del sorgente include titolo e testo principale visibile, esclude
+kicker e footer ricorrenti: minimo 27, massimo 42 parole per slide.
+Le cinque slide caso mantengono nel kicker l'etichetta scenario dimostrativo.
+Le note del relatore contengono approfondimenti, prerequisiti, limiti,
+passaggi verso la slide successiva e riferimenti alle pagine del PDF.
+
+COPERTURA
+Le note e i gruppi funzionali coprono tutte le 58 feature implementate del
+catalogo, incluse quelle opzionali. Non si tentano 47 righe di menu visibili:
+le funzionalità sono ricondotte ai gruppi utili al racconto orale.
+F-059 (PACT non operativo nel consumer) e F-060 (Zendesk non integrato) sono
+escluse dalle promesse del deck. I cinque casi sono esattamente UC-01...05
+della brochure: assistenza, ordini/API, email/triage, onboarding/memoria, MCP.
+
+CONTROLLO CLAIM
+- Nessun risparmio numerico, prezzo, risultato o testimonianza inventato.
+- Fonti e prove restano distinte dalla sintesi e dalle classificazioni AI.
+- Canonico e Auto-Wiki non implicano promozione autonoma a decisione umana.
+- Full-text, OCR/review, triage, tool composti e controlli opzionali mantengono
+  le proprie condizioni nelle frasi o nelle note del relatore.
+- Nessuna segregazione per progetto già attiva viene promessa nel default.
+- Freshdesk avanzato richiede versione compatibile; GESCAT rimane un esempio
+  di integrazione specifica, non un connettore universale.
+- MCP conserva consenso, compatibilità client e conferma umana dell'import.
+- PII e governance non diventano conformità legale automatica.
+- Desktop mantiene storia locale; mobile non è presentato come beta pronta.
+
+CONSEGNA AL PRODUTTORE
+contenuti-slide.json definisce i messaggi, i testi visibili, i layout, gli asset
+reali, le note e le fonti per ogni slide. brief.json specifica griglia, font,
+colori, editabilità e controlli di accettazione. I 13 asset referenziati esistono
+nei percorsi indicati. Le illustrazioni non devono essere interpretate come
+schermate o prove di esecuzione; i testi e i diagrammi restano elementi nativi
+PowerPoint. La produzione PPTX e il rendering restano da eseguire e validare.

@@ -1,0 +1,26 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+RAPPORTO QUALITÀ FITTIZIO / ALTRO CASO CF-02
+Documento: RQ-DEMO-021
+Articolo esatto: TESS-DEMO-021
+Caso: CF-02, distinto da CF-01 / TESS-DEMO-014.
+Data fittizia: 2026-10-20.
+
+SEGNALAZIONE INVENTATA
+È stata annotata una disomogeneità di aspetto sul campione dimostrativo.
+Il testo registra la richiesta di un riesame da parte del ruolo Qualità DEMO.
+Non sono presenti ricette o interventi operativi su macchine.
+
+STATO AMMINISTRATIVO NELLO SCENARIO
+La pratica è indicata come CHIUSA AMMINISTRATIVAMENTE.
+Questa chiusura riguarda la registrazione della pratica, non un esito di prova.
+
+ESITO TECNICO
+Esito dell'intervento: NON DOCUMENTATO.
+Non è presente un verbale successivo che dimostri la risoluzione della segnalazione.
+Non è quindi documentato che la disomogeneità sia stata risolta.
+
+LIMITI
+Non dedurre successo, conformità o applicabilità a un altro articolo dalla
+chiusura amministrativa. Questo rapporto non riguarda TESS-DEMO-014 e non
+modifica la revisione approvata nello scenario CF-01.
+Nessuna certificazione o validazione reale del materiale è contenuta nel file.

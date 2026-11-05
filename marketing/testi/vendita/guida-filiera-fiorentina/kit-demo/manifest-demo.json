@@ -1,0 +1,274 @@
+{
+  "id": "askmydocs-textile-demo-kit-2026-10-29",
+  "synthetic": true,
+  "not_for_production": true,
+  "disclaimer": "DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.",
+  "status": "LOCAL_FILES_ONLY_NOT_IMPORTED",
+  "output_observed": false,
+  "primary_case": {
+    "case_id": "CF-01",
+    "article_code": "TESS-DEMO-014",
+    "approved_revision_in_fiction": "B",
+    "superseded_revision_in_fiction": "A"
+  },
+  "separate_case": {
+    "case_id": "CF-02",
+    "article_code": "TESS-DEMO-021",
+    "quality_outcome": "NOT_DOCUMENTED"
+  },
+  "files": [
+    {
+      "path": "00-LEGGIMI-DEMO.txt",
+      "sha256": "dc2acdda4180406de56ddf7f455e17635f56dc5af4be1862c4bab9a617d78eea",
+      "kind": "presenter_instructions",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": false
+    },
+    {
+      "path": "01-scheda-TESS-DEMO-014-rev-A.txt",
+      "sha256": "203319ea29694cfb31bb61475d060f4379c3631466d4cf86fe099541feafe87c",
+      "kind": "synthetic_text_document",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": true
+    },
+    {
+      "path": "02-scheda-TESS-DEMO-014-rev-B.txt",
+      "sha256": "66438ccdb3ff3d2953a078b53de077767c198fbbcfdcb94be05a62fae2f498c9",
+      "kind": "synthetic_text_document",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": true
+    },
+    {
+      "path": "03-nota-approvazione-TESS-DEMO-014-B.txt",
+      "sha256": "c266c713678f8a553c1d997c9171a06f6f2174e23c6fdb6e6b52959ac437188d",
+      "kind": "synthetic_text_document",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": true
+    },
+    {
+      "path": "04-rapporto-documentale-TESS-DEMO-014-B.txt",
+      "sha256": "d115bfab47eedf1a337d41c31acf8fccdb7ca46e4ce48f547d871ae5a38aeabe",
+      "kind": "synthetic_text_document",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": true
+    },
+    {
+      "path": "05-rapporto-qualita-TESS-DEMO-021.txt",
+      "sha256": "173498acf9072561900db5841fbfcb77a109f832bebac189613fe9803967572d",
+      "kind": "synthetic_text_document",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": true
+    },
+    {
+      "path": "06-richiesta-cliente-sintetica.txt",
+      "sha256": "89ffd41f7d86476b42757e48f6572596a3597ad0b19c909380f6e6f806a561ee",
+      "kind": "synthetic_text_document",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": true
+    },
+    {
+      "path": "ordine-fixture.json",
+      "sha256": "4596778acb73016f5043fbcf960ed70fd744156227a1fe14660c88377bcea90f",
+      "kind": "offline_json_fixture",
+      "synthetic": true,
+      "not_for_production": true,
+      "suggested_for_authorized_demo_ingestion": false
+    }
+  ],
+  "questions": [
+    {
+      "id": "DEMO-Q01",
+      "question": "Per TESS-DEMO-014, quale revisione risulta approvata nello scenario e quale è superata?",
+      "expected_answer": "La revisione B è approvata nello scenario inventato e sostituisce A, che è superata. La nota APP-DEMO-014-B identifica espressamente SCHEDA-DEMO-014-B.",
+      "required_anchors": [
+        {
+          "file": "02-scheda-TESS-DEMO-014-rev-B.txt",
+          "exact_quote": "Stato nello scenario: APPROVATA.",
+          "line": 6
+        },
+        {
+          "file": "01-scheda-TESS-DEMO-014-rev-A.txt",
+          "exact_quote": "Stato nello scenario: SUPERATA.",
+          "line": 6
+        },
+        {
+          "file": "03-nota-approvazione-TESS-DEMO-014-B.txt",
+          "exact_quote": "SCHEDA-DEMO-014-B, articolo TESS-DEMO-014, revisione B.",
+          "line": 10
+        }
+      ],
+      "must_not_infer": [
+        "Una vera approvazione di produzione, una certificazione o una firma reale.",
+        "Che il solo nome del file più recente provi l’approvazione."
+      ]
+    },
+    {
+      "id": "DEMO-Q02",
+      "question": "Quali differenze sono dichiarate tra A e B di TESS-DEMO-014? Collega anche il rapporto riferito alla stessa revisione.",
+      "expected_answer": "A dichiara variante Sabbia DEMO e composizione fittizia 60% cotone / 40% poliestere; B dichiara Avorio DEMO e 55% cotone / 45% poliestere. Il rapporto RD-DEMO-014-B riguarda TESS-DEMO-014 revisione B ed è soltanto documentale.",
+      "required_anchors": [
+        {
+          "file": "01-scheda-TESS-DEMO-014-rev-A.txt",
+          "exact_quote": "- Variante descrittiva: Sabbia DEMO.",
+          "line": 11
+        },
+        {
+          "file": "01-scheda-TESS-DEMO-014-rev-A.txt",
+          "exact_quote": "- Composizione fittizia: 60% cotone, 40% poliestere.",
+          "line": 12
+        },
+        {
+          "file": "02-scheda-TESS-DEMO-014-rev-B.txt",
+          "exact_quote": "- Variante descrittiva: Avorio DEMO.",
+          "line": 11
+        },
+        {
+          "file": "02-scheda-TESS-DEMO-014-rev-B.txt",
+          "exact_quote": "- Composizione fittizia: 55% cotone, 45% poliestere.",
+          "line": 12
+        },
+        {
+          "file": "04-rapporto-documentale-TESS-DEMO-014-B.txt",
+          "exact_quote": "Articolo esatto: TESS-DEMO-014",
+          "line": 4
+        },
+        {
+          "file": "04-rapporto-documentale-TESS-DEMO-014-B.txt",
+          "exact_quote": "Revisione esatta: B",
+          "line": 5
+        }
+      ],
+      "must_not_infer": [
+        "Prestazioni reali, conformità o prove fisiche della composizione inventata.",
+        "Un cambiamento del codice articolo o un rapporto di un altro caso."
+      ]
+    },
+    {
+      "id": "DEMO-Q03",
+      "question": "Quali istruzioni di lavaggio posso comunicare per TESS-DEMO-014?",
+      "expected_answer": "Le istruzioni di lavaggio non sono documentate nei file del kit. Occorre ottenere una fonte appropriata prima di comunicarle; la composizione fittizia non consente di dedurle.",
+      "required_anchors": [
+        {
+          "file": "02-scheda-TESS-DEMO-014-rev-B.txt",
+          "exact_quote": "Istruzioni di lavaggio: NON DOCUMENTATE nei file del kit.",
+          "line": 26
+        },
+        {
+          "file": "06-richiesta-cliente-sintetica.txt",
+          "exact_quote": "La richiesta di un dato non dimostra che quel dato esista.",
+          "line": 16
+        },
+        {
+          "file": "06-richiesta-cliente-sintetica.txt",
+          "exact_quote": "Non usare la composizione fittizia per inventare una raccomandazione di cura.",
+          "line": 18
+        }
+      ],
+      "must_not_infer": [
+        "Temperature, cicli, detergenti, asciugatura o simboli di cura.",
+        "Una risposta ricavata da conoscenza generale del materiale anziché dalle fonti del kit."
+      ],
+      "intentionally_without_coverage": true
+    },
+    {
+      "id": "DEMO-Q04",
+      "question": "Nel rapporto RQ-DEMO-021 la pratica è chiusa: è documentato che il problema di TESS-DEMO-021 sia risolto?",
+      "expected_answer": "No esito tecnico risolutivo è documentato. Il rapporto indica chiusura amministrativa e assenza di un verbale successivo. Il caso è distinto da TESS-DEMO-014.",
+      "required_anchors": [
+        {
+          "file": "05-rapporto-qualita-TESS-DEMO-021.txt",
+          "exact_quote": "La pratica è indicata come CHIUSA AMMINISTRATIVAMENTE.",
+          "line": 14
+        },
+        {
+          "file": "05-rapporto-qualita-TESS-DEMO-021.txt",
+          "exact_quote": "Esito dell'intervento: NON DOCUMENTATO.",
+          "line": 18
+        },
+        {
+          "file": "05-rapporto-qualita-TESS-DEMO-021.txt",
+          "exact_quote": "Non è quindi documentato che la disomogeneità sia stata risolta.",
+          "line": 20
+        },
+        {
+          "file": "05-rapporto-qualita-TESS-DEMO-021.txt",
+          "exact_quote": "Caso: CF-02, distinto da CF-01 / TESS-DEMO-014.",
+          "line": 5
+        }
+      ],
+      "must_not_infer": [
+        "Che chiusa significhi risolto, superato il controllo qualità o conforme.",
+        "Che la mancanza di un esito provi il fallimento tecnico.",
+        "Che questo rapporto cambi lo stato della revisione B di TESS-DEMO-014."
+      ],
+      "intentionally_without_coverage": true
+    },
+    {
+      "id": "DEMO-Q05",
+      "question": "ordine-fixture.json prova lo stato corrente di ORD-DEMO-042 o un collegamento API al gestionale?",
+      "expected_answer": "No. È una fixture inventata OFFLINE, non una risposta API osservata; observed_at è null. Il record illustra soltanto un formato e non prova alcuna integrazione o stato corrente.",
+      "required_json_anchors": [
+        {
+          "file": "ordine-fixture.json",
+          "json_path": "$.data_mode",
+          "expected_value": "OFFLINE_FIXTURE"
+        },
+        {
+          "file": "ordine-fixture.json",
+          "json_path": "$.live_api",
+          "expected_value": false
+        },
+        {
+          "file": "ordine-fixture.json",
+          "json_path": "$.api_response_observed",
+          "expected_value": false
+        },
+        {
+          "file": "ordine-fixture.json",
+          "json_path": "$.observed_at",
+          "expected_value": null
+        }
+      ],
+      "must_not_infer": [
+        "Stock, prezzo, consegna o stato live.",
+        "Una chiamata eseguita dal prodotto o API autenticata."
+      ],
+      "execution_mode": "Controllo offline da parte del relatore; non prova di runtime applicativo."
+    }
+  ],
+  "prerequisites_for_future_authorized_demo": [
+    "Ottenere autorizzazione esplicita per l’ambiente demo e il caricamento; questo kit non avvia importazioni.",
+    "Usare un progetto demo dedicato con soli dati sintetici; verificare i reali permessi di utenti, progetti e fonti.",
+    "Caricare soltanto i documenti di testo 01-06 attraverso un percorso supportato, controllare conclusione dell’indicizzazione e citazioni apribili.",
+    "Mantenere il codice articolo e le revisioni esplicite; non trasformare l’etichetta APPROVATA della finzione in un atto reale o in una promozione canonica automatica.",
+    "Provider e servizi della chat devono essere pronti e autorizzati; eventuali consumi AI devono essere compresi nel perimetro della demo.",
+    "Non occorrono mailbox reali, campagne di triage, OCR o collegamenti a sistemi di produzione per questa sequenza.",
+    "Tenere ordine-fixture.json fuori dal caricamento documentale predefinito: è una fixture offline da mostrare come tale. Un eventuale futuro mock richiede lavoro e collaudo separati."
+  ],
+  "evaluation": {
+    "expected_not_observed": true,
+    "criteria": [
+      "Revisione e articolo corretti.",
+      "Citazioni riferite ai file e ai passaggi pertinenti.",
+      "Dati fittizi mantenuti distinguibili.",
+      "Informazione assente esplicitata, senza riempirla con conoscenza generale.",
+      "Chiusura amministrativa distinta da esito tecnico.",
+      "Fixture offline distinta da API live."
+    ],
+    "actual_demo_run": null,
+    "actual_results": null
+  },
+  "boundaries": [
+    "Nessun dato personale reale, ricetta o parametro macchina.",
+    "Nessuna dichiarazione certificativa e nessuna istruzione di lavaggio generata.",
+    "Nessun output AI o comportamento applicativo già osservato viene dichiarato.",
+    "Il JSON offline non è una prova di integrazione."
+  ]
+}

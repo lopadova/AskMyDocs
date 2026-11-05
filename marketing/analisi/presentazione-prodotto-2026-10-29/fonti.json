@@ -1,0 +1,2685 @@
+{
+  "sources": [
+    {
+      "id": "P-001",
+      "path": "app/Agent/AgentLoop.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/AgentLoop.php",
+      "title": "AgentLoop",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-001"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-002",
+      "path": "app/Agent/AgentAnswerSynthesizer.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/AgentAnswerSynthesizer.php",
+      "title": "AgentAnswerSynthesizer",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-001"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-003",
+      "path": "frontend/src/features/chat/ToolSourceModal.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/chat/ToolSourceModal.tsx",
+      "title": "ToolSourceModal",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-001"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-004",
+      "path": "app/Agent/Waves/AgentWaveCoordinator.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/Waves/AgentWaveCoordinator.php",
+      "title": "AgentWaveCoordinator",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-002"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-005",
+      "path": "app/Agent/ProgressiveAnswerPublisher.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/ProgressiveAnswerPublisher.php",
+      "title": "ProgressiveAnswerPublisher",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-002"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-006",
+      "path": "docs/handoff/agent-research-waves.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/handoff/agent-research-waves.md",
+      "title": "agent-research-waves",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-002"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-007",
+      "path": "docs-site/chat-sessions-workspace.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/chat-sessions-workspace.mdx",
+      "title": "chat-sessions-workspace",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-003"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-008",
+      "path": "app/Models/Conversation.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Models/Conversation.php",
+      "title": "Conversation",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-003"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-009",
+      "path": "frontend/src/features/chat/sessions/SessionsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/chat/sessions/SessionsView.tsx",
+      "title": "SessionsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-003"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-010",
+      "path": "frontend/src/features/kb-browse/KnowledgeBrowseView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/kb-browse/KnowledgeBrowseView.tsx",
+      "title": "KnowledgeBrowseView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-004"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-011",
+      "path": "app/Http/Controllers/Api/KbDocumentPreviewController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/KbDocumentPreviewController.php",
+      "title": "KbDocumentPreviewController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-004"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-012",
+      "path": "app/Services/Kb/Upload/KbUploadStagingService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Upload/KbUploadStagingService.php",
+      "title": "KbUploadStagingService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-005"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-013",
+      "path": "app/Services/Kb/DocumentIngestor.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/DocumentIngestor.php",
+      "title": "DocumentIngestor",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-005"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-014",
+      "path": "app/Services/Kb/Pipeline/PipelineRegistry.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Pipeline/PipelineRegistry.php",
+      "title": "PipelineRegistry",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-005"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-015",
+      "path": "app/Services/Kb/Ocr/OcrService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Ocr/OcrService.php",
+      "title": "OcrService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-006"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-016",
+      "path": "app/Services/Kb/Converters/OcrConverter.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Converters/OcrConverter.php",
+      "title": "OcrConverter",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-006"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-017",
+      "path": "docs-site/documents-and-ocr.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/documents-and-ocr.mdx",
+      "title": "documents-and-ocr",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-006"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-018",
+      "path": "config/kb.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/kb.php",
+      "title": "kb",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-006",
+        "F-007",
+        "F-015",
+        "F-035",
+        "F-048"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-019",
+      "path": "app/Services/Kb/Review/KbReviewService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Review/KbReviewService.php",
+      "title": "KbReviewService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-007"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-020",
+      "path": "docs-site/digitization-review.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/digitization-review.mdx",
+      "title": "digitization-review",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-007"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-021",
+      "path": "app/Http/Controllers/Api/Admin/KbDocumentController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbDocumentController.php",
+      "title": "KbDocumentController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-008"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-022",
+      "path": "frontend/src/features/admin/kb/KbView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/kb/KbView.tsx",
+      "title": "KbView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-008"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-023",
+      "path": "app/Services/Kb/Versioning/DocumentVersionService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Versioning/DocumentVersionService.php",
+      "title": "DocumentVersionService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-009"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-024",
+      "path": "app/Http/Controllers/Api/Admin/KbDocumentVersionController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbDocumentVersionController.php",
+      "title": "KbDocumentVersionController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-009"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-025",
+      "path": "frontend/src/features/admin/time-machine/TimeMachineView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/time-machine/TimeMachineView.tsx",
+      "title": "TimeMachineView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-009"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-026",
+      "path": "app/Http/Controllers/Api/KbPromotionController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/KbPromotionController.php",
+      "title": "KbPromotionController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-010"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-027",
+      "path": "app/Services/Kb/Canonical/CanonicalParser.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Canonical/CanonicalParser.php",
+      "title": "CanonicalParser",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-010"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-028",
+      "path": "docs-site/canonical-and-promotion.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/canonical-and-promotion.mdx",
+      "title": "canonical-and-promotion",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-010"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-029",
+      "path": "app/Services/Kb/Retrieval/GraphExpander.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Retrieval/GraphExpander.php",
+      "title": "GraphExpander",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-011"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-030",
+      "path": "app/Services/Kb/Retrieval/RejectedApproachInjector.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Retrieval/RejectedApproachInjector.php",
+      "title": "RejectedApproachInjector",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-011"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-031",
+      "path": "app/Services/Kb/Retrieval/RelatedGraphService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Retrieval/RelatedGraphService.php",
+      "title": "RelatedGraphService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-011"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-032",
+      "path": "app/Services/Kb/AutoWiki/AutoWikiCompiler.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/AutoWikiCompiler.php",
+      "title": "AutoWikiCompiler",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-012"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-033",
+      "path": "app/Services/Kb/AutoWiki/ConceptSynthesizer.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/ConceptSynthesizer.php",
+      "title": "ConceptSynthesizer",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-012"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-034",
+      "path": "app/Services/Kb/AutoWiki/WikiExplorerService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/WikiExplorerService.php",
+      "title": "WikiExplorerService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-012"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-035",
+      "path": "app/Services/Kb/AutoWiki/WikiMaintainer.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/WikiMaintainer.php",
+      "title": "WikiMaintainer",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-012"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-036",
+      "path": "app/Services/Kb/AutoWiki/WikiLinter.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/WikiLinter.php",
+      "title": "WikiLinter",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-013"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-037",
+      "path": "app/Services/Kb/AutoWiki/WikiIndexBuilder.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/AutoWiki/WikiIndexBuilder.php",
+      "title": "WikiIndexBuilder",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-013"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-038",
+      "path": "app/Http/Controllers/Api/Admin/KbWikiExplorerController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbWikiExplorerController.php",
+      "title": "KbWikiExplorerController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-013"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-039",
+      "path": "app/Http/Controllers/Api/Admin/KbCollectionController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbCollectionController.php",
+      "title": "KbCollectionController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-014"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-040",
+      "path": "app/Models/KbCollection.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Models/KbCollection.php",
+      "title": "KbCollection",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-014"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-041",
+      "path": "app/Models/KbCollectionMember.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Models/KbCollectionMember.php",
+      "title": "KbCollectionMember",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-014"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-042",
+      "path": "app/Services/Kb/KbSearchService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/KbSearchService.php",
+      "title": "KbSearchService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-015"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-043",
+      "path": "app/Http/Controllers/Api/Admin/SynonymController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/SynonymController.php",
+      "title": "SynonymController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-015"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-044",
+      "path": "app/Http/Controllers/Api/Admin/KbDocAnalysisController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbDocAnalysisController.php",
+      "title": "KbDocAnalysisController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-016"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-045",
+      "path": "app/Http/Controllers/Api/Admin/KbAnalysisSettingController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbAnalysisSettingController.php",
+      "title": "KbAnalysisSettingController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-016"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-046",
+      "path": "app/Services/Kb/Analysis/ChangeAnalysisGate.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Analysis/ChangeAnalysisGate.php",
+      "title": "ChangeAnalysisGate",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-016"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-047",
+      "path": "app/Http/Controllers/Api/Admin/KbContentGapController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbContentGapController.php",
+      "title": "KbContentGapController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-017"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-048",
+      "path": "frontend/src/features/admin/content-gaps/ContentGapsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/content-gaps/ContentGapsView.tsx",
+      "title": "ContentGapsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-017"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-049",
+      "path": "app/Http/Controllers/Api/Admin/KbRetrievalProfileController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbRetrievalProfileController.php",
+      "title": "KbRetrievalProfileController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-018"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-050",
+      "path": "app/Models/KbRetrievalProfile.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Models/KbRetrievalProfile.php",
+      "title": "KbRetrievalProfile",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-018"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-051",
+      "path": "app/Http/Controllers/Api/Admin/TabularReviewController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/TabularReviewController.php",
+      "title": "TabularReviewController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-019"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-052",
+      "path": "app/Services/TabularReview/TabularReviewExtractor.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/TabularReview/TabularReviewExtractor.php",
+      "title": "TabularReviewExtractor",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-019"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-053",
+      "path": "app/Services/TabularReview/GovernanceColumnResolver.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/TabularReview/GovernanceColumnResolver.php",
+      "title": "GovernanceColumnResolver",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-019"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-054",
+      "path": "app/Services/Workflow/WorkflowService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Workflow/WorkflowService.php",
+      "title": "WorkflowService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-020"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-055",
+      "path": "app/Http/Controllers/Api/Admin/WorkflowController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/WorkflowController.php",
+      "title": "WorkflowController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-020"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-056",
+      "path": "composer.lock",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/composer.lock",
+      "title": "composer",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-021",
+        "F-024",
+        "F-060"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-057",
+      "path": "app/Http/Controllers/Api/Admin/ConnectorAdminController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/ConnectorAdminController.php",
+      "title": "ConnectorAdminController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-021"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-058",
+      "path": "docs-site/connectors.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/connectors.mdx",
+      "title": "connectors",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-021"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-059",
+      "path": "docs/connectors/EMAIL-API.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/connectors/EMAIL-API.md",
+      "title": "EMAIL-API",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-022"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-060",
+      "path": "docs/operations/imap-lock-diagnostics.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/operations/imap-lock-diagnostics.md",
+      "title": "imap-lock-diagnostics",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-022"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-061",
+      "path": "app/Http/Controllers/Api/Admin/IngestionController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/IngestionController.php",
+      "title": "IngestionController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-022",
+        "F-054"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-062",
+      "path": "docs/email-triage.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/email-triage.md",
+      "title": "email-triage",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-023"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-063",
+      "path": "app/Services/EmailTriage/TriageEngine.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/EmailTriage/TriageEngine.php",
+      "title": "TriageEngine",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-023"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-064",
+      "path": "app/Services/EmailTriage/TriageCampaigns.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/EmailTriage/TriageCampaigns.php",
+      "title": "TriageCampaigns",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-023"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-065",
+      "path": "app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Connectors/Freshdesk/OpenRouterCaseStudyGenerator.php",
+      "title": "OpenRouterCaseStudyGenerator",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-024"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-066",
+      "path": "docs/case-studies/README.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/case-studies/README.md",
+      "title": "README",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-024"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-067",
+      "path": "app/Agent/Tools/ApiToolCollector.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/Tools/ApiToolCollector.php",
+      "title": "ApiToolCollector",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-025"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-068",
+      "path": "docs/runbooks/agentic-api-retrieval.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/runbooks/agentic-api-retrieval.md",
+      "title": "agentic-api-retrieval",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-025"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-069",
+      "path": "frontend/src/features/admin/api-connectors/ApiConnectorsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/api-connectors/ApiConnectorsView.tsx",
+      "title": "ApiConnectorsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-025"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-070",
+      "path": "app/ApiConnectors/ConnectorPackageService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/ApiConnectors/ConnectorPackageService.php",
+      "title": "ConnectorPackageService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-026"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-071",
+      "path": "app/ApiConnectors/ConnectorConfigTransferService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/ApiConnectors/ConnectorConfigTransferService.php",
+      "title": "ConnectorConfigTransferService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-026"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-072",
+      "path": "docs/connectors/api-packages/verification-2026-10-21.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/connectors/api-packages/verification-2026-10-21.md",
+      "title": "verification-2026-10-21",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-026"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-073",
+      "path": "app/ApiTools/ToolRuntime.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/ApiTools/ToolRuntime.php",
+      "title": "ToolRuntime",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-027"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-074",
+      "path": "app/ApiTools/ToolVerificationService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/ApiTools/ToolVerificationService.php",
+      "title": "ToolVerificationService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-027"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-075",
+      "path": "docs/handoff/composed-api-tools.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/handoff/composed-api-tools.md",
+      "title": "composed-api-tools",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-027"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-076",
+      "path": "config/api-tools.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/api-tools.php",
+      "title": "api-tools",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-027"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-077",
+      "path": "app/Mcp/Servers/KnowledgeBaseServer.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Mcp/Servers/KnowledgeBaseServer.php",
+      "title": "KnowledgeBaseServer",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-028"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-078",
+      "path": "app/Http/Controllers/Api/Admin/McpServersAdminController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/McpServersAdminController.php",
+      "title": "McpServersAdminController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-028"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-079",
+      "path": "docs-site/mcp-server.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/mcp-server.mdx",
+      "title": "mcp-server",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-028"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-080",
+      "path": "app/Services/Mcp/McpDocumentImportService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Mcp/McpDocumentImportService.php",
+      "title": "McpDocumentImportService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-029"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-081",
+      "path": "app/Services/Auth/McpOAuthService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Auth/McpOAuthService.php",
+      "title": "McpOAuthService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-029"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-082",
+      "path": "docs/security/mcp-project-oauth-boundaries.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/security/mcp-project-oauth-boundaries.md",
+      "title": "mcp-project-oauth-boundaries",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-029"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-083",
+      "path": "frontend/src/features/admin/mcp-tokens/McpTokensView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/mcp-tokens/McpTokensView.tsx",
+      "title": "McpTokensView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-030"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-084",
+      "path": "app/Http/Controllers/Api/Admin/McpTenantTokenController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/McpTenantTokenController.php",
+      "title": "McpTenantTokenController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-030"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-085",
+      "path": "docs-site/kitt-widget.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/kitt-widget.mdx",
+      "title": "kitt-widget",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-031"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-086",
+      "path": "app/Http/Controllers/Api/Admin/WidgetKeyAdminController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/WidgetKeyAdminController.php",
+      "title": "WidgetKeyAdminController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-031"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-087",
+      "path": "app/Services/Widget/WidgetIntroService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Widget/WidgetIntroService.php",
+      "title": "WidgetIntroService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-031"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-088",
+      "path": "app/Http/Controllers/Api/RealtimeAgentSessionController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/RealtimeAgentSessionController.php",
+      "title": "RealtimeAgentSessionController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-032"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-089",
+      "path": "frontend/src/features/chat/use-realtime-agent.ts",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/chat/use-realtime-agent.ts",
+      "title": "use-realtime-agent",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-032"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-090",
+      "path": "frontend/src/features/chat/realtime-research-narrator.ts",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/chat/realtime-research-narrator.ts",
+      "title": "realtime-research-narrator",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-032"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-091",
+      "path": "desktop/README.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/desktop/README.md",
+      "title": "README",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-033"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-092",
+      "path": "desktop/UI-VERIFICATION.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/desktop/UI-VERIFICATION.md",
+      "title": "UI-VERIFICATION",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-033"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-093",
+      "path": "desktop/src/screens/KnowledgeScreen.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/desktop/src/screens/KnowledgeScreen.tsx",
+      "title": "KnowledgeScreen",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-033"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-094",
+      "path": "app/Services/Admin/TeamRegistryService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/TeamRegistryService.php",
+      "title": "TeamRegistryService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-034"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-095",
+      "path": "docs-site/team-management.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/team-management.mdx",
+      "title": "team-management",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-034"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-096",
+      "path": "docs-site/team-switcher.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/team-switcher.mdx",
+      "title": "team-switcher",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-034"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-097",
+      "path": "app/Http/Controllers/Api/Admin/ProjectController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/ProjectController.php",
+      "title": "ProjectController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-035"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-098",
+      "path": "docs-site/projects-registry.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/projects-registry.mdx",
+      "title": "projects-registry",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-035"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-099",
+      "path": "frontend/src/features/admin/users/UsersView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/users/UsersView.tsx",
+      "title": "UsersView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-036"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-100",
+      "path": "frontend/src/features/admin/roles/RolesView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/roles/RolesView.tsx",
+      "title": "RolesView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-036"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-101",
+      "path": "app/Providers/AppServiceProvider.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Providers/AppServiceProvider.php",
+      "title": "AppServiceProvider",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-036",
+        "F-038"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-102",
+      "path": "app/Http/Controllers/Api/Admin/KbSourceAclController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/KbSourceAclController.php",
+      "title": "KbSourceAclController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-037"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-103",
+      "path": "app/Services/Kb/Access/SourceAclTriageService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Access/SourceAclTriageService.php",
+      "title": "SourceAclTriageService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-037"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-104",
+      "path": "docs-site/source-permissions.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/source-permissions.mdx",
+      "title": "source-permissions",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-037"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-105",
+      "path": "docs-site/invitations.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/invitations.mdx",
+      "title": "invitations",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-038"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-106",
+      "path": "frontend/src/features/admin/invitations/InvitationsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/invitations/InvitationsView.tsx",
+      "title": "InvitationsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-038"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-107",
+      "path": "docs-site/system-administration.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/system-administration.mdx",
+      "title": "system-administration",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-039"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-108",
+      "path": "app/Services/Admin/SystemAdminTenantService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/SystemAdminTenantService.php",
+      "title": "SystemAdminTenantService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-039"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-109",
+      "path": "app/Services/Admin/TenantProvisioningService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/TenantProvisioningService.php",
+      "title": "TenantProvisioningService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-039"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-110",
+      "path": "frontend/src/features/system-admin/appearance/AppearanceView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/system-admin/appearance/AppearanceView.tsx",
+      "title": "AppearanceView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-040"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-111",
+      "path": "public/editorial/themes/worlds-manifest.json",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/public/editorial/themes/worlds-manifest.json",
+      "title": "worlds-manifest",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-040"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-112",
+      "path": "docs/brand/README.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/brand/README.md",
+      "title": "README",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-040"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-113",
+      "path": "frontend/src/features/admin/dashboard/DashboardView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/dashboard/DashboardView.tsx",
+      "title": "DashboardView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-041"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-114",
+      "path": "docs-site/admin-panel.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/admin-panel.mdx",
+      "title": "admin-panel",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-041"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-115",
+      "path": "app/Services/Engagement/EngagementMetricsService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Engagement/EngagementMetricsService.php",
+      "title": "EngagementMetricsService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-042"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-116",
+      "path": "app/Services/Engagement/GamificationInsightsService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Engagement/GamificationInsightsService.php",
+      "title": "GamificationInsightsService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-042"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-117",
+      "path": "app/Http/Controllers/Api/Admin/EngagementController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/EngagementController.php",
+      "title": "EngagementController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-042"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-118",
+      "path": "frontend/src/features/admin/engagement/GamificationInsightsPanel.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/engagement/GamificationInsightsPanel.tsx",
+      "title": "GamificationInsightsPanel",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-043"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-119",
+      "path": "docs-site/dashboards.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/dashboards.mdx",
+      "title": "dashboards",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-043"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-120",
+      "path": "app/Services/Engagement/GamificationService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Engagement/GamificationService.php",
+      "title": "GamificationService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-043"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-121",
+      "path": "app/Http/Controllers/Api/DigestFeedController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/DigestFeedController.php",
+      "title": "DigestFeedController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-044"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-122",
+      "path": "app/Http/Controllers/Api/NotificationsController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/NotificationsController.php",
+      "title": "NotificationsController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-044"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-123",
+      "path": "app/Providers/NotificationServiceProvider.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Providers/NotificationServiceProvider.php",
+      "title": "NotificationServiceProvider",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-044"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-124",
+      "path": "docs-site/digests.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/digests.mdx",
+      "title": "digests",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-044"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-125",
+      "path": "frontend/src/features/admin/insights/InsightsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/insights/InsightsView.tsx",
+      "title": "InsightsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-045"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-126",
+      "path": "app/Http/Controllers/Api/Admin/AdminInsightsController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/AdminInsightsController.php",
+      "title": "AdminInsightsController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-045"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-127",
+      "path": "config/ai-finops.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/ai-finops.php",
+      "title": "ai-finops",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-046"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-128",
+      "path": "config/ai-finops-admin.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/ai-finops-admin.php",
+      "title": "ai-finops-admin",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-046"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-129",
+      "path": "app/Mcp/Tools/FinOpsSpendSummaryTool.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Mcp/Tools/FinOpsSpendSummaryTool.php",
+      "title": "FinOpsSpendSummaryTool",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-046"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-130",
+      "path": "docs-site/ai-finops.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/ai-finops.mdx",
+      "title": "ai-finops",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-046"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-131",
+      "path": "config/ai-guardrails.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/ai-guardrails.php",
+      "title": "ai-guardrails",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-047"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-132",
+      "path": "config/ai-guardrails-admin.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/ai-guardrails-admin.php",
+      "title": "ai-guardrails-admin",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-047"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-133",
+      "path": "app/Services/Kb/Provenance/ProvenanceToolFirewall.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Kb/Provenance/ProvenanceToolFirewall.php",
+      "title": "ProvenanceToolFirewall",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-047"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-134",
+      "path": "docs-site/tool-firewall.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/tool-firewall.mdx",
+      "title": "tool-firewall",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-047"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-135",
+      "path": "app/Providers/PiiBoundaryCoverageServiceProvider.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Providers/PiiBoundaryCoverageServiceProvider.php",
+      "title": "PiiBoundaryCoverageServiceProvider",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-048"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-136",
+      "path": "docs-site/pii-and-compliance.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/pii-and-compliance.mdx",
+      "title": "pii-and-compliance",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-048",
+        "F-049"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-137",
+      "path": "config/ai-act-compliance.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/ai-act-compliance.php",
+      "title": "ai-act-compliance",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-049"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-138",
+      "path": "frontend/src/features/admin/ai-act-compliance/AiActComplianceView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/ai-act-compliance/AiActComplianceView.tsx",
+      "title": "AiActComplianceView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-049"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-139",
+      "path": "frontend/src/features/admin/compliance/ComplianceReportsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/compliance/ComplianceReportsView.tsx",
+      "title": "ComplianceReportsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-050"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-140",
+      "path": "app/Models/ComplianceReport.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Models/ComplianceReport.php",
+      "title": "ComplianceReport",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-050"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-141",
+      "path": "config/evidence-risk-review.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/evidence-risk-review.php",
+      "title": "evidence-risk-review",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-051"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-142",
+      "path": "docs-site/evidence-risk-review.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/evidence-risk-review.mdx",
+      "title": "evidence-risk-review",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-051"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-143",
+      "path": "frontend/src/features/admin/evidence-risk-review/EvidenceRiskReviewView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/evidence-risk-review/EvidenceRiskReviewView.tsx",
+      "title": "EvidenceRiskReviewView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-051"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-144",
+      "path": "app/Providers/FlowServiceProvider.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Providers/FlowServiceProvider.php",
+      "title": "FlowServiceProvider",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-052"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-145",
+      "path": "frontend/src/features/admin/flows/FlowsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/flows/FlowsView.tsx",
+      "title": "FlowsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-052"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-146",
+      "path": "docs-site/flow-orchestration.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/flow-orchestration.mdx",
+      "title": "flow-orchestration",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-052"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-147",
+      "path": "config/eval-harness.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/eval-harness.php",
+      "title": "eval-harness",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-053"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-148",
+      "path": "app/Providers/EvalHarnessUiIntegrationServiceProvider.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Providers/EvalHarnessUiIntegrationServiceProvider.php",
+      "title": "EvalHarnessUiIntegrationServiceProvider",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-053"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-149",
+      "path": "frontend/src/features/admin/eval-harness/EvalHarnessView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/eval-harness/EvalHarnessView.tsx",
+      "title": "EvalHarnessView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-053"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-150",
+      "path": "app/Services/Admin/IngestionObservabilityService.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/IngestionObservabilityService.php",
+      "title": "IngestionObservabilityService",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-054"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-151",
+      "path": "frontend/src/features/admin/ingestion/IngestionView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/ingestion/IngestionView.tsx",
+      "title": "IngestionView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-054"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-152",
+      "path": "frontend/src/features/admin/logs/LogsView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/logs/LogsView.tsx",
+      "title": "LogsView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-055"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-153",
+      "path": "app/Agent/Debug/RunDiagnostics.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Agent/Debug/RunDiagnostics.php",
+      "title": "RunDiagnostics",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-055"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-154",
+      "path": "docs/handoff/agent-cloud-followup-queue.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/handoff/agent-cloud-followup-queue.md",
+      "title": "agent-cloud-followup-queue",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-055"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-155",
+      "path": "app/Http/Controllers/Api/Admin/MaintenanceCommandController.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Http/Controllers/Api/Admin/MaintenanceCommandController.php",
+      "title": "MaintenanceCommandController",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-056"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-156",
+      "path": "frontend/src/features/admin/maintenance/MaintenanceView.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/maintenance/MaintenanceView.tsx",
+      "title": "MaintenanceView",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-056"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-157",
+      "path": "docs/runbooks/runtime-configuration.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/runbooks/runtime-configuration.md",
+      "title": "runtime-configuration",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-057"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-158",
+      "path": "app/Services/Admin/AppSettingsResolver.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/AppSettingsResolver.php",
+      "title": "AppSettingsResolver",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-057"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-159",
+      "path": "app/Services/Admin/AiModelCatalog.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/AiModelCatalog.php",
+      "title": "AiModelCatalog",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-057"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-160",
+      "path": "app/Services/Admin/AppSettingsAssistant.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Services/Admin/AppSettingsAssistant.php",
+      "title": "AppSettingsAssistant",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-057"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-161",
+      "path": "composer.json",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/composer.json",
+      "title": "composer",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-058"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-162",
+      "path": "app/Ai/AiManager.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/app/Ai/AiManager.php",
+      "title": "AiManager",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-058"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-163",
+      "path": "config/filesystems.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/filesystems.php",
+      "title": "filesystems",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-058"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-164",
+      "path": "docs-site/self-hosting.mdx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs-site/self-hosting.mdx",
+      "title": "self-hosting",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-058"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-165",
+      "path": "docs/runbooks/pact-auth-sorgente.md",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/docs/runbooks/pact-auth-sorgente.md",
+      "title": "pact-auth-sorgente",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-059"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-166",
+      "path": "config/pact-auth.php",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/config/pact-auth.php",
+      "title": "pact-auth",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-059"
+      ],
+      "kind": "product",
+      "limits": [
+        "Lettura di codice/documentazione, non osservazione runtime o certificazione esterna."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    },
+    {
+      "id": "P-167",
+      "path": "frontend/src/features/admin/kb/ReviewTab.tsx",
+      "url": "https://github.com/lopadova/AskMyDocs/blob/8003ca793c0218ec13451b449fa02a874de762a0/frontend/src/features/admin/kb/ReviewTab.tsx",
+      "title": "ReviewTab",
+      "publisher": "AskMyDocs source repository",
+      "checked_at": "2026-10-29",
+      "supports": [
+        "F-007"
+      ],
+      "kind": "product",
+      "limits": [
+        "UI riletta nel sorgente; nessun test runtime eseguito."
+      ],
+      "revision": "8003ca793c0218ec13451b449fa02a874de762a0"
+    }
+  ]
+}

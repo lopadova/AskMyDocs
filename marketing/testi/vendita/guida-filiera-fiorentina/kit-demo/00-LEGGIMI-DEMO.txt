@@ -1,0 +1,39 @@
+DATI INTERAMENTE INVENTATI. SOLO DEMO. NON VALIDI PER PRODUZIONE.
+KIT SINTETICO / ASKMYDOCS / REVISIONI E APPROVAZIONI DOCUMENTALI
+
+Scopo: preparare una demo sulla ricerca della revisione approvata, il confronto
+fra fonti, l'approvazione documentata nello scenario e le informazioni mancanti.
+Questo kit non è stato importato nell'app e non documenta risposte già ottenute.
+Non contiene dati di clienti, persone o imprese reali.
+
+CASO PRINCIPALE CF-01
+Il codice articolo è TESS-DEMO-014. La revisione A è superata; la B è la revisione
+approvata soltanto nella storia inventata. Una nota collega esplicitamente
+l'approvazione alla B. La revisione A rimane nel corpus come fonte storica.
+Le composizioni sono esempi fittizi: non descrivono un materiale esistente.
+Nessun file contiene ricette, impostazioni macchina o istruzioni di lavaggio.
+
+ALTRO CASO CF-02
+TESS-DEMO-021 è un articolo distinto. Il suo rapporto qualità descrive una
+segnalazione e una chiusura amministrativa, ma non un esito tecnico documentato.
+Non trasferire il suo stato a TESS-DEMO-014 e non dedurre che il difetto sia risolto.
+
+PREPARAZIONE
+Solo se autorizzato, un operatore potrà caricare i sei file numerati 01-06 in
+un progetto demo dedicato. Prima verificherà utenti, accessi, indicizzazione e
+citazioni apribili. I file sono testo leggibile: questa prova non richiede OCR,
+connessione a una mailbox, campagna di triage o API del gestionale.
+Questo incarico ha creato soltanto file locali; non ha compiuto tali operazioni.
+
+JSON OFFLINE
+ordine-fixture.json è facoltativo, va mostrato come esempio offline e non prova
+un'integrazione. Non è una risposta API osservata né lo stato corrente di un
+ordine. Non caricarlo come documento testuale supponendo un supporto JSON che
+l'installazione non abbia verificato. Un eventuale futuro mock o endpoint di
+lettura richiede configurazione e un collaudo separati, esplicitamente autorizzati.
+
+VALUTAZIONE
+Il manifest elenca cinque domande e le attese da verificare. Il relatore deve
+aprire le fonti e confrontare la risposta reale della demo con quelle attese.
+Una risposta positiva non va presunta: registrare errori, omissioni e citazioni
+inesatte. Il kit non è una specifica tecnica o una certificazione del tessuto.

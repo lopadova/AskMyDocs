@@ -1,0 +1,267 @@
+{
+  "artifact_id": "askmydocs-filiera-fiorentina-fonti-2026-10-29",
+  "checked_at": "2026-10-29",
+  "scope": "Contesto pubblico per una guida commerciale: piana fiorentina, raccordo al tessile pratese e alla pelletteria fiorentina. Nessun censimento clienti o contatti.",
+  "method": "Ricerca web e lettura di fonti primarie. Le fonti storiche sono qualificate con data e perimetro; le ipotesi commerciali sono separate dai fatti territoriali.",
+  "territorial_findings": [
+    {
+      "id": "TF-01",
+      "fact": "Campi Bisenzio e Calenzano sono inclusi nel perimetro produttivo del distretto tessile-moda pratese descritto da Regione Toscana e Confindustria Toscana Nord. Il distretto comprende la provincia di Prato e comuni limitrofi anche di Firenze e Pistoia.",
+      "source_ids": [
+        "T-01",
+        "T-02"
+      ],
+      "sales_implication": "Non opporre rigidamente piana fiorentina e distretto pratese. Per Campi e Calenzano qualificare il processo concreto dell'impresa e le sue relazioni di filiera.",
+      "limit": "La pagina regionale è una descrizione istituzionale non datata nel risultato e richiama anche dati storici. La nota CTN è aggiornata al 30 aprile 2024: non usarla come misura economica del 2026."
+    },
+    {
+      "id": "TF-02",
+      "fact": "Confindustria Toscana Nord distingue nel sistema pratese imprese terziste orientate alla lavorazione e imprese finali orientate a prodotto, coordinamento della produzione e commercializzazione; descrive un'elevata specializzazione del lavoro fra imprese.",
+      "source_ids": [
+        "T-03",
+        "T-04"
+      ],
+      "sales_implication": "Cambiare interlocutore e demo fra lanificio/impresa finale e tintoria, rifinizione o altra lavorazione conto terzi. Il nome del comune non determina il bisogno.",
+      "limit": "Modello di filiera descritto dall'associazione, non una classificazione automatica di ogni impresa attiva."
+    },
+    {
+      "id": "TF-03",
+      "fact": "CNA Firenze presenta Scandicci e Lastra a Signa come area di pelletteria nell'indagine pubblicata il 14 febbraio 2023, con presenza di lavorazioni conto terzi e produzione di accessori di alta gamma.",
+      "source_ids": [
+        "T-05"
+      ],
+      "sales_implication": "Per la pelletteria aprire il confronto su passaggio fra campione, specifiche del committente, documenti di qualità e produzione, con attenzione ai confini fra committenti.",
+      "limit": "La ricerca CNA è del 2023: non trasportare numeri, percentuali o composizione del campione nel presente. Non equivale a una delimitazione amministrativa nuova del distretto."
+    },
+    {
+      "id": "TF-04",
+      "fact": "Il sito ufficiale di un'impresa di pelletteria dichiara una sede produttiva a Signa. È una prova puntuale di presenza produttiva locale, non della dimensione o della composizione di un distretto.",
+      "source_ids": [
+        "T-06"
+      ],
+      "sales_implication": "Signa può essere inclusa nel territorio da esplorare, verificando caso per caso attività e riferimenti. Evitare di chiamare indistintamente Signa e Lastra a Signa lo stesso comune o di estendere automaticamente a Signa i numeri CNA riferiti all'altra area.",
+      "limit": "Autodescrizione aziendale senza data di pubblicazione. Nessuna relazione commerciale con AskMyDocs è documentata o implicata."
+    },
+    {
+      "id": "TF-05",
+      "fact": "Il sito ufficiale Ingromarket elenca a Sesto Fiorentino/Osmannoro attività di commercio di abbigliamento, tessuti per arredamento e accessori moda/pelletteria.",
+      "source_ids": [
+        "T-07"
+      ],
+      "sales_implication": "A Sesto/Osmannoro affiancare al manifatturiero un approccio per grossisti, distributori e showroom: conoscenza prodotto, materiali, assistenza e riscontro ordini se esiste un'API.",
+      "limit": "Elenco del centro commerciale, non censimento ufficiale del comune e non prova dell'appartenenza di Sesto al perimetro CTN del distretto pratese. Non sono stati raccolti contatti individuali."
+    },
+    {
+      "id": "TF-06",
+      "fact": "Le descrizioni pubbliche di produzione a Scandicci documentano il rapporto fra materiali, modelleria, prototipia, scheda prodotto, realizzazione e controllo. MITA propone nel 2026 percorsi tecnici e commerciali legati a prodotto pelle, prototipazione e business development.",
+      "source_ids": [
+        "T-08",
+        "T-09",
+        "T-10",
+        "T-11"
+      ],
+      "sales_implication": "Usare il vocabolario di chi sviluppa, produce e racconta il prodotto. La domanda iniziale riguarda come trovano e verificano le informazioni, non una presunta sostituzione della manualità o dei sistemi tecnici.",
+      "limit": "Esempi primari e offerta formativa, non indagine sull'adozione AI né prova di una domanda per AskMyDocs."
+    }
+  ],
+  "sources": [
+    {
+      "id": "T-01",
+      "url": "https://www.regione.toscana.it/-/distretto-tessile-abbigliamento-di-prato",
+      "title": "Distretto tessile - abbigliamento di Prato",
+      "publisher": "Regione Toscana",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Descrizione istituzionale con riferimenti storici, inclusi dati EMAS fino al 2016",
+      "supports": [
+        "Perimetro del distretto distribuito su tre province",
+        "Presenza di Campi Bisenzio e Calenzano",
+        "Pluralità di processi e prodotti tessili"
+      ],
+      "limits": "Testo ottenuto dal risultato del motore; apertura diretta successiva in timeout. Per il perimetro si usa anche il PDF primario T-02 leggibile integralmente. Nessun indicatore economico assunto come corrente."
+    },
+    {
+      "id": "T-02",
+      "url": "https://www.confindustriatoscananord.it/media/UFFICIO_STUDI/2024_04_Distretto_PO_pillole.pdf",
+      "title": "Il distretto tessile-moda pratese in pillole",
+      "publisher": "Confindustria Toscana Nord, Centro Studi",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": "2024-04-30",
+      "period": "Dati disponibili al 30 aprile 2024; singole tavole riferite anche ad anni precedenti",
+      "supports": [
+        "Distinzione fra tessile e tessile-abbigliamento",
+        "Perimetro: provincia di Prato più Agliana, Montale, Quarrata, Campi Bisenzio, Calenzano"
+      ],
+      "limits": "I numeri della tavola non descrivono il 2026; la guida usa il perimetro e il glossario, non stime di mercato o quote."
+    },
+    {
+      "id": "T-03",
+      "url": "https://www.confindustriatoscananord.it/chisiamo/lassociazione/territorio/prato-centro-tessile-moda-e-modello-produttivo-distrettuale",
+      "title": "Prato centro tessile-moda e modello produttivo distrettuale",
+      "publisher": "Confindustria Toscana Nord",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Ricostruzione storica e modello organizzativo distrettuale",
+      "supports": [
+        "Divisione e specializzazione delle attività fra imprese",
+        "Distinzione fra impresa terzista e impresa finale"
+      ],
+      "limits": "Non è una fotografia quantitativa del 2026 né una prova di fabbisogno software per ciascuna impresa."
+    },
+    {
+      "id": "T-04",
+      "url": "https://www.confindustriatoscananord.it/chi-siamo/sistema-moda",
+      "title": "Sistema moda: tessili, calzature e abbigliamento",
+      "publisher": "Confindustria Toscana Nord",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Pagina associativa corrente osservata",
+      "supports": [
+        "Categorie produttori di tessuti e nobilitazione/lavorazioni tessili"
+      ],
+      "limits": "Non sono riprodotti nomi, cariche o recapiti; le categorie non dimostrano una distribuzione statistica."
+    },
+    {
+      "id": "T-05",
+      "url": "https://www.firenze.cna.it/territori/scandicci-lastra-a-signa/ecco-la-fotografia-del-distretto-della-pelletteria-di-scandicci/",
+      "title": "Ecco la fotografia del distretto della pelletteria di Scandicci",
+      "publisher": "CNA Firenze",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": "2023-02-14",
+      "period": "Indagine CNA pubblicata nel febbraio 2023",
+      "supports": [
+        "Area Scandicci e Lastra a Signa",
+        "Presenza di lavorazioni conto terzi e accessori di alta gamma"
+      ],
+      "limits": "Campione e dati storici; nessun numero viene presentato come attuale. L'articolo non estende automaticamente il perimetro a Signa o all'intera piana fiorentina."
+    },
+    {
+      "id": "T-06",
+      "url": "https://www.grouprochel.com/",
+      "title": "Group Rochel: produzione di pelletteria a Signa",
+      "publisher": "Group Rochel s.r.l.",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Autodescrizione pubblica osservata alla data di verifica",
+      "supports": [
+        "Presenza puntuale di produzione di borse e piccola pelletteria a Signa"
+      ],
+      "limits": "Esempio di attività, non censimento; numeri aziendali e contatti esclusi. L'impresa è una fonte di contesto, non un cliente AskMyDocs."
+    },
+    {
+      "id": "T-07",
+      "url": "https://www.ingromarket.it/le-aziende/",
+      "title": "Ingromarket: categorie di attività a Sesto Fiorentino/Osmannoro",
+      "publisher": "Ingromarket",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Elenco pubblico corrente osservato",
+      "supports": [
+        "Attività di commercio di abbigliamento, tessuti e accessori moda/pelletteria con indirizzi a Sesto Fiorentino/Osmannoro"
+      ],
+      "limits": "La guida usa soltanto categorie e localizzazione; nessun contatto è raccolto o riprodotto. Non è un censimento del territorio né una prova di domanda AI."
+    },
+    {
+      "id": "T-08",
+      "url": "https://www.dreampell.it/it/sviluppo-campionario/",
+      "title": "Sviluppo campionario",
+      "publisher": "Dreampell",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Descrizione pubblica dei servizi osservata",
+      "supports": [
+        "Relazione fra scelta dei materiali, modello, campione e scheda prodotto nella pelletteria",
+        "Presenza di un'attività a Scandicci"
+      ],
+      "limits": "Processo di una specifica impresa; nessuna relazione commerciale con AskMyDocs. La funzione CAD descritta dalla fonte non è una capacità attribuita al prodotto."
+    },
+    {
+      "id": "T-09",
+      "url": "https://www.pradagroup.com/en/perspectives/stories/sezione-know-how/visiting-scandicci.html",
+      "title": "A visit to Scandicci",
+      "publisher": "Prada Group",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Racconto di sito produttivo, senza data di pubblicazione esplicita nella lettura",
+      "supports": [
+        "Prototipazione, modello, produzione e controllo dei materiali come fasi distinte",
+        "Affiancamento di giovani tecnici e maestri di pelletteria"
+      ],
+      "limits": "Esempio di processo di una grande impresa, non modello universale né cliente AskMyDocs. La guida non riusa indicatori di stabilimento o prestazioni."
+    },
+    {
+      "id": "T-10",
+      "url": "https://mitacademy.it/percorsi-formativi/",
+      "title": "Percorsi formativi MITA: offerta 2026",
+      "publisher": "Fondazione ITS MITA Academy",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Corsi 2026 esplicitamente indicati nella pagina",
+      "supports": [
+        "Presenza di percorsi di prototipazione abbigliamento, prodotto pelle, business development e product development"
+      ],
+      "limits": "Offerta formativa, non misura delle assunzioni o del mercato software. Nessun tasso di occupazione o numero di partner viene usato."
+    },
+    {
+      "id": "T-11",
+      "url": "https://mitacademy.it/corso/leather-business-developer/",
+      "title": "Leather business developer",
+      "publisher": "Fondazione ITS MITA Academy",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Corso con inizio dichiarato novembre 2026 e sede Scandicci",
+      "supports": [
+        "Ruoli che collegano conoscenza del prodotto, commerciale, showroom e customer experience"
+      ],
+      "limits": "Linguaggio dell'offerta formativa; non prova il fabbisogno di un'impresa specifica. Iscrizioni, prezzi e recapiti non fanno parte della guida."
+    },
+    {
+      "id": "T-12",
+      "url": "https://www.centroservizitessili.com/",
+      "title": "Centro Servizi Tessili: analisi chimiche e prove fisiche a Prato",
+      "publisher": "Centro Servizi Tessili s.r.l.",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Descrizione dei servizi osservata alla data di verifica",
+      "supports": [
+        "Presenza locale di servizi di analisi per filati, tessuti e capi finiti"
+      ],
+      "limits": "Prova dell'esistenza di servizi di laboratorio, non consulenza normativa o accreditamento verificato. Nessun rapporto reale di prova viene riprodotto."
+    },
+    {
+      "id": "T-13",
+      "url": "https://www.regione.toscana.it/-/distretti-emas-della-toscana",
+      "title": "Distretti EMAS della Toscana",
+      "publisher": "Regione Toscana",
+      "kind": "market",
+      "checked_at": "2026-10-29",
+      "published_at": null,
+      "period": "Quadro istituzionale con richiamo alla delibera regionale 69/2000 e ai percorsi EMAS",
+      "supports": [
+        "Il distretto conciario di Santa Croce sull'Arno è nominato separatamente da quelli tessili di Prato ed Empoli"
+      ],
+      "limits": "Usato per evitare sovrapposizioni terminologiche; nessuna affermazione di certificazione EMAS o conformità viene attribuita ad AskMyDocs.",
+      "updated_at": "2022-01-27"
+    }
+  ],
+  "editorial_rules": [
+    "Usare piana fiorentina come perimetro commerciale descrittivo, non inventare un unico distretto formale tessile-pelletteria.",
+    "Non assimilare la manifattura di pelletteria fiorentina al distretto conciario di Santa Croce sull'Arno.",
+    "Le aziende reali citate sono soltanto fonti pubbliche di contesto: nessuna è indicata come cliente, partner o utilizzatore AskMyDocs.",
+    "Tutti i segnali di acquisto, interlocutori proposti e casi sono ipotesi da verificare durante discovery.",
+    "I casi dimostrativi non usano documenti tecnici, disegni, distinte, prezzi o dati cliente reali.",
+    "Non presentare dati del 2023-2024 come indicatori del mercato nel 2026."
+  ]
+}
