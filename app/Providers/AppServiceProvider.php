@@ -81,6 +81,13 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(\App\Authorization\IamPdp::class, \App\Authorization\SpatieIamPdp::class);
+        $this->app->singleton(\App\Actions\ActionRegistry::class, static fn ($app): \App\Actions\ActionRegistry => new \App\Actions\ActionRegistry(
+            (array) config('actions.tools', [
+                'search_knowledge_base' => ['effect' => 'read', 'executable' => true],
+            ]),
+        ));
+
         $this->app->singleton(\Padosoft\LaravelAiFinOps\Pricing\OpenRouterPricingSource::class,
             \App\FinOps\OpenRouterPricingSource::class);
         $this->app->bind(\Padosoft\LaravelAiFinOps\Console\CapturePricesCommand::class,
@@ -346,6 +353,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerInvitationsIntegration();
         $this->registerInvitationsGates();
         $this->registerPiiRedactorTenancy();
+        $this->registerWikiRoutineTarget();
         $this->registerRealtimeAgentGate();
     }
 
@@ -1111,6 +1119,18 @@ class AppServiceProvider extends ServiceProvider
             // v8.37/W3b round 5 — reconcile correction candidates stuck in
             // `applying` after a crashed approval (ADR 0031 §7, H-B).
             \App\Console\Commands\KbReviewReconcileStuckCorrectionsCommand::class,
+            // v8.38/W4a (ADR 0032) — portable wiki export PHP surface (R44):
+            // ACL+PII-scoped folder build over KbWikiExportService.
+            \App\Console\Commands\KbExportWikiCommand::class,
+            // v8.38/W4b (ADR 0032 §12) — async export bundle retention sweep.
+            \App\Console\Commands\PruneWikiExportsCommand::class,
+            // v8.38/W4c (ADR 0032 §10) — round-trip PHP surface (R44): the
+            // one surface with local filesystem access to a folder
+            // previously produced by kb:export-wiki.
+            \App\Console\Commands\KbImportWikiCommand::class,
+            // v8.39/W5 (ADR 0033 §8) — tri-surface PHP/CLI: read the
+            // Auto-Wiki maintenance routine's status, or trigger a run.
+            \App\Console\Commands\KbWikiRoutineCommand::class,
         ]);
     }
 
@@ -1283,6 +1303,16 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(6)->by($request->ip());
         });
 
+        RateLimiter::for('two-factor', function (Request $request) {
+            $user = $request->user();
+            $identity = $user !== null
+                ? 'u:'.$user->getAuthIdentifier()
+                : 'ip:'.$request->ip();
+            $max = max(1, (int) config('auth.two_factor.rate_limit_per_minute', 6));
+
+            return Limit::perMinute($max)->by($identity.'|ip:'.$request->ip());
+        });
+
         // Configuration drafts have their own budget: numeric throttles share
         // the authenticated user's bucket with unrelated admin endpoints.
         RateLimiter::for('email-triage-assistant', function (Request $request) {
@@ -1357,5 +1387,32 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute($ipMax)->by('ip:'.$request->ip()),
             ];
         });
+    }
+
+    /**
+     * v8.39/W5 (ADR 0033 §3) — registers
+     * {@see \App\Routines\WikiMaintenanceRoutineTarget} with
+     * `padosoft/laravel-routines`' `TargetRegistry`, gated on
+     * `config('kb.wiki_routine.enabled')` — default OFF, R43. The
+     * `interface_exists`/`class_exists` guard is forward-safety, not a
+     * genuine-absence check: both packages are `require` dependencies of
+     * this application (ADR 0033 §2), same as every other `padosoft/*`
+     * integration here.
+     */
+    private function registerWikiRoutineTarget(): void
+    {
+        if (! (bool) config('kb.wiki_routine.enabled', false)) {
+            return;
+        }
+
+        if (! interface_exists(\Padosoft\Routines\Contracts\Target\RoutineTarget::class)
+            || ! class_exists(\Padosoft\Routines\Targets\TargetRegistry::class)) {
+            \Illuminate\Support\Facades\Log::warning('KB_WIKI_ROUTINE_ENABLED is true but laravel-routines contracts/engine are unavailable — the wiki-maintenance routine target was not registered.');
+
+            return;
+        }
+
+        $this->app->make(\Padosoft\Routines\Targets\TargetRegistry::class)
+            ->register($this->app->make(\App\Routines\WikiMaintenanceRoutineTarget::class));
     }
 }

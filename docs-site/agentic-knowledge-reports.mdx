@@ -1,6 +1,6 @@
 ---
 title: "Agentic Knowledge Reports"
-description: "Promote the Tabular Review engine to first-class agentic columns: extract (RAG single-shot), graph (a deterministic, LLM-free governance metric from the canonical graph) and verify (a bounded anti-hallucination second pass). Ships a flagship Canonical KB Governance Audit preset, a ready-made template library, an evidence side-panel, and an MCP report reader — tri-surface, tenant-scoped, per-cell cited."
+description: "Promote the Tabular Review engine to first-class agentic columns: extract (RAG single-shot), graph (a deterministic, LLM-free governance metric from the canonical graph), verify (a bounded anti-hallucination second pass), and vision (a vision-LLM call over a document's OCR figures or its own image). Ships a flagship Canonical KB Governance Audit preset, a ready-made template library, an evidence side-panel, and an MCP report reader — tri-surface, tenant-scoped, per-cell cited."
 icon: "table-cells"
 ---
 
@@ -25,6 +25,12 @@ single report can mix RAG extraction, deterministic graph governance, and a veri
 anti-hallucination pass — and ship as a one-click, per-cell-cited, exportable audit
 matrix.
 
+v8.40 (W6, [ADR 0034](/architecture/decisions)) adds a fourth kind, **`vision`**,
+for a third class of question the original three couldn't answer: **questions the
+text doesn't have the answer to.** *"What colour is this garment? What material?
+What pattern?"* — nothing a fashion-ecommerce catalog's OCR'd text says answers
+this; the answer is only visible in the product photo.
+
 ## Theory & background
 
 The unit of the engine is still a **cell** = (document row × column). What changes is
@@ -43,10 +49,17 @@ that a column declares **how** its cell is produced, via the `agent` kind
   and can only **downgrade** the flag (green → yellow / else → red) when the value
   isn't supported. It is **never worse than extract**: a verify-call failure keeps the
   original cell (R14).
+- **`vision`** (v8.40, [ADR 0034](/architecture/decisions)) — one **vision-LLM call
+  per document**, unbatched (like `graph`, one resolver call per column per
+  document — never part of the `extract`/`verify` batched call, because the visual
+  modality means the call shape is fundamentally per-document, not per-report). No
+  `metric` key; the column's existing `prompt`/`format`/`enum_values` drive the
+  extraction instruction exactly as they do for `extract`. Like `graph`, `vision`
+  *wins over* the `json_path` shortcut when both are set.
 
 This is the agentic ladder — cheap-and-certain (`graph`) → grounded
-(`extract`) → grounded-and-checked (`verify`) — expressed as a per-column choice
-rather than a whole-report mode.
+(`extract`) → grounded-and-checked (`verify`) → *seeing* (`vision`) — expressed as a
+per-column choice rather than a whole-report mode.
 
 The governance metrics come from one place — `App\Services\TabularReview\GovernanceColumnResolver`
 — which reads the **real** taxonomies (`EvidenceTier`, `CanonicalStatus` enums) and
@@ -67,14 +80,16 @@ the canonical graph (`kb_edges`), tenant-scoped (R30). It exposes 10 metrics:
 ## Design
 
 The router lives in `App\Services\TabularReview\TabularReviewExtractor`, which now
-takes the `GovernanceColumnResolver` as a constructor dependency. Per column, it picks
-a path by `agent` (graph wins over `json_path`, both LLM-free; otherwise `extract`,
-optionally followed by `verify`):
+takes both `GovernanceColumnResolver` and `VisionColumnResolver` as constructor
+dependencies. Per column, it picks a path by `agent` (`graph` and `vision` both win
+over `json_path`, both LLM-free-or-per-document; otherwise `extract`, optionally
+followed by `verify`):
 
 ```mermaid
 flowchart TD
     COL["column (format + agent + metric)"] --> ROUTER{agent?}
     ROUTER -->|graph| RESOLVER["GovernanceColumnResolver::resolve(doc, metric)<br/>deterministic · LLM-free · tenant-scoped (R30)"]
+    ROUTER -->|vision| VISION["VisionColumnResolver::resolve(doc, prompt, format)<br/>OCR figures → standalone image doc → none<br/>SdkAnonymousAgent + Base64Image, KB_TABULAR_VISION_ENABLED (R43)"]
     ROUTER -->|extract / verify| RAG["RAG single-shot<br/>retrieve → LLM → flag + cite"]
     RAG --> VERIFY{agent == verify?}
     VERIFY -->|no| CELL["cell = value + flag + citations"]
@@ -83,12 +98,39 @@ flowchart TD
     CHECK -->|not supported| DOWN["downgrade flag only<br/>(green→yellow / else→red), R14"]
     DOWN --> CELL
     RESOLVER --> CELL
+    VISION --> CELL
     CELL --> UPSERT[("tabular_cells<br/>UNIQUE(tenant_id, review_id, document_id, column_index)")]
 ```
 
 The verify pass is **bounded and order-stable**: it `ksort`s the columns it checks and
 only ever downgrades, so a report's verified run is deterministic and can never invent
 a *better* flag than the extraction earned.
+
+### Vision columns — image-source precedence
+
+`VisionColumnResolver` never asks the admin to point at an image explicitly — it
+derives the image(s) from the document itself, in a fixed order (ADR 0034 §2):
+
+1. **OCR-extracted figures** (`OcrFigureStore`, the [OCR guide](/documents-and-ocr)) —
+   read via `OcrService::status($doc)`, the same tenant-scoped call the Digitization
+   Review UI already uses, for `figures_dir` + `figures` count. Only the `mistral` and
+   `docling` OCR drivers extract figures; `vision-llm` OCR extracts none (a named,
+   pre-existing limitation this feature doesn't change).
+2. **The document's own source file, when it is itself an image** — a standalone
+   product photo ingested as one KB document (the primary shape for most
+   fashion-ecommerce catalogs: one photo per SKU, not embedded in a PDF).
+3. **Neither** → a definite red cell, no provider call, no invented answer (R14).
+
+Both sources resolve through `StorageNamespace` — the same tenant/project
+storage-namespace resolution every KB read uses — so a vision column can never cross
+a tenant's storage boundary. Images are capped at
+`KB_TABULAR_VISION_MAX_IMAGES` (default 4) per cell — one catalog page with many
+figures never turns one cell's generation into an unbounded provider call
+(SEC-LLM-001 gate 7).
+
+The provider call itself reuses the `SdkAnonymousAgent` + `Base64Image` pattern the
+OCR guide's `vision-llm` driver already established — metered automatically by the
+`laravel/ai` SDK lifecycle hook, no double-counting, no new infrastructure.
 
 The flagship **"Canonical KB Governance Audit"** preset (#16 in the seeded library)
 is the headline application: rows = canonical docs, columns = 8 `graph` governance
@@ -109,7 +151,7 @@ agentic dimension is additive on the column config:
 
 | Table | Holds |
 | --- | --- |
-| `tabular_reviews` | One report: title, project, and the `columns_config` JSON array. Each column now carries the additive `agent` (`extract`/`graph`/`verify`) + `metric` (for `graph`) keys, alongside the existing `name` / `prompt` / `format` / `enum_values` / `json_path`. |
+| `tabular_reviews` | One report: title, project, and the `columns_config` JSON array. Each column now carries the additive `agent` (`extract`/`graph`/`verify`/`vision`) + `metric` (for `graph` only — `vision` needs no extra field) keys, alongside the existing `name` / `prompt` / `format` / `enum_values` / `json_path`. |
 | `tabular_cells` | One cell per (review, document, column): `content` (summary + flag + reasoning + citations), upserted on the composite `UNIQUE (tenant_id, review_id, document_id, column_index)` so concurrent generate/regenerate never duplicates a row. |
 
 The ready-made library reuses `workflows` (`type = tabular`, `is_system = true`) —
@@ -120,13 +162,16 @@ and must be one of the 10 `GovernanceColumnResolver::METRICS`).
 
 The capability is reachable on all three R44 surfaces over one shared core:
 
-- **PHP** — `TabularReviewExtractor` + `GovernanceColumnResolver` + the
-  `BuiltInWorkflowSeeder` library.
+- **PHP** — `TabularReviewExtractor` + `GovernanceColumnResolver` +
+  `VisionColumnResolver` + the `BuiltInWorkflowSeeder` library.
 - **HTTP** — the existing `api/admin/tabular-reviews/*` (list / show / create /
-  generate), now accepting agentic columns.
+  generate), now accepting agentic columns. `vision` needed zero new validation
+  beyond the enum case — `Rule::in(AgentKind::values())` already covered it.
 - **MCP** — `App\Mcp\Tools\KbRunReportTool` on the `enterprise-kb` server (read a
   saved report's matrix, tenant-scoped R30, OFF-path safe R43), bounded by
-  `COUNT(DISTINCT) + LIMIT` so an agent can't pull an unbounded matrix.
+  `COUNT(DISTINCT) + LIMIT` so an agent can't pull an unbounded matrix. A `vision`
+  column's `agent` field passes through the same projection unchanged — confirmed
+  by a dedicated test, not assumed.
 
 ## Security & flags (R32 / R30 / R43)
 
@@ -134,11 +179,24 @@ The capability is reachable on all three R44 surfaces over one shared core:
   `can:manageTabularReviews`, R32-matrix-locked. The agentic upgrade adds no new route
   group — it extends the existing controllers' request contracts.
 - **Tenant isolation (R30).** `GovernanceColumnResolver` scopes every `kb_edges` /
-  document query to the active tenant; `KbRunReportTool` filters the report + cells by
-  tenant. A client cannot read another tenant's report or widen scope through a filter.
+  document query to the active tenant; `VisionColumnResolver` resolves images
+  exclusively through `StorageNamespace::diskOf()`/`recordedPrefix()` — the same
+  namespace resolution every other KB storage read already goes through — so a
+  vision cell can never read another tenant's figures or source file;
+  `KbRunReportTool` filters the report + cells by tenant. A client cannot read
+  another tenant's report or widen scope through a filter.
 - **OFF-path safe (R43).** `KbRunReportTool` returns a well-formed empty payload when
   the report/cells are absent rather than throwing; `verify` failures and `graph`
   unknowns degrade to a grey/red cell (R14) instead of erroring the whole generate.
+  `KB_TABULAR_VISION_ENABLED` ships **default OFF**: a `vision` column with the flag
+  off produces a definite red `failed` cell naming the flag — every other column in
+  the same review still generates normally, never a 500, never a silent fallback to
+  `extract` semantics.
+- **Bounded provider work (SEC-LLM-001 gate 7).** `KB_TABULAR_VISION_MAX_IMAGES`
+  (default 4) caps how many images one cell's provider call can carry — a catalog
+  page with many figures cannot turn one cell into an unbounded multi-image call.
+  The raw provider exception is `Log::warning`'d, never persisted into the cell's
+  `reasoning` (SEC-ERRLEAK-equivalent).
 
 ## Decision rationale (ADR-style)
 
@@ -163,6 +221,18 @@ The capability is reachable on all three R44 surfaces over one shared core:
   R11/R15) ships now; the canvas grid + SSE progressive-paint are documented v8.19.x
   follow-ups because canvas cells can't carry per-cell testids/ARIA — testability and
   a11y come first.
+- **Image source is derived, not admin-configured.** A `vision` column doesn't ask
+  the admin to point at a specific image — it derives the image(s) from the document
+  itself (OCR figures, then a standalone image document). A per-column "pick an
+  image" UI would be a materially bigger surface (an image picker, upload flow,
+  multi-image gallery model) for a case the derivation already covers for both
+  realistic shapes of a fashion-ecommerce catalog.
+- **No manual cell-value override.** "Human review in the grid" is satisfied by the
+  *existing* review UX — flag colour, evidence panel, **regenerate cell** — the same
+  loop every other agent kind already has. Editing a persisted cell's value directly,
+  without re-running extraction, would be a materially larger capability spanning
+  every `AgentKind`, not a vision-specific one, and is explicitly deferred
+  (ADR 0034 §6).
 
 ## Worked example
 
@@ -200,6 +270,24 @@ picks "Canonical KB Governance Audit", and pre-fills the create dialog; clicking
 populated cell opens the **evidence side-panel** with the summary, flag, reasoning and
 the cited KB chunks.
 
+A `vision` column on a fashion catalog, `KB_TABULAR_VISION_ENABLED=true`:
+
+```text
+column: name="colour", agent="vision", format="enum",
+        enum_values=["black","navy","red","green","white","multicolour"],
+        prompt="Identify the garment's primary colour."
+
+document: a product-photo.jpg document, no OCR figures (it IS the image)
+→ VisionColumnResolver falls back to the document's own file (source #2)
+→ one SdkAnonymousAgent + Base64Image call, model answers:
+  {"summary": "navy", "flag": "green", "reasoning": "Solid navy blue jacket, no pattern."}
+→ cell: {summary: "navy", flag: "green", citations: [{chunk_id: "product-photo.jpg", quote: ""}]}
+```
+
+The evidence panel renders that citation labelled **"image"** rather than "chunk" —
+the one FE change this feature needed (`TabularReviewsList.tsx`), since the value
+being cited is a filename the model was shown, not a retrieved chunk.
+
 ## Gotchas & operations
 
 - **`graph` needs a `metric`.** A `graph` column without a governance metric is a
@@ -216,6 +304,16 @@ the cited KB chunks.
 - **Re-run after canonical changes.** `graph` cells reflect the canonical graph at
   generate time; promote/supersede/delete a doc and re-generate to refresh the
   governance matrix.
+- **`vision` needs OCR figures or a standalone image document.** A tenant using only
+  the `vision-llm` OCR driver (which extracts no figures by design) and no standalone
+  image ingestion gets an honest "no visual evidence" red cell for every vision
+  column — never a fabricated answer. Switch to `mistral` or `docling` OCR
+  (`KB_OCR_DRIVER`) to extract figures, or ingest product photos as standalone
+  documents.
+- **`vision` is one call per cell, not batched.** A 100-row × 3-vision-column review
+  generating from scratch issues up to 300 bounded provider calls, same shape as
+  `graph`'s one-call-per-cell, not `extract`'s one-call-per-document batching. Real
+  cost, bounded by `KB_TABULAR_VISION_MAX_IMAGES` and metered automatically.
 
 <CardGroup cols={2}>
   <Card title="Canonical & promotion" icon="diagram-project" href="/canonical-and-promotion">

@@ -46,13 +46,17 @@ final class McpHandshakeService
         // expects.
         try {
             $initialize = $client->initialize();
-        } catch (McpTransportException $exception) {
+        } catch (McpException $exception) {
             throw new \RuntimeException(
                 "MCP handshake failed for server {$server->id}: {$exception->getMessage()}",
                 previous: $exception,
             );
         }
 
+        // `McpException` is the pack's base class: a transport failure and a
+        // remote JSON-RPC error (`McpRemoteErrorException`, split out of the
+        // transport exception in pack 2.0) are both handled here.
+        //
         // `tools/list` is best-effort. The legacy sidecar treated it
         // as NON-FATAL — a server that initialized cleanly but
         // hadn't (yet) populated its tool catalog stayed `active`

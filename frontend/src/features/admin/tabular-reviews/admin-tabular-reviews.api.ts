@@ -78,14 +78,17 @@ export const FORMAT_TYPES: ReadonlyArray<FormatType> = [
 /**
  * v8.19/W4 — the agentic dimension of a column. `extract` (default) is the RAG
  * LLM path; `graph` is a deterministic governance metric (carries `metric`);
- * `verify` adds an anti-hallucination second pass. Optional so pre-v8.19
- * reviews round-trip unchanged — and so the editor PRESERVES these keys on save
- * (omitting them would silently convert a graph column back to an LLM extract).
+ * `verify` adds an anti-hallucination second pass. v8.40/W6 (ADR 0034) adds
+ * `vision` — one vision-LLM call per document over the document's
+ * OCR-extracted figures or its own image file, no `metric`. Optional so
+ * pre-v8.19 reviews round-trip unchanged — and so the editor PRESERVES these
+ * keys on save (omitting them would silently convert a graph/vision column
+ * back to an LLM extract).
  */
-export type AgentKind = 'extract' | 'graph' | 'verify';
+export type AgentKind = 'extract' | 'graph' | 'verify' | 'vision';
 
-/** The three agentic column kinds, in editor order. */
-export const AGENT_KINDS: ReadonlyArray<AgentKind> = ['extract', 'graph', 'verify'] as const;
+/** The four agentic column kinds, in editor order. */
+export const AGENT_KINDS: ReadonlyArray<AgentKind> = ['extract', 'graph', 'verify', 'vision'] as const;
 
 /**
  * Mirrors `App\Services\TabularReview\GovernanceColumnResolver::METRICS` — the

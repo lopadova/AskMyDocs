@@ -23,6 +23,14 @@ namespace App\Support\TabularReview;
  *     the cell, a bounded second pass re-checks the value against the cited
  *     chunks and DOWNGRADES the flag (green→yellow / yellow→red) when the value
  *     is not actually supported. Costs one extra LLM call per verified column.
+ *   - `vision` (v8.40/W6, ADR 0034) — the value is computed by ONE vision-LLM
+ *     call per document over the document's OCR-extracted figures, or, when
+ *     none exist, over the document's own file when it is itself an image.
+ *     Like `graph`, this is one resolver call per column per document
+ *     (unbatched) — never part of the `extract`/`verify` batched call, because
+ *     the visual modality means the call shape is fundamentally per-document.
+ *     No `metric` key (that stays `graph`-only); the column's existing
+ *     `prompt`/`format`/`enum_values` fields drive the extraction instruction.
  *
  * Single source of truth (R23): adding a kind requires a case here + a branch
  * in TabularReviewExtractor's column router; there is no overlapping predicate.
@@ -32,6 +40,7 @@ enum AgentKind: string
     case EXTRACT = 'extract';
     case GRAPH = 'graph';
     case VERIFY = 'verify';
+    case VISION = 'vision';
 
     /** The default when a column omits the `agent` key (backward-compatible). */
     public static function default(): self
@@ -63,5 +72,11 @@ enum AgentKind: string
     public function isVerify(): bool
     {
         return $this === self::VERIFY;
+    }
+
+    /** True when the value is computed by a vision-LLM call over the document's images. */
+    public function isVision(): bool
+    {
+        return $this === self::VISION;
     }
 }

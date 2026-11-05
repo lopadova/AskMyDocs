@@ -1,0 +1,29 @@
+{
+  "schema": "askmydocs-release-dependency-matrix/v1",
+  "measured_at": "2026-09-27",
+  "source": "composer.lock + composer show --direct --format=json",
+  "runtime": {"php": "8.5.11", "composer": "2.10.2", "node": "25.2.1", "npm": "11.6.2"},
+  "direct_dependencies": {
+    "laravel/framework": "v13.29.0",
+    "laravel/ai": "v0.11.0",
+    "laravel/mcp": "v0.9.4",
+    "laravel/sanctum": "v4.3.3",
+    "padosoft/askmydocs-mcp-pack": "v1.5.0",
+    "padosoft/eval-harness": "v1.6.0",
+    "padosoft/eval-harness-ui": "v1.3.0",
+    "padosoft/laravel-ai-act-compliance": "v1.9.0",
+    "padosoft/laravel-ai-finops": "v1.7.0",
+    "padosoft/laravel-ai-guardrails": "v1.6.0",
+    "padosoft/laravel-flow": "v2.5.0",
+    "padosoft/laravel-invitations": "v1.1.0",
+    "padosoft/laravel-pii-redactor": "v1.5.0",
+    "padosoft/laravel-routines": "v1.2.0",
+    "padosoft/laravel-routines-contracts": "v1.2.0",
+    "spatie/laravel-activitylog": "4.12.3",
+    "spatie/laravel-permission": "8.3.0",
+    "orchestra/testbench": "v11.2.0",
+    "phpunit/phpunit": "12.5.34"
+  },
+  "verified": {"composer_validate": true, "composer_check_platform_reqs": true, "route_bootstrap": true, "clean_install_ci": false, "sbom_and_license_inventory": false, "production_deploy": false},
+  "release_gate": "do_not_tag_until_all_required_ci_checks_and_install/deploy evidence are terminal and green"
+}

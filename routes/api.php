@@ -132,8 +132,10 @@ Route::middleware('web')->prefix('auth')->group(function () {
             Route::post('/enable', [TwoFactorController::class, 'enable'])
                 ->name('api.auth.2fa.enable');
             Route::post('/verify', [TwoFactorController::class, 'verify'])
+                ->middleware('throttle:two-factor')
                 ->name('api.auth.2fa.verify');
             Route::post('/disable', [TwoFactorController::class, 'disable'])
+                ->middleware('throttle:two-factor')
                 ->name('api.auth.2fa.disable');
         });
     });
@@ -588,6 +590,50 @@ Route::middleware([
                 ->name('api.admin.kb.uploads.cancel');
             Route::delete('/{uploadBatch}/items/{uploadItem}', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'destroyItem'])
                 ->name('api.admin.kb.uploads.items.destroy');
+        });
+
+        // v8.38/W4b — Portable wiki export, async surface (ADR 0032 §5/§11).
+        // Default OFF (kb.wiki_export.enabled, R43) — every action returns
+        // the same {disabled: true} shape while off. R32 — covered by the
+        // AdminAuthorizationMatrix (`/api/admin/kb/exports/1`) plus a
+        // dedicated write-boundary test for the POST (mirrors the connector
+        // `configure` pattern — POST routes aren't exercised by the
+        // matrix's GET-only sweep). {id} is a UUID, scoped to the active
+        // tenant (R30) inside the controller (no implicit route binding —
+        // the id must resolve through the same disabled/404 branching the
+        // R43 contract requires).
+        Route::prefix('kb/exports')->group(function () {
+            Route::post('/', [\App\Http\Controllers\Api\Admin\KbWikiExportController::class, 'store'])
+                ->name('api.admin.kb.exports.store');
+            Route::get('/{id}', [\App\Http\Controllers\Api\Admin\KbWikiExportController::class, 'show'])
+                ->name('api.admin.kb.exports.show');
+            Route::get('/{id}/download', [\App\Http\Controllers\Api\Admin\KbWikiExportController::class, 'download'])
+                ->name('api.admin.kb.exports.download');
+        });
+
+        // v8.38/W4c — Portable wiki import, single-document surface (ADR
+        // 0032 §10/§11). Same gate (kb.wiki_export.enabled — no separate
+        // flag), same role:admin|super-admin stack. POST-only: unlike
+        // exports there is no GET/status surface — the folder-walking
+        // capability only exists on the CLI (kb:import-wiki), which has
+        // local filesystem access an HTTP client does not. R32 — covered
+        // by a dedicated write-boundary test (mirrors kb/exports' own,
+        // POST routes aren't exercised by the matrix's GET-only sweep).
+        Route::post('kb/imports', [\App\Http\Controllers\Api\Admin\KbWikiImportController::class, 'store'])
+            ->name('api.admin.kb.imports.store');
+
+        // v8.39/W5 — Auto-Wiki maintenance as a delegated routine (ADR
+        // 0033 §8). Default OFF (kb.wiki_routine.enabled, R43) — GET
+        // always answers (either {disabled: true} or the tenant's
+        // routine status); POST requires the flag on. Tenant comes from
+        // TenantContext (session/header), never from request input
+        // (SEC-IDOR-001). R32 — covered by the AdminAuthorizationMatrix
+        // (GET) plus a dedicated write-boundary test for the POST.
+        Route::prefix('kb/wiki-routine')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\Admin\KbWikiRoutineController::class, 'index'])
+                ->name('api.admin.kb.wiki-routine.index');
+            Route::post('/run', [\App\Http\Controllers\Api\Admin\KbWikiRoutineController::class, 'run'])
+                ->name('api.admin.kb.wiki-routine.run');
         });
 
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,

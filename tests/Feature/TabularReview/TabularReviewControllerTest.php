@@ -280,6 +280,59 @@ final class TabularReviewControllerTest extends TestCase
         ])->assertStatus(201);
     }
 
+    public function test_store_accepts_agent_vision_column(): void
+    {
+        // v8.40/W6 (ADR 0034) — a `vision` column requires no new field beyond
+        // the existing name/prompt/format/enum_values (acceptance criterion 2).
+        $admin = $this->makeAdmin();
+
+        $resp = $this->actingAs($admin)->postJson('/api/admin/tabular-reviews', [
+            'project_key' => 'hr',
+            'title' => 'Vision review',
+            'columns_config' => [
+                ['name' => 'Colour', 'prompt' => 'What colour is the garment?', 'format' => 'text', 'agent' => 'vision'],
+            ],
+        ]);
+
+        $resp->assertStatus(201);
+        $this->assertSame('vision', $resp->json('data.columns_config.0.agent'));
+    }
+
+    public function test_store_rejects_unknown_agent_value(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->postJson('/api/admin/tabular-reviews', [
+            'project_key' => 'hr',
+            'title' => 'X',
+            'columns_config' => [
+                ['name' => 'Y', 'format' => 'text', 'agent' => 'made-up-agent'],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors(['columns_config.0.agent']);
+    }
+
+    public function test_update_accepts_agent_vision_column(): void
+    {
+        // v8.40/W6 (ADR 0034) — the UpdateTabularReviewRequest mirrors the
+        // store request's agent enum membership rule.
+        $admin = $this->makeAdmin();
+        $review = TabularReview::create([
+            'project_key' => 'hr',
+            'user_id' => $admin->id,
+            'title' => 'X',
+            'columns_config' => [['name' => 'Y', 'format' => 'text']],
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson("/api/admin/tabular-reviews/{$review->id}", [
+            'columns_config' => [
+                ['name' => 'Colour', 'prompt' => 'What colour?', 'format' => 'text', 'agent' => 'vision'],
+            ],
+        ]);
+
+        $resp->assertOk();
+        $this->assertSame('vision', $resp->json('data.columns_config.0.agent'));
+    }
+
     public function test_viewer_cannot_call_suggest_prompt(): void
     {
         $viewer = User::create([

@@ -815,25 +815,26 @@ Doc-site: the `auto-wiki` page gains a "Maintenance as a routine" section
 
 ---
 
-### W6 — Optional adjacency: `vision` column in Tabular Review (S) — v8.40
+### W6 — ADDENDUM: `vision` column in Tabular Review (S) — v8.40
 
-**Status: deferred — out of scope for this cycle unless promoted.** W6 is
-recorded here as an adjacency, not as an executable workstream: it has no
-tri-surface contract, OFF-state behaviour, tenant boundary, test plan,
-acceptance criteria or doc-site deliverable in this plan, and the checklist in
-§5 names only its flag (`KB_TABULAR_VISION_ENABLED`). It is **not** scheduled
-in §2 and the hand-off checkpoint row exists only to record the decision. If it
-is promoted, it gets a plan addendum with the same executable scope as W1–W5
-(the R43/R44/R45 lines below, plus a `tabular-vision.mdx` page) **before** a
-branch is opened.
+**Status: PROMOTED, 2026-09-26.** The condition this section itself set
+("do only if the grid gets image-heavy tenants") is now met: multiple
+fashion-ecommerce clients need exactly the case named below. Per this
+section's own precondition, the plan addendum is
+[ADR 0034](../adr/0034-v840-vision-column-in-tabular-review.md), which
+carries the full executable scope W1–W5 had (tri-surface contract,
+`KB_TABULAR_VISION_ENABLED` OFF-state behaviour, tenant boundary, test plan,
+acceptance criteria, `tabular-vision.mdx` doc-site deliverable) — this
+section is no longer the spec; ADR 0034 is.
 
 A fourth `agent` dimension next to `extract` / `graph` / `verify`
 (`GovernanceColumnResolver`, `TabularReviewExtractor`): a column whose cell is
 produced by a vision call over the document's figures (W1 extracted them) or
-over an image asset. The gescat case: product photos → colour / material /
-pattern with human review in the grid. **Not strategic**; do it only if the
-grid gets image-heavy tenants. Everything else about image labelling — Magic
-Select, COCO, YOLO — stays out (audit §3.5).
+over an image asset (a standalone product-photo document — ADR 0034 §2 covers
+both sources explicitly). The gescat case: product photos → colour / material
+/ pattern with human review in the grid. Everything else about image
+labelling — Magic Select, COCO, YOLO — stays out (audit §3.5); so does a
+manual cell-value override (ADR 0034 §6, deferred).
 
 ---
 
@@ -844,7 +845,7 @@ W1 OcrConverter ──┐
                   ├──► W3 Digitization Review ──► W5 routine (after W4)
 W2 Versions ──────┤
                   └──► W4 Export / Import
-(W6 vision column — optional, needs W1 only, enters this graph only through a plan addendum)
+(W6 vision column — needs W1's figure extraction only; ADDENDUM promoted 2026-09-26, ADR 0034)
 ```
 
 W1 and W2 are independent and start together (v8.36). W3 needs both. W4 needs
@@ -901,14 +902,13 @@ R36/R40.
 
 ## 5. Deliverables checklist (per workstream)
 
-- [ ] ADR (0029–0033) accepted before code
+- [ ] ADR (0029–0034) accepted before code
 - [ ] Core service + PHP Artisan + HTTP + MCP over one core (R44)
 - [ ] Both flag states tested (R43); tenant scope through relationships (R30/R33).
       The flags: **W1** `KB_OCR_ENABLED`, **W2** `KB_CONVERSION_ARTIFACTS_ENABLED`,
       **W3** `KB_DIGITIZATION_REVIEW_ENABLED`, **W4** `KB_WIKI_EXPORT_ENABLED`,
-      **W5** `KB_WIKI_ROUTINE_ENABLED` — all default-OFF (W6's
-      `KB_TABULAR_VISION_ENABLED` joins this list only if its addendum is
-      accepted)
+      **W5** `KB_WIKI_ROUTINE_ENABLED`, **W6** `KB_TABULAR_VISION_ENABLED` — all
+      default-OFF
 - [ ] Playwright real-data E2E for every screen (R12/R13); a11y checklist (R15)
 - [ ] Doc-site page per feature (R45): `documents-and-ocr.mdx` (W1+W2),
       `digitization-review.mdx` (W3), `wiki-export.mdx` (W4), and a

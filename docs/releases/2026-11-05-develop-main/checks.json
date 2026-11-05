@@ -1,0 +1,160 @@
+{
+  "date": "2026-11-05",
+  "application_tree": "9556db7859aa9314d86352f01e700e1a82774d6a",
+  "node": "24.15.0",
+  "php": "8.5.12",
+  "phpunit": "12.5.40",
+  "vitest": "5.0.5",
+  "composer": "2.10.3",
+  "checks": [
+    {
+      "id": "git-source-coverage",
+      "status": "passed",
+      "detail": "2343 application paths partitioned once into 15 commits; application tree matches the reconciled snapshot exactly."
+    },
+    {
+      "id": "git-main-preservation",
+      "status": "passed",
+      "detail": "134 main-only changed files remain byte-identical to origin/main. All differences outside main reconciliation are limited to one EOF cleanup."
+    },
+    {
+      "id": "git-backup",
+      "status": "passed",
+      "detail": "Named main/develop backups and complete verified bundle; original source refs preserved."
+    },
+    {
+      "id": "git-diff-check",
+      "status": "passed",
+      "command": "git diff --check 4048fe996f9ef88f30a196e7738df5a2b06eaf22 <consolidated-tip>"
+    },
+    {
+      "id": "composer-install",
+      "status": "passed",
+      "command": "composer install --prefer-dist --no-interaction --no-progress",
+      "detail": "Clean temporary installation; all three API connector patch scripts ran."
+    },
+    {
+      "id": "composer-validate",
+      "status": "passed_with_warning",
+      "command": "composer validate --no-check-publish",
+      "detail": "Exact beta.5 constraint warning inherited from develop; lockfile is consistent."
+    },
+    {
+      "id": "npm-install",
+      "status": "passed",
+      "command": "npm ci --ignore-scripts --offline --no-audit --no-fund",
+      "detail": "Clean installation from final reconciled lock, after Radix compatibility fix."
+    },
+    {
+      "id": "typescript",
+      "status": "passed",
+      "command": "npm run typecheck"
+    },
+    {
+      "id": "vitest-react",
+      "status": "passed",
+      "command": "npm test",
+      "test_files": 249,
+      "tests": 2009
+    },
+    {
+      "id": "vitest-legacy",
+      "status": "passed",
+      "command": "npm run test:legacy",
+      "test_files": 2,
+      "tests": 34
+    },
+    {
+      "id": "radix-nested-dialog",
+      "status": "passed",
+      "tests": 14,
+      "detail": "Existing select-field and dialog tests; no assertions changed."
+    },
+    {
+      "id": "frontend-build",
+      "status": "passed",
+      "command": "npm run build",
+      "detail": "Frontend plus widget; advisory about large chunks remains."
+    },
+    {
+      "id": "desktop-frontend-build",
+      "status": "passed",
+      "command": "npm ci --ignore-scripts --no-audit --no-fund && npm run build",
+      "detail": "desktop directory; TypeScript/Vite only, no native binary or store upload."
+    },
+    {
+      "id": "security-rule-contract",
+      "status": "passed",
+      "command": "npm run security:rules",
+      "detail": "19 identifiers, 88 control dispositions."
+    },
+    {
+      "id": "python-qa",
+      "status": "passed",
+      "command": "python3 -B -m unittest discover -s tests/Unit/Scripts -p 'test_*.py'",
+      "tests": 16
+    },
+    {
+      "id": "php-main-compatibility",
+      "status": "passed",
+      "tests": 131,
+      "assertions": 450,
+      "detail": "TwoFactor, ActionApproval, MCP principal/budgets/artifacts, Wiki export/import/routines, Vision and canonicalizer."
+    },
+    {
+      "id": "php-full-attempt",
+      "status": "failed",
+      "tests_executed": 4293,
+      "tests_planned": 6733,
+      "assertions": 23978,
+      "errors": 1,
+      "skipped": 3,
+      "deprecations": 2,
+      "detail": "Stopped on missing Freshdesk CaseStudyGeneratorContract: develop locks Freshdesk 1.0.0 but uses the contract available in local 1.1.0. Relevant host/test files and lock entry are unchanged from develop."
+    },
+    {
+      "id": "php-architecture",
+      "status": "failed",
+      "tests": 35,
+      "assertions": 371,
+      "failures": 1,
+      "detail": "GraphExecutorNotAdoptedTest detects OperationNode -> FlowNodeHandler. Identical failure reproduced on original develop."
+    },
+    {
+      "id": "e2e-static-guard",
+      "status": "failed",
+      "findings": 5,
+      "detail": "mcp-project-connection.spec.ts:66 and pact-auth-consent.spec.ts:14,15,17,31; output byte-identical on original develop and consolidated snapshot."
+    },
+    {
+      "id": "sqlite-forward-migrations",
+      "status": "passed",
+      "detail": "Dedicated temporary SQLite database; no application/development database touched."
+    },
+    {
+      "id": "sqlite-rollback",
+      "status": "failed",
+      "detail": "FinOps migration 2026_08_25_000002 drops invocation_id before its SQLite index. Package 1.7.0 and migration bytes are identical to original develop installation."
+    },
+    {
+      "id": "playwright-four-shards",
+      "status": "not_run",
+      "detail": "Real full browser matrix remains a release gate."
+    },
+    {
+      "id": "postgres-migration-roundtrip",
+      "status": "not_run",
+      "detail": "Production-engine migration forward/rollback remains a release gate; SQLite checks do not replace it."
+    },
+    {
+      "id": "native-desktop-mobile-builds",
+      "status": "not_run",
+      "detail": "No signed native builds, TestFlight or store actions in this Git history task."
+    },
+    {
+      "id": "remote-ci-copilot",
+      "status": "not_run",
+      "detail": "No push or PR opened; remote CI and Copilot review are subsequent steps."
+    }
+  ]
+}

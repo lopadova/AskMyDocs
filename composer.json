@@ -24,7 +24,7 @@
         "padosoft/askmydocs-connector-microsoft-mail": "^1.0",
         "padosoft/askmydocs-connector-notion": "^1.2",
         "padosoft/askmydocs-connector-onedrive": "^1.2",
-        "padosoft/askmydocs-mcp-pack": "^2.0",
+        "padosoft/askmydocs-mcp-pack": "^2.0.1",
         "padosoft/eval-harness": "^1.3.0",
         "padosoft/laravel-ai-act-compliance": "^1.5.0",
         "padosoft/laravel-ai-act-compliance-admin": "^1.5.0",
@@ -41,6 +41,8 @@
         "padosoft/laravel-invitations-admin": "^1.0",
         "padosoft/laravel-pii-redactor": "^1.4",
         "padosoft/laravel-pii-redactor-admin": "^1.0.2",
+        "padosoft/laravel-routines": "^1.2",
+        "padosoft/laravel-routines-contracts": "^1.2",
         "php": "^8.3",
         "phpoffice/phpword": "^1.3",
         "smalot/pdfparser": "^2.10",
@@ -73,18 +75,6 @@
         "psr-4": {
             "Tests\\": "tests/"
         }
-    },
-    "scripts": {
-        "post-install-cmd": [
-            "@php scripts/composer/patch-api-connector-headers.php",
-            "@php scripts/composer/patch-api-connector-structured-responses.php",
-            "@php scripts/composer/patch-api-connector-identity-fields.php"
-        ],
-        "post-update-cmd": [
-            "@php scripts/composer/patch-api-connector-headers.php",
-            "@php scripts/composer/patch-api-connector-structured-responses.php",
-            "@php scripts/composer/patch-api-connector-identity-fields.php"
-        ]
     },
     "config": {
         "optimize-autoloader": true,
@@ -174,5 +164,17 @@
             "url": "https://github.com/padosoft/askmydocs-connector-imap",
             "comment": "v8.17 — first credential-based connector (IMAP). Implements SupportsCredentialForm (connector-base ^1.2) for the native admin credential form. Resolved via Git tags v1.x."
         }
-    ]
+    ],
+    "scripts": {
+        "post-install-cmd": [
+            "@php scripts/composer/patch-api-connector-headers.php",
+            "@php scripts/composer/patch-api-connector-structured-responses.php",
+            "@php scripts/composer/patch-api-connector-identity-fields.php"
+        ],
+        "post-update-cmd": [
+            "@php scripts/composer/patch-api-connector-headers.php",
+            "@php scripts/composer/patch-api-connector-structured-responses.php",
+            "@php scripts/composer/patch-api-connector-identity-fields.php"
+        ]
+    }
 }

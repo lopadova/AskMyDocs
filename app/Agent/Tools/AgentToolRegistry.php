@@ -11,6 +11,7 @@ use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\McpServer;
 use App\Models\User;
+use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
@@ -19,6 +20,30 @@ use Padosoft\AskMyDocsConnectorFreshdesk\Tools\FreshdeskTools;
 
 final readonly class AgentToolRegistry
 {
+    /**
+     * Physical messages one MCP tool call costs. askmydocs-mcp-pack 2.0
+     * negotiates on every call and the host builds a fresh client per call, so
+     * the cheapest call is `server/discover` plus `tools/call`.
+     */
+    public const MCP_PHYSICAL_MINIMUM = 2;
+
+    public const MCP_PHYSICAL_LIKELY = 2;
+
+    /**
+     * The most one call can send, which the budget checks before any traffic:
+     * `server/discover`, one `initialize` for every legacy revision the pack
+     * tries (each unsupported one is rejected and the next is attempted),
+     * `notifications/initialized`, `tools/call`, and then one session recovery
+     * after a 404/410 (`initialize`, `notifications/initialized`, `tools/call`
+     * again). The revision count comes from the pack, so a pack that adds a
+     * revision raises the bound. What is charged afterwards is the count the
+     * pack really sent (`McpClient::physicalRequestCount()`).
+     */
+    public static function mcpPhysicalMaximum(): int
+    {
+        return 1 + count(McpClient::SUPPORTED_LEGACY_PROTOCOL_VERSIONS) + 1 + 1 + 3;
+    }
+
     public function __construct(
         private McpServerRegistry $mcpServers,
         private McpToolAuthorizer $mcpAuthorizer,
@@ -255,9 +280,9 @@ final readonly class AgentToolRegistry
                     inputSchema: is_array($schema) ? $schema : ['type' => 'object', 'properties' => []],
                     readOnly: (bool) ($annotations['readOnlyHint'] ?? $definition['readOnlyHint'] ?? false),
                     idempotent: (bool) ($annotations['idempotentHint'] ?? $definition['idempotentHint'] ?? false),
-                    physicalMinimum: 1,
-                    physicalLikely: 1,
-                    physicalMaximum: 1,
+                    physicalMinimum: self::MCP_PHYSICAL_MINIMUM,
+                    physicalLikely: self::MCP_PHYSICAL_LIKELY,
+                    physicalMaximum: self::mcpPhysicalMaximum(),
                     executorReference: $server->id,
                     metadata: [
                         'source_key' => 'mcp:legacy:'.$server->id,

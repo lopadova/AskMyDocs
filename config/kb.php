@@ -635,6 +635,27 @@ return [
         ],
     ],
 
+    // v8.40/W6 (ADR 0034) — the `agent: vision` Tabular Review column kind.
+    // Default OFF (R43): a review with a vision column and the flag off still
+    // generates every OTHER column normally and produces a clean, loud, red
+    // `failed` cell for the vision one — never a 500, never a silent skip,
+    // never a fallback to `extract` semantics.
+    'tabular_review' => [
+        'vision' => [
+            'enabled' => filter_var(env('KB_TABULAR_VISION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            // Bounded work (SEC-LLM-001 gate 7): a catalog page with many
+            // figures does not turn one cell's generation into an unbounded
+            // multi-image provider call.
+            'max_images_per_cell' => (int) env('KB_TABULAR_VISION_MAX_IMAGES', 4),
+            // Empty → falls back to KB_OCR_VISION_PROVIDER/_MODEL, then that
+            // provider's default text model (mirrors vision_llm OCR above).
+            'provider' => env('KB_TABULAR_VISION_PROVIDER') ?: null,
+            'model' => env('KB_TABULAR_VISION_MODEL') ?: null,
+            'max_tokens' => (int) env('KB_TABULAR_VISION_MAX_TOKENS', 1200),
+            'timeout' => (int) env('KB_TABULAR_VISION_TIMEOUT', 120),
+        ],
+    ],
+
     // v8.37/W3 — Digitization Review (ADR 0031). Default OFF (R43): the flag
     // gates the review HTTP surface + FE routes with a clean 404 and gates
     // KbReviewService's mutating entry points with a KbReviewDisabledException
@@ -660,6 +681,65 @@ return [
         // approving process crashed between claiming it and completing
         // phase 2/3), and is picked up by `kb:review-reconcile-stuck-corrections`.
         'stuck_applying_minutes' => (int) env('KB_REVIEW_STUCK_APPLYING_MINUTES', 15),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Portable wiki export/import (v8.38/W4, ADR 0032)
+    |--------------------------------------------------------------------------
+    |
+    | W4a shipped the synchronous core (KbWikiExportService + kb:export-wiki):
+    | flag, ACL-scoped folder build, PII-governed raw/, and a manifest with
+    | a per-file sha256 + chain hash — a corruption/consistency check, NOT
+    | tamper evidence (the hash is unkeyed and lives in the same folder it
+    | covers; see KbWikiExportService::buildManifest()'s doc comment).
+    |
+    | W4b adds the ASYNC path (ADR 0032 §5/§11/§12): `POST /api/admin/kb/exports`
+    | queues ExecuteKbWikiExportJob, which zips the export and stages it on
+    | `kb.staging.disk` (ADR 0029's disk, reused — NOT a new disk of its
+    | own) at `wiki-exports/{tenant}/{request-id}.zip`. `retention_hours`
+    | below drives BOTH the DB row's `expires_at` and the sweep
+    | `kb:prune-wiki-exports` performs (hourly, `onOneServer()`) — the sync
+    | CLI export from W4a is untouched by any of this and has no expiry.
+    |
+    | v8.38/W4c — `import_candidates_per_hour` bounds
+    | {@see \App\Services\Kb\Import\KbWikiImportService::importDocument()},
+    | the shared core behind `kb:import-wiki`, `POST /api/admin/kb/imports`,
+    | and `KbImportWikiTool`. `KB_WIKI_EXPORT_ENABLED` (the SAME flag as
+    | export — ADR 0032 §1) gates import too; there is deliberately no
+    | separate `KB_WIKI_IMPORT_ENABLED`.
+    */
+    'wiki_export' => [
+        'enabled' => filter_var(env('KB_WIKI_EXPORT_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'retention_hours' => (int) env('KB_WIKI_EXPORT_RETENTION_HOURS', 24),
+        'queue' => env('KB_WIKI_EXPORT_QUEUE', 'default'),
+        'import_candidates_per_hour' => (int) env('KB_WIKI_IMPORT_CANDIDATES_PER_HOUR', 30),
+        // v8.38/W4c — KbCreateExportTool's own per-principal budget (ADR
+        // 0032 §11 "rate-limited per principal"). The HTTP/CLI surfaces
+        // have no equivalent cap: a human operator starting exports is
+        // self-limiting in a way an agent calling this tool repeatedly is
+        // not.
+        'create_requests_per_hour' => (int) env('KB_WIKI_EXPORT_CREATE_REQUESTS_PER_HOUR', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Auto-Wiki maintenance as a delegated routine (v8.39/W5, ADR 0033)
+    |--------------------------------------------------------------------------
+    |
+    | Default OFF. Gates registration of `App\Routines\WikiMaintenanceRoutineTarget`
+    | into `padosoft/laravel-routines`' TargetRegistry AND the mutating
+    | tri-surface entry points (CLI `run`, `POST .../wiki-routine/run`). The
+    | read surfaces (`kb:wiki-routine status`, `GET .../wiki-routine`,
+    | `KbWikiRoutineStatusTool`) are always registered and answer
+    | {disabled: true} when this flag is off (ADR 0033 §1, R43).
+    |
+    | With the flag off, `kb:wiki-maintain`'s existing Tier-1 scheduler entry
+    | is byte-identical to before this ADR — see
+    | `App\Routines\WikiMaintenanceRoutineGate` + `bootstrap/app.php`.
+    */
+    'wiki_routine' => [
+        'enabled' => filter_var(env('KB_WIKI_ROUTINE_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     /*
