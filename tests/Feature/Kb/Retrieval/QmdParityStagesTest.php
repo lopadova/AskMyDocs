@@ -196,6 +196,19 @@ final class QmdParityStagesTest extends TestCase
         $this->assertSame(1, $this->providerCalls);
     }
 
+    public function test_the_model_written_scope_skips_expansion_and_is_restored(): void
+    {
+        config(['kb.query_expansion.enabled' => true, 'kb.query_expansion.skip_min_score' => 2.0]);
+        $this->fakeProvider(self::EXPANSION);
+
+        $inside = \App\Services\Kb\Retrieval\Expansion\ModelWrittenQueries::run(fn () => $this->searchWithContext(self::Q));
+        $this->assertSame(['status' => 'skipped', 'reason' => 'model_written_query'], $inside->meta['query_expansion']);
+        $this->assertSame(0, $this->providerCalls);
+        $this->assertFalse(\App\Services\Kb\Retrieval\Expansion\ModelWrittenQueries::active(), 'restored');
+
+        $this->assertSame('ok', $this->searchWithContext(self::Q)->meta['query_expansion']['status'], 'outside the scope expansion runs');
+    }
+
     public function test_without_expansion_keeps_every_other_filter(): void
     {
         $f = (new RetrievalFilters(projectKeys: ['a'], tagSlugs: ['t'], explain: true, intent: 'x'))->withoutExpansion();

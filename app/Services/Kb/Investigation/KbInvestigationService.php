@@ -10,6 +10,7 @@ use App\Services\Chat\QuestionUnderstanding;
 use App\Models\KbRetrievalProfile;
 use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Retrieval\Expansion\ModelWrittenQueries;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
@@ -113,9 +114,8 @@ class KbInvestigationService
             return new KbInvestigationResult(
                 'ready',
                 'recursive_retrieval_disabled',
-                $observe('kb.retrieval', fn () => $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey,
-                    isset($prepared->kbQueries[0]) ? $this->modelWrittenQueryFilters($filters, $projectKey) : $filters,
-                    ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics])), ['wait_reason' => 'knowledge_retrieval']),
+                $observe('kb.retrieval', fn () => $this->retrieveModelWritten(isset($prepared->kbQueries[0]), fn () => $this->retrieval->retrieve($prepared?->kbQueries[0] ?? $question, $projectKey, $filters,
+                    ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics]))), ['wait_reason' => 'knowledge_retrieval']),
                 intent: $prepared === null ? null : new KbInvestigationIntent($prepared->intent, $prepared->targetIdentifiers(), [], [], [], $prepared->kbQueries, $prepared),
             );
         }
@@ -190,8 +190,8 @@ class KbInvestigationService
                 // the assessor or the final answer prompt in this flow.
                 $search = $round === 0 && $anchoredToPreviousCitations && $understanding->requiresResearch === null
                     ? new SearchResult(collect(), collect(), collect())
-                    : $roundObserve('kb.semantic_lookup', fn () => $this->retrieval->retrieve($nextQuery, $projectKey, $this->modelWrittenQueryFilters($filters, $projectKey),
-                        false, ...($roundDiagnostics === null ? [] : ['diagnostics' => $roundDiagnostics])),
+                    : $roundObserve('kb.semantic_lookup', fn () => ModelWrittenQueries::run(fn () => $this->retrieval->retrieve($nextQuery, $projectKey, $filters,
+                        false, ...($roundDiagnostics === null ? [] : ['diagnostics' => $roundDiagnostics]))),
                         ['wait_reason' => 'knowledge_retrieval', 'error_handled' => true]);
                 $attempt['primary_candidates'] = $search->primary->count();
             } catch (Throwable) {
@@ -342,13 +342,13 @@ class KbInvestigationService
     }
 
     /**
-     * Every round query here was written by the understanding/assessment model,
-     * so the retrieval-quality stack must not spend another LLM call expanding
-     * it (ADR 0035 §D5 — integration with the recursive investigation).
+     * Round queries written by the understanding/assessment model must not be
+     * expanded again by the retrieval-quality stack (ADR 0035 addendum I1).
+     * The raw user question (no interpretation) keeps its expansion.
      */
-    private function modelWrittenQueryFilters(?RetrievalFilters $filters, ?string $projectKey): RetrievalFilters
+    private function retrieveModelWritten(bool $modelWritten, callable $retrieve): mixed
     {
-        return ($filters ?? RetrievalFilters::forLegacyProject($projectKey))->withoutExpansion();
+        return $modelWritten ? ModelWrittenQueries::run($retrieve) : $retrieve();
     }
 
     private function profileFor(?string $projectKey, ?RetrievalFilters $filters): ?KbRetrievalProfile

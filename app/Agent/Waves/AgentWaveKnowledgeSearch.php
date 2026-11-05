@@ -91,7 +91,7 @@ final class AgentWaveKnowledgeSearch
         $semanticSkipped = count($sources) >= $limit;
         if (! $semanticSkipped) {
             try {
-                $retrieve = fn () => app(ChatRetrievalService::class)->retrieve($query, $context->projectKey, $filters->withoutExpansion(), false, $diagnostics)->primary;
+                $retrieve = fn () => \App\Services\Kb\Retrieval\Expansion\ModelWrittenQueries::run(fn () => app(ChatRetrievalService::class)->retrieve($query, $context->projectKey, $filters, false, $diagnostics))->primary;
                 $semantic = $exact->isNotEmpty()
                     ? \App\Ai\EmbeddingTimeoutScope::within(max(1, (int) config('agent.waves.exact_embedding_timeout_seconds', 10)), $retrieve)
                     : $retrieve();

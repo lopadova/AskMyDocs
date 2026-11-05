@@ -725,7 +725,7 @@ class KbSearchService
         // The recursive investigation already asked a model to rewrite the
         // question into `kbQueries`; expanding them again would pay a second
         // LLM call for the same job (and drift further from the user's words).
-        if ($filters->skipExpansion) {
+        if ($filters->skipExpansion || \App\Services\Kb\Retrieval\Expansion\ModelWrittenQueries::active()) {
             $this->lastExpansionMeta = ['status' => 'skipped', 'reason' => 'model_written_query'];
 
             return [];
