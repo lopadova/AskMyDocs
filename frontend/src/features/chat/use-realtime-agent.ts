@@ -1,0 +1,567 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    ElevenLabsRealtimeDriver,
+    FakeRealtimeDriver,
+    LaravelControlTransport,
+    RealtimeAgentClient,
+    RealtimeControlError,
+    SurfaceRegistry,
+    type AgentState,
+    type ConnectionDescriptor,
+    type ConversationMessage,
+    type ConversationMessageInput,
+    type ControlTransport,
+    type JsonObject,
+    type ProviderUsageInput,
+    type RealtimeAgentClientEvent,
+    type RealtimeProviderDriver,
+    type SessionAudit,
+    type SurfaceSnapshot,
+    type ToolCallInput,
+    type ToolResult,
+    type UiCommand,
+    type UiCommandResult,
+    type UsageRecord,
+} from '@agents-full-duplex/realtime-agent-client';
+import { useTeamStore } from '../../lib/team-store';
+import type { AgentRunEvent } from '../../lib/agent-run-events';
+import {
+    chatApi,
+    countSelectedFilters,
+    type AgentTurnStarted,
+    type FilterState,
+    type LiveSourceSelection,
+} from './chat.api';
+import { createAskMyDocsOpenAILiveDriver } from './openai-live-driver';
+import { RealtimeResearchNarrator } from './realtime-research-narrator';
+
+export type RealtimeAgentStatus =
+    | 'idle'
+    | 'connecting'
+    | 'listening'
+    | 'processing'
+    | 'speaking'
+    | 'paused'
+    | 'error';
+
+export interface RealtimeAgentFeatureStatus {
+    available: boolean;
+    reason: string | null;
+}
+
+interface UseRealtimeAgentOptions {
+    conversationId: number | null;
+    filters: FilterState;
+    liveSources?: LiveSourceSelection;
+    availability?: RealtimeAgentFeatureStatus;
+    onRequireConversation: () => Promise<number | null>;
+    onAdoptRun: (run: AgentTurnStarted) => Promise<void>;
+    requestInFlight?: boolean;
+    agentEvents?: AgentRunEvent[];
+    locale?: string;
+}
+
+export interface UseRealtimeAgentResult {
+    status: RealtimeAgentStatus;
+    error: Error | null;
+    active: boolean;
+    start: () => Promise<void>;
+    stop: () => Promise<void>;
+}
+
+/** Owns one Agents Bridge browser session for the current chat conversation. */
+export function useRealtimeAgent(options: UseRealtimeAgentOptions): UseRealtimeAgentResult {
+    const {
+        conversationId,
+        filters,
+        liveSources,
+        availability,
+        onRequireConversation,
+        onAdoptRun,
+    } = options;
+    const [status, setStatus] = useState<RealtimeAgentStatus>('idle');
+    const [error, setError] = useState<Error | null>(null);
+    const [active, setActive] = useState(false);
+    const clientRef = useRef<RealtimeAgentClient | null>(null);
+    const providerRef = useRef<RealtimeProviderDriver | null>(null);
+    const controlRef = useRef<ObservingControlTransport | null>(null);
+    const pendingRef = useRef(false);
+    const narratorRef = useRef<RealtimeResearchNarrator | null>(null);
+    const eventsRef = useRef(options.agentEvents ?? []);
+    eventsRef.current = options.agentEvents ?? [];
+    const localeRef = useRef(options.locale ?? 'en');
+    localeRef.current = options.locale ?? 'en';
+    const adoptedRunsRef = useRef(new Set<string>());
+    const requestInFlightRef = useRef(options.requestInFlight ?? false);
+    requestInFlightRef.current = options.requestInFlight ?? false;
+    const previousRequestInFlightRef = useRef(options.requestInFlight ?? false);
+    const sessionConversationRef = useRef<number | null>(null);
+    const onAdoptRunRef = useRef(onAdoptRun);
+    onAdoptRunRef.current = onAdoptRun;
+
+    const release = useCallback(async (finish: boolean): Promise<void> => {
+        const client = clientRef.current;
+        clientRef.current = null;
+        providerRef.current = null;
+        controlRef.current?.dispose();
+        controlRef.current = null;
+        narratorRef.current?.stop();
+        narratorRef.current = null;
+        pendingRef.current = false;
+        adoptedRunsRef.current.clear();
+        sessionConversationRef.current = null;
+        setActive(false);
+        if (!client) return;
+
+        if (finish) await client.finish().catch(() => undefined);
+        await client.disconnect().catch(() => undefined);
+    }, []);
+
+    const stop = useCallback(async (): Promise<void> => {
+        await release(true);
+        setError(null);
+        setStatus('idle');
+    }, [release]);
+
+    const adoptRun = useCallback((run: AgentTurnStarted): void => {
+        narratorRef.current?.bindRun(run);
+        narratorRef.current?.observe(eventsRef.current);
+        if (adoptedRunsRef.current.has(run.run_id)) return;
+        adoptedRunsRef.current.add(run.run_id);
+        void providerRef.current?.sendContext({ askmydocs_request: {
+            run_id: run.run_id, status: run.status,
+        } }).catch(() => undefined);
+        // Observe immediately, but do not make the spoken answer wait for UI/SSE recovery.
+        void onAdoptRunRef.current(run).catch(() => {
+            // Allow the final receipt to recover a failed early UI subscription.
+            adoptedRunsRef.current.delete(run.run_id);
+        });
+    }, []);
+
+    const handleToolResult = useCallback(async (result: ToolResult): Promise<void> => {
+        const output = result.output;
+        const run = parseAgentRun(output?.run);
+        if (run) {
+            // The provider response must not be lost if the visual stream refresh
+            // fails; adoptExternalRun already surfaces that error in the chat.
+            adoptRun(run);
+            // Close the voice model's pending-request context as well as the
+            // browser gate. A partial answer also ends this request.
+            void providerRef.current?.sendContext({ askmydocs_request: {
+                run_id: run.run_id, status: run.status,
+            } }).catch(() => undefined);
+        }
+
+        if (isHandoff(output?.handoff)) {
+            setStatus('paused');
+            await clientRef.current?.switchToText().catch(() => undefined);
+        }
+    }, [adoptRun]);
+
+    const start = useCallback(async (): Promise<void> => {
+        if (availability?.available !== true) {
+            throw new Error(unavailableMessage(availability?.reason));
+        }
+        if (status !== 'idle' && status !== 'error') return;
+
+        setError(null);
+        setStatus('connecting');
+        try {
+            const targetId = conversationId ?? await onRequireConversation();
+            if (targetId === null) throw new Error('Could not start a conversation for Live assistant.');
+
+            await release(true);
+            const descriptor = await chatApi.startRealtimeAgent(targetId, filters, liveSources);
+            const request = tenantAwareFetch;
+            const control = new ObservingControlTransport(
+                new LaravelControlTransport(descriptor.session_id, '/realtime-agent', request),
+                handleToolResult,
+                {
+                    receiptUrl: `/conversations/${targetId}/realtime-agent/${encodeURIComponent(descriptor.session_id)}/run`,
+                    request,
+                    onRun: adoptRun,
+                    onPending: (pending) => {
+                        pendingRef.current = pending;
+                        if (pending) {
+                            setError(null);
+                            narratorRef.current?.begin(localeRef.current);
+                        } else narratorRef.current?.stop();
+                        setStatus((current) => pending ? 'processing' : current === 'processing' ? 'listening' : current);
+                    },
+                    isBusy: () => requestInFlightRef.current,
+                    busyMessage: descriptor.busy_message ?? 'Un attimo, una cosa alla volta. Sto ancora completando la richiesta precedente.',
+                    recoveryTimeoutMs: Math.max(30, descriptor.tool_timeout_seconds ?? 120) * 1_000 + 30_000,
+                },
+            );
+            controlRef.current = control;
+            const surfaces = new SurfaceRegistry();
+            surfaces.register({
+                id: 'chat.conversation',
+                snapshot: () => ({
+                    title: 'AskMyDocs conversation',
+                    components: {
+                        context: {
+                            type: 'chat-context',
+                            label: 'Current chat scope',
+                            state: {
+                                conversation_bound: true,
+                                filters_selected: countSelectedFilters(filters),
+                                live_api_sources: liveSources?.api.length ?? 0,
+                                live_mcp_sources: liveSources?.mcp.length ?? 0,
+                            },
+                            actions: [],
+                        },
+                    },
+                }),
+                actions: {},
+            });
+            let provider;
+            try {
+                provider = descriptor.provider === 'fake'
+                    ? new FakeRealtimeDriver()
+                    : descriptor.provider === 'openai'
+                        ? await createAskMyDocsOpenAILiveDriver(request)
+                        : descriptor.provider === 'elevenlabs'
+                            ? new ElevenLabsRealtimeDriver(request)
+                            : null;
+            } catch (reason) {
+                // Audio is prepared before the client exists, so finish the
+                // server session explicitly when permission/device setup fails.
+                await control.finish(Number(descriptor.state.session.revision)).catch(() => undefined);
+                throw reason;
+            }
+            if (provider === null) throw new Error(`Unsupported realtime provider: ${descriptor.provider}`);
+            providerRef.current = provider;
+
+            if ('sendProgress' in provider) {
+                narratorRef.current = new RealtimeResearchNarrator((content) => provider.sendProgress(content));
+            } else if (descriptor.provider === 'fake') {
+                // The Fake driver captures notices for lifecycle tests without audio or network calls.
+                narratorRef.current = new RealtimeResearchNarrator((content) => provider.sendContext({ kind: 'research_progress', content }));
+            }
+
+            const client = new RealtimeAgentClient(surfaces, provider, control, {
+                confirmation: () => false,
+            });
+            clientRef.current = client;
+            sessionConversationRef.current = targetId;
+            setActive(true);
+            client.on((event) => {
+                if (clientRef.current !== client) return; // Ignore callbacks from an ended/previous session.
+                if (event.type === 'agent.transcript.delta' || event.type === 'agent.transcript.final') {
+                    narratorRef.current?.pauseForSpeech();
+                }
+                if (event.type === 'agent.disconnected' || event.type === 'agent.error'
+                    || (event.type === 'agent.mode.changed' && event.mode === 'text')) {
+                    narratorRef.current?.stop();
+                }
+                handleClientEvent(event, (next) => setStatus(pendingRef.current && next === 'listening' ? 'processing' : next), setError, setActive);
+            });
+            await client.connect(descriptor as unknown as ConnectionDescriptor);
+        } catch (reason) {
+            // The server session already exists by the time a browser/provider
+            // connection can fail (for example when microphone access is
+            // denied). Finish it immediately so retries do not accumulate
+            // active sessions until the TTL expires.
+            await release(true);
+            const next = realtimeAgentConnectionError(reason);
+            setError(next);
+            setStatus('error');
+            throw next;
+        }
+    }, [adoptRun, availability, conversationId, filters, handleToolResult, liveSources, onRequireConversation, release, status]);
+
+    useEffect(() => {
+        const sessionConversation = sessionConversationRef.current;
+        if (sessionConversation !== null && sessionConversation !== conversationId) {
+            void stop();
+        }
+    }, [conversationId, stop]);
+
+    useEffect(() => () => {
+        void release(true);
+    }, [release]);
+
+    useEffect(() => {
+        narratorRef.current?.observe(options.agentEvents ?? []);
+    }, [options.agentEvents]);
+
+    useEffect(() => {
+        // UI cancellation aborts the SSE subscription before a terminal event
+        // can arrive. Stop notices at that transition too, even if HTTP drains later.
+        if (previousRequestInFlightRef.current && !options.requestInFlight) narratorRef.current?.stop();
+        previousRequestInFlightRef.current = options.requestInFlight ?? false;
+    }, [options.requestInFlight]);
+
+    return {
+        status,
+        error,
+        active,
+        start,
+        stop,
+    };
+}
+
+/** Translate browser media failures into instructions a user can act on. */
+export function realtimeAgentConnectionError(reason: unknown): Error {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    const name = reason !== null && typeof reason === 'object' && 'name' in reason
+        ? String(reason.name)
+        : error.name;
+
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return new Error(
+            'Microphone access was denied. Allow microphone access for this site in your browser settings, then try again.',
+        );
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        return new Error('No microphone was found. Connect or enable a microphone, then try again.');
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+        return new Error('The microphone is unavailable or already in use by another application.');
+    }
+
+    return error;
+}
+
+interface LiveTurnObservation {
+    receiptUrl: string;
+    request: typeof fetch;
+    onRun: (run: AgentTurnStarted) => void;
+    onPending: (pending: boolean) => void;
+    isBusy: () => boolean;
+    busyMessage: string;
+    recoveryTimeoutMs: number;
+}
+
+class ObservingControlTransport implements ControlTransport {
+    private pending = false;
+    private disposed = false;
+    private observation: AbortController | null = null;
+    private recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    constructor(
+        private readonly inner: ControlTransport,
+        private readonly onToolResult: (result: ToolResult) => Promise<void>,
+        private readonly live?: LiveTurnObservation,
+    ) {}
+
+    async executeTool(input: ToolCallInput): Promise<ToolResult> {
+        if (this.disposed) throw new DOMException('The voice session ended.', 'AbortError');
+        const chatTurn = input.name === 'askmydocs.chat_turn';
+        if (chatTurn && (this.pending || this.live?.isBusy())) {
+            // Return a spoken control notice, never queue or replace the pending business request.
+            return { call_id: input.id, status: 'completed', state_revision: input.base_revision,
+                output: { busy: true, retry: false, response: { answer: this.live?.busyMessage ?? 'One moment, one thing at a time.' } } };
+        }
+        if (chatTurn) {
+            this.pending = true;
+            this.live?.onPending(true);
+            this.observation = new AbortController();
+            const observation = this.observation;
+            this.recoveryTimer = setTimeout(() => observation.abort(new Error(
+                'The voice result could not be recovered in time. Check the answer in the chat.',
+            )), this.live?.recoveryTimeoutMs ?? 150_000);
+            void this.observeRun(input.id, this.observation.signal);
+        }
+        try {
+            let result: ToolResult;
+            try {
+                result = await this.inner.executeTool(input);
+            } catch (reason) {
+                if (!chatTurn || !this.live || !this.observation || !isRecoverableControlError(reason)) throw reason;
+                // Never repeat the POST: it may still be running behind the
+                // gateway. Read the exact saved tool result for this call.
+                result = await this.recoverToolResult(input.id, this.observation.signal);
+            }
+            if (this.disposed) throw new DOMException('The voice session ended.', 'AbortError');
+            await this.onToolResult(result);
+            return result;
+        } finally {
+            if (chatTurn) {
+                clearTimeout(this.recoveryTimer);
+                this.recoveryTimer = undefined;
+                this.observation?.abort();
+                this.observation = null;
+                this.pending = false;
+                if (!this.disposed) this.live?.onPending(false);
+            }
+        }
+    }
+
+    dispose(): void {
+        this.disposed = true;
+        clearTimeout(this.recoveryTimer);
+        this.recoveryTimer = undefined;
+        this.observation?.abort();
+        this.observation = null;
+    }
+
+    private async recoverToolResult(callId: string, signal: AbortSignal): Promise<ToolResult> {
+        while (!signal.aborted && !this.disposed && this.live) {
+            let response: Response | null = null;
+            try {
+                response = await this.live.request(`${this.live.receiptUrl}?call_id=${encodeURIComponent(callId)}`, {
+                    headers: { Accept: 'application/json' }, cache: 'no-store', signal,
+                });
+            } catch (reason) {
+                if (!isRecoverableControlError(reason)) throw reason;
+            }
+            if (signal.aborted || this.disposed) break;
+            if (response && !response.ok && ![502, 503, 504].includes(response.status)) {
+                throw new RealtimeControlError('The voice result is no longer accessible. Check the chat.', response.status, 'receipt_unavailable');
+            }
+            if (response?.ok) {
+                const body = await response.json() as { run?: unknown; result?: unknown; tool_status?: string };
+                const run = parseAgentRun(body.run);
+                if (run) this.live.onRun(run);
+                if (body.tool_status === 'failed') throw new Error('The research request failed. Check the chat for details.');
+                const result = parseSavedToolResult(body.result, callId);
+                if (result) return result;
+            }
+            await waitForReceipt(signal);
+        }
+        throw signal.reason instanceof Error ? signal.reason : new DOMException('The voice session ended.', 'AbortError');
+    }
+
+    private async observeRun(callId: string, signal: AbortSignal): Promise<void> {
+        if (!this.live) return;
+        while (!signal.aborted) {
+            try {
+                const response = await this.live.request(`${this.live.receiptUrl}?call_id=${encodeURIComponent(callId)}`, {
+                    headers: { Accept: 'application/json' }, cache: 'no-store', signal,
+                });
+                if ([401, 403, 404, 410].includes(response.status)) return;
+                if (response.ok) {
+                    const body = await response.json() as { run?: unknown };
+                    const run = parseAgentRun(body.run);
+                    if (run && !signal.aborted && !this.disposed) {
+                        this.live.onRun(run);
+                        return;
+                    }
+                }
+            } catch {
+                // Visual observation is best effort; the canonical tool still owns its answer.
+            }
+            if (signal.aborted) return;
+            await waitForReceipt(signal);
+        }
+    }
+
+    refreshState(): Promise<AgentState> { return this.inner.refreshState(); }
+    syncSurface(baseRevision: number, surface: SurfaceSnapshot): Promise<AgentState> {
+        return this.inner.syncSurface(baseRevision, surface);
+    }
+    resolveConfirmation(id: string, accepted: boolean): Promise<ToolResult> {
+        return this.inner.resolveConfirmation(id, accepted);
+    }
+    completeUiCommand(command: UiCommand, baseRevision: number, result: UiCommandResult): Promise<AgentState> {
+        return this.inner.completeUiCommand(command, baseRevision, result);
+    }
+    finish(baseRevision: number): Promise<AgentState> { return this.inner.finish(baseRevision); }
+    recordMessage(input: ConversationMessageInput): Promise<ConversationMessage> {
+        return this.inner.recordMessage(input);
+    }
+    recordUsage(input: ProviderUsageInput): Promise<UsageRecord> { return this.inner.recordUsage(input); }
+    fetchAudit(): Promise<SessionAudit> { return this.inner.fetchAudit(); }
+}
+
+async function tenantAwareFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const headers = new Headers(init?.headers);
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+    const team = useTeamStore.getState().currentTeam;
+    if (team !== null) headers.set('X-Tenant-Id', team);
+
+    let response: Response;
+    try {
+        response = await fetch(input, { ...init, credentials: 'same-origin', headers });
+    } catch (reason) {
+        if (reason instanceof TypeError) throw new RealtimeControlError('The realtime request lost its network connection.', 0, 'network_error');
+        throw reason;
+    }
+    const contentType = response.headers.get('Content-Type') ?? '';
+    if (!contentType.includes('application/json') && !contentType.includes('+json')) {
+        if (response.ok) throw new RealtimeControlError('The server returned an unexpected response. Reopen Live assistant.', response.status, 'invalid_response');
+        // Keep the HTTP status instead of letting the package parse an HTML
+        // proxy error as JSON and lose the information needed for recovery.
+        return new Response(JSON.stringify({ error: { code: 'http_error', message: `Realtime request failed (${response.status}).` } }), {
+            status: response.status, headers: { 'Content-Type': 'application/json' },
+        });
+    }
+    return response;
+}
+
+function isRecoverableControlError(reason: unknown): boolean {
+    return reason instanceof RealtimeControlError
+        && ([502, 503, 504].includes(reason.status) || reason.status === 0 && reason.code === 'network_error');
+}
+
+function parseSavedToolResult(value: unknown, callId: string): ToolResult | null {
+    if (value === null || typeof value !== 'object') return null;
+    const result = value as Partial<ToolResult>;
+    return result.call_id === callId && result.status === 'completed'
+        && typeof result.state_revision === 'number' && Number.isSafeInteger(result.state_revision) && result.state_revision > 0
+        ? result as ToolResult : null;
+}
+
+async function waitForReceipt(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
+    await new Promise<void>((resolve) => {
+        const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
+        const timer = setTimeout(finish, 750);
+        signal.addEventListener('abort', finish, { once: true });
+    });
+}
+
+function handleClientEvent(
+    event: RealtimeAgentClientEvent,
+    setStatus: (status: RealtimeAgentStatus) => void,
+    setError: (error: Error | null) => void,
+    setActive: (active: boolean) => void,
+): void {
+    if (event.type === 'agent.connected') {
+        setActive(true);
+        setStatus('listening');
+    }
+    if (event.type === 'agent.disconnected') {
+        setActive(false);
+        setStatus('idle');
+    }
+    if (event.type === 'agent.tool.call') setStatus('processing');
+    if (event.type === 'agent.transcript.delta') {
+        setStatus(event.role === 'agent' ? 'speaking' : 'listening');
+    }
+    if (event.type === 'agent.transcript.final') setStatus('listening');
+    if (event.type === 'agent.mode.changed') setStatus(event.mode === 'text' ? 'paused' : 'listening');
+    if (event.type === 'agent.error') {
+        setError(event.error);
+        setStatus('error');
+    }
+}
+
+function parseAgentRun(value: unknown): AgentTurnStarted | null {
+    if (value === null || typeof value !== 'object') return null;
+    const run = value as Partial<AgentTurnStarted>;
+    if (typeof run.run_id !== 'string'
+        || typeof run.events_url !== 'string'
+        || typeof run.cancel_url !== 'string'
+        || typeof run.continue_url !== 'string'
+        || run.user_message === null
+        || typeof run.user_message !== 'object') return null;
+
+    return run as AgentTurnStarted;
+}
+
+function isHandoff(value: unknown): boolean {
+    return value !== null
+        && typeof value === 'object'
+        && (value as JsonObject).required === true;
+}
+
+export function unavailableMessage(reason?: string | null): string {
+    if (reason === 'missing_credentials') return 'Live assistant requires provider credentials.';
+    if (reason === 'disabled') return 'Live assistant is disabled for this environment.';
+    if (reason === 'provider_unavailable') return 'The configured Live assistant provider is unavailable.';
+
+    return 'Live assistant is not available.';
+}
