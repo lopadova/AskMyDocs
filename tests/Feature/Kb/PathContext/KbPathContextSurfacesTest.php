@@ -92,6 +92,9 @@ final class KbPathContextSurfacesTest extends TestCase
         $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', [])->assertStatus(422)->assertJsonValidationErrors(['project_key', 'path_prefix', 'description']);
         $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', ['project_key' => 'hr', 'path_prefix' => '/abs', 'description' => 'd'])->assertStatus(422)->assertJsonValidationErrors('path_prefix');
         $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', ['project_key' => 'hr', 'path_prefix' => 'a/../b', 'description' => 'd'])->assertStatus(422)->assertJsonValidationErrors('path_prefix');
+        // A non-string prefix stops at `string` (bail) — a 422, never the 500 of an array cast.
+        $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', ['project_key' => 'hr', 'path_prefix' => ['policies'], 'description' => 'd'])->assertStatus(422)->assertJsonValidationErrors('path_prefix');
+        $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', ['project_key' => 'hr', 'path_prefix' => ['a' => ['b' => 1]], 'description' => 'd'])->assertStatus(422)->assertJsonValidationErrors('path_prefix');
         $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', ['project_key' => 'hr', 'path_prefix' => 'ok', 'description' => str_repeat('x', 501)])->assertStatus(422)->assertJsonValidationErrors('description');
         $this->actingAs($admin)->putJson('/api/admin/kb/path-contexts', ['project_key' => str_repeat('p', 121), 'path_prefix' => 'ok', 'description' => 'd'])->assertStatus(422)->assertJsonValidationErrors('project_key');
         $this->assertSame(0, KbPathContext::query()->count());

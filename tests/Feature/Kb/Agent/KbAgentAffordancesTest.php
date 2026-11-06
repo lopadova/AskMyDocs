@@ -203,6 +203,48 @@ final class KbAgentAffordancesTest extends TestCase
         $this->assertSame("d\ne", $reader->read($doc, $range['start_line'], $range['end_line'] - $range['start_line'] + 1)['content']);
     }
 
+    public function test_chunk_lines_match_the_view_for_every_chunk_including_order_ties_without_loading_the_document(): void
+    {
+        $doc = $this->seedDoc('t1', 'ops', 'ties.md');
+        $chunks = [
+            $this->seedChunk($doc, 0, "one\ntwo"),
+            $this->seedChunk($doc, 1, 'three'),
+            // Same chunk_order: the view breaks the tie by id.
+            $this->seedChunk($doc, 1, "four\nfive\nsix"),
+            $this->seedChunk($doc, 2, ''),
+            $this->seedChunk($doc, 3, "seven\n\neight"),
+        ];
+        $reader = app(DocumentLineReader::class);
+
+        $recording = false;
+        $queries = [];
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$queries, &$recording): void {
+            if ($recording) {
+                $queries[] = strtolower($q->sql);
+            }
+        });
+
+        foreach ($chunks as $chunk) {
+            $queries = [];
+            $recording = true;
+            $range = $reader->chunkLines($doc, $chunk->id);
+            $recording = false;
+
+            // One bounded target read + one aggregate: the document's text is
+            // never hydrated to locate a chunk.
+            $this->assertCount(2, $queries);
+            $this->assertStringContainsString('limit 1', $queries[0]);
+            $this->assertStringContainsString('count(*) as chunks', $queries[1]);
+
+            $this->assertNotNull($range);
+            $this->assertSame(
+                (string) $chunk->chunk_text,
+                $reader->read($doc, $range['start_line'], $range['end_line'] - $range['start_line'] + 1)['content'],
+                "chunk {$chunk->id} must address exactly its own text in the view",
+            );
+        }
+    }
+
     public function test_the_reader_never_reads_another_tenants_chunks_for_a_document(): void
     {
         $mine = $this->seedDoc('t1', 'ops', 'm.md');

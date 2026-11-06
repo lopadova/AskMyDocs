@@ -34,7 +34,7 @@ class KbSearchTool extends Tool
                 ->description('Optional disambiguation hint, e.g. "web page load times" for the query "performance". It steers re-ranking; it is not searched on its own.')
                 ->nullable(),
             'min_score' => $schema->number()
-                ->description('Optional. Drop results whose final score (rerank score, else vector score) is below this value.')
+                ->description('Optional. Drop results whose final score (cross-encoder blend when that stage ran, else rerank score, else vector score) is below this value.')
                 ->nullable(),
         ];
     }

@@ -61,24 +61,34 @@ final class DocumentLineReader
      */
     public function chunkLines(KnowledgeDocument $document, int $chunkId): ?array
     {
-        $line = 1;
-        $chunks = KnowledgeChunk::query()
+        $target = KnowledgeChunk::query()
             ->forTenant($document->tenant_id)
             ->where('knowledge_document_id', $document->id)
-            ->orderBy('chunk_order')
-            ->orderBy('id')
-            ->get(['id', 'chunk_text']);
-
-        foreach ($chunks as $chunk) {
-            $height = substr_count((string) $chunk->chunk_text, "\n") + 1;
-            if ($chunk->id === $chunkId) {
-                return ['start_line' => $line, 'end_line' => $line + $height - 1];
-            }
-            // +1: the blank separator line the view inserts between chunks.
-            $line += $height + 1;
+            ->whereKey($chunkId)
+            ->first(['id', 'chunk_order', 'chunk_text']);
+        if ($target === null) {
+            return null;
         }
 
-        return null;
+        // Every chunk BEFORE the target in view order (chunk_order, then id)
+        // contributes its own height (newlines + 1) plus the blank separator
+        // line the view inserts after it. Computed as one aggregate so a read
+        // never hydrates the document's text: memory stays O(target chunk).
+        // The newline is bound, not written as char(10)/chr(10), so the same
+        // SQL runs on SQLite and PostgreSQL.
+        $preceding = KnowledgeChunk::query()
+            ->forTenant($document->tenant_id)
+            ->where('knowledge_document_id', $document->id)
+            ->where(fn ($q) => $q->where('chunk_order', '<', $target->chunk_order)
+                ->orWhere(fn ($q) => $q->where('chunk_order', $target->chunk_order)->where('id', '<', $target->id)))
+            ->selectRaw('COUNT(*) AS chunks, COALESCE(SUM(LENGTH(chunk_text) - LENGTH(REPLACE(chunk_text, ?, \'\'))), 0) AS newlines', ["\n"])
+            ->toBase()
+            ->first();
+
+        $line = 1 + (int) ($preceding->newlines ?? 0) + 2 * (int) ($preceding->chunks ?? 0);
+        $height = substr_count((string) $target->chunk_text, "\n") + 1;
+
+        return ['start_line' => $line, 'end_line' => $line + $height - 1];
     }
 
     /**

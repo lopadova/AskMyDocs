@@ -23,8 +23,14 @@ final class PathContextUpsertRequest extends FormRequest
     {
         return [
             'project_key' => ['required', 'string', 'max:120'],
-            'path_prefix' => ['required', 'string', 'max:300', function (string $attribute, mixed $value, \Closure $fail): void {
-                $v = (string) $value;
+            // `bail`: a non-string value (array, object) stops at `string` with a
+            // 422 instead of reaching the closure, where casting it would raise
+            // "Array to string conversion" and answer 500 (R14).
+            'path_prefix' => ['bail', 'required', 'string', 'max:300', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! is_string($value)) {
+                    return;
+                }
+                $v = $value;
                 if (str_starts_with($v, '/') || str_starts_with($v, '\\')) {
                     $fail('The path prefix must be relative (no leading slash).');
 

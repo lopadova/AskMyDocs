@@ -557,6 +557,44 @@ final class ExpansionLearningLoopTest extends TestCase
         $this->actingAs($admin)->postJson('/api/admin/kb/expansion-learning/analyze', ['project_key' => self::PROJECT])->assertStatus(404);
     }
 
+    public function test_the_queued_analysis_reauthorizes_its_initiator_when_it_runs(): void
+    {
+        $this->seedVecWinsLexNever();
+        $run = fn (User $u) => (new AnalyzeExpansionLearningJob(self::TENANT, self::PROJECT, $u->id))
+            ->handle(app(ExpansionLearningService::class), app(TenantContext::class));
+
+        // Still an admin member of the tenant → the analysis runs.
+        $admin = $this->user('admin');
+        $run($admin);
+        $this->assertSame(1, KbExpansionTuning::query()->count());
+
+        // Demoted between dispatch and execution → no read, no gate, no tuning.
+        $demoted = $this->user('admin');
+        $demoted->syncRoles(['viewer']);
+        $run($demoted->fresh());
+        $this->assertSame(1, KbExpansionTuning::query()->count(), 'a demoted initiator analyses nothing');
+
+        // Removed from the tenant (role kept) → same.
+        $removed = $this->user('admin');
+        ProjectMembership::query()->where('user_id', $removed->id)->delete();
+        $run($removed);
+        $this->assertSame(1, KbExpansionTuning::query()->count(), 'a removed member analyses nothing');
+
+        // Deleted account → same.
+        $gone = $this->user('admin');
+        $goneId = $gone->id;
+        ProjectMembership::query()->where('user_id', $goneId)->delete();
+        $gone->delete();
+        (new AnalyzeExpansionLearningJob(self::TENANT, self::PROJECT, $goneId))
+            ->handle(app(ExpansionLearningService::class), app(TenantContext::class));
+        $this->assertSame(1, KbExpansionTuning::query()->count());
+
+        // The HTTP action dispatches the caller's id, not a frozen grant.
+        Bus::fake([AnalyzeExpansionLearningJob::class]);
+        $this->actingAs($admin)->postJson('/api/admin/kb/expansion-learning/analyze', ['project_key' => self::PROJECT])->assertStatus(202);
+        Bus::assertDispatched(AnalyzeExpansionLearningJob::class, fn ($job) => $job->initiatorId === $admin->id);
+    }
+
     public function test_mcp_tool_is_read_only_and_admin_only(): void
     {
         $tool = new KbExpansionLearningTool();

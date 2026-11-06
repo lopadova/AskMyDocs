@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\Kb\Retrieval\ResultScoreFloor;
 use App\Services\Kb\Retrieval\RetrievalExplainService;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
@@ -30,7 +31,7 @@ final class KbSearchCommand extends Command
         {--intent= : Disambiguation hint (e.g. "web page load times" for the query "performance")}
         {--explain : Include the per-result ranking trace}
         {--investigation : Trace the recursive investigation the chat runs (model-written round queries + outcome)}
-        {--min-score= : Drop results scoring below this value (rerank score, else vector score)}
+        {--min-score= : Drop results scoring below this value (final score: cross-encoder blend, else rerank score, else vector score)}
         {--all : Return as many results as the explain cap allows (KB_RETRIEVAL_EXPLAIN_MAX_LIMIT)}
         {--line-numbers : Add the line range of each chunk in the document view (for kb:show --from)}
         {--files : Print one matching document per line (ref, score, path) — for piping}
@@ -189,7 +190,7 @@ final class KbSearchCommand extends Command
     /** @param  array<string,mixed>  $r */
     private function score(array $r): string
     {
-        return (string) round((float) ($r['rerank_score'] ?? $r['vector_score'] ?? 0.0), 4);
+        return (string) round(ResultScoreFloor::scoreOf($r), 4);
     }
 
     /** @param  array<string,mixed>  $payload */

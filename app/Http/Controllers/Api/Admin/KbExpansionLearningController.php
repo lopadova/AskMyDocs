@@ -52,7 +52,9 @@ final class KbExpansionLearningController extends Controller
         if (! $this->expansionLearningService->enabled()) {
             return $this->disabled();
         }
-        AnalyzeExpansionLearningJob::dispatch($this->tenantContext->current(), (string) $validated['project_key'], $this->actor($request));
+        // The job re-authorizes this principal when it runs (membership + role
+        // read at execution time), so only the id travels — not a frozen grant.
+        AnalyzeExpansionLearningJob::dispatch($this->tenantContext->current(), (string) $validated['project_key'], (int) $request->user()->id);
 
         return response()->json(['queued' => true, 'project_key' => $validated['project_key']], 202);
     }

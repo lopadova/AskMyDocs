@@ -229,6 +229,27 @@ final class QmdParityStagesTest extends TestCase
         $this->assertMatchesRegularExpression('/^#[0-9a-f]{12}$/', (string) $first['document']['ref']);
     }
 
+    public function test_the_score_floor_uses_the_score_the_results_are_ordered_by(): void
+    {
+        // The cross-encoder orders by `cross_encoder.blended` and leaves
+        // `rerank_score` as it was: the floor must follow the blend, or it
+        // could drop a higher-ranked result and keep a lower-ranked one.
+        $results = collect([
+            ['chunk_id' => 1, 'rerank_score' => 0.20, 'vector_score' => 0.9, 'cross_encoder' => ['status' => 'ok', 'blended' => 0.80]],
+            ['chunk_id' => 2, 'rerank_score' => 0.70, 'vector_score' => 0.9, 'cross_encoder' => ['status' => 'ok', 'blended' => 0.30]],
+            // A failed cross-encoder stage keeps the reranker's score.
+            ['chunk_id' => 3, 'rerank_score' => 0.60, 'vector_score' => 0.1, 'cross_encoder' => ['status' => 'unavailable']],
+            ['chunk_id' => 4, 'vector_score' => 0.55],
+        ]);
+
+        $kept = \App\Services\Kb\Retrieval\ResultScoreFloor::apply($results, 0.5)->pluck('chunk_id')->all();
+
+        $this->assertSame([1, 3, 4], $kept, 'blend first, then rerank_score, then vector_score');
+        $this->assertSame(0.8, \App\Services\Kb\Retrieval\ResultScoreFloor::scoreOf($results[0]));
+        $this->assertSame(0.6, \App\Services\Kb\Retrieval\ResultScoreFloor::scoreOf($results[2]));
+        $this->assertSame($results->all(), \App\Services\Kb\Retrieval\ResultScoreFloor::apply($results, null)->all(), 'no floor = untouched');
+    }
+
     public function test_kb_search_min_score_files_and_csv(): void
     {
         $this->assertSame(0, Artisan::call('kb:search', ['query' => self::Q, '--project' => self::PROJECT, '--files' => true]));

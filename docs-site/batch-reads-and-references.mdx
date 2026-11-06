@@ -164,7 +164,7 @@ query document and is searched exactly as before. The parse runs in both
 | `--files` | one CSV line per **document** (best chunk wins): `ref,score,source_path` (a path with a comma or a quote stays one field) |
 | `--csv` | header `ref,score,source_path,heading_path,chunk_id,start_line,end_line`; formula-leading cells (`=` `+` `-` `@` tab CR, non-numeric) prefixed with `'` (SEC-CSV-001) |
 | `--md` | a Markdown list with path, ref, score and line range |
-| `--min-score=` | drop results below the score they are ordered by (`rerank_score`, else `vector_score`) — after ranking, never a reorder |
+| `--min-score=` | drop results below the score they are ordered by (`cross_encoder.blended` when that stage ran, else `rerank_score`, else `vector_score`) — after ranking, never a reorder |
 | `--all` | up to `KB_RETRIEVAL_EXPLAIN_MAX_LIMIT` (20) results |
 | `--line-numbers` | each chunk's `start_line` / `end_line` in the document view |
 

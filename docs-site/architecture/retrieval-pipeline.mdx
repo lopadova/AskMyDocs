@@ -374,7 +374,7 @@ Since W6 and the main integration the explain surfaces also accept:
 | Option | CLI | HTTP (`GET …/retrieval/explain`) | MCP (`KbRetrievalExplainTool`) | Effect |
 |---|---|---|---|---|
 | investigation | `--investigation` | `investigation=1` | `investigation: true` | Run the recursive investigation instead of the direct retrieval; `meta.investigation` = `{status, queries, stop_reason, selected_documents, supported_facts, missing_facts, language, research_flows, attempts}`, or `{status: "disabled", flag: "KB_RECURSIVE_RETRIEVAL_ENABLED"}` when the switch is off |
-| score floor | `--min-score=` | `min_score` | `min_score` | Drop results below the score they are ordered by (`rerank_score`, else `vector_score`) — after ranking, never a reorder, never the refusal gate |
+| score floor | `--min-score=` | `min_score` | `min_score` | Drop results below the score they are ordered by (`cross_encoder.blended` when that stage ran, else `rerank_score`, else `vector_score`) — after ranking, never a reorder, never the refusal gate |
 | line numbers | `--line-numbers` | `line_numbers=1` | `line_numbers: true` | Additive `lines = {start_line, end_line}` per result — the range `kb:show --from` / `KbReadDocumentTool from_line` read |
 | widen | `--all` | `limit` up to the cap | `limit` | Up to `KB_RETRIEVAL_EXPLAIN_MAX_LIMIT` (20) results |
 

@@ -48,7 +48,7 @@ class KbRetrievalExplainTool extends Tool
                 ->description('Optional disambiguation hint (see the search tools).')
                 ->nullable(),
             'min_score' => $schema->number()
-                ->description('Optional. Drop results scoring below this value (rerank score, else vector score).')
+                ->description('Optional. Drop results scoring below this value (final score: cross-encoder blend when that stage ran, else rerank score, else vector score).')
                 ->nullable(),
             'line_numbers' => $schema->boolean()
                 ->description('Add each chunk\'s line range in the document view (for KbReadDocumentTool from_line).')
