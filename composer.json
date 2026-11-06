@@ -7,7 +7,7 @@
         "agents-full-duplex/laravel-realtime-agent": "^0.1",
         "laravel/ai": "^0.11",
         "laravel/framework": "^13.0",
-        "laravel/mcp": "^0.9",
+        "laravel/mcp": "^1.1",
         "laravel/sanctum": "^4.2",
         "league/flysystem-aws-s3-v3": "^3.34",
         "padosoft/askmydocs-connector-api": "1.0.0-beta.5",
