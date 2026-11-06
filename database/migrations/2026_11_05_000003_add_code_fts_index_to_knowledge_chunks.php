@@ -17,19 +17,36 @@ use Illuminate\Support\Facades\DB;
  * one KbSearchService::fullTextSearch() adds, or the planner will not
  * choose the index.
  *
- * `IF NOT EXISTS` keeps it re-runnable; no-op on non-PostgreSQL connections
- * (SQLite tests, MySQL), exactly like the prose GIN index migration.
+ * Built CONCURRENTLY: even an empty partial index scans the existing corpus,
+ * and a plain CREATE INDEX would block inserts/updates on knowledge_chunks
+ * (ingestion, re-embedding) for that whole scan, on every deployment, with
+ * code ingestion OFF. Same recovery as the trigram migration
+ * (2026_10_22_000002): an interrupted concurrent build leaves an INVALID
+ * index that `IF NOT EXISTS` would silently keep, so it is dropped first.
+ *
+ * No-op on non-PostgreSQL connections (SQLite tests, MySQL), exactly like the
+ * prose GIN index migration.
  */
 return new class extends Migration
 {
+    // Concurrent builds cannot run inside a transaction.
+    public $withinTransaction = false;
+
+    private const INDEX = 'idx_chunks_fts_code';
+
     public function up(): void
     {
         if (DB::getDriverName() !== 'pgsql') {
             return;
         }
 
+        $invalid = DB::selectOne('SELECT 1 FROM pg_index WHERE indexrelid = to_regclass(?) AND NOT indisvalid', [self::INDEX]);
+        if ($invalid !== null) {
+            DB::statement('DROP INDEX CONCURRENTLY IF EXISTS '.self::INDEX);
+        }
+
         DB::statement(
-            "CREATE INDEX IF NOT EXISTS idx_chunks_fts_code ON knowledge_chunks USING GIN (to_tsvector('simple', chunk_text)) WHERE (metadata->>'language') IS NOT NULL"
+            'CREATE INDEX CONCURRENTLY IF NOT EXISTS '.self::INDEX." ON knowledge_chunks USING GIN (to_tsvector('simple', chunk_text)) WHERE (metadata->>'language') IS NOT NULL"
         );
     }
 
@@ -39,6 +56,6 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('DROP INDEX IF EXISTS idx_chunks_fts_code');
+        DB::statement('DROP INDEX CONCURRENTLY IF EXISTS '.self::INDEX);
     }
 };

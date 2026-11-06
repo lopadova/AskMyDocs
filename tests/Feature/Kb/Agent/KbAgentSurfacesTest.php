@@ -170,6 +170,17 @@ final class KbAgentSurfacesTest extends TestCase
         $this->assertSame(['from_line' => 2, 'to_line' => 3, 'total_lines' => 4, 'truncated' => true], $ranged->json('lines'));
 
         $this->actingAs($viewer)->getJson("/api/kb/documents/{$doc->id}/preview?from_line=0")->assertStatus(422);
+
+        // A ranged read loads the document text once (through the reader), never
+        // the full-content query as well.
+        $textReads = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$textReads): void {
+            if (str_contains($q->sql, '"chunk_text"') && str_contains($q->sql, 'from "knowledge_chunks"')) {
+                $textReads++;
+            }
+        });
+        $this->actingAs($viewer)->getJson("/api/kb/documents/{$doc->id}/preview?from_line=1&max_lines=1")->assertOk();
+        $this->assertSame(1, $textReads, 'one read of the document text per ranged request');
     }
 
     public function test_kb_show_prints_a_range_by_id_slug_or_path_and_suggests_on_a_miss(): void

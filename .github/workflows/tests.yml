@@ -607,6 +607,12 @@ jobs:
           # (artisan serve does not read the step env). OFF state: PHPUnit
           # KbPathContextControllerTest + the PathContextsView Vitest (R43).
           KB_PATH_CONTEXTS_ENABLED: 'true'
+          # W7 — light up the expansion learning loop (ADR 0035 addendum) for
+          # admin-expansion-learning.spec.ts: CI starts Laravel itself
+          # (E2E_SKIP_WEBSERVER=1), so the playwright.config.ts value never
+          # reaches this process. OFF state: PHPUnit ExpansionLearningLoopTest
+          # (clean 404) + the ExpansionLearningView Vitest (R43).
+          KB_EXPANSION_LEARNING_ENABLED: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.

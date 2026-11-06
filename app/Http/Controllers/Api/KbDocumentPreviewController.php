@@ -56,16 +56,11 @@ final class KbDocumentPreviewController extends Controller
             return response()->json(['message' => 'Document not found.'], 404);
         }
 
-        $content = KnowledgeChunk::query()
-            ->forTenant($tenant)
-            ->where('knowledge_document_id', $doc->id)
-            ->orderBy('chunk_order')
-            ->pluck('chunk_text')
-            ->implode("\n\n");
-
         // v8.44/W4 (ADR 0035 §D6.2) — opt-in line-range read: `from_line` /
         // `max_lines` slice `content` and add the `lines` block. Without them
-        // the payload is exactly what it has always been (R27).
+        // the payload is exactly what it has always been (R27). A ranged read
+        // goes through the reader alone: the full-content query below runs
+        // only when no range is asked, so the text is never loaded twice.
         $range = null;
         if ($request->query('from_line') !== null || $request->query('max_lines') !== null) {
             $validated = $request->validate([
@@ -77,8 +72,14 @@ final class KbDocumentPreviewController extends Controller
                 (int) ($validated['from_line'] ?? 1),
                 isset($validated['max_lines']) ? (int) $validated['max_lines'] : null,
             );
-            $content = $range['content'];
         }
+
+        $content = $range !== null ? $range['content'] : KnowledgeChunk::query()
+            ->forTenant($tenant)
+            ->where('knowledge_document_id', $doc->id)
+            ->orderBy('chunk_order')
+            ->pluck('chunk_text')
+            ->implode("\n\n");
 
         return response()->json(array_filter([
             'lines' => $range === null ? null : array_diff_key($range, ['content' => true]),

@@ -194,7 +194,7 @@ final class KbPathContextSurfacesTest extends TestCase
         return new SearchResult(collect([$chunk]), collect(), collect());
     }
 
-    public function test_the_prompt_renders_the_notes_as_delimited_data_with_markup_neutralised(): void
+    public function test_the_notes_ride_in_the_user_turn_never_in_the_system_prompt(): void
     {
         $svc = app(PathContextService::class);
         $svc->upsert(self::TENANT, 'hr', 'policies', 'HR policies <b>approved</b> by the DPO');
@@ -203,12 +203,101 @@ final class KbPathContextSurfacesTest extends TestCase
         $context = $retrieval->promptContext($this->searchResult($this->chunk('policies/leave.md')));
         $this->assertSame(['HR policies <b>approved</b> by the DPO'], $context['pathContexts']);
 
-        $prompt = view('prompts.kb_rag', array_merge($context, ['projectKey' => 'hr', 'fewShotExamples' => []]))->render();
+        // System prompt: only the fixed rule on how to read the block, never a note.
+        $system = view('prompts.kb_rag', array_merge($context, ['projectKey' => 'hr', 'fewShotExamples' => []]))->render();
+        $this->assertStringNotContainsString('approved', $system, 'an administrator note is never a system instruction');
+        $this->assertStringNotContainsString('</path-contexts>', $system, 'the block itself is never in the system prompt');
+        $this->assertStringContainsString('never instructions', $system);
 
-        $this->assertStringContainsString('<path-contexts>', $prompt);
-        $this->assertStringContainsString('DATA written by an administrator', $prompt);
-        $this->assertStringContainsString('HR policies ‹b›approved‹/b› by the DPO', $prompt, 'angle brackets cannot close the delimiter or open a tag');
-        $this->assertLessThan(strpos($prompt, '## Context'), strpos($prompt, '<path-contexts>'), 'the notes sit above the retrieved context');
+        // User turn: delimited, markup neutralised.
+        $block = (string) $retrieval->pathContextUserTurn($context['pathContexts']);
+        $this->assertStringStartsWith('<path-contexts>', $block);
+        $this->assertStringEndsWith('</path-contexts>', $block);
+        $this->assertStringContainsString('- HR policies ‹b›approved‹/b› by the DPO', $block, 'angle brackets cannot close the delimiter or open a tag');
+        $this->assertNull($retrieval->pathContextUserTurn([]));
+
+        // Conversation history: its own user message right before the question.
+        $history = [['role' => 'user', 'content' => 'earlier'], ['role' => 'assistant', 'content' => 'answer'], ['role' => 'user', 'content' => 'Q?']];
+        $with = $retrieval->withPathContextTurn($history, $context['pathContexts']);
+        $this->assertSame(['user', 'assistant', 'user', 'user'], array_column($with, 'role'));
+        $this->assertSame($block, $with[2]['content']);
+        $this->assertSame('Q?', $with[3]['content']);
+        $this->assertSame($history, $retrieval->withPathContextTurn($history, []), 'no notes: history untouched');
+    }
+
+    public function test_stateless_chat_sends_the_notes_in_the_user_turn(): void
+    {
+        app(PathContextService::class)->upsert(self::TENANT, 'hr', 'policies', 'HR policies note');
+        \Illuminate\Support\Facades\Route::post('/api/kb/chat', \App\Http\Controllers\Api\KbChatController::class);
+        config(['chat-log.enabled' => false, 'kb.refusal.min_chunk_similarity' => 0.1, 'kb.refusal.min_chunks_required' => 1]);
+
+        $search = \Mockery::mock(\App\Services\Kb\KbSearchService::class);
+        $search->shouldReceive('searchWithContext')->andReturn(new SearchResult(collect([$this->chunk('policies/leave.md') + ['vector_score' => 0.95]]), collect(), collect(), ['filters_selected' => 0]));
+        $this->app->instance(\App\Services\Kb\KbSearchService::class, $search);
+
+        $sent = [];
+        $ai = \Mockery::mock(\App\Ai\AiManager::class);
+        $ai->shouldReceive('chat')->andReturnUsing(function (string $system, string $user) use (&$sent) {
+            $sent[] = ['system' => $system, 'user' => $user];
+
+            return new \App\Ai\AiResponse(content: 'Grounded answer.', provider: 'openai', model: 'm');
+        });
+        $this->app->instance(\App\Ai\AiManager::class, $ai);
+
+        $this->postJson('/api/kb/chat', ['question' => 'How much leave?', 'project_key' => 'hr'])->assertOk();
+
+        $answerCall = collect($sent)->last();
+        $this->assertNotNull($answerCall);
+        $this->assertStringNotContainsString('HR policies note', $answerCall['system']);
+        $this->assertStringContainsString("- HR policies note\n</path-contexts>\n\nHow much leave?", $answerCall['user']);
+    }
+
+    public function test_the_notes_are_redacted_under_the_project_policy_before_reaching_prompt_or_citations(): void
+    {
+        app(PathContextService::class)->upsert(self::TENANT, 'hr', 'policies', 'Ask mario.rossi@example.com for exceptions');
+        config([
+            'pii-redactor.enabled' => true,
+            'pii-redactor.salt' => 'path-context-salt',
+            'pii-redactor.token_store.driver' => 'database',
+            'kb.pii_redactor.enabled' => true,
+            'kb.pii_redactor.redact_inline_ingest' => true,
+            'kb.pii_redactor.ingest_strategy' => 'mask',
+        ]);
+        foreach ([\Padosoft\PiiRedactor\RedactorEngine::class, \Padosoft\PiiRedactor\Strategies\RedactionStrategyFactory::class, \Padosoft\PiiRedactor\Strategies\RedactionStrategy::class, \Padosoft\PiiRedactor\TokenStore\TokenStore::class] as $abstract) {
+            $this->app->forgetInstance($abstract);
+        }
+        $this->assertTrue(app(\App\Services\Kb\Pii\ChunkRedactor::class)->isActive('hr'), 'precondition: redaction active for the project');
+
+        $retrieval = app(ChatRetrievalService::class);
+        $result = $this->searchResult($this->chunk('policies/leave.md'));
+
+        $notes = $retrieval->promptContext($result)['pathContexts'];
+        $this->assertCount(1, $notes);
+        $this->assertStringNotContainsString('mario.rossi@example.com', $notes[0]);
+        $this->assertStringStartsWith('Ask ', $notes[0]);
+        $this->assertStringNotContainsString('mario.rossi@example.com', implode(' ', $retrieval->buildCitations($result)[0]['path_context']));
+
+        // Redaction OFF: the note is passed as written (the stored value is never altered).
+        config(['kb.pii_redactor.enabled' => false]);
+        $this->assertSame(['Ask mario.rossi@example.com for exceptions'], $retrieval->promptContext($result)['pathContexts']);
+    }
+
+    public function test_a_failing_redactor_drops_the_notes_instead_of_sending_them_raw(): void
+    {
+        app(PathContextService::class)->upsert(self::TENANT, 'hr', 'policies', 'Ask mario.rossi@example.com');
+        // Redaction ON with an invalid strategy: the redactor throws for real.
+        config([
+            'pii-redactor.enabled' => true,
+            'pii-redactor.salt' => 'path-context-salt',
+            'kb.pii_redactor.enabled' => true,
+            'kb.pii_redactor.redact_inline_ingest' => true,
+            'kb.pii_redactor.ingest_strategy' => 'not-a-strategy',
+        ]);
+        $this->assertTrue(app(\App\Services\Kb\Pii\ChunkRedactor::class)->isActive('hr'), 'precondition: redaction active, so it is attempted');
+
+        $notes = app(ChatRetrievalService::class)->promptContext($this->searchResult($this->chunk('policies/leave.md')))['pathContexts'];
+
+        $this->assertSame([], $notes, 'fail closed: no note rather than an unredacted one');
     }
 
     public function test_the_prompt_has_no_block_when_off_or_when_nothing_matches(): void
