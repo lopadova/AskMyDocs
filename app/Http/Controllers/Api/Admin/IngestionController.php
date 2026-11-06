@@ -31,7 +31,13 @@ final class IngestionController extends Controller
 
     public function queue(): JsonResponse
     {
-        return response()->json(['data' => $this->service->queueDepths()]);
+        return response()->json([
+            'data' => $this->service->queueDepths(),
+            // v8.42/W2 — additive (R27): stale chunk vectors vs the active embedding recipe.
+            'stale_embeddings' => $this->service->staleEmbeddings(),
+            // v8.45 / ADR 0035 D7 — additive (R27).
+            'code_ingestion' => $this->service->codeIngestion(),
+        ]);
     }
 
     public function syncRuns(Request $request, int $installationId): JsonResponse

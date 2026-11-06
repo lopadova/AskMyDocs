@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Pii;
 
+use App\Services\Kb\Code\SecretRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Support\TenantContext;
 use Padosoft\PiiRedactor\RedactorEngine;
@@ -35,6 +36,33 @@ final class ChunkRedactor
 
     /**
      * @param  list<ChunkDraft>  $drafts
+     * @return list<ChunkDraft>
+     */
+    private function redactSecrets(array $drafts): array
+    {
+        $redactor = null;
+
+        return array_map(function (ChunkDraft $draft) use (&$redactor): ChunkDraft {
+            if (($draft->metadata['source_type'] ?? null) !== 'code') {
+                return $draft;
+            }
+            $redactor ??= app(SecretRedactor::class);
+            $result = $redactor->redact($draft->text);
+            if ($result['count'] === 0) {
+                return $draft;
+            }
+
+            return new ChunkDraft(
+                text: $result['text'],
+                order: $draft->order,
+                headingPath: $draft->headingPath,
+                metadata: array_merge($draft->metadata, ['secrets_redacted' => (int) ($draft->metadata['secrets_redacted'] ?? 0) + $result['count']]),
+            );
+        }, $drafts);
+    }
+
+    /**
+     * @param  list<ChunkDraft>  $drafts
      * @param  bool  $previewSafe  When true (a dry-run preview), NEVER write to
      *        the token vault — force the one-way `mask` strategy so a preview /
      *        flow-audit row shows no raw PII without minting reversible tokens.
@@ -45,6 +73,14 @@ final class ChunkRedactor
         if ($drafts === []) {
             return $drafts;
         }
+        // v8.45 / ADR 0035 D7 — credentials in SOURCE CODE are removed at this
+        // seam regardless of the PII engine flags: the secret pass is a
+        // security control with no off-switch, and it runs before the first
+        // embedding and before persistence (the converter already redacted the
+        // text; this is the defence in depth for any path that reaches the seam
+        // with raw drafts). Idempotent.
+        $drafts = $this->redactSecrets($drafts);
+
         // The package engine no-ops while its own flag is off, so skip strategy
         // resolution entirely in that case — otherwise a typo'd config strategy
         // would throw even though no redaction would run.
@@ -75,6 +111,65 @@ final class ChunkRedactor
                 metadata: $draft->metadata,
             ),
             $drafts,
+        );
+    }
+    /**
+     * v8.42/W2 (ADR 0035 §D2) — redact short free-text fragments (a document
+     * title, a heading path) that are about to be composed into an embedding
+     * input. Same gates, policy and strategy as {@see redact()}; a no-op
+     * (texts returned unchanged) unless redaction is genuinely active.
+     *
+     * The composed embedding input contains the title and heading, which can
+     * carry personal data the chunk body does not — so the fragment, not just
+     * the body, must pass through the redaction seam before the first
+     * embedding (ADR 0029 §9 posture).
+     *
+     * @param  list<string>  $texts
+     * @return list<string>  same length and order as `$texts`
+     */
+    /**
+     * Whether {@see redactTexts()} would actually transform text for this
+     * project right now (both master switches on AND the tenant/project policy
+     * enabled). Callers that PERSIST text (W7 expansion learning) use it to
+     * fail closed instead of storing raw user input.
+     */
+    public function isActive(string $projectKey): bool
+    {
+        if (! (bool) config('pii-redactor.enabled', false) || ! (bool) config('kb.pii_redactor.enabled', false)) {
+            return false;
+        }
+
+        try {
+            return (bool) ($this->policy->resolve(app(TenantContext::class)->current(), $projectKey)['redact_enabled'] ?? false);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function redactTexts(string $projectKey, array $texts, bool $previewSafe = false): array
+    {
+        if ($texts === []) {
+            return $texts;
+        }
+        if (! (bool) config('pii-redactor.enabled', false)) {
+            return $texts;
+        }
+        if (! (bool) config('kb.pii_redactor.enabled', false)) {
+            return $texts;
+        }
+
+        $tenantId = app(TenantContext::class)->current();
+        $policy = $this->policy->resolve($tenantId, $projectKey);
+        if (! $policy['redact_enabled']) {
+            return $texts;
+        }
+
+        $strategy = $this->strategies->forName($previewSafe ? 'mask' : $policy['strategy']);
+        $engine = app(RedactorEngine::class);
+
+        return array_map(
+            static fn (string $text): string => $text === '' ? $text : $engine->redact($text, $strategy),
+            $texts,
         );
     }
 }

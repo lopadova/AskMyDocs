@@ -45,6 +45,9 @@ class KbIngestionStatusTool extends Tool
             'tenant_id' => $tenants->current(),
             'queues' => $service->queueDepths(),
             'recent_runs' => $service->recentRuns($limit),
+            // v8.42/W2 — additive (R27): stale chunk vectors vs the active embedding recipe.
+            'stale_embeddings' => $service->staleEmbeddings(),
+            'code_ingestion' => $service->codeIngestion(),
         ]);
     }
 }

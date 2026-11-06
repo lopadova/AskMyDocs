@@ -25,6 +25,10 @@ return [
     'converters' => [
         \App\Services\Kb\Converters\MarkdownPassthroughConverter::class,
         \App\Services\Kb\Converters\TextPassthroughConverter::class,
+        // v8.45 / ADR 0035 D7 — source code. Claims only the synthetic
+        // `text/x-<language>` MIMEs, so it never overlaps a prose converter;
+        // acceptance is gated at the entry points (kb.code.ingestion_enabled).
+        \App\Services\Kb\Converters\CodePassthroughConverter::class,
         // v8.36 / ADR 0029 — OCR. Claims `image/*` only when `kb.ocr.enabled`
         // is true (OFF → supports() is false for every MIME, so the registry
         // falls through exactly as before). Scanned PDFs are NOT claimed here:
@@ -54,6 +58,8 @@ return [
         \App\Services\Kb\Chunkers\JiraIssueChunker::class,
         \App\Services\Kb\Chunkers\OfficeDocChunker::class,
         \App\Services\Kb\Chunkers\AtomicNoteChunker::class,
+        // v8.45 / ADR 0035 D7 — claims the `code` source-type token only.
+        \App\Services\Kb\Chunkers\CodeAstChunker::class,
         \App\Services\Kb\MarkdownChunker::class,
     ],
 
@@ -87,6 +93,25 @@ return [
         'image/jpeg' => 'image',
         'image/tiff' => 'image',
         'image/webp' => 'image',
+
+        // v8.45 / ADR 0035 D7 — source code, one token per language. Static
+        // mapping; whether a code file is ACCEPTED is decided at the entry
+        // points by `kb.code.ingestion_enabled` (R43). A parity test pins this
+        // list to App\Services\Kb\Code\CodeLanguageMap.
+        'text/x-php'        => 'code',
+        'text/x-typescript' => 'code',
+        'text/x-tsx'        => 'code',
+        'text/x-javascript' => 'code',
+        'text/x-python'     => 'code',
+        'text/x-go'         => 'code',
+        'text/x-rust'       => 'code',
+        'text/x-java'       => 'code',
+        'text/x-csharp'     => 'code',
+        'text/x-ruby'       => 'code',
+        'text/x-sql'        => 'code',
+        'text/x-yaml'       => 'code',
+        'text/x-json'       => 'code',
+        'text/x-bash'       => 'code',
 
         // v4.5/W5.5 — synthetic vendor MIME tokens. Connectors set the
         // source MIME on the SourceDocument so the registry routes to

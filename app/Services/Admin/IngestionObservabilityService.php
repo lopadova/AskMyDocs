@@ -30,7 +30,75 @@ use Throwable;
  */
 final class IngestionObservabilityService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly ?\App\Services\Kb\Embedding\ReembedStaleService $staleEmbeddings = null,
+    ) {}
+
+    /**
+     * v8.42/W2 (ADR 0035 §D2) — how many of this tenant's chunk vectors were
+     * produced under a different recipe than the active one (additive key on
+     * the ingestion-status surfaces, R27). Read-only: aggregate SQL only, no
+     * provider call. Returns null — never throws — when the embeddings
+     * provider cannot be resolved (e.g. no key configured), so a status
+     * endpoint never 500s because of this block (R14: null = "unknown").
+     *
+     * @return array<string,mixed>|null
+     */
+    public function staleEmbeddings(): ?array
+    {
+        $service = $this->staleEmbeddings ?? app(\App\Services\Kb\Embedding\ReembedStaleService::class);
+
+        try {
+            return $service->summary($this->tenants->current());
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * v8.45 / ADR 0035 D7 — the code ingestion block (additive key on the
+     * ingestion-status surfaces, R27; tenant-scoped, R30): is the feature on,
+     * which chunker driver is configured and actually produced the chunks, and
+     * how many documents had credentials redacted (a COUNT only — SEC-LOG-001).
+     * Null — never an exception — when it cannot be computed (R14: unknown).
+     *
+     * @return array<string,mixed>|null
+     */
+    public function codeIngestion(): ?array
+    {
+        try {
+            $tenant = $this->tenants->current();
+            $enabled = (bool) config('kb.code.ingestion_enabled', false);
+            $resolver = app(\App\Services\Kb\Code\BreakPointDriverResolver::class);
+
+            $documents = \App\Models\KnowledgeDocument::query()->forTenant($tenant)->where('source_type', 'code')->count();
+            $byChunker = [];
+            foreach (['tree_sitter', 'heuristic'] as $driver) {
+                $byChunker[$driver] = \App\Models\KnowledgeChunk::query()->forTenant($tenant)->where('metadata->chunker', $driver)->count();
+            }
+            $redactedDocs = \App\Models\KnowledgeChunk::query()->forTenant($tenant)->whereNotNull('metadata->secrets_redacted')->distinct()->count('knowledge_document_id');
+            $secrets = 0;
+            foreach (\App\Models\KnowledgeChunk::query()->forTenant($tenant)->whereNotNull('metadata->secrets_redacted')->limit(5000)->get(['metadata']) as $chunk) {
+                $secrets += (int) ($chunk->metadata['secrets_redacted'] ?? 0);
+            }
+
+            return [
+                'enabled' => $enabled,
+                'chunker_driver' => $resolver->mode(),
+                'documents' => $documents,
+                'chunks_by_chunker' => $byChunker,
+                'documents_with_secrets_redacted' => $redactedDocs,
+                'secrets_redacted' => $secrets,
+            ];
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
 
     /**
      * @return list<array{name: string, role: string, depth: int|null}>

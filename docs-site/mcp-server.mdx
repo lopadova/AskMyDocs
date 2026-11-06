@@ -1,6 +1,6 @@
 ---
 title: "MCP server"
-description: "Expose the canonical knowledge base as Model Context Protocol tools — the enterprise-kb server (25 tools) consumable by Claude Desktop, Claude Code, Cursor and any MCP client, plus token-gated access."
+description: "Expose the canonical knowledge base as Model Context Protocol tools — the enterprise-kb server consumable by Claude Desktop, Claude Code, Cursor and any MCP client, plus token-gated access."
 icon: "terminal"
 ---
 
@@ -33,6 +33,55 @@ The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
   (`KbWikiReviewTool`), suggestion apply (`KbApplySuggestionTool`), wiki
   maintenance (`KbWikiMaintainTool`), and auto→human-vouched tier promotion
   (`KbWikiPromoteTool`).
+- **Agent orientation (v8.44):** `KbFacetsTool` lists the filterable dimensions with
+  counts (source types, canonical types/statuses, languages, tags, top-level folders, the
+  source-updated range) so an agent builds valid filters instead of guessing — counted
+  under *the principal's own* document ACL, so a value that only hidden documents carry
+  never appears. `KbReadDocumentTool` gains optional `from_line` / `max_lines` (omit both
+  and the payload is unchanged), and `KbReadChunkTool` now reports the `start_line` /
+  `end_line` the chunk occupies, so an agent goes from a citation to the exact lines.
+  `KbDocumentBySlugTool` answers a miss with up to five `suggestions` (near-miss slugs /
+  paths the caller may read). `KbPathContextsTool` (read-only, admin principals) lists the
+  admin-authored descriptions of parts of the corpus; writing them is deliberately an
+  admin-only act over the audited HTTP/CLI surfaces — a path context is text that reaches
+  the prompt. The search tools accept an optional `intent`. Facets and path contexts are
+  default-off flags (`KB_MCP_FACETS_ENABLED`, `KB_PATH_CONTEXTS_ENABLED`) and answer
+  `{disabled: true}`.
+- **Batch reads and short references (W6, qmd parity):** every search result now carries
+  `document.ref` — a `#` + 12-hex prefix of the document's content hash an agent can cite
+  and re-open. `KbReadDocumentTool` accepts `ref` instead of `document_id` (an ambiguous
+  prefix is an error naming the candidates — use a longer prefix — never a guess).
+  `KbMultiGetTool { selectors, project_key?, max_bytes? }` reads up to 20 documents in one
+  call — each selector an exact path, a glob over source paths or a `#ref` — within a byte
+  budget, listing `truncated`, `omitted` and `missing` explicitly; read-only, under the
+  principal's own ACL, `KB_MULTI_GET_ENABLED` (off → `{disabled: true}`). `KbSearchTool`
+  accepts `min_score` (drops results below the ordering score). With
+  `KB_QUERY_DOCUMENTS_ENABLED` an agent may send a query document — `lex:` / `vec:` /
+  `hyde:` / `intent:` lines under the question — and the search uses those variants with
+  no expansion-model call. See
+  [Batch reads, references & query documents](/batch-reads-and-references).
+- **Retrieval diagnostics (v8.41):** `KbRetrievalExplainTool` runs a query and returns,
+  per result, *why* it ranked where it did — the vector / full-text lists that produced
+  it, the RRF contributions and the heuristic terms (see
+  [Retrieval pipeline](/architecture/retrieval-pipeline)). Read-only, `admin` /
+  `super-admin` principals only (a baseline `mcp:read` token is not a role), and gated
+  by `KB_RETRIEVAL_EXPLAIN_ENABLED` — off answers `{disabled: true}`. It also accepts
+  `investigation: true` (trace the recursive investigation chat runs — round queries,
+  `stop_reason`, selected documents — under `meta.investigation`, or
+  `{status: "disabled"}` when `KB_RECURSIVE_RETRIEVAL_ENABLED=false`), `min_score` and
+  `line_numbers`. The ingestion-status
+  tool also gains an additive `stale_embeddings` block (chunks whose vector recipe differs
+  from the active one) and, from v8.45, an additive `code_ingestion` block (feature on/off,
+  configured chunker driver, code documents, chunks per driver, documents with credentials
+  redacted — counts only).
+- **Expansion learning (W7):** `KbExpansionLearningTool { project_key? }` reads the
+  query-expansion learning loop — recorded events, the applied tuning (per-type weights,
+  curated examples), proposals with their benchmark-gate result, fine-tuning runs.
+  **Read-only by design** (documented R44 exception): applying a tuning, training or
+  promoting a model changes how every future query is rewritten, so it stays a human act
+  on the CLI and the super-admin HTTP surface. Admin / super-admin principals only;
+  `KB_EXPANSION_LEARNING_ENABLED` off → `{disabled: true}`. See
+  [Expansion learning loop](/expansion-learning-loop).
 - **Document-intelligence read surface (v8.36):** `KbOcrStatusTool` reports whether a
   document was OCR'd, with which driver, per-page confidence and figure count — read-only
   by design; an agent cannot start an OCR run or spend (see

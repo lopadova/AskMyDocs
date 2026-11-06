@@ -13,6 +13,7 @@ use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\Access\SourceAclMirror;
 use App\Services\Kb\Provenance\ProvenanceResolver;
 use Padosoft\AskMyDocsConnectorBase\Access\SourceAccess;
+use App\Services\Kb\Embedding\EmbeddingInputTemplate;
 use App\Services\Kb\Pii\ChunkRedactor;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
@@ -118,6 +119,17 @@ class DocumentIngestor
                 connectorType: $source->connectorType,
                 metadata: $source->metadata,
             );
+
+        // v8.45 / ADR 0035 D7 — the direct path's counterpart of the guard in
+        // ParseMarkdownStep: code bytes are admitted (deny-list, size, binary,
+        // generated) before anything is converted. The master switch is an
+        // entry-point gate and is not re-checked here.
+        if (\App\Services\Kb\Code\CodeLanguageMap::languageForMime($normalizedSource->mimeType) !== null) {
+            $verdict = app(\App\Services\Kb\Code\CodeIngestionPolicy::class)->assessContent($normalizedSource->sourcePath, $normalizedSource->bytes, checkEnabled: false);
+            if (! $verdict->accepted) {
+                throw new \App\Services\Kb\Code\CodeFileRefusedException('DocumentIngestor: code file refused ('.$verdict->label().') for '.$normalizedSource->sourcePath);
+            }
+        }
 
         $converter = $this->registry->resolveConverter($normalizedSource->mimeType);
         $converted = $converter->convert($normalizedSource);
@@ -608,8 +620,17 @@ class DocumentIngestor
         $chunkDrafts = app(ChunkRedactor::class)->redact($projectKey, $chunkDrafts);
 
         $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
+        // v8.42/W2 (ADR 0035 §D2) — the embedding INPUT is composed by the one
+        // shared template (bare chunk text when `kb.embedding_input.contextual`
+        // is off, byte-identical to before; `title | section | text` when on).
         $embeddingResponse = $this->embeddingCache->generate(
-            array_map(fn (ChunkDraft $d) => $d->text, $chunkDrafts),
+            app(EmbeddingInputTemplate::class)->inputs(
+                $projectKey,
+                $title,
+                $sourcePath,
+                $canonical?->type?->value,
+                $chunkDrafts,
+            ),
         );
 
         // v8.36 — resets the OCR run's isInFlight() freshness clock right
@@ -2097,6 +2118,11 @@ class DocumentIngestor
         array $chunkDrafts,
         $embeddingResponse,
     ): void {
+        $fingerprint = app(EmbeddingInputTemplate::class)->fingerprint(
+            (string) $embeddingResponse->provider,
+            (string) $embeddingResponse->model,
+        );
+
         foreach ($chunkDrafts as $index => $chunk) {
             KnowledgeChunk::updateOrCreate(
                 [
@@ -2110,6 +2136,8 @@ class DocumentIngestor
                     'chunk_text' => $chunk->text,
                     'metadata' => $chunk->metadata,
                     'embedding' => $embeddingResponse->embeddings[$index],
+                    // v8.42/W2 — records HOW this vector was produced.
+                    'embedding_fingerprint' => $fingerprint,
                 ]
             );
         }

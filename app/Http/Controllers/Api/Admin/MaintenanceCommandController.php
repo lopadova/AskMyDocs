@@ -276,6 +276,7 @@ class MaintenanceCommandController extends Controller
             'finops_prune_ledger' => 'Prune the ai_finops_usage_ledger past its retention window (v8.16).',
             // v8.38/W4b — async wiki export bundle retention sweep (ADR 0032 §12).
             'kb_prune_wiki_exports' => 'Purge expired async portable-wiki export bundles past their retention window (v8.38/W4b).',
+            'kb_expansion_learn' => 'Expansion learning loop: prune old expansion events, propose per-project tunings behind the benchmark gate (W7; no-op while disabled).',
             // Composite-gated slots — only registered when the
             // upstream env flag is also on (see bootstrap/app.php).
             // Listed here so they appear in the widget when active.

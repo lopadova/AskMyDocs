@@ -20,6 +20,7 @@ class KnowledgeChunk extends Model
         'chunk_text',
         'metadata',
         'embedding',
+        'embedding_fingerprint',
     ];
 
     protected $casts = [

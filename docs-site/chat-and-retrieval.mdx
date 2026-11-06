@@ -32,6 +32,16 @@ sequenceDiagram
 
 ## Hybrid retrieval
 
+<Note>
+Since the develop → main consolidation, chat does not search the raw message: the
+recursive investigation rewrites it into model-written round queries and runs each
+through the retrieval below (`KB_RECURSIVE_RETRIEVAL_ENABLED`, default on). Typed query
+expansion is skipped for those queries; the optional retrieval-quality stages — top-rank
+bonus, cross-encoder, path contexts — still apply. The full path is in
+[Retrieval pipeline](/architecture/retrieval-pipeline); trace a real turn with
+`kb:search "…" --investigation`.
+</Note>
+
 Retrieval never relies on vector similarity alone:
 
 - **Vector** search over `pgvector` and **keyword** search over a Postgres FTS
@@ -77,6 +87,23 @@ timezone the bot *presents* is set by `KB_PROMPT_TIMEZONE` (`config/kb.php` →
 `kb.prompt.timezone`, default `Europe/Rome`) — a single render point shared by
 every `kb_rag` surface (chat, conversation, streaming, agent, eval, benchmark; the
 embeddable KITT widget renders its own prompt).
+
+## Path contexts in the prompt and the citations
+
+*v8.44 · ADR 0035 §D6.4.* An admin can describe **what a part of the corpus is** —
+`hr` + `policies/` → *"Policy HR vigenti, approvate dal DPO"* — under **Admin → Path
+contexts** (or `kb:path-context`). With `KB_PATH_CONTEXTS_ENABLED=true`:
+
+- every citation gains `path_context` — the chain of matching descriptions, general →
+  specific (`[]` when none matches; the key is always present);
+- the prompt gains a `<path-contexts>` block *above* `## Context`, introduced as
+  administrator-written **data** and never as an instruction; `<` and `>` in a note are
+  neutralised so it cannot close the delimiter or open a tag.
+
+Matching is segment-aware (`policies` applies to `policies/leave.md`, not to
+`policies-old/x.md`) and strictly per (tenant, project). Every mutation is audited
+(`admin_command_audit`, in the same transaction as the write; the audit stores a hash and
+a length of the prose, never the prose).
 
 ## The citation document modal
 

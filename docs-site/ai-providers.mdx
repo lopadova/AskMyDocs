@@ -69,6 +69,23 @@ Implement `AiProviderInterface`, add a `match` case in `AiManager::resolve()`, a
 a `providers.<name>` block in `config/ai.php`, mirror the OpenAI test for
 coverage, and update `.env.example` + the README compatibility matrix.
 
+## Rerank providers (v8.43)
+
+The cross-encoder stage ([Retrieval pipeline](/architecture/retrieval-pipeline#cross-encoder-stage))
+is the one place AskMyDocs talks to a **rerank** model rather than a chat or embeddings
+one. It is not part of the five chat providers above: it has its own two profiles,
+selected with `KB_CROSS_RERANK_PROFILE` (default `self_hosted`).
+
+| profile | for | endpoint / key | scheme |
+|---|---|---|---|
+| `self_hosted` | an inference server you run (vLLM `/v1/rerank`, HuggingFace TEI `/rerank` with `KB_CROSS_RERANK_SELF_HOSTED_BODY_STYLE=texts`, Infinity) serving e.g. Qwen3-Reranker | `KB_CROSS_RERANK_SELF_HOSTED_URL` (+ optional key) | https; plain http only with `…_ALLOW_HTTP=true` |
+| `api` | a hosted rerank API (Cohere, Jina, Voyage) | `KB_CROSS_RERANK_API_URL`, `…_API_KEY`, `…_API_MODEL` | https only |
+
+Each profile has an **exact host allow-list** (`…_ALLOWED_HOSTS`, entries `host` or
+`host:port`); a host outside it is refused *before any request is made*. The model sees
+the user's query (PII-masked) and the candidate chunk text, so choosing `api` is a
+data-processor decision, exactly like choosing a chat provider.
+
 ## Gotchas & operations
 
 - Never reintroduce an SDK for OpenAI / Anthropic / Gemini / OpenRouter — the raw

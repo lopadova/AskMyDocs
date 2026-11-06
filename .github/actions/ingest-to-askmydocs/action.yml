@@ -42,6 +42,22 @@ inputs:
     description: Max number of documents per POST (API hard-cap is 100).
     required: false
     default: "50"
+  code_globs:
+    description: >
+      OPT-IN source-code ingestion (AskMyDocs v8.45, ADR 0035 D7). Comma
+      separated extensions or globs, e.g. "php,ts,py" or "*.php,*.ts". Default
+      EMPTY = off: nothing but markdown is collected, exactly as before. When
+      set, files with those extensions under docs_path are collected too (full
+      sync, diff, renames and deletions use the same AMR / D+R sets as
+      markdown) and POSTed with mime_type "text/x-<language>". The SERVER must
+      have KB_CODE_INGESTION_ENABLED=true and decides what is admitted: its
+      non-overridable deny-list (vendor/, node_modules/, .git/, dist/, build/,
+      storage/, *.min.*, lockfiles, .env*, *.pem, *.key, ...) and size cap skip
+      files with a reason; skipped files do not fail the run. Supported
+      extensions: php ts tsx js jsx mjs cjs py go rs java cs rb sql yml yaml
+      json sh.
+    required: false
+    default: ""
   force_delete:
     description: >
       When "true", deletions are sent with {"force": true} so the server
@@ -60,10 +76,29 @@ runs:
         DOCS_PATH: ${{ inputs.docs_path }}
         PATTERN: ${{ inputs.pattern }}
         FULL_SYNC: ${{ inputs.full_sync }}
+        CODE_GLOBS: ${{ inputs.code_globs }}
       run: |
         set -euo pipefail
 
         DOCS_PATH="${DOCS_PATH%/}"
+
+        # v8.45 — optional code extensions. Each entry is reduced to a bare
+        # lower-case extension ("*.php" / ".php" / "php" → "php") and anything
+        # that is not [a-z0-9] is dropped, so the value can never inject into
+        # the find / grep expressions below. Empty ⇒ markdown only (unchanged).
+        CODE_EXTS=()
+        if [ -n "${CODE_GLOBS// /}" ]; then
+          IFS=',' read -ra RAW_GLOBS <<< "$CODE_GLOBS"
+          for g in "${RAW_GLOBS[@]}"; do
+            g="${g//[[:space:]]/}"; g="${g#\*}"; g="${g#.}"; g="${g,,}"
+            if [[ "$g" =~ ^[a-z0-9]+$ ]]; then CODE_EXTS+=("$g"); fi
+          done
+        fi
+        CODE_REGEX=""
+        if [ "${#CODE_EXTS[@]}" -gt 0 ]; then
+          CODE_REGEX="|$(IFS='|'; echo "${CODE_EXTS[*]}")"
+          echo "Code ingestion: collecting extensions: ${CODE_EXTS[*]} (server must have KB_CODE_INGESTION_ENABLED=true)."
+        fi
 
         # Full-sync file collector. When the caller kept the default pattern we
         # match both *.md and *.markdown so full-sync mirrors the diff-mode
@@ -73,6 +108,18 @@ runs:
             find "$DOCS_PATH" -type f \( -name "*.md" -o -name "*.markdown" \) 2>/dev/null || true
           else
             find "$DOCS_PATH" -type f -name "$PATTERN" 2>/dev/null || true
+          fi
+          # v8.45 — code files, pruning the obvious dependency / VCS / build
+          # trees client-side so a full sync does not upload thousands of files
+          # the server would only skip (the server deny-list stays authoritative).
+          if [ "${#CODE_EXTS[@]}" -gt 0 ]; then
+            local name_args=()
+            for e in "${CODE_EXTS[@]}"; do
+              [ "${#name_args[@]}" -gt 0 ] && name_args+=(-o)
+              name_args+=(-name "*.${e}")
+            done
+            find "$DOCS_PATH" \( -name .git -o -name node_modules -o -name vendor -o -name dist -o -name build -o -name storage \) -prune -o \
+              -type f \( "${name_args[@]}" \) ! -name '*.min.*' -print 2>/dev/null || true
           fi
         }
 
@@ -107,6 +154,18 @@ runs:
             mapfile -t FILES < <(git diff --name-only --diff-filter=AMR "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
             mapfile -t DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
             mapfile -t RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei '\.(md|markdown)$' || true)
+            # v8.45 — code extensions (opt-in via code_globs): the same AMR /
+            # D / R sets, appended to the markdown ones. The markdown filters
+            # above stay byte-identical (R5 lock-step with full-sync).
+            if [ -n "$CODE_REGEX" ]; then
+              CODE_PAT="\\.(${CODE_REGEX#|})\$"
+              mapfile -t CODE_FILES < <(git diff --name-only --diff-filter=AMR "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei "$CODE_PAT" || true)
+              mapfile -t CODE_DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei "$CODE_PAT" || true)
+              mapfile -t CODE_RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei "$CODE_PAT" || true)
+              [ "${#CODE_FILES[@]}" -gt 0 ] && FILES+=("${CODE_FILES[@]}")
+              [ "${#CODE_DELETED[@]}" -gt 0 ] && DELETED+=("${CODE_DELETED[@]}")
+              [ "${#CODE_RENAMED_OLD[@]}" -gt 0 ] && RENAMED_OLD+=("${CODE_RENAMED_OLD[@]}")
+            fi
             if [ "${#RENAMED_OLD[@]}" -gt 0 ]; then
               DELETED+=("${RENAMED_OLD[@]}")
             fi
@@ -222,11 +281,38 @@ runs:
           fi
 
           echo "   ↳ server replied $http_status"
+          # v8.45 — code files the server's admission policy skipped (reason
+          # only; they never fail the run).
+          jq -r '.documents[]? | select(.status == "skipped") | "   ↳ skipped: \(.source_path) [\(.reason)]"' /tmp/askmydocs-response.json 2>/dev/null || true
         }
 
         BATCH_SIZE_INT=${BATCH_SIZE:-50}
         [ "$BATCH_SIZE_INT" -gt 100 ] && BATCH_SIZE_INT=100
         [ "$BATCH_SIZE_INT" -lt 1 ] && BATCH_SIZE_INT=1
+
+        # Extension → `text/x-<language>` (must match App\Services\Kb\Code\CodeLanguageMap).
+        # Markdown and anything unknown → empty (no mime_type sent).
+        mime_for() {
+          local ext="${1##*.}"
+          ext="${ext,,}"
+          case "$ext" in
+            php) echo "text/x-php" ;;
+            ts) echo "text/x-typescript" ;;
+            tsx) echo "text/x-tsx" ;;
+            js|jsx|mjs|cjs) echo "text/x-javascript" ;;
+            py) echo "text/x-python" ;;
+            go) echo "text/x-go" ;;
+            rs) echo "text/x-rust" ;;
+            java) echo "text/x-java" ;;
+            cs) echo "text/x-csharp" ;;
+            rb) echo "text/x-ruby" ;;
+            sql) echo "text/x-sql" ;;
+            yml|yaml) echo "text/x-yaml" ;;
+            json) echo "text/x-json" ;;
+            sh) echo "text/x-bash" ;;
+            *) echo "" ;;
+          esac
+        }
 
         BATCH='[]'
         COUNT_IN_BATCH=0
@@ -245,11 +331,17 @@ runs:
 
           # --rawfile streams the file directly into jq (avoids ARG_MAX limits
           # and preserves trailing newlines, unlike --arg "$(cat …)").
+          # v8.45 — a code file carries its language MIME; markdown sends none
+          # (the server defaults to text/markdown), exactly as before.
+          mime=$(mime_for "$file")
+
           doc=$(jq -n \
             --arg project_key "$PROJECT_KEY" \
             --arg source_path "$file" \
+            --arg mime_type "$mime" \
             --rawfile content "$file" \
-            '{project_key: $project_key, source_path: $source_path, content: $content}')
+            '{project_key: $project_key, source_path: $source_path, content: $content}
+             + (if $mime_type != "" then {mime_type: $mime_type} else {} end)')
 
           BATCH=$(jq --argjson item "$doc" '. + [$item]' <<<"$BATCH")
           COUNT_IN_BATCH=$((COUNT_IN_BATCH + 1))

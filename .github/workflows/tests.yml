@@ -73,6 +73,13 @@ jobs:
           mkdir -p vendor/orchestra/testbench-core/laravel/bootstrap/cache
           mkdir -p bootstrap/cache
 
+      # v8.45 / ADR 0035 D7 — the code-chunker helper's two pinned deps
+      # (web-tree-sitter + the prebuilt grammar pack) so the REAL-helper tests
+      # run instead of skipping. Exact versions, no lockfile to commit; the
+      # runner's preinstalled Node is enough (>= 18).
+      - name: Install code-chunker helper deps
+        run: npm install --prefix tools/code-chunker --no-audit --no-fund
+
       - name: Run PHPUnit
         run: vendor/bin/phpunit --testdox
 
@@ -595,6 +602,17 @@ jobs:
           # VisionColumnResolverTest (PHPUnit), per R43 (both states
           # tested).
           KB_TABULAR_VISION_ENABLED: 'true'
+          # v8.44/W4 — light up Path contexts (ADR 0035 §D6.4) for
+          # admin-path-contexts.spec.ts. Also set in playwright.config.ts
+          # (artisan serve does not read the step env). OFF state: PHPUnit
+          # KbPathContextControllerTest + the PathContextsView Vitest (R43).
+          KB_PATH_CONTEXTS_ENABLED: 'true'
+          # W7 — light up the expansion learning loop (ADR 0035 addendum) for
+          # admin-expansion-learning.spec.ts: CI starts Laravel itself
+          # (E2E_SKIP_WEBSERVER=1), so the playwright.config.ts value never
+          # reaches this process. OFF state: PHPUnit ExpansionLearningLoopTest
+          # (clean 404) + the ExpansionLearningView Vitest (R43).
+          KB_EXPANSION_LEARNING_ENABLED: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.

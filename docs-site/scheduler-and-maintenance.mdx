@@ -52,6 +52,7 @@ says otherwise.
 | `30 3 * * *` | `kb:prune-deleted` | `SCHEDULE_KB_PRUNE_DELETED_*` |
 | `40 3 * * *` | `kb:rebuild-graph` | `SCHEDULE_KB_REBUILD_GRAPH_*` |
 | `50 3 * * *` | `kb:health-recompute` | `SCHEDULE_KB_HEALTH_RECOMPUTE_*` |
+| `50 3 * * *` | `kb:expansion-learn nightly` (W7 — prune old expansion events, analyse every project with enough evidence, poll pending training jobs; a no-op while `KB_EXPANSION_LEARNING_ENABLED=false`) | `SCHEDULE_KB_EXPANSION_LEARN_*` |
 | `55 3 * * *` | `kb:stale-review-sweep` | `SCHEDULE_KB_STALE_REVIEW_SWEEP_*` |
 | `0 4 * * *` | `queue:prune-failed --hours=48` | `SCHEDULE_QUEUE_PRUNE_FAILED_*` |
 | `0 4 * * *` | `widget:prune-sessions` | `SCHEDULE_WIDGET_PRUNE_SESSIONS_*` |

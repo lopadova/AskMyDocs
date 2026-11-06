@@ -98,6 +98,24 @@ score, then applies a canonical boost and a status penalty. Defaults
 | Knob | Env | Default | Effect |
 |---|---|---|---|
 | Candidate multiplier | `KB_RERANK_CANDIDATE_MULTIPLIER` | `3` | Over-retrieve 3× the limit, then rerank down |
+| Lexical query syntax (v8.41) | `KB_FTS_QUERY_SYNTAX` | `plain` | `plain` (legacy `plainto_tsquery`) or `websearch` (quotes, `-negation`, prefix, identifier phrases, bounded `ts_rank_cd`) |
+| Retrieval explain (v8.41) | `KB_RETRIEVAL_EXPLAIN_ENABLED` | `false` | HTTP + MCP surfaces of the per-result ranking trace (`kb:search --explain` always works) |
+| Contextual embedding input (v8.42) | `KB_EMBEDDING_CONTEXTUAL_INPUT` | `false` | Embed `title \| section \| text` instead of the bare chunk; never re-embeds on its own — run `kb:reembed-stale` |
+| Cross-encoder stage (v8.43) | `KB_CROSS_RERANK_ENABLED` | `false` | Re-scores the heuristic top-N with a pair-reading model; `KB_CROSS_RERANK_PROFILE` = `self_hosted` (default) \| `api`, endpoint + exact host allow-list per profile |
+| Query expansion (v8.44) | `KB_QUERY_EXPANSION_ENABLED` | `false` | Typed `lex`/`vec`/`hyde` variants of the query; skipped on a strong signal and for model-written (investigation / agent) queries; optional `KB_QUERY_EXPANSION_PROVIDER` / `_MODEL` |
+| Expansion transport (W6) | `KB_QUERY_EXPANSION_PROFILE` | `provider` | `provider` (the `AiManager` providers) \| `self_hosted` (an operator-run OpenAI-compatible endpoint: `KB_QUERY_EXPANSION_SELF_HOSTED_URL`, `_MODEL`, `_API_KEY`, `_ALLOWED_HOSTS` — exact hosts, https unless `_ALLOW_HTTP=true`); `KB_QUERY_EXPANSION_TIMEOUT` (`10` s) |
+| Query documents (W6) | `KB_QUERY_DOCUMENTS_ENABLED` | `false` | A query with `lex:`/`vec:`/`hyde:`/`intent:` lines is used as its own expansion, no model call — see [Batch reads, references & query documents](/batch-reads-and-references) |
+| RRF top-rank bonus (W6) | `KB_RRF_TOP_RANK_BONUS_ENABLED` | `false` | `+KB_RRF_TOP_RANK_BONUS_FIRST` (`0.05`) for a rank-1, `+KB_RRF_TOP_RANK_BONUS_PODIUM` (`0.02`) for a rank 2–3 hit of the **original** query's lists |
+| Batch document reads (W6) | `KB_MULTI_GET_ENABLED` | `false` | `kb:multi-get`, `POST /api/kb/documents/multi`, `KbMultiGetTool`; `KB_MULTI_GET_MAX_DOCUMENTS` (`20`), `KB_MULTI_GET_MAX_BYTES` (`65536`), `KB_MULTI_GET_MAX_BYTES_CEILING` (`262144`) |
+| Expansion learning loop (W7) | `KB_EXPANSION_LEARNING_ENABLED` | `false` | Records masked expansion signals (only with PII redaction active), proposes per-type weights + examples behind a benchmark gate; `KB_EXPANSION_LEARNING_AUTO_APPLY` (`false`), `_WINDOW_DAYS` (`30`), `_MIN_EVENTS` (`30`), `_RETENTION_DAYS` (`90`), `_CACHE_TTL` (`300`), `_GATE_TENANT` (`system-expansion-gate`), `_GATE_PROJECT` (`expansion-gate`), `_GATE_TOLERANCE` (`0.0`) — see [Expansion learning loop](/expansion-learning-loop) |
+| Expansion training (W7) | `KB_EXPANSION_TRAINING_CONSENTED_TENANTS` | empty | Tenants allowed to send masked queries to a training provider (empty = nobody); `KB_EXPANSION_TRAINING_BASE_MODEL` (`gpt-4.1-mini-2025-04-14`, code-owned list), `_MIN_ROWS` (`50`), `_DISK` (`local`), `_OPENAI_BASE_URL`, `_OPENAI_ALLOWED_HOSTS` (`api.openai.com`) |
+| Recursive investigation | `KB_RECURSIVE_RETRIEVAL_ENABLED` | `true` | Chat runs the investigation (model-written round queries) instead of a direct search; `false` is an emergency rollback. Explain it with `kb:search --investigation`; see [Recursive investigation](/architecture/recursive-investigation) |
+| Corpus facets (v8.44) | `KB_MCP_FACETS_ENABLED` | `false` | `GET /api/kb/facets`, `kb:facets`, `KbFacetsTool` |
+| Path contexts (v8.44) | `KB_PATH_CONTEXTS_ENABLED` | `false` | Admin-authored descriptions of corpus areas, in the prompt and the citations |
+| Line-range read cap (v8.44) | `KB_LINE_READ_MAX_LINES` | `400` | Upper bound of any `from_line`/`max_lines` read |
+| Source code ingestion (v8.45) | `KB_CODE_INGESTION_ENABLED` | `false` | Accept `text/x-<language>` source files at `kb:ingest-folder --pattern`, `POST /api/kb/ingest` and the Action `code_globs`; deny-list, size cap and secret redaction are not switchable — see [Ingesting source code](/ingesting-source-code) |
+| Code chunker driver (v8.45) | `KB_CODE_CHUNKER_DRIVER` | `auto` | `auto` (tree-sitter helper, heuristic fallback) \| `tree_sitter` (forced — unavailable ⇒ ingest fails loudly) \| `heuristic`; plus `KB_CODE_MAX_FILE_BYTES` (`524288`), `KB_CODE_PARSE_TIMEOUT` (`10`), `KB_CODE_EXTRA_DENY` |
+| Embedding cost estimate (v8.42) | `KB_EMBEDDING_PRICE_PER_MILLION_TOKENS` | unset | Turns the `kb:reembed-stale --dry-run` token estimate into a cost |
 | Vector weight | `KB_RERANK_VECTOR_WEIGHT` | `0.55` | Cosine similarity signal |
 | Keyword weight | `KB_RERANK_KEYWORD_WEIGHT` | `0.25` | Lexical overlap signal |
 | Heading weight | `KB_RERANK_HEADING_WEIGHT` | `0.05` | Heading-path match signal |

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Flow\Steps\Folder;
 
 use App\Flow\Steps\StepTenantBinder;
+use App\Services\Kb\Code\CodeIngestionPolicy;
+use App\Services\Kb\Code\CodeLanguageMap;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Support\Facades\Storage;
@@ -48,6 +50,7 @@ final class ListFolderFilesStep implements FlowStepHandler
         $storage = Storage::disk($disk);
         $allFiles = $recursive ? $storage->allFiles($basePath) : $storage->files($basePath);
         $matching = $this->filterByExtensions($allFiles, $extensions);
+        [$matching, $skippedCode] = $this->applyCodePolicy($storage, $matching);
 
         if ($limit > 0) {
             $matching = array_slice($matching, 0, $limit);
@@ -60,11 +63,58 @@ final class ListFolderFilesStep implements FlowStepHandler
                 'extensions' => $extensions,
                 'matched_count' => count($matching),
                 'matched_files' => array_values($matching),
+                // Additive (R27): code files the admission policy left out of
+                // the walk (deny-listed / oversize), each with its reason.
+                'skipped_code_count' => count($skippedCode),
+                'skipped_code' => $skippedCode,
             ],
             businessImpact: [
                 'matched_count' => count($matching),
             ],
         );
+    }
+
+    /**
+     * v8.45 / ADR 0035 D7 — a recursive walk over a repository meets
+     * `vendor/`, `node_modules/`, lockfiles and `.env` files. With code
+     * ingestion ON the deny-list and size cap prune them HERE, so they are
+     * neither counted as matched nor reported as failures. With it OFF this is
+     * a no-op and the walk is byte-identical to v8.44 (a `.php` the operator
+     * listed explicitly still fails at dispatch as "unsupported", as before).
+     *
+     * @param  array<int,string>  $files
+     * @return array{0: array<int,string>, 1: list<array{path: string, reason: string}>}
+     */
+    private function applyCodePolicy(\Illuminate\Contracts\Filesystem\Filesystem $storage, array $files): array
+    {
+        $policy = app(CodeIngestionPolicy::class);
+        if (! $policy->enabled()) {
+            return [$files, []];
+        }
+        $kept = [];
+        $skipped = [];
+        foreach ($files as $path) {
+            if (CodeLanguageMap::languageForPath($path) === null) {
+                $kept[] = $path;
+
+                continue;
+            }
+            $size = null;
+            try {
+                $size = $storage->size($path);
+            } catch (\Throwable) {
+                // Size unknown: the byte-level check at ingest still applies.
+            }
+            $verdict = $policy->assessPath($path, is_int($size) ? $size : null);
+            if ($verdict->accepted) {
+                $kept[] = $path;
+
+                continue;
+            }
+            $skipped[] = ['path' => $path, 'reason' => $verdict->label()];
+        }
+
+        return [$kept, $skipped];
     }
 
     /**

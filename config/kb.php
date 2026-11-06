@@ -124,8 +124,249 @@ return [
             explode(',', (string) env('KB_FTS_SUPPORTED_LANGUAGES', 'english,italian')),
         ))),
         'rrf_k' => env('KB_RRF_K', 60),
+        // W6 (qmd parity) — protect the head of the ORIGINAL query's lists:
+        // +first for a rank-1 hit, +podium for ranks 2–3, added to the fused
+        // RRF score. Default OFF (R43): fusion is byte-identical when false.
+        'top_rank_bonus' => [
+            'enabled' => (bool) env('KB_RRF_TOP_RANK_BONUS_ENABLED', false),
+            'first' => (float) env('KB_RRF_TOP_RANK_BONUS_FIRST', 0.05),
+            'podium' => (float) env('KB_RRF_TOP_RANK_BONUS_PODIUM', 0.02),
+        ],
         'semantic_weight' => env('KB_HYBRID_SEMANTIC_WEIGHT', 0.70),
         'fts_weight' => env('KB_HYBRID_FTS_WEIGHT', 0.30),
+        // v8.41/W1 (ADR 0035 §D3) — lexical query syntax. `plain` = the legacy
+        // `plainto_tsquery` (quotes/negation ignored, byte-identical to
+        // before). `websearch` = `websearch_to_tsquery` ("exact phrase",
+        // -exclusion, or) + prefix match for a bare single term + phrase
+        // match for compound identifiers (DEC-0054, src/lib/i18n.ts) +
+        // `ts_rank_cd` (bounded 0..1). Default `plain` until the benchmark v2
+        // run recorded in the W1 closure doc promotes it.
+        'query_syntax' => in_array(strtolower((string) env('KB_FTS_QUERY_SYNTAX', 'plain')), ['plain', 'websearch'], true)
+            ? strtolower((string) env('KB_FTS_QUERY_SYNTAX', 'plain'))
+            : 'plain',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Embedding input template (v8.42/W2, ADR 0035 §D2)
+    |--------------------------------------------------------------------------
+    |
+    | What text is sent to the embeddings provider for a chunk. OFF (default) =
+    | the bare chunk text, byte-identical to every release before v8.42. ON =
+    | `title: {document title} | section: {heading path} | text: {chunk}`
+    | (canonical documents add `| type: {canonical_type}`), so a chunk like
+    | "Il timeout è 30 s" carries the system and section it describes into its
+    | vector. `knowledge_chunks.chunk_text` stays the BARE chunk either way —
+    | the template only shapes the vector, never what is shown, cited, hashed
+    | or full-text indexed.
+    |
+    | Flipping this flag never re-embeds a corpus: existing chunks keep their
+    | vectors (and their `embedding_fingerprint`) until the operator runs
+    | `php artisan kb:reembed-stale` (use `--dry-run` first for the cost).
+    | The fingerprint covers the template id, so a flip is detected as drift.
+    |
+    */
+
+    'embedding_input' => [
+        'contextual' => filter_var(env('KB_EMBEDDING_CONTEXTUAL_INPUT', false), FILTER_VALIDATE_BOOLEAN),
+        // Bump when the template text changes; part of the fingerprint.
+        'template_version' => 1,
+        // Optional USD per 1M embedding tokens, used ONLY to turn the
+        // `kb:reembed-stale --dry-run` token estimate into a cost estimate.
+        // Unset = the dry run reports tokens and no cost (never a guess).
+        'price_per_million_tokens' => is_numeric($p = env('KB_EMBEDDING_PRICE_PER_MILLION_TOKENS')) ? (float) $p : null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cross-encoder stage (v8.43/W3, ADR 0035 §D4)
+    |--------------------------------------------------------------------------
+    |
+    | After the heuristic Reranker, the top `candidates` chunks are re-scored by
+    | a model that reads each (query, chunk) PAIR and blended position-aware
+    | (see CrossEncoderBlender): the head of the heuristic order is protected,
+    | the tail is where the model decides. `rerank_score` / `vector_score` — the
+    | inputs of the refusal gate — are NEVER modified. Any failure falls back to
+    | the heuristic order and says so in `meta.cross_encoder`.
+    |
+    | Two profiles, both selectable here (default SELF-HOSTED): `self_hosted` —
+    | an inference server you run (vLLM / TEI / Infinity serving e.g.
+    | Qwen3-Reranker) — and `api` — a hosted rerank API (Cohere / Jina /
+    | Voyage). Every endpoint host must be in the profile's EXACT allow-list
+    | (`host` or `host:port`); `api` is https-only, `self_hosted` tolerates plain
+    | http only with `allow_http`. `fake` is a test double refused in production.
+    |
+    */
+
+    'cross_rerank' => [
+        'enabled' => filter_var(env('KB_CROSS_RERANK_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'driver' => env('KB_CROSS_RERANK_DRIVER', 'http'),            // http | fake
+        'profile' => env('KB_CROSS_RERANK_PROFILE', 'self_hosted'),   // self_hosted | api
+        'candidates' => (int) env('KB_CROSS_RERANK_CANDIDATES', 30),
+        'timeout' => (int) env('KB_CROSS_RERANK_TIMEOUT', 10),
+        'max_passage_chars' => (int) env('KB_CROSS_RERANK_MAX_PASSAGE_CHARS', 2000),
+        'cache_ttl' => (int) env('KB_CROSS_RERANK_CACHE_TTL', 604800),
+        // Optional USD per 1M (estimated) tokens, for the FinOps ledger row.
+        'price_per_million_tokens' => (float) env('KB_CROSS_RERANK_PRICE_PER_MILLION_TOKENS', 0.0),
+        'tiers' => [
+            'head_rank' => 3,
+            'mid_rank' => 10,
+            'head_weight' => (float) env('KB_CROSS_RERANK_HEAD_WEIGHT', 0.75),
+            'mid_weight' => (float) env('KB_CROSS_RERANK_MID_WEIGHT', 0.60),
+            'tail_weight' => (float) env('KB_CROSS_RERANK_TAIL_WEIGHT', 0.40),
+        ],
+        'profiles' => [
+            'self_hosted' => [
+                'endpoint' => env('KB_CROSS_RERANK_SELF_HOSTED_URL'),
+                'model' => env('KB_CROSS_RERANK_SELF_HOSTED_MODEL', 'Qwen/Qwen3-Reranker-0.6B'),
+                'api_key' => env('KB_CROSS_RERANK_SELF_HOSTED_API_KEY'),
+                'body_style' => env('KB_CROSS_RERANK_SELF_HOSTED_BODY_STYLE', 'documents'),   // documents | texts (TEI)
+                'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_CROSS_RERANK_SELF_HOSTED_ALLOWED_HOSTS', ''))))),
+                'allow_http' => filter_var(env('KB_CROSS_RERANK_SELF_HOSTED_ALLOW_HTTP', false), FILTER_VALIDATE_BOOLEAN),
+            ],
+            'api' => [
+                'endpoint' => env('KB_CROSS_RERANK_API_URL'),
+                'model' => env('KB_CROSS_RERANK_API_MODEL'),
+                'api_key' => env('KB_CROSS_RERANK_API_KEY'),
+                'body_style' => 'documents',
+                'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_CROSS_RERANK_API_ALLOWED_HOSTS', ''))))),
+                'allow_http' => false,
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Typed query expansion (v8.44/W4, ADR 0035 §D5)
+    |--------------------------------------------------------------------------
+    |
+    | A cheap model proposes `lex` (keyword), `vec` (paraphrase) and `hyde`
+    | (hypothetical answer passage) variants of the query; lex goes to the
+    | full-text branch, vec/hyde to the vector branch, all fused by weighted RRF
+    | with the ORIGINAL query's lists at twice the weight. Skipped when the
+    | lexical (or, hybrid off, the vector) top hit is already strong and clearly
+    | separated, and whenever the caller passes an `intent`. The model's answer
+    | is a closed JSON object; anything else is discarded. Provider/model are
+    | optional overrides validated against a code-owned shape — unset = the
+    | tenant's chat provider and its default model.
+    |
+    */
+
+    'query_expansion' => [
+        // W6 (qmd parity) — accept a user/agent-written query document
+        // (lex:/vec:/hyde:/intent: lines) as the expansion, no model call.
+        // OFF (R43): such a text is searched literally, exactly as before.
+        'user_documents' => filter_var(env('KB_QUERY_DOCUMENTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // W6 — `provider` (default: the AiManager providers below) or
+        // `self_hosted` (an operator-run OpenAI-compatible endpoint; exact host
+        // allow-list, https unless allow_http, no third-party processor).
+        'profile' => env('KB_QUERY_EXPANSION_PROFILE', 'provider'),
+        'timeout' => (int) env('KB_QUERY_EXPANSION_TIMEOUT', 10),
+        'self_hosted' => [
+            'endpoint' => env('KB_QUERY_EXPANSION_SELF_HOSTED_URL'),
+            'model' => env('KB_QUERY_EXPANSION_SELF_HOSTED_MODEL'),
+            'api_key' => env('KB_QUERY_EXPANSION_SELF_HOSTED_API_KEY'),
+            'allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_QUERY_EXPANSION_SELF_HOSTED_ALLOWED_HOSTS', ''))))),
+            'allow_http' => filter_var(env('KB_QUERY_EXPANSION_SELF_HOSTED_ALLOW_HTTP', false), FILTER_VALIDATE_BOOLEAN),
+        ],
+        'enabled' => filter_var(env('KB_QUERY_EXPANSION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'provider' => env('KB_QUERY_EXPANSION_PROVIDER'),
+        'model' => env('KB_QUERY_EXPANSION_MODEL'),
+        'max_variants' => (int) env('KB_QUERY_EXPANSION_MAX_VARIANTS', 3),
+        'cache_ttl' => (int) env('KB_QUERY_EXPANSION_CACHE_TTL', 86400),
+        // Strong-signal skip. Calibrated on benchmark v2 (see the W4 closure doc).
+        'skip_min_score' => (float) env('KB_QUERY_EXPANSION_SKIP_MIN_SCORE', 0.85),
+        'skip_min_gap' => (float) env('KB_QUERY_EXPANSION_SKIP_MIN_GAP', 0.15),
+        // Weight of an expansion list relative to the matching original list.
+        'expansion_weight_ratio' => (float) env('KB_QUERY_EXPANSION_WEIGHT_RATIO', 0.5),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Agent affordances (v8.44/W4, ADR 0035 §D6)
+    |--------------------------------------------------------------------------
+    */
+
+    // Corpus facets (kb:facets · GET /api/kb/facets · KbFacetsTool). OFF = clean 404 / {disabled:true}.
+    'facets' => [
+        'enabled' => filter_var(env('KB_MCP_FACETS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'limit' => (int) env('KB_FACETS_LIMIT', 50),
+    ],
+
+    // Path contexts: admin-authored descriptions bound to a source_path prefix,
+    // returned with citations and rendered in the prompt as untrusted DATA.
+    'path_contexts' => [
+        'enabled' => filter_var(env('KB_PATH_CONTEXTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    ],
+
+    // Line-range reads (KbReadDocumentTool from_line/max_lines, kb:show, the preview endpoint).
+    'line_read' => [
+        'max_lines' => (int) env('KB_LINE_READ_MAX_LINES', 400),
+    ],
+
+    // W6 (qmd parity) — batch document reads (kb:multi-get · POST /api/kb/documents/multi
+    // · KbMultiGetTool). Selectors: #ref, glob, exact path. OFF = clean 404 / {disabled:true}.
+    'multi_get' => [
+        'enabled' => filter_var(env('KB_MULTI_GET_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'max_documents' => (int) env('KB_MULTI_GET_MAX_DOCUMENTS', 20),
+        'default_max_bytes' => (int) env('KB_MULTI_GET_MAX_BYTES', 65536),
+        'max_bytes_ceiling' => (int) env('KB_MULTI_GET_MAX_BYTES_CEILING', 262144),
+    ],
+
+    // W7 — the expansion learning loop (kb:expansion-learn · /api/admin/kb/expansion-learning
+    // · KbExpansionLearningTool). OFF (R43): no event is recorded, the applied
+    // tuning reads neutral, every endpoint answers 404 expansion_learning_disabled.
+    'expansion_learning' => [
+        'enabled' => filter_var(env('KB_EXPANSION_LEARNING_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Apply a proposal without a human ONLY when the benchmark gate passed.
+        'auto_apply' => filter_var(env('KB_EXPANSION_LEARNING_AUTO_APPLY', false), FILTER_VALIDATE_BOOLEAN),
+        'window_days' => (int) env('KB_EXPANSION_LEARNING_WINDOW_DAYS', 30),
+        'min_events' => (int) env('KB_EXPANSION_LEARNING_MIN_EVENTS', 30),
+        'retention_days' => (int) env('KB_EXPANSION_LEARNING_RETENTION_DAYS', 90),
+        'cache_ttl' => (int) env('KB_EXPANSION_LEARNING_CACHE_TTL', 300),
+        'gate_project' => env('KB_EXPANSION_LEARNING_GATE_PROJECT', 'expansion-gate'),
+        // Dedicated non-operational tenant the gate's benchmark corpus lives in.
+        'gate_tenant' => env('KB_EXPANSION_LEARNING_GATE_TENANT', 'system-expansion-gate'),
+        'gate_tolerance' => (float) env('KB_EXPANSION_LEARNING_GATE_TOLERANCE', 0.0),
+        'training' => [
+            // Tenants whose operator recorded consent (and a DPA) to send MASKED
+            // queries to the training provider. Empty = nobody (fail-closed).
+            'consented_tenants' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_EXPANSION_TRAINING_CONSENTED_TENANTS', ''))))),
+            'base_model' => env('KB_EXPANSION_TRAINING_BASE_MODEL', 'gpt-4.1-mini-2025-04-14'),
+            'min_rows' => (int) env('KB_EXPANSION_TRAINING_MIN_ROWS', 50),
+            // Billable provider jobs per tenant per 30 days (one in flight at a time).
+            'max_runs_per_30_days' => (int) env('KB_EXPANSION_TRAINING_MAX_RUNS_PER_30_DAYS', 2),
+            'disk' => env('KB_EXPANSION_TRAINING_DISK', 'local'),
+            'openai_base_url' => env('KB_EXPANSION_TRAINING_OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+            'openai_allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_EXPANSION_TRAINING_OPENAI_ALLOWED_HOSTS', 'api.openai.com'))))),
+        ],
+    ],
+
+    // "Did you mean" suggestions on a missed slug / path.
+    'did_you_mean' => [
+        'max_distance' => (int) env('KB_DID_YOU_MEAN_MAX_DISTANCE', 3),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retrieval explain (v8.41/W1, ADR 0035 §D1)
+    |--------------------------------------------------------------------------
+    |
+    | Per-result decomposition of a ranking: which lists (vector / full-text /
+    | expansion) ranked a chunk, with what weight, which heuristic and
+    | cross-encoder terms moved it. Computed from values the pipeline already
+    | holds (no extra query, no extra provider call) and only when asked.
+    | The `kb:search --explain` CLI always works for operators; this flag
+    | gates the HTTP (`GET /api/admin/kb/retrieval/explain`) and MCP
+    | (`KbRetrievalExplainTool`) surfaces — OFF answers a clean 404 /
+    | disabled tool response (R43).
+    |
+    */
+
+    'retrieval_explain' => [
+        'enabled' => filter_var(env('KB_RETRIEVAL_EXPLAIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Hard cap on `limit` for the explain surfaces (the trace is verbose).
+        'max_limit' => (int) env('KB_RETRIEVAL_EXPLAIN_MAX_LIMIT', 20),
     ],
 
     /*
@@ -1008,6 +1249,20 @@ return [
         'threshold_mrr' => (float) env('KB_BENCHMARK_THRESHOLD_MRR', 0.85),
         'threshold_citation_precision' => (float) env('KB_BENCHMARK_THRESHOLD_CITATION_PRECISION', 0.90),
         'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_THRESHOLD_REFUSAL_ACCURACY', 0.95),
+        // v8.41/W1 (ADR 0035 §D1) — benchmark v2 gates on its OWN floor.
+        // These defaults are the W1 STUB baseline (deterministic embedder, no
+        // key, SQLite) minus a 0.02 tolerance: nDCG@5 0.6044, MRR 0.6405,
+        // citation-precision 0.7246, refusal-accuracy 0.875 over the 80
+        // non-code queries. A change that makes retrieval WORSE on v2 fails
+        // `kb:benchmark --stub --suite=v2 --gate` (and the BenchmarkV2Test that
+        // runs it in CI). A LIVE run (real embeddings) scores higher; raise
+        // these env knobs per deployment after recording its own baseline.
+        'v2' => [
+            'threshold_ndcg' => (float) env('KB_BENCHMARK_V2_THRESHOLD_NDCG', 0.58),
+            'threshold_mrr' => (float) env('KB_BENCHMARK_V2_THRESHOLD_MRR', 0.62),
+            'threshold_citation_precision' => (float) env('KB_BENCHMARK_V2_THRESHOLD_CITATION_PRECISION', 0.70),
+            'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_V2_THRESHOLD_REFUSAL_ACCURACY', 0.85),
+        ],
     ],
 
     /*
@@ -1049,6 +1304,41 @@ return [
         'hard_cap_tokens' => env('KB_CHUNK_HARD_CAP_TOKENS', 1024),
         // Tail-overlap budget for MarkdownChunker; 0 = off. Re-ingest required when changed.
         'overlap_tokens' => env('KB_CHUNK_OVERLAP_TOKENS', 64),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Source code as a content class (v8.45 / W5, ADR 0035 D7)
+    |--------------------------------------------------------------------------
+    |
+    | OFF by default (R43). `SourceType::CODE` is always a KNOWN type; whether a
+    | code file is ACCEPTED is decided at the three entry points (kb:ingest-folder,
+    | POST /api/kb/ingest, the GitHub Action `code-globs` input) by
+    | `ingestion_enabled` — with the flag off a `.php` upload is refused exactly as
+    | before. Path deny-list, secret redaction and the size cap are NOT knobs that
+    | can be turned off: they run before anything is stored or embedded.
+    |
+    |   chunker_driver  auto | tree_sitter | heuristic
+    |     auto         tree-sitter when the Node helper answers a health probe and
+    |                  the grammar exists, otherwise the pure-PHP heuristic driver.
+    |     tree_sitter  forced; helper/grammar unavailable ⇒ the ingest FAILS loudly
+    |                  (R14), never silently degrades. Languages that have no
+    |                  shipped grammar (sql, yaml, json) always use the heuristic.
+    |     heuristic    never spawns a process.
+    */
+    'code' => [
+        'ingestion_enabled' => (bool) env('KB_CODE_INGESTION_ENABLED', false),
+        'max_file_bytes' => (int) env('KB_CODE_MAX_FILE_BYTES', 524288),
+        'parse_timeout' => (int) env('KB_CODE_PARSE_TIMEOUT', 10),
+        'chunker_driver' => env('KB_CODE_CHUNKER_DRIVER', 'auto'),
+        'node_binary' => env('KB_CODE_NODE_BINARY', 'node'),
+        'helper_path' => env('KB_CODE_HELPER_PATH', base_path('tools/code-chunker/index.mjs')),
+        'max_helper_output_bytes' => (int) env('KB_CODE_HELPER_MAX_OUTPUT_BYTES', 1048576),
+        // Seconds a successful/failed health probe is remembered per process+cache.
+        'probe_ttl' => (int) env('KB_CODE_PROBE_TTL', 300),
+        // Operator ADDITIONS to the built-in deny-list (fnmatch globs, comma
+        // separated). They can add, never remove.
+        'extra_deny_globs' => array_values(array_filter(array_map('trim', explode(',', (string) env('KB_CODE_EXTRA_DENY', ''))))),
     ],
 
     /*

@@ -98,6 +98,17 @@ reads the **server** value instead of recomputing. Streaming turns stamp the sam
 cost + `trace_id`. The whole path is gated on `AI_FINOPS_METERING` so a deployment
 with FinOps off pays no price-feed cost and writes no dangling trace id.
 
+### Cross-encoder rerank on the ledger (v8.43)
+
+A hosted rerank API is a non-SDK call, so the SDK lifecycle hook cannot meter it.
+`CrossRerankCallMeter` records one ledger row per **uncached** rerank call under
+`purpose_tag = cross_rerank` (`modality = text`, provider `cross_rerank`), priced as
+estimated tokens × `KB_CROSS_RERANK_PRICE_PER_MILLION_TOKENS` (default `0.0` — a
+self-hosted endpoint has no per-token price but still leaves a row, so volume and
+latency sit next to every other AI line item). A full cache hit records nothing; a
+metering failure is logged and never breaks the search. The typed query expansion is
+an ordinary no-tools chat call and is metered by the SDK hook like any other.
+
 ## Data model / contract
 
 The package owns its tables under the `ai_finops_` prefix (created by `php artisan

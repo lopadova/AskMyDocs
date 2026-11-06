@@ -3,6 +3,8 @@
 namespace App\Mcp\Tools;
 
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\ResultScoreFloor;
+use App\Services\Kb\Retrieval\RetrievalFilters;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -28,6 +30,12 @@ class KbSearchTool extends Tool
             'limit' => $schema->integer()
                 ->description('Maximum number of chunks to return.')
                 ->default(6),
+            'intent' => $schema->string()
+                ->description('Optional disambiguation hint, e.g. "web page load times" for the query "performance". It steers re-ranking; it is not searched on its own.')
+                ->nullable(),
+            'min_score' => $schema->number()
+                ->description('Optional. Drop results whose final score (cross-encoder blend when that stage ran, else rerank score, else vector score) is below this value.')
+                ->nullable(),
         ];
     }
 
@@ -37,10 +45,17 @@ class KbSearchTool extends Tool
             query: (string) $request->get('query'),
             projectKey: $request->get('project_key'),
             limit: (int) ($request->get('limit') ?? 6),
+            // v8.44/W4 — optional intent (additive). Without it `filters` stays null:
+            // the legacy, byte-identical call.
+            filters: is_string($intent = $request->get('intent')) && trim($intent) !== ''
+                ? RetrievalFilters::forLegacyProject($request->get('project_key'))->withIntent($intent)
+                : null,
         );
 
+        $minScore = $request->get('min_score');
+
         return Response::json([
-            'results' => $results->values()->all(),
+            'results' => ResultScoreFloor::apply($results->values(), is_numeric($minScore) ? (float) $minScore : null)->all(),
         ]);
     }
 }
