@@ -1,6 +1,10 @@
 import { SelectField, SelectOption } from '@/components/ui/select-field';
-import { useUiTranslation } from "../../../../lib/ui-locale";
-import { useEffect, useState, type ReactNode } from 'react';
+import { translateUi, useUiTranslation } from '../../../../lib/ui-locale';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from '../../../../components/Button';
+import { Icon } from '../../../../components/Icons';
+import { UploadTransferProgress, type TransferProgress } from './UploadTransferProgress';
+import './upload.css';
 import { useAuthStore } from '../../../../lib/auth-store';
 import { UploadDropzone } from './UploadDropzone';
 import { OcrEstimateLine } from './OcrEstimateLine';
@@ -52,16 +56,24 @@ export interface UploadModalProps {
     onCommitted: () => void;
 }
 
-function errMessage(err: unknown): string {
-    const anyErr = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } }; message?: string };
-    const data = anyErr?.response?.data;
-    if (data?.errors) {
-        const first = Object.values(data.errors)[0];
-        if (Array.isArray(first) && first[0]) {
-            return first[0];
-        }
+function errMessage(err: unknown, files: File[] = []): string {
+    const error = err as { code?: string; response?: { status?: number; data?: { message?: string; errors?: Record<string, string[]> } }; message?: string };
+    if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') {
+        return translateUi('The server did not respond in time. Check your connection and try again.');
     }
-    return data?.message ?? anyErr?.message ?? 'Something went wrong.';
+    const status = error?.response?.status;
+    if (status === 413) return translateUi('These files exceed the server upload limit. Try fewer or smaller files.');
+    if (status === 419 || status === 401) return translateUi('Your session has expired. Sign in again before retrying the upload.');
+    if (error?.code === 'ERR_NETWORK') return translateUi('The connection was lost. Check your network and try again.');
+    const data = error?.response?.data;
+    if (data?.errors) {
+        return Object.entries(data.errors).flatMap(([key, messages]) => {
+            const index = /^files\.(\d+)/.exec(key)?.[1];
+            const name = index === undefined ? undefined : files[Number(index)]?.name;
+            return messages.map((message) => name ? `${name}: ${message}` : message);
+        }).join(' ');
+    }
+    return data?.message ?? error?.message ?? translateUi('Something went wrong.');
 }
 
 export function UploadModal({ seed, defaultProject, projectOptions, onClose, onCommitted }: UploadModalProps): ReactNode {
@@ -73,6 +85,13 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     const [pickedFiles, setPickedFiles] = useState<File[]>(seed?.files ?? []);
     const [batchId, setBatchId] = useState<string | null>(null);
     const [staged, setStaged] = useState<UploadBatchResponse | null>(null);
+    const transferController = useRef<AbortController | null>(null);
+    const [transfer, setTransfer] = useState<TransferProgress>({ loaded: 0 });
+    const [uploadStopped, setUploadStopped] = useState(false);
+    useEffect(() => () => {
+        transferController.current?.abort();
+        transferController.current = null;
+    }, []);
     const [actionError, setActionError] = useState<string | null>(null);
     // Bumped whenever a staged item is removed so the OCR estimate re-reads
     // the batch it describes (R17 — the cached copy follows the source).
@@ -83,14 +102,14 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     const cancelMut = useCancelBatch();
     const removeMut = useRemoveStagedItem();
 
-    const poll = phase === 'committing' || phase === 'progress';
+    const poll = phase === 'progress';
     const progress = useBatchProgress(batchId, poll);
     // v8.36 / ADR 0029 §8 — the OCR cost line, read only in the review phase.
     const ocrEstimate = useOcrEstimate(batchId, phase === 'review', estimateRevision);
 
     // Transition to `done` once the polled batch is terminal, exactly once.
     useEffect(() => {
-        if ((phase === 'progress' || phase === 'committing') && isTerminalBatch(progress.data?.batch)) {
+        if (phase === 'progress' && isTerminalBatch(progress.data?.batch)) {
             setPhase('done');
             onCommitted();
         }
@@ -111,22 +130,45 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     const stagedCount = (staged?.items ?? []).filter((i) => i.status === 'staged').length;
 
     function handleStage() {
+        if (transferController.current) return;
+        const controller = new AbortController();
+        transferController.current = controller;
+        setTransfer({ loaded: 0 });
+        setUploadStopped(false);
         setActionError(null);
         setPhase('staging');
         stageMut.mutate(
-            { projectKey: projectKey.trim(), subPath: subPath.trim(), files: pickedFiles },
+            {
+                projectKey: projectKey.trim(), subPath: subPath.trim(), files: pickedFiles,
+                signal: controller.signal,
+                onUploadProgress: ({ loaded, total }) => {
+                    if (transferController.current === controller) setTransfer({ loaded, total });
+                },
+            },
             {
                 onSuccess: (resp) => {
+                    if (transferController.current !== controller) return;
+                    transferController.current = null;
                     setBatchId(resp.batch.id);
                     setStaged(resp);
                     setPhase('review');
                 },
                 onError: (err) => {
-                    setActionError(errMessage(err));
+                    if (transferController.current !== controller) return;
+                    transferController.current = null;
+                    setActionError(errMessage(err, pickedFiles));
                     setPhase('selecting');
                 },
             },
         );
+    }
+
+    function stopUpload() {
+        const controller = transferController.current;
+        transferController.current = null;
+        controller?.abort();
+        setUploadStopped(true);
+        setPhase('selecting');
     }
 
     function handleRemove(itemId: string) {
@@ -187,13 +229,16 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     }
 
     function handleCancel() {
-        if (batchId) {
-            cancelMut.mutate(batchId);
-        }
-        onClose();
+        if (!batchId) return;
+        setActionError(null);
+        cancelMut.mutate(batchId, {
+            onSuccess: onClose,
+            onError: (err) => setActionError(errMessage(err)),
+        });
     }
 
     const dataState =
+        progress.isError && poll ? 'error' :
         actionError && (phase === 'selecting' || phase === 'review')
             ? 'error'
             : phase === 'staging' || phase === 'committing' || phase === 'progress'
@@ -225,7 +270,6 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                 aria-labelledby="kb-upload-title"
                 data-testid="kb-upload-modal"
                 data-state={dataState}
-                aria-busy={dataState === 'loading'}
                 style={{
                     background: 'var(--panel-solid, #1a1a22)',
                     border: '1px solid var(--panel-border-strong, rgba(255,255,255,.12))',
@@ -243,23 +287,23 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <h2 id="kb-upload-title" data-testid="kb-upload-title" style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
                         {translateInterface("Upload documents")}</h2>
-                    <button
-                        type="button"
+                    <Button
+                        variant="quiet" size="sm" iconOnly
+                        disabled={phase === 'staging' || phase === 'committing' || cancelMut.isPending}
                         data-testid="kb-upload-close"
                         aria-label={translateInterface("Close")}
                         onClick={onClose}
-                        style={ghostBtn}
                     >
-                        ✕
-                    </button>
+                        <Icon.Close size={16} />
+                    </Button>
                 </div>
 
                 {/* Pre-commit: picker + dropzone + staged list. */}
                 {(phase === 'selecting' || phase === 'staging' || phase === 'review') && (
                     <>
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div className="kb-upload-fields">
                             <label htmlFor="kb-upload-project-select" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <span style={labelTxt}>Target project</span>
+                                <span style={labelTxt}>{translateInterface("Target project")}</span>
                                 <SelectField
                                     id="kb-upload-project-select"
                                     data-testid="kb-upload-project-select"
@@ -278,7 +322,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                 </SelectField>
                             </label>
                             <label htmlFor="kb-upload-target-path" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <span style={labelTxt}>Subfolder (optional)</span>
+                                <span style={labelTxt}>{translateInterface("Subfolder (optional)")}</span>
                                 <input
                                     id="kb-upload-target-path"
                                     data-testid="kb-upload-target-path"
@@ -298,15 +342,20 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                         )}
 
                         {/* Picked-but-not-staged file names. */}
-                        {phase === 'selecting' && pickedFiles.length > 0 && (
+                        {(phase === 'selecting' || phase === 'staging') && pickedFiles.length > 0 && (
                             <ul data-testid="kb-upload-picked" style={listStyle}>
                                 {pickedFiles.map((f, idx) => (
                                     <li key={`${f.name}-${idx}`} style={rowStyle}>
-                                        <span style={{ color: 'var(--fg-1)' }}>{f.name}</span>
+                                        <span style={{ color: 'var(--fg-1)', minWidth: 0, overflowWrap: 'anywhere' }}>{f.name}</span>
                                         <span style={{ color: 'var(--fg-3)', fontSize: 10.5 }}>{formatBytes(f.size)}</span>
                                     </li>
                                 ))}
                             </ul>
+                        )}
+
+                        {phase === 'staging' && <UploadTransferProgress progress={transfer} fileCount={pickedFiles.length} />}
+                        {uploadStopped && phase === 'selecting' && (
+                            <p role="status" style={hintStyle}>{translateInterface('Upload stopped. Your files are still selected; no indexing has been started.')}</p>
                         )}
 
                         {/* Staged rows (review). */}
@@ -323,22 +372,22 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                                     </span>
                                                 )}
                                             </span>
-                                            <span style={{ color: 'var(--fg-3)', fontSize: 10.5 }}>→ {item.destination_path}</span>
+                                            <span style={{ color: 'var(--fg-3)', fontSize: 10.5, overflowWrap: 'anywhere' }}>{item.destination_path}</span>
                                             {item.status === 'failed' && item.error && (
                                                 <span data-testid={`kb-upload-item-${item.id}-error`} role="alert" style={{ color: 'var(--err)', fontSize: 10.5 }}>
                                                     {item.error}
                                                 </span>
                                             )}
                                         </div>
-                                        <button
-                                            type="button"
+                                        <Button
+                                            variant="quiet" size="sm" iconOnly
+                                            disabled={removeMut.isPending || cancelMut.isPending}
                                             data-testid={`kb-upload-item-${item.id}-remove`}
                                             aria-label={`Remove ${item.original_filename}`}
                                             onClick={() => handleRemove(item.id)}
-                                            style={ghostBtn}
                                         >
-                                            ✕
-                                        </button>
+                                            <Icon.Close size={14} />
+                                        </Button>
                                     </li>
                                 ))}
                             </ul>
@@ -371,8 +420,10 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                             data-failed={failed}
                             style={{ fontSize: 12.5, color: 'var(--fg-1)' }}
                         >
-                            {total === 0 ? 'Preparing…' : `${done} of ${total} done${failed > 0 ? ` · ${failed} failed` : ''}`}
+                            {phase === 'committing' ? translateInterface('Starting indexing…') : translateInterface('{done} of {total} files processed · {failed} errors', { done, total, failed })}
+                            <progress className="kb-upload-meter" aria-label={translateInterface('Indexing progress')} max={Math.max(total, 1)} value={done} />
                         </div>
+                        {phase !== 'done' && <p style={hintStyle}>{translateInterface('Files have been uploaded. Queued files are waiting to be processed; indexing continues in the background.')}</p>}
                         <ul data-testid="kb-upload-progress" style={listStyle}>
                             {displayItems.map((item) => (
                                 <li
@@ -383,18 +434,25 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                     style={rowStyle}
                                 >
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                                        <span style={{ color: 'var(--fg-1)' }}>{item.original_filename}</span>
+                                        <span style={{ color: 'var(--fg-1)', overflowWrap: 'anywhere' }}>{item.original_filename}</span>
                                         {item.status === 'failed' && item.error && (
                                             <span data-testid={`kb-upload-item-${item.id}-error`} role="alert" style={{ color: 'var(--err)', fontSize: 10.5 }}>
                                                 {item.error}
                                             </span>
                                         )}
                                     </div>
-                                    <span style={statusChip(item.status)}>{item.status}</span>
+                                    <span style={statusChip(item.status)}>{translateInterface(statusLabels[item.status])}</span>
                                 </li>
                             ))}
                         </ul>
                     </>
+                )}
+
+                {progress.isError && poll && (
+                    <div data-testid="kb-upload-poll-error" role="alert" style={{ color: 'var(--err)', fontSize: 12 }}>
+                        <p>{translateInterface('Could not refresh indexing status. The last known status is shown; indexing may still be running.')} {errMessage(progress.error)}</p>
+                        <Button size="sm" busy={progress.isFetching} onClick={() => void progress.refetch()}>{translateInterface('Retry status check')}</Button>
+                    </div>
                 )}
 
                 {actionError && (
@@ -404,30 +462,33 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                 )}
 
                 {/* Footer actions per phase. */}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                <div className="kb-upload-actions">
                     {phase === 'selecting' && (
-                        <button type="button" data-testid="kb-upload-stage" disabled={!canStage} onClick={handleStage} style={primaryBtn(!canStage)}>
-                            Stage {pickedFiles.length > 0 ? `${pickedFiles.length} file${pickedFiles.length > 1 ? 's' : ''}` : 'files'}
-                        </button>
+                        <Button variant="primary" size="sm" autoFocus data-testid="kb-upload-stage" disabled={!canStage} onClick={handleStage}>
+                            {translateInterface('Upload {count} files', { count: pickedFiles.length })}
+                        </Button>
                     )}
-                    {phase === 'staging' && <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>Uploading…</span>}
+                    {phase === 'staging' && (
+                        <Button size="sm" autoFocus data-testid="kb-upload-stop" onClick={stopUpload}>{translateInterface('Stop upload')}</Button>
+                    )}
                     {phase === 'review' && (
                         <>
-                            <button type="button" data-testid="kb-upload-cancel" aria-label="Cancel batch" onClick={handleCancel} style={secondaryBtn}>
-                                {translateInterface("Cancel")}</button>
-                            <button type="button" data-testid="kb-upload-commit" disabled={stagedCount === 0 || commitMut.isPending} onClick={handleCommit} style={primaryBtn(stagedCount === 0)}>
-                                Commit &amp; ingest
-                            </button>
+                            <Button size="sm" data-testid="kb-upload-cancel" aria-label="Cancel batch" disabled={removeMut.isPending} busy={cancelMut.isPending} onClick={handleCancel}>
+                                {translateInterface('Cancel')}</Button>
+                            <Button variant="primary" size="sm" autoFocus data-testid="kb-upload-commit" disabled={stagedCount === 0 || removeMut.isPending || cancelMut.isPending} onClick={handleCommit}>
+                                {translateInterface('Commit & ingest')}
+                            </Button>
                         </>
                     )}
+                    {phase === 'committing' && <Button variant="primary" size="sm" busy>{translateInterface('Starting indexing…')}</Button>}
                     {(phase === 'committing' || phase === 'progress') && (
-                        <button type="button" data-testid="kb-upload-close-keep-ingesting" aria-label="Close (keeps ingesting)" onClick={onClose} style={secondaryBtn}>
-                            Close (keeps ingesting)
-                        </button>
+                        <Button size="sm" data-testid="kb-upload-close-keep-ingesting" aria-label="Close (keeps ingesting)" onClick={onClose}>
+                            {translateInterface('Close (keeps ingesting)')}
+                        </Button>
                     )}
                     {phase === 'done' && (
-                        <button type="button" data-testid="kb-upload-done-close" onClick={onClose} style={primaryBtn(false)}>
-                            {translateInterface("Done")}</button>
+                        <Button variant="primary" size="sm" data-testid="kb-upload-done-close" onClick={onClose}>
+                            {translateInterface('Done')}</Button>
                     )}
                 </div>
             </div>
@@ -472,14 +533,6 @@ const rowStyle: React.CSSProperties = {
     borderRadius: 6,
     fontSize: 12,
 };
-const ghostBtn: React.CSSProperties = {
-    background: 'transparent',
-    border: 'none',
-    color: 'var(--fg-3)',
-    cursor: 'pointer',
-    fontSize: 13,
-    lineHeight: 1,
-};
 const canonicalBadge: React.CSSProperties = {
     marginLeft: 6,
     padding: '1px 5px',
@@ -491,26 +544,10 @@ const canonicalBadge: React.CSSProperties = {
     letterSpacing: '0.03em',
 };
 
-function primaryBtn(disabled: boolean): React.CSSProperties {
-    return {
-        padding: '5px 14px',
-        borderRadius: 6,
-        border: '1px solid var(--accent, #6366f1)',
-        background: 'var(--accent, #6366f1)',
-        color: 'white',
-        fontSize: 11.5,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.6 : 1,
-    };
-}
-const secondaryBtn: React.CSSProperties = {
-    padding: '5px 14px',
-    borderRadius: 6,
-    border: '1px solid var(--panel-border, rgba(255,255,255,.15))',
-    background: 'transparent',
-    color: 'var(--fg-1)',
-    fontSize: 11.5,
-    cursor: 'pointer',
+const hintStyle: React.CSSProperties = { margin: 0, fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.5 };
+const statusLabels: Record<BatchItemStatus, string> = {
+    staged: 'Ready to index', moving: 'Preparing file', queued: 'Queued for indexing',
+    processing: 'Indexing', succeeded: 'Indexed', failed: 'Failed',
 };
 
 function statusChip(status: BatchItemStatus): React.CSSProperties {
@@ -518,7 +555,7 @@ function statusChip(status: BatchItemStatus): React.CSSProperties {
         staged: 'var(--fg-3)',
         moving: 'var(--fg-3)',
         queued: 'var(--fg-3)',
-        processing: 'var(--accent, #6366f1)',
+        processing: 'var(--accent-a)',
         succeeded: 'var(--ok, #10b981)',
         failed: 'var(--err, #ef4444)',
     };

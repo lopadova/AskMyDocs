@@ -1,3 +1,4 @@
+import { Icon } from '../../../../components/Icons';
 import { useState, type DragEvent, type ReactNode } from 'react';
 
 /**
@@ -60,7 +61,7 @@ export function UploadDropzone({ onAddFiles, disabled = false, accept }: UploadD
                 textAlign: 'center',
             }}
         >
-            <span aria-hidden="true" style={{ fontSize: 20 }}>⬆</span>
+            <span aria-hidden="true"><Icon.Upload size={20} /></span>
             <span>
                 <strong style={{ color: 'var(--fg-1)' }}>Drop files here</strong> or click to browse
             </span>

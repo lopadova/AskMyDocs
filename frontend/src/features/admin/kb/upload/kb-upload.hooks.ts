@@ -28,7 +28,8 @@ export function useCommitBatch() {
     return useMutation({
         mutationFn: (vars: { batchId: string; expectedItemIds?: string[] }) =>
             kbUploadApi.commit(vars.batchId, vars.expectedItemIds),
-        onSuccess: () => {
+        onSuccess: (response, variables) => {
+            qc.setQueryData(batchKey(variables.batchId), response);
             // New docs will surface in the tree + project list once ingest runs.
             qc.invalidateQueries({ queryKey: KB_TREE_KEY });
             qc.invalidateQueries({ queryKey: KB_PROJECTS_KEY });

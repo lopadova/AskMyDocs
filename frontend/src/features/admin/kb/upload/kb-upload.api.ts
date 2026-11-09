@@ -1,3 +1,4 @@
+import type { AxiosProgressEvent } from 'axios';
 import { api } from '../../../../lib/api';
 
 /**
@@ -62,6 +63,8 @@ export interface StageInput {
     projectKey: string;
     subPath: string;
     files: File[];
+    signal?: AbortSignal;
+    onUploadProgress?: (event: AxiosProgressEvent) => void;
 }
 
 export const kbUploadApi = {
@@ -74,7 +77,11 @@ export const kbUploadApi = {
         input.files.forEach((file) => fd.append('files[]', file, file.name));
 
         // NB: do NOT set Content-Type — the browser adds the multipart boundary.
-        const { data } = await api.post<UploadBatchResponse>('/api/admin/kb/uploads', fd);
+        const { data } = await api.post<UploadBatchResponse>('/api/admin/kb/uploads', fd, {
+            signal: input.signal,
+            onUploadProgress: input.onUploadProgress,
+            timeout: 300_000,
+        });
         return data;
     },
 
@@ -84,7 +91,7 @@ export const kbUploadApi = {
     },
 
     async status(batchId: string): Promise<UploadBatchResponse> {
-        const { data } = await api.get<UploadBatchResponse>(`/api/admin/kb/uploads/${batchId}/status`);
+        const { data } = await api.get<UploadBatchResponse>(`/api/admin/kb/uploads/${batchId}/status`, { timeout: 30_000 });
         return data;
     },
 
