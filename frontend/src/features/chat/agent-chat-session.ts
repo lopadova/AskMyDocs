@@ -2,6 +2,7 @@ import { createStore } from 'zustand/vanilla';
 import type { UseChatHelpers } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
 import { consumeAgentRun, type AgentRunEvent, type AgentRunStreamResult } from '../../lib/agent-run-events';
+import { waitForAgentUpdate } from '../../lib/agent-realtime';
 import { useTeamStore } from '../../lib/team-store';
 import { chatApi, isFilterStateEmpty, type AgentRunReference, type AgentTurnStarted, type AgentSelectionRequest, type ConversationActivity, type FilterState, type LiveSourceSelection, type Message } from './chat.api';
 
@@ -58,7 +59,11 @@ export class AgentChatSession {
         this.viewers++;
         this.store.setState({ unreadAt: null });
         this.readDisplayedReply();
-        return () => { this.viewers = Math.max(0, this.viewers - 1); };
+        this.resumeVisible();
+        return () => {
+            this.viewers = Math.max(0, this.viewers - 1);
+            if (this.viewers === 0) this.suspend();
+        };
     };
 
     hydrate = (messages: Message[]): void => {
@@ -137,6 +142,12 @@ export class AgentChatSession {
             this.store.setState({ status: 'ready', activeRun: run, confirmation: run.confirmation });
             return;
         }
+        this.store.setState({ status: 'streaming', activeRun: run, confirmation: null, error: null });
+        if (this.viewers === 0 || document.visibilityState === 'hidden') return;
+        this.watch(run, onFinish);
+    };
+
+    private watch(run: AgentRunReference, onFinish?: () => void): void {
         // Replay the existing durable event log; never repeat the turn POST.
         const sameRun = this.recoveredRunId === run.run_id;
         this.recoveredRunId = run.run_id;
@@ -204,6 +215,10 @@ export class AgentChatSession {
                 return;
             }
             this.adopt(run);
+            if (this.viewers === 0 || document.visibilityState === 'hidden') {
+                this.inFlight = false;
+                return;
+            }
             await this.consume(run, controller, generation, options);
         } catch (reason) {
             this.reportError(reason, generation, options);
@@ -257,7 +272,8 @@ export class AgentChatSession {
             initialSequence: this.sequence,
             signal: controller.signal,
             open: (after, signal) => this.fetchEvents(run.events_url, after, signal),
-            onEvent: this.recordEvent,
+            onEvent: (event) => { if (!this.disposed && generation === this.generation) this.recordEvent(event); },
+            waitForUpdate: (signal) => waitForAgentUpdate(run.run_id, signal),
         });
         await this.settle(result, generation, options);
     }
@@ -341,6 +357,25 @@ export class AgentChatSession {
         }
     };
 
+    suspend(): void {
+        // Keep the one-off startup POST alive until its durable run id arrives.
+        // Leaving the view must never cancel the server-owned request.
+        if (this.inFlight && this.store.getState().status === 'submitted' && !this.store.getState().activeRun) return;
+        ++this.generation;
+        this.controller?.abort();
+        this.inFlight = false;
+        this.refreshing = false;
+    }
+
+    resumeVisible(): void {
+        const run = this.store.getState().activeRun;
+        if (!this.disposed && this.viewers > 0 && !this.inFlight && this.store.getState().confirmation === null && run
+            && document.visibilityState !== 'hidden'
+            && !['completed', 'partial', 'failed', 'cancelled', 'awaiting_confirmation'].includes(run.status)) {
+            this.watch(run);
+        }
+    }
+
     dispose(): void {
         this.disposed = true;
         ++this.generation;
@@ -349,11 +384,11 @@ export class AgentChatSession {
 
     private fetchEvents(url: string, after: number, signal: AbortSignal): Promise<Response> {
         const headers: Record<string, string> = {
-            Accept: 'text/event-stream, application/json',
+            Accept: 'application/json',
             'X-Requested-With': 'XMLHttpRequest', 'Last-Event-ID': String(after),
         };
         if (this.tenantId !== null) headers['X-Tenant-Id'] = this.tenantId;
-        return fetch(`${url}${url.includes('?') ? '&' : '?'}after=${after}`, {
+        return fetch(`${url}${url.includes('?') ? '&' : '?'}after=${after}&transport=poll`, {
             method: 'GET', credentials: 'same-origin', cache: 'no-store', headers, signal,
         });
     }
@@ -369,6 +404,13 @@ export function getAgentChatSession(conversationId: number | null, userId: numbe
         sessions.set(key, session);
     }
     return session;
+}
+
+export function setAgentChatVisibility(visible: boolean): void {
+    for (const session of sessions.values()) {
+        if (visible) session.resumeVisible();
+        else session.suspend();
+    }
 }
 
 export function clearAgentChatSessions(): void {

@@ -30,6 +30,8 @@ export default defineConfig(({ mode }) => {
             strictPort: false,
             proxy: {
                 '/api': appUrl.origin,
+                '/agent-transport': appUrl.origin,
+                '/agent-runs': appUrl.origin,
                 '/sanctum': appUrl.origin,
                 '/login': appUrl.origin,
                 '/logout': appUrl.origin,

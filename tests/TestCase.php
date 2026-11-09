@@ -325,6 +325,9 @@ abstract class TestCase extends OrchestraTestCase
         // because it depends on the TenantContext singleton it binds.
         $app->register(\App\Providers\FlowServiceProvider::class);
         $app->register(\App\Providers\ApiToolServiceProvider::class);
+        $app->register(\App\Providers\AgentRealtimeServiceProvider::class);
+        $app['config']->set('broadcasting', require __DIR__.'/../config/broadcasting.php');
+        $app['config']->set('broadcasting.default', 'null');
         // Sanctum powers the JSON auth endpoints exercised by
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.

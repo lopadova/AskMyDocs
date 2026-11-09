@@ -55,6 +55,7 @@ export interface ConsumeAgentRunOptions {
     maxConnections?: number;
     initialSequence?: number;
     reconnectDelayMs?: number;
+    waitForUpdate?: (signal: AbortSignal) => Promise<void>;
 }
 
 const STOP_EVENTS: Record<string, AgentRunStopReason> = {
@@ -66,9 +67,8 @@ const STOP_EVENTS: Record<string, AgentRunStopReason> = {
 };
 
 /**
- * Consume a resumable AgentRun SSE feed. The server intentionally closes long
- * polls, so clean EOF reconnects with the last sequence instead of being
- * treated as completion. Duplicate replayed frames are ignored.
+ * Replay bounded event pages, waiting client-side for Reverb invalidations.
+ * Legacy SSE callers retain cursor-based reconnect and duplicate suppression.
  */
 export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<AgentRunStreamResult> {
     const controller = new AbortController();
@@ -87,6 +87,7 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
             throwIfAborted(controller.signal);
             const openingSequence = lastSequence;
             const response = await options.open(lastSequence, controller.signal);
+            throwIfAborted(controller.signal);
             if (!response.ok) {
                 throw await responseError(response);
             }
@@ -95,6 +96,29 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
             }
 
             let stopped: AgentRunStreamResult | null = null;
+            if (response.headers.get('Content-Type')?.includes('application/json')) {
+                const page = await response.json() as { events: AgentRunEvent[]; has_more: boolean };
+                throwIfAborted(controller.signal);
+                if (!Array.isArray(page.events) || page.events.length > 101) {
+                    throw new AgentRunStreamError('Invalid agent event page.', 0, 'invalid_event');
+                }
+                for (const event of page.events) {
+                    if (!Number.isInteger(event.sequence) || event.sequence <= lastSequence) continue;
+                    lastSequence = event.sequence;
+                    options.onEvent(event);
+                    const reason = STOP_EVENTS[event.type];
+                    if (reason) return { reason, event, lastSequence };
+                }
+                throwIfAborted(controller.signal);
+                if (!page.has_more) {
+                    if (options.waitForUpdate) await options.waitForUpdate(controller.signal);
+                    else await reconnectDelay(3_000, controller.signal);
+                }
+                // Short replay requests may follow long jobs for hours. The SSE
+                // reconnect cap applies to broken streams, not successful JSON pages.
+                connection--;
+                continue;
+            }
             for await (const frame of parseSse(response.body, controller.signal)) {
                 if (frame.data === '') continue;
                 let event: AgentRunEvent;

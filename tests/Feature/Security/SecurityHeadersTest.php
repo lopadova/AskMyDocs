@@ -74,6 +74,18 @@ class SecurityHeadersTest extends TestCase
         $response->assertHeader('X-Content-Type-Options', 'nosniff');
     }
 
+    public function test_csp_only_allows_the_configured_reverb_socket_origin_when_enabled(): void
+    {
+        config(['broadcasting.default' => 'reverb', 'broadcasting.connections.reverb.key' => 'public-key',
+            'broadcasting.connections.reverb.options.host' => 'socket.example.test',
+            'broadcasting.connections.reverb.options.port' => 443,
+            'broadcasting.connections.reverb.options.scheme' => 'https']);
+        $policy = $this->get('/sec-html')->headers->get('Content-Security-Policy-Report-Only');
+        $this->assertStringContainsString("connect-src 'self' wss://socket.example.test:443", $policy);
+        config(['broadcasting.default' => 'null']);
+        $this->assertStringNotContainsString('socket.example.test', $this->get('/sec-html')->headers->get('Content-Security-Policy-Report-Only'));
+    }
+
     public function test_csp_is_absent_on_typeless_no_content_response(): void
     {
         $response = $this->get('/sec-nocontent');

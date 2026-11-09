@@ -141,12 +141,12 @@ export class Transport {
     async openAgentEvents(eventsUrl: string, after: number, signal: AbortSignal): Promise<Response> {
         const separator = eventsUrl.includes('?') ? '&' : '?';
 
-        return this.requestUrl(this.resolveAgentUrl(`${eventsUrl}${separator}after=${after}`), {
+        return this.requestUrl(this.resolveAgentUrl(`${eventsUrl}${separator}after=${after}&transport=poll`), {
             method: 'GET',
             cache: 'no-store',
             signal,
             headers: {
-                Accept: 'text/event-stream, application/json',
+                Accept: 'application/json',
                 'Last-Event-ID': String(after),
             },
         });

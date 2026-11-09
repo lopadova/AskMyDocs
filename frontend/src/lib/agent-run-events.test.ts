@@ -36,6 +36,25 @@ function frame(value: AgentRunEvent): string {
 describe('consumeAgentRun', () => {
     afterEach(() => vi.useRealTimers());
 
+    it('drains JSON pages immediately, then waits for a push before replaying from the last cursor', async () => {
+        const page = (events: AgentRunEvent[], has_more = false) => new Response(JSON.stringify({ events, has_more }), {
+            headers: { 'Content-Type': 'application/json' },
+        });
+        const open = vi.fn().mockResolvedValueOnce(page([event(1, 'run.started')], true))
+            .mockResolvedValueOnce(page([event(2, 'tool.progress')]))
+            .mockResolvedValueOnce(page([event(2, 'tool.progress'), event(3, 'run.completed')]));
+        let push!: () => void;
+        const waitForUpdate = vi.fn(() => new Promise<void>((resolve) => { push = resolve; }));
+        const seen = vi.fn();
+        const finished = consumeAgentRun({ open, onEvent: seen, waitForUpdate, maxConnections: 1 });
+        await vi.waitFor(() => expect(waitForUpdate).toHaveBeenCalledOnce());
+        expect(open.mock.calls.map(([cursor]) => cursor)).toEqual([0, 1]);
+        push();
+        expect(await finished).toMatchObject({ reason: 'completed', lastSequence: 3 });
+        expect(open.mock.calls.map(([cursor]) => cursor)).toEqual([0, 1, 2]);
+        expect(seen).toHaveBeenCalledTimes(3);
+    });
+
     it('backs off empty EOFs instead of exhausting the reconnect limit in a tight loop', async () => {
         vi.useFakeTimers();
         const open = vi.fn(async () => streamResponse([]));

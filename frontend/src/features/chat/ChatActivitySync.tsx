@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../lib/auth-store';
 import { useTeamStore } from '../../lib/team-store';
-import { getAgentChatSession } from './agent-chat-session';
+import { subscribeAgentActivity } from '../../lib/agent-realtime';
+import { getAgentChatSession, setAgentChatVisibility } from './agent-chat-session';
 import { chatApi } from './chat.api';
 
 /** Recover server-owned activity even when the app opens outside the chat. */
@@ -11,15 +12,38 @@ export function ChatActivitySync() {
     const tenantId = useTeamStore((state) => state.currentTeam);
     const teamUserId = useTeamStore((state) => state.userId);
     const qc = useQueryClient();
+    const [visible, setVisible] = useState(document.visibilityState !== 'hidden');
+    useEffect(() => {
+        const changed = () => {
+            const next = document.visibilityState !== 'hidden';
+            setVisible(next);
+            setAgentChatVisibility(next);
+        };
+        document.addEventListener('visibilitychange', changed);
+        return () => document.removeEventListener('visibilitychange', changed);
+    }, []);
+    useEffect(() => {
+        if (!visible || userId === null || tenantId === null || userId !== teamUserId) return;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const leave = subscribeAgentActivity(userId, tenantId, () => {
+            // Bursts of progress events require only one activity refresh.
+            if (timer !== undefined) return;
+            timer = setTimeout(() => {
+                timer = undefined;
+                void qc.invalidateQueries({ queryKey: ['chat-activity', userId, tenantId] });
+            }, 100);
+        });
+        return () => { clearTimeout(timer); leave(); };
+    }, [visible, userId, tenantId, teamUserId, qc]);
     const { data, dataUpdatedAt } = useQuery({
         queryKey: ['chat-activity', userId, tenantId],
         queryFn: () => chatApi.listActivity(tenantId!),
-        enabled: userId !== null && userId === teamUserId && tenantId !== null,
+        enabled: visible && userId !== null && userId === teamUserId && tenantId !== null,
         staleTime: 0,
         refetchOnWindowFocus: true,
         refetchOnReconnect: true,
-        refetchInterval: (query) => query.state.data?.some((item) => item.run
-            && !['completed', 'partial', 'failed', 'cancelled'].includes(item.run.status)) ? 5_000 : 30_000,
+        refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
     });
 
     useEffect(() => {

@@ -2,6 +2,7 @@
 
 $providers = [
     App\Providers\AppServiceProvider::class,
+    App\Providers\AgentRealtimeServiceProvider::class,
     App\Providers\OAuthServiceProvider::class,
     App\Providers\AiServiceProvider::class,
     App\Providers\ChatLogServiceProvider::class,

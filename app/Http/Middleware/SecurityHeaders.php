@@ -144,6 +144,11 @@ class SecurityHeaders
 
         /** @var array<int, string> $directives */
         $directives = (array) config('security-headers.csp.directives', []);
+        $socketOrigin = app(\App\Agent\AgentRealtime::class)->websocketOrigin();
+        if ($socketOrigin !== null) {
+            $directives = array_map(static fn (string $directive): string =>
+                str_starts_with($directive, 'connect-src ') ? $directive.' '.$socketOrigin : $directive, $directives);
+        }
         $policy = implode('; ', array_map(
             static fn (string $directive): string => str_replace('{nonce}', $nonce, $directive),
             $directives,

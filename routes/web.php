@@ -184,6 +184,10 @@ Route::post('/conversations/{conversation}/messages/stream', [MessageStreamContr
 Route::get('/agent-runs/{run}/events', AgentRunEventController::class)
     ->middleware(['auth.sse', 'tenant.authorize'])
     ->name('agent-runs.events');
+Route::middleware(['auth', 'tenant.authorize'])->group(function (): void {
+    Route::get('/agent-transport', [\App\Http\Controllers\Api\AgentRealtimeController::class, 'config']);
+    Route::post('/agent-transport/auth', [\App\Http\Controllers\Api\AgentRealtimeController::class, 'auth']);
+});
 Route::post('/agent-runs/{run}/cancel', [AgentRunControlController::class, 'cancel'])
     ->middleware(['auth', 'tenant.authorize'])
     ->name('agent-runs.cancel');

@@ -119,6 +119,8 @@ final readonly class AgentEventPublisher
             // a retrieval checkpoint after the parallel observers have advanced it.
             $run->setAttribute('last_sequence', $sequence)->syncOriginalAttribute('last_sequence');
 
+            app(AgentRealtime::class)->notifyAfterCommit($locked, $sequence);
+
             return $event;
         }, 3);
     }

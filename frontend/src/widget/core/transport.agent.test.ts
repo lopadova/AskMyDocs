@@ -48,8 +48,8 @@ describe('Transport durable agent endpoints', () => {
         expect(calls[0].url).toBe('https://kb.example.com/api/widget/sessions/agent/start');
         expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ message: 'Ordini' });
         expect(new Headers(calls[0].init.headers).get('X-Widget-Key')).toBe('pk_agent');
-        expect(calls[1].url).toBe('https://kb.example.com/api/widget/sessions/session-1/agent-runs/run-1/events?after=7');
-        expect(new Headers(calls[1].init.headers).get('Accept')).toBe('text/event-stream, application/json');
+        expect(calls[1].url).toBe('https://kb.example.com/api/widget/sessions/session-1/agent-runs/run-1/events?after=7&transport=poll');
+        expect(new Headers(calls[1].init.headers).get('Accept')).toBe('application/json');
         expect(new Headers(calls[1].init.headers).get('Last-Event-ID')).toBe('7');
     });
 });

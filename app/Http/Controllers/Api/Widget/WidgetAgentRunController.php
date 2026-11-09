@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Widget;
 
 use App\Agent\AgentEventStream;
+use App\Agent\AgentEventLog;
 use App\Agent\AgentExecutionContextFactory;
 use App\Agent\AgentRunAccess;
 use App\Agent\AgentRunControl;
@@ -95,9 +96,14 @@ final class WidgetAgentRunController extends Controller
         string $run,
         AgentRunAccess $access,
         AgentEventStream $stream,
-    ): StreamedResponse {
+        AgentEventLog $log,
+    ): StreamedResponse|JsonResponse {
         $agentRun = $this->resolveRun($request, $session, $run, $access);
         $after = max(0, (int) ($request->query('after') ?? $request->header('Last-Event-ID', 0)));
+
+        if ($request->query('transport') === 'poll') {
+            return response()->json($log->read($agentRun, $after))->header('Cache-Control', 'no-store');
+        }
 
         return response()->stream(function () use ($stream, $agentRun, $after): void {
             foreach ($stream->frames($agentRun, $after) as $frame) {

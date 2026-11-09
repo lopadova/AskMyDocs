@@ -132,6 +132,19 @@ final class AgentRunTransportTest extends TestCase
         $this->actingAs($intruder)
             ->get('/test-agent-runs/'.$run->run_id.'/events')
             ->assertNotFound();
+        $this->getJson('/test-agent-runs/'.$run->run_id.'/events?transport=poll')->assertNotFound();
+    }
+
+    public function test_poll_transport_returns_a_short_json_replay_without_waiting_for_new_events(): void
+    {
+        $user = $this->user('poll@example.com');
+        $run = $this->completedRun($user);
+        app(AgentEventPublisher::class)->publish($run, 'run.started');
+        $run->forceFill(['status' => AgentRun::STATUS_RUNNING])->save();
+        $this->actingAs($user)->getJson('/test-agent-runs/'.$run->run_id.'/events?after=1&transport=poll')
+            ->assertOk()->assertHeader('Content-Type', 'application/json')
+            ->assertJsonPath('events', [])->assertJsonPath('next_sequence', 1)
+            ->assertJsonPath('has_more', false)->assertJsonPath('status', 'running');
     }
 
     public function test_failed_run_without_terminal_event_emits_a_read_only_status_snapshot(): void

@@ -7,6 +7,9 @@ import { chatApi, type ConversationActivity } from './chat.api';
 import { clearAgentChatSessions, getAgentChatSession } from './agent-chat-session';
 import { useAuthStore } from '../../lib/auth-store';
 import { useTeamStore } from '../../lib/team-store';
+import { subscribeAgentActivity } from '../../lib/agent-realtime';
+
+vi.mock('../../lib/agent-realtime', () => ({ subscribeAgentActivity: vi.fn(() => vi.fn()) }));
 
 const activity: ConversationActivity = {
     conversation_id: 7, last_read_message_id: 0,
@@ -40,6 +43,20 @@ afterEach(() => {
 });
 
 describe('ChatActivitySync', () => {
+    it('releases the shared socket when the document becomes hidden and subscribes again on return', async () => {
+        vi.spyOn(chatApi, 'listActivity').mockResolvedValue([]);
+        const leave = vi.fn();
+        vi.mocked(subscribeAgentActivity).mockReturnValue(leave);
+        const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+        mount();
+        await waitFor(() => expect(subscribeAgentActivity).toHaveBeenCalledWith(1, 'acme', expect.any(Function)));
+        const count = vi.mocked(subscribeAgentActivity).mock.calls.length;
+        act(() => { visibility.mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange')); });
+        expect(leave).toHaveBeenCalledOnce();
+        expect(vi.mocked(subscribeAgentActivity).mock.calls.length).toBe(count);
+        act(() => { visibility.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange')); });
+        await waitFor(() => expect(vi.mocked(subscribeAgentActivity).mock.calls.length).toBe(count + 1));
+    });
     it('recovers badges on app startup outside a chat, across restarts, and keeps an entered chat read', async () => {
         let readThrough = 0;
         vi.spyOn(chatApi, 'listActivity').mockImplementation(async () => [{ ...activity, last_read_message_id: readThrough }]);

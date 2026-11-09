@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunEvent } from '../../lib/agent-run-events';
-import { chatApi, type Message } from './chat.api';
+import { chatApi, type Message, type ConversationActivity } from './chat.api';
 import { useAgentChat } from './use-agent-chat';
 import { clearAgentChatSessions, getAgentChatSession } from './agent-chat-session';
 import { useTeamStore } from '../../lib/team-store';
@@ -61,6 +61,12 @@ function eventResponse(event: AgentRunEvent): Response {
     });
 }
 
+function activity(status = 'completed', id = 7, runId = 'run-1', tenantReply = assistantMessage): ConversationActivity {
+    return { conversation_id: id, last_read_message_id: 0,
+        latest_reply: ['completed', 'partial'].includes(status) ? { message_id: tenantReply.id, created_at: tenantReply.created_at } : null,
+        run: { run_id: runId, status, locale: 'it', events_url: '/events', cancel_url: '/cancel', continue_url: '/continue', confirmation: null } };
+}
+
 describe('useAgentChat', () => {
     it('keeps failed findings attached to the user turn when a later turn clears live progress', async () => {
         const user = { ...userMessage, metadata: { agent_run_id: 'run-1' } };
@@ -94,7 +100,7 @@ describe('useAgentChat', () => {
         expect(result.current.confirmation).toEqual({ physicalExtension: 30, logicalExtension: 2 });
         await act(async () => result.current.continueRun());
         expect(chatApi.continueAgentRun).toHaveBeenCalledWith('/continue', 30, 2);
-        expect(request.mock.calls[1]?.[0]).toBe('/events?after=1');
+        expect(request.mock.calls[1]?.[0]).toBe('/events?after=1&transport=poll');
         expect(result.current.messages).toEqual([userMessage, assistantMessage]);
     });
 
@@ -112,6 +118,7 @@ describe('useAgentChat', () => {
         expect(result.current.messages).toEqual([userMessage]);
         rerender({ id: 8 });
         await act(async () => { finishHistory([userMessage, assistantMessage]); await observing; });
+        act(() => getAgentChatSession(7, null, null).restore(activity()));
         expect(getAgentChatSession(7, null, null).store.getState().unreadAt).not.toBeNull();
         expect(result.current.messages).toEqual([]);
     });
@@ -193,37 +200,30 @@ describe('useAgentChat', () => {
         let second!: Promise<void>;
         act(() => { second = result.current.sendMessage({ text: 'Second' }); });
         await act(async () => startFirst(run(7)));
-        await waitFor(() => expect(streams.size).toBe(2));
+        await waitFor(() => expect(streams.size).toBe(1));
         expect(result.current.messages).toEqual([run(8).user_message]);
         expect(getAgentChatSession(7, null, null).store.getState().status).toBe('streaming');
-        const answeredAt = '2026-10-21T11:00:00Z';
-        await act(async () => {
-            streams.get('/runs/7/events?after=0')!.enqueue(new TextEncoder().encode(
-                `data: ${JSON.stringify({ ...completedEvent(), created_at: answeredAt })}\n\n`,
-            ));
-            await first;
-        });
-        expect(firstFinish).toHaveBeenCalledOnce();
-        expect(secondFinish).not.toHaveBeenCalled();
-        expect(getAgentChatSession(7, null, null).store.getState().unreadAt).toBe(Date.parse(answeredAt));
+        await first;
+        expect(cancel).not.toHaveBeenCalled();
+        const answer7 = { ...assistantMessage, id: 71, content: 'Answer 7' };
+        act(() => getAgentChatSession(7, null, null).restore(activity('completed', 7, 'run-7', answer7)));
+        expect(getAgentChatSession(7, null, null).store.getState().unreadAt).not.toBeNull();
         expect(result.current.activeRun?.run_id).toBe('run-8');
-        expect(result.current.messages).not.toContainEqual(expect.objectContaining({ content: 'Answer 7' }));
-
-        rerender({ id: 7 });
-        expect(result.current.messages.at(-1)?.content).toBe('Answer 7');
-        expect(getAgentChatSession(7, null, null).store.getState().unreadAt).toBeNull();
         await act(async () => {
-            streams.get('/runs/8/events?after=0')!.enqueue(new TextEncoder().encode(
+            streams.get('/runs/8/events?after=0&transport=poll')!.enqueue(new TextEncoder().encode(
                 `data: ${JSON.stringify(completedEvent())}\n\n`,
             ));
             await second;
         });
+        rerender({ id: 7 });
+        // The foreground transcript query hydrates on entry; background activity carries no transcript.
+        act(() => getAgentChatSession(7, null, null).hydrate([run(7).user_message, answer7]));
         expect(result.current.messages.at(-1)?.content).toBe('Answer 7');
-        expect(cancel).not.toHaveBeenCalled();
+        expect(getAgentChatSession(7, null, null).store.getState().unreadAt).toBeNull();
         expect(chatApi.startAgentTurn).toHaveBeenCalledTimes(2);
     });
 
-    it('retains run progress across unmounts and remounts without starting another subscription', async () => {
+    it('releases the connection on unmount and replays the same run from its cursor on remount', async () => {
         const run = { run_id: 'run-1', status: 'queued', locale: 'it', events_url: '/events',
             cancel_url: '/cancel', continue_url: '/continue', user_message: userMessage };
         vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValue(run);
@@ -238,25 +238,27 @@ describe('useAgentChat', () => {
         const options = { conversationId: 7, filters: {}, initialMessages: emptyMessages };
         const firstView = renderHook(() => useAgentChat(options));
         let sending!: Promise<void>;
-        act(() => { sending = firstView.result.current.sendMessage({ text: 'Orders' }); });
+        act(() => { sending = firstView.result.current.sendMessage({ text: 'Orders' }).catch((error) => { if (error.name !== 'AbortError') throw error; }); });
         await waitFor(() => expect(request).toHaveBeenCalledOnce());
         const progress = { ...completedEvent(), sequence: 1, type: 'tool.started' };
         await act(async () => stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(progress)}\n\n`)));
         firstView.unmount();
-        expect(signal.aborted).toBe(false);
+        expect(signal.aborted).toBe(true);
+        await sending;
         const secondView = renderHook(() => useAgentChat(options));
         expect(secondView.result.current.status).toBe('streaming');
         expect(secondView.result.current.events).toEqual([progress]);
-        expect(request).toHaveBeenCalledOnce();
-        secondView.unmount();
+        await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+        expect(request.mock.calls[1]?.[0]).toBe('/events?after=1&transport=poll');
         await act(async () => {
             stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(completedEvent())}\n\n`));
-            await sending;
         });
-        expect(getAgentChatSession(7, null, null).store.getState().unreadAt).not.toBeNull();
+        await waitFor(() => expect(secondView.result.current.messages).toEqual([userMessage, assistantMessage]));
+        secondView.unmount();
         const thirdView = renderHook(() => useAgentChat(options));
         expect(thirdView.result.current.messages).toEqual([userMessage, assistantMessage]);
         expect(getAgentChatSession(7, null, null).store.getState().unreadAt).toBeNull();
+        expect(chatApi.startAgentTurn).toHaveBeenCalledOnce();
     });
 
     it('pins a background run and history to their owning tenant after a team switch', async () => {
@@ -271,13 +273,14 @@ describe('useAgentChat', () => {
         vi.stubGlobal('fetch', request);
         const { result } = renderHook(() => useAgentChat({ conversationId: 7, filters: {} }));
         let sending!: Promise<void>;
-        act(() => { sending = result.current.sendMessage({ text: 'Orders' }); });
+        act(() => { sending = result.current.sendMessage({ text: 'Orders' }).catch((error) => { if (error.name !== 'AbortError') throw error; }); });
         await waitFor(() => expect(request).toHaveBeenCalledOnce());
         act(() => useTeamStore.setState({ currentTeam: 'globex' }));
         expect(result.current.messages).toEqual([]);
         expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({ 'X-Tenant-Id': 'acme' });
         await act(async () => { finish(eventResponse(completedEvent())); await sending; });
-        expect(chatApi.listMessages).toHaveBeenCalledWith(7, 'acme');
+        expect(chatApi.listMessages).not.toHaveBeenCalled();
+        act(() => getAgentChatSession(7, 1, 'acme').restore(activity()));
         expect(result.current.messages).toEqual([]);
         expect(getAgentChatSession(7, 1, 'acme').store.getState().unreadAt).not.toBeNull();
     });
@@ -293,6 +296,7 @@ describe('useAgentChat', () => {
         act(() => { observing = result.current.adoptExternalRun(run).catch((error) => error); });
         unmount();
         await act(async () => { finish(eventResponse({ ...completedEvent(), type })); await observing; });
+        act(() => getAgentChatSession(7, null, null).restore(activity(type.slice(4))));
         expect(getAgentChatSession(7, null, null).store.getState().unreadAt).toBeNull();
         expect(getAgentChatSession(7, null, null).store.getState().status).toBe(type === 'run.failed' ? 'error' : 'ready');
     });

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Agent\AgentEventStream;
+use App\Agent\AgentEventLog;
 use App\Agent\AgentRunAccess;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -17,7 +19,8 @@ final class AgentRunEventController extends Controller
         string $run,
         AgentEventStream $stream,
         AgentRunAccess $access,
-    ): StreamedResponse {
+        AgentEventLog $log,
+    ): StreamedResponse|JsonResponse {
         $user = $request->user();
         abort_if($user === null, 401);
 
@@ -27,6 +30,10 @@ final class AgentRunEventController extends Controller
             0,
             (int) ($request->query('after') ?? $request->header('Last-Event-ID', 0)),
         );
+
+        if ($request->query('transport') === 'poll') {
+            return response()->json($log->read($agentRun, $after))->header('Cache-Control', 'no-store');
+        }
 
         return response()->stream(function () use ($stream, $agentRun, $after): void {
             foreach ($stream->frames($agentRun, $after) as $frame) {

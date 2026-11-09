@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import { chatApi, type ConversationActivity, type Message } from './chat.api';
-import { clearAgentChatSessions, getAgentChatSession } from './agent-chat-session';
+import { clearAgentChatSessions, getAgentChatSession, setAgentChatVisibility } from './agent-chat-session';
 
 const reply: Message = { id: 11, role: 'assistant', content: 'Saved answer', metadata: {}, rating: null, created_at: '2026-10-21T12:00:00Z' };
 const snapshot = (status = 'completed'): ConversationActivity => ({
@@ -22,6 +22,27 @@ afterEach(() => {
 });
 
 describe('durable chat activity recovery', () => {
+    it('opens no connections for background conversations and pauses the active replay when the app is hidden', async () => {
+        const signals: AbortSignal[] = [];
+        const request = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+            signals.push(init!.signal!);
+            return new Response(new ReadableStream<Uint8Array>());
+        });
+        vi.stubGlobal('fetch', request);
+        for (let id = 1; id <= 100; id++) {
+            getAgentChatSession(id, 1, 'acme').restore({ ...snapshot('running'), conversation_id: id, latest_reply: null });
+        }
+        expect(request).not.toHaveBeenCalled();
+        const leave = session().attach();
+        await waitFor(() => expect(request).toHaveBeenCalledOnce());
+        setAgentChatVisibility(false);
+        expect(signals[0].aborted).toBe(true);
+        setAgentChatVisibility(true);
+        await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+        leave();
+        expect(signals[1].aborted).toBe(true);
+        expect(chatApi.listMessages).not.toHaveBeenCalled();
+    });
     it('recovers the existing run after reload and replays progress without posting the question again', async () => {
         const start = vi.spyOn(chatApi, 'startAgentTurn');
         const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
@@ -32,24 +53,26 @@ describe('durable chat activity recovery', () => {
         });
         vi.stubGlobal('fetch', fetchEvents);
         const active = { ...snapshot('running'), latest_reply: null };
+        session().attach();
         session().restore(active);
         session().restore(active);
         await waitFor(() => expect(fetchEvents).toHaveBeenCalledOnce());
         clearAgentChatSessions(); // full page/application restart
         expect(signals[0]!.aborted).toBe(true);
         session().restore(active);
-        await waitFor(() => expect(fetchEvents).toHaveBeenCalledTimes(2));
+        expect(fetchEvents).toHaveBeenCalledTimes(1);
         const leave = session().attach();
+        await waitFor(() => expect(fetchEvents).toHaveBeenCalledTimes(2));
         const question: Message = { ...reply, id: 10, role: 'user', content: 'Original question' };
         session().hydrate([question]);
         expect(session().store.getState().messages).toEqual([question]);
         expect(session().store.getState().status).toBe('streaming');
         leave();
-        const event = { run_id: 'run-1', sequence: 1, type: 'run.completed', phase: 'run', locale: 'it', message_key: null,
-            message_params: {}, message: null, progress: null, can_cancel: false, data: {}, created_at: reply.created_at };
-        streams[1]!.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
-        await waitFor(() => expect(session().store.getState().messages).toEqual([reply]));
+        expect(signals[1]!.aborted).toBe(true);
+        session().restore(snapshot());
+        expect(session().store.getState().messages).toEqual([question]);
         expect(session().store.getState().unreadAt).toBe(Date.parse(reply.created_at));
+        expect(chatApi.listMessages).not.toHaveBeenCalled();
         expect(start).not.toHaveBeenCalled();
         expect(chatApi.markConversationRead).not.toHaveBeenCalled();
         // A stale running snapshot cannot reopen an already completed stream.
@@ -110,6 +133,7 @@ describe('durable chat activity recovery', () => {
             run: { ...snapshot().run!, status: 'awaiting_confirmation', confirmation: { physicalExtension: 30, logicalExtension: 2 } } });
         expect(session().store.getState().confirmation).toEqual({ physicalExtension: 30, logicalExtension: 2 });
         expect(request).not.toHaveBeenCalled();
+        session().attach();
         session().restore({ ...snapshot('queued'), latest_reply: null });
         await waitFor(() => expect(request).toHaveBeenCalledOnce());
         expect(session().store.getState().status).toBe('streaming');
@@ -129,8 +153,9 @@ describe('durable chat activity recovery', () => {
         const leave = session().attach();
         session().hydrate([reply]);
         leave();
-        await waitFor(() => expect(session().store.getState().status).toBe('ready'));
-        await waitFor(() => expect(chatApi.listMessages).toHaveBeenCalledOnce());
+        session().restore(snapshot());
+        expect(session().store.getState().status).toBe('ready');
+        expect(chatApi.listMessages).not.toHaveBeenCalled();
         expect(session().store.getState().unreadAt).toBeNull();
         expect(chatApi.markConversationRead).toHaveBeenCalledWith(7, 11, 'acme');
     });
