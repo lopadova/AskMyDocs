@@ -14,6 +14,8 @@ use App\Models\KnowledgeDocument;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\DocumentDeleter;
+use App\Services\Kb\Versioning\DocumentVersionService;
+use App\Support\Kb\SourceType;
 use App\Support\Kb\StorageNamespace;
 use App\Support\KbDiskResolver;
 use App\Support\KbPath;
@@ -81,16 +83,33 @@ class KbDocumentController extends Controller
     /**
      * GET /api/admin/kb/documents/{document}/raw
      *
-     * Returns the raw markdown payload + hash + mime so the SPA can
-     * render the Preview tab without a second lookup. Storage lookup
-     * goes through `KbDiskResolver` + `KbPath::normalize()` — the
-     * ingest side stores identical normalised paths, so the two
-     * flows line up (R1).
+     * Returns Markdown + hash + mime for the SPA preview. Binary sources
+     * use the version service's converted text and integrity-aware fallback;
+     * their original bytes remain available only through download. Editable
+     * text sources use the same normalised disk path as ingestion (R1).
      */
-    public function raw(KnowledgeDocument $document): JsonResponse
+    public function raw(KnowledgeDocument $document, DocumentVersionService $versions): JsonResponse
     {
         $sourcePath = KbPath::normalize((string) $document->source_path);
         $disk = $this->resolveDiskFor($document);
+
+        // Binary originals are downloadable files, not JSON text. Preview
+        // the conversion artifact (or explicitly identified indexed fallback).
+        if ($this->hasBinarySource($document)) {
+            $preview = $versions->contentFor($document);
+
+            return response()->json([
+                'path' => $sourcePath,
+                'disk' => $disk,
+                'mime' => 'text/markdown',
+                'content' => $preview['content'],
+                'content_hash' => hash('sha256', $preview['content']),
+                'editable' => false,
+                'content_source' => $preview['source'],
+                'integrity' => $preview['integrity'],
+            ]);
+        }
+
         $fullPath = $this->fullPathFor($document, $sourcePath);
 
         $storage = Storage::disk($disk);
@@ -117,6 +136,7 @@ class KbDocumentController extends Controller
             'mime' => $document->mime_type ?? 'text/markdown',
             'content' => $content,
             'content_hash' => hash('sha256', $content),
+            'editable' => true,
         ]);
     }
 
@@ -145,6 +165,12 @@ class KbDocumentController extends Controller
         KnowledgeDocument $document,
         CanonicalParser $parser,
     ): JsonResponse {
+        if ($this->hasBinarySource($document)) {
+            return response()->json([
+                'message' => 'Binary source documents cannot be edited as Markdown. Upload a revised original file instead.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         /** @var string $content */
         $content = $request->validated()['content'];
 
@@ -728,6 +754,13 @@ class KbDocumentController extends Controller
         }
 
         return [$query, $count, $recent];
+    }
+
+    private function hasBinarySource(KnowledgeDocument $document): bool
+    {
+        return (SourceType::tryFrom((string) $document->source_type)?->isBinary() ?? false)
+            || SourceType::fromMime((string) $document->mime_type)->isBinary()
+            || SourceType::fromExtension(pathinfo((string) $document->source_path, PATHINFO_EXTENSION))->isBinary();
     }
 
     private function resolveDiskFor(KnowledgeDocument $document): string

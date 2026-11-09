@@ -161,6 +161,88 @@ class KbDocumentControllerTest extends TestCase
             ->assertJsonPath('path', 'policies/ghost.md');
     }
 
+    public function test_binary_raw_returns_verified_conversion_without_serializing_or_changing_original(): void
+    {
+        $admin = $this->makeAdmin();
+        $original = "%PDF-1.4\n\xFF\xFE\x80\x00";
+        $markdown = "# Portfolio\n\nTesto estratto dal documento.";
+
+        foreach (['pdf', 'docx', 'image'] as $type) {
+            $doc = $this->makeDoc('hr-portal', 'uploads/document.'.$type, canonical: false, slug: null);
+            $artifactPath = '.artifacts/document-'.$doc->id.'.md';
+            $doc->update([
+                'source_type' => $type,
+                'mime_type' => 'application/octet-stream',
+                'markdown_path' => $artifactPath,
+                'content_hash' => hash('sha256', $markdown),
+                'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            ]);
+            Storage::disk('kb')->put($doc->source_path, $original);
+            Storage::disk('kb')->put($artifactPath, $markdown);
+
+            $this->actingAs($admin)->getJson('/api/admin/kb/documents/'.$doc->id.'/raw')
+                ->assertOk()
+                ->assertJsonPath('mime', 'text/markdown')
+                ->assertJsonPath('content', $markdown)
+                ->assertJsonPath('content_hash', hash('sha256', $markdown))
+                ->assertJsonPath('editable', false)
+                ->assertJsonPath('content_source', 'artifact')
+                ->assertJsonPath('integrity', 'verified');
+            $this->assertSame($original, Storage::disk('kb')->get($doc->source_path));
+        }
+    }
+
+    public function test_binary_raw_discloses_reconstruction_when_conversion_is_missing_or_corrupt(): void
+    {
+        $admin = $this->makeAdmin();
+        foreach ([null, '.artifacts/missing.md', '.artifacts/corrupt.md'] as $artifactPath) {
+            $doc = $this->makeDoc('hr-portal', 'uploads/document-'.uniqid().'.pdf', canonical: false, slug: null);
+            $doc->update([
+                'source_type' => 'pdf',
+                'markdown_path' => $artifactPath,
+                'content_hash' => hash('sha256', 'Expected conversion'),
+                'metadata' => ['disk' => 'kb', 'prefix' => ''],
+            ]);
+            if ($artifactPath === '.artifacts/corrupt.md') {
+                Storage::disk('kb')->put($artifactPath, 'Corrupt conversion');
+            }
+            foreach ([1 => 'Second paragraph', 0 => 'First paragraph'] as $order => $text) {
+                KnowledgeChunk::create([
+                    'knowledge_document_id' => $doc->id,
+                    'project_key' => $doc->project_key,
+                    'chunk_order' => $order,
+                    'chunk_hash' => hash('sha256', $text),
+                    'chunk_text' => $text,
+                    'metadata' => [],
+                ]);
+            }
+
+            $this->actingAs($admin)->getJson('/api/admin/kb/documents/'.$doc->id.'/raw')
+                ->assertOk()
+                ->assertJsonPath('content', "First paragraph\n\nSecond paragraph")
+                ->assertJsonPath('editable', false)
+                ->assertJsonPath('content_source', 'reconstruction')
+                ->assertJsonPath('integrity', $artifactPath === '.artifacts/corrupt.md' ? 'mismatch' : null);
+        }
+    }
+
+    public function test_raw_edit_cannot_overwrite_a_binary_original_even_with_legacy_source_type(): void
+    {
+        Queue::fake();
+        $admin = $this->makeAdmin();
+        foreach (['pdf', 'docx', 'png'] as $extension) {
+            $doc = $this->makeDoc('hr-portal', 'uploads/original.'.$extension, canonical: false, slug: null);
+            $original = "original\xFF\xFE\x80";
+            Storage::disk('kb')->put($doc->source_path, $original);
+
+            $this->actingAs($admin)->patchJson('/api/admin/kb/documents/'.$doc->id.'/raw', ['content' => '# Replacement'])
+                ->assertUnprocessable();
+            $this->assertSame($original, Storage::disk('kb')->get($doc->source_path));
+        }
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('kb_canonical_audit', 0);
+    }
+
     // ------------------------------------------------------------------
     // download
     // ------------------------------------------------------------------

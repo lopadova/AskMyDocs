@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useUiTranslation } from '../../../lib/ui-locale';
 import { Markdown } from '../../../lib/markdown';
 import { useKbRaw } from './kb-document.api';
 
@@ -24,6 +25,7 @@ export interface PreviewTabProps {
 }
 
 export function PreviewTab({ documentId, project, showFrontmatter = true }: PreviewTabProps) {
+    const { t } = useUiTranslation();
     const query = useKbRaw(documentId);
 
     const { pills, body } = useMemo(() => {
@@ -54,6 +56,11 @@ export function PreviewTab({ documentId, project, showFrontmatter = true }: Prev
 
     return (
         <div data-testid="kb-preview" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {query.data?.content_source === 'reconstruction' && (
+                <p role="status">
+                    {t('Showing text reconstructed from the index because the converted document is unavailable or could not be verified.')}
+                </p>
+            )}
             {showFrontmatter && pills.length > 0 ? (
                 <div
                     data-testid="frontmatter-pills"

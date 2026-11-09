@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { KbRawResponse } from '../admin.api';
 
-const rawState: { data: { content: string; path: string; disk: string; mime: string; content_hash: string } | undefined; isLoading: boolean; isError: boolean } = {
+const rawState: { data: KbRawResponse | undefined; isLoading: boolean; isError: boolean } = {
     data: undefined,
     isLoading: false,
     isError: false,
@@ -62,6 +63,17 @@ describe('extractFrontmatterPills', () => {
 });
 
 describe('PreviewTab', () => {
+    it('discloses reconstructed text instead of presenting it as the converted document', () => {
+        rawState.data = {
+            content: 'Indexed text', path: 'portfolio.pdf', disk: 'kb', mime: 'text/markdown',
+            content_hash: 'hash', editable: false, content_source: 'reconstruction', integrity: 'mismatch',
+        };
+        wrap(<PreviewTab documentId={1} project="hr-portal" />);
+        expect(screen.getByRole('status')).toHaveTextContent('reconstructed from the index');
+        expect(screen.getByTestId('markdown-stub')).toHaveTextContent('Indexed text');
+        rawState.data = undefined;
+    });
+
     it('renders loading state while the raw endpoint is in flight', () => {
         rawState.isLoading = true;
         rawState.data = undefined;

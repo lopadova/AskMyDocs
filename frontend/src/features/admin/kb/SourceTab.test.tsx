@@ -3,6 +3,7 @@ import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EditorView } from '@codemirror/view';
+import type { KbRawResponse } from '../admin.api';
 
 /*
  * PR10 / Phase G3 — SourceTab Vitest scenarios.
@@ -15,7 +16,7 @@ import { EditorView } from '@codemirror/view';
  */
 
 type RawState = {
-    data: { content: string; path: string; disk: string; mime: string; content_hash: string } | undefined;
+    data: KbRawResponse | undefined;
     isLoading: boolean;
     isError: boolean;
 };
@@ -102,6 +103,17 @@ describe('computeLineDiff', () => {
 });
 
 describe('SourceTab', () => {
+    it('shows extracted binary text without an editor or save action', () => {
+        seedRaw('# Extracted portfolio');
+        rawState.data!.editable = false;
+        rawState.data!.content_source = 'artifact';
+        wrap(<SourceTab documentId={7} />);
+        expect(screen.getByTestId('kb-source-readonly')).toHaveTextContent('# Extracted portfolio');
+        expect(screen.queryByTestId('kb-editor-cm')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('kb-editor-save')).not.toBeInTheDocument();
+        expect(mutationState.mutate).not.toHaveBeenCalled();
+    });
+
     it('renders the loading state while raw is in-flight', () => {
         rawState.isLoading = true;
         wrap(<SourceTab documentId={7} />);

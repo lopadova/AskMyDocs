@@ -489,6 +489,9 @@ export interface KbRawResponse {
     mime: string;
     content: string;
     content_hash: string;
+    editable?: boolean;
+    content_source?: 'artifact' | 'reconstruction';
+    integrity?: 'verified' | 'mismatch' | null;
 }
 
 export interface KbHistoryResponse {

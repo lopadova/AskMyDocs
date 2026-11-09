@@ -114,7 +114,7 @@ export function SourceTab({ documentId }: SourceTabProps) {
             viewRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [raw.data !== undefined]);
+    }, [raw.data !== undefined, raw.data?.editable]);
 
     const resetEditorTo = useCallback((value: string) => {
         const view = viewRef.current;
@@ -133,7 +133,7 @@ export function SourceTab({ documentId }: SourceTabProps) {
     }, [resetEditorTo]);
 
     const handleSave = useCallback(() => {
-        if (!isDirty || mutation.isPending) return;
+        if (raw.data?.editable === false || !isDirty || mutation.isPending) return;
         setFrontmatterErrors(null);
         setGenericError(null);
         const payload = bufferRef.current;
@@ -169,7 +169,7 @@ export function SourceTab({ documentId }: SourceTabProps) {
                 toast.error(msg, 'toast-error');
             },
         });
-    }, [isDirty, mutation, toast]);
+    }, [isDirty, mutation, toast, raw.data?.editable]);
 
     const diffRows = useMemo(
         () =>
@@ -208,6 +208,24 @@ export function SourceTab({ documentId }: SourceTabProps) {
                 }}
             >
                 Could not load the markdown. The file may be missing on disk.
+            </div>
+        );
+    }
+
+    if (raw.data.editable === false) {
+        return (
+            <div data-testid="kb-source" data-state="ready">
+                <p role="status">
+                    {translateInterface('This is the extracted text. To update this document, upload a revised original file.')}
+                </p>
+                {raw.data.content_source === 'reconstruction' && (
+                    <p role="status">
+                        {translateInterface('Showing text reconstructed from the index because the converted document is unavailable or could not be verified.')}
+                    </p>
+                )}
+                <pre data-testid="kb-source-readonly" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    {raw.data.content}
+                </pre>
             </div>
         );
     }
