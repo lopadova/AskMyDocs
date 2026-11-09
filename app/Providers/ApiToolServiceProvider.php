@@ -45,7 +45,10 @@ final class ApiToolServiceProvider extends ServiceProvider
             $model::saved($callback);
             $model::deleted($callback);
         }
-        Schedule::job(new \App\ApiTools\Jobs\SweepApiTools)->everyMinute()->withoutOverlapping();
+        Schedule::job(new \App\ApiTools\Jobs\SweepApiTools)
+            ->everyMinute()
+            ->when(fn (): bool => (bool) config('api-tools.enabled', false))
+            ->withoutOverlapping();
     }
     private function routes(): void
     {
