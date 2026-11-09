@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { AxiosHeaders } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { kbUploadApi, type StageInput, type UploadBatchResponse } from './kb-upload.api';
 import { UploadModal } from './UploadModal';
@@ -88,6 +89,10 @@ describe('KB upload feedback', () => {
         [{ code: 'ERR_NETWORK' }, 'connection was lost'],
         [{ response: { status: 413, data: '<html>too large</html>' } }, 'server upload limit'],
         [{ response: { status: 419 } }, 'session has expired'],
+        [{ response: { status: 403, headers: new AxiosHeaders({ 'Cf-Mitigated': 'challenge', 'Cf-Ray': 'example-ray-FCO' }), data: '<html>Browser verification</html>' } }, 'Cloudflare Ray ID: example-ray-FCO'],
+        [{ response: { status: 403, headers: { 'cf-mitigated': 'challenge' }, data: '<html>Browser verification</html>' } }, 'Cloudflare blocked this request'],
+        [{ response: { status: 403, headers: { server: 'cloudflare', 'cf-ray': 'example-ray' }, data: { message: 'Forbidden by project policy.' } } }, 'Forbidden by project policy.'],
+        [{ response: { status: 403, data: '<html>Forbidden</html>' } }, 'Access denied (403)'],
         [{ response: { status: 422, data: { errors: { 'files.0': ['Unsupported file type.'] } } } }, 'manual.pdf: Unsupported file type.'],
     ])('explains request failures and allows retry (%j)', async (error, message) => {
         vi.mocked(kbUploadApi.stage).mockRejectedValueOnce(error);
@@ -96,6 +101,21 @@ describe('KB upload feedback', () => {
         expect(await screen.findByTestId('kb-upload-error')).toHaveTextContent(message);
         expect(screen.getByTestId('kb-upload-modal')).toHaveAttribute('data-state', 'error');
         expect(screen.getByTestId('kb-upload-picked')).toHaveTextContent('manual.pdf');
+        expect(screen.getByTestId('kb-upload-stage')).toBeEnabled();
+    });
+
+    it('explains the Cloudflare challenge in Italian without rendering its HTML', async () => {
+        localStorage.setItem('amd-ui-locale', 'it');
+        vi.mocked(kbUploadApi.stage).mockRejectedValueOnce({ response: {
+            status: 403, headers: { 'cf-mitigated': 'challenge' },
+            data: '<html><script src="https://challenges.cloudflare.com/test.js"></script></html>',
+        } });
+        const { container } = setup();
+        fireEvent.click(screen.getByTestId('kb-upload-stage'));
+        const error = await screen.findByTestId('kb-upload-error');
+        expect(error).toHaveTextContent('Cloudflare ha bloccato la richiesta');
+        expect(error).not.toHaveTextContent('<html>');
+        expect(container.querySelector('script')).toBeNull();
         expect(screen.getByTestId('kb-upload-stage')).toBeEnabled();
     });
 

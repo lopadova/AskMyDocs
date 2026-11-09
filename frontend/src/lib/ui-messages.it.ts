@@ -5,6 +5,8 @@ import { MCP_TOKENS_MESSAGES_IT } from '../features/admin/mcp-tokens/mcp-tokens-
 import { AI_USAGE_MESSAGES_IT } from '../features/admin/ai-usage/ai-usage.messages.it';
 
 export const IT_MESSAGES: Record<string, string> = {
+    'Cloudflare blocked this request with a browser verification. The site administrator must check the security rule for this API.': 'Cloudflare ha bloccato la richiesta con una verifica del browser. Il gestore del sito deve controllare la regola di sicurezza per questa API.',
+    'Access denied (403). Check your account permissions and the site access rules.': 'Accesso negato (403). Verifica i permessi del tuo account e le regole di accesso del sito.',
     "Target project": "Progetto di destinazione",
     "Subfolder (optional)": "Sottocartella (facoltativa)",
     "Upload {count} files": "Carica {count} file",

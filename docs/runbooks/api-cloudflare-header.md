@@ -69,3 +69,32 @@ dopo il salvataggio, insieme all'header `Authorization` del profilo API.
 `SharedHeadersComposerPatchTest` verifica anche che entrambi gli hook restino
 registrati. Un 403 persistente richiede la verifica della regola e del Ray ID
 nei Security Events di Cloudflare; il solo stato 403 non prova l'assenza del token.
+
+## Upload della Knowledge Base dalla SPA
+
+Il caricamento della Knowledge Base usa una richiesta del browser verso
+`POST /api/admin/kb/uploads` sul sito AskMyDocs. È un percorso diverso dalle
+chiamate server-to-server dei connettori descritte sopra: il token privato dei
+connettori non va inserito nel codice della SPA.
+
+La risposta con `cf-mitigated: challenge` identifica una Challenge Page di
+Cloudflare, anche quando la richiesta si aspettava JSON. Una risposta `403`
+che ha soltanto `server: cloudflare` o `cf-ray` non basta a stabilire la causa.
+La finestra di upload riconosce il primo caso, mostra il Ray ID quando presente
+e conserva i file selezionati per un nuovo tentativo.
+
+Per risolvere il blocco sul sito `askmydocs.surfacesrl.com`, cercare il Ray ID
+della richiesta nei **Security Events** della zona che gestisce questo host e
+verificare servizio, regola e azione che hanno prodotto la challenge. La
+schermata Network da sola non identifica la regola responsabile. Una challenge
+interstitial restituisce HTML e non può essere completata dalla richiesta XHR
+di upload. Cloudflare documenta **Turnstile Pre-clearance** per questo flusso;
+l'eventuale correzione della regola va definita dopo aver identificato l'evento,
+limitandola all'host, al metodo e al percorso interessati.
+
+La correzione del messaggio nella SPA non modifica la configurazione della
+zona Cloudflare. Dopo l'intervento sulla zona, ripetere un upload PDF e
+verificare risposta JSON, comparsa della revisione e successiva indicizzazione.
+
+Fonti ufficiali: [rilevamento delle Challenge Page](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/),
+[limiti delle challenge con AJAX e Pre-clearance](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/).

@@ -57,7 +57,14 @@ export interface UploadModalProps {
 }
 
 function errMessage(err: unknown, files: File[] = []): string {
-    const error = err as { code?: string; response?: { status?: number; data?: { message?: string; errors?: Record<string, string[]> } }; message?: string };
+    const error = err as { code?: string; response?: { status?: number; headers?: Record<string, unknown>; data?: { message?: string; errors?: Record<string, string[]> } }; message?: string };
+    const header = (name: string) => Object.entries(error?.response?.headers ?? {})
+        .find(([key]) => key.toLowerCase() === name)?.[1];
+    if (String(header('cf-mitigated') ?? '').toLowerCase() === 'challenge') {
+        const explanation = translateUi('Cloudflare blocked this request with a browser verification. The site administrator must check the security rule for this API.');
+        const ray = header('cf-ray');
+        return typeof ray === 'string' ? `${explanation} Cloudflare Ray ID: ${ray}` : explanation;
+    }
     if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') {
         return translateUi('The server did not respond in time. Check your connection and try again.');
     }
@@ -66,6 +73,9 @@ function errMessage(err: unknown, files: File[] = []): string {
     if (status === 419 || status === 401) return translateUi('Your session has expired. Sign in again before retrying the upload.');
     if (error?.code === 'ERR_NETWORK') return translateUi('The connection was lost. Check your network and try again.');
     const data = error?.response?.data;
+    if (status === 403 && !data?.message) {
+        return translateUi('Access denied (403). Check your account permissions and the site access rules.');
+    }
     if (data?.errors) {
         return Object.entries(data.errors).flatMap(([key, messages]) => {
             const index = /^files\.(\d+)/.exec(key)?.[1];
