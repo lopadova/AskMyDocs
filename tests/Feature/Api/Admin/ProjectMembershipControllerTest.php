@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\Admin;
 
 use App\Models\KnowledgeDocument;
+use App\Models\Project;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -16,8 +17,8 @@ use Tests\TestCase;
 /**
  * PR7 / Phase F2 — project memberships CRUD.
  *
- * project_key is validated against the distinct set on knowledge_documents,
- * so each test seeds at least one doc with the keys it intends to use.
+ * Project keys must match the active tenant's admin picker, including empty
+ * registered projects and legacy references without a registry row.
  */
 class ProjectMembershipControllerTest extends TestCase
 {
@@ -130,6 +131,86 @@ class ProjectMembershipControllerTest extends TestCase
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['project_key']);
+    }
+
+    public function test_store_accepts_an_empty_registered_project_offered_by_the_picker(): void
+    {
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('empty-project');
+        Project::create(['project_key' => 'wwmdai', 'name' => 'WWMDAI']);
+
+        $projects = $this->actingAs($admin)
+            ->getJson('/api/admin/kb/projects')
+            ->assertOk()
+            ->json('projects');
+        $this->assertContains('wwmdai', $projects);
+        $this->assertFalse(KnowledgeDocument::withTrashed()->where('project_key', 'wwmdai')->exists());
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/users/{$user->id}/memberships", [
+                'project_key' => 'wwmdai',
+                'role' => 'owner',
+                'scope_allowlist' => null,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.project_key', 'wwmdai')
+            ->assertJsonPath('data.role', 'owner')
+            ->assertJsonPath('data.scope_allowlist', null);
+
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => self::TENANT,
+            'user_id' => $user->id,
+            'project_key' => 'wwmdai',
+            'role' => 'owner',
+        ]);
+    }
+
+    public function test_store_accepts_legacy_membership_and_trashed_document_projects(): void
+    {
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('legacy-project');
+        ProjectMembership::create([
+            'user_id' => $admin->id,
+            'project_key' => 'membership-only',
+            'role' => 'member',
+        ]);
+        $this->seedProjectKey('trashed-document');
+        KnowledgeDocument::query()->forTenant(self::TENANT)
+            ->where('project_key', 'trashed-document')->firstOrFail()->delete();
+
+        foreach (['membership-only', 'trashed-document'] as $key) {
+            $this->actingAs($admin)
+                ->postJson("/api/admin/users/{$user->id}/memberships", ['project_key' => $key])
+                ->assertCreated()
+                ->assertJsonPath('data.project_key', $key);
+        }
+    }
+
+    public function test_store_rejects_projects_existing_only_in_another_tenant(): void
+    {
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('foreign-project');
+        Project::create([
+            'tenant_id' => 'other-tenant',
+            'project_key' => 'foreign-registry',
+            'name' => 'Foreign Registry',
+        ]);
+        $this->seedProjectKey('foreign-document');
+        KnowledgeDocument::query()->forTenant(self::TENANT)
+            ->where('project_key', 'foreign-document')->update(['tenant_id' => 'other-tenant']);
+
+        foreach (['foreign-registry', 'foreign-document'] as $key) {
+            $this->actingAs($admin)
+                ->postJson("/api/admin/users/{$user->id}/memberships", ['project_key' => $key])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['project_key']);
+
+            $this->assertDatabaseMissing('project_memberships', [
+                'tenant_id' => self::TENANT,
+                'user_id' => $user->id,
+                'project_key' => $key,
+            ]);
+        }
     }
 
     public function test_store_accepts_valid_scope_allowlist(): void
