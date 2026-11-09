@@ -8,6 +8,7 @@ use App\Connectors\Imap\MailboxBusyException;
 use App\Connectors\SerializedConnectorSyncJob;
 use Illuminate\Contracts\Queue\Job as QueueJobContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Padosoft\AskMyDocsConnectorBase\ConnectorInterface;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
@@ -29,6 +30,7 @@ final class SerializedSyncJobMailboxBusyTest extends TestCase
 
     public function test_a_mailbox_busy_keeps_the_install_active_and_requeues(): void
     {
+        Queue::fake();
         config()->set('connectors.imap.mailbox_lock.requeue_after_seconds', 7);
 
         $installation = $this->imapInstallation();
@@ -43,9 +45,9 @@ final class SerializedSyncJobMailboxBusyTest extends TestCase
         $registry = Mockery::mock(ConnectorRegistry::class);
         $registry->shouldReceive('get')->with('imap')->andReturn($connector);
 
-        // The re-queue is a release, not a failure (no JobFailed → no red FAILED run).
+        // A fresh delayed payload owns admission; the expired payload is not reused.
         $queueJob = Mockery::mock(QueueJobContract::class);
-        $queueJob->shouldReceive('release')->once()->with(7);
+        $queueJob->shouldReceive('release')->never();
 
         $job = new SerializedConnectorSyncJob($installation->id, 'default');
         $job->setJob($queueJob);
@@ -60,6 +62,7 @@ final class SerializedSyncJobMailboxBusyTest extends TestCase
             'a transient busy must not leave the install ERRORED',
         );
         $this->assertNull($installation->error_json, 'the busy error_json must be cleared on re-queue');
+        Queue::assertPushed(SerializedConnectorSyncJob::class, fn ($next) => $next->installationId === $installation->id && $next->delay === 7 && $next->pendingSyncLockOwner !== null);
     }
 
     public function test_a_real_non_busy_error_still_hard_fails(): void

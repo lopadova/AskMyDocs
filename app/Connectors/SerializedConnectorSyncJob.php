@@ -12,6 +12,8 @@ use App\Connectors\Imap\MailboxLockKey;
 use App\Models\ImapBackfill;
 use DateTimeInterface;
 use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -38,6 +40,46 @@ use Padosoft\AskMyDocsConnectorBase\Support\TenantContext;
  */
 final class SerializedConnectorSyncJob extends ConnectorSyncJob
 {
+    public ?string $pendingSyncLockOwner = null;
+
+    private function pendingSyncLockKey(): string
+    {
+        return 'connector-imap:pending-sync:'.hash('sha256', json_encode([$this->tenantId, $this->installationId], JSON_THROW_ON_ERROR));
+    }
+
+    private function reservePendingSync(): bool
+    {
+        if (! self::cacheStoreSupportsLocks()) {
+            return true;
+        }
+        $ttl = max(1, (int) config('connectors.imap.mailbox_lock.requeue_window_minutes', 30)) * 60
+            + $this->timeout + 60;
+        $lock = Cache::lock($this->pendingSyncLockKey(), $ttl);
+        if (! $lock->get()) {
+            return false;
+        }
+        $this->pendingSyncLockOwner = $lock->owner();
+
+        return true;
+    }
+
+    private function releasePendingSync(): void
+    {
+        if ($this->pendingSyncLockOwner !== null) {
+            try {
+                Cache::restoreLock($this->pendingSyncLockKey(), $this->pendingSyncLockOwner)->release();
+            } catch (\Throwable $exception) {
+                Log::warning('[connector-imap] pending sync reservation release unavailable', [
+                    'installation_id' => $this->installationId,
+                    'tenant_id' => $this->tenantId,
+                    'exception_class' => $exception::class,
+                ]);
+            } finally {
+                $this->pendingSyncLockOwner = null;
+            }
+        }
+    }
+
     /**
      * Preserve a fast fail on REAL errors while allowing a busy mailbox to keep re-queuing.
      *
@@ -65,7 +107,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
      * Single source of truth for the routing decision so the scheduled sweep and
      * the admin "Sync now" path can never drift apart.
      */
-    public static function dispatchFor(ConnectorInstallation $installation): void
+    public static function dispatchFor(ConnectorInstallation $installation, int $delaySeconds = 0): void
     {
         $queue = (string) config('connectors.sync_job_queue', 'connectors');
 
@@ -78,8 +120,18 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         }
 
         if ($installation->connector_name === 'imap') {
-            self::dispatch($installation->id, $installation->tenant_id)
-                ->onQueue($queue);
+            $job = new self($installation->id, $installation->tenant_id);
+            if (! $job->reservePendingSync()) {
+                return;
+            }
+            try {
+                // Retain ownership while overlap middleware defers the job. Its
+                // handle() releases admission before queuing the next batch.
+                dispatch($job->onQueue($queue)->delay(max(0, $delaySeconds)));
+            } catch (\Throwable $exception) {
+                $job->releasePendingSync();
+                throw $exception;
+            }
 
             return;
         }
@@ -209,6 +261,10 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
         ?ImapSyncBudget $budget = null,
     ): void
     {
+        // Middleware has admitted this job to the physical mailbox. At most
+        // one following request can now wait behind it. The owner token keeps
+        // old jobs from releasing a newer request's reservation.
+        $this->releasePendingSync();
         $progress ??= app(ImapSyncProgressContext::class);
         $budget ??= app(ImapSyncBudget::class);
         $priorTenant = $tenantContext->current();
@@ -239,7 +295,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                     'tenant_id' => $this->tenantId,
                     'delay_seconds' => $delay,
                 ]);
-                $this->release($delay);
+                self::dispatchFor($installation, $delay);
 
                 return;
             }
@@ -269,7 +325,9 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                 $this->recoverFromTransientFailure(MailboxBusyException::class);
 
                 $delay = max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60));
-                $this->release($delay);
+                if ($installation !== null) {
+                    self::dispatchFor($installation->refresh(), $delay);
+                }
             } catch (\Throwable $exception) {
                 if (! $budgetStarted || ! ImapSyncBudgetExceeded::causedBy($exception)) {
                     throw $exception;
@@ -303,7 +361,16 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
                     if ($budgetExhausted) {
                         // Publish the retry only after the durable checkpoint
                         // and date watermark have both been restored.
-                        $this->release(max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60)));
+                        $installation = ConnectorInstallation::query()
+                            ->where('id', $this->installationId)
+                            ->where('tenant_id', $this->tenantId)
+                            ->first();
+                        if ($installation?->status === ConnectorInstallation::STATUS_ACTIVE) {
+                            // A fresh payload carries the new admission owner and
+                            // retry window. Releasing the original SQS payload
+                            // would retain its stale owner/deadline instead.
+                            self::dispatchFor($installation, max(1, (int) config('connectors.imap.mailbox_lock.requeue_after_seconds', 60)));
+                        }
                     } elseif ($continueBatch) {
                         $installation = ConnectorInstallation::query()
                             ->where('id', $this->installationId)
@@ -350,6 +417,7 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
 
     public function failed(?\Throwable $exception): void
     {
+        $this->releasePendingSync();
         // A hard worker timeout never reaches the connector's catch/finally.
         // Surface that terminal failure on the account instead of leaving an
         // apparently active installation which silently stopped downloading.
@@ -358,6 +426,21 @@ final class SerializedConnectorSyncJob extends ConnectorSyncJob
             ->where('tenant_id', $this->tenantId)
             ->where('status', ConnectorInstallation::STATUS_ACTIVE)
             ->first();
+        if ($installation?->connector_name === 'imap'
+            && $exception instanceof MaxAttemptsExceededException
+            && ! ($exception instanceof TimeoutExceededException)) {
+            // Busy-mailbox releases and bounded progress both consume the payload's
+            // retry window. Its expiry is not a failed IMAP connection. A stale
+            // payload must not disable an account while another batch is advancing
+            // its checkpoint. Real connector errors already mark the row errored;
+            // hard timeouts still take the terminal-failure path below.
+            Log::info('[connector-imap] deferred sync expired; scheduler may resume checkpoint', [
+                'installation_id' => $this->installationId,
+                'tenant_id' => $this->tenantId,
+            ]);
+
+            return;
+        }
         $installation?->forceFill([
             'status' => ConnectorInstallation::STATUS_ERRORED,
             'error_json' => [

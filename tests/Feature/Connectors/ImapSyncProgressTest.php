@@ -37,6 +37,7 @@ final class ImapSyncProgressTest extends TestCase
 
     public function test_wrapped_budget_expiry_requeues_without_losing_the_checkpoint_or_tenant(): void
     {
+        Queue::fake();
         config([
             'connectors.imap.mailbox_lock.requeue_after_seconds' => 7,
             'connectors.imap.sync.max_runtime_seconds' => 900,
@@ -60,7 +61,7 @@ final class ImapSyncProgressTest extends TestCase
         $registry = Mockery::mock(ConnectorRegistry::class);
         $registry->shouldReceive('get')->with('imap')->andReturn($connector);
         $queued = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
-        $queued->shouldReceive('release')->once()->with(7);
+        $queued->shouldReceive('release')->never();
         $job = new SerializedConnectorSyncJob($installation->id, 'default');
         $job->setJob($queued);
         $tenant->set('prior-tenant');
@@ -75,6 +76,7 @@ final class ImapSyncProgressTest extends TestCase
         $this->assertSame(42, $vault->getExtra($installation->id)['mailboxes_state']['INBOX']['last_uid']);
         $this->assertNull($budget->remainingSeconds(), 'The next job must receive a fresh budget.');
         $this->assertFalse(app(ImapSyncProgressContext::class)->isActive());
+        Queue::assertPushed(SerializedConnectorSyncJob::class, fn ($next) => $next->delay === 7 && $next->pendingSyncLockOwner !== null);
     }
 
     public function test_budget_expiry_caught_by_the_package_resumes_after_the_last_confirmed_message(): void
@@ -105,7 +107,7 @@ final class ImapSyncProgressTest extends TestCase
         $registry = Mockery::mock(ConnectorRegistry::class);
         $registry->shouldReceive('get')->with('imap')->andReturn($connector);
         $queued = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
-        $queued->shouldReceive('release')->once()->with(60);
+        $queued->shouldReceive('release')->never();
         $job = new SerializedConnectorSyncJob($installation->id, 'default');
         $job->setJob($queued);
 
@@ -116,7 +118,9 @@ final class ImapSyncProgressTest extends TestCase
         $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installation->fresh()->status);
         $this->assertTrue($installation->fresh()->last_sync_at->equalTo($previous));
         $this->assertNull($budget->remainingSeconds());
-        Queue::assertNotPushed(SerializedConnectorSyncJob::class);
+        Queue::assertPushed(SerializedConnectorSyncJob::class, fn ($next) => $next->delay === 60 && $next->pendingSyncLockOwner !== null);
+        SerializedConnectorSyncJob::dispatchFor($installation);
+        Queue::assertPushed(SerializedConnectorSyncJob::class, 1);
     }
 
     public function test_interrupted_search_cannot_advance_the_sync_date_even_before_uids_were_observed(): void
