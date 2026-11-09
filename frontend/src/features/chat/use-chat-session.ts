@@ -13,6 +13,8 @@ import {
     type MessageCitation,
 } from './chat.api';
 import { useChatStore } from './chat.store';
+import { useUiTranslation } from '../../lib/ui-locale';
+import { useRetrievalProfileStatus } from './use-retrieval-profile-status';
 import { useAuthStore } from '../../lib/auth-store';
 import { useTeamStore } from '../../lib/team-store';
 import { useAgentChat, type UseAgentChatResult } from './use-agent-chat';
@@ -81,6 +83,7 @@ export interface UseChatSessionResult {
     teamProjectKeys: string[];
     headerMeta: string;
     canViewKb: boolean;
+    researchBlocked: boolean;
 
     // Turn engine — shared, never re-implemented per surface.
     chat: UseAgentChatResult;
@@ -147,6 +150,7 @@ export interface UseChatSessionResult {
  * archived drawer stale after every turn.
  */
 export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionResult {
+    const { t } = useUiTranslation();
     const params = useParams({ strict: false }) as { conversationId?: string };
     const qc = useQueryClient();
     const setActive = useChatStore((s) => s.setActiveConversation);
@@ -333,6 +337,9 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // the WHOLE tenant — a cross-membership leak. The constraint is applied
     // via `effectiveFilters` below (project_keys = my projects).
     const isAllProjects = activeId !== null ? conversationProjectKey === null : scope === '';
+    const { blocked: researchBlocked } = useRetrievalProfileStatus(
+        !activeConversationResolved ? [] : projectKey ? [projectKey] : teamProjectKeys,
+    );
     // An unresolved session has no known scope — saying "all projects"
     // there would assert something we have not established.
     const projectLabel = !activeConversationKnown
@@ -732,6 +739,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     }, [pendingSend, activeId]);
 
     const handleSend = async (content: string): Promise<void> => {
+        if (researchBlocked) throw new Error(t('Complete the research profile before searching.'));
         if (activeId !== null) {
             await chat.sendMessage({ text: content });
             return;
@@ -842,6 +850,8 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         teamProjectKeys,
         headerMeta,
         canViewKb,
+
+        researchBlocked,
 
         chat,
         realtime,

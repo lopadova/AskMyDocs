@@ -124,6 +124,17 @@ final readonly class AgentLoop
                 });
             }
         }
+        if (config('agent.waves.enabled', true) && config('kb.investigation.enabled', true)
+            && $understanding?->available && $understanding->needsResearch() && ! $understanding->needsClarification) {
+            $project = $context->projectKey ?? (count($filters->projectKeys) === 1 ? $filters->projectKeys[0] : null);
+            if ($project === null || ! \App\Models\KbRetrievalProfile::query()->forTenant($context->tenantId)
+                ->where('project_key', $project)->exists()) {
+                $evidence->addWarning('retrieval_profile_required', 'recursive_kb_retrieval');
+                $this->checkpoint($run, $evidence, $completed, $results, true);
+
+                return $this->outcome('answer', $evidence, $completed, 'retrieval_profile_required');
+            }
+        }
         $factMemory = app(\App\Services\Chat\Reasoning\SessionFactMemory::class);
         $memoryOwner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
         if ($factMemory->enabled() && $memoryOwner !== null && $understanding !== null) {

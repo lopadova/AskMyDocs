@@ -103,6 +103,53 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertSame(1, AgentRun::query()->count(), 'Subquestions must not spawn autonomous research runs.');
     }
 
+    public function test_missing_profile_blocks_research_before_planning_or_dispatching_tools(): void
+    {
+        $run = $this->makeRun();
+        \App\Models\KbRetrievalProfile::where('tenant_id', 'acme')->delete();
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldNotReceive('chatWithHistory');
+        $this->app->instance(AiManager::class, $ai);
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldNotReceive('run');
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('retrieval_profile_required', $outcome->stopReason);
+        $this->assertSame(0, $run->toolExecutions()->count());
+        $answer = app(\App\Agent\AgentAnswerSynthesizer::class)->synthesize('Cerca documenti', $this->context($run), $outcome);
+        $this->assertSame('retrieval_profile_required', $answer->grounding['reason']);
+        $this->assertStringContainsString('configurazione del profilo aziendale', $answer->answer);
+    }
+
+    public function test_profile_gate_returned_by_worker_survives_reauthorization_and_redelivery_without_retry(): void
+    {
+        $run = $this->makeRun();
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn($this->plan([
+            'decision' => 'tools', 'actions' => [[
+                'id' => 'kb', 'tool' => 'search_knowledge_base', 'arguments' => ['query' => 'Generazione issue'],
+                'depends_on' => [], 'purpose' => 'Leggi documentazione',
+            ]],
+        ]));
+        $this->app->instance(AiManager::class, $ai);
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->once()->andReturn([
+            'kb' => new AgentToolActionResult(['error' => 'retrieval_profile_required'], 0, false, 'retrieval_profile_required'),
+        ]);
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+
+        foreach ([0, 1] as $attempt) {
+            $outcome = app(AgentLoop::class)->run($run->fresh(), $this->context($run));
+            $this->assertSame('retrieval_profile_required', $outcome->stopReason, 'Attempt '.$attempt);
+        }
+        $this->assertSame(1, $run->toolExecutions()->count());
+        $completed = data_get($run->fresh()->result_json, 'completed_actions');
+        $this->assertSame('retrieval_profile_required', $completed[0]['failure']['code']);
+        $this->assertFalse($completed[0]['failure']['retryable']);
+    }
+
     public static function dependencyDelays(): array
     {
         return ['immediate parent' => [0], 'parent leaves less than the planning estimate' => [27]];
@@ -455,6 +502,8 @@ final class AgentWaveCoordinatorTest extends TestCase
 
     private function makeRun(): AgentRun
     {
+        \App\Models\KbRetrievalProfile::firstOrCreate(['tenant_id' => 'acme', 'project_key' => 'crm'],
+            ['company_context' => 'Customer orders and shipping operations.']);
         $user = User::create(['name' => 'Wave tester', 'email' => 'wave@example.test', 'password' => 'password']);
         $conversation = Conversation::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm']);
         return AgentRun::create(['run_id' => Str::uuid()->toString(), 'tenant_id' => 'acme', 'project_key' => 'crm',

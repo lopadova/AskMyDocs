@@ -86,6 +86,7 @@ export interface ComposerProps {
      * 'streaming'`). Disables the textarea + flips Send → Stop.
      */
     isStreaming: boolean;
+    researchBlocked?: boolean;
     realtime?: Pick<UseRealtimeAgentResult, 'status' | 'error' | 'active' | 'start' | 'stop'> & {
         availability?: RealtimeAgentFeatureStatus;
     };
@@ -123,6 +124,7 @@ export function Composer({
     onSend,
     onStop,
     isStreaming,
+    researchBlocked = false,
     realtime,
     error,
 }: ComposerProps): ReactNode {
@@ -164,7 +166,7 @@ export function Composer({
     // "#42". Survives across turns inside the same composer mount.
     const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
     const realtimeVoiceActive = realtime?.active === true && realtime.status !== 'paused';
-    const composerDisabled = isStreaming || realtimeVoiceActive;
+    const composerDisabled = researchBlocked || isStreaming || realtimeVoiceActive;
 
     const send = async () => {
         // Re-entrancy + concurrency guard. `isStreaming` catches the
@@ -424,7 +426,7 @@ export function Composer({
                         >
                             <Icon.Plus size={13} />
                         </Button>
-                        {!isStreaming && !realtimeVoiceActive && (
+                        {!researchBlocked && !isStreaming && !realtimeVoiceActive && (
                             <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
                         )}
                         {realtime && (
@@ -433,7 +435,7 @@ export function Composer({
                                 status={realtime.status}
                                 error={realtime.error}
                                 active={realtime.active}
-                                disabled={isStreaming}
+                                disabled={researchBlocked || isStreaming}
                                 onStart={realtime.start}
                                 onStop={realtime.stop}
                             />

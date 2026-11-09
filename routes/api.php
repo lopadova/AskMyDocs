@@ -209,6 +209,9 @@ Route::middleware([
             'enabled' => (bool) config('kb.anonymous_chat.enabled', false),
         ]);
     })->middleware($chatMiddleware)->name('api.kb.chat.anonymous-config');
+    Route::get('/kb/chat/retrieval-profile-status', \App\Http\Controllers\Api\KbRetrievalProfileStatusController::class)
+        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat']))
+        ->name('api.kb.chat.retrieval-profile-status');
     Route::post('/kb/feedback', KbChunkFeedbackController::class)
         ->name('api.kb.feedback');
     // v8.8/W6 — chat-side related-graph: 1-hop neighbours of cited canonical docs.

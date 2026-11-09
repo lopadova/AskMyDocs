@@ -61,6 +61,16 @@ final class AgentWaveCoordinator
 
         while (true) {
             $this->control->ensureActive($run);
+            // A missing profile is a configuration gate, not an empty search
+            // that another query or a synthesis repair can resolve. Preserve
+            // it across retries so the host's actionable message reaches chat.
+            foreach ($completed as $entry) {
+                if (($entry['kind'] ?? null) === 'knowledge' && ($entry['status'] ?? null) === 'failed'
+                    && (data_get($entry, 'failure.code') === 'retrieval_profile_required'
+                        || data_get($entry, 'result.error') === 'retrieval_profile_required')) {
+                    return new AgentLoopOutcome('answer', $evidence, $completed, 'retrieval_profile_required');
+                }
+            }
             $safe = $this->factory->empty();
             $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $evidence->jsonSerialize()));
             $evidence = $safe;
@@ -299,7 +309,9 @@ final class AgentWaveCoordinator
                 $completed[] = ['id' => $id, 'execution_id' => $execution->id, 'tool' => $tool->name, 'kind' => $tool->kind,
                     'purpose' => $item['action']->purpose, 'status' => $observation->successful() ? 'completed' : 'failed',
                     'result' => $body, 'arguments_hash' => $this->signature($item['arguments']),
-                    ...$observation->successful() ? [] : ['failure' => AgentToolFailure::summarize($observation->body, $tool->inputSchema)]];
+                    ...$observation->successful() ? [] : ['failure' => $tool->kind === 'knowledge' && $observation->stopReason === 'retrieval_profile_required'
+                        ? ['code' => 'retrieval_profile_required', 'http_status' => null, 'retryable' => false]
+                        : AgentToolFailure::summarize($observation->body, $tool->inputSchema)]];
                 $results[$id] = $body;
                 $this->events->publish($run, $observation->successful() ? 'tool.completed' : 'tool.failed',
                     $observation->successful() ? 'tool.completed' : 'tool.failed', ['tool' => $tool->displayName],

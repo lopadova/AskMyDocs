@@ -68,6 +68,18 @@ describe('Composer', () => {
         expect(props.onSend).not.toHaveBeenCalled();
     });
 
+    it('blocks submission while the research profile is missing and keeps the draft', () => {
+        useChatStore.setState({ draft: 'Come funziona la generazione degli issue?' });
+        const props = makeProps();
+        renderWithClient(<Composer {...props} researchBlocked />);
+        const input = screen.getByTestId('chat-composer-input');
+        expect(input).toBeDisabled();
+        expect(screen.getByTestId('chat-composer-send')).toBeDisabled();
+        fireEvent.submit(input.closest('form')!);
+        expect(props.onSend).not.toHaveBeenCalled();
+        expect(useChatStore.getState().draft).toBe('Come funziona la generazione degli issue?');
+    });
+
     it('calls onSend with the typed message when the form submits', () => {
         const onSend = vi.fn();
         const props = makeProps({ onSend });

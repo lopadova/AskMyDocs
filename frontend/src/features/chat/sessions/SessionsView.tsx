@@ -1,4 +1,5 @@
 import { useUiTranslation } from "../../../lib/ui-locale";
+import { RetrievalProfileBanner } from '../RetrievalProfileBanner';
 import { EditorialArtwork } from '../../../components/editorial/EditorialArtwork';
 import '../chat-reader.css';
 import { type ReactNode } from 'react';
@@ -192,6 +193,8 @@ export function SessionsView(): ReactNode {
                             )}
                         </header>
 
+                        <RetrievalProfileBanner projectKeys={activeId !== null && !activeConversationResolved ? [] : projectKey ? [projectKey] : teamProjectKeys} />
+
                         <MessageThread
                             conversationId={activeId}
                             projectKey={projectKey}
@@ -221,6 +224,7 @@ export function SessionsView(): ReactNode {
                         />
 
                         <Composer
+                            researchBlocked={session.researchBlocked}
                             conversationId={activeId}
                             projectLabel={projectLabel}
                             projectKey={projectKey}

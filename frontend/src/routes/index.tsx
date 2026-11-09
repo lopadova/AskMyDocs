@@ -1023,10 +1023,11 @@ const adminAutoWikiSettingsRoute = createRoute({
 });
 
 function AdminRetrievalProfilesRoute() {
+    const search = useSearch({ strict: false }) as { project?: string };
     return (
         <RequireRole roles={['admin', 'super-admin']}>
             <AdminShell section="retrieval-profiles">
-                <RetrievalProfilesView />
+                <RetrievalProfilesView initialProjectKey={search.project} />
             </AdminShell>
         </RequireRole>
     );
@@ -1035,6 +1036,9 @@ function AdminRetrievalProfilesRoute() {
 const adminRetrievalProfilesRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin/kb/retrieval-profiles',
+    validateSearch: (search: Record<string, unknown>) => ({
+        project: typeof search.project === 'string' && search.project.length <= 120 ? search.project : undefined,
+    }),
     component: AdminRetrievalProfilesRoute,
 });
 

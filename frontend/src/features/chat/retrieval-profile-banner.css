@@ -1,0 +1,20 @@
+.retrieval-profile-banner {
+    display: flex;
+    align-items: flex-start;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 12px 16px 0;
+    padding: 14px 16px;
+    border: 1px solid var(--err, #dc2626);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--err, #dc2626) 12%, var(--bg-0));
+    color: var(--fg-0);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.retrieval-profile-banner > svg { flex-shrink: 0; color: var(--err, #dc2626); }
+.retrieval-profile-banner-copy { flex: 1 1 220px; overflow-wrap: anywhere; }
+.retrieval-profile-banner-copy strong { color: var(--err, #dc2626); }
+.retrieval-profile-banner-copy p { margin: 4px 0 0; }
+.retrieval-profile-banner > a { flex-shrink: 0; }

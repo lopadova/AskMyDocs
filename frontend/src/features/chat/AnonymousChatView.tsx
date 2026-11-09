@@ -4,7 +4,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
-import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
+import { selectCurrentHash, selectCurrentTeam, useTeamStore } from '../../lib/team-store';
+import { Button } from '../../components/Button';
+import { RetrievalProfileBanner } from './RetrievalProfileBanner';
+import { useRetrievalProfileStatus } from './use-retrieval-profile-status';
 import { anonymousChatApi, type AnonymousChatAnswer, type MessageCitation } from './chat.api';
 import { AnonymousChatBanner } from './AnonymousChatBanner';
 import { CitationsPopover } from './CitationsPopover';
@@ -38,6 +41,8 @@ export function AnonymousChatView(): ReactNode {
     const { t: translateInterface } = useUiTranslation();
     const navigate = useNavigate();
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
+    const activeTeam = useTeamStore(selectCurrentTeam);
+    const projectKeys = (activeTeam?.projects ?? []).map((project) => project.project_key).filter((key) => key !== '*');
     const [turns, setTurns] = useState<AnonymousTurn[]>([]);
     const [draft, setDraft] = useState('');
     // Sentinel at the very end of the thread — scrolled into view after a turn
@@ -49,6 +54,7 @@ export function AnonymousChatView(): ReactNode {
         queryFn: anonymousChatApi.config,
         staleTime: 60_000,
     });
+    const { blocked: researchBlocked } = useRetrievalProfileStatus(configQuery.data?.enabled ? projectKeys : []);
 
     const sendMutation = useMutation<AnonymousChatAnswer, Error, string>({
         mutationFn: (question) => anonymousChatApi.send(question),
@@ -66,7 +72,7 @@ export function AnonymousChatView(): ReactNode {
 
     const submit = () => {
         const question = draft.trim();
-        if (!question || sendMutation.isPending) {
+        if (researchBlocked || !question || sendMutation.isPending) {
             return;
         }
         setDraft('');
@@ -131,6 +137,8 @@ export function AnonymousChatView(): ReactNode {
                     {translateInterface("Back")}</button>
                 <h1 style={{ fontSize: 14, margin: 0, color: 'var(--fg-0)' }}>{translateInterface("Anonymous chat")}</h1>
             </header>
+
+            {phase === 'ready' && <RetrievalProfileBanner projectKeys={projectKeys} />}
 
             <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
                 <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -218,18 +226,19 @@ export function AnonymousChatView(): ReactNode {
                             onKeyDown={onKeyDown}
                             placeholder={translateInterface("Ask anonymously… (Enter to send)")}
                             rows={2}
+                            disabled={researchBlocked}
                             style={{ flex: 1, resize: 'vertical', minHeight: 44, fontSize: 13 }}
                         />
-                        <button
+                        <Button
                             type="button"
-                            className="btn primary"
+                            variant="primary"
                             data-testid="anonymous-chat-send"
                             onClick={submit}
-                            disabled={!draft.trim() || sendMutation.isPending}
-                            aria-busy={sendMutation.isPending}
+                            disabled={researchBlocked || !draft.trim() || sendMutation.isPending}
+                            busy={sendMutation.isPending}
                         >
                             <Icon.Send size={13} />
-                            {translateInterface("Send")}</button>
+                            {translateInterface("Send")}</Button>
                     </div>
                 </div>
             )}

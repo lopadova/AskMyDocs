@@ -16,6 +16,7 @@ import { SuggestedFollowups } from './SuggestedFollowups';
 import { CitationDocumentModal } from './CitationDocumentModal';
 import { ConversationDebugDownloadButton } from './ConversationDebugDownloadButton';
 import { useChatSession } from './use-chat-session';
+import { RetrievalProfileBanner } from './RetrievalProfileBanner';
 
 /**
  * Chat feature root. Two columns:
@@ -200,6 +201,8 @@ export function ChatView(): ReactNode {
                             </Button>
                         </header>
 
+                        <RetrievalProfileBanner projectKeys={activeId !== null && !activeConversationResolved ? [] : projectKey ? [projectKey] : teamProjectKeys} />
+
                         <MessageThread
                             conversationId={activeId}
                             projectKey={projectKey}
@@ -229,6 +232,7 @@ export function ChatView(): ReactNode {
                         />
 
                         <Composer
+                            researchBlocked={session.researchBlocked}
                             conversationId={activeId}
                             projectLabel={projectLabel}
                             projectKey={projectKey}
