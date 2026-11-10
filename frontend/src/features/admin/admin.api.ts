@@ -369,6 +369,8 @@ export interface KbTreeResponse {
 }
 
 export interface KbTreeQuery {
+    ingested_from?: string;
+    ingested_to?: string;
     limit?: number;
     after?: number;
     q?: string;
@@ -382,6 +384,8 @@ function buildKbTreeParams(q: KbTreeQuery): Record<string, string> {
     if (q.project && q.project.trim() !== '') p.project = q.project;
     if (q.mode) p.mode = q.mode;
     if (q.with_trashed) p.with_trashed = '1';
+    if (q.ingested_from) p.ingested_from = q.ingested_from;
+    if (q.ingested_to) p.ingested_to = q.ingested_to;
     if (q.limit) p.limit = String(q.limit);
     if (q.after) p.after = String(q.after);
     if (q.q) p.q = q.q;

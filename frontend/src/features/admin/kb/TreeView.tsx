@@ -17,6 +17,10 @@ import type {
 export type TreeState = 'loading' | 'ready' | 'error' | 'empty';
 
 export interface TreeViewProps {
+    ingestedFrom?: string;
+    ingestedTo?: string;
+    onIngestedFromChange?: (value: string) => void;
+    onIngestedToChange?: (value: string) => void;
     serverSearch?: boolean;
     pageNumber?: number;
     onPreviousPage?: () => void;
@@ -95,6 +99,17 @@ export function TreeView(props: TreeViewProps) {
                     background: 'var(--bg-1)',
                 }}
             >
+                {props.onIngestedFromChange && <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+                    <legend>{translateInterface('Ingestion date')}</legend>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <label style={{ flex: 1, minWidth: 100 }}>{translateInterface('From date')}
+                            <input type="date" style={{ width: '100%', minWidth: 0 }} value={props.ingestedFrom ?? ''} max={props.ingestedTo || undefined} onChange={e => props.onIngestedFromChange?.(e.target.value)} />
+                        </label>
+                        <label style={{ flex: 1, minWidth: 100 }}>{translateInterface('To date')}
+                            <input type="date" style={{ width: '100%', minWidth: 0 }} value={props.ingestedTo ?? ''} min={props.ingestedFrom || undefined} onChange={e => props.onIngestedToChange?.(e.target.value)} />
+                        </label>
+                    </div>
+                </fieldset>}
                 <div style={{ position: 'relative' }}>
                     <Icon.Search
                         size={14}

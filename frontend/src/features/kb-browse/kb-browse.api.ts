@@ -14,11 +14,13 @@ import type { KbTreeMode, KbTreeResponse } from '../admin/admin.api';
  * never returns soft-deleted documents (R2).
  */
 export const kbBrowseApi = {
-    async tree(project: string | null, mode: KbTreeMode): Promise<KbTreeResponse> {
+    async tree(project: string | null, mode: KbTreeMode, ingestedFrom = '', ingestedTo = ''): Promise<KbTreeResponse> {
         const { data } = await api.get<KbTreeResponse>('/api/kb/tree', {
             params: {
                 ...(project !== null && project !== '' ? { project } : {}),
                 mode,
+                ingested_from: ingestedFrom || undefined,
+                ingested_to: ingestedTo || undefined,
             },
         });
         return data;

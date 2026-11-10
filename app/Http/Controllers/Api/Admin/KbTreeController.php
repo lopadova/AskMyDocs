@@ -34,6 +34,8 @@ class KbTreeController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'ingested_from' => ['nullable', 'date_format:Y-m-d'],
+            'ingested_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:ingested_from'],
             'project' => ['nullable', 'string', 'max:120'],
             'mode' => ['nullable', 'in:canonical,raw,all'],
             'with_trashed' => ['nullable'],
@@ -50,8 +52,8 @@ class KbTreeController extends Controller
         $withTrashed = $request->boolean('with_trashed');
 
         $result = isset($validated['limit'])
-            ? $this->tree->page($project, $mode, $withTrashed, trim($validated['q'] ?? ''), (int) ($validated['after'] ?? 0), (int) $validated['limit'])
-            : $this->tree->build($project, $mode, $withTrashed);
+            ? $this->tree->page($project, $mode, $withTrashed, trim($validated['q'] ?? ''), (int) ($validated['after'] ?? 0), (int) $validated['limit'], $validated['ingested_from'] ?? null, $validated['ingested_to'] ?? null)
+            : $this->tree->build($project, $mode, $withTrashed, $validated['ingested_from'] ?? null, $validated['ingested_to'] ?? null);
 
         return response()->json([
             ...$result,

@@ -74,6 +74,8 @@ export function KbView() {
 
     const [project, setProject] = useState<string>('');
     const [mode, setMode] = useState<KbTreeMode>('all');
+    const [ingestedFrom, setIngestedFrom] = useState('');
+    const [ingestedTo, setIngestedTo] = useState('');
     const [q, setQ] = useState('');
     const [withTrashed, setWithTrashed] = useState(false);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -94,6 +96,8 @@ export function KbView() {
         q: search,
         project: project || null,
         mode,
+        ingested_from: ingestedFrom || undefined,
+        ingested_to: ingestedTo || undefined,
         with_trashed: withTrashed || undefined,
     });
     // Copilot #5 fix: the project list comes from the DB (distinct
@@ -242,7 +246,11 @@ export function KbView() {
                         state={state}
                         q={q}
                         onQChange={setQ}
-                        mode={mode}
+                        ingestedFrom={ingestedFrom}
+                    ingestedTo={ingestedTo}
+                    onIngestedFromChange={(value) => { setIngestedFrom(value); setCursors([0]); }}
+                    onIngestedToChange={(value) => { setIngestedTo(value); setCursors([0]); }}
+                    mode={mode}
                         onModeChange={(next) => { setMode(next); setCursors([0]); }}
                         withTrashed={withTrashed}
                         onWithTrashedChange={(next) => { setWithTrashed(next); setCursors([0]); }}
