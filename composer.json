@@ -8,7 +8,7 @@
         "agents-full-duplex/laravel-realtime-agent": "^0.1",
         "laravel/ai": "^0.11",
         "laravel/framework": "^13.0",
-        "laravel/mcp": "^0.9",
+        "laravel/mcp": "^1.1",
         "laravel/reverb": "^1.12",
         "laravel/sanctum": "^4.2",
         "league/flysystem-aws-s3-v3": "^3.34",
