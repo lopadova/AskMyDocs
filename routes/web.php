@@ -22,6 +22,8 @@ Route::get('/api/chat/live-sources', AgentLiveSourceController::class)
     ->middleware(['auth:sanctum', 'tenant.authorize', \App\Http\Middleware\ChatApiTokenAccess::class.':session'])
     ->name('api.chat.live-sources');
 
+Route::get('/', fn () => view('landing'))->name('home');
+
 // Render one source so the public language control shares the application's Select.
 Route::get('/landing', fn () => view('landing'))
     ->name('landing');
@@ -76,7 +78,6 @@ Route::middleware('auth')->group(function () {
     // Canonical chat URL is the React SPA at /app/chat. The legacy Blade UI
     // lives at /chat-legacy until PR11 (Phase J) cleanup; /chat redirects to
     // the SPA so existing links keep working.
-    Route::get('/', fn () => redirect('/app/chat'))->name('home');
     Route::get('/chat/{conversation?}', function ($conversation = null) {
         return redirect('/app/chat'.($conversation ? '/'.$conversation : ''));
     })->name('chat');
