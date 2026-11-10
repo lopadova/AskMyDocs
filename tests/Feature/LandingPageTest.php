@@ -11,6 +11,12 @@ class LandingPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_home_renders_the_public_landing(): void
+    {
+        $this->withoutVite();
+        $this->get('/')->assertOk()->assertViewIs('landing');
+    }
+
     public function test_public_landing_renders_one_blade_source_with_the_react_select_mount(): void
     {
         $this->withoutVite();
