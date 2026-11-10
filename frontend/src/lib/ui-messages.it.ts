@@ -138,6 +138,7 @@ export const IT_MESSAGES: Record<string, string> = {
     'Save': 'Salva', 'Save changes': 'Salva modifiche', 'Cancel': 'Annulla', 'Retry': 'Riprova', 'Refresh': 'Aggiorna',
     'Loading…': 'Caricamento…', 'Delete': 'Elimina', 'Edit': 'Modifica', 'Remove': 'Rimuovi', 'Create': 'Crea',
     'Add': 'Aggiungi', 'Back': 'Indietro', 'Next': 'Avanti', 'Previous': 'Precedente', 'Done': 'Fatto',
+    'Ingestion date': 'Data di ingestione', 'From date': 'Dal', 'To date': 'Al',
     'All projects': 'Tutti i progetti', 'Project': 'Progetto', 'All documents': 'Tutti i documenti',
     'Canonical only': 'Solo documenti verificati', 'Raw only': 'Solo documenti originali', 'Include deleted': 'Includi eliminati',
     'Upload': 'Carica documenti', 'Search path or file name': 'Cerca percorso o nome file',

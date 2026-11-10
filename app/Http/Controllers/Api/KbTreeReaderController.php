@@ -57,6 +57,8 @@ final class KbTreeReaderController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'ingested_from' => ['nullable', 'date_format:Y-m-d'],
+            'ingested_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:ingested_from'],
             'project' => ['nullable', 'string', 'max:120'],
             'mode' => ['nullable', 'in:canonical,raw,all'],
         ]);
@@ -69,6 +71,8 @@ final class KbTreeReaderController extends Controller
             $project,
             $validated['mode'] ?? KbTreeService::MODE_ALL,
             withTrashed: false,
+            ingestedFrom: $validated['ingested_from'] ?? null,
+            ingestedTo: $validated['ingested_to'] ?? null,
         );
 
         return response()->json([

@@ -54,6 +54,8 @@ export function KnowledgeBrowseView(): ReactNode {
 
     const [project, setProject] = useState<string>('');
     const [mode, setMode] = useState<KbTreeMode>('all');
+    const [ingestedFrom, setIngestedFrom] = useState('');
+    const [ingestedTo, setIngestedTo] = useState('');
     const [q, setQ] = useState('');
     const [showTreeOnMobile, setShowTreeOnMobile] = useState(false);
     const treeRef = useRef<HTMLDivElement>(null);
@@ -70,8 +72,8 @@ export function KnowledgeBrowseView(): ReactNode {
     const [deepLinkConsumed, setDeepLinkConsumed] = useState(false);
 
     const treeQuery = useQuery({
-        queryKey: ['kb-browse-tree', currentTeam, project === '' ? 'all-projects' : project, mode],
-        queryFn: () => kbBrowseApi.tree(project === '' ? null : project, mode),
+        queryKey: ['kb-browse-tree', currentTeam, project === '' ? 'all-projects' : project, mode, ingestedFrom, ingestedTo],
+        queryFn: () => kbBrowseApi.tree(project === '' ? null : project, mode, ingestedFrom, ingestedTo),
     });
 
     // An explicit click always wins over the URL: once the reader touches
@@ -143,6 +145,10 @@ export function KnowledgeBrowseView(): ReactNode {
                     state={treeState}
                     q={q}
                     onQChange={setQ}
+                    ingestedFrom={ingestedFrom}
+                    ingestedTo={ingestedTo}
+                    onIngestedFromChange={(value) => { setIngestedFrom(value);  }}
+                    onIngestedToChange={(value) => { setIngestedTo(value);  }}
                     mode={mode}
                     onModeChange={setMode}
                     // The reader endpoint never returns soft-deleted

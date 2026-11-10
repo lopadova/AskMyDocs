@@ -61,7 +61,7 @@ class KbTreeService
      * @param  bool  $withTrashed  when true, includes soft-deleted rows
      * @return array{tree: array<int, array<string, mixed>>, counts: array{docs:int, canonical:int, trashed:int}}
      */
-    public function build(?string $projectKey = null, string $mode = self::MODE_ALL, bool $withTrashed = false): array
+    public function build(?string $projectKey = null, string $mode = self::MODE_ALL, bool $withTrashed = false, ?string $ingestedFrom = null, ?string $ingestedTo = null): array
     {
         $root = [];
         $counts = ['docs' => 0, 'canonical' => 0, 'trashed' => 0];
@@ -75,7 +75,7 @@ class KbTreeService
         // later inside `finaliseTree()`, which orders folders-first
         // alphabetically regardless of DB order, so dropping these
         // clauses has no user-visible effect.
-        $this->baseQuery($projectKey, $mode, $withTrashed)
+        $this->baseQuery($projectKey, $mode, $withTrashed, $ingestedFrom, $ingestedTo)
             ->chunkById(100, function ($docs) use (&$root, &$counts) {
                 foreach ($docs as $doc) {
                     $this->insertDoc($root, $doc);
@@ -96,9 +96,9 @@ class KbTreeService
     }
 
     /** Bounded keyset page: never hydrate the entire archive for the explorer. */
-    public function page(?string $projectKey, string $mode, bool $withTrashed, string $search, int $after, int $limit): array
+    public function page(?string $projectKey, string $mode, bool $withTrashed, string $search, int $after, int $limit, ?string $ingestedFrom = null, ?string $ingestedTo = null): array
     {
-        $query = $this->baseQuery($projectKey, $mode, $withTrashed);
+        $query = $this->baseQuery($projectKey, $mode, $withTrashed, $ingestedFrom, $ingestedTo);
         if ($search !== '') {
             $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($search));
             $query->whereRaw("LOWER(source_path) LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
@@ -133,7 +133,7 @@ class KbTreeService
      * `where('is_canonical', ...)` calls, so the scope vocabulary stays
      * the single source of truth (Copilot #8).
      */
-    private function baseQuery(?string $projectKey, string $mode, bool $withTrashed): Builder
+    private function baseQuery(?string $projectKey, string $mode, bool $withTrashed, ?string $ingestedFrom = null, ?string $ingestedTo = null): Builder
     {
         // R30 — KnowledgeDocument is tenant-aware and BelongsToTenant adds
         // no global read scope; without this the tree would mix documents
@@ -154,6 +154,13 @@ class KbTreeService
 
         if ($mode === self::MODE_RAW) {
             $query->raw();
+        }
+
+        if ($ingestedFrom) {
+            $query->where('indexed_at', '>=', $ingestedFrom.' 00:00:00');
+        }
+        if ($ingestedTo) {
+            $query->where('indexed_at', '<', \Illuminate\Support\Carbon::parse($ingestedTo)->addDay()->startOfDay());
         }
 
         return $query;
