@@ -44,6 +44,12 @@ final class BenchmarkRunner
         'txt' => 'text/plain',
     ];
 
+    public const PATH_DIRECT = 'direct';
+
+    public const PATH_INVESTIGATION = 'investigation';
+
+    private string $path = self::PATH_DIRECT;
+
     public function __construct(
         private readonly DocumentIngestor $ingestor,
         private readonly KbSearchService $search,
@@ -62,8 +68,12 @@ final class BenchmarkRunner
      *   thresholds: array<string,float>, passed: bool
      * }
      */
-    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5, bool $withAnswers = false): array
+    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5, bool $withAnswers = false, string $suite = 'v1', string $path = self::PATH_DIRECT): array
     {
+        if (! in_array($path, [self::PATH_DIRECT, self::PATH_INVESTIGATION], true)) {
+            throw new \InvalidArgumentException("Unknown benchmark path [{$path}]; expected direct or investigation.");
+        }
+        $this->path = $path;
         $corpusCount = $this->ingestCorpus($corpusDir, $projectKey);
         $queries = $this->loadQueries($queriesFile);
 
@@ -73,7 +83,7 @@ final class BenchmarkRunner
         }
 
         $aggregate = $this->aggregate($rows, $k);
-        $thresholds = $this->thresholds();
+        $thresholds = $this->thresholds($suite);
 
         return [
             'project' => $projectKey,
@@ -86,6 +96,19 @@ final class BenchmarkRunner
             'query_count' => count($rows),
             'queries' => $rows,
             'aggregate' => $aggregate,
+            // v8.41/W1 (ADR 0035 §D1) — additive (R27): the suite that was run
+            // and, when the labelled queries carry a `class:` tag (benchmark
+            // v2), the per-class breakdown. Absent classes ⇒ empty array, so a
+            // v1 scorecard keeps its exact previous keys plus these two.
+            'suite' => $suite,
+            // Additive (R27): which retrieval path was measured. `direct` is the
+            // retrieval stack alone; `investigation` is the recursive path the
+            // chat runs when KB_RECURSIVE_RETRIEVAL_ENABLED is on (model-written
+            // round queries — it needs a configured chat provider and a
+            // retrieval profile, so it is a LIVE measurement, never --stub only).
+            'path' => $path,
+            'by_class' => $this->byClass($rows, $k),
+            'skipped_queries' => $this->skippedQueries,
             'thresholds' => $thresholds,
             // A truncated corpus cannot PASS. Fewer distractors flatter every
             // ranking metric, so thresholds met over a partial load say
@@ -105,6 +128,13 @@ final class BenchmarkRunner
         foreach (glob(rtrim($corpusDir, '/').'/*') ?: [] as $path) {
             $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
             $mime = self::MIME[$ext] ?? null;
+            // v8.45 / ADR 0035 D7 — the benchmark's `code` corpus files go
+            // through the SAME admission policy and converters as production:
+            // only with code ingestion on are they ingested (and the matching
+            // `code` queries scored; see the skip below).
+            if ($mime === null && (bool) config('kb.code.ingestion_enabled', false)) {
+                $mime = \App\Services\Kb\Code\CodeLanguageMap::mimeForPath($path);
+            }
             if ($mime === null) {
                 continue;
             }
@@ -148,12 +178,30 @@ final class BenchmarkRunner
         return $this->corpusFailures;
     }
 
+    /** @var list<string> ids of labelled queries not run because their class needs a disabled feature */
+    private array $skippedQueries = [];
+
     /** @return list<array<string,mixed>> */
     private function loadQueries(string $queriesFile): array
     {
         $parsed = Yaml::parseFile($queriesFile);
+        $this->skippedQueries = [];
 
-        return array_values($parsed['queries'] ?? []);
+        // v8.41/W1 (ADR 0035 §D1) — a `code` query cannot be answered when the
+        // corpus' source files were never ingested (KB_CODE_INGESTION_ENABLED
+        // off): scoring it would pin the aggregate at a false zero. It is
+        // SKIPPED and REPORTED (`skipped_queries`), never silently dropped (R14).
+        $runnable = [];
+        foreach (array_values($parsed['queries'] ?? []) as $q) {
+            if (($q['class'] ?? null) === 'code' && ! (bool) config('kb.code.ingestion_enabled', false)) {
+                $this->skippedQueries[] = (string) ($q['id'] ?? '?');
+
+                continue;
+            }
+            $runnable[] = $q;
+        }
+
+        return $runnable;
     }
 
     /**
@@ -162,12 +210,20 @@ final class BenchmarkRunner
      */
     private function scoreQuery(array $q, string $projectKey, int $k, bool $withAnswers = false): array
     {
-        $result = $this->search->searchWithContext(
-            query: (string) $q['query'],
-            projectKey: $projectKey,
-            limit: $k,
-            minSimilarity: (float) config('kb.default_min_similarity', 0.30),
-        );
+        $investigationStatus = null;
+        if ($this->path === self::PATH_INVESTIGATION) {
+            $outcome = app(\App\Services\Kb\Investigation\KbInvestigationService::class)
+                ->investigate((string) $q['query'], $projectKey);
+            $result = new SearchResult($outcome->search->primary->take($k)->values(), $outcome->search->expanded, $outcome->search->rejected, $outcome->search->meta);
+            $investigationStatus = ['status' => $outcome->status, 'stop_reason' => $outcome->stopReason, 'rounds' => count($outcome->queries)];
+        } else {
+            $result = $this->search->searchWithContext(
+                query: (string) $q['query'],
+                projectKey: $projectKey,
+                limit: $k,
+                minSimilarity: (float) config('kb.default_min_similarity', 0.30),
+            );
+        }
 
         $rankedDocKeys = $this->rankedDocKeys($result->primary);
         $relevance = (array) ($q['relevance'] ?? []);
@@ -213,6 +269,8 @@ final class BenchmarkRunner
         return [
             'id' => (string) ($q['id'] ?? '?'),
             'query' => (string) $q['query'],
+            // Additive (R27): null on the direct path.
+            'investigation' => $investigationStatus,
             'expect_refusal' => $expectRefusal,
             'refused' => $refused,
             'refusal_correct' => $refused === $expectRefusal,
@@ -230,6 +288,9 @@ final class BenchmarkRunner
             'rejected_expected' => count($expectRejected),
             'faithfulness' => $faithfulness,
             'top' => $rankedDocKeys[0] ?? null,
+            // v8.41/W1 — optional labels from benchmark v2 (null on v1).
+            'class' => isset($q['class']) ? (string) $q['class'] : null,
+            'lang' => isset($q['lang']) ? (string) $q['lang'] : null,
         ];
     }
 
@@ -387,9 +448,57 @@ final class BenchmarkRunner
         ];
     }
 
-    /** @return array<string,float> */
-    private function thresholds(): array
+    /**
+     * Per-class breakdown (benchmark v2). Empty when no query carries a
+     * `class:` label. Each class reports the same headline metrics as the
+     * aggregate, computed over that class's rows only, so a regression in one
+     * class (e.g. `paraphrase`) cannot hide behind a healthy overall mean.
+     *
+     * @param  list<array<string,mixed>>  $rows
+     * @return array<string, array<string,float|int>>
+     */
+    private function byClass(array $rows, int $k): array
     {
+        $groups = [];
+        foreach ($rows as $row) {
+            if (($row['class'] ?? null) === null) {
+                continue;
+            }
+            $groups[(string) $row['class']][] = $row;
+        }
+        ksort($groups);
+
+        $out = [];
+        foreach ($groups as $class => $classRows) {
+            $agg = $this->aggregate($classRows, $k);
+            $out[$class] = [
+                'count' => count($classRows),
+                'ndcg_at_k' => $agg['ndcg_at_k'],
+                'mrr' => $agg['mrr'],
+                'precision_at_k' => $agg['precision_at_k'],
+                'citation_precision' => $agg['citation_precision'],
+                'refusal_accuracy' => $agg['refusal_accuracy'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return array<string,float> */
+    private function thresholds(string $suite = 'v1'): array
+    {
+        // v8.41/W1 — benchmark v2 gates on its OWN thresholds (set from the
+        // first recorded baseline minus tolerance, ADR 0035 §D1); v1 keeps
+        // the original enterprise floor.
+        if ($suite === 'v2') {
+            return [
+                'ndcg_at_k' => (float) config('kb.benchmark.v2.threshold_ndcg', 0.58),
+                'mrr' => (float) config('kb.benchmark.v2.threshold_mrr', 0.62),
+                'citation_precision' => (float) config('kb.benchmark.v2.threshold_citation_precision', 0.70),
+                'refusal_accuracy' => (float) config('kb.benchmark.v2.threshold_refusal_accuracy', 0.85),
+            ];
+        }
+
         return [
             'ndcg_at_k' => (float) config('kb.benchmark.threshold_ndcg', 0.80),
             'mrr' => (float) config('kb.benchmark.threshold_mrr', 0.85),

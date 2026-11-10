@@ -239,8 +239,9 @@ class MessageController extends Controller
         // v8.1 P0.2 — pass the typed blocks (expanded + rejected) so the
         // conversation prompt renders the ⚠ REJECTED / 📎 RELATED sections
         // identically to /api/kb/chat.
+        $promptContext = $retrieval->promptContext($result);
         $systemPrompt = view('prompts.kb_rag', array_merge(
-            $retrieval->promptContext($result),
+            $promptContext,
             [
                 'projectKey' => $projectKey,
                 'fewShotExamples' => $fewShotExamples,
@@ -252,6 +253,10 @@ class MessageController extends Controller
                 'sessionRecap' => config('reasoning.enabled') ? null : $conversation->session_recap,
             ],
         ))->render();
+        // v8.44/W4 — path-context notes are administrator-written DATA: they
+        // travel as their own USER message before the question, never in the
+        // system prompt (SEC-LLM-001 §4). No-op when there are none.
+        $history = $retrieval->withPathContextTurn($history, $promptContext['pathContexts']);
 
         // 6. Send full history to AI provider
         // v8.16/W3 — one trace id per turn covering the whole MCP tool loop, so

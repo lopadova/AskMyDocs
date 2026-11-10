@@ -56,7 +56,19 @@ curl -X POST https://host/api/kb/ingest \
 ```
 
 Sanctum-protected, batch ≤ 100. The endpoint writes the markdown to the KB disk
-and dispatches one `IngestDocumentJob` per document. Binary formats
+and dispatches one `IngestDocumentJob` per document.
+
+<Info>
+**Source code (v8.45, opt-in).** With `KB_CODE_INGESTION_ENABLED=true` the same
+endpoint, `kb:ingest-folder --pattern=php,ts` and the GitHub Action's `code_globs`
+input accept source files (`mime_type: text/x-php`, …). They are chunked on the
+syntax tree, scrubbed of credentials before anything is stored or embedded, and
+refused paths (`vendor/`, lockfiles, `.env`, oversize or generated files) come
+back as `status: "skipped"` rather than failing the batch. See
+[Ingesting source code](/ingesting-source-code).
+</Info>
+
+Binary formats
 (`application/pdf`, `.docx`) require `content` **base64-encoded** with a
 `mime_type`; the controller decodes-or-422 before writing.
 

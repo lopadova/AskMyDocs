@@ -68,6 +68,8 @@ global identity key.
 | `GET` | `/api/kb/related` | `auth:sanctum` | graph neighbours |
 | `GET` | `/api/kb/documents/search` | `auth:sanctum` + `token.ability:kb:read` | document search |
 | `GET` | `/api/kb/documents/{documentId}/preview` | `auth:sanctum` + `token.ability:kb:read` | document source preview |
+| `GET` | `/api/kb/facets` | `auth:sanctum` + `token.ability:kb:read` | v8.44 — filterable dimensions with counts under the caller's ACL; `KB_MCP_FACETS_ENABLED` off → `404 facets_disabled` |
+| `POST` | `/api/kb/documents/multi` | `auth:sanctum` + `token.ability:kb:read` + `throttle:30,1` | W6 — batch read: `{selectors: [path \| glob \| #ref] (1–20), project_key?, max_bytes?}` → `{documents, omitted, missing, meta}`, every document under the caller's ACL; `KB_MULTI_GET_ENABLED` off → `404 multi_get_disabled`. See [Batch reads, references & query documents](/batch-reads-and-references) |
 | `GET` | `/api/kb/tree` | `auth:sanctum` + `token.ability:kb:read` | reader-side document tree |
 | `GET` | `/api/kb/collections` | `auth:sanctum` | collection picker |
 | `GET` | `/api/kb/resolve-wikilink` | `auth:sanctum` | resolve a `[[slug]]` |
@@ -115,9 +117,15 @@ A refusal returns the same shape with `confidence: 0` and a machine-readable
 ```
 
 Response — an envelope `{ queued, failed, documents[] }` where each entry is
-`{ source_path, status: "queued" | "failed", error? }`. The status code is
+`{ source_path, status: "queued" | "failed" | "skipped", error?, reason? }`, plus
+the counts `queued`, `failed` and — additive, v8.45 — `skipped` (source files the
+code admission policy refused: deny-listed path, over the size cap, generated or
+binary; `reason` carries the stable code and never file content). A skipped file
+does not change the status code. The status code is
 **`202`** when every document queued, or **`207` Multi-Status** when some disk
-writes failed. One `IngestDocumentJob` is dispatched per queued document. See the
+writes failed. With `KB_CODE_INGESTION_ENABLED=true`, `mime_type` also accepts the
+`text/x-<language>` code MIMEs (see [Ingesting source code](/ingesting-source-code));
+with it off they are the same `422` as before. One `IngestDocumentJob` is dispatched per queued document. See the
 [ingestion pipeline](/architecture/ingestion-pipeline).
 
 ## Promotion pipeline — `/api/kb/promotion`
@@ -193,6 +201,9 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | KB OCR (v8.36) | `GET /api/admin/kb/documents/{id}/ocr` (status), `POST …/ocr` (re-run, 202), `GET /api/admin/kb/uploads/{batch}/estimate` (pre-commit cost estimate) | `role:admin\|super-admin` |
 | Time Machine artifacts (v8.36) | `GET /api/admin/kb/documents/{id}/versions/{versionId}/content` (a version's stored Markdown, or its chunk reconstruction, with `source`); `…/versions` is bounded and paged (`?limit=` 1..`KB_VERSIONS_TIMELINE_LIMIT`, `?offset=` newest skipped, 422 on an invalid value; additive `meta.limit` / `meta.offset` / `meta.truncated`, `meta.total` is the family size) and, with `…/versions/diff`, gains additive `version_actor` / `version_reason` / `content_hash` / `has_artifact` (true only for a readable artifact whose bytes hash to `content_hash`, never the pointer alone) / `artifact_state` (`none` · `verified` · `unverified` · `missing` · `mismatch`) / `restored_by` / `restored_at`, `from_source` / `to_source` and the integrity verdicts `from_integrity` / `to_integrity` (`verified` · `mismatch` · null); the content endpoint carries `integrity` too | `role:admin\|super-admin` |
 | KB collections / tags / synonyms / analyses | `/api/admin/kb/collections`, `/tags`, `/synonyms`, `/analyses` | `role:admin\|super-admin` |
+| Path contexts (v8.44, flag-gated) | `GET\|PUT /api/admin/kb/path-contexts`, `DELETE /api/admin/kb/path-contexts/{id}` | `role:admin\|super-admin` |
+| Retrieval explain (v8.41, flag-gated, GET) | `/api/admin/kb/retrieval/explain?query=&project_key=&limit=&intent=` + W6/main: `investigation=1` (trace the recursive investigation → `meta.investigation`), `min_score=`, `line_numbers=1`; every result carries `document.ref` | `role:admin\|super-admin` |
+| Expansion learning loop (W7, flag-gated) | `GET /api/admin/kb/expansion-learning`, `POST …/analyze` (queued, 202), `POST …/tunings/{id}/apply\|reject`, `POST …/events/{id}/feedback`, `POST …/training` (201; 503 `storage_failed` if the dataset cannot be written), `POST …/models/{id}/refresh\|promote\|retire`. `KB_EXPANSION_LEARNING_ENABLED` off → `404 expansion_learning_disabled`; domain refusals 422; foreign ids 404. See [Expansion learning loop](/expansion-learning-loop) | `role:admin\|super-admin`; `training` and `promote` additionally super-admin + `confirm: true` |
 | KB analysis/autowiki settings, content gaps | `/api/admin/kb/analysis-settings`, `/autowiki-settings`, `/content-gaps` | `role:admin\|super-admin` |
 | Auto-Wiki ops (evidence-tier, wiki-link, synthesize, index, lint, navigate, review, maintain, pages, promote/discard) | `/api/admin/kb/{evidence-tiers,wiki-*,concepts/*}` | `role:admin\|super-admin` |
 | Logs (chat / canonical-audit / application / activity / failed-jobs) | `/api/admin/logs/*` | `role:admin\|super-admin` (chat detokenize additionally requires the permission named by `kb.pii_redactor.detokenize_permission`, default `pii.detokenize`) |

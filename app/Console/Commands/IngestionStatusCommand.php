@@ -34,6 +34,8 @@ final class IngestionStatusCommand extends Command
         try {
             $queues = $service->queueDepths();
             $runs = $service->recentRuns($limit);
+            $stale = $service->staleEmbeddings();
+            $code = $service->codeIngestion();
         } finally {
             $tenants->set($previous);
         }
@@ -46,6 +48,27 @@ final class IngestionStatusCommand extends Command
                 $queues,
             ),
         );
+
+        if ($stale !== null) {
+            $this->line(sprintf(
+                'Stale embeddings: %d chunk(s) in %d document(s) differ from the active recipe %s (run `kb:reembed-stale --dry-run`).',
+                $stale['stale_chunks'],
+                $stale['stale_documents'],
+                $stale['active_fingerprint'],
+            ));
+        }
+
+        if ($code !== null && ($code['enabled'] || $code['documents'] > 0)) {
+            $this->line(sprintf(
+                'Code ingestion: %s · %d code document(s) · chunks tree_sitter=%d heuristic=%d · %d document(s) had credentials redacted (%d value(s)).',
+                $code['enabled'] ? 'ON' : 'OFF',
+                $code['documents'],
+                $code['chunks_by_chunker']['tree_sitter'],
+                $code['chunks_by_chunker']['heuristic'],
+                $code['documents_with_secrets_redacted'],
+                $code['secrets_redacted'],
+            ));
+        }
 
         if ($runs === []) {
             $this->info('No connector sync runs recorded yet.');

@@ -90,6 +90,10 @@ final class TierOneSchedulerRegistrar
         // v8.38/W4b — async wiki export bundle retention sweep (ADR 0032
         // §12, hourly — a distinct sweep + knob from kb_prune_staging_batches).
         ['kb_prune_wiki_exports', 'kb:prune-wiki-exports'],
+        // W7 — expansion learning loop: prune old events, analyse every
+        // (tenant, project) with enough evidence, refresh training jobs.
+        // A no-op while KB_EXPANSION_LEARNING_ENABLED is false.
+        ['kb_expansion_learn', 'kb:expansion-learn nightly'],
     ];
 
     /**

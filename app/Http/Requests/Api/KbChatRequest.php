@@ -59,6 +59,12 @@ final class KbChatRequest extends FormRequest
             // through four justified KB follow-ups.
             'depth' => ['nullable', 'integer', 'min:1', 'max:5'],
 
+            // v8.44/W4 (ADR 0035 §D5) — optional disambiguation hint ("web page load
+            // times" for the query "performance"). Steers the cross-encoder and
+            // disables the query-expansion strong-signal skip; never sent to the
+            // expansion model. Additive (R27): absent = identical behaviour.
+            'intent' => ['nullable', 'string', 'max:300'],
+
             // v8.8.3 — opt into an anonymous turn: still fully guarded (tenant /
             // RBAC / PII redaction / AI-Act / grounding) but NOT persisted as a
             // conversation and logged only minimally. The controller rejects it
@@ -135,7 +141,7 @@ final class KbChatRequest extends FormRequest
             $projectKeys = [];
         }
 
-        return new RetrievalFilters(
+        return (new RetrievalFilters(
             projectKeys: array_values(array_map('strval', $projectKeys)),
             tagSlugs: array_values(array_map('strval', $f['tag_slugs'] ?? [])),
             sourceTypes: array_values(array_map('strval', $f['source_types'] ?? [])),
@@ -150,7 +156,7 @@ final class KbChatRequest extends FormRequest
                 fn ($v) => strtolower((string) $v),
                 $f['languages'] ?? [],
             )),
-        );
+        ))->withIntent(is_string($this->input('intent')) ? $this->input('intent') : null);
     }
 
     /**

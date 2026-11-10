@@ -44,6 +44,11 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/system-admin/super-admins', allowed: ['system-admin'] },
     { uri: '/api/admin/logs/chat', allowed: ['admin', 'super-admin'] },
     { uri: '/api/admin/kb/tree', allowed: ['admin', 'super-admin'] },
+    // v8.41/W1 + v8.44/W4 — retrieval explain (flag-gated, GET) + path contexts (flag-gated; the E2E server sets the flag ON)
+    { uri: '/api/admin/kb/retrieval/explain?query=x', allowed: ['admin', 'super-admin'] },
+    { uri: '/api/admin/kb/path-contexts', allowed: ['admin', 'super-admin'] },
+    // W7 — expansion learning loop status (flag-gated; the E2E server sets KB_EXPANSION_LEARNING_ENABLED ON).
+    { uri: '/api/admin/kb/expansion-learning', allowed: ['admin', 'super-admin'] },
     // v8.x — authenticated reader surfaces. NO role gate by design: every
     // MEMBER of the tenant may reach them, and the real boundary is
     // per-user ownership (chat-folders) or the SQL access scope (kb/tree).

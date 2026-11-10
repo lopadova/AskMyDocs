@@ -107,6 +107,17 @@ chunk. `0` disables it (the pre-v8.18 behaviour). Two operational notes matter:
 Frontmatter is stripped first (the `CanonicalParser` consumes it); `[[wikilinks]]`
 are extracted and attached to chunk `metadata`.
 
+### Chunking code — `CodeAstChunker` (v8.45)
+
+Source code takes a different branch of the registry: `CodePassthroughConverter`
+claims the synthetic `text/x-<language>` MIMEs, redacts credentials inside the
+converter, and emits one fenced block; `CodeAstChunker` (the only chunker that
+claims the `code` source-type token — `PipelineRegistryChunkerMutexTest` pins it)
+cuts that block at scored syntax boundaries supplied by a break-point driver. The
+driver is the Node `web-tree-sitter` helper (out of process, argument-array
+`Process`, timeout) or the pure-PHP heuristic; the one actually used is recorded
+per chunk as `metadata.chunker`. See [Ingesting source code](/ingesting-source-code).
+
 ### Embedding cache
 
 `EmbeddingCacheService` keys on `(text_hash, provider, model)` — a composite
@@ -115,6 +126,57 @@ batch it embeds each **distinct** text once and fans the result to every index
 that needs it (avoiding a duplicate-key crash and redundant API calls). Hits
 touch `last_used_at` for LRU pruning. When PII redaction + caching are both on,
 PII is masked (stable substitution) before hashing so cache hits survive.
+
+### What is embedded, and why
+
+*v8.42 · [ADR 0035](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0035-v841-retrieval-quality-cycle.md) §D2.*
+A chunk such as *"Il timeout è 30 secondi"* says nothing about **which** system
+or section it describes — yet that is exactly what a query like *"timeout del
+magazzino di Milano"* needs the vector to know. With
+`KB_EMBEDDING_CONTEXTUAL_INPUT=true` the text sent to the embeddings provider is a
+fixed, versioned template instead of the bare chunk:
+
+```text
+title: {document title} | section: {heading path or "none"} | text: {chunk}
+title: … | section: … | type: {canonical_type} | text: {chunk}                      # canonical docs
+file: {path} | symbol: {symbol path} | lang: {language} | code: {chunk}             # source code (v8.45)
+```
+
+`knowledge_chunks.chunk_text` stays the **bare** chunk: the template shapes the
+*vector* only — never what is shown, cited, hashed (`chunk_hash`) or full-text
+indexed, so idempotency and citations are unchanged. Both ingestion entry points
+(the direct `DocumentIngestor` path and the Flow saga's `EmbedChunksStep`) compose
+their inputs through the **same** `EmbeddingInputTemplate`, so they cannot drift.
+The header fragments (title, path, headings) can carry personal data the chunk
+body does not, so they go through the same PII redaction seam as the body before
+the first embedding.
+
+### Embedding fingerprint and re-embedding
+
+Every chunk now records `embedding_fingerprint` — the first 16 hex chars of
+`sha256(provider | model | template id | target/overlap/hard-cap tokens)`. It
+answers the question nothing could answer before: *which vectors in this index are
+no longer comparable with a freshly embedded query?* (Dimensions are left out on
+purpose: provider + model already determine them, and a mismatch is a hard
+pgvector error long before it is a silent drift.) Because the embedding cache is
+keyed on the **text actually embedded**, putting the template output through it
+changes the cache key by construction — no change to the `embedding_cache` UNIQUE.
+
+Flipping the flag **never re-embeds a corpus**. The operator runs:
+
+```bash
+php artisan kb:reembed-stale --dry-run        # stale chunks/documents, ~tokens, optional cost — queues nothing
+php artisan kb:reembed-stale --project=ops    # one ReembedDocumentJob per stale document
+```
+
+"Stale" = fingerprint `NULL` (written before v8.42) or different from the active
+one. The active fingerprint is computed **without a provider call**, so reporting
+costs nothing; the run is idempotent and resumable (a re-embedded document is no
+longer stale), streams documents with `chunkById(100)`, and is tenant-scoped. The
+read side is the additive `stale_embeddings` key on the ingestion-status surfaces
+(`ingestion:status`, `GET /api/admin/ingestion/queue`, `KbIngestionStatusTool`).
+Set `KB_EMBEDDING_PRICE_PER_MILLION_TOKENS` to get a cost estimate; unset, the dry
+run reports tokens and never invents a price.
 
 ## Data model / contract
 

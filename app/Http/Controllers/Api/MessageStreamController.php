@@ -256,8 +256,9 @@ class MessageStreamController extends Controller
 
         // v8.1 P0.2 — typed-block prompt context (chunks + expanded +
         // rejected) so the stream prompt matches the sync + chat channels.
+        $promptContext = $retrieval->promptContext($result);
         $systemPrompt = view('prompts.kb_rag', array_merge(
-            $retrieval->promptContext($result),
+            $promptContext,
             [
                 'projectKey' => $projectKey,
                 'fewShotExamples' => $fewShotExamples,
@@ -268,6 +269,10 @@ class MessageStreamController extends Controller
                 'sessionRecap' => config('reasoning.enabled') ? null : $conversation->session_recap,
             ],
         ))->render();
+        // v8.44/W4 — path-context notes are administrator-written DATA: they
+        // travel as their own USER message before the question, never in the
+        // system prompt (SEC-LLM-001 §4). No-op when there are none.
+        $history = $retrieval->withPathContextTurn($history, $promptContext['pathContexts']);
         if ($appContext !== null) {
             $systemPrompt .= "\n\n## Current MCP App context\n".$appContext;
         }

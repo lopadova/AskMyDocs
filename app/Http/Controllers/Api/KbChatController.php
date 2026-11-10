@@ -189,11 +189,15 @@ class KbChatController extends Controller
             );
         }
 
+        $pathContexts = $retrieval->promptContext($result)['pathContexts'];
         $systemPrompt = view('prompts.kb_rag', [
             'chunks' => $result->primary,
             'expanded' => $result->expanded,
             'rejected' => $result->rejected,
             'projectKey' => $projectKey,
+            // v8.44/W4 — only switches on the system-prompt rule that says how
+            // to read the notes; the notes themselves ride in the USER turn.
+            'pathContexts' => $pathContexts,
             'retrievalInvestigation' => $investigationResult->answerPromptContext(),
         ])->render();
 
@@ -201,7 +205,12 @@ class KbChatController extends Controller
         // trace context so the metering hook stamps this trace_id on the ledger
         // row, and persist the SAME id on the chat_logs row (join key).
         $traceId = ChatTraceContext::newTraceId();
-        $aiResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $ai->chat($systemPrompt, $question));
+        // v8.44/W4 — administrator-written path-context notes are DATA: they
+        // precede the question in the USER turn, never the system prompt
+        // (SEC-LLM-001 §4). Byte-identical to `$question` when there are none.
+        $pathContextBlock = $retrieval->pathContextUserTurn($pathContexts);
+        $userTurn = $pathContextBlock === null ? $question : $pathContextBlock."\n\n".$question;
+        $aiResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $ai->chat($systemPrompt, $userTurn));
 
         // v8.19/W2 — OUTPUT GUARDRAIL (laravel-ai-guardrails Control C). Sanitize the
         // model's answer (markdown-exfil neutralization; HTML escaping + PII redaction

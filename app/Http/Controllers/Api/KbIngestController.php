@@ -7,6 +7,9 @@ namespace App\Http\Controllers\Api;
 use App\Services\Kb\Ocr\OcrService;
 use App\Jobs\IngestDocumentJob;
 use App\Support\Kb\FileTypeSniffer;
+use App\Services\Kb\Code\CodeIngestionPolicy;
+use App\Services\Kb\Code\CodeLanguageMap;
+use App\Services\Kb\Code\SecretRedactor;
 use App\Support\Kb\SourceType;
 use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
@@ -82,11 +85,34 @@ class KbIngestController extends Controller
         $results = [];
         $anyFailed = false;
         foreach ($prepared as $item) {
+            // v8.45 / ADR 0035 D7 — a code file refused by the admission policy
+            // (deny-listed path, over the size cap, generated, binary) is
+            // SKIPPED with a reason, not a batch failure: a repository push
+            // legitimately contains a few of them and one `vendor/` file must
+            // not 422 the other 99. Nothing is written or queued for it.
+            if ($item['skip_reason'] !== null) {
+                $results[] = [
+                    'project_key' => $item['project_key'],
+                    'source_path' => $item['source_path'],
+                    'source_type' => $item['source_type'],
+                    'status' => 'skipped',
+                    'reason' => $item['skip_reason'],
+                ];
+
+                continue;
+            }
+
             // Decode lazily, one document at a time (bounded memory). base64
             // validity was already proven in PHASE 1, so this won't fail.
             $bytes = $item['is_binary']
                 ? (string) base64_decode($item['content'], true)
                 : $item['content'];
+            // v8.45 — credentials in source never reach the KB disk either:
+            // the converter redacts again (idempotent), this covers the raw
+            // file that a re-ingest or a download would otherwise serve.
+            if ($item['source_type'] === SourceType::CODE->value) {
+                $bytes = app(SecretRedactor::class)->redact($bytes)['text'];
+            }
 
             // The kb disk is configured with throw => false, so put() returns
             // false on failure instead of raising.
@@ -129,10 +155,13 @@ class KbIngestController extends Controller
         }
 
         $queued = count(array_filter($results, static fn (array $r): bool => $r['status'] === 'queued'));
+        $skipped = count(array_filter($results, static fn (array $r): bool => $r['status'] === 'skipped'));
 
         return response()->json([
             'queued' => $queued,
-            'failed' => count($results) - $queued,
+            'failed' => count($results) - $queued - $skipped,
+            // Additive (R27): code files refused by the admission policy.
+            'skipped' => $skipped,
             'documents' => $results,
             // H7 — surface the partial-failure state loudly (R14): a caller
             // must be able to tell "all queued" (202) from "some writes
@@ -146,7 +175,7 @@ class KbIngestController extends Controller
      * the whole batch before any disk write happens (H7).
      *
      * @param  array<string, mixed>  $doc
-     * @return array{project_key:string, source_path:string, source_type:string, mime_type:string, content:string, is_binary:bool, stored_path:string, title:?string, metadata:array<string,mixed>}
+     * @return array{project_key:string, source_path:string, source_type:string, mime_type:string, content:string, is_binary:bool, stored_path:string, title:?string, metadata:array<string,mixed>, skip_reason:?string}
      */
     private function prepareDocument(array $doc, string $defaultProject, string $prefix): array
     {
@@ -174,15 +203,35 @@ class KbIngestController extends Controller
         // with the flag off an image is refused with the SAME 422 as before,
         // and the "Supported:" list does not mention it.
         $ocrEnabled = (bool) config('kb.ocr.enabled', false);
-        if ($sourceType === SourceType::UNKNOWN || ($sourceType === SourceType::IMAGE && ! $ocrEnabled)) {
+        // v8.45 / ADR 0035 D7 — the same pattern for source code (R43): off,
+        // a `text/x-<language>` MIME is refused with the SAME 422 as before and
+        // the "Supported:" list does not mention it.
+        $codePolicy = app(CodeIngestionPolicy::class);
+        $codeEnabled = $codePolicy->enabled();
+        if ($sourceType === SourceType::UNKNOWN
+            || ($sourceType === SourceType::IMAGE && ! $ocrEnabled)
+            || ($sourceType === SourceType::CODE && ! $codeEnabled)) {
             throw ValidationException::withMessages([
                 'documents' => [sprintf(
                     'Unsupported mime_type "%s" for source_path "%s". Supported: %s.',
                     $mimeType,
                     $sourcePath,
-                    implode(', ', SourceType::supportedMimes($ocrEnabled)),
+                    implode(', ', SourceType::supportedMimes($ocrEnabled, $codeEnabled)),
                 )],
             ]);
+        }
+        $skipReason = null;
+        if ($sourceType === SourceType::CODE) {
+            // The MIME must agree with the extension's language: a `.php`
+            // path declared as `text/x-python` would be chunked as Python.
+            $pathLanguage = CodeLanguageMap::languageForPath($sourcePath);
+            if ($pathLanguage !== null && CodeLanguageMap::languageForMime($mimeType) !== $pathLanguage) {
+                throw ValidationException::withMessages([
+                    'documents' => [sprintf('mime_type "%s" does not match the language of source_path "%s" (%s).', $mimeType, $sourcePath, CodeLanguageMap::mimeForLanguage($pathLanguage))],
+                ]);
+            }
+            $verdict = $codePolicy->assessContent($sourcePath, (string) $doc['content']);
+            $skipReason = $verdict->accepted ? null : $verdict->label();
         }
 
         // Binary MIMEs arrive base64-encoded. VALIDATE decodability here
@@ -240,6 +289,7 @@ class KbIngestController extends Controller
             // v8.36 — `ocr.force` / `ocr.rerun_lock` / `dry_run` are host-only
             // controls (a forced run is billed): never accepted from a client.
             'metadata' => OcrService::stripTrustedOnlyKeys(is_array($doc['metadata'] ?? null) ? $doc['metadata'] : []),
+            'skip_reason' => $skipReason,
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\RetrievalFilters;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -28,6 +29,9 @@ class KbSearchByProjectTool extends Tool
             'limit' => $schema->integer()
                 ->description('Maximum number of chunks to return.')
                 ->default(6),
+            'intent' => $schema->string()
+                ->description('Optional disambiguation hint, e.g. "web page load times" for the query "performance". It steers re-ranking; it is not searched on its own.')
+                ->nullable(),
         ];
     }
 
@@ -37,6 +41,11 @@ class KbSearchByProjectTool extends Tool
             query: (string) $request->get('query'),
             projectKey: (string) $request->get('project_key'),
             limit: (int) ($request->get('limit') ?? 6),
+            // v8.44/W4 — optional intent (additive). Without it `filters` stays null:
+            // the legacy, byte-identical call.
+            filters: is_string($intent = $request->get('intent')) && trim($intent) !== ''
+                ? RetrievalFilters::forLegacyProject((string) $request->get('project_key'))->withIntent($intent)
+                : null,
         );
 
         return Response::json([

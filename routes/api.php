@@ -225,6 +225,18 @@ Route::middleware([
         ->name('api.kb.documents.search');
     Route::get('/kb/collections', KbCollectionPickerController::class)
         ->name('api.kb.collections.index');
+    // v8.44/W4 / ADR 0035 §D6.1 — corpus facets (R44 HTTP surface). Any
+    // authenticated reader; counts are computed under the caller's own document
+    // ACL (R33). Flag-gated (KB_MCP_FACETS_ENABLED, R43: OFF = 404 facets_disabled).
+    Route::get('/kb/facets', \App\Http\Controllers\Api\KbFacetsController::class)
+        ->middleware('token.ability:kb:read')
+        ->name('api.kb.facets');
+    // W6 (qmd parity) — batch document reads (R44 HTTP surface of multi_get).
+    // Any authenticated reader; every document is read under the caller's ACL
+    // (R33). Flag-gated (KB_MULTI_GET_ENABLED, R43: OFF = 404 multi_get_disabled).
+    Route::post('/kb/documents/multi', \App\Http\Controllers\Api\KbMultiGetController::class)
+        ->middleware(['token.ability:kb:read', 'throttle:30,1'])
+        ->name('api.kb.documents.multi');
 
     // T2.9 — user-owned saved filter combinations (FE FilterBar dropdown
     // consumes these in T2.7-FE follow-up). Per-user authorization
@@ -843,6 +855,41 @@ Route::middleware([
         // route contracts must not collide).
         Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
             ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
+        // v8.41/W1 / ADR 0035 §D1 — per-result retrieval explain (R44 HTTP
+        // surface). Flag-gated (KB_RETRIEVAL_EXPLAIN_ENABLED, R43: OFF = 404).
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/retrieval/explain`).
+        Route::get('/kb/retrieval/explain', \App\Http\Controllers\Api\Admin\KbRetrievalExplainController::class)
+            ->name('api.admin.kb.retrieval.explain');
+
+        // v8.44/W4 / ADR 0035 §D6.4 — path contexts (R44 HTTP surface): admin-
+        // authored descriptions bound to a source_path prefix. Flag-gated
+        // (KB_PATH_CONTEXTS_ENABLED, R43: OFF = 404 path_contexts_disabled).
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/path-contexts`);
+        // PUT/DELETE share this group's `role:admin|super-admin` gate.
+        Route::get('/kb/path-contexts', [\App\Http\Controllers\Api\Admin\KbPathContextController::class, 'index'])
+            ->name('api.admin.kb.path-contexts.index');
+        Route::put('/kb/path-contexts', [\App\Http\Controllers\Api\Admin\KbPathContextController::class, 'upsert'])
+            ->name('api.admin.kb.path-contexts.upsert');
+        Route::delete('/kb/path-contexts/{id}', [\App\Http\Controllers\Api\Admin\KbPathContextController::class, 'destroy'])
+            ->whereNumber('id')->name('api.admin.kb.path-contexts.destroy');
+
+        // W7 — query-expansion learning loop (R44 HTTP surface). Flag-gated
+        // (KB_EXPANSION_LEARNING_ENABLED, R43: OFF = 404 expansion_learning_disabled).
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/expansion-learning`);
+        // train/promote additionally require super-admin + confirm (controller).
+        Route::prefix('/kb/expansion-learning')->controller(\App\Http\Controllers\Api\Admin\KbExpansionLearningController::class)->group(function (): void {
+            Route::get('/', 'status')->name('api.admin.kb.expansion-learning.status');
+            Route::post('/analyze', 'analyze')->name('api.admin.kb.expansion-learning.analyze');
+            Route::post('/tunings/{id}/apply', 'apply')->whereNumber('id')->name('api.admin.kb.expansion-learning.apply');
+            Route::post('/tunings/{id}/reject', 'reject')->whereNumber('id')->name('api.admin.kb.expansion-learning.reject');
+            Route::post('/events/{id}/feedback', 'feedback')->whereNumber('id')->name('api.admin.kb.expansion-learning.feedback');
+            Route::post('/training', 'train')->name('api.admin.kb.expansion-learning.train');
+            Route::post('/models/{id}/refresh', 'refresh')->whereNumber('id')->name('api.admin.kb.expansion-learning.refresh');
+            Route::post('/models/{id}/promote', 'promote')->whereNumber('id')->name('api.admin.kb.expansion-learning.promote');
+            Route::post('/models/{id}/retire', 'retire')->whereNumber('id')->name('api.admin.kb.expansion-learning.retire');
+        });
 
         // v8.36 / ADR 0029 — OCR status + re-run (R44 HTTP surface). R32 —
         // covered by the AdminAuthorizationMatrix (`/api/admin/kb/documents/1/ocr`).

@@ -19,7 +19,7 @@ instance.
 | PHP | `>= 8.3` | with the usual Laravel extensions (`pdo_pgsql`, `mbstring`, `openssl`, …) |
 | Composer | `2.x` | dependency manager |
 | PostgreSQL | `>= 15` | with the **`pgvector`** extension |
-| Node.js | `>= 20` | only to build the Vite SPA |
+| Node.js | `>= 20` | to build the Vite SPA; **optionally on ingestion workers** for syntax-aware code chunking (`npm install --prefix tools/code-chunker`, only used when `KB_CODE_INGESTION_ENABLED=true` — without it the PHP heuristic driver chunks code, see [Ingesting source code](/ingesting-source-code)) |
 | npm | bundled with Node | |
 
 PostgreSQL with `pgvector` is **not optional** — the vector similarity search

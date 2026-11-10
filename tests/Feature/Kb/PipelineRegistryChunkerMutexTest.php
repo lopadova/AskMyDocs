@@ -55,6 +55,8 @@ final class PipelineRegistryChunkerMutexTest extends TestCase
             'evernote', 'fabric',
             'drive_gdoc', 'drive_gsheet', 'drive_gslide',
             'onedrive_office',
+            // v8.45 / ADR 0035 D7 — source code (CodeAstChunker claims `code` only)
+            'code',
         ];
 
         $overlaps = [];

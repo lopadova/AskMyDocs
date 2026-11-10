@@ -134,6 +134,7 @@ class KbIngestFolderCommand extends Command
             // back-compat with operator scripts and existing test
             // assertions across the v4.2 refactor.
             $this->warn("No markdown files matched under disk [{$disk}] path [{$basePath}].");
+            $this->reportSkippedCode($listResult, null);
             $this->reportOrphanResult($run, $pruneOrphans, $dryRun);
             return self::SUCCESS;
         }
@@ -147,12 +148,14 @@ class KbIngestFolderCommand extends Command
                     continue;
                 }
                 $ext = (string) pathinfo($f, PATHINFO_EXTENSION);
-                $sourceType = SourceType::fromExtension($ext);
+                $sourceType = SourceType::fromExtension($ext, (bool) config('kb.code.ingestion_enabled', false));
                 $this->line("  • {$f} [{$sourceType->value}]");
             }
             $this->info("Would dispatch {$matched} job(s). No changes made.");
             return self::SUCCESS;
         }
+
+        $this->reportSkippedCode($listResult, $run->stepResults['dispatch-ingest-fan-out'] ?? null);
 
         $dispatchResult = $run->stepResults['dispatch-ingest-fan-out'] ?? null;
         $dispatched = $dispatchResult instanceof FlowStepResult
@@ -193,6 +196,35 @@ class KbIngestFolderCommand extends Command
         $this->reportOrphanResult($run, $pruneOrphans, $dryRun);
 
         return ($failureCount === 0 && $artifactFailureCount === 0) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * v8.45 — code files the admission policy left out of the run (deny-list,
+     * size cap, generated). Informational: they never turn the run red.
+     */
+    private function reportSkippedCode(mixed $listResult, mixed $dispatchResult): void
+    {
+        $skipped = [];
+        foreach ([$listResult, $dispatchResult] as $result) {
+            if (! ($result instanceof FlowStepResult)) {
+                continue;
+            }
+            foreach ((array) ($result->output['skipped_code'] ?? []) as $row) {
+                if (is_array($row)) {
+                    $skipped[] = $row;
+                }
+            }
+        }
+        if ($skipped === []) {
+            return;
+        }
+        $this->warn(sprintf('Skipped %d code file(s) by the admission policy (deny-list / size / generated):', count($skipped)));
+        foreach (array_slice($skipped, 0, 20) as $row) {
+            $this->line('  - '.(string) ($row['path'] ?? '').' ['.(string) ($row['reason'] ?? '').']');
+        }
+        if (count($skipped) > 20) {
+            $this->line('  … and '.(count($skipped) - 20).' more.');
+        }
     }
 
     private function reportOrphanResult(FlowRun $run, bool $pruneOrphans, bool $dryRun): void

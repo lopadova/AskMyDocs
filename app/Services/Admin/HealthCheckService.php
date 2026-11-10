@@ -44,6 +44,11 @@ class HealthCheckService
             // pack(s) (Italy / Germany / Spain / custom YAML) so admins
             // see at a glance which rules are guarding the boundary.
             'pii_redactor' => $this->piiRedactorReport(),
+            // v8.45 / ADR 0035 D7 — additive (R27): the code chunker helper
+            // and its grammars. `disabled` when code ingestion is off (no
+            // probe, no process), `ok` / `degraded` otherwise.
+            'code_chunker_ok' => $this->codeChunkerOk(),
+            'code_chunker' => $this->codeChunkerReport(),
             'checked_at' => now()->toIso8601String(),
         ];
     }
@@ -102,6 +107,46 @@ class HealthCheckService
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * @return array{enabled: bool, driver: string, helper_ok: bool|null, reason: string|null, grammars: list<string>}
+     */
+    public function codeChunkerReport(): array
+    {
+        $enabled = (bool) config('kb.code.ingestion_enabled', false);
+        $resolver = app(\App\Services\Kb\Code\BreakPointDriverResolver::class);
+        $base = ['enabled' => $enabled, 'driver' => $resolver->mode(), 'helper_ok' => null, 'reason' => null, 'grammars' => []];
+        // Off ⇒ no probe, no process: the shipped default costs nothing here.
+        if (! $enabled || $resolver->mode() === 'heuristic') {
+            return $base;
+        }
+        try {
+            $probe = app(\App\Services\Kb\Code\TreeSitterBreakPointDriver::class)->probe();
+        } catch (Throwable) {
+            return array_merge($base, ['helper_ok' => false, 'reason' => 'probe_failed']);
+        }
+
+        return array_merge($base, ['helper_ok' => $probe['ok'], 'reason' => $probe['reason'], 'grammars' => $probe['grammars']]);
+    }
+
+    /**
+     * `disabled` (code ingestion off) · `ok` (heuristic-only mode, or the
+     * tree-sitter helper answers) · `degraded` (auto: falling back to the
+     * heuristic) · `down` (forced `tree_sitter` and the helper is unusable —
+     * every code ingest would fail).
+     */
+    public function codeChunkerOk(): string
+    {
+        $report = $this->codeChunkerReport();
+        if (! $report['enabled']) {
+            return 'disabled';
+        }
+        if ($report['driver'] === 'heuristic' || $report['helper_ok'] === true) {
+            return 'ok';
+        }
+
+        return $report['driver'] === 'tree_sitter' ? 'down' : 'degraded';
     }
 
     public function dbOk(): string

@@ -163,6 +163,22 @@ class EmbeddingCacheService
     }
 
     /**
+     * v8.42/W2 (ADR 0035 §D2) — the (provider, model) pair a `generate()` call
+     * would use RIGHT NOW, without making any provider call. This is the other
+     * half of the embedding fingerprint (the template + chunking half lives in
+     * {@see \App\Services\Kb\Embedding\EmbeddingInputTemplate}); it lets
+     * `kb:reembed-stale` decide what is stale before spending anything.
+     *
+     * @return array{provider: string, model: string}
+     */
+    public function activeTarget(): array
+    {
+        $provider = $this->ai->embeddingsProvider()->name();
+
+        return ['provider' => $provider, 'model' => (string) $this->resolveModelName($provider)];
+    }
+
+    /**
      * Clear the entire cache or cache for a specific provider.
      */
     public function flush(?string $provider = null): int
