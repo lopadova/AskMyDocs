@@ -1,0 +1,226 @@
+{
+  "dataset_hash": "0d0c27e12d15d80791e54308acc02ff5da2ec8dc606d21b0554cab85732a5141",
+  "model": "typesafe/jev-1.13",
+  "measured_at": "2026-11-11T10:50:56+00:00",
+  "scope": "synthetic_regression_baseline; validate company examples before production",
+  "calibration": null,
+  "validation": null,
+  "metrics": {
+    "cases": 17,
+    "false_approvals": 0,
+    "recall": 0,
+    "abstentions": 17,
+    "provider_errors": 14,
+    "known_cost_usd": 0,
+    "latency_ms": 0
+  },
+  "rows": [
+    {
+      "case": "order_sent",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "two_orders_correct",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "two_orders_wrong",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "leading_zero",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "rejected",
+        "reason": "invalid_identity_or_quote"
+      }
+    },
+    {
+      "case": "ticket_closed_unproven",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "suggestion",
+      "split": "calibration",
+      "expected": "proposed",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "solution_confirmed",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "procedure_single_reply",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "name_collision",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "rejected",
+        "reason": "invalid_identity_or_quote"
+      }
+    },
+    {
+      "case": "wrong_quote",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "rejected",
+        "reason": "invalid_identity_or_quote"
+      }
+    },
+    {
+      "case": "delivery_update",
+      "split": "validation",
+      "expected": "documented",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "two_order_validation",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "ticket_proposed_validation",
+      "split": "validation",
+      "expected": "proposed",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "closed_only_validation",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "explicit_conflict",
+      "split": "validation",
+      "expected": "contradictory",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "incomplete_procedure",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    },
+    {
+      "case": "procedure_validation",
+      "split": "validation",
+      "expected": "documented",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "abstained",
+        "reason": "decision_unavailable_or_uncertain",
+        "error": "App\\Decisions\\DecisionException"
+      }
+    }
+  ],
+  "provider_diagnostic": {
+    "http_status": 402,
+    "api_key_configured": true,
+    "calibration_usable": false,
+    "note": "A separate minimal Decisions API probe returned HTTP 402. No production threshold was selected."
+  }
+}
