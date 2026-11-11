@@ -17,11 +17,15 @@ final class AgentEvidenceSummarizer
             return array_filter([
                 'document_id' => $document['document_id'] ?? null,
                 'title' => $document['title'] ?? $document['source_path'] ?? null,
+                'omitted_evidence_windows' => max(0, count($chunks) - 3),
                 'headings' => array_slice(is_array($document['headings'] ?? null) ? $document['headings'] : [], 0, 5),
                 'evidence' => array_map(static fn (array $chunk): array => array_filter([
                     'heading' => $chunk['heading'] ?? null,
                     'score' => $chunk['score'] ?? null,
                     'excerpt' => mb_substr((string) ($chunk['content'] ?? ''), 0, 500),
+                    'excerpt_truncated' => mb_strlen((string) ($chunk['content'] ?? '')) > 500,
+                    'complete_source' => $chunk['complete_source'] ?? false,
+                    'coverage' => $chunk['coverage'] ?? ['partial' => true, 'reason' => 'excerpt_only'],
                 ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []), array_slice($chunks, 0, 3)),
             ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
         }, array_slice($evidence->documents(), 0, 8));
@@ -57,7 +61,7 @@ final class AgentEvidenceSummarizer
             ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
         }, array_slice($evidence->apiTools(), -12));
 
-        return ['documents' => $documents, 'tool_results' => $tools];
+        return ['documents' => $documents, 'tool_results' => $tools, 'coverage' => ['omitted_documents' => max(0, count($evidence->documents()) - 8), 'planner_excerpts_are_partial' => true]];
     }
 
     /** @param list<mixed>|null $collection @param list<string> $fields @return list<array<string,mixed>> */

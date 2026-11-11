@@ -35,7 +35,7 @@ class ChatRetrievalService
      */
     public function retrieve(string $query, ?string $projectKey, ?RetrievalFilters $filters = null, bool $includeAuxiliaryContext = true, ?\Closure $diagnostics = null): SearchResult
     {
-        return $this->search->searchWithContext(
+        $result = $this->search->searchWithContext(
             query: $query,
             projectKey: $projectKey,
             limit: (int) config('kb.default_limit', 8),
@@ -44,6 +44,10 @@ class ChatRetrievalService
             includeAuxiliaryContext: $includeAuxiliaryContext,
             diagnostics: $diagnostics,
         );
+        $knowledge = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class)->candidates(
+            app(\App\Support\TenantContext::class)->current(), $projectKey, $query, auth()->user(), $filters);
+        if ($knowledge->isEmpty()) return $result;
+        return new SearchResult($knowledge->concat($result->primary)->unique(fn ($c) => data_get($c, 'document.id').':'.hash('sha256', (string) data_get($c, 'chunk_text', '')))->values(), $result->expanded, $result->rejected, $result->meta, $result->runnerUp);
     }
 
     /**

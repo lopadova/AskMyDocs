@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Validator;
 final class ConnectedProjectWorkspace
 {
     public const TOOL_SCOPES = [
+        'search_knowledge_entities' => 'mcp:read',
+        'read_knowledge_context' => 'mcp:read',
         'kb-connected-project-tool' => 'mcp:read',
         'kb-connected-search-tool' => 'mcp:read',
         'kb-connected-document-tool' => 'mcp:read',

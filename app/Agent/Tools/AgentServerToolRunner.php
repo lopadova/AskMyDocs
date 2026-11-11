@@ -47,7 +47,7 @@ final readonly class AgentServerToolRunner
         return match ($tool->kind) {
             'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress, $waveHandoff),
             'mcp' => $this->executeMcp($tool, $arguments, $context, $run, $budget),
-            'catalog' => $this->executeCatalog($arguments, $context, $budget),
+            'catalog' => $tool->executorReference === 'catalog' ? $this->executeCatalog($arguments, $context, $budget) : $this->executeKnowledgeContext($tool, $arguments, $context, $run, $budget),
             'client' => new AgentToolActionResult(
                 ['error' => 'client_tool_requires_handoff'],
                 0,
@@ -56,6 +56,39 @@ final readonly class AgentServerToolRunner
             ),
             default => throw new \DomainException("unsupported_server_tool:{$tool->kind}"),
         };
+    }
+
+    private function executeKnowledgeContext(AgentToolDefinition $tool, array $arguments, AgentExecutionContext $context, AgentRun $run, AgentBudgetTracker $budget): AgentToolActionResult
+    {
+        $context->assertMatches($run);
+        if ($run->user === null || $context->projectKey === null || $context->actorId !== (string) $run->user->id
+            || $context->tenantId !== app(TenantContext::class)->current()) throw new \DomainException('knowledge_context_scope_required');
+        $filters = app(\App\Agent\AgentRetrievalFiltersFactory::class)->forRun($run, $context);
+        $reader = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class);
+        $body = match ($tool->executorReference) {
+            'search_knowledge_entities' => $reader->search($context->tenantId, $context->projectKey, (string) ($arguments['query'] ?? ''), $run->user, $arguments['namespace'] ?? null, (int) ($arguments['limit'] ?? 20), $filters),
+            'read_knowledge_context' => isset($arguments['document_id'])
+                ? app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($context->tenantId, $context->projectKey, (int) $arguments['document_id'], $run->user, (int) ($arguments['cursor'] ?? 0), (int) ($arguments['limit'] ?? 1), $filters)
+                : $reader->context($context->tenantId, $context->projectKey, (int) ($arguments['entity_id'] ?? 0), $run->user, isset($arguments['cursor']) ? (int) $arguments['cursor'] : null, (int) ($arguments['limit'] ?? 20), $filters),
+            default => throw new \DomainException('unknown_knowledge_context_tool'),
+        };
+        $body ??= ['error' => 'knowledge_context_unavailable'];
+        if ($tool->executorReference === 'read_knowledge_context' && ! isset($body['error'])) {
+            $candidates = [];
+            foreach ($body['timeline'] ?? [] as $event) {
+                $candidates[] = ['knowledge_observation_id' => $event['id'], 'metadata' => ['knowledge' => ['coverage' => $event['coverage']]], 'chunk_id' => $event['source']['chunk_id'], 'chunk_text' => $event['quote'], 'chunk_hash' => $event['evidence_hash'],
+                    'heading_path' => $event['source']['heading'], 'project_key' => $context->projectKey,
+                    'document' => ['id' => $event['source']['document_id'], 'title' => $event['source']['title'], 'source_path' => $event['source']['source_path'], 'source_type' => $event['source']['source_type']]];
+            }
+            foreach ($body['sections'] ?? [] as $section) {
+                $candidates[] = ['knowledge_section_ordinal' => $section['ordinal'], 'metadata' => ['knowledge' => ['coverage' => $body['coverage']]], 'chunk_id' => $section['chunk_id'], 'chunk_text' => $section['text'], 'chunk_hash' => $section['text_hash'],
+                    'heading_path' => $section['heading'], 'project_key' => $context->projectKey,
+                    'document' => ['id' => $body['document_id'], 'title' => $body['title'], 'source_path' => $body['source_path']]];
+            }
+            $body['documents'] = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult(new \App\Services\Kb\Retrieval\SearchResult(collect($candidates), collect(), collect()))->documents();
+        }
+        $budget->recordResult(0, $this->bytes($body), true);
+        return new AgentToolActionResult($body, 0);
     }
 
     /**

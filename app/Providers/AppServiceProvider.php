@@ -975,6 +975,8 @@ class AppServiceProvider extends ServiceProvider
             KbPromoteCommand::class,
             KbValidateCanonicalCommand::class,
             KbRebuildGraphCommand::class,
+            \App\Console\Commands\KbKnowledgeCommand::class,
+            \App\Console\Commands\KbKnowledgeEvaluateCommand::class,
             // v8.23 (Ciclo 4) — read the effective PII ingestion policy (R44 CLI surface).
             \App\Console\Commands\KbPiiPolicyCommand::class,
             // v8.23 (Ciclo 4) — re-identify a tokenised KB document (R44 CLI surface).

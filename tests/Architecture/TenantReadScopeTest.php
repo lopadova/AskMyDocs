@@ -40,6 +40,7 @@ final class TenantReadScopeTest extends TestCase
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
         'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbDocumentPageReview', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbIngestBatch',
         'KbIngestBatchItem', 'KbNode', 'KbPiiSetting', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbTextCorrectionCandidate', 'KbUserBadge', 'KbWikiExportRequest', 'KbWikiImportCandidate', 'KbWikiIndex', 'KnowledgeChunk',
+        'KnowledgeEntity', 'KnowledgeExtraction', 'KnowledgeObservation', 'KnowledgeSpecification', 'KnowledgeSpecificationScope',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpConnectorShadowReport', 'AgentPlannerShadowReport', 'McpServer',
         'UnmappedSourcePrincipal',
         'KbRetrievalProfile',

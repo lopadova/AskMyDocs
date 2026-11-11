@@ -27,11 +27,18 @@ class KbNode extends Model
 {
     use BelongsToTenant;
 
+    protected static function booted(): void
+    {
+        // Legacy graph readers resolve document ACLs. Entity readers resolve each contribution.
+        static::addGlobalScope('document_category', fn (Builder $query) => $query->where('kb_nodes.node_category', 'document'));
+    }
+
     protected $table = 'kb_nodes';
 
     protected $fillable = [
         'tenant_id',
         'node_uid',
+        'node_category',
         'node_type',
         'label',
         'project_key',

@@ -89,7 +89,7 @@ final class OAuthAccessPolicy
             $request->isMethod('GET') && $request->is('oauth/userinfo') => null,
             $request->isMethod('POST') && $request->is('api/auth/token/revoke') => null,
             $request->isMethod('POST') && $request->is('api/kb/chat') => 'kb:chat',
-            $request->isMethod('GET') && ($request->is('api/kb/documents/search', 'api/kb/tree')
+            $request->isMethod('GET') && ($request->is('api/kb/documents/search', 'api/kb/tree', 'api/kb/knowledge/entities', 'api/kb/knowledge/entities/*', 'api/kb/knowledge/documents/*/context')
                 || preg_match('#^api/kb/documents/[0-9]+/preview$#D', $request->path()) === 1) => 'kb:read',
             default => false,
         };

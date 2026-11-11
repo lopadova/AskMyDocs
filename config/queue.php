@@ -29,6 +29,14 @@ return [
     */
 
     'connections' => [
+        'knowledge' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'knowledge',
+            'retry_after' => 660,
+            'block_for' => 1,
+            'after_commit' => true,
+        ],
         // Dedicated Redis lease exceeds the 150-second triage job timeout.
         'email-triage' => [
             'driver' => 'redis',

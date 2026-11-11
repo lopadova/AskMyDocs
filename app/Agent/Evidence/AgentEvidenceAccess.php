@@ -36,7 +36,7 @@ final readonly class AgentEvidenceAccess
             $chunks = [];
             foreach ($document['evidence'] ?? [] as $chunk) {
                 $source = $this->reader->readCandidate(['document' => ['id' => $document['document_id'] ?? 0],
-                    'chunk_id' => $chunk['chunk_id'] ?? 0], $context->projectKey, $run->user, $filters);
+                    'chunk_id' => $chunk['chunk_id'] ?? 0, ...array_intersect_key($chunk, array_flip(['knowledge_observation_id', 'knowledge_section_ordinal']))], $context->projectKey, $run->user, $filters);
                 $current = $source === null ? '' : $this->masker->maskString($source['excerpt']);
                 $original = $chunk['content'] ?? '';
                 // A changed or revoked passage loses its old verification; never silently rebind its hash.
@@ -97,7 +97,7 @@ final readonly class AgentEvidenceAccess
                 && (! isset($tool['session_memory_observation_id']) || $memoryReuse)
                 && $execution->tool_name === $tool['tool'] && $sameConversation
                 && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $memoryReuse || $this->contextTaskAllows($run, $tool))
-                && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool))
+                && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool, $context))
                 && ($tool['executor_reference'] ?? null) === $definition->executorReference
                 && hash_equals((string) ($tool['evidence_hash'] ?? ''), hash('sha256', (string) json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE)))) {
                 // Dependency links are host execution metadata, never checkpoint or remote assertions.
@@ -127,8 +127,29 @@ final readonly class AgentEvidenceAccess
     }
 
     /** A KB catalog result is not exempt from document ACLs just because it is shaped like a tool. */
-    private function catalogAuthorized(AgentRun $run, array $tool): bool
+    private function catalogAuthorized(AgentRun $run, array $tool, AgentExecutionContext $context): bool
     {
+        $name = $tool['tool'] ?? '';
+        if (in_array($name, ['search_knowledge_entities', 'read_knowledge_context'], true)) {
+            $project = $run->project_key;
+            if (! $project || ! $run->user) return false;
+            $reader = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class);
+            $filters = $this->filters->forRun($run, $context);
+            $result = $tool['result'] ?? [];
+            foreach ($result['entities'] ?? [] as $entity) {
+                $current = $reader->context($run->tenant_id, $project, (int) ($entity['id'] ?? 0), $run->user, filters: $filters);
+                if ($current === null || $current['entity'] !== $entity) return false;
+            }
+            foreach ($result['timeline'] ?? [] as $event) {
+                $current = $reader->observation($run->tenant_id, $project, (int) ($event['id'] ?? 0), $run->user, $filters);
+                if ($current === null || $this->masker->maskArray($current) !== $event) return false;
+            }
+            foreach ($result['sections'] ?? [] as $section) {
+                $current = app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($run->tenant_id, $project, (int) ($result['document_id'] ?? 0), $run->user, (int) $section['ordinal'], 1, $filters);
+                if (! $current || ($current['sections'][0]['text_hash'] ?? null) !== $section['text_hash']) return false;
+            }
+            return true;
+        }
         foreach (\App\Services\Chat\Reasoning\EvidenceProjector::records($tool) as $entry) {
             $record = $entry['record'];
             $id = $record['document_id'] ?? $record['id'] ?? null;

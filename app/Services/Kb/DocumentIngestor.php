@@ -498,6 +498,7 @@ class DocumentIngestor
         if (! $replaceExisting && $existing !== null) {
             $this->restoreIfTrashed($existing);
             $existing->update(['indexed_at' => now()]);
+            DB::afterCommit(fn () => app(\App\Services\Kb\Knowledge\PostPersistKnowledge::class)->dispatch($existing));
             $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
 
             return $existing;
@@ -585,6 +586,7 @@ class DocumentIngestor
         if (! $forceReembed && $existing !== null) {
             $this->restoreIfTrashed($existing);
             $existing->update(['indexed_at' => now()]);
+            DB::afterCommit(fn () => app(\App\Services\Kb\Knowledge\PostPersistKnowledge::class)->dispatch($existing));
             $this->repairArtifactOfExistingVersion($existing, $markdown, $metadata);
 
             return $existing;
@@ -844,6 +846,12 @@ class DocumentIngestor
         }
 
         $this->persistChunks($document, $projectKey, $chunkDrafts, $embeddingResponse);
+
+        // Every ingestion entry point converges here, inside the persistence transaction.
+        // The callback sees committed chunks and ACLs, including a synchronous import.
+        DB::afterCommit(function () use ($document): void {
+            app(\App\Services\Kb\Knowledge\PostPersistKnowledge::class)->dispatch($document);
+        });
 
         return $document;
     }

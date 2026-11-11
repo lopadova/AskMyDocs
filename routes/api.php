@@ -258,6 +258,11 @@ Route::middleware([
     // admin tree (KbTreeService), with `with_trashed` neither accepted nor
     // passed (R2): a reader never sees a deleted document. Tenant +
     // AccessScope isolation come from the service's own query (R30/R33).
+    Route::get('/kb/knowledge/entities', [\App\Http\Controllers\Api\KnowledgeEntityController::class, 'index'])->middleware('token.ability:kb:read');
+    Route::get('/kb/knowledge/entities/{entity}', [\App\Http\Controllers\Api\KnowledgeEntityController::class, 'show'])->whereNumber('entity')->middleware('token.ability:kb:read');
+    Route::get('/kb/knowledge/entities/{entity}/timeline', [\App\Http\Controllers\Api\KnowledgeEntityController::class, 'show'])->whereNumber('entity')->middleware('token.ability:kb:read');
+    Route::get('/kb/knowledge/documents/{document}/context', [\App\Http\Controllers\Api\KnowledgeEntityController::class, 'document'])->whereNumber('document')->middleware('token.ability:kb:read');
+
     Route::get('/kb/tree', KbTreeReaderController::class)
         ->middleware('token.ability:kb:read')
         ->name('api.kb.tree');
@@ -684,6 +689,19 @@ Route::middleware([
         // v8.11/P10 — per-(tenant, project) Auto-Wiki gate override (auto-build).
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/autowiki-settings`).
+        Route::prefix('kb/knowledge-specifications')->group(function () {
+            $controller = \App\Http\Controllers\Api\Admin\KnowledgeSpecificationController::class;
+            Route::get('/', [$controller, 'index']);
+            Route::get('/versions', [$controller, 'index']);
+            Route::post('/drafts', [$controller, 'store']);
+            Route::post('/generate', [$controller, 'generate'])->middleware('throttle:10,1');
+            Route::post('/{revision}/activate', [$controller, 'activate'])->whereNumber('revision');
+            Route::post('/{revision}/preview', [$controller, 'preview'])->whereNumber('revision')->middleware('throttle:10,1');
+            Route::post('/disable', [$controller, 'disable']);
+            Route::post('/reprocess', [$controller, 'reprocess']);
+            Route::get('/runs', [$controller, 'runs']);
+        });
+
         Route::get('/kb/autowiki-settings', [\App\Http\Controllers\Api\Admin\KbAutoWikiSettingController::class, 'index'])
             ->name('api.admin.kb.autowiki-settings.index');
         Route::put('/kb/autowiki-settings', [\App\Http\Controllers\Api\Admin\KbAutoWikiSettingController::class, 'upsert'])

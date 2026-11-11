@@ -352,6 +352,7 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('decisions', require __DIR__.'/../config/decisions.php');
         $app['config']->set('email-triage', require __DIR__.'/../config/email-triage.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
+        $app['config']->set('knowledge', require __DIR__.'/../config/knowledge.php');
         // T1.4 — pluggable ingestion pipeline registry config. Without this,
         // PipelineRegistry boots with an empty converter/chunker list under
         // Testbench (which doesn't auto-load project config files).

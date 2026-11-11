@@ -24,6 +24,7 @@ final readonly class AgentEvidenceFactory
     {
         $envelope = $this->empty();
         $fullTextByHash = [];
+        $knowledgeByHash = [];
         $acquiredByHash = [];
         $flowIdsByHash = [];
         foreach ([$result->primary, $result->expanded, $result->rejected] as $chunks) {
@@ -32,6 +33,11 @@ final readonly class AgentEvidenceFactory
                 $hash = (string) (data_get($chunk, 'chunk_hash')
                     ?? data_get($chunk, 'metadata.chunk_hash')
                     ?? hash('sha256', $text));
+                $knowledgeByHash[(string) data_get($chunk, 'document.id').':'.$hash] = array_filter([
+                    'knowledge_observation_id' => data_get($chunk, 'knowledge_observation_id'),
+                    'knowledge_section_ordinal' => data_get($chunk, 'knowledge_section_ordinal'),
+                    'coverage' => data_get($chunk, 'metadata.knowledge.coverage') ?? data_get($chunk, 'metadata.investigation.coverage'),
+                ], static fn ($v) => $v !== null);
                 $fullTextByHash[$hash] = $text;
                 $acquiredByHash[$hash] = data_get($chunk, 'retrieved_at') ?? now()->toIso8601String();
                 if (isset($chunk['research_flow_id'])) {
@@ -41,10 +47,11 @@ final readonly class AgentEvidenceFactory
         }
 
         foreach ($this->retrieval->buildCitations($result) as $citation) {
-            $citation['evidence'] = array_map(static function (array $chunk) use ($fullTextByHash, $flowIdsByHash, $acquiredByHash): array {
+            $citation['evidence'] = array_map(static function (array $chunk) use ($fullTextByHash, $flowIdsByHash, $acquiredByHash, $knowledgeByHash, $citation): array {
                 $hash = (string) ($chunk['evidence_hash'] ?? '');
 
                 return [
+                    ...($knowledgeByHash[(string) ($citation['document_id'] ?? '').':'.$hash] ?? []),
                     'chunk_id' => $chunk['chunk_id'] ?? null,
                     'heading' => $chunk['heading'] ?? null,
                     'score' => (float) ($chunk['score'] ?? 0),

@@ -43,12 +43,14 @@ final class AgentWaveKnowledgeSearch
         } catch (\Throwable) {
             $stats['exact_lookup_error'] = true;
         }
+        $wiki = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class)->candidates($context->tenantId, $context->projectKey, $query, $run->user, $filters);
+        $exact = $wiki->concat($exact)->values();
         $sources = [];
         $provenance = [];
         $alreadyCollected = $this->collectedEvidence($run);
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
         $collect = function ($candidates) use (&$sources, &$provenance, &$stats, $alreadyCollected, $limit, $diagnostics, $run, $context, $filters): void {
-            foreach ($candidates->unique('chunk_id') as $candidate) {
+            foreach ($candidates->unique(fn ($c) => ($c['knowledge_observation_id'] ?? '').':'.data_get($c, 'chunk_id')) as $candidate) {
                 $id = (int) data_get($candidate, 'document.id', 0);
                 if ($id < 1) {
                     continue;
@@ -75,11 +77,11 @@ final class AgentWaveKnowledgeSearch
                 ]);
                 $candidate['metadata'] = array_merge((array) ($candidate['metadata'] ?? []), [
                     'investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids'],
-                        'evidence_origin' => $source['evidence_origin'] ?? null],
+                        'evidence_origin' => $source['evidence_origin'] ?? null, 'coverage' => $source['coverage'] ?? ['partial' => true]],
                 ]);
                 $sources[$key] = $candidate;
                 $provenance[$key] = ['complete_source' => $source['complete_source'],
-                    'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null];
+                    'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null, 'coverage' => $source['coverage'] ?? ['partial' => ! $source['complete_source']]];
                 if (count($sources) >= $limit) {
                     break;
                 }

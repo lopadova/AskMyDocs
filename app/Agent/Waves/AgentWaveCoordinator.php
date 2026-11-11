@@ -298,6 +298,7 @@ final class AgentWaveCoordinator
                     'latency_ms' => (int) ($observation->stats['wave_latency_ms'] ?? round((microtime(true) - $started) * 1000)), 'completed_at' => now(),
                 ])->save();
                 $before = $evidence->byteSize();
+                if ($tool->name === 'read_knowledge_context') $evidence->import(['documents' => $body['documents'] ?? []]);
                 if ($tool->kind === 'knowledge') {
                     $evidence->import(['documents' => $body['documents'] ?? []]);
                     $budget->recordKnowledgeSearchResult($evidence->byteSize() > $before);

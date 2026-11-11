@@ -29,6 +29,26 @@ class KbSourceReader
      */
     public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters = null, ?\Closure $diagnostics = null): ?array
     {
+        if (isset($candidate['knowledge_section_ordinal']) && $projectKey !== null) {
+            $context = app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($this->tenant->current(), $projectKey,
+                (int) data_get($candidate, 'document.id'), $actor, (int) $candidate['knowledge_section_ordinal'], 1, $filters);
+            $section = $context['sections'][0] ?? null;
+            if (! $section || $section['ordinal'] !== (int) $candidate['knowledge_section_ordinal']) return null;
+            return ['document_id' => $context['document_id'], 'title' => $context['title'], 'source_path' => $context['source_path'],
+                'source_type' => 'original', 'excerpt' => $section['text'], 'complete_source' => ! $context['coverage']['partial'],
+                'chunk_ids' => [$section['chunk_id']], 'candidate' => $candidate, 'coverage' => $context['coverage'],
+                'evidence_origin' => 'verified_source_section', 'retrieved_at' => now()->toIso8601String()];
+        }
+        if (isset($candidate['knowledge_observation_id']) && $projectKey !== null) {
+            $event = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class)->observation(
+                $this->tenant->current(), $projectKey, (int) $candidate['knowledge_observation_id'], $actor, $filters);
+            if ($event === null) return null;
+            return ['document_id' => $event['source']['document_id'], 'title' => $event['source']['title'],
+                'source_path' => $event['source']['source_path'], 'source_type' => $event['source']['source_type'],
+                'excerpt' => $event['quote'], 'complete_source' => false, 'chunk_ids' => [$event['source']['chunk_id']],
+                'candidate' => $candidate, 'evidence_origin' => 'verified_knowledge_original',
+                'coverage' => $event['coverage'], 'retrieved_at' => now()->toIso8601String()];
+        }
         $documentId = (int) data_get($candidate, 'document.id', 0);
         $chunkId = (int) data_get($candidate, 'chunk_id', 0);
         if ($documentId < 1 || $chunkId < 1) {
@@ -165,6 +185,8 @@ class KbSourceReader
             'complete_source' => $isShort,
             'chunk_ids' => $usedChunks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
             'candidate' => $candidate,
+            'coverage' => ['total_chunks' => $chunks->count(), 'read_chunk_ids' => $usedChunks->pluck('id')->all(),
+                'partial' => ! $isShort, 'unread_chunk_ids' => $chunks->whereNotIn('id', $usedChunks->pluck('id')->all())->pluck('id')->all()],
             ...$evidenceOrigin === null ? [] : ['evidence_origin' => $evidenceOrigin],
         ];
     }

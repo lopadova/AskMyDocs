@@ -237,7 +237,7 @@ class KbInvestigationService
                 if (! isset($selected[$documentId])) {
                     $selectedThisRound++;
                 }
-                $selected[$documentId] = $sources[$documentId];
+                $selected[$documentId] = isset($selected[$documentId]) ? $this->mergeSourceWindows($selected[$documentId], $sources[$documentId]) : $sources[$documentId];
             }
             if (($assessment['findings'] ?? []) !== []) {
                 $onResearchProgress?->__invoke('research.candidates', [
@@ -454,25 +454,35 @@ PROMPT;
     {
         $sources = [];
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
+        $windows = 0;
         foreach ($candidates as $candidate) {
             if (! is_array($candidate)) {
                 continue;
             }
             $documentId = (int) data_get($candidate, 'document.id', 0);
-            if ($documentId < 1 || isset($sources[$documentId])) {
+            if ($documentId < 1) {
                 continue;
             }
             $source = $this->sourceReader->readCandidate($candidate, $projectKey, $actor, $filters,
                 ...($diagnostics === null ? [] : ['diagnostics' => $diagnostics]));
             if ($source !== null) {
-                $sources[$documentId] = $source;
+                $sources[$documentId] = isset($sources[$documentId]) ? $this->mergeSourceWindows($sources[$documentId], $source) : $source;
             }
-            if (count($sources) >= $limit) {
-                break;
-            }
+            if ($source !== null && ++$windows >= $limit) break;
         }
 
         return $sources;
+    }
+
+    private function mergeSourceWindows(array $previous, array $next): array
+    {
+        if (str_contains($previous['excerpt'], $next['excerpt'])) return $previous;
+        if ($next['complete_source']) return $next;
+        $text = $previous['excerpt']."\n\n[... distinct source section ...]\n\n".$next['excerpt'];
+        $cap = max(9000, (int) config('kb.investigation.full_source_max_chars', 24000));
+        return [...$previous, 'excerpt' => mb_substr($text, 0, $cap), 'complete_source' => false,
+            'chunk_ids' => array_values(array_unique([...$previous['chunk_ids'], ...$next['chunk_ids']])),
+            'coverage' => ['partial' => true, 'truncated' => mb_strlen($text) > $cap]];
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -527,7 +537,7 @@ PROMPT;
         );
         $candidate['metadata'] = array_merge(
             is_array($candidate['metadata'] ?? null) ? $candidate['metadata'] : [],
-            ['investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids']]],
+            ['investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids'], 'coverage' => $source['coverage'] ?? ['partial' => ! $source['complete_source']]]],
         );
 
         return $candidate;

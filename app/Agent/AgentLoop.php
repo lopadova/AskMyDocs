@@ -510,6 +510,7 @@ final readonly class AgentLoop
                         'arguments_hash' => $this->stableSignature($resolved),
                         ...$result->successful() ? [] : ['failure' => AgentToolFailure::summarize($result->body, $tool->inputSchema)],
                     ];
+                    if ($tool->name === 'read_knowledge_context') $evidence->import(['documents' => $result->body['documents'] ?? []]);
                     if ($tool->kind !== 'knowledge') {
                         $evidence->addToolResult($tool, $resolved, $result->body, $execution->id,
                             $execution->result_meta_json['argument_bindings'] ?? []);

@@ -61,6 +61,12 @@ class AutoWikiCompiler
      */
     public function compile(KnowledgeDocument $document): array
     {
+        // A legacy maintenance/backlog job must not mutate originals after a project opts in.
+        if (app(\App\Services\Kb\Knowledge\KnowledgeSpecificationService::class)->effective((string) $document->tenant_id, (string) $document->project_key) !== null) {
+            app(\App\Services\Kb\Knowledge\KnowledgeEnrichment::class)->schedule($document);
+            return ['applied' => false, 'reason' => 'knowledge_specification_managed'];
+        }
+
         $isHuman = (string) ($document->generation_source ?? GenerationSource::Human->value) === GenerationSource::Human->value;
 
         // Firewall: never auto-edit the human-vouched authoritative tier.

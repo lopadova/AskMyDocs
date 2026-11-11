@@ -1,0 +1,257 @@
+[
+  {
+    "id": "order_sent",
+    "split": "calibration",
+    "source": "Ordine 00123 spedito oggi con corriere.",
+    "expected": "documented",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00123",
+      "rule": "history",
+      "property": "event",
+      "value": "Ordine spedito",
+      "quote": "Ordine 00123 spedito oggi con corriere."
+    }
+  },
+  {
+    "id": "two_orders_correct",
+    "split": "calibration",
+    "source": "Ordine 00123 spedito. Ordine 00456 in attesa.",
+    "expected": "documented",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00456",
+      "rule": "history",
+      "property": "event",
+      "value": "Ordine in attesa",
+      "quote": "Ordine 00123 spedito. Ordine 00456 in attesa."
+    }
+  },
+  {
+    "id": "two_orders_wrong",
+    "split": "calibration",
+    "source": "Ordine 00123 spedito. Ordine 00456 in attesa.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00456",
+      "rule": "history",
+      "property": "event",
+      "value": "Ordine spedito",
+      "quote": "Ordine 00123 spedito. Ordine 00456 in attesa."
+    }
+  },
+  {
+    "id": "leading_zero",
+    "split": "calibration",
+    "source": "Ordine 00123 spedito.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "123",
+      "rule": "history",
+      "property": "event",
+      "value": "Ordine spedito",
+      "quote": "Ordine 00123 spedito."
+    }
+  },
+  {
+    "id": "ticket_closed_unproven",
+    "split": "calibration",
+    "source": "Ticket T77 chiuso amministrativamente. Non è stata verificata la soluzione.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "ticket",
+      "namespace": "ticket",
+      "identifier": "T77",
+      "rule": "history",
+      "property": "outcome",
+      "value": "Problema risolto",
+      "quote": "Ticket T77 chiuso amministrativamente. Non è stata verificata la soluzione."
+    }
+  },
+  {
+    "id": "suggestion",
+    "split": "calibration",
+    "source": "Per il ticket T77 proponiamo di riavviare il server; nessuna verifica è stata eseguita.",
+    "expected": "proposed",
+    "candidate": {
+      "type": "ticket",
+      "namespace": "ticket",
+      "identifier": "T77",
+      "rule": "history",
+      "property": "intervention",
+      "value": "Riavvio proposto",
+      "quote": "Per il ticket T77 proponiamo di riavviare il server; nessuna verifica è stata eseguita."
+    }
+  },
+  {
+    "id": "solution_confirmed",
+    "split": "calibration",
+    "source": "Ticket T77: dopo il riavvio il cliente conferma che il servizio funziona correttamente.",
+    "expected": "documented",
+    "candidate": {
+      "type": "ticket",
+      "namespace": "ticket",
+      "identifier": "T77",
+      "rule": "history",
+      "property": "outcome",
+      "value": "Servizio ripristinato e confermato dal cliente",
+      "quote": "Ticket T77: dopo il riavvio il cliente conferma che il servizio funziona correttamente."
+    }
+  },
+  {
+    "id": "procedure_single_reply",
+    "split": "calibration",
+    "source": "Per sostituire il filtro: spegnere il dispositivo, rimuovere il coperchio, sostituire il filtro, rimontare il coperchio e riaccendere.",
+    "expected": "documented",
+    "candidate": {
+      "type": "procedure",
+      "namespace": "procedure",
+      "identifier": "source",
+      "rule": "procedure",
+      "property": "instructions",
+      "value": "Procedura completa di sostituzione filtro",
+      "quote": "Per sostituire il filtro: spegnere il dispositivo, rimuovere il coperchio, sostituire il filtro, rimontare il coperchio e riaccendere."
+    }
+  },
+  {
+    "id": "name_collision",
+    "split": "calibration",
+    "source": "Mario Rossi ha telefonato; un altro Mario Rossi lavora in amministrazione.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "customer",
+      "namespace": "customer",
+      "identifier": "Mario Rossi",
+      "rule": "history",
+      "property": "event",
+      "value": "La stessa persona è cliente e impiegato",
+      "quote": "Mario Rossi ha telefonato; un altro Mario Rossi lavora in amministrazione."
+    }
+  },
+  {
+    "id": "wrong_quote",
+    "split": "validation",
+    "source": "Ordine 00789 spedito.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00789",
+      "rule": "history",
+      "property": "event",
+      "value": "Spedito",
+      "quote": "Ordine 00789 consegnato."
+    }
+  },
+  {
+    "id": "delivery_update",
+    "split": "validation",
+    "source": "Ordine 00789 consegnato il 3 novembre, ricevuta firmata dal cliente.",
+    "expected": "documented",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00789",
+      "rule": "history",
+      "property": "event",
+      "value": "Ordine consegnato",
+      "quote": "Ordine 00789 consegnato il 3 novembre, ricevuta firmata dal cliente."
+    }
+  },
+  {
+    "id": "two_order_validation",
+    "split": "validation",
+    "source": "Ordine 00001 annullato. Ordine 00002 confermato.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00002",
+      "rule": "history",
+      "property": "event",
+      "value": "Ordine annullato",
+      "quote": "Ordine 00001 annullato. Ordine 00002 confermato."
+    }
+  },
+  {
+    "id": "ticket_proposed_validation",
+    "split": "validation",
+    "source": "Ticket Q21: suggeriamo aggiornamento firmware; il cliente non lo ha ancora eseguito.",
+    "expected": "proposed",
+    "candidate": {
+      "type": "ticket",
+      "namespace": "ticket",
+      "identifier": "Q21",
+      "rule": "history",
+      "property": "intervention",
+      "value": "Aggiornamento firmware proposto",
+      "quote": "Ticket Q21: suggeriamo aggiornamento firmware; il cliente non lo ha ancora eseguito."
+    }
+  },
+  {
+    "id": "closed_only_validation",
+    "split": "validation",
+    "source": "Ticket Q22: stato chiuso. Non risultano interventi o verifiche.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "ticket",
+      "namespace": "ticket",
+      "identifier": "Q22",
+      "rule": "history",
+      "property": "outcome",
+      "value": "Guasto riparato",
+      "quote": "Ticket Q22: stato chiuso. Non risultano interventi o verifiche."
+    }
+  },
+  {
+    "id": "explicit_conflict",
+    "split": "validation",
+    "source": "Ordine 00888: il magazzino dichiara spedito, il corriere dichiara di non aver ricevuto il pacco. Le due informazioni sono in conflitto.",
+    "expected": "contradictory",
+    "candidate": {
+      "type": "order",
+      "namespace": "order",
+      "identifier": "00888",
+      "rule": "history",
+      "property": "event",
+      "value": "Stato di spedizione contraddittorio",
+      "quote": "Ordine 00888: il magazzino dichiara spedito, il corriere dichiara di non aver ricevuto il pacco. Le due informazioni sono in conflitto."
+    }
+  },
+  {
+    "id": "incomplete_procedure",
+    "split": "validation",
+    "source": "Forse si potrebbe sistemare il filtro in qualche modo.",
+    "expected": "abstain",
+    "candidate": {
+      "type": "procedure",
+      "namespace": "procedure",
+      "identifier": "source",
+      "rule": "procedure",
+      "property": "instructions",
+      "value": "Procedura completa per riparare il filtro",
+      "quote": "Forse si potrebbe sistemare il filtro in qualche modo."
+    }
+  },
+  {
+    "id": "procedure_validation",
+    "split": "validation",
+    "source": "Per cambiare la password: aprire Impostazioni, selezionare Sicurezza, inserire la password corrente e quella nuova, poi confermare con Salva.",
+    "expected": "documented",
+    "candidate": {
+      "type": "procedure",
+      "namespace": "procedure",
+      "identifier": "source",
+      "rule": "procedure",
+      "property": "instructions",
+      "value": "Istruzioni complete per cambio password",
+      "quote": "Per cambiare la password: aprire Impostazioni, selezionare Sicurezza, inserire la password corrente e quella nuova, poi confermare con Salva."
+    }
+  }
+]

@@ -30,11 +30,17 @@ class KbEdge extends Model
 {
     use BelongsToTenant;
 
+    protected static function booted(): void
+    {
+        static::addGlobalScope('document_category', fn (Builder $query) => $query->where('kb_edges.edge_category', 'document'));
+    }
+
     protected $table = 'kb_edges';
 
     protected $fillable = [
         'tenant_id',
         'edge_uid',
+        'edge_category',
         'from_node_uid',
         'to_node_uid',
         'edge_type',
