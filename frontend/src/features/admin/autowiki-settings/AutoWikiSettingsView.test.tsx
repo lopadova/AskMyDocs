@@ -9,6 +9,8 @@ import { api } from '../../../lib/api';
 const mockGet = vi.fn();
 const mockPut = vi.fn();
 
+vi.mock('../../knowledge/KnowledgeSpecificationEditor', () => ({ KnowledgeSpecificationEditor: () => null }));
+
 beforeEach(() => {
     mockGet.mockReset();
     mockPut.mockReset();

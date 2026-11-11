@@ -1,3 +1,4 @@
+import { KnowledgeEntitiesPanel } from '../knowledge/KnowledgeEntitiesPanel';
 import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../lib/ui-locale";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -58,6 +59,7 @@ export function KnowledgeBrowseView(): ReactNode {
     const [ingestedTo, setIngestedTo] = useState('');
     const [q, setQ] = useState('');
     const [showTreeOnMobile, setShowTreeOnMobile] = useState(false);
+    const [entityExplorerOpen, setEntityExplorerOpen] = useState(false);
     const treeRef = useRef<HTMLDivElement>(null);
     const detailRef = useRef<HTMLDivElement>(null);
     const moveFocus = useRef(false);
@@ -114,10 +116,10 @@ export function KnowledgeBrowseView(): ReactNode {
         moveFocus.current = false;
         if (showTreeOnMobile) treeRef.current?.querySelector<HTMLInputElement>('input')?.focus();
         else detailRef.current?.focus();
-    }, [documentId, showTreeOnMobile]);
+    }, [documentId, showTreeOnMobile, entityExplorerOpen]);
 
     return (
-        <div data-testid="kb-browse-view" className="kb-browse-layout" data-document-open={documentId !== null && !showTreeOnMobile ? 'true' : 'false'}>
+        <div data-testid="kb-browse-view" className="kb-browse-layout" data-document-open={(documentId !== null || entityExplorerOpen) && !showTreeOnMobile ? 'true' : 'false'}>
             <div className="kb-browse-tree" ref={treeRef}>
                 <div className="kb-browse-scope">
                     <label className="kb-browse-scope-label" htmlFor="kb-browse-project">
@@ -140,6 +142,7 @@ export function KnowledgeBrowseView(): ReactNode {
                     </SelectField>
                 </div>
 
+                <Button variant="secondary" disabled={!project} onClick={() => { setEntityExplorerOpen(true); setShowTreeOnMobile(false); moveFocus.current = true; }}>{translateInterface('Explore knowledge entities')}</Button>
                 <TreeView
                     data={treeQuery.data}
                     state={treeState}
@@ -174,6 +177,7 @@ export function KnowledgeBrowseView(): ReactNode {
 
             <div className="kb-browse-detail" ref={detailRef} tabIndex={-1} aria-label={translateInterface('Document details')} data-testid="kb-browse-detail" data-state={docState}>
                 <Button variant="quiet" className="kb-mobile-back" leadingIcon={<Icon.Chevron size={16} style={{ transform: 'rotate(180deg)' }} />} onClick={() => { moveFocus.current = true; setShowTreeOnMobile(true); }}>{translateInterface('Browse documents')}</Button>
+                <div hidden={documentId !== null && !entityExplorerOpen}><KnowledgeEntitiesPanel key={currentTeam + ':' + project} project={project} onOpenSource={id => { setDeepLinkConsumed(true); setEntityExplorerOpen(false); setShowTreeOnMobile(false); moveFocus.current = true; setSelected({ path: '', documentId: id }); }} /></div>
                 {docState === 'idle' && (
                     <p className="kb-browse-hint" data-testid="kb-browse-detail-idle">
                         {translateInterface("Select a document to read it.")}</p>

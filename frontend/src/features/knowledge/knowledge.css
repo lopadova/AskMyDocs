@@ -1,0 +1,26 @@
+.knowledge-panel { color: var(--fg-1); margin: 20px 0; padding: 20px; border: 1px solid var(--panel-border); border-radius: 8px; min-width: 0; }
+.knowledge-panel h2 { font-size: 18px; color: var(--fg-0); margin-top: 0; }
+.knowledge-panel p { font-size: 13px; line-height: 1.6; max-width: 80ch; }
+.knowledge-panel label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin: 10px 0; }
+.knowledge-panel textarea, .knowledge-panel input:not([type=checkbox]) { width: 100%; min-width: 0; color: var(--fg-0); background: var(--bg-0, transparent); border: 1px solid var(--panel-border); border-radius: 4px; padding: 8px; box-sizing: border-box; }
+.knowledge-panel textarea { resize: vertical; font: 12px/1.5 monospace; }
+.knowledge-blocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; margin: 16px 0; }
+.knowledge-blocks fieldset { min-width: 0; border: 1px solid var(--panel-border); border-radius: 4px; }
+.knowledge-panel .knowledge-inline { flex-direction: row; align-items: center; }
+.knowledge-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 12px 0; }
+.knowledge-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 500px; overflow: auto; padding: 12px; font-size: 12px; }
+.knowledge-table { overflow: auto; margin-top: 16px; }
+.knowledge-table table { width: 100%; font-size: 12px; text-align: left; border-collapse: collapse; }
+.knowledge-table td, .knowledge-table th { padding: 8px; border-bottom: 1px solid var(--panel-border); }
+.knowledge-timeline { padding-left: 20px; }
+.knowledge-timeline li { padding: 10px 0; border-bottom: 1px solid var(--panel-border); }
+.knowledge-timeline blockquote { margin: 8px 0; padding-left: 12px; border-left: 2px solid var(--panel-border); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.knowledge-entities { list-style: none; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { .knowledge-panel { padding: 12px; } .knowledge-actions > label { width: 100%; } }
+
+.knowledge-contract-group { margin: 12px 0; }
+.knowledge-contract-group h4 { margin: 8px 0; font-size: 13px; }
+.knowledge-contract-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 125px), 1fr)); align-items: end; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--panel-border); }
+.knowledge-contract-row label { margin: 0; }
+.knowledge-contract-row textarea { font-family: inherit; }
+.knowledge-panel details { margin-top: 12px; }

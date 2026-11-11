@@ -1,3 +1,6 @@
+import { useTeamStore } from '../../../lib/team-store';
+import { ArrowRight } from 'lucide-react';
+import { KnowledgeSpecificationEditor } from '../../knowledge/KnowledgeSpecificationEditor';
 import { SelectField, SelectOption } from '@/components/ui/select-field';
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState, type ReactNode } from 'react';
@@ -24,6 +27,7 @@ import {
  */
 export function AutoWikiSettingsView(): ReactNode {
     const { t: translateInterface } = useUiTranslation();
+    const currentTeam = useTeamStore(s => s.currentTeam);
     const qc = useQueryClient();
     const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -91,6 +95,7 @@ export function AutoWikiSettingsView(): ReactNode {
                     ))}
                 </div>
             )}
+            {data && <KnowledgeSpecificationEditor key={currentTeam} projects={data.projects.map(p => p.project_key)} />}
         </div>
     );
 }
@@ -153,7 +158,7 @@ function FlagControl({
                 <SelectOption value="off">{translateInterface("Off")}</SelectOption>
             </SelectField>
             <span data-testid={`${id}-effective`} style={{ color: entry.effective[flag] ? 'var(--ok, #3fb950)' : 'var(--fg-3)' }}>
-                → {entry.effective[flag] ? 'on' : 'off'}
+                <ArrowRight size={12} aria-hidden="true" /> {entry.effective[flag] ? 'on' : 'off'}
             </span>
         </label>
     );

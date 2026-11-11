@@ -106,7 +106,7 @@ describe('KnowledgeBrowseView', () => {
 
         await waitFor(() => expect(kbBrowseApi.tree).toHaveBeenCalled());
         // The admin route is role-gated; a reader would get a 403.
-        expect(kbBrowseApi.tree).toHaveBeenCalledWith(null, 'all');
+        expect(kbBrowseApi.tree).toHaveBeenCalledWith(null, 'all', '', '');
     });
 
     it('derives the project options from the team membership, not a literal', async () => {
@@ -130,7 +130,7 @@ describe('KnowledgeBrowseView', () => {
             'engineering',
         );
 
-        await waitFor(() => expect(kbBrowseApi.tree).toHaveBeenCalledWith('engineering', 'all'));
+        await waitFor(() => expect(kbBrowseApi.tree).toHaveBeenCalledWith('engineering', 'all', '', ''));
     });
 
     it('invites the reader to pick a document before one is open', async () => {
