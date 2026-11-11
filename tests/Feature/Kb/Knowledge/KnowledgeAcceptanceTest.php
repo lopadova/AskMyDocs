@@ -445,4 +445,18 @@ final class KnowledgeAcceptanceTest extends TestCase
         $this->assertStringContainsString('00123', $context['summary'][0]);
     }
 
+    public function test_generated_canonical_prose_cannot_become_an_independent_confirmation(): void
+    {
+        $this->activate();
+        $this->proposals = [$this->contribution('00123', 'Ordine 00123 spedito.')];
+        $generated = $this->document(['Ordine 00123 spedito.']);
+        $generated->forceFill(['is_canonical' => true, 'generation_source' => 'auto', 'canonical_type' => 'concept', 'slug' => 'generated', 'doc_id' => 'AUTO-GENERATED'])->save();
+        $run = app(KnowledgeEnrichment::class)->process($generated);
+        $this->assertSame('partial', $run->status);
+        $this->assertSame(0, $this->calls);
+        $this->assertDatabaseCount('knowledge_observations', 0);
+        app(KnowledgeEnrichment::class)->process($this->document(['Ordine 00123 spedito.']));
+        $this->assertDatabaseCount('knowledge_observations', 1);
+    }
+
 }
