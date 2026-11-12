@@ -1,0 +1,364 @@
+{
+  "product": "AskMyDocs",
+  "revision": "06 Pacchetti e avvio consigliato",
+  "date": "2026-11-12",
+  "status": "validated",
+  "scope": "Materiali commerciali locali, listino non attivato nel software",
+  "parent_commit": "1ebc6b32490b806e604626b1620722208522ebb5",
+  "dirty_product_note": "Modifiche desktop preesistenti estranee preservate; nessun cambiamento applicativo",
+  "supersedes": "Sostituisce la revisione 05 del solo AskMyDocs. Rimossa la fascia corso 11-15; aggiunto corso breve e bundle 1.500. Pubblicare soltanto prezzi totali 29/49/79 senza scorporo software e credito.",
+  "artifacts": [
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/AskMyDocs_listino_pacchetti.docx",
+      "sha256": "bd0542010c3030ab6d6971d1457d1b432191f5f1a3667c748b48538be4f54563"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/AskMyDocs_pacchetti_e_avvio.pdf",
+      "sha256": "1f13f05f6da1605a97c5a4eed8a861aef04175d12d913eda05f3a87e72c56ec2"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/AskMyDocs_per_Lorenzo_pacchetti.zip",
+      "sha256": "bb6bd67e180e27114bd6b80d26b7fe9a388f315936212a31e39b45bd649fedd2"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/Nota_costi_interna.txt",
+      "sha256": "74f2ce747c6a892722b6ec03af6beef33df571a580b1a541906e9a5ffd046214"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/Per_Lorenzo.txt",
+      "sha256": "c171e1e7436c5a29ebe3695db4ec8fc91d5de669b54338a14c78415afd80a9fc"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/README.txt",
+      "sha256": "98f7ed23d3606ee8b70612dda77040db2b50c340f964560993b1a30805a2ebd2"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/brochure.json",
+      "sha256": "210ba1ece2c457c8b59191873aed4adc41957738d9ceaed5ab5896b1334051eb"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/build.py",
+      "sha256": "8defdf347794f78ac8cce78fa439e3d756a1142c991700518d786ff9983e0849"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/fonti.json",
+      "sha256": "d523c1c32c3d95c39721f834da14b60ad5ab7b913cd9aea3bb25c3e010033670"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/modello_costi_interno.json",
+      "sha256": "68afd933b4b2c17286473a88c784aa004a3d62a3427165e19a6f73cd251cec49"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/offerta.json",
+      "sha256": "ed38cf95c91b97ad2870979c16d766d459e5e053157f7d1e5fe9496a612ffd48"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-2026-11-12/render_editorial.py",
+      "sha256": "c6d0cbe221d700fdc727c9191acbe941692fe78a82237d907581291ab0cd0641"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/build.py",
+      "sha256": "ffbce2533fcf1727c837f153229b1e34d992e4ebda3688ed99f6f1b61713aa54"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/brochure.json",
+      "sha256": "dfb1684a38b6408839b62522a3605d1d70699a6139afb6847a330dcaf2002186"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/fonti.json",
+      "sha256": "f8c0eac20737cbf4e27fc6b825842a4dae72666046e7a83b7ba66bbc00bfa61f"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/consegna.json",
+      "sha256": "1b03eb464b3213e72ef666387fff595805326e8edc26f6d7328214c20655654a"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/render_editorial.py",
+      "sha256": "588b29383935c09669df5a4ae550a045a8a31eaf6a37a4faa9fe9884a310c34d"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/sorgenti/genera_documenti.py",
+      "sha256": "daa11c78500c7155ee2205243ff3a52a5a5dcc63647b9e1d68f2befc50e6741b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "sha256": "7ac783ce9a6a8e1b29286bcc9f55c2182c504266c8d8ee1bb52e71fdffaf70cd"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "sha256": "4a5dc8c0b2178dd684b91c22030697948dec2f81ca5c82eb3abbe4dbea5e7af9"
+    },
+    {
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "sha256": "f9b7af5f6c8155f558fa2044cdbeefd749f3d496ffcecb9bf1a8867a4e6877a8"
+    },
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "sha256": "27dfc86e8b651802bcacc4c0e3bd20cff026f08520eb336508eacfa03b38b098"
+    },
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "sha256": "89ebc86dda3b8d4e081821228bedef1b503753f66f207dae16d4553b412b2755"
+    },
+    {
+      "path": "public/editorial/archive-day.webp",
+      "sha256": "9fc560be44cbee175234397962467c2310f3d778852f987e726d8f723d902e89"
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "sha256": "5dee594d23e3dd7abf9a056e9ac56aaee01884760c288e054dca8925aad124ff"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+      "sha256": "b4271789ec5900cbda4e0440f73971d3f1a1ee61773f12031a2064d99f480966"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+      "sha256": "c981528e454b720b85ccd6e488c2a7103ea9f90c7b0ab300bae8186689990e28"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf",
+      "sha256": "5052a3681354f594059e377ec0372caa7553477eb1dbcfc9aa9be5a1c3019f2b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+      "sha256": "fae7b7ff21acefce18c04d8ab55e10fd804e3c55dbd1897b20de0ca9e6ba063b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+      "sha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "sha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+    }
+  ],
+  "page_map": {
+    "document": {
+      "title": "AskMyDocs pacchetti con crediti e percorso consigliato",
+      "subject": "Taglie S M L e formazione a ZoWorking con consulenza inclusa nel percorso di avvio",
+      "brand_name": "AskMyDocs",
+      "edition": "12 NOVEMBRE 2026 / REV 06",
+      "header": "ASKMYDOCS / SOFTWARE E FORMAZIONE",
+      "footer_note": "Proposta commerciale · IVA esclusa · Consumi indicativi",
+      "author": "",
+      "source_ids": [
+        "OFFERTA-R06",
+        "MODELLO-R06",
+        "AMD-BRAND"
+      ]
+    },
+    "page_count": 11,
+    "pages": [
+      {
+        "page": 1,
+        "id": "cover",
+        "layout": "cover",
+        "title": "Il software per l’azienda\nUn percorso per iniziare",
+        "section": "Il software per l’azienda Un percorso per iniziare",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 2,
+        "id": "prices",
+        "layout": "table",
+        "title": "Il listino per l’azienda\nSoftware e affiancamento",
+        "section": "Il listino per l’azienda Software e affiancamento",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 3,
+        "id": "recommended",
+        "layout": "article",
+        "title": "La soluzione consigliata\nCorso e consulenza insieme",
+        "section": "La soluzione consigliata Corso e consulenza insieme",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 4,
+        "id": "courses",
+        "layout": "article",
+        "title": "Un giorno per iniziare\nDue per approfondire",
+        "section": "Un giorno per iniziare Due per approfondire",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 5,
+        "id": "consulting",
+        "layout": "table",
+        "title": "Capire i flussi\nScegliere dove intervenire",
+        "section": "Capire i flussi Scegliere dove intervenire",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 6,
+        "id": "software",
+        "layout": "case",
+        "title": "Un posto per le fonti\nUn metodo per interrogarle",
+        "section": "Un posto per le fonti Un metodo per interrogarle",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-034",
+          "F-036"
+        ]
+      },
+      {
+        "page": 7,
+        "id": "subscription",
+        "layout": "article",
+        "title": "La taglia segue l’utilizzo\nIl budget resta controllabile",
+        "section": "La taglia segue l’utilizzo Il budget resta controllabile",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 8,
+        "id": "models",
+        "layout": "table",
+        "title": "Modelli recenti\nConsumi diversi",
+        "section": "Modelli recenti Consumi diversi",
+        "source_ids": [
+          "MODELLO-R06",
+          "OR-M1",
+          "OR-M2",
+          "OR-M3",
+          "OR-M4",
+          "OR-M5"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 9,
+        "id": "examples",
+        "layout": "table",
+        "title": "Documenti e domande\nCome leggere la taglia",
+        "section": "Documenti e domande Come leggere la taglia",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 10,
+        "id": "sources",
+        "layout": "references",
+        "title": "Note e fonti\nDelle stime",
+        "section": "Note e fonti Delle stime",
+        "source_ids": [
+          "MODELLO-R06",
+          "OR-M1",
+          "OR-M2",
+          "OR-M3",
+          "OR-M4",
+          "OR-M5",
+          "OR-EMBED",
+          "OR-FEES",
+          "OCR"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 11,
+        "id": "closing",
+        "layout": "closing",
+        "title": "Imparare insieme\nApplicarlo al lavoro",
+        "section": "Imparare insieme Applicarlo al lavoro",
+        "source_ids": [
+          "OFFERTA-R06",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      }
+    ]
+  },
+  "feature_page_map": {
+    "F-001": [
+      6
+    ],
+    "F-005": [
+      6,
+      9
+    ],
+    "F-006": [
+      9
+    ],
+    "F-034": [
+      6
+    ],
+    "F-036": [
+      6
+    ]
+  },
+  "brand": "Font, palette, logo e tre immagini editoriali della landing già verificati; nessuna nuova immagine generata",
+  "checks": {
+    "all_11_pdf_pages_rendered_viewed_individually_110dpi": true,
+    "all_4_word_pages_rendered_viewed_individually": true,
+    "renderer_pass_no_overflow_collision_or_font_warnings": true,
+    "selectable_text_verified": true,
+    "recommended_row_green_and_bold_pdf_word_verified": true,
+    "no_public_software_credit_component_breakdown": true,
+    "monthly_total_prices_and_credits_checked": true,
+    "only_max_ten_people_course_one_or_two_days": true,
+    "bundle_includes_two_course_days_one_consulting_day": true,
+    "discount_and_start_quote_arithmetic_checked": true,
+    "upgrade_differences_no_double_credit_grant_checked": true,
+    "combined_document_question_allowance_math_checked": true,
+    "topups_only_final_detail_pages": true,
+    "shared_vs_dedicated_class_cost_risk_recorded_in_internal_note": true,
+    "internal_note_excluded_from_customer_zip": true,
+    "zip_integrity_checked": true,
+    "previous_revision_hashes_checked_before_authoring": true
+  },
+  "limits": [
+    "Tariffe e disponibilità possono cambiare; Gemini usa prezzi promozionali rilevati, non sconti permanenti garantiti.",
+    "Nessuna inferenza a pagamento o benchmark reale eseguito. Prezzi unitari verificati e volumi token ipotizzati.",
+    "Tutte le chiamate, OCR, ragionamento, scritture cache e tentativi devono entrare nel costo completo effettivo; non usare ledger locali a zero come prova di gratuità.",
+    "Nuovi modelli, canone, credito frazionario e budget condiviso da configurare e collaudare prima della vendita operativa.",
+    "Contribuzione simulata, non utile netto; sviluppo evolutivo, struttura e imposte esclusi.",
+    "Il bundle 1.500 euro ha contribuzione negativa in edizione esclusiva con un solo gruppo nelle ipotesi conservative. Organizzare le classi con più aziende e verificare i costi effettivi prima di offrire date dedicate.",
+    "La componente software interna da 19 euro e il valore economico interno dei crediti NON devono essere scorporati nei materiali del cliente. Il prezzo pubblico è il totale della taglia.",
+    "Regole di rinnovo, crediti inclusi, extra e upgrade sono proposte da implementare e collaudare.",
+    "I consumi indicativi dipendono da modello, token, OCR, immagini e passaggi; non sono benchmark di produzione.",
+    "Il prezzo bundle presuppone il calendario di classi condivise; il modello interno conserva il caso economico sfavorevole dell’edizione dedicata."
+  ]
+}

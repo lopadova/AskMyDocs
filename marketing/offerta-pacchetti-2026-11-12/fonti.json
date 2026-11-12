@@ -1,0 +1,122 @@
+{
+  "sources": [
+    {
+      "id": "OFFERTA-R06",
+      "path": "offerta.json",
+      "title": "Listino aggiornato su indicazioni di Marco",
+      "kind": "proposal",
+      "publisher": "Surface",
+      "checked_at": "2026-11-12",
+      "supports": "Taglie 29/49/79 con crediti inclusi; corso 600/1.200 fino a dieci persone; bundle consigliato 1.500 con una consulenza; nessuno scorporo pubblico",
+      "limits": "Prezzi proposti, non già attivati nel software"
+    },
+    {
+      "id": "MODELLO-R06",
+      "path": "modello_costi_interno.json",
+      "title": "Stima consumi e sostenibilità per taglia e classe condivisa",
+      "kind": "calculation",
+      "publisher": "Surface",
+      "checked_at": "2026-11-12",
+      "supports": "Ipotesi token e calcolo di crediti, costi condivisi e servizi"
+    },
+    {
+      "id": "OR-M1",
+      "url": "https://openrouter.ai/openai/gpt-6-luna",
+      "title": "GPT-6 Luna",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": ".10 USD input, .50 USD output per milione di token",
+      "released": "2026-09-22",
+      "limits": "Tariffe al momento della verifica; provider e instradamento possono cambiarle"
+    },
+    {
+      "id": "OR-M2",
+      "url": "https://openrouter.ai/openai/gpt-6.1-sol",
+      "title": "GPT-6.1 Sol",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "2 USD input, 10 USD output per milione di token",
+      "released": "2026-09-29",
+      "limits": "Tariffe al momento della verifica; provider e instradamento possono cambiarle"
+    },
+    {
+      "id": "OR-M3",
+      "url": "https://openrouter.ai/google/gemini-3.8-flash",
+      "title": "Gemini 3.8 Flash",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": ".75 USD input, 3.75 USD output per milione di token",
+      "released": "2026-09-02",
+      "limits": "50% rilevato il 12 novembre 2026"
+    },
+    {
+      "id": "OR-M4",
+      "url": "https://openrouter.ai/google/gemini-4-carbon",
+      "title": "Gemini 4 Carbon",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "2 USD input, 10 USD output per milione di token",
+      "released": "2026-11-10",
+      "limits": "50% rilevato il 12 novembre 2026"
+    },
+    {
+      "id": "OR-M5",
+      "url": "https://openrouter.ai/deepseek/deepseek-v4.1-flash-1017",
+      "title": "DeepSeek V4.1 Flash 1017",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": ".022 USD input, .40 USD output per milione di token",
+      "released": "2026-10-17",
+      "limits": "Tariffe al momento della verifica; provider e instradamento possono cambiarle"
+    },
+    {
+      "id": "OR-FEES",
+      "url": "https://openrouter.ai/pricing",
+      "title": "Commissioni OpenRouter",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "5,5% su acquisto crediti Standard, inclusa una sola volta nel modello"
+    },
+    {
+      "id": "OR-EMBED",
+      "url": "https://openrouter.ai/openai/text-embedding-3-small",
+      "title": "Preparazione per la ricerca",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "0,02 USD per milione di token"
+    },
+    {
+      "id": "OCR",
+      "url": "https://docs.mistral.ai/models/ocr-4-1",
+      "title": "OCR 4.1",
+      "publisher": "Mistral",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "4 USD per mille pagine senza annotazioni"
+    },
+    {
+      "id": "AMD-FACTS",
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "title": "Catalogo funzionale verificato",
+      "kind": "product",
+      "checked_at": "2026-11-12",
+      "supports": "F-001 fonti, F-005 ingestione, F-006 OCR, F-034 organizzazioni, F-036 permessi",
+      "limits": "Nuovi modelli e stato tenant non collaudati in questa revisione"
+    },
+    {
+      "id": "AMD-BRAND",
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "title": "Identità da landing",
+      "kind": "media",
+      "checked_at": "2026-11-12",
+      "supports": "Font, logo, palette e immagini editoriali già verificati"
+    }
+  ]
+}

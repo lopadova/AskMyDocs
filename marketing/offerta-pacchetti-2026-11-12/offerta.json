@@ -1,0 +1,135 @@
+{
+  "revision": "06 Pacchetti e avvio consigliato",
+  "date": "2026-11-12",
+  "valid_until": "2026-12-12",
+  "tax": "IVA esclusa",
+  "plans": [
+    {
+      "name": "S",
+      "monthly_price": 29,
+      "included_monthly_credits": 1000,
+      "sample_documents": 500,
+      "sample_questions": [
+        450,
+        900
+      ]
+    },
+    {
+      "name": "M",
+      "monthly_price": 49,
+      "included_monthly_credits": 3000,
+      "sample_documents": 1000,
+      "sample_questions": [
+        1400,
+        2800
+      ]
+    },
+    {
+      "name": "L",
+      "monthly_price": 79,
+      "included_monthly_credits": 6000,
+      "sample_documents": 2000,
+      "sample_questions": [
+        2800,
+        5600
+      ]
+    }
+  ],
+  "software": {
+    "public_prices_are_total_monthly_per_company": true,
+    "show_component_breakdown": false,
+    "users": "illimitati",
+    "storage_gb_shared_files_derivatives": 5,
+    "same_features_in_all_plans": true,
+    "billing": "Mensile anticipato"
+  },
+  "credit_rules": {
+    "credit_value_eur": 0.01,
+    "included_reset_each_billing_month": true,
+    "included_rollover": false,
+    "extra_prepaid_no_expiry": true,
+    "spend_included_before_extra": true,
+    "topups_eur": [
+      25,
+      50,
+      100
+    ],
+    "overage_requires_topup_or_upgrade": true,
+    "no_unapproved_automatic_overage": true,
+    "upgrade_current_cycle": {
+      "S_to_M": {
+        "additional_price": 20,
+        "additional_credits": 2000
+      },
+      "M_to_L": {
+        "additional_price": 30,
+        "additional_credits": 3000
+      },
+      "same_renewal_date": true
+    },
+    "downgrade_next_renewal": true
+  },
+  "courses": {
+    "venue": "Aule ZoWorking",
+    "max_people_per_booked_group": 10,
+    "mixed_companies_possible": true,
+    "prices_fixed_per_group": [
+      {
+        "name": "Essenziale",
+        "days": 1,
+        "hours": 6,
+        "price": 600
+      },
+      {
+        "name": "Completo",
+        "days": 2,
+        "hours": 12,
+        "price": 1200
+      }
+    ],
+    "small_groups": "Per meno partecipanti si valuta un preventivo dedicato",
+    "included": "Aula, docente, materiali, accesso didattico al software e consumi degli esercizi durante le giornate di corso"
+  },
+  "recommended_bundle": {
+    "price_once": 1500,
+    "course_days": 2,
+    "course_max_people": 10,
+    "consulting_days_included": 1,
+    "consulting_hours_including_preparation": 7,
+    "course_shared_calendar": true,
+    "software_subscription_separate": true,
+    "separate_service_total": 1900,
+    "saving": 400,
+    "highlight_in_price_tables": true
+  },
+  "consulting": {
+    "price_per_day": 700,
+    "max_days_total_including_bundle_day": 3,
+    "half_day_price": 350,
+    "may_be_distributed": true
+  },
+  "recommended_start_quotes": [
+    {
+      "plan": "S",
+      "bundle": 1500,
+      "first_month_subscription": 29,
+      "first_month_credits_included": 1000,
+      "total_start": 1529
+    },
+    {
+      "plan": "M",
+      "bundle": 1500,
+      "first_month_subscription": 49,
+      "first_month_credits_included": 3000,
+      "total_start": 1549
+    },
+    {
+      "plan": "L",
+      "bundle": 1500,
+      "first_month_subscription": 79,
+      "first_month_credits_included": 6000,
+      "total_start": 1579
+    }
+  ],
+  "supersedes": "Sostituisce la revisione 05 del solo AskMyDocs. Rimossa la fascia corso 11-15; aggiunto corso breve e bundle 1.500. Pubblicare soltanto prezzi totali 29/49/79 senza scorporo software e credito."
+}

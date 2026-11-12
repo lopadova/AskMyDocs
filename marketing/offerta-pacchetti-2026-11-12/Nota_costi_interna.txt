@@ -1,0 +1,36 @@
+ASKMYDOCS - NOTA INTERNA REVISIONE 06
+12 novembre 2026
+
+PREZZI PUBBLICI
+Mostrare soltanto S 29 euro, M 49, L 79 al mese per azienda, con 1.000/3.000/6.000 crediti mensili inclusi. Marco ha chiesto di NON mostrare la scorporazione tra software e credito. Il calcolo interno resta 19 euro per la componente software e 10/30/60 di valore credito incluso: queste cifre non entrano nei materiali del cliente.
+Utenti, funzioni e quota 5 GB uguali; cambia il consumo incluso. I crediti mensili non si accumulano. Gli extra acquistati non scadono; spendere prima la quota mensile. Nessun addebito oltre saldo senza ricarica o upgrade confermato.
+Upgrade nel periodo: differenza intera di prezzo e solo differenza di crediti, mantenendo il rinnovo. S-M +20 e +2.000; M-L +30 e +3.000; S-L +50 e +5.000. Downgrade dal rinnovo successivo. Regole da implementare, non già attivate.
+
+MARGINI DELLE TAGLIE A CONSUMO PIENO
+S: ricavo mensile 29; costo tecnico di tutti i crediti inclusi 4.00 euro; contribuzione prima dei costi condivisi 16.30 euro (56.2%), dopo ipotesi provvigione 10%, incasso 2,5%, riserva costi 10% e budget diretto azienda. Non assumere crediti inutilizzati come margine acquisito.
+M: ricavo mensile 49; costo tecnico di tutti i crediti inclusi 12.00 euro; contribuzione prima dei costi condivisi 25.00 euro (51.0%), dopo ipotesi provvigione 10%, incasso 2,5%, riserva costi 10% e budget diretto azienda. Non assumere crediti inutilizzati come margine acquisito.
+L: ricavo mensile 79; costo tecnico di tutti i crediti inclusi 24.00 euro; contribuzione prima dei costi condivisi 38.05 euro (48.2%), dopo ipotesi provvigione 10%, incasso 2,5%, riserva costi 10% e budget diretto azienda. Non assumere crediti inutilizzati come margine acquisito.
+
+FORMAZIONE E PERCORSO CONSIGLIATO
+Corso breve 600 euro per una giornata; completo 1.200 per due. Entrambi fino a 10 persone nel gruppo iscritto, a ZoWorking e con classi anche miste. Il vecchio corso 11-15 da 1.500 non è più proposto.
+La nuova riga consigliata da 1.500 comprende il corso completo di due giornate e UNA giornata di consulenza aziendale dedicata. Risparmio rispetto a 1.200+700: 400 euro. Software mensile a parte. L’eventuale consulenza ulteriore resta nel massimo di tre giornate totali.
+Ipotesi operative: sei ore live e una di preparazione per giornata di corso, docente 55 euro/ora, aula interna 50 euro/giorno; materiali ed esercizi per gruppo 30 euro/giorno. Consulenza sette ore complessive, costo diretto con riserva 423,50 euro per giornata. Aula e docente comuni si contano una sola volta per edizione.
+Bundle, 1 gruppo/i nella stessa edizione: costo diretto per gruppo 1446.50; contribuzione -134.00 euro (-8.9%) dopo provvigione/incasso ipotetici. La consulenza resta dedicata a ogni azienda.
+Bundle, 2 gruppo/i nella stessa edizione: costo diretto per gruppo 968.00; contribuzione 344.50 euro (23.0%) dopo provvigione/incasso ipotetici. La consulenza resta dedicata a ogni azienda.
+Calendario a classi condivise. Il bundle 1.500 è sostenibile nelle ipotesi con almeno due gruppi nello stesso corso; la giornata di consulenza resta dedicata a ogni azienda. Non trattare il prezzo come edizione esclusiva di tre giornate.
+Non promettere aula esclusiva o tre giornate dedicate a 1.500 con queste ipotesi: il caso con un solo gruppo produce perdita di contribuzione di 134 euro. Con due gruppi nello stesso corso il contributo stimato per bundle è 344,50 euro. Pianificare iscrizioni, date e capienza prima di garantire l’edizione; valutare i piccoli gruppi senza sconti automatici.
+
+PROVENIENZA E LIMITI
+Costi AI, ipotesi token e modelli recenti dalla revisione 05 verificata il 12 novembre. Tariffe primarie ricontrollate. Preparazione e domande non sono equivalenze universali. Le medie di produzione e il ledger completo per richiesta non sono stati misurati in questo lavoro.
+Cloud reale osservato nell’audit precedente: main prudenziale 48,66 USD nel periodo e ambienti identificati 73,08 USD. Non è un costo per singola azienda. Budget comune ipotizzato 1.200 euro/anno, oltre ai costi incrementali. Staff, aula e riserve sono ipotesi, non fatture.
+Tariffe e disponibilità possono cambiare; Gemini usa prezzi promozionali rilevati, non sconti permanenti garantiti.
+Nessuna inferenza a pagamento o benchmark reale eseguito. Prezzi unitari verificati e volumi token ipotizzati.
+Tutte le chiamate, OCR, ragionamento, scritture cache e tentativi devono entrare nel costo completo effettivo; non usare ledger locali a zero come prova di gratuità.
+Nuovi modelli, canone, credito frazionario e budget condiviso da configurare e collaudare prima della vendita operativa.
+Contribuzione simulata, non utile netto; sviluppo evolutivo, struttura e imposte esclusi.
+Il bundle 1.500 euro ha contribuzione negativa in edizione esclusiva con un solo gruppo nelle ipotesi conservative. Organizzare le classi con più aziende e verificare i costi effettivi prima di offrire date dedicate.
+La componente software interna da 19 euro e il valore economico interno dei crediti NON devono essere scorporati nei materiali del cliente. Il prezzo pubblico è il totale della taglia.
+Nessun software, prezzo live, fatturazione o dato di produzione è stato cambiato. Configurare e collaudare allowance mensile, wallet extra, rinnovo, scadenze, upgrade idempotenti e costo completo prima dell’attivazione.
+
+PREVENTIVI DI AVVIO
+Percorso 1.500 + primo mese S 29 = 1.529; con M 49 = 1.549; con L 79 = 1.579 euro IVA esclusa. Il primo mese comprende il credito della taglia. Dai mesi successivi solo la taglia e gli eventuali extra acquistati.
