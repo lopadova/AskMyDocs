@@ -58,7 +58,7 @@ SOURCES = [
     ('M10', 'SpaccioAI', 'https://spaccio.ai/corsi/base/', 'Corso base in aula 390 € a persona, 7 ore effettive in una giornata; 10 posti. Regime IVA non chiarito nella pagina: non normalizzato al netto.'),
     ('M11', 'Villa Modena Coworking', 'https://villamodena.org/servizi-costi-coworking/', 'Sala formazione fino a 12 persone e docente, 150 €/giornata o 90 €/mezza giornata, oltre IVA. È un riferimento di costo, non una sala già prenotata.'),
     ('M12', 'Commissione europea', 'https://digital-strategy.ec.europa.eu/en/faqs/ai-literacy-questions-answers', 'Alfabetizzazione AI collegata a persone, contesto e rischio; nessun corso unico o certificato che attribuisca automaticamente conformità.'),
-    ('M13', 'Wearframe pubblico e accesso app', 'https://wearframe.com/', 'Pagina pubblica con early access e bundle retail: 4,95 USD/5 crediti, 37,49/50 e 99,99/200. Il login app.wearframe.com rimanda a termini su wearframe.com. Occorre confermare internamente perimetro e coordinamento dei listini.'),
+    ('M13', 'WearFrame sito da identificare con certezza', 'https://wearframe.net/', 'Il runtime locale identifica WearFrame.net; il sito pubblico non ha restituito testo leggibile. I prezzi del dominio wearframe.com non sono attribuiti al nostro prodotto, non essendo stata accertata la stessa identità commerciale.'),
 ]
 
 PAGES = []
@@ -100,8 +100,8 @@ PAGES.append(page('mercato_formazione_visual', 'Mercato di formazione e contenut
     para('La fascia proposta è 3.400-10.900 € per il primo anno: materiali del cliente trasformati in primi corsi, tutor testuale, gruppi e formazione ai referenti. La vendita iniziale più credibile riguarda onboarding e procedure interne delimitate. Migrare un LMS, garantire SCORM o offrire certificazioni riconosciute richiede un’offerta diversa.'),
     h('WearFrame deve vendere un processo produttivo'),
     para('La fascia proposta è 3.900-11.900 €. Per soli sfondi o pochi scatti, gli strumenti da usare in autonomia costano molto meno. WearFrame è sensato quando servono flussi ripetibili, preparazione dei riferimenti, più operatori e verifica della fedeltà del prodotto. Il Premium equivale a 1,19 € per generazione standard nel primo anno e 0,60 € al rinnovo, usando tutta la quota di 10.000.'),
-    para('Da riallineare prima della diffusione: wearframe.com espone bundle retail fino a 99,99 USD per 200 crediti e early access [M13]. Le offerte annuali assistite devono avere un nome e un perimetro distinti e una spiegazione chiara sul sito. L’associazione commerciale definitiva del dominio e il valore dei crediti pubblici vanno confermati internamente.'),
-    cite('M05 MoodleCloud', SOURCES[4][2]), cite('M06 TalentLMS', SOURCES[5][2]), cite('M07 Pebblely', SOURCES[6][2]), cite('M08 Photoroom', SOURCES[7][2]), cite('M13 Wearframe pubblico', SOURCES[12][2]),
+    para('Identità del prodotto: il runtime locale indica WearFrame.net [M13]. Il sito non ha restituito testo leggibile nella ricerca. I prezzi retail del dominio wearframe.com non vengono attribuiti al nostro prodotto, perché l’identità commerciale comune non è accertata. Il confronto economico usa quindi Pebblely e Photoroom; l’appendice aggiunge costi tecnici e dati Cloud del nostro WearFrame.'),
+    cite('M05 MoodleCloud', SOURCES[4][2]), cite('M06 TalentLMS', SOURCES[5][2]), cite('M07 Pebblely', SOURCES[6][2]), cite('M08 Photoroom', SOURCES[7][2]), cite('M13 WearFrame', SOURCES[12][2]),
 ], client=False))
 
 PAGES.append(page('formazione', 'Il corso base obbligatorio e il laboratorio aziendale', [
@@ -327,6 +327,7 @@ for product, data in COST_INPUTS.items():
         cost_rows.append([product+' '+TIERS[i], str(data['hours'][i]), euro(float(direct)), f'{float(margin):.1f}%', f'{float(renewal_margin):.1f}%'])
 PAGES.append(page('economia', 'Costi e margini stimati per uso interno', [
     para('Simulazione, non consuntivo contabile. Costo tecnico caricato ipotizzato 55 €/ora, assistenza 45 €/ora; cloud e AI sono stanziamenti annuali da validare con fatture e benchmark. Le ore tecniche comprendono configurazione e laboratorio prodotto. Il costo diretto include una riserva del 10% e la quota del corso.'),
+    para('L’approfondimento sui registri locali e sul Cloud è riportato nelle ultime quattro pagine. Conferma che i margini seguenti dipendono dal profilo AI, dai tentativi automatici e dalla ripartizione dell’infrastruttura; non sono margini già misurati sulla clientela.'),
     table(['Pacchetto', 'Ore\ntecniche', 'Costo diretto\nstimato', 'Margine\nanno 1', 'Margine\nrinnovo'], cost_rows, [1.85, .65, 1.1, .85, .85]),
     para('Margine di contribuzione = (prezzo netto - costo diretto - ipotesi provvigione commerciale 10% del prezzo netto) / prezzo netto. La provvigione è un’ipotesi di calcolo, da concordare con Lorenzo; non è un compenso già pattuito. Sono esclusi sviluppo del prodotto, struttura generale, imposte e capitale: non è utile netto.'),
     para('Ipotesi corso coworking: 560 € docente per 8 ore, 220 € preparazione, 200 € aula e 80 € materiali/accessi, totale 1.060 € per edizione. Con 8 partecipanti il costo attribuito è 132,50 € a persona. Una giornata di sala da 150 € + IVA è pubblicamente disponibile nel campione [M11]; 200 € è un budget prudenziale, non un contratto.'),
@@ -369,7 +370,7 @@ PAGES.append(page('fonti_a', 'Fonti pubbliche dei confronti software', [
 PAGES.append(page('fonti_b', 'Fonti didattiche e limiti della verifica', [
     *[item for source in SOURCES[8:] for item in [h(source[0]+' '+source[1]), para(source[3]), cite(source[1], source[2])]],
     h('Come sono state classificate le evidenze'),
-    para('I prezzi dei concorrenti sono osservazioni da fonti ufficiali. I prezzi dei nostri pacchetti, le quantità, i rinnovi, i costi e il calendario sono proposte. Le funzioni dei nostri prodotti sono state ricostruite con lettura del codice e degli inventari esistenti; non sono stati eseguiti nuovi test di carico, flussi autenticati in produzione, chiamate AI a pagamento o collaudi di ripristino.'),
+    para('I prezzi dei concorrenti sono osservazioni da fonti ufficiali. Prezzi dei pacchetti, quantità, rinnovi e calendario sono proposte. Alle letture di codice e inventari si aggiungono l’audit aggregato dei database locali e il riepilogo Cloud descritti nell’appendice. Non sono stati eseguiti nuovi test di carico, flussi autenticati in produzione, chiamate AI a pagamento o collaudi di ripristino.'),
     para('L’allegato di Lorenzo del 12 novembre è la fonte dei requisiti commerciali. La richiesta attuale sostituisce il perimetro iniziale: Oraculi è incluso, Tixora escluso e la formazione AI di base obbligatoria si aggiunge al laboratorio prodotto. Non sono stati verificati bandi specifici, finanziamenti, domanda effettiva o accordi provvigionali.'),
 ], client=False))
 
@@ -385,8 +386,79 @@ PAGES.append(page('verifica', 'Base tecnica e verifiche prima della vendita', [
     para('1. Validare un campione reale per prodotto con provider configurati: qualità, tempi, costo medio e costo massimo per operazione. Le quantità proposte non sono limiti di carico già certificati. Il costo AI di WearFrame è simulato a 0,20 € per generazione standard; se il flusso richiede più chiamate, la differenza va incorporata nel profilo prima della vendita.'),
     para('2. Configurare i limiti per cliente e verificarne conteggio, errore tecnico, blocco e ampliamento, anche con un contatore operativo gestito dal fornitore. Confermare quote AI, pagine, file e spazio; accertare che le funzioni necessarie siano effettivamente abilitate nella versione consegnata.'),
     para('3. Fissare provider, regione, backup e trattamento dei dati e verificare l’ambiente del cliente. Per GDPR accertare i flussi del modulo acquistato senza estendere la promessa a funzioni Suite. Per Oraculi predisporre e revisionare il corso AI comune; l’accesso incluso è un servizio da allestire, non la prova che il corso sia già pubblicato.'),
-    para('4. Confermare disponibilità docente e aula, sede di partenza per le trasferte, responsabilità sui contenuti legali, tempi di consegna e soggetto venditore. Riallineare la descrizione dei pacchetti assistiti con il listino retail Wearframe pubblico. L’analisi è pronta per decidere il catalogo; non attribuisce collaudi che non sono stati eseguiti.'),
+    para('4. Confermare disponibilità docente e aula, sede di partenza per le trasferte, responsabilità sui contenuti legali, tempi di consegna e soggetto venditore. Confermare il sito e il listino ufficiale di WearFrame senza attribuire offerte di domini dall’identità non accertata. L’analisi è pronta per decidere il catalogo; non attribuisce collaudi che non sono stati eseguiti.'),
 ], client=False))
+
+PAGES.append(page('audit_programmi', 'Verifica dei costi nei programmi effettivi', [
+    para('Approfondimento eseguito il 12 novembre dopo la prima formulazione delle fasce. Ho letto i punti che generano e registrano spesa, interrogato soltanto aggregati dei database locali e consultato in sola lettura gli ambienti e il riepilogo Laravel Cloud accessibili. I dati locali non sono fatture e non provano la configurazione dei clienti in produzione.'),
+    table(['Prodotto', 'Meccanismo osservato', 'Conseguenza sul pacchetto'], [
+        ['AskMyDocs', 'Planner, retrieval, sintesi, grounding e possibili riparazioni; il budget applicativo distingue chiamate logiche e fisiche. Il default locale è OpenRouter con GPT-4o mini.', 'Una domanda può richiedere più chiamate. Bisogna dimensionare l’intero turno, oltre a ingestione, OCR, embedding e compilazioni della conoscenza.'],
+        ['Oraculi', 'Generazione lezioni e materiali, tutor, quiz e riflessione asincrona dopo la sessione; se necessario può seguire una ripianificazione.', 'Il costo del dialogo non include da solo tutta la formazione. La voce e i modelli di fascia alta restano separati; le operazioni in background vanno conteggiate.'],
+        ['WearFrame', 'Router tra provider, eventuale conversione del prompt, generazione, rimozione sfondo e controllo anatomico. In locale il controllo è attivo con massimo 2 ulteriori tentativi.', 'Un output finale può causare fino a 3 generazioni in quel controllo. Vanno aggiunti analisi, riferimenti, risoluzione e operazioni accessorie.'],
+        ['Portale GDPR', 'Modulo organizzativo con registri, documenti e flussi umani; il binding Copilot esaminato seleziona fake o unavailable.', 'Non giustificare il canone con un assistente generativo non disponibile. Le spese principali dell’offerta sono configurazione, cloud, supporto e formazione.'],
+    ], [1.0, 2.35, 1.95]),
+    h('Quali spese restano ipotesi'),
+    para('Le tariffe interne di 55 €/ora tecnico, 45 €/ora assistenza, il costo docente e la provvigione del 10% non provengono dalla contabilità di Marco. Sono parametri di simulazione. Anche le ore di configurazione sono stime di progetto, non tempi consuntivati: una prima installazione può richiedere più lavoro delle successive.'),
+    para('Le quote Cloud per cliente presuppongono servizio condiviso. Non si possono usare come prezzo di una installazione isolata con risorse dedicate. Per ogni offerta distinguere costo fisso della piattaforma, numero di clienti che lo sostengono, consumo marginale e quota di assistenza.'),
+], client=False))
+
+PAGES.append(page('audit_registri', 'Che cosa dimostrano i registri dei consumi', [
+    para('Finestra delle query locali: dal 14 agosto 2026 alla data della verifica. Sono stati letti soltanto modelli configurati, somme di token e costi, conteggi e stati di valorizzazione, senza estrarre contenuti di documenti, conversazioni o dati personali.'),
+    h('AskMyDocs ha token registrati senza costo utilizzabile'),
+    para('Nel database locale 293.845 registrazioni delle quattro combinazioni principali hanno cost_method computed e costo totale zero, pur contenendo token. I soli due gruppi maggiori sono 195.733 chiamate embedding e 98.002 chiamate GPT-4o mini. Possono esserci fixture, importazioni o tariffe mancanti: non sono una misura di gratuità né un consuntivo affidabile.'),
+    para('Il raggruppamento disponibile per trace_id restituisce una chiamata per trace e quasi tutti i purpose_tag sono null. Non lo uso per sostenere che ogni domanda costi una sola chiamata. Occorre collegare i consumi al turno o alla run prima di calcolare il costo completo per risposta.'),
+    h('Oraculi mescola provider e modalità di addebito'),
+    para('Si osservano 232 chiamate chatgpt_plan con token stimati e costo unitario zero; gli override locali indirizzano varie generazioni su quella modalità. Il ledger contiene anche righe unpriced. Questi casi non autorizzano a promettere generazioni gratuite o illimitate: vanno considerati quota di abbonamento, disponibilità, limiti e configurazione effettiva del servizio al cliente.'),
+    para('Nel medesimo ambiente 25 chiamate attribuite a GPT-6 Astra sommano 10,751480 USD, circa 0,430059 USD per chiamata; 67 chiamate Qwen riportano in media 0,000821 USD. Sono gruppi con compiti diversi, non un confronto controllato a parità di risultato e non un costo medio per lezione. Mostrano però che la scelta del modello può cambiare radicalmente la spesa.'),
+    h('WearFrame non offre un campione locale sufficiente'),
+    para('Nel database wearframe_base non risultano media generati né aggregati di richieste nella finestra esaminata. Sono presenti modelli attivi e cost_per_call configurati, ma quel campo è una tariffa salvata, non una prova di spesa. Ad esempio un costo fisso di 0,039 USD su un modello image non deve essere assunto equivalente al suo costo attuale in ogni risoluzione e provider.'),
+    para('Conclusione operativa: i registri esistenti aiutano a trovare le dipendenze di costo, ma non certificano i margini del listino. Non sono state lanciate generazioni a pagamento per fabbricare un campione e non è stato modificato il metering.'),
+], client=False))
+
+PAGES.append(page('audit_cloud', 'Costi Cloud osservati e ripartizione per cliente', [
+    para('Fonte privata: Laravel Cloud CLI, usage sul periodo previous, intervallo esplicitamente restituito 10 ottobre-9 novembre 2026. Riepilogo aggiornato dal provider al 12 novembre, ore 12:35 UTC. Importi in USD; non applico un cambio presunto e non li confondo con un preventivo in euro.'),
+    table(['Componente', 'WearFrame', 'Oraculi'], [
+        ['Totale applicazione riportato dal provider', '40,73 USD', '3,91 USD'],
+        ['Database collegato verificato tramite schema', '9,97 USD', '19,94 USD'],
+        ['Cache collegata', '5,00 USD', 'Nessuna cache collegata nel campo letto'],
+        ['Subtotale dei componenti sopra', '55,70 USD', '23,85 USD'],
+    ], [2.9, 1.2, 1.2]),
+    para('WearFrame ha ambienti main e beta: il totale applicazione comprende la voce del provider per l’app, non è una fattura per singolo cliente. Il database MySQL e la cache sono stati associati tramite gli identificativi di ambiente e schema. Oraculi espone un ambiente denominato stage con ibernazione attiva e database Serverless PostgreSQL: un ambiente poco usato non dimostra il costo di una produzione sempre attiva.'),
+    para('Sono subtotali, non costo aziendale completo: restano da attribuire eventuali storage, servizi esterni, piano della piattaforma, traffico, email, backup non compresi, monitoraggio e provider AI. Le risorse condivise non vanno sommate una seconda volta per ogni ambiente o cliente. Non ho acquisito fatture fiscali o dati di pagamento.'),
+    para('AskMyDocs e Portale GDPR non sono comparsi nell’elenco delle applicazioni accessibili alla sessione Cloud corrente. Non significa che non siano ospitati altrove o in un altro account. Per questi due prodotti il costo Cloud effettivo resta non verificato e gli stanziamenti del modello economico restano ipotesi.'),
+    h('Formula da usare prima di promettere il rinnovo'),
+    para('Quota per cliente = costi fissi della piattaforma / clienti attivi che la sostengono + risorse incrementali del cliente + provider AI + assistenza + riserva. Esempio soltanto illustrativo: il subtotale WearFrame di 55,70 USD, se invariato e condiviso da 5 clienti, pesa 11,14 USD per cliente e periodo prima delle altre voci; con 1 cliente pesa 55,70 USD.'),
+    para('Il listino pubblico Laravel Cloud parte da un piano più consumi e distingue compute, database, code e cache. Non basta leggere il canone minimo per stimare la spesa di questi programmi. L’importo osservato resta legato al carico e al periodo effettivi.'),
+    cite('Fonte pubblica C01 Laravel Cloud', 'https://laravel.com/cloud/pricing'),
+], client=False))
+
+stress_rows=[]
+for unit in [Decimal('.20'),Decimal('.35'),Decimal('.60')]:
+    ai=unit*10000
+    cost=(Decimal(1650+720+540+795)+ai)*Decimal('1.10')
+    renewal=(Decimal(720+540)+ai)*Decimal('1.10')
+    stress_rows.append([f'{float(unit):.2f} €',euro(float(ai)),f'{float((Decimal(11900)*Decimal(".9")-cost)/11900*100):.1f}%',f'{float((Decimal(6000)*Decimal(".9")-renewal)/6000*100):.1f}%'])
+PAGES.append(page('audit_scenari', 'Scenari di costo e condizioni per confermare i prezzi', [
+    para('I prezzi proposti sono utilizzabili come fascia commerciale di servizi assistiti. Il profilo tecnico va fissato prima di rendere vincolanti quantità e rinnovi. La prova decisiva è il costo completo del risultato, includendo tentativi automatici, operazioni di contesto e commissioni del canale AI.'),
+    table(['WearFrame Premium\ncosto medio completo', 'AI per 10.000\noutput standard', 'Margine\nanno 1', 'Margine\nrinnovo'], stress_rows, [1.8, 1.35, 1.05, 1.1]),
+    para('Scenari ipotetici in euro, non conversioni dei prezzi USD e non medie osservate. Mantengono prezzi 11.900 / 6.000 €, le altre ipotesi della tabella costi e provvigione simulata del 10%. Se il costo completo fosse 0,35 € per output, per conservare 35% di contribuzione iniziale e 30% al rinnovo occorrerebbero circa 14.500 / 8.900 €, oppure una quota inferiore. Il Premium da 10.000 non va venduto con ogni modello e flusso indiscriminatamente.'),
+    para('Esempio tecnico [C02-C03]: BFL FLUX.2 Pro tariffa output e riferimenti per megapixel; Google indica per Gemini 3.1 Flash Image 0,067 USD per output 1K e 0,101 per 2K, oltre input. Sono listini diretti: non provano il costo della rotta OpenRouter o dei modelli preview salvati nel database. Il numero di riferimenti e le rigenerazioni modificano il totale.'),
+    para('AskMyDocs [C04]: con il riferimento GPT-4o mini di 0,15 / 0,60 USD per milione di token, una chiamata da 12.000 input e 1.000 output vale 0,0024 USD. Quattro chiamate uguali valgono 0,0096, quaranta 0,096. Sono simulazioni, non il numero di chiamate misurato per domanda; OCR, embedding e altri modelli restano da aggiungere.'),
+    para('Oraculi: i 36.000 utilizzi Premium con budget 1.080 € equivalgono a 0,03 € per utilizzo. Un profilo molto più costoso non rientra nella stessa promessa. Il corso comune e i corsi aziendali richiedono inoltre generazione e revisione. Definire separatamente tutor economico, generazioni dei materiali e servizi voce.'),
+    para('OpenRouter [C05] applica commissioni di acquisto crediti del 5,5% sul piano Standard e 8% sul Business. Il costo della sola inferenza registrata non include automaticamente questa voce. Le tariffe del personale, la provvigione commerciale e l’efficienza delle classi restano da sostituire con dati interni reali.'),
+    cite('C02 BFL prezzi', 'https://bfl.ai/pricing?category=flux.2'),
+    cite('C03 Google prezzi', 'https://aistudio.google.com/docs/pricing'),
+    cite('C04 OpenAI modello e prezzi', 'https://developers.openai.com/api/docs/models/gpt-4o-mini'),
+    cite('C05 OpenRouter prezzi', 'https://openrouter.ai/pricing'),
+], client=False))
+
+SOURCES.extend([
+    ('C01','Laravel Cloud prezzi','https://laravel.com/cloud/pricing','Piani di piattaforma più consumo; componenti compute, database, code e cache. I dati privati di utilizzo sono documentati separatamente nell’audit.'),
+    ('C02','Black Forest Labs prezzi','https://bfl.ai/pricing?category=flux.2','FLUX.2 Pro: primo MP 0,03 USD, successivi 0,015, riferimenti 0,015/MP; il costo dipende da risoluzione e riferimenti.'),
+    ('C03','Google AI Studio prezzi','https://aistudio.google.com/docs/pricing','Gemini 3.1 Flash Image: output 1K 0,067 USD e 2K 0,101 USD, oltre input. Non attribuito automaticamente alle rotte OpenRouter o ai preview.'),
+    ('C04','OpenAI GPT 4o mini','https://developers.openai.com/api/docs/models/gpt-4o-mini','Riferimento 0,15 USD input e 0,60 USD output per milione di token, usato soltanto per una simulazione dichiarata.'),
+    ('C05','OpenRouter prezzi','https://openrouter.ai/pricing','Commissione acquisto crediti Standard 5,5%, Business 8%; distinta dal costo inferenza del singolo modello.'),
+])
 
 def hyperlink(p, label, url):
     part = p.part

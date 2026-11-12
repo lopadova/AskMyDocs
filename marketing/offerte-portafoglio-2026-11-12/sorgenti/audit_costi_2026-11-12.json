@@ -1,0 +1,92 @@
+{
+  "checked_at": "2026-11-12",
+  "scope": "Sola lettura; aggregati locali e utilizzo Laravel Cloud; nessuna inferenza AI a pagamento eseguita",
+  "local_since": "2026-08-14",
+  "local_findings": {
+    "AskMyDocs": {
+      "zero_cost_computed_rows_selected_groups": 293845,
+      "embedding_calls": 195733,
+      "gpt4omini_calls": 98002,
+      "trace_is_not_reliable_turn_aggregation": true,
+      "production_cost_validated": false
+    },
+    "Oraculi": {
+      "chatgpt_plan_estimated_calls_zero_cost": 232,
+      "astra_calls": 25,
+      "astra_sum_usd": 10.75148,
+      "astra_avg_call_usd": 0.430059,
+      "qwen_calls": 67,
+      "qwen_avg_call_usd": 0.000821,
+      "unpriced_ledger_entries_observed": true,
+      "comparability": "Diversi modelli e compiti; non costo per lezione o confronto controllato"
+    },
+    "WearFrame": {
+      "generated_media_in_window": 0,
+      "usage_aggregates_in_window": 0,
+      "hallucination_control": true,
+      "max_additional_hallucination_retries": 2,
+      "recorded_unit_prices_are_not_invoices": true
+    }
+  },
+  "cloud": {
+    "period_from": "2026-10-10",
+    "period_to": "2026-11-09",
+    "provider_updated_at": "2026-11-12T12:35:00Z",
+    "currency": "USD",
+    "WearFrame": {
+      "application": 40.73,
+      "linked_database_cluster": 9.97,
+      "linked_cache": 5.0,
+      "subtotal": 55.7,
+      "scope": "app con main e beta; cluster/cache collegati, non costo per cliente"
+    },
+    "Oraculi": {
+      "application": 3.91,
+      "linked_database_cluster": 19.94,
+      "subtotal": 23.85,
+      "scope": "ambiente stage con ibernazione e cluster collegato, non benchmark produzione"
+    },
+    "AskMyDocs": "non presente nell’elenco applicazioni accessibile alla sessione corrente",
+    "Portale GDPR": "non presente nell’elenco applicazioni accessibile alla sessione corrente",
+    "excluded_from_subtotals": [
+      "provider AI",
+      "attribuzione storage",
+      "eventuale piano piattaforma",
+      "servizi esterni",
+      "supporto",
+      "imposte"
+    ],
+    "fiscal_invoice_not_retrieved": true
+  },
+  "cost_scenario": {
+    "WearFrame_Premium": [
+      {
+        "eur_per_output": 0.2,
+        "annual_ai_budget": 2000,
+        "contribution_year1_pct": 37.3,
+        "contribution_renewal_pct": 30.2
+      },
+      {
+        "eur_per_output": 0.35,
+        "annual_ai_budget": 3500,
+        "contribution_year1_pct": 23.4,
+        "contribution_renewal_pct": 2.7
+      },
+      {
+        "eur_per_output": 0.6,
+        "annual_ai_budget": 6000,
+        "contribution_year1_pct": 0.3,
+        "contribution_renewal_pct": -43.1
+      }
+    ],
+    "note": "Scenari ipotetici con le altre ipotesi costanti; non medie misurate."
+  },
+  "private_source_commands": [
+    "cloud application:list --json --fields=id,name,slug,environments.id,environments.name --no-interaction",
+    "cloud usage --period=previous --environment=<verified WearFrame main id> --json --detailed --no-interaction",
+    "cloud usage --period=previous --environment=<verified Oraculi stage id> --json --detailed --no-interaction",
+    "cloud environment:get <verified id> --json --fields=name,status,instances,databaseSchemaId,cacheId,application.id,application.name,usesHibernation --no-interaction",
+    "cloud database:get <verified cluster> <verified schema> --json --fields=id,name --no-interaction"
+  ],
+  "permissions": "Accesso ai DB locali inizialmente negato dal sandbox; lettura concessa tramite revisione automatica. Nessun rifiuto di approvazione."
+}

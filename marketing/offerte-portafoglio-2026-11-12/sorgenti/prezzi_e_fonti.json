@@ -352,10 +352,55 @@
     },
     {
       "id": "M13",
-      "title": "Wearframe pubblico e accesso app",
-      "url": "https://wearframe.com/",
+      "title": "WearFrame sito da identificare con certezza",
+      "url": "https://wearframe.net/",
       "checked_at": "2026-11-12",
-      "supports": "Pagina pubblica con early access e bundle retail: 4,95 USD/5 crediti, 37,49/50 e 99,99/200. Il login app.wearframe.com rimanda a termini su wearframe.com. Occorre confermare internamente perimetro e coordinamento dei listini.",
+      "supports": "Il runtime locale identifica WearFrame.net; il sito pubblico non ha restituito testo leggibile. I prezzi del dominio wearframe.com non sono attribuiti al nostro prodotto, non essendo stata accertata la stessa identità commerciale.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "C01",
+      "title": "Laravel Cloud prezzi",
+      "url": "https://laravel.com/cloud/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Piani di piattaforma più consumo; componenti compute, database, code e cache. I dati privati di utilizzo sono documentati separatamente nell’audit.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "C02",
+      "title": "Black Forest Labs prezzi",
+      "url": "https://bfl.ai/pricing?category=flux.2",
+      "checked_at": "2026-11-12",
+      "supports": "FLUX.2 Pro: primo MP 0,03 USD, successivi 0,015, riferimenti 0,015/MP; il costo dipende da risoluzione e riferimenti.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "C03",
+      "title": "Google AI Studio prezzi",
+      "url": "https://aistudio.google.com/docs/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Gemini 3.1 Flash Image: output 1K 0,067 USD e 2K 0,101 USD, oltre input. Non attribuito automaticamente alle rotte OpenRouter o ai preview.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "C04",
+      "title": "OpenAI GPT 4o mini",
+      "url": "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+      "checked_at": "2026-11-12",
+      "supports": "Riferimento 0,15 USD input e 0,60 USD output per milione di token, usato soltanto per una simulazione dichiarata.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "C05",
+      "title": "OpenRouter prezzi",
+      "url": "https://openrouter.ai/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Commissione acquisto crediti Standard 5,5%, Business 8%; distinta dal costo inferenza del singolo modello.",
       "kind": "market",
       "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
     }

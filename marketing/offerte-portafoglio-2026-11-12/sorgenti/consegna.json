@@ -5,29 +5,29 @@
     {
       "id": "analisi-pdf",
       "path": "Analisi_mercato_e_prezzi_2026-11-12.pdf",
-      "sha256": "a0c459d2fcf33714c07d1b041f22764b6023c970ec708116b2071778d5e99484",
+      "sha256": "4b909bb32540f035ad45a6dac7355b403b7add795dcb717b275164c8a02d9055",
       "status": "validated",
       "checks": [
         "content and arithmetic review",
         "full render visual inspection"
       ],
-      "pages": 20
+      "pages": 24
     },
     {
       "id": "analisi-docx",
       "path": "Analisi_mercato_e_prezzi_2026-11-12.docx",
-      "sha256": "2d470170349843b05348c8b27e913cf8c8eee3b1c2de04968e8895aee533249a",
+      "sha256": "f2d85fcc36ce4b0e409976534642839a16a967c95e7bcd32202c05215a0017fd",
       "status": "validated",
       "checks": [
         "content and arithmetic review",
         "full render visual inspection"
       ],
-      "pages": 20
+      "pages": 24
     },
     {
       "id": "analisi-md",
       "path": "Analisi_mercato_e_prezzi_2026-11-12.md",
-      "sha256": "a7f5610d46977e7a98b612e28a5049a8a899398b13ce019b9ff1bf0c34c86796",
+      "sha256": "1467e512204e3e152f1aeacf19b3e8fff4621b29f52729dde4fa161d3763d96d",
       "status": "validated",
       "checks": [
         "content and arithmetic review",
@@ -38,22 +38,26 @@
     {
       "id": "catalogo-pdf",
       "path": "Catalogo_pacchetti_e_preventivi_2026-11-12.pdf",
-      "sha256": "6baabc29041eb7d3ae9312e9938860bc9e3214ba7763c447aae53709eae44836",
+      "sha256": "be31f36b095920ede862986f0c9f4a9dfc582e463cbc7a193d7732c1c8af8a02",
       "status": "validated",
       "checks": [
         "content and arithmetic review",
-        "full render visual inspection"
+        "full render visual inspection",
+        "new render pixel-identical to all 12 visually reviewed pages",
+        "new render pixel-identical to all 12 visually reviewed pages"
       ],
       "pages": 12
     },
     {
       "id": "catalogo-docx",
       "path": "Catalogo_pacchetti_e_preventivi_2026-11-12.docx",
-      "sha256": "84f566f65fb92a51e23ceae24a038758eebab2feb303f9aaa3a9e5a255b0966c",
+      "sha256": "48507062a46e751d7daf0d3912a7dee1b443736f7bd8f7de320cadb995ad1a74",
       "status": "validated",
       "checks": [
         "content and arithmetic review",
-        "full render visual inspection"
+        "full render visual inspection",
+        "new render pixel-identical to all 12 visually reviewed pages",
+        "new render pixel-identical to all 12 visually reviewed pages"
       ],
       "pages": 12
     },
@@ -64,7 +68,9 @@
       "status": "validated",
       "checks": [
         "content and arithmetic review",
-        "source consistency"
+        "source consistency",
+        "new render pixel-identical to all 12 visually reviewed pages",
+        "new render pixel-identical to all 12 visually reviewed pages"
       ],
       "pages": null
     }
@@ -195,6 +201,111 @@
       "path": "app/Providers/AppServiceProvider.php",
       "sha256": "1c6628af2f22c80b87b302c910edb6ddc191912ff65b9494779e0dec697cd4e9",
       "evidence": "static source inspection; no runtime test"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "6bf6f6798ff63ea1e4ca620f0487e43681725bd3",
+      "path": "config/agent.php",
+      "sha256": "04ecbc56cd29a3705b4bc079dfdc5df34000562c00db50a690720bb94fb48365",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "6bf6f6798ff63ea1e4ca620f0487e43681725bd3",
+      "path": "config/ai.php",
+      "sha256": "d8cb76650767e529d172d9999df71f6607a0e2221bedf17e912d8e5e93f82138",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "6bf6f6798ff63ea1e4ca620f0487e43681725bd3",
+      "path": "config/ai-finops.php",
+      "sha256": "322847b49b98f179c0185e23206e6c7e13f4f16a22122c15f1c299bf00dccef0",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "6bf6f6798ff63ea1e4ca620f0487e43681725bd3",
+      "path": "app/Services/Admin/AiUsagePriceCatalog.php",
+      "sha256": "7b4a83b2d798e2e539dc0b612f4e84e61d47a7c9eb9d2b14ff46086c07911e1b",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "6bf6f6798ff63ea1e4ca620f0487e43681725bd3",
+      "path": "app/Agent/Budget/AgentBudgetTracker.php",
+      "sha256": "4aa051b0df70d7ee2a4357f623354d7bf656c7d77a665cbd385011577f44e3a6",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "config/ai_models.php",
+      "sha256": "085e16e1dee2d584dff1e31f5d994ff833622731797a07291360b12fc5efa80d",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "app/Domains/Analytics/Models/AiUsageLog.php",
+      "sha256": "57430b2b5d530939b1de4ff85aa3216a6dc92f5cce4e02867950d7455b5390b0",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "app/Domains/Analytics/Models/CostLedgerEntry.php",
+      "sha256": "380790b97a228715ddee69e0a30c3b674bd61392c69f2002427b149fd816407b",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "app/Domains/Learning/Services/LessonTextGenerator.php",
+      "sha256": "f29077fc1cfe4ad8e5f02bc0c7c19341bd5e23a88f9d0210abc20f20b175acbf",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "app/Domains/Reflection/Jobs/ReflectionJob.php",
+      "sha256": "1e9aea4aefa934418d263d93d07d18f7a7258661cc0ac86e24c656242dd9ce5d",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/Modules/AIProvider/Services/AiModelService.php",
+      "sha256": "c972a3294532e014d3a3f64d15c1051cc4813fa6164ed19af35e9818b1226797",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/Modules/ProductStudio/Jobs/ProcessProductStudioShot.php",
+      "sha256": "59fe482d3d3606b5e73b7195c55b3eb8c124d494d47c0d981601a133b4f60d04",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/SharedKernel/Traits/DetectsHallucinations.php",
+      "sha256": "4d42b5a4e3bb542fb1730caeb9bbcaff22e44f44839a6c486b6bf90fb8edf90e",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/Modules/Platform/Billing/Services/WFCoinsService.php",
+      "sha256": "df8109f12678d0e594ef5bb0f0422b9eed4b79123423adac93a2c115d9823fb8",
+      "evidence": "cost path static reading; local configuration read separately"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "config/wfcoins.php",
+      "sha256": "bd1ce3d9102871ee409e607cfdaa64ed57a7ac567c691c1a2cb8dc69f96dbf1f",
+      "evidence": "cost path static reading; local configuration read separately"
     }
   ],
   "request_attachment": {
@@ -207,22 +318,26 @@
     "renewal_discount": "passed",
     "cost_model": "passed within declared assumptions",
     "all_pages_visually_inspected": {
-      "report": 20,
+      "report": 24,
       "catalogue": 12
     },
     "catalogue_excludes_internal_costs": true,
-    "title_border_removed": true
+    "title_border_removed": true,
+    "local_cost_audit": "completed; aggregates cannot certify customer unit cost",
+    "cloud_usage": "completed for accessible WearFrame and Oraculi resources; subtotal, not fiscal invoice"
   },
   "unverified": [
     "deployed application journeys",
-    "AI provider benchmark and maximum cost",
+    "AI provider benchmark for proposed package limits",
+    "reliable complete cost per customer operation",
     "technical capacity and quota enforcement",
-    "actual host and region",
+    "actual cloud of AskMyDocs and GDPR in other accounts",
+    "allocation of shared cloud and remaining external services",
     "backup restoration",
     "published AI training course",
     "specific funding calls",
     "willingness to pay",
-    "commercial commission agreement"
+    "actual personnel costs and commercial commission agreement"
   ],
   "publication": "local only; no email, push or PR",
   "generated_files": "PDF and DOCX excluded from Git per global working agreement; sources retained",
@@ -260,5 +375,6 @@
       "CreateProductStudioShotAction",
       "CreateVideoGenerationAction"
     ]
-  }
+  },
+  "audit_source": "sorgenti/audit_costi_2026-11-12.json"
 }
