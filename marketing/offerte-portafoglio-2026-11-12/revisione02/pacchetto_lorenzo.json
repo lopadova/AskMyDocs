@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-12",
+  "recipient_context": "Materiali commerciali per Lorenzo, preparati localmente senza invio",
+  "files": [
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerte-con-formazione-2026-11-12/AskMyDocs_con_formazione.pdf",
+      "name_in_zip": "AskMyDocs_con_formazione.pdf",
+      "sha256": "10180c7698a227b90355c99b63f54f02ebb76565175bbd941d0f7a26d2ea9b52",
+      "pages": 9
+    },
+    {
+      "path": "/Users/marco/www/gdpr-facile/marketing/offerte-con-formazione-2026-11-12/Portale_GDPR_con_formazione.pdf",
+      "name_in_zip": "Portale_GDPR_con_formazione.pdf",
+      "sha256": "0b226270760c5e2dc0f2a41c0090fa7a15d9c34e4ef6ab46f283900464193699",
+      "pages": 8
+    },
+    {
+      "path": "/Users/marco/www/oraculi/marketing/offerte-con-formazione-2026-11-12/Oraculi_con_formazione.pdf",
+      "name_in_zip": "Oraculi_con_formazione.pdf",
+      "sha256": "b43192340462b9a0d1a0aafe3474875650515757a5e7e0a9e0030c041eb6f5ea",
+      "pages": 8
+    },
+    {
+      "path": "/Users/marco/www/wearframeMain/marketing/offerte-con-formazione-2026-11-12/WearFrame_con_formazione.pdf",
+      "name_in_zip": "WearFrame_con_formazione.pdf",
+      "sha256": "a58684b59245b34e5e89ab5383cf1429b34d84fbabb5468da1b6e59cd75383df",
+      "pages": 8
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerte-portafoglio-2026-11-12/revisione02/Preventivi_Lorenzo_revisione02.pdf",
+      "name_in_zip": "Preventivi_Lorenzo_revisione02.pdf",
+      "sha256": "97b4a2d76f40ae756cdb8eb67119fce5cac9d21b4d23645cf121c2c1e81ca7c7",
+      "pages": 16
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerte-portafoglio-2026-11-12/revisione02/Preventivi_Lorenzo_revisione02.docx",
+      "name_in_zip": "Preventivi_Lorenzo_revisione02.docx",
+      "sha256": "2fa87e69518ef3ec3368d9ec8b9156ec33187ef2e609401d40b3e25554255381",
+      "pages": null
+    }
+  ],
+  "zip": {
+    "path": "/Users/marco/www/AskMyDocsDev/marketing/offerte-portafoglio-2026-11-12/revisione02/Pacchetto_Lorenzo_2026-11-12.zip",
+    "sha256": "deb9caa85378e18d94d4fb9ec352550826818b1e5565fa4b38470af2d518536c",
+    "bytes": 3001876
+  },
+  "internal_analysis": "Costi_e_sostenibilita_revisione02.pdf separato dai materiali commerciali",
+  "checks": [
+    "PDF dei quattro prodotti esistenti e leggibili",
+    "Tariffe coerenti con il listino centrale",
+    "Tutte le pagine dei quattro prodotti ispezionate individualmente dagli autori; controllo centrale di prezzi e campioni visivi",
+    "Integrità e corrispondenza byte per byte dei sei file nello ZIP"
+  ]
+}

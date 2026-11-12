@@ -1,0 +1,30 @@
+{
+  "assets": [
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "sha256": "89ebc86dda3b8d4e081821228bedef1b503753f66f207dae16d4553b412b2755",
+      "origin": "Asset editoriale esistente del prodotto",
+      "rights": "Riuso interno ai materiali del prodotto; licenza autonoma della libreria non verificata",
+      "role": "Illustrazione, non screenshot o fotografia di cliente"
+    },
+    {
+      "path": "public/editorial/archive-day.webp",
+      "sha256": "9fc560be44cbee175234397962467c2310f3d778852f987e726d8f723d902e89",
+      "origin": "Asset editoriale esistente del prodotto",
+      "rights": "Riuso interno ai materiali del prodotto; licenza autonoma della libreria non verificata",
+      "role": "Illustrazione, non screenshot o fotografia di cliente"
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "sha256": "5dee594d23e3dd7abf9a056e9ac56aaee01884760c288e054dca8925aad124ff",
+      "origin": "Asset editoriale esistente del prodotto",
+      "rights": "Riuso interno ai materiali del prodotto; licenza autonoma della libreria non verificata",
+      "role": "Illustrazione, non screenshot o fotografia di cliente"
+    }
+  ],
+  "logo": "public/brand/askmydocs-wordmark-light.png",
+  "font_licenses": [
+    "assets/fonts/InstrumentSerif-OFL.txt",
+    "assets/fonts/Geist-OFL.txt"
+  ]
+}

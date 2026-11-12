@@ -1,0 +1,470 @@
+{
+  "document": {
+    "title": "AskMyDocs consulenza formazione e pacchetti",
+    "brand_name": "AskMyDocs",
+    "author": "",
+    "edition": "12 NOVEMBRE 2026",
+    "header": "ASKMYDOCS / CONSULENZA E FORMAZIONE",
+    "footer_note": "Proposta commerciale · IVA esclusa · Immagini illustrative",
+    "subject": "Percorso di adozione AI e offerte con corso obbligatorio",
+    "source_ids": [
+      "AMD-FACTS",
+      "AMD-PRICING",
+      "AMD-BRAND"
+    ]
+  },
+  "theme": {
+    "palette_source": "resources/views/landing.blade.php; public/landing/styles.css e theme.css, variante Humanistic light. Griglia della presentazione prodotto approvata.",
+    "palette": {
+      "paper": "#F4F2ED",
+      "cream": "#EEECE5",
+      "ink": "#19241F",
+      "primary": "#416147",
+      "accent": "#735C34",
+      "muted": "#4D5B53",
+      "line": "#D3D8CA",
+      "pale": "#E4E6DC"
+    },
+    "fonts": {
+      "heading": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf"
+      },
+      "body": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf"
+      }
+    },
+    "logo": {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "fit": "contain"
+    },
+    "images": {
+      "jpeg_quality": 90,
+      "max_dpi": 180
+    },
+    "folio_format": "{page:02d} / {total:02d}"
+  },
+  "pages": [
+    {
+      "id": "copertina",
+      "layout": "cover",
+      "section": "Dai documenti a un uso consapevole",
+      "title": "Dai documenti\na un uso consapevole",
+      "deck": "Un primo archivio interrogabile, persone preparate\ne un percorso di consulenza che accompagna l’azienda.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005"
+      ],
+      "kicker": "CONSULENZA E FORMAZIONE",
+      "display_name": "AskMyDocs",
+      "image": {
+        "path": "public/editorial/knowledge-day.webp",
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "",
+        "height": 105
+      },
+      "band_title": "SOFTWARE GESTITO CON CORSO AI SEMPRE INCLUSO",
+      "band_subtitle": "PACCHETTI COMMERCIALI / 12 NOVEMBRE 2026"
+    },
+    {
+      "id": "essenziali",
+      "layout": "article",
+      "section": "Le risposte partono dalle vostre fonti",
+      "title": "Le risposte partono\ndalle vostre fonti",
+      "deck": "AskMyDocs aiuta a consultare un archivio aziendale con domande in linguaggio naturale. Il progetto mette insieme strumento, metodo e persone.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005",
+        "F-036"
+      ],
+      "kicker": "LE COSE ESSENZIALI",
+      "columns": [
+        [
+          {
+            "heading": "Quando le informazioni ci sono già",
+            "text": "Una condizione del preventivo, una voce della bolletta, un passaggio della procedura: spesso la risposta esiste, ma ritrovarla richiede attraversare file, versioni e cartelle. Partiamo da un insieme delimitato di documenti e dalle domande che tornano davvero."
+          },
+          {
+            "heading": "Un archivio che si può interrogare",
+            "text": "Caricamento, indicizzazione e ricerca preparano i contenuti. La chat aiuta a formulare una risposta e a ritrovare i riferimenti. Il referente apre le fonti e valuta se il risultato risponde alla domanda."
+          }
+        ],
+        [
+          {
+            "heading": "A chi proponiamo il percorso",
+            "text": "PMI con un ufficio amministrativo, commerciale o operativo che usa documenti ricorrenti. Non serve arrivare con una squadra di esperti AI: serve un referente che conosca il lavoro e possa scegliere i materiali iniziali."
+          },
+          {
+            "heading": "Il valore dell’accompagnamento",
+            "text": "Aiutiamo a scegliere il primo caso, preparare l’archivio, impostare gli accessi e provare le risposte. Il corso fornisce le basi; il laboratorio le porta sui documenti e sulle responsabilità della vostra azienda."
+          }
+        ]
+      ],
+      "callout": "L’obiettivo è rendere il team capace di porre domande, verificare le fonti e riconoscere quando serve una persona."
+    },
+    {
+      "id": "caso",
+      "layout": "case",
+      "section": "Una domanda ricorrente un archivio preciso",
+      "title": "Una domanda ricorrente\nun archivio preciso",
+      "deck": "Scenario illustrativo: un ufficio deve ritrovare condizioni e riferimenti in fatture, bollette e preventivi già disponibili.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005",
+        "F-006"
+      ],
+      "kicker": "UN PRIMO CASO DI LAVORO",
+      "image": {
+        "path": "public/editorial/archive-day.webp",
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione del prodotto. Lo scenario è esemplificativo, non una testimonianza.",
+        "height": 145
+      },
+      "columns": [
+        [
+          {
+            "heading": "La situazione",
+            "text": "Un collega cerca il documento che contiene una certa condizione o la spiegazione di una voce. Prima di configurare lo strumento scegliamo quali documenti siano pertinenti e quali informazioni vadano tenute fuori."
+          },
+          {
+            "heading": "Il percorso",
+            "text": "Prepariamo un campione, lo carichiamo e concordiamo venti domande. Nel laboratorio il referente segue il percorso dalla richiesta al documento originale e annota le risposte non sufficientemente coperte."
+          }
+        ],
+        [
+          {
+            "heading": "Il risultato da verificare",
+            "text": "Un archivio iniziale interrogabile e un metodo condiviso per controllare i riferimenti. La verifica può anche mostrare che manca una versione aggiornata o che una domanda richiede dati esterni al corpus."
+          },
+          {
+            "heading": "Il confine del progetto",
+            "text": "La ricerca documentale non equivale a registrazione contabile, riconciliazione fiscale o calcolo certificato. OCR e AI possono sbagliare: numeri, scadenze e decisioni vengono verificati dal referente."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "percorso",
+      "layout": "journey",
+      "section": "Il primo progetto si costruisce insieme",
+      "title": "Il primo progetto\nsi costruisce insieme",
+      "deck": "Una partenza circoscritta permette di imparare sul lavoro reale. La consulenza iniziale è compresa nel piano.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005",
+        "F-036"
+      ],
+      "kicker": "DAL BISOGNO ALL’AVVIO",
+      "steps": [
+        {
+          "heading": "Scegliere il lavoro da migliorare",
+          "text": "Individuiamo un ufficio, una famiglia di documenti, un referente e le domande che ricorrono. Il perimetro iniziale viene scritto nell’ordine."
+        },
+        {
+          "heading": "Preparare fonti e accessi",
+          "text": "Configuriamo l’ambiente, ruoli e primo archivio. Il cliente consegna materiali leggibili, aggiornati e autorizzati; il caricamento assistito segue le quantità del piano."
+        },
+        {
+          "heading": "Comprendere l’intelligenza artificiale",
+          "text": "I referenti frequentano otto ore di corso base: funzionamento, richieste efficaci, errori, dati e verifica umana. Le aziende possono condividere la stessa edizione."
+        },
+        {
+          "heading": "Provare il prodotto nel proprio contesto",
+          "text": "Nel laboratorio riservato si lavora sulle fonti aziendali. La consegna comprende venti domande concordate, controllo dei riferimenti e istruzioni per il lavoro successivo."
+        }
+      ],
+      "callout": "Avvio obiettivo entro dieci giorni lavorativi dai materiali disponibili; consegna entro venti dall’avvio. Corso e laboratorio entro 90 giorni, con calendario concordato."
+    },
+    {
+      "id": "corso",
+      "layout": "article",
+      "section": "Capire l’AI prima di affidarle il lavoro",
+      "title": "Capire l’AI\nprima di affidarle il lavoro",
+      "deck": "Il corso è parte obbligatoria di ogni pacchetto. Spiega il metodo con cui usare il prodotto e decidere che cosa verificare.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [],
+      "kicker": "OTTO ORE DI FORMAZIONE DI BASE",
+      "columns": [
+        [
+          {
+            "heading": "Come funziona una risposta",
+            "text": "Due ore per comprendere modelli generativi, contesto, token e differenza tra conoscenza del modello e ricerca sui documenti. La capacità di produrre una frase plausibile non dimostra che il contenuto sia corretto."
+          },
+          {
+            "heading": "Chiedere e verificare",
+            "text": "Due ore su obiettivo, contesto, esempi e controllo dei risultati. Si impara ad aprire le fonti, riconoscere una citazione debole e riformulare una domanda troppo ampia."
+          }
+        ],
+        [
+          {
+            "heading": "Dati e responsabilità",
+            "text": "Due ore su quali dati utilizzare, come preparare esempi e chi deve controllare il risultato. L’azienda inizia a definire regole d’uso adeguate alle attività effettive."
+          },
+          {
+            "heading": "Esercitarsi nel proprio ruolo",
+            "text": "Due ore di esercitazioni e verifica finale. Restano dispensa, esempi, checklist, registro presenze e attestato di partecipazione. Il laboratorio riservato aggiunge 2 / 4 / 6 ore secondo il piano."
+          }
+        ]
+      ],
+      "callout": {
+        "text": "Inclusi 2 / 4 / 6 posti con docente e accesso per 90 giorni al corso AI su Oraculi, con 100 risposte tutor per persona. Gli altri utenti software non sono automaticamente posti nel corso.",
+        "height": 70
+      }
+    },
+    {
+      "id": "piani",
+      "layout": "table",
+      "section": "Tre dimensioni per iniziare con metodo",
+      "title": "Tre dimensioni\nper iniziare con metodo",
+      "deck": "Primo anno con corso condiviso in coworking. Importi IVA esclusa: software, avviamento, cloud e formazione sono compresi.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [],
+      "kicker": "PACCHETTI E CAPACITÀ",
+      "headers": [
+        "CONTENUTO",
+        "START",
+        "BUSINESS",
+        "PREMIUM"
+      ],
+      "column_weights": [
+        2.1,
+        1,
+        1,
+        1
+      ],
+      "table_font": 8.8,
+      "padding": 6,
+      "rows": [
+        [
+          "Totale primo anno",
+          "5.200 €",
+          "10.500 €",
+          "17.900 €"
+        ],
+        [
+          "Rinnovo annuale",
+          "2.300 €",
+          "5.100 €",
+          "9.400 €"
+        ],
+        [
+          "Utenti nominativi / archivi",
+          "5 / 1",
+          "15 / 3",
+          "40 / 6"
+        ],
+        [
+          "Documenti presenti",
+          "1.000",
+          "5.000",
+          "15.000"
+        ],
+        [
+          "Pagine presenti e indicizzabili per anno",
+          "10.000",
+          "50.000",
+          "150.000"
+        ],
+        [
+          "Storage fonti e derivati",
+          "5 GB",
+          "20 GB",
+          "60 GB"
+        ],
+        [
+          "Risposte AI standard per anno",
+          "2.000",
+          "8.000",
+          "16.000"
+        ],
+        [
+          "OCR annuo dentro la quota pagine",
+          "500 pagine",
+          "2.000 pagine",
+          "5.000 pagine"
+        ],
+        [
+          "Importazione assistita iniziale",
+          "100 file / 1.000 pagine",
+          "500 file / 5.000 pagine",
+          "1.500 file / 15.000 pagine"
+        ],
+        [
+          "Corso base / posti",
+          "8 ore / 2",
+          "8 ore / 4",
+          "8 ore / 6"
+        ],
+        [
+          "Laboratorio riservato",
+          "2 ore",
+          "4 ore",
+          "6 ore"
+        ],
+        [
+          "Assistenza operativa annua",
+          "4 ore",
+          "8 ore",
+          "16 ore"
+        ]
+      ],
+      "note": "Il corso è incluso in tutti i piani. Il rinnovo mantiene servizio e quote annuali, senza ripetere il corso iniziale. Un nuovo caricamento che richiede rielaborazione consuma pagine. Massimo 20 MB e 200 pagine per file; PDF, DOCX, TXT e Markdown. Analisi avanzate, modelli specialistici e integrazioni hanno un preventivo distinto."
+    },
+    {
+      "id": "preventivi",
+      "layout": "table",
+      "section": "La formazione cambia sede il pacchetto resta completo",
+      "title": "La formazione cambia sede\nil pacchetto resta completo",
+      "deck": "Scegliete l’organizzazione più adatta al gruppo. Ogni totale mantiene software, cloud per un anno, avviamento e laboratorio online riservato.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [],
+      "kicker": "PREVENTIVI PER MODALITÀ",
+      "headers": [
+        "PIANO",
+        "ONLINE CONDIVISO",
+        "COWORKING",
+        "ONLINE DEDICATO",
+        "IN SEDE LOCALE"
+      ],
+      "column_weights": [
+        1,
+        1.15,
+        1.15,
+        1.15,
+        1.15
+      ],
+      "table_font": 9,
+      "padding": 7,
+      "rows": [
+        [
+          "Start",
+          "5.040 €",
+          "5.200 €",
+          "5.960 €",
+          "6.610 €"
+        ],
+        [
+          "Business",
+          "10.180 €",
+          "10.500 €",
+          "10.620 €",
+          "11.270 €"
+        ],
+        [
+          "Premium",
+          "17.420 €",
+          "17.900 €",
+          "17.380 €",
+          "18.030 €"
+        ]
+      ],
+      "note": "Esempio Start con coworking: 2.300 € software e cloud per dodici mesi, 1.980 € attivazione, 280 € laboratorio di due ore, 640 € corso di otto ore per due persone. Totale 5.200 €, IVA esclusa.\n\nIl dedicato accoglie fino a otto persone. In sede locale comprende una visita entro 50 km dalla base del docente e massimo due ore di viaggio A/R. Oltre questa soglia il totale si concorda prima dell’ordine. Il laboratorio già incluso si può svolgere in sede con la sola trasferta aggiuntiva, 250 € per visita locale.\n\nEdizioni coworking inizialmente quindicinali, da 8 a 12 persone di più aziende, in due mezze giornate. Online condiviso in quattro incontri di due ore. Data e sala si fissano all’ordine; serve un ambiente tranquillo con schermo, connessione e un computer a persona."
+    },
+    {
+      "id": "condizioni",
+      "layout": "article",
+      "section": "Il perimetro protegge il valore del progetto",
+      "title": "Il perimetro protegge\nil valore del progetto",
+      "deck": "Quantità, responsabilità e assistenza vengono definite prima dell’avvio, così il primo archivio può funzionare senza acquisti indispensabili successivi.",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005",
+        "F-006",
+        "F-036"
+      ],
+      "kicker": "SERVIZIO E CONDIZIONI",
+      "columns": [
+        [
+          {
+            "heading": "Dodici mesi di servizio gestito",
+            "text": "Sono inclusi ambiente applicativo, database, storage, manutenzione ordinaria e backup giornaliero con conservazione di 14 giorni e prova di ripristino all’avvio. L’infrastruttura è condivisa con separazione degli accessi, senza server dedicato per cliente."
+          },
+          {
+            "heading": "Assistenza e responsabilità",
+            "text": "Assistenza nei feriali, 9–18, con presa in carico ordinaria entro due giorni lavorativi. Le ore del piano coprono aiuto operativo; la correzione dei difetti compresi nel servizio non le consuma. Il cliente nomina un referente e verifica i risultati."
+          }
+        ],
+        [
+          {
+            "heading": "Consumi comprensibili",
+            "text": "Le quote sono annuali. Ogni nuova risposta consuma un utilizzo; il profilo standard comprende ricerca e citazioni, con contesto fino a 12.000 token e uscita finale fino a 1.000. Nessun extra viene addebitato automaticamente."
+          },
+          {
+            "heading": "Estendere quando serve",
+            "text": "Mille risposte standard aggiuntive: 250 €. Cinquemila pagine di indicizzazione: 250 €. Mille pagine OCR: 150 €, dentro la capacità documentale. Venti GB aggiuntivi: 120 €/anno. Integrazioni e casi più ampi vengono delimitati e preventivati."
+          }
+        ]
+      ],
+      "callout": {
+        "text": "Proposta valida fino al 12 dicembre 2026. Pagamenti 40% all’ordine, 40% alla consegna operativa e 20% a formazione completata. L’ammissibilità a un bando dipende dal testo vigente e non è data per acquisita.",
+        "height": 77
+      }
+    },
+    {
+      "id": "chiusura",
+      "layout": "closing",
+      "section": "Partiamo da un archivio e da venti domande",
+      "title": "Partiamo da un archivio\ne da venti domande",
+      "deck": "Scegliete i documenti che usate più spesso e i referenti che possono valutarli. Costruiamo il primo caso, formiamo il gruppo e verifichiamo insieme la consegna.\naskmydocs.surfacesrl.com",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING"
+      ],
+      "feature_ids": [],
+      "kicker": "IL PROSSIMO PASSO",
+      "image": {
+        "path": "public/editorial/community-day.webp",
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "",
+        "height": 260
+      },
+      "quote": "Software, consulenza e formazione lavorano insieme: l’obiettivo è portare l’azienda a un primo uso dell’AI che sappia comprendere e controllare."
+    }
+  ]
+}

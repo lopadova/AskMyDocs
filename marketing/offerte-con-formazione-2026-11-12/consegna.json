@@ -1,0 +1,247 @@
+{
+  "product": "AskMyDocs",
+  "date": "2026-11-12",
+  "status": "validated",
+  "scope": "Proposta commerciale locale versione web; base condivisa marketing non avanzata",
+  "pages": 9,
+  "product_revision": "7e5de280b63b46aeab2abe7bdcbcd1422ce32869",
+  "dirty_product_note": "Modifiche desktop preesistenti estranee preservate; PDF basato sui file web elencati, non attribuito al rilascio live",
+  "live_web_note": "Sito non leggibile dal web tool; branding da sorgenti correnti e asset ispezionati; nessuna nuova demo autenticata",
+  "artifacts": [
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/build_content.py",
+      "sha256": "ea42cd044bd2c4a8cfa9b282eb99f4189a063b938b3b904fd2ace63c328c2b84"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/contenuti.json",
+      "sha256": "90c5f2fec12daae5978832a777a48d7bf052c2134d820d1e2556a20e62ae3d1a"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "sha256": "7ac783ce9a6a8e1b29286bcc9f55c2182c504266c8d8ee1bb52e71fdffaf70cd"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/asset_registry.json",
+      "sha256": "1cd5f0a6379ba4680e2faefb518e8c1980b5f6acee8fcee5ea5070c6e55dc4e0"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/pricing_snapshot.json",
+      "sha256": "de8e4a72e83b279d7b0d43aba8b4c0309086f2452bb628637e5a5331a9b2f928"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/render_editorial.py",
+      "sha256": "588b29383935c09669df5a4ae550a045a8a31eaf6a37a4faa9fe9884a310c34d"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/AskMyDocs_con_formazione.pdf",
+      "sha256": "10180c7698a227b90355c99b63f54f02ebb76565175bbd941d0f7a26d2ea9b52"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "resources/views/landing.blade.php",
+      "sha256": "756984e9f0240742a814ed8979836d181343de0f70249668daaf08a4c65cfc3f"
+    },
+    {
+      "path": "public/landing/styles.css",
+      "sha256": "8b316ba52caf004cb0f1243248198e50dc2ff3ddcc38c8603b624ee35e488201"
+    },
+    {
+      "path": "public/landing/theme.css",
+      "sha256": "cc14eb1c28ae4c7e603247bbb31fbce667983070f65141dbbd20d328cf39b98f"
+    },
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "sha256": "27dfc86e8b651802bcacc4c0e3bd20cff026f08520eb336508eacfa03b38b098"
+    },
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "sha256": "89ebc86dda3b8d4e081821228bedef1b503753f66f207dae16d4553b412b2755"
+    },
+    {
+      "path": "public/editorial/archive-day.webp",
+      "sha256": "9fc560be44cbee175234397962467c2310f3d778852f987e726d8f723d902e89"
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "sha256": "5dee594d23e3dd7abf9a056e9ac56aaee01884760c288e054dca8925aad124ff"
+    },
+    {
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "sha256": "f9b7af5f6c8155f558fa2044cdbeefd749f3d496ffcecb9bf1a8867a4e6877a8"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/calcolo_prezzi_revisione02.json",
+      "sha256": "30a5b506b6db3f71bfae52c7aadf831e71ec7df8613b9573963b02b0ccbdc0f9"
+    },
+    {
+      "path": "app/Agent/AgentAnswerSynthesizer.php",
+      "sha256": "ca95c80ea3bbe866d85674fa508887029b5a37ca7dcddd02caa6f7eceed3e9c8"
+    },
+    {
+      "path": "app/Services/Kb/Upload/KbUploadStagingService.php",
+      "sha256": "021034e5142bcfc21a26616c1609f0bd7e8cdb707d20dc24b41b766ec4248f45"
+    }
+  ],
+  "checks": {
+    "all_9_pages_viewed_individually_110dpi": true,
+    "last_changes_pages_5_8_9_rechecked": true,
+    "font_embedding_renderer_pass": true,
+    "selectable_text_pass": true,
+    "no_overflow_or_collisions": true,
+    "three_tiers_and_four_training_modes_verified": true,
+    "scenarios_and_images_labeled_illustrative": true
+  },
+  "page_map": {
+    "document": {
+      "title": "AskMyDocs consulenza formazione e pacchetti",
+      "brand_name": "AskMyDocs",
+      "author": "",
+      "edition": "12 NOVEMBRE 2026",
+      "header": "ASKMYDOCS / CONSULENZA E FORMAZIONE",
+      "footer_note": "Proposta commerciale · IVA esclusa · Immagini illustrative",
+      "subject": "Percorso di adozione AI e offerte con corso obbligatorio",
+      "source_ids": [
+        "AMD-FACTS",
+        "AMD-PRICING",
+        "AMD-BRAND"
+      ]
+    },
+    "page_count": 9,
+    "pages": [
+      {
+        "page": 1,
+        "id": "copertina",
+        "layout": "cover",
+        "title": "Dai documenti\na un uso consapevole",
+        "section": "Dai documenti a un uso consapevole",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005"
+        ]
+      },
+      {
+        "page": 2,
+        "id": "essenziali",
+        "layout": "article",
+        "title": "Le risposte partono\ndalle vostre fonti",
+        "section": "Le risposte partono dalle vostre fonti",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-036"
+        ]
+      },
+      {
+        "page": 3,
+        "id": "caso",
+        "layout": "case",
+        "title": "Una domanda ricorrente\nun archivio preciso",
+        "section": "Una domanda ricorrente un archivio preciso",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-006"
+        ]
+      },
+      {
+        "page": 4,
+        "id": "percorso",
+        "layout": "journey",
+        "title": "Il primo progetto\nsi costruisce insieme",
+        "section": "Il primo progetto si costruisce insieme",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-036"
+        ]
+      },
+      {
+        "page": 5,
+        "id": "corso",
+        "layout": "article",
+        "title": "Capire l’AI\nprima di affidarle il lavoro",
+        "section": "Capire l’AI prima di affidarle il lavoro",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 6,
+        "id": "piani",
+        "layout": "table",
+        "title": "Tre dimensioni\nper iniziare con metodo",
+        "section": "Tre dimensioni per iniziare con metodo",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 7,
+        "id": "preventivi",
+        "layout": "table",
+        "title": "La formazione cambia sede\nil pacchetto resta completo",
+        "section": "La formazione cambia sede il pacchetto resta completo",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 8,
+        "id": "condizioni",
+        "layout": "article",
+        "title": "Il perimetro protegge\nil valore del progetto",
+        "section": "Il perimetro protegge il valore del progetto",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-006",
+          "F-036"
+        ]
+      },
+      {
+        "page": 9,
+        "id": "chiusura",
+        "layout": "closing",
+        "title": "Partiamo da un archivio\ne da venti domande",
+        "section": "Partiamo da un archivio e da venti domande",
+        "source_ids": [
+          "AMD-FACTS",
+          "AMD-PRICING"
+        ],
+        "feature_ids": []
+      }
+    ]
+  },
+  "limits": [
+    "Immagini narrative, non screenshot o testimonianze",
+    "Quantità e avviamento sono perimetro commerciale da configurare e collaudare",
+    "Font correnti del sito; griglia del PDF approvato, nove pagine per il perimetro offerte anziché enciclopedia funzionale"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "product": "AskMyDocs",
+  "landing": "https://askmydocs.surfacesrl.com",
+  "live_web": "Non restituisce testo al web tool; identità verificata da sorgenti e asset locali",
+  "palette": {
+    "paper": "#F4F2ED",
+    "cream": "#EEECE5",
+    "ink": "#19241F",
+    "primary": "#416147",
+    "accent": "#735C34",
+    "muted": "#4D5B53",
+    "line": "#D3D8CA",
+    "pale": "#E4E6DC"
+  },
+  "fonts": {
+    "heading": {
+      "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+      "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf"
+    },
+    "body": {
+      "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+      "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+      "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+      "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf"
+    }
+  },
+  "font_note": "Instrument Serif non ha peso bold: viene usato il regular, senza simulazione. Geist istanziato da WOFF2 OFL locale.",
+  "sources": [
+    "resources/views/landing.blade.php",
+    "public/landing/styles.css",
+    "public/landing/theme.css",
+    "marketing/immagini/linea-editoriale-askmydocs.json"
+  ],
+  "reference": "marketing/pdf/askmydocs-presentazione-prodotto.pdf",
+  "adaptation": "Nove pagine focalizzate su offerta e adozione, con ritmo del riferimento e font correnti del sito."
+}

@@ -1,0 +1,54 @@
+{
+  "landing_families": [
+    "Instrument Serif",
+    "Geist"
+  ],
+  "fonts": [
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+      "sha256": "b4271789ec5900cbda4e0440f73971d3f1a1ee61773f12031a2064d99f480966",
+      "bytes": 33000
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+      "sha256": "c981528e454b720b85ccd6e488c2a7103ea9f90c7b0ab300bae8186689990e28",
+      "bytes": 32060
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf",
+      "sha256": "5052a3681354f594059e377ec0372caa7553477eb1dbcfc9aa9be5a1c3019f2b",
+      "bytes": 33024
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+      "sha256": "fae7b7ff21acefce18c04d8ab55e10fd804e3c55dbd1897b20de0ca9e6ba063b",
+      "bytes": 32100
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-OFL.txt",
+      "sha256": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "bytes": 4486
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+      "sha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385",
+      "bytes": 71592
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-OFL.txt",
+      "sha256": "b6b2292aa580937fb63796878d65a027a27f8c3db2d97601d0c34d9031f4ca17",
+      "bytes": 4404
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "sha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88",
+      "bytes": 70012
+    }
+  ],
+  "sources": {
+    "Instrument Serif": "/Users/marco/www/ModelsGenerator/marketing/pdf/sorgenti/presentazione-prodotto/fonts",
+    "Geist": "/Users/marco/www/TomoApp/client/node_modules/@fontsource-variable/geist"
+  },
+  "conversion": "Geist WOFF2 variabile istanziato con fontTools 400 e 700, normal e italic, poi salvato TTF senza flavor. Instrument Serif originali TTF. Entrambe famiglie OFL.",
+  "installation": "fontTools e brotli solo in /private/tmp/pacchetti-fonttools; nessuna dipendenza del prodotto cambiata."
+}

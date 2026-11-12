@@ -1,0 +1,14 @@
+{
+  "first_year": [
+    5200,
+    10500,
+    17900
+  ],
+  "renewal": [
+    2300,
+    5100,
+    9400
+  ],
+  "source": "marketing/offerte-portafoglio-2026-11-12/revisione02/calcolo_prezzi_revisione02.json",
+  "source_sha256": "30a5b506b6db3f71bfae52c7aadf831e71ec7df8613b9573963b02b0ccbdc0f9"
+}
