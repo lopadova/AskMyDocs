@@ -1,0 +1,484 @@
+{
+  "document": {
+    "title": "AskMyDocs listino software corso ZoWorking e consulenza",
+    "subject": "Canone 19 euro e formazione in presenza con consulenza fino a tre giornate",
+    "brand_name": "AskMyDocs",
+    "edition": "12 NOVEMBRE 2026 / REV 05",
+    "header": "ASKMYDOCS / SOFTWARE E FORMAZIONE",
+    "footer_note": "Proposta commerciale · IVA esclusa · Consumi indicativi",
+    "author": "",
+    "source_ids": [
+      "OFFERTA-R05",
+      "MODELLO-R05",
+      "AMD-BRAND"
+    ]
+  },
+  "theme": {
+    "palette_source": "resources/views/landing.blade.php; public/landing/styles.css e theme.css, variante Humanistic light. Griglia della presentazione prodotto approvata.",
+    "palette": {
+      "paper": "#F4F2ED",
+      "cream": "#EEECE5",
+      "ink": "#19241F",
+      "primary": "#416147",
+      "accent": "#735C34",
+      "muted": "#4D5B53",
+      "line": "#D3D8CA",
+      "pale": "#E4E6DC"
+    },
+    "fonts": {
+      "heading": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf"
+      },
+      "body": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf"
+      }
+    },
+    "logo": {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "fit": "contain"
+    },
+    "images": {
+      "jpeg_quality": 90,
+      "max_dpi": 180
+    },
+    "folio_format": "{page:02d} / {total:02d}"
+  },
+  "pages": [
+    {
+      "id": "cover",
+      "layout": "cover",
+      "title": "Il software per l’azienda\nLe competenze per usarlo",
+      "deck": "AskMyDocs a 19 € al mese per azienda, consumi esclusi.\nCorso in aula e consulenza con prezzi separati.",
+      "section": "Il software per l’azienda Le competenze per usarlo",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "SOFTWARE / FORMAZIONE / CONSULENZA",
+      "display_name": "AskMyDocs",
+      "image": {
+        "path": "public/editorial/knowledge-day.webp",
+        "height": 145,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "band_title": "ASKMYDOCS / AULE ZOWORKING",
+      "band_subtitle": "OFFERTA COMMERCIALE / 12 NOVEMBRE 2026 / REV 05"
+    },
+    {
+      "id": "prices",
+      "layout": "table",
+      "title": "I prezzi\nPrima dei dettagli",
+      "deck": "Tre voci semplici per iniziare: accesso aziendale al software, corso in aula e consulenza sul lavoro da migliorare. Tutti gli importi sono IVA esclusa.",
+      "section": "I prezzi Prima dei dettagli",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL LISTINO",
+      "headers": [
+        "SERVIZIO",
+        "PREZZO",
+        "CHE COSA COMPRENDE"
+      ],
+      "column_weights": [
+        1.2,
+        1,
+        2
+      ],
+      "table_font": 10,
+      "padding": 11,
+      "rows": [
+        [
+          "AskMyDocs",
+          "19 € al mese\nper azienda",
+          "Utenti illimitati, ambiente condiviso e 5 GB. Consumi AI separati."
+        ],
+        [
+          "Corso a ZoWorking\nFino a 10 persone",
+          "1.200 €\nper gruppo",
+          "Due giornate in aula, accesso didattico al software ed esercitazioni."
+        ],
+        [
+          "Corso a ZoWorking\nDa 11 a 15 persone",
+          "1.500 €\nper gruppo",
+          "Lo stesso percorso di due giornate per un gruppo più numeroso."
+        ],
+        [
+          "Consulenza",
+          "700 € al giorno\nMassimo 3 giornate",
+          "Analisi di flussi, fonti e casi adatti alla ricerca documentale AI."
+        ]
+      ],
+      "note": "Le quote del corso si riferiscono al gruppo iscritto, con possibili partecipanti di altre aziende nella stessa classe. Per gruppi più piccoli si valuta un preventivo dedicato. Date e organizzazione vengono comunicate all’iscrizione.\n\nIl canone è mensile: 228 € è il solo equivalente di dodici mesi, senza obbligo di pagamento annuale anticipato. Le ricariche e gli esempi di consumo sono riportati nelle ultime pagine."
+    },
+    {
+      "id": "course",
+      "layout": "article",
+      "title": "Due giornate in aula\nPer capire e fare pratica",
+      "deck": "Il corso si tiene nelle aule ZoWorking. Comprende dodici ore di lezione ed esercitazione, distribuite su due giornate da sei ore, con accesso all’interfaccia AskMyDocs durante le attività.",
+      "section": "Due giornate in aula Per capire e fare pratica",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL CORSO DI BASE AI",
+      "columns": [
+        [
+          {
+            "heading": "Prima giornata",
+            "text": "Funzionamento e limiti dell’AI; differenza tra modelli; token, crediti e consumi; scelta del modello in base al compito. Si impara a formulare richieste chiare e a riconoscere quando una risposta va controllata."
+          },
+          {
+            "heading": "Seconda giornata",
+            "text": "Laboratorio sul software: preparare i testi, organizzare le fonti, fare domande e verificare i riferimenti. Si affrontano dati aziendali, permessi e regole di utilizzo, collegando ogni scelta al lavoro quotidiano."
+          }
+        ],
+        [
+          {
+            "heading": "Il prezzo del gruppo",
+            "text": "1.200 € fino a dieci persone; 1.500 € da undici a quindici. La quota comprende aula, docente, materiali e consumi degli esercizi didattici. Con dieci persone, 1.200 € equivalgono a 120 € a persona per due giorni, cioè 60 € al giorno."
+          },
+          {
+            "heading": "Come si partecipa",
+            "text": "Organizziamo le date e possiamo riunire nella stessa classe persone di aziende diverse. La quota prenota la partecipazione del gruppo, non un’aula esclusiva. Per meno partecipanti si valuta il preventivo in base al gruppo e all’edizione disponibile."
+          }
+        ]
+      ],
+      "callout": "L’accesso didattico al software è compreso nelle due giornate. L’utilizzo ordinario dell’ambiente aziendale segue il canone di 19 € al mese e i consumi effettivi."
+    },
+    {
+      "id": "consulting",
+      "layout": "table",
+      "title": "Capire i flussi\nScegliere dove intervenire",
+      "deck": "La consulenza serve a capire come lavora l’azienda: quali passaggi si ripetono, quali fonti sono disponibili e che cosa conviene rendere consultabile con l’AI, attraverso il RAG.",
+      "section": "Capire i flussi Scegliere dove intervenire",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CONSULENZA SU MISURA",
+      "headers": [
+        "IMPEGNO",
+        "PREZZO",
+        "COME SI DEFINISCE IL LAVORO"
+      ],
+      "column_weights": [
+        0.9,
+        0.8,
+        2.7
+      ],
+      "table_font": 10,
+      "padding": 12,
+      "rows": [
+        [
+          "1 giornata",
+          "700 €",
+          "Un primo flusso circoscritto e le relative fonti"
+        ],
+        [
+          "2 giornate",
+          "1.400 €",
+          "Analisi più articolata e verifica di un caso concreto"
+        ],
+        [
+          "3 giornate",
+          "2.100 €",
+          "Più flussi collegati, priorità e piano operativo"
+        ]
+      ],
+      "note": "Si concordano obiettivo e giornate in base alla complessità effettiva, fino a un massimo di tre. Le descrizioni orientano il preventivo e non garantiscono un numero fisso di processi esaminati. Una giornata vale sette ore complessive, comprese preparazione, analisi e restituzione. Le giornate possono essere consecutive o distribuite, anche in mezze giornate da 350 €.\n\nIl risultato è una mappa dei flussi esaminati, l’elenco delle fonti adatte e dei problemi da risolvere, una proposta di accessi e un piano di prova. Caricamenti sui dati aziendali consumano il credito del team. Integrazioni, bonifica massiva e riscrittura dei manuali richiedono un perimetro specifico."
+    },
+    {
+      "id": "software",
+      "layout": "case",
+      "title": "Un posto per le fonti\nUn metodo per interrogarle",
+      "deck": "AskMyDocs raccoglie i documenti dell’azienda e permette di consultarli con domande e riferimenti alle fonti. Il canone riguarda l’azienda; il credito riguarda le elaborazioni.",
+      "section": "Un posto per le fonti Un metodo per interrogarle",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005",
+        "F-034",
+        "F-036"
+      ],
+      "kicker": "CHE COSA FA IL SOFTWARE",
+      "image": {
+        "path": "public/editorial/archive-day.webp",
+        "height": 130,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "columns": [
+        [
+          {
+            "heading": "Preparare i contenuti",
+            "text": "Si scelgono documenti aggiornati e leggibili. Il testo viene suddiviso in parti e preparato per la ricerca. Questa preparazione iniziale e gli aggiornamenti possono consumare credito AI."
+          },
+          {
+            "heading": "Fare una domanda",
+            "text": "Il sistema cerca normalmente i passaggi pertinenti e li usa per costruire la risposta. Il modello scelto, la quantità di testo e i passaggi necessari determinano il consumo."
+          }
+        ],
+        [
+          {
+            "heading": "Verificare le fonti",
+            "text": "Chi usa lo strumento controlla i riferimenti e riconosce quando la documentazione non basta. Il corso insegna questo metodo; la consulenza lo adatta ai flussi dell’azienda."
+          },
+          {
+            "heading": "Lavorare con il gruppo",
+            "text": "Gli utenti autorizzati condividono l’ambiente e il saldo dell’azienda, con i propri accessi. Non si acquistano licenze per ogni persona. File e derivati rientrano nei 5 GB compresi nel canone."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "conditions",
+      "layout": "article",
+      "title": "Canone, corso e consulenza\nRestano voci distinte",
+      "deck": "Il canone parte dall’attivazione dell’ambiente per uso aziendale. La partecipazione al corso comprende già l’accesso didattico per le due giornate.",
+      "section": "Canone, corso e consulenza Restano voci distinte",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CONDIZIONI E PREVENTIVI",
+      "columns": [
+        [
+          {
+            "heading": "Canone mensile",
+            "text": "19 € al mese per azienda, fatturati anticipatamente. Rinnovo mensile con disdetta prima della scadenza successiva. Utenti illimitati e 5 GB condivisi per file e derivati; maggiore spazio o installazioni dedicate si quotano a parte."
+          },
+          {
+            "heading": "Consumi e controllo",
+            "text": "Il credito è separato e condiviso dal gruppo. Le operazioni possono essere messe in coda. Prima di una lavorazione si indica una stima o un tetto di spesa; il tetto non viene superato senza autorizzazione. I dettagli di ricarica sono in fondo."
+          }
+        ],
+        [
+          {
+            "heading": "Esempio di avvio",
+            "text": "Corso fino a dieci persone 1.200 €, una giornata di consulenza 700 € e primo mese software 19 €: totale 1.919 € + IVA, consumi AI separati. Dai mesi successivi resta il canone di 19 € più l’utilizzo effettivo."
+          },
+          {
+            "heading": "Calendario e ordine",
+            "text": "Date del corso e calendario della consulenza si concordano all’ordine. Corso e consulenza: 50% all’ordine e 50% a completamento. Assistenza tecnica nei feriali tramite referente aziendale. Provider, accessi e trattamento dei dati vengono definiti prima dei caricamenti reali."
+          }
+        ]
+      ],
+      "callout": "Proposta valida fino al 12 dicembre 2026. Il percorso si costruisce sulle persone da formare e sul lavoro da analizzare; non si riacquistano automaticamente corso e consulenza ogni mese."
+    },
+    {
+      "id": "models",
+      "layout": "table",
+      "title": "Modelli recenti\nConsumi diversi",
+      "deck": "Esempi OpenAI della famiglia GPT, Google Gemini e DeepSeek. Le cifre descrivono un budget indicativo per una richiesta ordinaria o estesa; non sono una tariffa fissa per qualunque domanda.",
+      "section": "Modelli recenti Consumi diversi",
+      "source_ids": [
+        "MODELLO-R05",
+        "OR-M1",
+        "OR-M2",
+        "OR-M3",
+        "OR-M4",
+        "OR-M5"
+      ],
+      "feature_ids": [],
+      "kicker": "APPROFONDIMENTO SUI MODELLI",
+      "headers": [
+        "MODELLO",
+        "CREDITI INDICATIVI",
+        "SPESA INDICATIVA"
+      ],
+      "column_weights": [
+        1.7,
+        1.05,
+        1.15
+      ],
+      "table_font": 9.7,
+      "padding": 9,
+      "rows": [
+        [
+          "GPT-6 Luna",
+          "1-2",
+          "0,01-0,02 €"
+        ],
+        [
+          "GPT-6.1 Sol",
+          "8-24",
+          "0,08-0,24 €"
+        ],
+        [
+          "Gemini 3.8 Flash",
+          "4-10",
+          "0,04-0,10 €"
+        ],
+        [
+          "Gemini 4 Carbon",
+          "8-24",
+          "0,08-0,24 €"
+        ],
+        [
+          "DeepSeek V4.1 Flash 1017",
+          "0,3-0,7",
+          "0,003-0,007 €"
+        ]
+      ],
+      "note": "Stime di budget su circa 10.000-30.000 token letti e 1.000-3.000 token prodotti, sommati su tutti i passaggi del modello scelto; uscita comprensiva del ragionamento fatturabile. Sono aggiunte preparazione della domanda e ricerca. Richieste che superano queste ipotesi possono costare di più. Tariffe via API rilevate il 12 novembre 2026; per Gemini includono la promozione in corso, soggetta a variazione. Modelli da verificare e configurare all’attivazione.\n\nUn credito equivale a 0,01 € di utilizzo e si può consumare anche in frazioni. I token sono piccole parti del testo elaborato e non equivalgono ai crediti. I prezzi riguardano i modelli via API; non sono i prezzi degli abbonamenti personali alle applicazioni ChatGPT o Gemini.\n\nIl confronto riguarda il costo a parità di ipotesi, non una classifica di qualità. La scelta si prova sul lavoro reale: un modello più costoso non è automaticamente migliore per ogni richiesta."
+    },
+    {
+      "id": "examples",
+      "layout": "article",
+      "title": "Documenti ed esempi\nPer leggere il credito",
+      "deck": "Le quantità servono a orientare il budget. La preparazione iniziale e le domande successive consumano lo stesso saldo.",
+      "section": "Documenti ed esempi Per leggere il credito",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [
+        "F-005",
+        "F-006"
+      ],
+      "kicker": "DETTAGLI DI UTILIZZO",
+      "columns": [
+        [
+          {
+            "heading": "Che cosa è un documento",
+            "text": "Un documento standard è un riferimento di circa cinque pagine di testo leggibile, circa 2.000 parole. Un’email di 200 parole vale circa un decimo; un manuale di 50 pagine circa dieci documenti standard. Contano testo, formato, immagini e modello: le quantità sono indicative. Una raccolta è un gruppo di documenti sullo stesso argomento, non un’unità di prezzo."
+          },
+          {
+            "heading": "Email e manuali",
+            "text": "Un file solo può contenere poco testo oppure un intero manuale. Per questo il nome del file o il numero di cartelle non definiscono il prezzo. Gli allegati delle email aggiungono contenuto; le email si considerano come testo esportato e importato."
+          }
+        ],
+        [
+          {
+            "heading": "Esempio con testo già leggibile",
+            "text": "100 PDF di cinque pagine di testo e 500 domande con GPT-6 Luna: preparazione stimata circa 0,20 €, domande circa 5-10 €. Totale indicativo di utilizzo 5,20-10,20 €, oltre al canone. La lettura manuale dei file già caricati non consuma credito AI."
+          },
+          {
+            "heading": "Esempio con scansioni",
+            "text": "100 scansioni di cinque pagine e 300 domande con GPT-6 Luna: preparazione con OCR circa 5,20 €, domande circa 3-6 €. Totale indicativo 8,20-11,20 €, oltre al canone. Immagini da interpretare, annotazioni e layout difficili possono aumentare la spesa."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "sources",
+      "layout": "references",
+      "title": "Note e fonti\nDelle stime",
+      "deck": "Tariffe verificate il 12 novembre 2026. Le quantità derivano da ipotesi esplicite di testo elaborato; non sono medie misurate sull’archivio di un cliente.",
+      "section": "Note e fonti Delle stime",
+      "source_ids": [
+        "MODELLO-R05",
+        "OR-M1",
+        "OR-M2",
+        "OR-M3",
+        "OR-M4",
+        "OR-M5",
+        "OR-EMBED",
+        "OR-FEES",
+        "OCR"
+      ],
+      "feature_ids": [],
+      "kicker": "PER APPROFONDIRE",
+      "items": [
+        {
+          "title": "OpenAI GPT-6 Luna",
+          "detail": "Tariffe API: 0,10 USD input e 0,50 USD output per milione di token.",
+          "url": "https://openrouter.ai/openai/gpt-6-luna"
+        },
+        {
+          "title": "OpenAI GPT-6.1 Sol",
+          "detail": "Tariffe API: 2 USD input e 10 USD output per milione di token.",
+          "url": "https://openrouter.ai/openai/gpt-6.1-sol"
+        },
+        {
+          "title": "Google Gemini 3.8 Flash",
+          "detail": "0,75 USD input e 3,75 USD output per milione. Promozione rilevata, soggetta a variazione.",
+          "url": "https://openrouter.ai/google/gemini-3.8-flash"
+        },
+        {
+          "title": "Google Gemini 4 Carbon",
+          "detail": "2 USD input e 10 USD output per milione. Promozione rilevata, soggetta a variazione.",
+          "url": "https://openrouter.ai/google/gemini-4-carbon"
+        },
+        {
+          "title": "DeepSeek V4.1 Flash 1017",
+          "detail": "0,022 USD input e 0,40 USD output per milione di token.",
+          "url": "https://openrouter.ai/deepseek/deepseek-v4.1-flash-1017"
+        },
+        {
+          "title": "Criterio di calcolo",
+          "detail": "Costo AI completo moltiplicato per 2,5; commissioni pertinenti incluse una volta. Cambio 1 USD = 1 EUR come ipotesi prudenziale, non cambio corrente. Nessuno sconto cache assunto; eventuali scritture cache vanno conteggiate."
+        },
+        {
+          "title": "Preparazione e scansioni",
+          "detail": "Embedding 0,02 USD per milione di token, più breve preparazione economica. OCR 4.1: 4 USD per mille pagine, senza annotazioni.",
+          "url": "https://docs.mistral.ai/models/ocr-4-1"
+        },
+        {
+          "title": "Perimetro",
+          "detail": "Funzioni web di ricerca e fonti già verificate; nuovi modelli e nuovo listino da configurare e collaudare. Le immagini sono illustrative. Nessuna inferenza a pagamento eseguita per questo preventivo."
+        },
+        {
+          "title": "Ricariche e credito",
+          "detail": "25 € = 2.500 crediti; 50 € = 5.000; 100 € = 10.000. Crediti senza scadenza, utilizzabili con abbonamento attivo. Preparazione di un documento standard: circa 0,2 crediti; OCR semplice: circa 1 credito per pagina. Stime da affinare su un campione reale."
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "layout": "closing",
+      "title": "Imparare insieme\nApplicarlo al lavoro",
+      "deck": "Due giornate a ZoWorking per acquisire il metodo. Una consulenza proporzionata ai flussi dell’azienda. Un canone chiaro per usare AskMyDocs.\naskmydocs.surfacesrl.com",
+      "section": "Imparare insieme Applicarlo al lavoro",
+      "source_ids": [
+        "OFFERTA-R05",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL PERCORSO DI AVVIO",
+      "image": {
+        "path": "public/editorial/community-day.webp",
+        "height": 260,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "quote": "Il software rende consultabili le fonti. La formazione prepara le persone. La consulenza collega lo strumento al lavoro reale."
+    }
+  ]
+}

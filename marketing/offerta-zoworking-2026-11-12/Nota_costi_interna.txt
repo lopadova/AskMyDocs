@@ -1,0 +1,34 @@
+ASKMYDOCS - NOTA INTERNA REVISIONE 05
+12 novembre 2026
+
+CANONE CONFERMATO
+19 euro al mese per azienda, consumi esclusi, confermato espressamente da Marco. Fatturazione mensile, 228 euro equivalente di dodici mesi. Non attribuire tutto il costo della piattaforma a ciascun cliente.
+Budget comune 1.200 euro/anno più 6 euro di spazio incrementale e un’ora di supporto da 45 euro per azienda/anno, riserva 10%. Avvio tecnico standard ipotetico mezz’ora da 55 euro. Costi di personale e spalmature sono ipotesi, non fatture reali.
+Con dodici mesi incassati servono circa 11 aziende nel primo anno o 9 a rinnovo per coprire il budget condiviso, senza contare margini dei consumi o dei servizi. Le disdette anticipano il rischio di recupero costi.
+
+CORSO CONCORDATO
+Solo nelle aule ZoWorking: 1.200 euro fino a 10 iscritti nel gruppo, 1.500 da 11 a 15; quote indicative e preventivo dedicato per gruppi piccoli. Possibili aziende diverse nella stessa classe, senza promessa di aula esclusiva. La quota è per il gruppo iscritto, non il costo dell’intera classe da ripartire automaticamente tra tutte le aziende.
+Due giornate: proposta di 6 ore di lezione per giorno, 12 totali, più due ore di preparazione. Accesso didattico e consumi degli esercizi compresi nelle due giornate. L’utilizzo ordinario aziendale attiva il canone separato.
+Il gruppo 1-10 a 1.200 euro ha margine ridotto in edizione dedicata con queste ipotesi; raggruppare aziende e verificare i costi aula effettivi prima di scontare. Non moltiplicare i costi comuni per ogni gruppo della medesima edizione.
+Fascia 1-10: ricavo 1200 euro; costo diretto ipotetico con riserva 1023.00; contribuzione 27.00 euro, 2.25% dopo ipotesi di provvigione/incasso.
+Fascia 11-15: ricavo 1500 euro; costo diretto ipotetico con riserva 1111.00; contribuzione 201.50 euro, 13.43% dopo ipotesi di provvigione/incasso.
+
+CONSULENZA
+700 euro per giornata di sette ore complessive, fino a tre giornate, anche distribuite; mezza giornata 350 euro. Con costo ipotetico 55 euro/ora e riserva 10%, contributo per giornata 189 euro dopo provvigione ipotetica 10% e incasso 2,5%.
+
+CONSUMI E MODELLI RECENTI
+Ricariche 25/50/100 euro riportate soltanto in fondo ai documenti. Nessun credito incluso nel canone. Crediti senza scadenza con utilizzo subordinato a canone attivo; supera la condizione di scadenza/proroga della revisione 04.
+Tariffe aggiornate nelle schede OpenRouter dei cinque modelli; GPT-6 Luna usato anche come preprocessore ed esempio economico. Preparazione del documento standard calcolata 0,14 crediti, budget prudente 0,2. Modelli, ragionamento, cache e instradamento cambiano il conto. Le promozioni Gemini non sono garantite in futuro.
+Input e output sono totali di tutte le chiamate del modello scelto. Il ragionamento fatturabile è compreso nel budget output; richieste che lo superano richiedono più credito. Cache automatica OpenAI da disabilitare nel profilo di stima plain input oppure costi di scrittura da valorizzare.
+
+LIMITI E ATTIVAZIONE
+Tariffe e disponibilità possono cambiare; Gemini usa prezzi promozionali rilevati, non sconti permanenti garantiti.
+Nessuna inferenza a pagamento o benchmark reale eseguito. Prezzi unitari verificati e volumi token ipotizzati.
+Tutte le chiamate, OCR, ragionamento, scritture cache e tentativi devono entrare nel costo completo effettivo; non usare ledger locali a zero come prova di gratuità.
+Nuovi modelli, canone, credito frazionario e budget condiviso da configurare e collaudare prima della vendita operativa.
+Contribuzione simulata, non utile netto; sviluppo evolutivo, struttura e imposte esclusi.
+Costi Cloud reali già osservati nell’audit precedente: main prudenziale 48,66 USD nel periodo, ambienti identificati 73,08 USD. Non sono costi per singola azienda. Il budget condiviso è una proposta di lancio, da verificare al crescere del carico.
+Nessun prezzo, software, contatore, canone o dato di produzione è stato modificato. Calcolare e riconciliare costo completo, credito, modelli, quota spazio e rinnovi prima dell’attivazione.
+
+PREVENTIVI
+Corso 1.200 + consulenza 700 + primo mese 19 = 1.919 euro. Con due giornate di consulenza: 2.619. Corso 1.500 + tre giornate 2.100 + mese 19 = 3.619. Consumi AI separati in tutti i casi.

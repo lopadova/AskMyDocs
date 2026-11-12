@@ -1,0 +1,342 @@
+{
+  "product": "AskMyDocs",
+  "revision": "05 ZoWorking",
+  "date": "2026-11-12",
+  "status": "validated",
+  "scope": "Proposta commerciale aggiornata, listino non attivato nel software",
+  "user_confirmed_software_monthly_fee": 19,
+  "parent_commit": "ccf3f7ac53500412762e1db6ba35b48c45b5ca9d",
+  "dirty_product_note": "Modifiche desktop estranee preesistenti preservate; nessun aggiornamento a codice o dati applicativi",
+  "supersedes": "Sostituisce la revisione 04 del solo AskMyDocs. Conferma utente: canone 19 euro al mese per azienda, consumi esclusi. Corso soltanto nelle aule ZoWorking, due fasce e due giornate. Consulenza 700 euro al giorno, massimo tre giorni.",
+  "inputs": [
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/render_editorial.py",
+      "sha256": "588b29383935c09669df5a4ae550a045a8a31eaf6a37a4faa9fe9884a310c34d"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/sorgenti/genera_documenti.py",
+      "sha256": "daa11c78500c7155ee2205243ff3a52a5a5dcc63647b9e1d68f2befc50e6741b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/contenuti.json",
+      "sha256": "90c5f2fec12daae5978832a777a48d7bf052c2134d820d1e2556a20e62ae3d1a"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "sha256": "7ac783ce9a6a8e1b29286bcc9f55c2182c504266c8d8ee1bb52e71fdffaf70cd"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/consegna.json",
+      "sha256": "61f616facd17f808cc14ff6ad052fb76f77c0d2c6991f6e4f4db8c7b37bf1a60"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/build.py",
+      "sha256": "9510ef13dcd45ecee5ca8c8b14ac197f0ff618af3d20cf5310fcbf38ac8fab80"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "sha256": "4a5dc8c0b2178dd684b91c22030697948dec2f81ca5c82eb3abbe4dbea5e7af9"
+    },
+    {
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "sha256": "f9b7af5f6c8155f558fa2044cdbeefd749f3d496ffcecb9bf1a8867a4e6877a8"
+    },
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "sha256": "27dfc86e8b651802bcacc4c0e3bd20cff026f08520eb336508eacfa03b38b098"
+    },
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "sha256": "89ebc86dda3b8d4e081821228bedef1b503753f66f207dae16d4553b412b2755"
+    },
+    {
+      "path": "public/editorial/archive-day.webp",
+      "sha256": "9fc560be44cbee175234397962467c2310f3d778852f987e726d8f723d902e89"
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "sha256": "5dee594d23e3dd7abf9a056e9ac56aaee01884760c288e054dca8925aad124ff"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+      "sha256": "b4271789ec5900cbda4e0440f73971d3f1a1ee61773f12031a2064d99f480966"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+      "sha256": "c981528e454b720b85ccd6e488c2a7103ea9f90c7b0ab300bae8186689990e28"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf",
+      "sha256": "5052a3681354f594059e377ec0372caa7553477eb1dbcfc9aa9be5a1c3019f2b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+      "sha256": "fae7b7ff21acefce18c04d8ab55e10fd804e3c55dbd1897b20de0ca9e6ba063b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+      "sha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "sha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/AskMyDocs_ZoWorking.pdf",
+      "sha256": "02a4710716518e4c0e6157a40033caa931a9d5af6b6c80e74446aa672fc7b2f6"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/AskMyDocs_listino_ZoWorking.docx",
+      "sha256": "e210fa6164416265c356cf4c55b8244ee255f90b0c1044cb3d42120cbfe2e7d1"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/AskMyDocs_per_Lorenzo_ZoWorking.zip",
+      "sha256": "4cce7220485e25e2be2ee818705158397c5e47958635afd7d2b5d5a06f1f13d5"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/Nota_costi_interna.txt",
+      "sha256": "55d626936e59ad19cb817f30f86494d07b8eaad4cef4182e1d80b6c4a155afb9"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/Per_Lorenzo.txt",
+      "sha256": "60ad5cfd3c347ecc7c2a0f489daf62d3d03842bb7275be73fad4ad577f1e5217"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/README.txt",
+      "sha256": "50378573a92195fb9260c77b7b3d86d1bd0e5563070b1243e634e5b21cb8b3c3"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/brochure.json",
+      "sha256": "dfb1684a38b6408839b62522a3605d1d70699a6139afb6847a330dcaf2002186"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/build.py",
+      "sha256": "ffbce2533fcf1727c837f153229b1e34d992e4ebda3688ed99f6f1b61713aa54"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/fonti.json",
+      "sha256": "f8c0eac20737cbf4e27fc6b825842a4dae72666046e7a83b7ba66bbc00bfa61f"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/modello_costi_interno.json",
+      "sha256": "b173a7ecbc26c9861293f89ed2a4390b67005e69ab1a0a1822765d494b6e25ce"
+    },
+    {
+      "path": "marketing/offerta-zoworking-2026-11-12/offerta.json",
+      "sha256": "14bc602b6208bf6b4349ff26f4b2d8eda500c86ef7b550d37424ad9a0d6b210a"
+    }
+  ],
+  "page_map": {
+    "document": {
+      "title": "AskMyDocs listino software corso ZoWorking e consulenza",
+      "subject": "Canone 19 euro e formazione in presenza con consulenza fino a tre giornate",
+      "brand_name": "AskMyDocs",
+      "edition": "12 NOVEMBRE 2026 / REV 05",
+      "header": "ASKMYDOCS / SOFTWARE E FORMAZIONE",
+      "footer_note": "Proposta commerciale · IVA esclusa · Consumi indicativi",
+      "author": "",
+      "source_ids": [
+        "OFFERTA-R05",
+        "MODELLO-R05",
+        "AMD-BRAND"
+      ]
+    },
+    "page_count": 10,
+    "pages": [
+      {
+        "page": 1,
+        "id": "cover",
+        "layout": "cover",
+        "title": "Il software per l’azienda\nLe competenze per usarlo",
+        "section": "Il software per l’azienda Le competenze per usarlo",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 2,
+        "id": "prices",
+        "layout": "table",
+        "title": "I prezzi\nPrima dei dettagli",
+        "section": "I prezzi Prima dei dettagli",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 3,
+        "id": "course",
+        "layout": "article",
+        "title": "Due giornate in aula\nPer capire e fare pratica",
+        "section": "Due giornate in aula Per capire e fare pratica",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 4,
+        "id": "consulting",
+        "layout": "table",
+        "title": "Capire i flussi\nScegliere dove intervenire",
+        "section": "Capire i flussi Scegliere dove intervenire",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 5,
+        "id": "software",
+        "layout": "case",
+        "title": "Un posto per le fonti\nUn metodo per interrogarle",
+        "section": "Un posto per le fonti Un metodo per interrogarle",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-034",
+          "F-036"
+        ]
+      },
+      {
+        "page": 6,
+        "id": "conditions",
+        "layout": "article",
+        "title": "Canone, corso e consulenza\nRestano voci distinte",
+        "section": "Canone, corso e consulenza Restano voci distinte",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 7,
+        "id": "models",
+        "layout": "table",
+        "title": "Modelli recenti\nConsumi diversi",
+        "section": "Modelli recenti Consumi diversi",
+        "source_ids": [
+          "MODELLO-R05",
+          "OR-M1",
+          "OR-M2",
+          "OR-M3",
+          "OR-M4",
+          "OR-M5"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 8,
+        "id": "examples",
+        "layout": "article",
+        "title": "Documenti ed esempi\nPer leggere il credito",
+        "section": "Documenti ed esempi Per leggere il credito",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": [
+          "F-005",
+          "F-006"
+        ]
+      },
+      {
+        "page": 9,
+        "id": "sources",
+        "layout": "references",
+        "title": "Note e fonti\nDelle stime",
+        "section": "Note e fonti Delle stime",
+        "source_ids": [
+          "MODELLO-R05",
+          "OR-M1",
+          "OR-M2",
+          "OR-M3",
+          "OR-M4",
+          "OR-M5",
+          "OR-EMBED",
+          "OR-FEES",
+          "OCR"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 10,
+        "id": "closing",
+        "layout": "closing",
+        "title": "Imparare insieme\nApplicarlo al lavoro",
+        "section": "Imparare insieme Applicarlo al lavoro",
+        "source_ids": [
+          "OFFERTA-R05",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      }
+    ]
+  },
+  "feature_page_map": {
+    "F-001": [
+      5
+    ],
+    "F-005": [
+      5,
+      8
+    ],
+    "F-006": [
+      8
+    ],
+    "F-034": [
+      5
+    ],
+    "F-036": [
+      5
+    ]
+  },
+  "brand_evidence": "Tema, logo, font e immagini della landing riutilizzati con la provenienza verificata delle revisioni precedenti; nessuna nuova immagine generata",
+  "checks": {
+    "all_10_pdf_pages_rendered_viewed_individually_110dpi": true,
+    "all_3_word_pages_rendered_viewed_individually": true,
+    "font_embedding_selectable_text_no_overflow_no_collision": true,
+    "first_prices_then_course_consulting_then_details": true,
+    "topups_only_pdf_page_9_small_text_and_word_page_3_nine_pt": true,
+    "only_two_course_bands_no_overlap": true,
+    "only_zoworking_course_with_software_access": true,
+    "consulting_seven_hundred_max_three_days": true,
+    "models_prices_sources_and_promotions_checked": true,
+    "aggregate_token_reasoning_and_cache_assumptions_recorded": true,
+    "quote_arithmetic_checked": true,
+    "zip_integrity_and_internal_note_exclusion_checked": true,
+    "prior_version_hashes_preserved": true
+  },
+  "limits": [
+    "Tariffe e disponibilità possono cambiare; Gemini usa prezzi promozionali rilevati, non sconti permanenti garantiti.",
+    "Nessuna inferenza a pagamento o benchmark reale eseguito. Prezzi unitari verificati e volumi token ipotizzati.",
+    "Tutte le chiamate, OCR, ragionamento, scritture cache e tentativi devono entrare nel costo completo effettivo; non usare ledger locali a zero come prova di gratuità.",
+    "Nuovi modelli, canone, credito frazionario e budget condiviso da configurare e collaudare prima della vendita operativa.",
+    "Contribuzione simulata, non utile netto; sviluppo evolutivo, struttura e imposte esclusi.",
+    "Le sei ore per giornata di corso sono una proposta organizzativa esplicitata nei documenti.",
+    "Il costo aula è una spalmatura interna ipotetica, non una tariffa ZoWorking verificata con fattura.",
+    "Il corso 1-10 ha margine ridotto in edizione dedicata nelle ipotesi interne; raggruppare iscritti e validare costi prima di scontare.",
+    "La quota software è confermata dall’utente ma le nuove condizioni di billing e credito restano una proposta da attivare."
+  ]
+}

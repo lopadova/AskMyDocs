@@ -1,0 +1,82 @@
+{
+  "revision": "05 ZoWorking",
+  "date": "2026-11-12",
+  "valid_until": "2026-12-12",
+  "tax": "IVA esclusa",
+  "software": {
+    "monthly_per_company": 19,
+    "annual_equivalent": 228,
+    "billed_monthly": true,
+    "users": "illimitati",
+    "storage_gb_shared_files_and_derivatives": 5,
+    "included_ai_credit": 0,
+    "activation": "Canone dall’attivazione dell’ambiente aziendale per uso ordinario; accesso didattico durante il corso incluso nel corso"
+  },
+  "course": {
+    "venue": "Aule ZoWorking",
+    "days": 2,
+    "hours_per_day_assumed": 6,
+    "bands": [
+      {
+        "people_from": 1,
+        "people_to": 10,
+        "group_price": 1200
+      },
+      {
+        "people_from": 11,
+        "people_to": 15,
+        "group_price": 1500
+      }
+    ],
+    "small_groups": "Per meno partecipanti si valuta un preventivo dedicato",
+    "mixed_companies_possible": true,
+    "booking_price_not_exclusive_classroom": true,
+    "included": "Docente, aula, materiali, accesso didattico all’interfaccia AskMyDocs e consumi degli esercizi nelle due giornate"
+  },
+  "consulting": {
+    "price_per_day": 700,
+    "days_range": [
+      1,
+      3
+    ],
+    "hours_per_day_including_preparation": 7,
+    "half_day_price": 350,
+    "may_be_distributed": true
+  },
+  "credits": {
+    "value_eur": 0.01,
+    "topups_eur": [
+      25,
+      50,
+      100
+    ],
+    "expires": false,
+    "usable_with_active_software_subscription": true,
+    "consumption_shared_by_company": true
+  },
+  "standard_document": "Circa cinque pagine di testo leggibile, circa 2.000 parole; un riferimento indicativo, non qualsiasi file",
+  "quotes_excluding_ai_consumption": [
+    {
+      "label": "Avvio fino a 10 persone e 1 giornata di consulenza",
+      "course": 1200,
+      "consulting": 700,
+      "software_first_month": 19,
+      "total": 1919
+    },
+    {
+      "label": "Reparto fino a 10 persone e 2 giornate di consulenza",
+      "course": 1200,
+      "consulting": 1400,
+      "software_first_month": 19,
+      "total": 2619
+    },
+    {
+      "label": "Percorso fino a 15 persone e 3 giornate di consulenza",
+      "course": 1500,
+      "consulting": 2100,
+      "software_first_month": 19,
+      "total": 3619
+    }
+  ],
+  "supersedes": "Sostituisce la revisione 04 del solo AskMyDocs. Conferma utente: canone 19 euro al mese per azienda, consumi esclusi. Corso soltanto nelle aule ZoWorking, due fasce e due giornate. Consulenza 700 euro al giorno, massimo tre giorni."
+}
