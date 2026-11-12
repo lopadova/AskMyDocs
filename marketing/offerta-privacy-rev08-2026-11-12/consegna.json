@@ -1,0 +1,90 @@
+{
+  "revision": "08 privacy",
+  "status": "validated",
+  "pdf_pages_viewed": 12,
+  "word_pages_viewed": 5,
+  "all_pages_visually_reviewed": true,
+  "artifacts": [
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/update.py",
+      "sha256": "c9938c3b37657dd565a8006a30f98193d78064f89d89a9d43075235136256436"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/Per_Lorenzo.txt",
+      "sha256": "3d9daf20c2a35a4cc5b4cf68348a84cc14baf988855b9fbcd687c03ccc8e4c1a"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/Nota_privacy_interna.txt",
+      "sha256": "06856d09ebff0a0b62fe6e6e2cbeadb4b8712e8a93eb9d6e389d52a99e20bbd8"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/fonti.json",
+      "sha256": "ca37cd8eb805b298acec95828b649f71ee49477163ba19f269b831a96ec22137"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/brochure.json",
+      "sha256": "eafe58112fed7329fbd3d4c94da2c2dbfef2a0783ac0522114cf0d3c88c5f01e"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/render_editorial.py",
+      "sha256": "c6d0cbe221d700fdc727c9191acbe941692fe78a82237d907581291ab0cd0641"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/offerta.json",
+      "sha256": "d942b39c4eb2d0008313b95126a77586decd636572c3875cb8474b9b5673fdfe"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/AskMyDocs_pacchetti_e_avvio.pdf",
+      "sha256": "2e7462b57231f9111e6673a0dbae4770bd98f7d59f4a2562de1d77e3e82a529c"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/.gitignore",
+      "sha256": "7447d4f68e7a2719f5c8292a58d9fd67830c1aeaa41145df786d63b2873faad9"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/Nota_costi_interna.txt",
+      "sha256": "8e5ebe1dc6114595feab600f007a157aab178b4b777a5807f4d10dff6b91cfb4"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/AskMyDocs_listino_pacchetti.docx",
+      "sha256": "e599c0e617bf6e9cba277127217318bb4da39427834ffb09ba9edda2c2672083"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/README.txt",
+      "sha256": "33dfd098e4bb6347dd8c7fffe5fa7e460de70b922f8f0a4925e6fd8919272e20"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/modello_costi_interno.json",
+      "sha256": "d4c1addfe663cd8f67fab9d4806a93d41788fe06abd83b7eb30fcb6aa383b1d2"
+    },
+    {
+      "path": "/Users/marco/www/AskMyDocsDev/marketing/offerta-privacy-rev08-2026-11-12/AskMyDocs_per_Lorenzo_privacy.zip",
+      "sha256": "1ca352a2159e4baf176f9cefbe1c7075ffae9cbf6e98bc0d23596ce0a080a805"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "config/kb.php",
+      "sha256": "ea09410d13b7dcd66a9346b79ddadadfd412b7544568b47829dbdaf8cac9e3ca"
+    },
+    {
+      "path": "app/Services/Kb/Pii/ChunkRedactor.php",
+      "sha256": "b542fc0987a588a82d239568712edaf06450bf944132a954460b68976ee674f7"
+    },
+    {
+      "path": "app/Services/Chat/ChatInputRedactor.php",
+      "sha256": "371aba4d74e901ab7fd8c1840c2c1db9a12c72bbc699d53b654e623753ccadee"
+    },
+    {
+      "path": "marketing/offerta-pacchetti-rev07-2026-11-12/build.py",
+      "sha256": "7f9a044134b60af44d7796d3408d9835e3f1351d2ead3cf59d85ec7b535fa538"
+    }
+  ],
+  "limits": [
+    "Stato dei filtri live non verificato; configurabili e default OFF",
+    "Nessuna conformità normativa certificata",
+    "OCR remoto può ricevere originali prima dei filtri",
+    "Server proprio è scenario da dimensionare; budget 400 euro ipotetico",
+    "Prezzi commerciali invariati"
+  ]
+}
