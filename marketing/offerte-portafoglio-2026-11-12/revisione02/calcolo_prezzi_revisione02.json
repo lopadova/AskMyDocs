@@ -1,0 +1,911 @@
+{
+  "revision": "02",
+  "date": "2026-11-12",
+  "currency": "EUR",
+  "tax": "IVA esclusa",
+  "first_year_total": {
+    "AskMyDocs": [
+      5200,
+      10500,
+      17900
+    ],
+    "Portale GDPR": [
+      3200,
+      5900,
+      9500
+    ],
+    "Oraculi": [
+      3400,
+      7100,
+      13000
+    ],
+    "WearFrame": [
+      4300,
+      8100,
+      13900
+    ]
+  },
+  "first_year_service_excluding_wearframe_credit": {
+    "AskMyDocs": [
+      5200,
+      10500,
+      17900
+    ],
+    "Portale GDPR": [
+      3200,
+      5900,
+      9500
+    ],
+    "Oraculi": [
+      3400,
+      7100,
+      13000
+    ],
+    "WearFrame": [
+      3900,
+      6500,
+      9900
+    ]
+  },
+  "renewals": {
+    "AskMyDocs": [
+      2300,
+      5100,
+      9400
+    ],
+    "Portale GDPR": [
+      1200,
+      2200,
+      3600
+    ],
+    "Oraculi": [
+      1500,
+      3100,
+      6500
+    ],
+    "WearFrame": [
+      1900,
+      2900,
+      4500
+    ]
+  },
+  "renewal_note": "WearFrame: sola quota fissa, consumo separato. Altri prodotti: quote AI delle schede incluse.",
+  "training_seats": [
+    2,
+    4,
+    6
+  ],
+  "training_value": [
+    640,
+    1280,
+    1920
+  ],
+  "training_cost_per_seat": 132.5,
+  "maintenance": [
+    110,
+    220,
+    440
+  ],
+  "cost_inputs": {
+    "AskMyDocs": {
+      "hours": [
+        18,
+        32,
+        52
+      ],
+      "cloud": [
+        720,
+        1440,
+        2400
+      ],
+      "ai": [
+        240,
+        720,
+        1440
+      ],
+      "support": [
+        4,
+        8,
+        16
+      ]
+    },
+    "Portale GDPR": {
+      "hours": [
+        12,
+        22,
+        36
+      ],
+      "cloud": [
+        360,
+        600,
+        960
+      ],
+      "ai": [
+        0,
+        0,
+        0
+      ],
+      "support": [
+        4,
+        8,
+        12
+      ]
+    },
+    "Oraculi": {
+      "hours": [
+        12,
+        24,
+        40
+      ],
+      "cloud": [
+        360,
+        600,
+        1080
+      ],
+      "ai": [
+        120,
+        480,
+        1440
+      ],
+      "support": [
+        4,
+        8,
+        12
+      ]
+    },
+    "WearFrame": {
+      "hours": [
+        12,
+        20,
+        30
+      ],
+      "cloud": [
+        720,
+        960,
+        1440
+      ],
+      "ai": [
+        0,
+        0,
+        0
+      ],
+      "support": [
+        4,
+        8,
+        12
+      ]
+    }
+  },
+  "fixed_service_cost_results": {
+    "AskMyDocs": [
+      {
+        "first_cost": 2755.5,
+        "annual_cost": 1375.0,
+        "first_margin_pct": 37.00961538461539,
+        "renewal_margin_pct": 30.217391304347824
+      },
+      {
+        "first_cost": 5533.0,
+        "annual_cost": 3014.0,
+        "first_margin_pct": 37.304761904761904,
+        "renewal_margin_pct": 30.901960784313726
+      },
+      {
+        "first_cost": 9520.5,
+        "annual_cost": 5500.0,
+        "first_margin_pct": 36.812849162011176,
+        "renewal_margin_pct": 31.48936170212766
+      }
+    ],
+    "Portale GDPR": [
+      {
+        "first_cost": 1732.5,
+        "annual_cost": 715.0,
+        "first_margin_pct": 35.859375,
+        "renewal_margin_pct": 30.416666666666668
+      },
+      {
+        "first_cost": 3212.0,
+        "annual_cost": 1298.0,
+        "first_margin_pct": 35.559322033898304,
+        "renewal_margin_pct": 31.0
+      },
+      {
+        "first_cost": 5186.5,
+        "annual_cost": 2134.0,
+        "first_margin_pct": 35.40526315789474,
+        "renewal_margin_pct": 30.72222222222222
+      }
+    ],
+    "Oraculi": [
+      {
+        "first_cost": 1864.5,
+        "annual_cost": 847.0,
+        "first_margin_pct": 35.161764705882355,
+        "renewal_margin_pct": 33.53333333333333
+      },
+      {
+        "first_cost": 3861.0,
+        "annual_cost": 1826.0,
+        "first_margin_pct": 35.61971830985915,
+        "renewal_margin_pct": 31.096774193548388
+      },
+      {
+        "first_cost": 7144.5,
+        "annual_cost": 3850.0,
+        "first_margin_pct": 35.042307692307695,
+        "renewal_margin_pct": 30.76923076923077
+      }
+    ],
+    "WearFrame": [
+      {
+        "first_cost": 2128.5,
+        "annual_cost": 1111.0,
+        "first_margin_pct": 35.42307692307692,
+        "renewal_margin_pct": 31.526315789473685
+      },
+      {
+        "first_cost": 3487.0,
+        "annual_cost": 1694.0,
+        "first_margin_pct": 36.353846153846156,
+        "renewal_margin_pct": 31.586206896551722
+      },
+      {
+        "first_cost": 5351.5,
+        "annual_cost": 2662.0,
+        "first_margin_pct": 35.94444444444444,
+        "renewal_margin_pct": 30.844444444444445
+      }
+    ]
+  },
+  "technical_hourly_cost": 55,
+  "support_hourly_cost": 45,
+  "cost_reserve_pct": 10,
+  "hypothetical_commission_pct": 10,
+  "wallet_collection_cost_pct_assumption": 2.5,
+  "wearframe": {
+    "pricing_model": "quota fissa servizio con corso + credito euro a consumo per risultato finale",
+    "initial_credit": [
+      400,
+      1600,
+      4000
+    ],
+    "profiles": [
+      {
+        "profile": "economico",
+        "cost_per_final_result": 0.15,
+        "selling_price_per_final_result": 0.25,
+        "contribution_per_result": 0.05375,
+        "contribution_pct": 21.5
+      },
+      {
+        "profile": "foto_diretta",
+        "cost_per_final_result": 0.6,
+        "selling_price_per_final_result": 0.8,
+        "contribution_per_result": 0.04,
+        "contribution_pct": 5.0
+      },
+      {
+        "profile": "flusso_base",
+        "cost_per_final_result": 0.75,
+        "selling_price_per_final_result": 1.0,
+        "contribution_per_result": 0.05,
+        "contribution_pct": 5.0
+      },
+      {
+        "profile": "flusso_complesso",
+        "cost_per_final_result": 1.5,
+        "selling_price_per_final_result": 2.0,
+        "contribution_per_result": 0.1,
+        "contribution_pct": 5.0
+      }
+    ],
+    "examples": [
+      {
+        "tier": "Start",
+        "wallet": 400,
+        "photo_equivalent": 500,
+        "flow_2eur_equivalent": 200,
+        "first_year_total": 4300,
+        "first_year_full_credit_cost": 2468.5,
+        "first_margin_pct_if_credit_used": 32.593023255813954,
+        "renewal_fixed_plus_same_credit": 2300,
+        "renewal_margin_pct_if_credit_used": 26.91304347826087
+      },
+      {
+        "tier": "Business",
+        "wallet": 1600,
+        "photo_equivalent": 2000,
+        "flow_2eur_equivalent": 800,
+        "first_year_total": 8100,
+        "first_year_full_credit_cost": 4847.0,
+        "first_margin_pct_if_credit_used": 30.160493827160494,
+        "renewal_fixed_plus_same_credit": 4500,
+        "renewal_margin_pct_if_credit_used": 22.133333333333333
+      },
+      {
+        "tier": "Premium",
+        "wallet": 4000,
+        "photo_equivalent": 5000,
+        "flow_2eur_equivalent": 2000,
+        "first_year_total": 13900,
+        "first_year_full_credit_cost": 8751.5,
+        "first_margin_pct_if_credit_used": 27.03956834532374,
+        "renewal_fixed_plus_same_credit": 8500,
+        "renewal_margin_pct_if_credit_used": 18.68235294117647
+      }
+    ],
+    "topup_amounts": [
+      100,
+      500,
+      1000
+    ],
+    "cost_source": "Indicazione operativa Marco, non media fatture misurata",
+    "intermediate_images": "incluse nel prezzo preventivato per il flusso, nessun doppio conteggio",
+    "counting_status": "da configurare e collaudare prima della consegna; controllo servizio gestito se necessario"
+  },
+  "ask_standard_reply_quota": [
+    2000,
+    8000,
+    16000
+  ],
+  "variants_order": [
+    "online_shared",
+    "coworking",
+    "online_private",
+    "onsite_local"
+  ],
+  "variant_results": {
+    "AskMyDocs": [
+      [
+        {
+          "price": 5040,
+          "direct_cost": 2700.5,
+          "margin_pct": 36.41865079365079
+        },
+        {
+          "price": 5200,
+          "direct_cost": 2755.5,
+          "margin_pct": 37.00961538461539
+        },
+        {
+          "price": 5960,
+          "direct_cost": 3410.0,
+          "margin_pct": 32.785234899328856
+        },
+        {
+          "price": 6610,
+          "direct_cost": 3597.0,
+          "margin_pct": 35.58245083207262
+        }
+      ],
+      [
+        {
+          "price": 10180,
+          "direct_cost": 5423.0,
+          "margin_pct": 36.72888015717092
+        },
+        {
+          "price": 10500,
+          "direct_cost": 5533.0,
+          "margin_pct": 37.304761904761904
+        },
+        {
+          "price": 10620,
+          "direct_cost": 5896.0,
+          "margin_pct": 34.48210922787194
+        },
+        {
+          "price": 11270,
+          "direct_cost": 6083.0,
+          "margin_pct": 36.024844720496894
+        }
+      ],
+      [
+        {
+          "price": 17420,
+          "direct_cost": 9355.5,
+          "margin_pct": 36.29448909299656
+        },
+        {
+          "price": 17900,
+          "direct_cost": 9520.5,
+          "margin_pct": 36.812849162011176
+        },
+        {
+          "price": 17380,
+          "direct_cost": 9592.0,
+          "margin_pct": 34.81012658227848
+        },
+        {
+          "price": 18030,
+          "direct_cost": 9779.0,
+          "margin_pct": 35.76261785912368
+        }
+      ]
+    ],
+    "Portale GDPR": [
+      [
+        {
+          "price": 3040,
+          "direct_cost": 1677.5,
+          "margin_pct": 34.81907894736842
+        },
+        {
+          "price": 3200,
+          "direct_cost": 1732.5,
+          "margin_pct": 35.859375
+        },
+        {
+          "price": 3960,
+          "direct_cost": 2387.0,
+          "margin_pct": 29.72222222222222
+        },
+        {
+          "price": 4610,
+          "direct_cost": 2574.0,
+          "margin_pct": 34.164859002169194
+        }
+      ],
+      [
+        {
+          "price": 5580,
+          "direct_cost": 3102.0,
+          "margin_pct": 34.40860215053763
+        },
+        {
+          "price": 5900,
+          "direct_cost": 3212.0,
+          "margin_pct": 35.559322033898304
+        },
+        {
+          "price": 6020,
+          "direct_cost": 3575.0,
+          "margin_pct": 30.614617940199334
+        },
+        {
+          "price": 6670,
+          "direct_cost": 3762.0,
+          "margin_pct": 33.59820089955023
+        }
+      ],
+      [
+        {
+          "price": 9020,
+          "direct_cost": 5021.5,
+          "margin_pct": 34.329268292682926
+        },
+        {
+          "price": 9500,
+          "direct_cost": 5186.5,
+          "margin_pct": 35.40526315789474
+        },
+        {
+          "price": 8980,
+          "direct_cost": 5258.0,
+          "margin_pct": 31.447661469933184
+        },
+        {
+          "price": 9630,
+          "direct_cost": 5445.0,
+          "margin_pct": 33.45794392523364
+        }
+      ]
+    ],
+    "Oraculi": [
+      [
+        {
+          "price": 3240,
+          "direct_cost": 1809.5,
+          "margin_pct": 34.151234567901234
+        },
+        {
+          "price": 3400,
+          "direct_cost": 1864.5,
+          "margin_pct": 35.161764705882355
+        },
+        {
+          "price": 4160,
+          "direct_cost": 2519.0,
+          "margin_pct": 29.447115384615383
+        },
+        {
+          "price": 4810,
+          "direct_cost": 2706.0,
+          "margin_pct": 33.74220374220374
+        }
+      ],
+      [
+        {
+          "price": 6780,
+          "direct_cost": 3751.0,
+          "margin_pct": 34.67551622418879
+        },
+        {
+          "price": 7100,
+          "direct_cost": 3861.0,
+          "margin_pct": 35.61971830985915
+        },
+        {
+          "price": 7220,
+          "direct_cost": 4224.0,
+          "margin_pct": 31.49584487534626
+        },
+        {
+          "price": 7870,
+          "direct_cost": 4411.0,
+          "margin_pct": 33.95171537484117
+        }
+      ],
+      [
+        {
+          "price": 12520,
+          "direct_cost": 6979.5,
+          "margin_pct": 34.25319488817891
+        },
+        {
+          "price": 13000,
+          "direct_cost": 7144.5,
+          "margin_pct": 35.042307692307695
+        },
+        {
+          "price": 12480,
+          "direct_cost": 7216.0,
+          "margin_pct": 32.17948717948718
+        },
+        {
+          "price": 13130,
+          "direct_cost": 7403.0,
+          "margin_pct": 33.61766945925362
+        }
+      ]
+    ],
+    "WearFrame": [
+      [
+        {
+          "price": 4140,
+          "direct_cost": 2413.5,
+          "margin_pct": 31.702898550724637
+        },
+        {
+          "price": 4300,
+          "direct_cost": 2468.5,
+          "margin_pct": 32.593023255813954
+        },
+        {
+          "price": 5060,
+          "direct_cost": 3123.0,
+          "margin_pct": 28.280632411067195
+        },
+        {
+          "price": 5710,
+          "direct_cost": 3310.0,
+          "margin_pct": 32.03152364273205
+        }
+      ],
+      [
+        {
+          "price": 7780,
+          "direct_cost": 4737.0,
+          "margin_pct": 29.11311053984576
+        },
+        {
+          "price": 8100,
+          "direct_cost": 4847.0,
+          "margin_pct": 30.160493827160494
+        },
+        {
+          "price": 8220,
+          "direct_cost": 5210.0,
+          "margin_pct": 26.618004866180048
+        },
+        {
+          "price": 8870,
+          "direct_cost": 5397.0,
+          "margin_pct": 29.15445321307779
+        }
+      ],
+      [
+        {
+          "price": 13420,
+          "direct_cost": 8586.5,
+          "margin_pct": 26.017138599105813
+        },
+        {
+          "price": 13900,
+          "direct_cost": 8751.5,
+          "margin_pct": 27.03956834532374
+        },
+        {
+          "price": 13380,
+          "direct_cost": 8823.0,
+          "margin_pct": 24.05829596412556
+        },
+        {
+          "price": 14030,
+          "direct_cost": 9010.0,
+          "margin_pct": 25.78047042052744
+        }
+      ]
+    ]
+  },
+  "stress_25pct_cloud_ai_maintenance": {
+    "AskMyDocs": [
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 31.35096153846154,
+        "renewal_margin_pct": 17.42391304347826
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 31.071428571428573,
+        "renewal_margin_pct": 18.068627450980394
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 30.237430167597765,
+        "renewal_margin_pct": 18.96808510638298
+      }
+    ],
+    "Portale GDPR": [
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 31.8203125,
+        "renewal_margin_pct": 19.645833333333332
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 31.73728813559322,
+        "renewal_margin_pct": 20.75
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 31.352631578947367,
+        "renewal_margin_pct": 20.02777777777778
+      }
+    ],
+    "Oraculi": [
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 30.389705882352942,
+        "renewal_margin_pct": 22.716666666666665
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 30.58450704225352,
+        "renewal_margin_pct": 19.56451612903226
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 28.78076923076923,
+        "renewal_margin_pct": 18.246153846153845
+      }
+    ],
+    "WearFrame": [
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 29.57051282051282,
+        "renewal_margin_pct": 19.513157894736842
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 31.361538461538462,
+        "renewal_margin_pct": 20.396551724137932
+      },
+      {
+        "cost_increase_pct": 25,
+        "first_margin_pct": 30.72222222222222,
+        "renewal_margin_pct": 19.355555555555554
+      }
+    ]
+  },
+  "bundle": {
+    "first_year_total": 26400,
+    "wearframe_credit_included": 1600,
+    "renewal_fixed": 13200,
+    "fixed_service_first_cost": 13376.0,
+    "annual_fixed_cost": 7832.0,
+    "renewal_plus_same_credit": 14800
+  },
+  "actual_cost_status": {
+    "WearFrame": "Cloud osservato; costo completo per output fornito da Marco",
+    "Oraculi": "Cloud stage osservato, non benchmark produzione",
+    "AskMyDocs": "Consuntivo Surface verificato; cluster DB condiviso main/develop; chiave AI locale non attribuita a produzione",
+    "Portale GDPR": "Consuntivo produzione e staging verificato; fattura Surface non riconciliata"
+  },
+  "sources": [
+    {
+      "id": "M01",
+      "title": "Chatbase",
+      "url": "https://www.chatbase.co/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Hobby 40 USD/mese, Basic 150, Business 500; con annuale equivalenti 32, 120, 400. Crediti e membri del workspace non equivalgono agli utenti finali.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M02",
+      "title": "Dify Cloud",
+      "url": "https://dify.ai/pricing/dify-cloud",
+      "checked_at": "2026-11-12",
+      "supports": "Professional 59 USD/mese o 590 USD/anno, 500 documenti e 5 GB; Team 159 USD/mese. Crediti modello e quota documentale distinti.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M03",
+      "title": "Compliance GDPR",
+      "url": "https://compliancegdpr.it/software-privacy/",
+      "checked_at": "2026-11-12",
+      "supports": "Standard 270 €/anno, Premium 510 €/anno, IVA esclusa; una azienda; configurazione autonoma o assistenza separata.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M04",
+      "title": "PrivacyLab GDPR",
+      "url": "https://www.privacylab.it/IT/14/Come-Funziona/",
+      "checked_at": "2026-11-12",
+      "supports": "Base 430 €/anno oltre IVA, una partita IVA; moduli aggiuntivi separati.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M05",
+      "title": "MoodleCloud",
+      "url": "https://www.moodlecloud.com/product-specifications/",
+      "checked_at": "2026-11-12",
+      "supports": "Pagina in EUR: 150 €/anno per 50 utenti, 240 per 100, 440 per 200. Il fornitore specifica addebito in AUD: importi EUR indicativi e variabili.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M06",
+      "title": "TalentLMS",
+      "url": "https://www.talentlms.com/prices",
+      "checked_at": "2026-11-12",
+      "supports": "Configurazione iniziale mostrata: Core 119 USD/mese per 1-40 utenti; Grow 229 per 1-70. Pagina con selettore annuale/mensile; verificare ciclo al checkout, non assumere lo stesso prezzo per ogni soglia.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M07",
+      "title": "Pebblely",
+      "url": "https://pebblely.com/pricing/",
+      "checked_at": "2026-11-12",
+      "supports": "Basic 19 USD/mese per 200 immagini/mese; Pro 39 per 500, fatturazione mensile. È software da usare in autonomia.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M08",
+      "title": "Photoroom API",
+      "url": "https://www.photoroom.com/api/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "FAQ: chiamata Basic 0,02 USD/immagine e Plus 0,10 USD/immagine. API e abbonamento app sono separati; non è il prezzo di una fotografia rifinita.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M09",
+      "title": "Kiwa Idea",
+      "url": "https://www.kiwa.com/it/it/servizi/formazione/ai-per-il-business-fondamenti-operativi/",
+      "checked_at": "2026-11-12",
+      "supports": "Corso online 8 ore, 380 € standard oppure 300 € clienti Kiwa, oltre IVA, per partecipante.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M10",
+      "title": "SpaccioAI",
+      "url": "https://spaccio.ai/corsi/base/",
+      "checked_at": "2026-11-12",
+      "supports": "Corso base in aula 390 € a persona, 7 ore effettive in una giornata; 10 posti. Regime IVA non chiarito nella pagina: non normalizzato al netto.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M11",
+      "title": "Villa Modena Coworking",
+      "url": "https://villamodena.org/servizi-costi-coworking/",
+      "checked_at": "2026-11-12",
+      "supports": "Sala formazione fino a 12 persone e docente, 150 €/giornata o 90 €/mezza giornata, oltre IVA. È un riferimento di costo, non una sala già prenotata.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M12",
+      "title": "Commissione europea",
+      "url": "https://digital-strategy.ec.europa.eu/en/faqs/ai-literacy-questions-answers",
+      "checked_at": "2026-11-12",
+      "supports": "Alfabetizzazione AI collegata a persone, contesto e rischio; nessun corso unico o certificato che attribuisca automaticamente conformità.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "M13",
+      "title": "WearFrame sito da identificare con certezza",
+      "url": "https://wearframe.net/",
+      "checked_at": "2026-11-12",
+      "supports": "Il runtime locale identifica WearFrame.net; il sito pubblico non ha restituito testo leggibile. I prezzi del dominio wearframe.com non sono attribuiti al nostro prodotto, non essendo stata accertata la stessa identità commerciale.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "C01",
+      "title": "Laravel Cloud prezzi",
+      "url": "https://laravel.com/cloud/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Piani di piattaforma più consumo; componenti compute, database, code e cache. I dati privati di utilizzo sono documentati separatamente nell’audit.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "C02",
+      "title": "Black Forest Labs prezzi",
+      "url": "https://bfl.ai/pricing?category=flux.2",
+      "checked_at": "2026-11-12",
+      "supports": "FLUX.2 Pro: primo MP 0,03 USD, successivi 0,015, riferimenti 0,015/MP; il costo dipende da risoluzione e riferimenti.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "C03",
+      "title": "Google AI Studio prezzi",
+      "url": "https://aistudio.google.com/docs/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Gemini 3.1 Flash Image: output 1K 0,067 USD e 2K 0,101 USD, oltre input. Non attribuito automaticamente alle rotte OpenRouter o ai preview.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "C04",
+      "title": "OpenAI GPT 4o mini",
+      "url": "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+      "checked_at": "2026-11-12",
+      "supports": "Riferimento 0,15 USD input e 0,60 USD output per milione di token, usato soltanto per una simulazione dichiarata.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "C05",
+      "title": "OpenRouter prezzi",
+      "url": "https://openrouter.ai/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Commissione acquisto crediti Standard 5,5%, Business 8%; distinta dal costo inferenza del singolo modello.",
+      "limits": "Confronto non omogeneo con servizio assistito"
+    },
+    {
+      "id": "R02-C01",
+      "url": "https://laravel.com/cloud/docs/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Upstash 250 MB 5 USD, poi 10 dal 30 novembre; dismissione 31 agosto 2027; piano piattaforma separato"
+    },
+    {
+      "id": "R02-C02",
+      "url": "https://aistudio.google.com/docs/pricing#gemini-3.1-flash-image",
+      "checked_at": "2026-11-12",
+      "supports": "Output 2K 0,101 USD, input e ragionamento distinti"
+    },
+    {
+      "id": "R02-C03",
+      "url": "https://openrouter.ai/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Commissioni acquisto crediti Standard 5,5%, Business 8%; non costo completo per output"
+    },
+    {
+      "id": "R02-P01",
+      "path": "sorgenti/audit_costi_2026-11-12.json",
+      "checked_at": "2026-11-12",
+      "supports": "Consumi Cloud osservati e limiti dei registri locali"
+    },
+    {
+      "id": "R02-P02",
+      "private_email_id": "1a1cd3327c7415c3",
+      "invoice": "LAR-D623-202611-216896",
+      "checked_at": "2026-11-12",
+      "supports": "Fattura personale 213,66 USD e riscontro compute tramite ID; estrazione parziale, non attribuzione intera fattura"
+    },
+    {
+      "id": "R02-P03",
+      "private_email_id": "1a1c0cdeef8a2f87",
+      "checked_at": "2026-11-12",
+      "supports": "Surface ospita Ask My Docs main e gdpr-facile production; nessun costo nel riepilogo"
+    },
+    {
+      "id": "R02-P04",
+      "path": "docs/handoff/agent-cloud-followup-queue.md",
+      "checked_at": "2026-11-12",
+      "supports": "Worker develop AskMyDocs 8,84–220,92 USD di configurazione al 29 ottobre, non fattura produzione"
+    },
+    {
+      "id": "R02-P05",
+      "path": "revisione02/audit_costi_verificati.json",
+      "checked_at": "2026-11-12",
+      "supports": "Consuntivi Surface e input costi per risultato forniti da Marco"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "checked_at": "2026-11-12",
+  "currency": "USD",
+  "method": "Sola lettura di Cloud Usage e collegamenti delle risorse negli ambienti; nessuna modifica o generazione AI a pagamento",
+  "surface": {
+    "url": "https://cloud.laravel.com/org/surface/usage?period=1",
+    "period_label": "Oct 9 - Nov 8 Growth",
+    "period_from": "2026-10-09",
+    "period_to_inclusive": "2026-11-08",
+    "organization_usage_total": 146.33,
+    "AskMyDocs": {
+      "application_all_environments": 39.35,
+      "application_main": 17.88,
+      "database_cluster_shared_main_develop": 24.12,
+      "cache_main": 6.0,
+      "cache_develop": 2.04,
+      "bucket_main": 0.66,
+      "bucket_develop": 0.91,
+      "all_identified_resources_total": 73.08,
+      "production_with_full_shared_database_allocated": 48.66,
+      "production_database_share_unavailable": true,
+      "main_revision_observed": "3db1573eaabbec3f005e1ee71bc4bc4a728d3466",
+      "main_environment_id": "env-a213e6e8-f397-4d9a-a730-0361351da7ab",
+      "database_cluster_id": "purple-leaf-19632635"
+    },
+    "Portale GDPR": {
+      "application_all_environments": 14.0,
+      "application_production": 7.0,
+      "database_production": 8.33,
+      "database_staging": 8.34,
+      "cache_production": 6.0,
+      "cache_staging": 6.0,
+      "buckets": 0.0,
+      "production_total": 21.33,
+      "staging_total": 21.34,
+      "all_identified_resources_total": 42.67,
+      "production_revision_observed": "3ab5e0bfe988d6b65cd45f0d7d75889fad4da162",
+      "production_environment_id": "env-a2b4cd27-2db0-4464-89c6-e4b2893f6280"
+    },
+    "excludes": ["piano organizzazione e relativi crediti", "imposte", "provider AI", "lavoro umano", "servizi non attribuiti"],
+    "fiscal_invoice_reconciled": false,
+    "billing_not_available_in_visible_settings": true,
+    "authentication": "Accesso inizialmente rifiutato dal controllo automatico sulla scelta dell'account. Successivo intervento manuale nel browser: osservata sessione Surface autenticata, quindi proseguita soltanto la lettura autorizzata."
+  },
+  "personal_organization": {
+    "period_from": "2026-10-10",
+    "period_to": "2026-11-09",
+    "WearFrame_identified_cloud_subtotal": 55.70,
+    "Oraculi_stage_identified_cloud_subtotal": 23.85,
+    "invoice_number": "LAR-D623-202611-216896",
+    "invoice_total_all_products": 213.66,
+    "invoice_extraction_partial": true,
+    "invoice_compute_matches": {"WearFrame_main": 33.85, "Oraculi": 3.91}
+  },
+  "openrouter_local_askmydocs_key": {
+    "checked_at": "2026-11-12T15:30:38Z",
+    "endpoint": "GET https://openrouter.ai/api/v1/key",
+    "http_status": 200,
+    "usage_cumulative": 81.360297143,
+    "usage_monthly": 0.150827639,
+    "usage_weekly": 0,
+    "byok_usage": 0,
+    "production_identity_verified": false,
+    "exclusive_product_attribution_verified": false,
+    "credentials_recorded": false
+  },
+  "wearframe_cost_input": {
+    "source": "Indicazione operativa di Marco nel messaggio del 12 novembre 2026",
+    "currency": "EUR",
+    "unit": "risultato finale comprendente i passaggi intermedi del flusso",
+    "simple_min": 0.15,
+    "photographic_direct_max": 0.60,
+    "complex_flow_max": 1.50,
+    "user_requested_photographic_selling_range": [0.70, 0.80],
+    "provider_invoice_average_measured": false
+  }
+}

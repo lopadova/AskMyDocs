@@ -1,0 +1,67 @@
+{
+  "revision": "02",
+  "date": "2026-11-12",
+  "artifacts": [
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/Costi_e_sostenibilita_revisione02.docx",
+      "sha256": "678fac0e2b896836eece71b646460284c4be98020489d2e26ff266ed455c9888",
+      "bytes": 48198,
+      "pages": null
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/Costi_e_sostenibilita_revisione02.pdf",
+      "sha256": "dbf811e570441a6ba9b1840b487dc1edaef1e281c51b920ed488b77d9588e979",
+      "bytes": 196064,
+      "pages": 8
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/Preventivi_Lorenzo_revisione02.docx",
+      "sha256": "2fa87e69518ef3ec3368d9ec8b9156ec33187ef2e609401d40b3e25554255381",
+      "bytes": 55558,
+      "pages": null
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/Preventivi_Lorenzo_revisione02.pdf",
+      "sha256": "97b4a2d76f40ae756cdb8eb67119fce5cac9d21b4d23645cf121c2c1e81ca7c7",
+      "bytes": 393215,
+      "pages": 16
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "sha256": "4a5dc8c0b2178dd684b91c22030697948dec2f81ca5c82eb3abbe4dbea5e7af9",
+      "bytes": 3292,
+      "pages": null
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/calcolo_prezzi_revisione02.json",
+      "sha256": "30a5b506b6db3f71bfae52c7aadf831e71ec7df8613b9573963b02b0ccbdc0f9",
+      "bytes": 24961,
+      "pages": null
+    }
+  ],
+  "status": "validated",
+  "supersedes": "Listini della prima revisione del 12 novembre; originali conservati",
+  "checks": {
+    "all_catalogue_16_pages_viewed": true,
+    "all_internal_8_pages_viewed": true,
+    "latest_catalogue_page7_rechecked": true,
+    "all_tier_totals_and_training_variants_recomputed": true,
+    "fixed_margin_targets_asserted": true,
+    "wearframe_wallet_unit_margins_recomputed": true,
+    "cloud_periods_kept_distinct": true,
+    "actual_cost_vs_estimate_labels": true,
+    "no_secrets_in_outputs": true
+  },
+  "limits": [
+    "Nessuna fattura Surface riconciliata nella vista disponibile",
+    "Costo AI AskMyDocs per risposta non misurato sulla produzione; chiave locale non attribuita a produzione",
+    "Costi per risultato WearFrame forniti da Marco, non media fatture misurata",
+    "Quote e conteggio risultati commerciali da configurare e collaudare alla consegna; nessuna modifica prodotto eseguita"
+  ],
+  "source_files": [
+    "sorgenti/revisione02.py",
+    "sorgenti/pacchetti-openrouter-readonly.php",
+    "revisione02/audit_costi_verificati.json"
+  ],
+  "scope": "Proposta locale; stato condiviso non avanzato"
+}
