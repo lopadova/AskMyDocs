@@ -1,0 +1,269 @@
+{
+  "date": "2026-11-12",
+  "currency": "EUR",
+  "status": "stima aritmetica di preventivo, non benchmark di produzione",
+  "credit_value_eur": 0.01,
+  "metering_precision_credits": 0.01,
+  "technical_cost_multiplier": 2.5,
+  "planning_exchange_usd_to_eur": 1,
+  "exchange_note": "Ipotesi prudenziale di calcolo, NON cambio corrente. In fatturazione usare il costo effettivo in euro.",
+  "openrouter_purchase_fee_assumption_pct": 5.5,
+  "cache_discounts_assumed": false,
+  "question_assumptions": {
+    "simple_selected_model_total_input_tokens": 10000,
+    "simple_selected_model_total_output_tokens": 1000,
+    "extended_selected_model_total_input_tokens": 30000,
+    "extended_selected_model_total_output_tokens": 3000,
+    "additional_preprocessor_tokens_simple": [
+      1000,
+      200
+    ],
+    "additional_preprocessor_tokens_extended": [
+      2000,
+      400
+    ],
+    "query_embedding_tokens": 200,
+    "scope": "Totali di TUTTE le chiamate del modello scelto in una richiesta; se il flusso supera questi totali, la domanda costa di più."
+  },
+  "models": [
+    {
+      "name": "Economico",
+      "model": "openai/gpt-4o-mini",
+      "input_usd_m": ".15",
+      "output_usd_m": ".60",
+      "budget_credits": [
+        1,
+        2
+      ],
+      "calculated_credits_simple_extended": [
+        0.63,
+        1.81
+      ]
+    },
+    {
+      "name": "Intermedio",
+      "model": "openai/gpt-4.1-mini",
+      "input_usd_m": ".40",
+      "output_usd_m": "1.60",
+      "budget_credits": [
+        2,
+        5
+      ],
+      "calculated_credits_simple_extended": [
+        1.55,
+        4.58
+      ]
+    },
+    {
+      "name": "Più costoso",
+      "model": "openai/gpt-4.1",
+      "input_usd_m": "2",
+      "output_usd_m": "8",
+      "budget_credits": [
+        8,
+        23
+      ],
+      "calculated_credits_simple_extended": [
+        7.46,
+        22.3
+      ]
+    }
+  ],
+  "document_assumptions": {
+    "equivalent_text_pages": 5,
+    "words": 2000,
+    "source_text_tokens_assumed": 3000,
+    "embedding_tokens_with_overlap": 3300,
+    "embedding_usd_per_million": 0.02,
+    "optional_economic_enrichment_input_output_tokens": [
+      3000,
+      300
+    ],
+    "calculated_preparation_credits": 0.19,
+    "rounded_budget_preparation_credits": 0.2,
+    "embedding_only_credits": 0.02
+  },
+  "ocr": {
+    "model": "mistral-ocr-4-1",
+    "direct_usd_per_1000_pages": 4,
+    "retail_credits_per_page_planning": 1.0,
+    "standard_five_page_scan_including_preparation_credits": 5.2,
+    "openrouter_fee_added_to_direct_mistral": false,
+    "annotations_and_image_interpretation_excluded": true
+  },
+  "pack_calculations": [
+    {
+      "price": 25,
+      "document_credits": 100.0,
+      "remaining_credits": 2400.0,
+      "intermediate_questions_exact_budget_range": [
+        480,
+        1200
+      ]
+    },
+    {
+      "price": 50,
+      "document_credits": 200.0,
+      "remaining_credits": 4800.0,
+      "intermediate_questions_exact_budget_range": [
+        960,
+        2400
+      ]
+    },
+    {
+      "price": 100,
+      "document_credits": 400.0,
+      "remaining_credits": 9600.0,
+      "intermediate_questions_exact_budget_range": [
+        1920,
+        4800
+      ]
+    }
+  ],
+  "fixed_costs": {
+    "shared_annual_budget": 1200,
+    "shared_cloud_budget_assumed": 900,
+    "shared_maintenance_operations_budget_assumed": 300,
+    "additional_storage_and_service_budget_per_company_annual": 6,
+    "actual_cloud_reference": "../offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+    "actual_main_prudential_upper_usd_period": 48.66,
+    "actual_all_identified_environments_usd_period": 73.08,
+    "note": "48,66 USD attribuisce prudenzialmente a main tutto il DB condiviso; non è un costo per azienda. Il budget 1.200 euro è un minimo di lancio da verificare con il carico, non un consuntivo né hosting dedicato."
+  },
+  "assumed_sales_commission_pct": 10,
+  "assumed_collection_pct": 2.5,
+  "technical_cost_reserve_pct": 10,
+  "minimum_usage_contribution_pct": 43.5,
+  "shared_fixed_break_even_scenarios": [
+    {
+      "annual_consumed_credit_revenue_per_company": 25,
+      "after_variable_contribution_per_company": 4.875,
+      "companies_for_shared_fixed_break_even": 247
+    },
+    {
+      "annual_consumed_credit_revenue_per_company": 50,
+      "after_variable_contribution_per_company": 15.75,
+      "companies_for_shared_fixed_break_even": 77
+    },
+    {
+      "annual_consumed_credit_revenue_per_company": 100,
+      "after_variable_contribution_per_company": 37.5,
+      "companies_for_shared_fixed_break_even": 32
+    },
+    {
+      "annual_consumed_credit_revenue_per_company": 300,
+      "after_variable_contribution_per_company": 124.5,
+      "companies_for_shared_fixed_break_even": 10
+    },
+    {
+      "annual_consumed_credit_revenue_per_company": 600,
+      "after_variable_contribution_per_company": 255.0,
+      "companies_for_shared_fixed_break_even": 5
+    }
+  ],
+  "course_cost_assumptions": {
+    "trainer_live_hours": 8,
+    "preparation_hours": 2,
+    "loaded_hour": 55,
+    "room_per_course_coworking": [
+      200,
+      250,
+      300
+    ],
+    "materials_platform_per_group": [
+      20,
+      40,
+      60
+    ],
+    "room_prices_are_unquoted_budget_estimates": true,
+    "results": [
+      {
+        "mode": "Online",
+        "participants": "Da 1 a 5",
+        "price": 900,
+        "direct_cost_assumption": 627.0,
+        "contribution": 160.5,
+        "contribution_pct": 17.833333333333332
+      },
+      {
+        "mode": "Online",
+        "participants": "Da 6 a 10",
+        "price": 1200,
+        "direct_cost_assumption": 649.0,
+        "contribution": 401.0,
+        "contribution_pct": 33.416666666666664
+      },
+      {
+        "mode": "Online",
+        "participants": "Da 11 a 15",
+        "price": 1500,
+        "direct_cost_assumption": 671.0,
+        "contribution": 641.5,
+        "contribution_pct": 42.766666666666666
+      },
+      {
+        "mode": "Coworking",
+        "participants": "Da 1 a 5",
+        "price": 1300,
+        "direct_cost_assumption": 847.0,
+        "contribution": 290.5,
+        "contribution_pct": 22.346153846153847
+      },
+      {
+        "mode": "Coworking",
+        "participants": "Da 6 a 10",
+        "price": 1700,
+        "direct_cost_assumption": 924.0,
+        "contribution": 563.5,
+        "contribution_pct": 33.14705882352941
+      },
+      {
+        "mode": "Coworking",
+        "participants": "Da 11 a 15",
+        "price": 2100,
+        "direct_cost_assumption": 1001.0,
+        "contribution": 836.5,
+        "contribution_pct": 39.833333333333336
+      },
+      {
+        "mode": "In azienda",
+        "participants": "Da 1 a 5",
+        "price": 1200,
+        "direct_cost_assumption": 627.0,
+        "contribution": 423.0,
+        "contribution_pct": 35.25
+      },
+      {
+        "mode": "In azienda",
+        "participants": "Da 6 a 10",
+        "price": 1500,
+        "direct_cost_assumption": 649.0,
+        "contribution": 663.5,
+        "contribution_pct": 44.233333333333334
+      },
+      {
+        "mode": "In azienda",
+        "participants": "Da 11 a 15",
+        "price": 1800,
+        "direct_cost_assumption": 671.0,
+        "contribution": 904.0,
+        "contribution_pct": 50.22222222222222
+      }
+    ]
+  },
+  "consulting_cost_assumptions": {
+    "total_hours_per_day_including_preparation_and_report": 7,
+    "loaded_hour": 55,
+    "price_per_day": 850,
+    "direct_cost_with_reserve": 423.5,
+    "contribution_per_day": 320.25
+  },
+  "limits": [
+    "Nessuna inferenza a pagamento eseguita; stime basate su prezzi pubblici e token ipotizzati, non medie misurate di AskMyDocs.",
+    "Il ledger locale precedente con costo zero non prova gratuità. Costo completo per richiesta e saldo commerciale da riconciliare e collaudare prima del lancio.",
+    "Le chiamate accessorie, le rigenerazioni, OCR, immagini, ragionamento e contesti oltre ipotesi vanno conteggiati; nessuna equivalenza fissa crediti/domande.",
+    "Ricavi considerati quando consumati: il credito prepagato inutilizzato non è margine acquisito nel modello.",
+    "Una sola ricarica annua da 25 euro non sostiene da sola infrastruttura e assistenza personalizzata. Il pareggio dipende da portafoglio clienti e utilizzo; servizi professionali fatturati a parte.",
+    "La contribuzione non è utile netto; sviluppo evolutivo, costi generali e imposte non inclusi."
+  ]
+}

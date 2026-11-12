@@ -1,0 +1,148 @@
+{
+  "revision": "04 Consumi comprensibili",
+  "date": "2026-11-12",
+  "valid_until": "2026-12-12",
+  "tax": "IVA esclusa",
+  "pricing_basis": "Ricariche prepagate a consumo, condivise da tutti gli utenti della stessa azienda",
+  "per_user_fee": 0,
+  "monthly_software_subscription": 0,
+  "credit_value_eur": 0.01,
+  "credit_precision": 0.01,
+  "packages": [
+    {
+      "name": "Prima prova",
+      "price": 25,
+      "credits": 2500,
+      "standard_documents": 500,
+      "questions_display": [
+        450,
+        1200
+      ]
+    },
+    {
+      "name": "Lavoro quotidiano",
+      "price": 50,
+      "credits": 5000,
+      "standard_documents": 1000,
+      "questions_display": [
+        900,
+        2400
+      ]
+    },
+    {
+      "name": "Uso frequente",
+      "price": 100,
+      "credits": 10000,
+      "standard_documents": 2000,
+      "questions_display": [
+        1900,
+        4800
+      ]
+    }
+  ],
+  "standard_document": {
+    "meaning": "Unità indicativa di testo: circa cinque pagine, circa 2.000 parole; non un file a tariffa fissa",
+    "index_preparation_budget_credits": 0.2,
+    "scan_five_pages_budget_credits": 5.2
+  },
+  "models_budget": [
+    {
+      "name": "Economico",
+      "model": "openai/gpt-4o-mini",
+      "question_credits_range": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "Intermedio",
+      "model": "openai/gpt-4.1-mini",
+      "question_credits_range": [
+        2,
+        5
+      ]
+    },
+    {
+      "name": "Più costoso",
+      "model": "openai/gpt-4.1",
+      "question_credits_range": [
+        8,
+        23
+      ]
+    }
+  ],
+  "service": {
+    "shared_company_storage_gb_including_derivatives": 5,
+    "users": "illimitati",
+    "credit_and_access_months_per_topup": 12,
+    "credit_rollover": "Una ricarica prima della scadenza proroga anche il saldo residuo di 12 mesi",
+    "automatic_renewal": false,
+    "minimum_annual_topup_if_renewing": 25,
+    "technical_operations_parallel_per_team": 2
+  },
+  "course": {
+    "live_hours": 8,
+    "participant_bands": [
+      "Da 1 a 5",
+      "Da 6 a 10",
+      "Da 11 a 15"
+    ],
+    "fixed_group_prices": {
+      "Online": [
+        900,
+        1200,
+        1500
+      ],
+      "Coworking": [
+        1300,
+        1700,
+        2100
+      ],
+      "In azienda": [
+        1200,
+        1500,
+        1800
+      ]
+    },
+    "is_separate_from_software": true,
+    "positioning": "Passaggio fondamentale consigliato alle aziende che iniziano; prezzo di gruppo, non tariffa per singolo partecipante"
+  },
+  "consulting": {
+    "price_per_day": 850,
+    "hours_per_day": 7,
+    "days_range": [
+      1,
+      5
+    ],
+    "can_be_split_into_half_days": true,
+    "scope": "Analizzare flussi, fonti, documenti, permessi e casi di RAG; lavoro concordato e restituzione inclusi nel monte ore"
+  },
+  "local_travel_per_visit": 250,
+  "supersedes": "Sostituisce per AskMyDocs la revisione 03 con canoni 149/299/599 euro e corsi per persona. Gli altri prodotti non cambiano.",
+  "quotes": [
+    {
+      "name": "Primo utilizzo fino a 5 persone",
+      "software_credit": 25,
+      "course": 900,
+      "consulting": 850,
+      "travel": 0,
+      "total": 1775
+    },
+    {
+      "name": "Reparto fino a 10 persone",
+      "software_credit": 50,
+      "course": 1700,
+      "consulting": 2550,
+      "travel": 0,
+      "total": 4300
+    },
+    {
+      "name": "Diffusione fino a 15 persone",
+      "software_credit": 100,
+      "course": 1800,
+      "consulting": 4250,
+      "travel": 500,
+      "total": 6650
+    }
+  ]
+}

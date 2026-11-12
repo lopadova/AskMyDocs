@@ -1,0 +1,603 @@
+{
+  "document": {
+    "title": "AskMyDocs credito documenti e formazione",
+    "subject": "Proposta a consumo con esempi di documenti e domande",
+    "brand_name": "AskMyDocs",
+    "edition": "12 NOVEMBRE 2026 / REV 04",
+    "header": "ASKMYDOCS / DOCUMENTI E CONSUMI",
+    "footer_note": "Proposta commerciale · IVA esclusa · Stime indicative",
+    "author": "",
+    "source_ids": [
+      "CONSUMI-PROPOSTA",
+      "MODELLO-STIME",
+      "AMD-BRAND"
+    ]
+  },
+  "theme": {
+    "palette_source": "resources/views/landing.blade.php; public/landing/styles.css e theme.css, variante Humanistic light. Griglia della presentazione prodotto approvata.",
+    "palette": {
+      "paper": "#F4F2ED",
+      "cream": "#EEECE5",
+      "ink": "#19241F",
+      "primary": "#416147",
+      "accent": "#735C34",
+      "muted": "#4D5B53",
+      "line": "#D3D8CA",
+      "pale": "#E4E6DC"
+    },
+    "fonts": {
+      "heading": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf"
+      },
+      "body": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf"
+      }
+    },
+    "logo": {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "fit": "contain"
+    },
+    "images": {
+      "jpeg_quality": 90,
+      "max_dpi": 180
+    },
+    "folio_format": "{page:02d} / {total:02d}"
+  },
+  "pages": [
+    {
+      "id": "cover",
+      "layout": "cover",
+      "section": "Documenti da consultare Credito da utilizzare",
+      "title": "Documenti da consultare\nCredito da utilizzare",
+      "deck": "Ricariche da 25 € per tutta l’azienda.\nCorso e consulenza si quotano separatamente.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "UTILIZZO A CONSUMO",
+      "display_name": "AskMyDocs",
+      "image": {
+        "path": "public/editorial/knowledge-day.webp",
+        "height": 145,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "band_title": "DOCUMENTI / DOMANDE / CREDITI",
+      "band_subtitle": "ASKMYDOCS / REVISIONE 04 / 12 NOVEMBRE 2026"
+    },
+    {
+      "id": "how",
+      "layout": "article",
+      "section": "Caricare le fonti Fare domande con criterio",
+      "title": "Caricare le fonti\nFare domande con criterio",
+      "deck": "AskMyDocs prepara i testi dell’azienda per la ricerca e permette di fare domande con riferimenti ai documenti. Il costo dipende dalle elaborazioni svolte.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [
+        "F-001",
+        "F-005",
+        "F-034",
+        "F-036"
+      ],
+      "kicker": "CHE COSA STATE ACQUISTANDO",
+      "columns": [
+        [
+          {
+            "heading": "Un saldo per tutta l’azienda",
+            "text": "Acquistate credito, condiviso dagli utenti autorizzati della stessa azienda. Un credito vale 0,01 € di utilizzo. Non c’è una tariffa per persona. La ricarica si usa quando si preparano documenti o si chiedono risposte all’AI."
+          },
+          {
+            "heading": "Preparare i documenti",
+            "text": "I testi vengono suddivisi in parti e preparati per la ricerca. Questa attività iniziale si chiama indicizzazione. Nuovi documenti, aggiornamenti e nuove elaborazioni possono consumare altro credito."
+          }
+        ],
+        [
+          {
+            "heading": "Interrogare i contenuti",
+            "text": "A ogni domanda il sistema cerca i passaggi pertinenti e li passa al modello AI. Di solito non rilegge tutto il patrimonio documentale. Una richiesta ampia, molti confronti o una conversazione lunga possono richiedere più testo e più passaggi."
+          },
+          {
+            "heading": "Imparare a scegliere",
+            "text": "Il corso spiega che cosa può fare l’AI, come scegliere un modello e come verificare una risposta. La consulenza analizza il lavoro dell’azienda e decide quali flussi e documenti conviene rendere consultabili."
+          }
+        ]
+      ],
+      "callout": "Una raccolta è un gruppo di documenti sullo stesso argomento, per esempio i manuali del reparto. Il suo nome o il numero di cartelle non determinano il prezzo."
+    },
+    {
+      "id": "documents",
+      "layout": "table",
+      "section": "Che cosa intendiamo per documento",
+      "title": "Che cosa intendiamo\nper documento",
+      "deck": "Per fare una stima usiamo un documento standard di circa cinque pagine di testo, circa 2.000 parole. È un riferimento per capire il credito, non una tariffa uguale per ogni file.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [
+        "F-005",
+        "F-006"
+      ],
+      "kicker": "L’ASTERISCO SPIEGATO",
+      "headers": [
+        "ESEMPIO",
+        "EQUIVALENZA INDICATIVA",
+        "CHE COSA INCIDE"
+      ],
+      "column_weights": [
+        1.35,
+        1.1,
+        1.65
+      ],
+      "table_font": 9.6,
+      "padding": 9,
+      "rows": [
+        [
+          "Email di 200 parole",
+          "Circa 1/10 di documento standard",
+          "Vale il testo del messaggio; allegati e messaggi citati si aggiungono"
+        ],
+        [
+          "PDF di 5 pagine di testo",
+          "Circa 1 documento standard",
+          "Testo selezionabile, circa 2.000 parole complessive"
+        ],
+        [
+          "Manuale di 50 pagine di testo",
+          "Circa 10 documenti standard",
+          "È un solo file, ma contiene molto più testo"
+        ],
+        [
+          "Scansione di 5 pagine",
+          "Circa 1 documento standard dopo l’estrazione",
+          "Si aggiunge l’OCR, cioè la lettura del testo dalle immagini"
+        ],
+        [
+          "PDF con tabelle o fotografie",
+          "Da stimare sul contenuto reale",
+          "Layout, testo estratto e interpretazione delle immagini possono richiedere più elaborazioni"
+        ]
+      ],
+      "note": "* Documento standard: unità indicativa di circa cinque pagine di testo leggibile, circa 2.000 parole. Un file può valere meno di un documento standard oppure molti documenti standard. Contano testo elaborato, immagini, formato e modello scelto; i numeri non sono un limite di file né una quantità garantita. Le email sono considerate come testo esportato e importato: non è promessa una sincronizzazione automatica della casella."
+    },
+    {
+      "id": "packs",
+      "layout": "table",
+      "section": "Tre ricariche Un solo saldo condiviso",
+      "title": "Tre ricariche\nUn solo saldo condiviso",
+      "deck": "Si paga il credito acquistato. Nessun canone mensile del software e nessuna tariffa per utente. Tutti gli importi sono IVA esclusa.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "QUANTO COSTA ASKMYDOCS",
+      "headers": [
+        "RICARICA",
+        "CREDITO",
+        "ESEMPIO COMBINATO DI UTILIZZO*"
+      ],
+      "column_weights": [
+        1.1,
+        0.85,
+        2.25
+      ],
+      "table_font": 10,
+      "padding": 12,
+      "rows": [
+        [
+          "25 €\nPrima prova",
+          "2.500 crediti",
+          "Circa 500 documenti standard\n+ 450-1.200 domande"
+        ],
+        [
+          "50 €\nLavoro quotidiano",
+          "5.000 crediti",
+          "Circa 1.000 documenti standard\n+ 900-2.400 domande"
+        ],
+        [
+          "100 €\nUso frequente",
+          "10.000 crediti",
+          "Circa 2.000 documenti standard\n+ 1.900-4.800 domande"
+        ]
+      ],
+      "note": "Stima con circa 0,2 crediti per preparare un documento standard e 2-5 crediti per domanda con GPT-4.1 mini. I documenti e le domande consumano lo stesso saldo: le quantità in tabella sono già una combinazione dei due usi. PDF con testo selezionabile, senza OCR, entro lo spazio disponibile. Questi esempi sono indicativi; richieste più lunghe o altri modelli cambiano il consumo.\n\n* Documento standard: unità indicativa di circa cinque pagine di testo leggibile, circa 2.000 parole. Un file può valere meno di un documento standard oppure molti documenti standard. Contano testo elaborato, immagini, formato e modello scelto; i numeri non sono un limite di file né una quantità garantita.\n\nOgni ricarica comprende 12 mesi di accesso e 5 GB condivisi per file e derivati. Il credito è valido 12 mesi; una ricarica prima della scadenza proroga anche il residuo. Per rinnovare basta una ricarica da 25 €. Nessun rinnovo automatico. Corso e consulenza sono extra."
+    },
+    {
+      "id": "models",
+      "layout": "table",
+      "section": "La stessa domanda Può costare diversamente",
+      "title": "La stessa domanda\nPuò costare diversamente",
+      "deck": "Il modello scelto cambia il consumo. Anche la quantità di testo letta, la lunghezza della risposta e i passaggi necessari contano. Le fasce seguenti sono stime, non tariffe fisse per domanda.",
+      "source_ids": [
+        "MODELLO-STIME",
+        "OR-ECONOMICO",
+        "OR-INTERMEDIO",
+        "OR-COSTOSO",
+        "OR-FEES"
+      ],
+      "feature_ids": [],
+      "kicker": "SCEGLIERE IL MODELLO",
+      "headers": [
+        "MODELLO DI ESEMPIO",
+        "CREDITI PER DOMANDA*",
+        "COSTO INDICATIVO"
+      ],
+      "column_weights": [
+        1.6,
+        1.1,
+        1.1
+      ],
+      "table_font": 10,
+      "padding": 11,
+      "rows": [
+        [
+          "Economico\nGPT-4o mini",
+          "Circa 1-2",
+          "0,01-0,02 €"
+        ],
+        [
+          "Intermedio\nGPT-4.1 mini",
+          "Circa 2-5",
+          "0,02-0,05 €"
+        ],
+        [
+          "Più costoso\nGPT-4.1",
+          "Circa 8-23",
+          "0,08-0,23 €"
+        ]
+      ],
+      "note": "* Ipotesi di richiesta ordinaria o estesa: circa 10.000-30.000 token letti e 1.000-3.000 token prodotti, sommati su tutti i passaggi del modello scelto, più ricerca e preparazione della domanda. Un token è una piccola parte di testo: non coincide con un documento o con un credito. Richieste che superano queste ipotesi possono costare di più.\n\nEsempio con 25 €: dopo aver preparato 500 documenti standard restano circa 2.400 crediti. Possono corrispondere a circa 1.200-2.400 domande economiche, 450-1.200 intermedie oppure 100-300 con il modello più costoso. Sono tre usi alternativi dello stesso saldo.\n\nI modelli disponibili si concordano all’attivazione. Un prezzo maggiore non garantisce una risposta migliore per ogni compito. Si verifica sempre il risultato sulle fonti."
+    },
+    {
+      "id": "examples",
+      "layout": "table",
+      "section": "Email, PDF e scansioni Esempi di spesa",
+      "title": "Email, PDF e scansioni\nEsempi di spesa",
+      "deck": "Scenari illustrativi con modello intermedio e testo leggibile. Preparazione iniziale e domande si pagano dallo stesso credito. Importi IVA esclusa.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CHE COSA PUÒ CAMBIARE",
+      "headers": [
+        "MATERIALI E DOMANDE",
+        "PREPARAZIONE",
+        "DOMANDE",
+        "TOTALE STIMATO"
+      ],
+      "column_weights": [
+        1.7,
+        0.85,
+        0.85,
+        1.05
+      ],
+      "table_font": 9.5,
+      "padding": 10,
+      "rows": [
+        [
+          "100 email da 200 parole\n+ 100 domande",
+          "Circa 0,02 €",
+          "2-5 €",
+          "2,02-5,02 €"
+        ],
+        [
+          "100 PDF di 5 pagine di testo\n+ 500 domande",
+          "Circa 0,20 €",
+          "10-25 €",
+          "10,20-25,20 €"
+        ],
+        [
+          "20 manuali di 50 pagine\n+ 200 domande",
+          "Circa 0,40 €",
+          "4-10 €",
+          "4,40-10,40 €"
+        ],
+        [
+          "100 scansioni di 5 pagine\n+ 300 domande",
+          "Circa 5,20 €\nOCR compreso",
+          "6-15 €",
+          "11,20-20,20 €"
+        ]
+      ],
+      "note": "I primi tre scenari usano documenti con testo già disponibile. Per le scansioni l’ipotesi è 1 credito per pagina OCR e 0,2 crediti per documento standard preparato: 500 pagine OCR costano circa 5 €, cui si aggiungono circa 0,20 € di preparazione.\n\nSono conti di preventivo, non risultati misurati sul vostro archivio. Immagini da interpretare, annotazioni, qualità delle scansioni, tabelle difficili, riepiloghi lunghi e tentativi aggiuntivi possono aumentare il costo. L’OCR remoto richiede un’attivazione concordata. Prima di un caricamento massivo si stima un campione rappresentativo."
+    },
+    {
+      "id": "course",
+      "layout": "table",
+      "section": "Il corso insegna A usare e scegliere",
+      "title": "Il corso insegna\nA usare e scegliere",
+      "deck": "Otto ore di lezione. Il prezzo è fisso per il gruppo nella fascia scelta: non si moltiplica per ogni partecipante. Corso e credito software sono voci separate.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "FORMAZIONE DI BASE AI",
+      "headers": [
+        "MODALITÀ",
+        "1-5 PERSONE",
+        "6-10 PERSONE",
+        "11-15 PERSONE"
+      ],
+      "column_weights": [
+        1.4,
+        1,
+        1,
+        1
+      ],
+      "table_font": 9.8,
+      "padding": 10,
+      "rows": [
+        [
+          "Online",
+          "900 €",
+          "1.200 €",
+          "1.500 €"
+        ],
+        [
+          "Coworking",
+          "1.300 €",
+          "1.700 €",
+          "2.100 €"
+        ],
+        [
+          "In azienda",
+          "1.200 €",
+          "1.500 €",
+          "1.800 €"
+        ]
+      ],
+      "note": "Programma: due ore su funzionamento e limiti dell’AI; due su modelli, token, crediti e costi; due su domande, fonti e verifica; due di laboratorio su documenti, dati e regole d’uso. Sono compresi docente, preparazione, materiali e attestato di partecipazione. I consumi AI degli esercizi didattici sono compresi nel corso.\n\nLo stesso corso online costa 900 € sia per una sia per cinque persone. Con cinque partecipanti il costo medio è 180 €; con dieci, il gruppo da 1.200 € equivale a 120 € a persona. Si fattura comunque il gruppo. Il limite di aula è 15 persone; oltre si organizzano edizioni distinte.\n\nOnline: quattro incontri da due ore o due da quattro. Coworking: due mezze giornate, sala compresa; si possono riunire aziende diverse, massimo 15 persone totali, con un solo costo di edizione ripartito e preventivo comune. In azienda: una giornata da otto ore o due mezze giornate, sala tranquilla a disposizione del cliente. Trasferta locale 250 € per visita entro 50 km e due ore A/R. Due visite costano 500 €."
+    },
+    {
+      "id": "consulting",
+      "layout": "table",
+      "section": "Prima capire i flussi Poi scegliere i documenti",
+      "title": "Prima capire i flussi\nPoi scegliere i documenti",
+      "deck": "La consulenza studia come lavora l’azienda: quali passaggi si ripetono, quali fonti esistono e che cosa conviene rendere consultabile con la ricerca documentale AI, detta RAG.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CONSULENZA DA UNA A CINQUE GIORNATE",
+      "headers": [
+        "IMPEGNO",
+        "PREZZO",
+        "PERIMETRO DA CONCORDARE"
+      ],
+      "column_weights": [
+        0.8,
+        0.8,
+        2.8
+      ],
+      "table_font": 9.6,
+      "padding": 9,
+      "rows": [
+        [
+          "1 giornata",
+          "850 €",
+          "Un flusso circoscritto, fonti principali e primo caso di lavoro"
+        ],
+        [
+          "2 giornate",
+          "1.700 €",
+          "Analisi più approfondita, qualità dei materiali e prova del caso"
+        ],
+        [
+          "3 giornate",
+          "2.550 €",
+          "Più flussi collegati o un reparto, priorità e regole operative"
+        ],
+        [
+          "4 giornate",
+          "3.400 €",
+          "Più interlocutori, permessi e articolazione delle fonti"
+        ],
+        [
+          "5 giornate",
+          "4.250 €",
+          "Percorso articolato tra reparti, prove e piano di adozione"
+        ]
+      ],
+      "note": "Le descrizioni aiutano a orientarsi; il numero di flussi non è una quantità garantita per giornata. Si concordano obiettivo e giornate dopo un incontro iniziale. Una giornata vale sette ore complessive, comprese analisi, preparazione e restituzione. Le giornate si possono svolgere insieme o distribuire, anche in mezze giornate da 425 €.\n\nConsegniamo una mappa dei flussi esaminati, l’elenco delle fonti adatte e dei problemi da risolvere, una proposta di accessi e un piano di prova con domande campione. Il carico viene stimato sui documenti reali. Il corso base resta distinto; implementazioni, integrazioni, bonifica massiva e riscrittura dei manuali richiedono un perimetro proprio. Credito AI per i documenti aziendali e trasferte separati."
+    },
+    {
+      "id": "quotes",
+      "layout": "table",
+      "section": "Un preventivo semplice Con voci riconoscibili",
+      "title": "Un preventivo semplice\nCon voci riconoscibili",
+      "deck": "Esempi di avvio, IVA esclusa. Il credito si ricarica quando serve; corso e consulenza si scelgono secondo preparazione delle persone e complessità del lavoro.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CREDITO / CORSO / CONSULENZA",
+      "headers": [
+        "VOCE",
+        "PRIMO UTILIZZO",
+        "REPARTO",
+        "DIFFUSIONE"
+      ],
+      "column_weights": [
+        1.25,
+        1,
+        1,
+        1
+      ],
+      "table_font": 9.5,
+      "padding": 10,
+      "rows": [
+        [
+          "Ricarica AskMyDocs",
+          "25 €",
+          "50 €",
+          "100 €"
+        ],
+        [
+          "Corso di 8 ore",
+          "900 €\nOnline, 1-5 persone",
+          "1.700 €\nCoworking, 6-10",
+          "1.800 €\nIn azienda, 11-15"
+        ],
+        [
+          "Consulenza",
+          "850 €\n1 giornata",
+          "2.550 €\n3 giornate",
+          "4.250 €\n5 giornate"
+        ],
+        [
+          "Trasferte",
+          "0 €",
+          "0 €",
+          "500 €\n2 visite locali"
+        ],
+        [
+          "Totale avvio",
+          "1.775 €",
+          "4.300 €",
+          "6.650 €"
+        ]
+      ],
+      "note": "Nel terzo esempio il corso si tiene in due mezze giornate in azienda; la consulenza è online. Le due trasferte riguardano quindi il solo corso. Una diversa presenza in sede si riquota.\n\nQueste combinazioni non impongono un percorso unico. Alle aziende che iniziano raccomandiamo il corso prima dell’uso operativo e una consulenza proporzionata al caso. Si può acquistare anche solo il credito: in quel caso non sono comprese analisi dei flussi o lezioni. Al termine dell’avvio non si ripagano automaticamente corso e consulenza."
+    },
+    {
+      "id": "conditions",
+      "layout": "article",
+      "section": "Credito controllabile Condizioni comprensibili",
+      "title": "Credito controllabile\nCondizioni comprensibili",
+      "deck": "Il credito serve per le elaborazioni. Il corso serve per capire le scelte. La consulenza serve per applicarle al lavoro dell’azienda.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "SERVIZIO E CONDIZIONI",
+      "columns": [
+        [
+          {
+            "heading": "Accesso e spazio",
+            "text": "Ogni ricarica comprende 12 mesi di servizio condiviso per una sola azienda e 5 GB complessivi per file e derivati. Gli utenti autorizzati sono illimitati. Più spazio, installazioni dedicate e integrazioni si quotano prima dell’ordine. Le elaborazioni possono restare in coda."
+          },
+          {
+            "heading": "Saldo e scadenza",
+            "text": "Il credito è valido 12 mesi. Una ricarica prima della scadenza proroga il residuo di altri 12 mesi. Nessun rinnovo automatico: per proseguire basta una ricarica da 25 €. A saldo zero si fermano nuove elaborazioni AI; i file restano consultabili durante il periodo di servizio. Si concorda l’esportazione entro 30 giorni dalla scadenza."
+          }
+        ],
+        [
+          {
+            "heading": "Stime e autorizzazione",
+            "text": "Prima delle elaborazioni si comunica il consumo stimato o un tetto di spesa. Nessun superamento del tetto senza autorizzazione. Caricare un file senza elaborarlo, leggerlo o esportarlo non consuma credito AI. Rielaborazioni e modelli diversi possono cambiare i costi."
+          },
+          {
+            "heading": "Ordine e assistenza",
+            "text": "Credito prepagato; corso e consulenza 50% all’ordine e 50% a completamento. Assistenza tecnica del servizio nei feriali, tramite referente aziendale; lezioni e lavoro sul caso sono servizi separati. Provider e trattamento dati si concordano prima dei caricamenti reali. Proposta valida fino al 12 dicembre 2026."
+          }
+        ]
+      ],
+      "callout": "I crediti sono unità commerciali; i token sono unità tecniche del testo elaborato dai modelli. Il conto dipende dall’intero lavoro svolto, non dal numero di utenti."
+    },
+    {
+      "id": "sources",
+      "layout": "references",
+      "section": "Come sono state fatte Le stime di consumo",
+      "title": "Come sono state fatte\nLe stime di consumo",
+      "deck": "Tariffe verificate il 12 novembre 2026. Gli esempi sono scenari di preventivo, da affinare con un campione di documenti e richieste reali.",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "NOTE E FONTI",
+      "items": [
+        {
+          "title": "Unità di riferimento",
+          "detail": "Documento standard: circa 2.000 parole, cinque pagine di solo testo; ipotesi tecnica circa 3.000 token. La lunghezza reale varia per lingua, impaginazione e contenuto."
+        },
+        {
+          "title": "Preparazione e domande",
+          "detail": "Preparazione stimata con embedding e un breve arricchimento economico. Per le domande si sommano testo e risposte di tutti i passaggi: l’ipotesi ordinaria è 10.000 token letti e 1.000 prodotti, quella estesa 30.000 e 3.000. Ricerca e preparazione della domanda sono aggiunte."
+        },
+        {
+          "title": "Criterio economico",
+          "detail": "Le stime applicano un fattore di servizio 2,5 al costo AI completo, incluse commissioni pertinenti. Per prudenza si ipotizza 1 USD = 1 EUR, non un cambio corrente. I crediti si misurano anche in frazioni; le fasce pubblicate sono arrotondate per fare budget."
+        },
+        {
+          "title": "Tariffe dei modelli di risposta",
+          "url": "https://openrouter.ai/openai/gpt-4.1-mini",
+          "detail": "Fonti ufficiali OpenRouter. Esempi di modelli, non classifica di qualità."
+        },
+        {
+          "title": "Modello economico e modello più costoso",
+          "url": "https://openrouter.ai/openai/gpt-4.1",
+          "detail": "GPT-4o mini e GPT-4.1 nelle rispettive schede tariffarie ufficiali."
+        },
+        {
+          "title": "Preparazione per la ricerca",
+          "url": "https://openrouter.ai/openai/text-embedding-3-small",
+          "detail": "Text Embedding 3 Small, tariffa di riferimento per indicizzare il testo."
+        },
+        {
+          "title": "Lettura di scansioni",
+          "url": "https://docs.mistral.ai/models/ocr-4-1",
+          "detail": "Mistral OCR 4.1: 4 USD per mille pagine per OCR semplice; annotazioni escluse."
+        },
+        {
+          "title": "Perimetro della proposta",
+          "detail": "AskMyDocs web, funzioni di ricerca e fonti dal catalogo verificato e codice corrente. OCR e modelli vanno configurati. Immagini illustrative della landing; nessuna testimonianza o misura di produttività. Prezzi del servizio, contatori e soglie sono una proposta commerciale da attivare e collaudare."
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "layout": "closing",
+      "section": "Partiamo dal lavoro E dalle persone",
+      "title": "Partiamo dal lavoro\nE dalle persone",
+      "deck": "Scegliamo un primo gruppo di documenti, formiamo chi userà lo strumento e misuriamo il consumo su richieste utili.\naskmydocs.surfacesrl.com",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL PRIMO PASSO",
+      "image": {
+        "path": "public/editorial/community-day.webp",
+        "height": 260,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "quote": "Il credito rende chiaro quanto si utilizza. Il corso e la consulenza aiutano a capire come utilizzarlo bene."
+    }
+  ]
+}

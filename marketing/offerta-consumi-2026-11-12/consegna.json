@@ -1,0 +1,396 @@
+{
+  "product": "AskMyDocs",
+  "revision": "04 Consumi comprensibili",
+  "date": "2026-11-12",
+  "status": "validated",
+  "scope": "Proposta commerciale e stima aritmetica dei consumi; non attivazione del nuovo listino in produzione",
+  "product_revision_examined": "aa5d2d924e53927e7dc5892695f3f970eb26eb0e",
+  "dirty_state": "Modifiche desktop preesistenti estranee preservate; nessuna modifica al codice applicativo",
+  "supersedes": "Sostituisce per AskMyDocs la revisione 03 con canoni 149/299/599 euro e corsi per persona. Gli altri prodotti non cambiano.",
+  "artifacts": [
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/AskMyDocs_consumi.pdf",
+      "sha256": "91c1465ccefa79e8f09dd95440f41f08d617afdc43e08ed56a041831bd7d454e"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/AskMyDocs_listino_consumi.docx",
+      "sha256": "1387c0de3e99a5d8c35323f99629fc1ecd4bc306339c9fdf10cb03cbf40c45ef"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/AskMyDocs_per_Lorenzo_consumi.zip",
+      "sha256": "685e62f5a763459c5de7d076d4768100ac71dfac9fe607d03a36b28ac8fb03ba"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/Nota_stime_interna.txt",
+      "sha256": "31bc6a42a7d526370d0f89e6a0b70267e250d8eeb85a4a648d37ae43790b5880"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/Per_Lorenzo.txt",
+      "sha256": "a58001ad22ff2ff571c536a1651b3bd9a8f3fe05664f7cde96a89b2428b0379b"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/README.txt",
+      "sha256": "f0e1c61b2292838a087311b108518ee5f00c7569de41096b96af5973815f9d42"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/brochure.json",
+      "sha256": "300280c87afd5865aced761ecf55cfa40d8c76c8528267aa63a9f16241f3c299"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/build.py",
+      "sha256": "9510ef13dcd45ecee5ca8c8b14ac197f0ff618af3d20cf5310fcbf38ac8fab80"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/fonti.json",
+      "sha256": "2c6ee0aefd6bd8c1e565f3a5b366e0fc753a43398f17da8929a08a57247a876c"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/modello_stime_interno.json",
+      "sha256": "e05be75813960feb9397cc6f9e0dce174ade1d271be3a0803b89a21fb36e2f9d"
+    },
+    {
+      "path": "marketing/offerta-consumi-2026-11-12/offerta.json",
+      "sha256": "158528966b92103bf67aa62d47d3655d715703235ab266b745467726be02ba4c"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/render_editorial.py",
+      "sha256": "588b29383935c09669df5a4ae550a045a8a31eaf6a37a4faa9fe9884a310c34d"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/sorgenti/genera_documenti.py",
+      "sha256": "daa11c78500c7155ee2205243ff3a52a5a5dcc63647b9e1d68f2befc50e6741b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/contenuti.json",
+      "sha256": "90c5f2fec12daae5978832a777a48d7bf052c2134d820d1e2556a20e62ae3d1a"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "sha256": "7ac783ce9a6a8e1b29286bcc9f55c2182c504266c8d8ee1bb52e71fdffaf70cd"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "sha256": "4a5dc8c0b2178dd684b91c22030697948dec2f81ca5c82eb3abbe4dbea5e7af9"
+    },
+    {
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "sha256": "f9b7af5f6c8155f558fa2044cdbeefd749f3d496ffcecb9bf1a8867a4e6877a8"
+    },
+    {
+      "path": "config/ai.php",
+      "sha256": "d8cb76650767e529d172d9999df71f6607a0e2221bedf17e912d8e5e93f82138"
+    },
+    {
+      "path": "config/kb.php",
+      "sha256": "ea09410d13b7dcd66a9346b79ddadadfd412b7544568b47829dbdaf8cac9e3ca"
+    },
+    {
+      "path": "config/agent.php",
+      "sha256": "04ecbc56cd29a3705b4bc079dfdc5df34000562c00db50a690720bb94fb48365"
+    },
+    {
+      "path": "app/Agent/AgentAnswerModel.php",
+      "sha256": "caa2ce3de38edb8708ca12c0fab3ed416621f10bd3fdc16fbb7836b6c820044f"
+    },
+    {
+      "path": "app/Agent/AgentAnswerSynthesizer.php",
+      "sha256": "ca95c80ea3bbe866d85674fa508887029b5a37ca7dcddd02caa6f7eceed3e9c8"
+    },
+    {
+      "path": "app/Services/Kb/DocumentIngestor.php",
+      "sha256": "8d19d293c19c1b245538da68113384632c9bd959b28b783ab065f3d563a89aa6"
+    },
+    {
+      "path": "app/Services/Kb/Upload/KbUploadStagingService.php",
+      "sha256": "021034e5142bcfc21a26616c1609f0bd7e8cdb707d20dc24b41b766ec4248f45"
+    },
+    {
+      "path": "app/Services/Kb/Ocr/Drivers/MistralOcrDriver.php",
+      "sha256": "050d92382f5c060297b517b1ba5f14b85bbded36816bfe9d24deea202f4c75fa"
+    },
+    {
+      "path": "resources/views/landing.blade.php",
+      "sha256": "756984e9f0240742a814ed8979836d181343de0f70249668daaf08a4c65cfc3f"
+    },
+    {
+      "path": "public/landing/styles.css",
+      "sha256": "8b316ba52caf004cb0f1243248198e50dc2ff3ddcc38c8603b624ee35e488201"
+    },
+    {
+      "path": "public/landing/theme.css",
+      "sha256": "cc14eb1c28ae4c7e603247bbb31fbce667983070f65141dbbd20d328cf39b98f"
+    },
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "sha256": "27dfc86e8b651802bcacc4c0e3bd20cff026f08520eb336508eacfa03b38b098"
+    },
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "sha256": "89ebc86dda3b8d4e081821228bedef1b503753f66f207dae16d4553b412b2755"
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "sha256": "5dee594d23e3dd7abf9a056e9ac56aaee01884760c288e054dca8925aad124ff"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+      "sha256": "b4271789ec5900cbda4e0440f73971d3f1a1ee61773f12031a2064d99f480966"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+      "sha256": "c981528e454b720b85ccd6e488c2a7103ea9f90c7b0ab300bae8186689990e28"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf",
+      "sha256": "5052a3681354f594059e377ec0372caa7553477eb1dbcfc9aa9be5a1c3019f2b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+      "sha256": "fae7b7ff21acefce18c04d8ab55e10fd804e3c55dbd1897b20de0ca9e6ba063b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+      "sha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "sha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+    }
+  ],
+  "page_map": {
+    "document": {
+      "title": "AskMyDocs credito documenti e formazione",
+      "subject": "Proposta a consumo con esempi di documenti e domande",
+      "brand_name": "AskMyDocs",
+      "edition": "12 NOVEMBRE 2026 / REV 04",
+      "header": "ASKMYDOCS / DOCUMENTI E CONSUMI",
+      "footer_note": "Proposta commerciale · IVA esclusa · Stime indicative",
+      "author": "",
+      "source_ids": [
+        "CONSUMI-PROPOSTA",
+        "MODELLO-STIME",
+        "AMD-BRAND"
+      ]
+    },
+    "page_count": 12,
+    "pages": [
+      {
+        "page": 1,
+        "id": "cover",
+        "layout": "cover",
+        "title": "Documenti da consultare\nCredito da utilizzare",
+        "section": "Documenti da consultare Credito da utilizzare",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 2,
+        "id": "how",
+        "layout": "article",
+        "title": "Caricare le fonti\nFare domande con criterio",
+        "section": "Caricare le fonti Fare domande con criterio",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": [
+          "F-001",
+          "F-005",
+          "F-034",
+          "F-036"
+        ]
+      },
+      {
+        "page": 3,
+        "id": "documents",
+        "layout": "table",
+        "title": "Che cosa intendiamo\nper documento",
+        "section": "Che cosa intendiamo per documento",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": [
+          "F-005",
+          "F-006"
+        ]
+      },
+      {
+        "page": 4,
+        "id": "packs",
+        "layout": "table",
+        "title": "Tre ricariche\nUn solo saldo condiviso",
+        "section": "Tre ricariche Un solo saldo condiviso",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 5,
+        "id": "models",
+        "layout": "table",
+        "title": "La stessa domanda\nPuò costare diversamente",
+        "section": "La stessa domanda Può costare diversamente",
+        "source_ids": [
+          "MODELLO-STIME",
+          "OR-ECONOMICO",
+          "OR-INTERMEDIO",
+          "OR-COSTOSO",
+          "OR-FEES"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 6,
+        "id": "examples",
+        "layout": "table",
+        "title": "Email, PDF e scansioni\nEsempi di spesa",
+        "section": "Email, PDF e scansioni Esempi di spesa",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 7,
+        "id": "course",
+        "layout": "table",
+        "title": "Il corso insegna\nA usare e scegliere",
+        "section": "Il corso insegna A usare e scegliere",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 8,
+        "id": "consulting",
+        "layout": "table",
+        "title": "Prima capire i flussi\nPoi scegliere i documenti",
+        "section": "Prima capire i flussi Poi scegliere i documenti",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 9,
+        "id": "quotes",
+        "layout": "table",
+        "title": "Un preventivo semplice\nCon voci riconoscibili",
+        "section": "Un preventivo semplice Con voci riconoscibili",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 10,
+        "id": "conditions",
+        "layout": "article",
+        "title": "Credito controllabile\nCondizioni comprensibili",
+        "section": "Credito controllabile Condizioni comprensibili",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 11,
+        "id": "sources",
+        "layout": "references",
+        "title": "Come sono state fatte\nLe stime di consumo",
+        "section": "Come sono state fatte Le stime di consumo",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 12,
+        "id": "closing",
+        "layout": "closing",
+        "title": "Partiamo dal lavoro\nE dalle persone",
+        "section": "Partiamo dal lavoro E dalle persone",
+        "source_ids": [
+          "CONSUMI-PROPOSTA",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      }
+    ]
+  },
+  "feature_page_map": {
+    "F-001": [
+      2
+    ],
+    "F-005": [
+      2,
+      3
+    ],
+    "F-006": [
+      3,
+      6
+    ],
+    "F-034": [
+      2,
+      10
+    ],
+    "F-036": [
+      2,
+      8
+    ]
+  },
+  "brand": "Instrument Serif e Geist, palette e asset della landing già verificati; nessun nuovo marchio o immagine generata",
+  "checks": {
+    "pdf_12_pages_rendered_and_viewed_individually_110dpi": true,
+    "word_4_pages_rendered_and_viewed_individually": true,
+    "no_overflow_no_collisions_no_font_warnings": true,
+    "selectable_text_and_reference_links_checked": true,
+    "pack_credit_arithmetic_and_combined_usage_checked": true,
+    "question_costs_include_selected_model_aggregate_and_preprocessor_and_embedding": true,
+    "no_provider_fee_double_counted_on_direct_ocr": true,
+    "course_bands_no_overlap_and_fixed_group_prices": true,
+    "consulting_1_to_5_days_and_split_pricing_checked": true,
+    "quotes_and_travel_visits_checked": true,
+    "internal_cost_note_excluded_from_customer_zip": true,
+    "zip_integrity_checked": true,
+    "old_revision_artifact_hashes_checked_before_work": true
+  },
+  "limits": [
+    "Nessuna inferenza a pagamento eseguita; stime basate su prezzi pubblici e token ipotizzati, non medie misurate di AskMyDocs.",
+    "Il ledger locale precedente con costo zero non prova gratuità. Costo completo per richiesta e saldo commerciale da riconciliare e collaudare prima del lancio.",
+    "Le chiamate accessorie, le rigenerazioni, OCR, immagini, ragionamento e contesti oltre ipotesi vanno conteggiati; nessuna equivalenza fissa crediti/domande.",
+    "Ricavi considerati quando consumati: il credito prepagato inutilizzato non è margine acquisito nel modello.",
+    "Una sola ricarica annua da 25 euro non sostiene da sola infrastruttura e assistenza personalizzata. Il pareggio dipende da portafoglio clienti e utilizzo; servizi professionali fatturati a parte.",
+    "La contribuzione non è utile netto; sviluppo evolutivo, costi generali e imposte non inclusi.",
+    "Quota 5 GB, credito frazionario, scadenza e proroga, budget condiviso e code da configurare e collaudare prima della vendita operativa.",
+    "Nessuna nuova demo autenticata; modelli e OCR da concordare e configurare.",
+    "Gli esempi non sono garanzie di un numero di documenti o domande per qualsiasi contenuto.",
+    "Listini degli altri prodotti invariati; i vecchi bundle con AskMyDocs richiedono ricalcolo prima del riutilizzo."
+  ]
+}

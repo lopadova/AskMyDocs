@@ -1,0 +1,126 @@
+{
+  "sources": [
+    {
+      "id": "CONSUMI-PROPOSTA",
+      "path": "offerta.json",
+      "title": "Proposta commerciale revisione 04",
+      "publisher": "Surface",
+      "kind": "proposal",
+      "checked_at": "2026-11-12",
+      "supports": "Ricariche, condizioni, corsi per gruppo e giornate di consulenza proposti",
+      "limits": "Non è un listino già attivato nel software"
+    },
+    {
+      "id": "MODELLO-STIME",
+      "path": "modello_stime_interno.json",
+      "title": "Calcolo dei consumi e ipotesi economiche",
+      "publisher": "Surface",
+      "kind": "calculation",
+      "checked_at": "2026-11-12",
+      "supports": "Token, tariffe, arrotondamenti, scenari e pareggio",
+      "limits": "Stime, non benchmark di produzione"
+    },
+    {
+      "id": "ANNOTA",
+      "url": "https://annota.ai/it/pricing/#plans",
+      "title": "Piani e crediti Annota",
+      "publisher": "Annota",
+      "kind": "market",
+      "checked_at": "2026-11-12",
+      "supports": "Struttura a crediti condivisi; Team 29,28 euro IVA inclusa per membro/mese, minimo due",
+      "limits": "Capacità e quote differenti, nessuna equivalenza funzionale o di prestazioni"
+    },
+    {
+      "id": "OR-ECONOMICO",
+      "url": "https://openrouter.ai/openai/gpt-4o-mini",
+      "title": "GPT 4o mini tariffe API",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "0,15 USD input e 0,60 USD output per milione di token"
+    },
+    {
+      "id": "OR-INTERMEDIO",
+      "url": "https://openrouter.ai/openai/gpt-4.1-mini",
+      "title": "GPT 4.1 mini tariffe API",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "0,40 USD input e 1,60 USD output per milione di token"
+    },
+    {
+      "id": "OR-COSTOSO",
+      "url": "https://openrouter.ai/openai/gpt-4.1",
+      "title": "GPT 4.1 tariffe API",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "2 USD input e 8 USD output per milione di token"
+    },
+    {
+      "id": "OR-EMBEDDING",
+      "url": "https://openrouter.ai/openai/text-embedding-3-small",
+      "title": "Embedding testo tariffe API",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "0,02 USD per milione di token per preparare la ricerca"
+    },
+    {
+      "id": "OR-FEES",
+      "url": "https://openrouter.ai/pricing",
+      "title": "Commissioni OpenRouter",
+      "publisher": "OpenRouter",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Standard 5,5% sugli acquisti di credito; conteggiata una sola volta"
+    },
+    {
+      "id": "MISTRAL-OCR",
+      "url": "https://docs.mistral.ai/models/ocr-4-1",
+      "title": "OCR 4.1",
+      "publisher": "Mistral",
+      "kind": "pricing",
+      "checked_at": "2026-11-12",
+      "supports": "OCR semplice 4 USD per mille pagine; annotazioni escluse"
+    },
+    {
+      "id": "AMD-FACTS",
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "title": "Catalogo funzionale AskMyDocs",
+      "publisher": "Surface",
+      "kind": "product",
+      "checked_at": "2026-11-12",
+      "supports": "F-001 ricerca e fonti, F-005 ingestione, F-006 OCR, F-034 team, F-036 permessi",
+      "limits": "Catalogo storico; disponibilità OCR e modelli da configurare per il cliente, nessuna nuova demo live"
+    },
+    {
+      "id": "AMD-CODE",
+      "path": "config/ai.php",
+      "title": "Pipeline e modelli configurabili",
+      "publisher": "Surface",
+      "kind": "product",
+      "checked_at": "2026-11-12",
+      "supports": "Modelli distinti per chat ed embedding; preparazione, ricerca e sintesi non equivalgono a una sola chiamata",
+      "limits": "Codice letto, non benchmark"
+    },
+    {
+      "id": "AMD-BRAND",
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "title": "Identità della landing",
+      "publisher": "Surface",
+      "kind": "media",
+      "checked_at": "2026-11-12",
+      "supports": "Font, logo, palette e immagini editoriali già verificate"
+    },
+    {
+      "id": "AMD-CLOUD",
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "title": "Audit costi Cloud già osservati",
+      "publisher": "Surface",
+      "kind": "cost",
+      "checked_at": "2026-11-12",
+      "supports": "Infrastruttura condivisa osservata, non costo per singola azienda"
+    }
+  ]
+}

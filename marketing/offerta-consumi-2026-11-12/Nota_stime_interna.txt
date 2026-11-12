@@ -1,0 +1,39 @@
+ASKMYDOCS - NOTA INTERNA REVISIONE 04
+12 novembre 2026
+
+CORREZIONE DEL MODELLO COMMERCIALE
+I canoni della revisione 03 non sono più la proposta. Il costo della piattaforma è condiviso: non si attribuisce tutto il budget Cloud a ogni azienda. Tre ricariche da 25/50/100 euro, interamente in credito, utenti illimitati; niente canone mensile. Il minimo per rinnovare l’accesso annuale è una ricarica da 25 euro. Corso a gruppo e consulenza a giornata separati.
+
+STIME DI UTILIZZO, NON CONSUMI MEDI OSSERVATI
+Un documento standard è una quantità indicativa di testo, circa 2.000 parole o cinque pagine; nel calcolo si ipotizzano 3.000 token. La preparazione usa embedding e un arricchimento economico ipotizzato: 0,19 crediti calcolati, arrotondati a 0,2 per budget. Non è costo fisso di qualsiasi file.
+La domanda ordinaria/estesa somma TUTTE le chiamate del modello selezionato fino a 10.000/30.000 token input e 1.000/3.000 output. Preprocessore e query embedding sono aggiunti. Se il flusso usa più token, costa di più. Cache e promozioni non assunte.
+Il prezzo tecnico completo in euro è moltiplicato per 2,5. Commissione di acquisto OpenRouter del 5,5% inclusa una volta; nessuna commissione OpenRouter sul servizio Mistral diretto. Cambio 1 USD = 1 EUR solo come ipotesi di preventivo; sostituire con cambio effettivo di acquisto.
+Si contabilizzano centesimi di credito, non un credito minimo per ciascun file. Questo evita che molte email brevi costino quanto tanti manuali lunghi.
+
+SOSTENIBILITÀ DELLA COMPONENTE A CONSUMO
+Ipotesi: provvigione commerciale 10%, incasso 2,5%, riserva 10% sul costo tecnico. Con fattore 2,5 resta contribuzione minima del 43,5% sui crediti realmente consumati, prima dei costi condivisi. Il prepagato residuo non è considerato profitto.
+Budget condiviso di lancio 1.200 euro/anno: 900 Cloud e 300 manutenzione/operazioni, più 6 euro per azienda/anno per spazio e servizio incrementali. Sono budget da verificare sotto carico, non prezzi quotati né costo per singola azienda. Il Cloud osservato (48,66 USD main prudenziale, 73,08 tutti gli ambienti nel periodo) è nell’audit precedente.
+Pareggio solo della componente a consumo, senza usare ricavi di corsi/consulenza:
+- 25 euro di credito CONSUMATO per azienda/anno: circa 247 aziende per coprire il budget condiviso.
+- 50 euro di credito CONSUMATO per azienda/anno: circa 77 aziende per coprire il budget condiviso.
+- 100 euro di credito CONSUMATO per azienda/anno: circa 32 aziende per coprire il budget condiviso.
+- 300 euro di credito CONSUMATO per azienda/anno: circa 10 aziende per coprire il budget condiviso.
+- 600 euro di credito CONSUMATO per azienda/anno: circa 5 aziende per coprire il budget condiviso.
+Non dichiarare che una ricarica annua da 25 euro sostiene da sola tutto il servizio. Con basso utilizzo serve una base clienti ampia, o margine dei servizi professionali a copertura dei costi di lancio. Assistenza personale, giornate e lezioni non sono illimitate comprese nel credito.
+
+SERVIZI PROFESSIONALI
+Corso: 8 ore live più 2 di preparazione, costo orario caricato ipotetico 55 euro; materiali/piattaforma e sala modellati separatamente. La sala è una stima senza preventivo del coworking. Lezioni a prezzo fisso per fascia 1-5, 6-10, 11-15, anche con aziende raggruppate: un unico prezzo di edizione, non il totale corso a ciascuna azienda.
+Consulenza: 850 euro per giornata di 7 ore complessive, comprese preparazione e restituzione. Da una a cinque giornate, divisibili in mezze giornate da 425 euro. Trasferte a parte; non promettere un numero fisso di flussi analizzati in ciascuna giornata.
+
+CONTROLLI PRIMA DELL’ATTIVAZIONE
+Nessuna inferenza a pagamento eseguita; stime basate su prezzi pubblici e token ipotizzati, non medie misurate di AskMyDocs.
+Il ledger locale precedente con costo zero non prova gratuità. Costo completo per richiesta e saldo commerciale da riconciliare e collaudare prima del lancio.
+Le chiamate accessorie, le rigenerazioni, OCR, immagini, ragionamento e contesti oltre ipotesi vanno conteggiati; nessuna equivalenza fissa crediti/domande.
+Ricavi considerati quando consumati: il credito prepagato inutilizzato non è margine acquisito nel modello.
+Una sola ricarica annua da 25 euro non sostiene da sola infrastruttura e assistenza personalizzata. Il pareggio dipende da portafoglio clienti e utilizzo; servizi professionali fatturati a parte.
+La contribuzione non è utile netto; sviluppo evolutivo, costi generali e imposte non inclusi.
+Configurare e collaudare ricariche, saldo condiviso e frazioni, prenotazione massimale, tutte le chiamate per richiesta, scadenza/proroga credito e accesso, quota spazio e code. In questa attività non è stato cambiato il software né il sito.
+
+PREVENTIVI
+Primo utilizzo 25 + 900 + 850 = 1.775 euro; reparto 50 + 1.700 + 2.550 = 4.300 euro; diffusione 100 + 1.800 + 4.250 + 500 = 6.650 euro, IVA esclusa.
+La revisione 04 sostituisce soltanto AskMyDocs. Non riutilizzare i vecchi totali dei pacchetti congiunti prima di ricalcolarli.
