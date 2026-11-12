@@ -1,0 +1,264 @@
+{
+  "date": "2026-11-12",
+  "scope": "Analisi mercato e pacchetti commerciali di quattro prodotti con formazione AI obbligatoria; Tixora escluso",
+  "artifacts": [
+    {
+      "id": "analisi-pdf",
+      "path": "Analisi_mercato_e_prezzi_2026-11-12.pdf",
+      "sha256": "a0c459d2fcf33714c07d1b041f22764b6023c970ec708116b2071778d5e99484",
+      "status": "validated",
+      "checks": [
+        "content and arithmetic review",
+        "full render visual inspection"
+      ],
+      "pages": 20
+    },
+    {
+      "id": "analisi-docx",
+      "path": "Analisi_mercato_e_prezzi_2026-11-12.docx",
+      "sha256": "2d470170349843b05348c8b27e913cf8c8eee3b1c2de04968e8895aee533249a",
+      "status": "validated",
+      "checks": [
+        "content and arithmetic review",
+        "full render visual inspection"
+      ],
+      "pages": 20
+    },
+    {
+      "id": "analisi-md",
+      "path": "Analisi_mercato_e_prezzi_2026-11-12.md",
+      "sha256": "a7f5610d46977e7a98b612e28a5049a8a899398b13ce019b9ff1bf0c34c86796",
+      "status": "validated",
+      "checks": [
+        "content and arithmetic review",
+        "source consistency"
+      ],
+      "pages": null
+    },
+    {
+      "id": "catalogo-pdf",
+      "path": "Catalogo_pacchetti_e_preventivi_2026-11-12.pdf",
+      "sha256": "6baabc29041eb7d3ae9312e9938860bc9e3214ba7763c447aae53709eae44836",
+      "status": "validated",
+      "checks": [
+        "content and arithmetic review",
+        "full render visual inspection"
+      ],
+      "pages": 12
+    },
+    {
+      "id": "catalogo-docx",
+      "path": "Catalogo_pacchetti_e_preventivi_2026-11-12.docx",
+      "sha256": "84f566f65fb92a51e23ceae24a038758eebab2feb303f9aaa3a9e5a255b0966c",
+      "status": "validated",
+      "checks": [
+        "content and arithmetic review",
+        "full render visual inspection"
+      ],
+      "pages": 12
+    },
+    {
+      "id": "catalogo-md",
+      "path": "Catalogo_pacchetti_e_preventivi_2026-11-12.md",
+      "sha256": "b5614cfc4a706b9e3de709c82bc7ebf7294991538de231e95dd0de3776156a48",
+      "status": "validated",
+      "checks": [
+        "content and arithmetic review",
+        "source consistency"
+      ],
+      "pages": null
+    }
+  ],
+  "inputs": [
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "7e5de280b63b46aeab2abe7bdcbcd1422ce32869",
+      "path": "README.md",
+      "sha256": "641143913cfd7756c7bd40555aa33267f0d0286a3d29d95694a5c360f8c91484",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "7e5de280b63b46aeab2abe7bdcbcd1422ce32869",
+      "path": "app/Services/Kb/Upload/KbUploadStagingService.php",
+      "sha256": "021034e5142bcfc21a26616c1609f0bd7e8cdb707d20dc24b41b766ec4248f45",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "7e5de280b63b46aeab2abe7bdcbcd1422ce32869",
+      "path": "app/Agent/AgentAnswerSynthesizer.php",
+      "sha256": "ca95c80ea3bbe866d85674fa508887029b5a37ca7dcddd02caa6f7eceed3e9c8",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "AskMyDocsDev",
+      "head_at_read": "7e5de280b63b46aeab2abe7bdcbcd1422ce32869",
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "sha256": "f9b7af5f6c8155f558fa2044cdbeefd749f3d496ffcecb9bf1a8867a4e6877a8",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "README.md",
+      "sha256": "bc07242528bd7f898e4c4e783067fead2e4f75f19294e3fa94586a2668fbfa5d",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "marketing/analisi/prodotto.md",
+      "sha256": "b79bf6a66c4bafcca2c575f3deecf6a50e32446c3b14c6de65b0c82bd4076d1b",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "marketing/analisi/funzionalita.json",
+      "sha256": "2c85b05e1b3b4187fb0bf831c2345914c52f6f34a11496969692369d46f6e4f0",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "app/Domains/Teaching/Requests/StoreCourseRequest.php",
+      "sha256": "c0f581cda13387acfea899014f28aa19b6a66f74f9d5a5e4c364373c5f4daad9",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "gdpr-facile",
+      "head_at_read": "3181076854d30d780afd834761e040130a288bb7",
+      "path": "AGENTS.md",
+      "sha256": "e290fc82b1c8faaf7011acdcd3109d58574a0364cd43fa8ac19a217d120cd667",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "gdpr-facile",
+      "head_at_read": "3181076854d30d780afd834761e040130a288bb7",
+      "path": "marketing/analisi/presentazione-prodotto/inventario.json",
+      "sha256": "5ec3875eb2892ce2f51d766618f0d78ef5d93f083713ab9dd35b88284e732d39",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "routes/web.php",
+      "sha256": "d13d1b7ab401380072d32d905cb16a7d237b4606c6368f0d4508f14ee1009fd2",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "resources/js/pages/welcome.tsx",
+      "sha256": "351b80dd3bcb9e44f4f8363509893b9fc3c768609f47ddd07229905707b56e5b",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/Modules/ProductStudio/Actions/CreateProductStudioShotAction.php",
+      "sha256": "51bd04931a8273f1dc8eda99d25bc54e4317d67482c6a58307842dc90b326454",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/Modules/ProductStudio/Http/Controllers/ProductStudioController.php",
+      "sha256": "4157a21f37f071208b48c45d96ea94f5999b0867d1df84ea4d03a28f9852e231",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "wearframeMain",
+      "head_at_read": "571ebf0c42e1f450136610f3bfede5736aec4ee9",
+      "path": "app/Modules/CreativeStudio/VideoGeneration/Actions/CreateVideoGenerationAction.php",
+      "sha256": "a801a57df92ff9304f33ca6e0cab833ea8364585564a3bfcbde985f3106540b9",
+      "evidence": "static reading only; existing inventories contain older revisions, not attributed to current head"
+    },
+    {
+      "repository": "oraculi",
+      "head_at_read": "019bf1df184e953edd63b7277387c2d2a839ffd3",
+      "path": "app/Domains/Teaching/Services/CourseCreator.php",
+      "sha256": "863d815d7d6f031d89cb853be6a609d1546f4dda8e23c44a6c1e062a66d99adf",
+      "evidence": "static source inspection; no runtime test"
+    },
+    {
+      "repository": "gdpr-facile",
+      "head_at_read": "3181076854d30d780afd834761e040130a288bb7",
+      "path": "frontend/src/routes/tenant/RopaRegister.tsx",
+      "sha256": "db433b67f2b0550b7161bd015ba8fc3b67685eef89dabb00f9fad22e5ea90df5",
+      "evidence": "static source inspection; no runtime test"
+    },
+    {
+      "repository": "gdpr-facile",
+      "head_at_read": "3181076854d30d780afd834761e040130a288bb7",
+      "path": "app/Providers/AppServiceProvider.php",
+      "sha256": "1c6628af2f22c80b87b302c910edb6ddc191912ff65b9494779e0dec697cd4e9",
+      "evidence": "static source inspection; no runtime test"
+    }
+  ],
+  "request_attachment": {
+    "path": "/Users/marco/.codex/attachments/ae85e705-eab0-4f54-8fa7-2a9d7e9ccbcd/Testo incollato.txt",
+    "sha256": "0b39858e8542424bbacdfead7bfd029bf8f073757f6db1476d38275bcfc98267"
+  },
+  "checks": {
+    "pricing_totals": "passed",
+    "bundle_discount": "passed",
+    "renewal_discount": "passed",
+    "cost_model": "passed within declared assumptions",
+    "all_pages_visually_inspected": {
+      "report": 20,
+      "catalogue": 12
+    },
+    "catalogue_excludes_internal_costs": true,
+    "title_border_removed": true
+  },
+  "unverified": [
+    "deployed application journeys",
+    "AI provider benchmark and maximum cost",
+    "technical capacity and quota enforcement",
+    "actual host and region",
+    "backup restoration",
+    "published AI training course",
+    "specific funding calls",
+    "willingness to pay",
+    "commercial commission agreement"
+  ],
+  "publication": "local only; no email, push or PR",
+  "generated_files": "PDF and DOCX excluded from Git per global working agreement; sources retained",
+  "feature_refs": {
+    "AskMyDocs": [
+      "F-001",
+      "F-005",
+      "F-006",
+      "F-008",
+      "F-014"
+    ],
+    "Oraculi": [
+      "F-001",
+      "F-002",
+      "F-003",
+      "F-004",
+      "F-008",
+      "F-010",
+      "F-014",
+      "F-015",
+      "F-019",
+      "F-020",
+      "F-022"
+    ],
+    "Portale GDPR": [
+      "ORG",
+      "ROPA",
+      "DOC",
+      "APPOINT",
+      "CONSENT",
+      "ASSESS"
+    ],
+    "WearFrame": [
+      "ProductStudioController",
+      "CreateProductStudioShotAction",
+      "CreateVideoGenerationAction"
+    ]
+  }
+}

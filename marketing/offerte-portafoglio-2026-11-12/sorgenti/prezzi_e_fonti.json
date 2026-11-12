@@ -1,0 +1,363 @@
+{
+  "date": "2026-11-12",
+  "currency": "EUR",
+  "tax": "IVA esclusa",
+  "tiers": [
+    "Start",
+    "Business",
+    "Premium"
+  ],
+  "training_seats": [
+    2,
+    4,
+    6
+  ],
+  "training_coworking_value": [
+    640,
+    1280,
+    1920
+  ],
+  "first_year": {
+    "AskMyDocs": [
+      4900,
+      8900,
+      14900
+    ],
+    "Portale GDPR": [
+      2900,
+      4900,
+      7900
+    ],
+    "Oraculi": [
+      3400,
+      6400,
+      10900
+    ],
+    "WearFrame": [
+      3900,
+      6900,
+      11900
+    ]
+  },
+  "renewals": {
+    "AskMyDocs": [
+      1800,
+      3600,
+      6600
+    ],
+    "Portale GDPR": [
+      900,
+      1500,
+      2700
+    ],
+    "Oraculi": [
+      1200,
+      2400,
+      4800
+    ],
+    "WearFrame": [
+      1500,
+      3000,
+      6000
+    ]
+  },
+  "cost_assumptions": {
+    "AskMyDocs": {
+      "hours": [
+        18,
+        32,
+        52
+      ],
+      "cloud": [
+        300,
+        600,
+        1200
+      ],
+      "ai": [
+        120,
+        480,
+        1440
+      ],
+      "support": [
+        4,
+        8,
+        16
+      ]
+    },
+    "Portale GDPR": {
+      "hours": [
+        12,
+        22,
+        36
+      ],
+      "cloud": [
+        180,
+        300,
+        600
+      ],
+      "ai": [
+        0,
+        0,
+        0
+      ],
+      "support": [
+        4,
+        8,
+        12
+      ]
+    },
+    "Oraculi": {
+      "hours": [
+        12,
+        24,
+        40
+      ],
+      "cloud": [
+        240,
+        480,
+        720
+      ],
+      "ai": [
+        90,
+        360,
+        1080
+      ],
+      "support": [
+        4,
+        8,
+        12
+      ]
+    },
+    "WearFrame": {
+      "hours": [
+        12,
+        20,
+        30
+      ],
+      "cloud": [
+        240,
+        480,
+        720
+      ],
+      "ai": [
+        100,
+        500,
+        2000
+      ],
+      "support": [
+        4,
+        8,
+        12
+      ]
+    }
+  },
+  "cost_results": {
+    "AskMyDocs": [
+      {
+        "direct_cost": 2040.5,
+        "contribution_pct": 48.357142857142854,
+        "renewal_cost": 660.0,
+        "renewal_contribution_pct": 53.333333333333336
+      },
+      {
+        "direct_cost": 4103.0,
+        "contribution_pct": 43.89887640449438,
+        "renewal_cost": 1584.0,
+        "renewal_contribution_pct": 46.0
+      },
+      {
+        "direct_cost": 7716.5,
+        "contribution_pct": 38.211409395973156,
+        "renewal_cost": 3696.0,
+        "renewal_contribution_pct": 34.0
+      }
+    ],
+    "Portale GDPR": [
+      {
+        "direct_cost": 1413.5,
+        "contribution_pct": 41.258620689655174,
+        "renewal_cost": 396.0,
+        "renewal_contribution_pct": 46.0
+      },
+      {
+        "direct_cost": 2640.0,
+        "contribution_pct": 36.12244897959184,
+        "renewal_cost": 726.0,
+        "renewal_contribution_pct": 41.6
+      },
+      {
+        "direct_cost": 4306.5,
+        "contribution_pct": 35.4873417721519,
+        "renewal_cost": 1254.0,
+        "renewal_contribution_pct": 43.55555555555556
+      }
+    ],
+    "Oraculi": [
+      {
+        "direct_cost": 1578.5,
+        "contribution_pct": 43.5735294117647,
+        "renewal_cost": 561.0,
+        "renewal_contribution_pct": 43.25
+      },
+      {
+        "direct_cost": 3355.0,
+        "contribution_pct": 37.578125,
+        "renewal_cost": 1320.0,
+        "renewal_contribution_pct": 35.0
+      },
+      {
+        "direct_cost": 5868.5,
+        "contribution_pct": 36.1605504587156,
+        "renewal_cost": 2574.0,
+        "renewal_contribution_pct": 36.375
+      }
+    ],
+    "WearFrame": [
+      {
+        "direct_cost": 1589.5,
+        "contribution_pct": 49.243589743589745,
+        "renewal_cost": 572.0,
+        "renewal_contribution_pct": 51.86666666666667
+      },
+      {
+        "direct_cost": 3267.0,
+        "contribution_pct": 42.65217391304348,
+        "renewal_cost": 1474.0,
+        "renewal_contribution_pct": 40.86666666666667
+      },
+      {
+        "direct_cost": 6275.5,
+        "contribution_pct": 37.26470588235294,
+        "renewal_cost": 3586.0,
+        "renewal_contribution_pct": 30.233333333333334
+      }
+    ]
+  },
+  "bundle_business": {
+    "first_year": 21900,
+    "renewal": 9900,
+    "standalone_sum": 27100,
+    "training_duplicates_removed": 3840,
+    "shared_saving": 1360,
+    "direct_cost": 10648
+  },
+  "sources": [
+    {
+      "id": "M01",
+      "title": "Chatbase",
+      "url": "https://www.chatbase.co/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Hobby 40 USD/mese, Basic 150, Business 500; con annuale equivalenti 32, 120, 400. Crediti e membri del workspace non equivalgono agli utenti finali.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M02",
+      "title": "Dify Cloud",
+      "url": "https://dify.ai/pricing/dify-cloud",
+      "checked_at": "2026-11-12",
+      "supports": "Professional 59 USD/mese o 590 USD/anno, 500 documenti e 5 GB; Team 159 USD/mese. Crediti modello e quota documentale distinti.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M03",
+      "title": "Compliance GDPR",
+      "url": "https://compliancegdpr.it/software-privacy/",
+      "checked_at": "2026-11-12",
+      "supports": "Standard 270 €/anno, Premium 510 €/anno, IVA esclusa; una azienda; configurazione autonoma o assistenza separata.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M04",
+      "title": "PrivacyLab GDPR",
+      "url": "https://www.privacylab.it/IT/14/Come-Funziona/",
+      "checked_at": "2026-11-12",
+      "supports": "Base 430 €/anno oltre IVA, una partita IVA; moduli aggiuntivi separati.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M05",
+      "title": "MoodleCloud",
+      "url": "https://www.moodlecloud.com/product-specifications/",
+      "checked_at": "2026-11-12",
+      "supports": "Pagina in EUR: 150 €/anno per 50 utenti, 240 per 100, 440 per 200. Il fornitore specifica addebito in AUD: importi EUR indicativi e variabili.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M06",
+      "title": "TalentLMS",
+      "url": "https://www.talentlms.com/prices",
+      "checked_at": "2026-11-12",
+      "supports": "Configurazione iniziale mostrata: Core 119 USD/mese per 1-40 utenti; Grow 229 per 1-70. Pagina con selettore annuale/mensile; verificare ciclo al checkout, non assumere lo stesso prezzo per ogni soglia.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M07",
+      "title": "Pebblely",
+      "url": "https://pebblely.com/pricing/",
+      "checked_at": "2026-11-12",
+      "supports": "Basic 19 USD/mese per 200 immagini/mese; Pro 39 per 500, fatturazione mensile. È software da usare in autonomia.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M08",
+      "title": "Photoroom API",
+      "url": "https://www.photoroom.com/api/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "FAQ: chiamata Basic 0,02 USD/immagine e Plus 0,10 USD/immagine. API e abbonamento app sono separati; non è il prezzo di una fotografia rifinita.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M09",
+      "title": "Kiwa Idea",
+      "url": "https://www.kiwa.com/it/it/servizi/formazione/ai-per-il-business-fondamenti-operativi/",
+      "checked_at": "2026-11-12",
+      "supports": "Corso online 8 ore, 380 € standard oppure 300 € clienti Kiwa, oltre IVA, per partecipante.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M10",
+      "title": "SpaccioAI",
+      "url": "https://spaccio.ai/corsi/base/",
+      "checked_at": "2026-11-12",
+      "supports": "Corso base in aula 390 € a persona, 7 ore effettive in una giornata; 10 posti. Regime IVA non chiarito nella pagina: non normalizzato al netto.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M11",
+      "title": "Villa Modena Coworking",
+      "url": "https://villamodena.org/servizi-costi-coworking/",
+      "checked_at": "2026-11-12",
+      "supports": "Sala formazione fino a 12 persone e docente, 150 €/giornata o 90 €/mezza giornata, oltre IVA. È un riferimento di costo, non una sala già prenotata.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M12",
+      "title": "Commissione europea",
+      "url": "https://digital-strategy.ec.europa.eu/en/faqs/ai-literacy-questions-answers",
+      "checked_at": "2026-11-12",
+      "supports": "Alfabetizzazione AI collegata a persone, contesto e rischio; nessun corso unico o certificato che attribuisca automaticamente conformità.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    },
+    {
+      "id": "M13",
+      "title": "Wearframe pubblico e accesso app",
+      "url": "https://wearframe.com/",
+      "checked_at": "2026-11-12",
+      "supports": "Pagina pubblica con early access e bundle retail: 4,95 USD/5 crediti, 37,49/50 e 99,99/200. Il login app.wearframe.com rimanda a termini su wearframe.com. Occorre confermare internamente perimetro e coordinamento dei listini.",
+      "kind": "market",
+      "limits": "Listino dinamico verificato via web; condizioni e comparabilità descritte nel rapporto. Non è una media statistica o prova di disponibilità a pagare."
+    }
+  ]
+}
