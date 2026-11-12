@@ -1,0 +1,338 @@
+{
+  "product": "AskMyDocs",
+  "date": "2026-11-12",
+  "revision": "03 Team",
+  "status": "validated",
+  "scope": "Proposta commerciale locale: canone a team con utenti illimitati, credito AI e servizi separati; non attivata in produzione",
+  "parent_local_commit": "44908b420296a79106bbbad843cdb02ff653676f",
+  "product_base_revision": "7e5de280b63b46aeab2abe7bdcbcd1422ce32869",
+  "dirty_product_note": "Modifiche desktop preesistenti estranee preservate; non descrive un nuovo rilascio live",
+  "supersedes": "Solo AskMyDocs: sostituisce pacchetti precedenti per utente e corso obbligatorio. Gli altri prodotti restano invariati.",
+  "old_bundle_note": "Vecchi totali dei bundle con AskMyDocs da riformulare prima di riutilizzarli; non fanno parte di questo listino.",
+  "artifacts": [
+    {
+      "path": "marketing/offerta-team-2026-11-12/AskMyDocs_listino_team.docx",
+      "sha256": "30f41decc56bf4d16b5fbebbf479b5bf7ef26eb8f3fcdefff65a02c6fe28aa61"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/AskMyDocs_per_Lorenzo.zip",
+      "sha256": "11577b8b9e1f1d9e9e174de74591a377f9427fe5ad44e441a70ecf641fbd514f"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/AskMyDocs_team.pdf",
+      "sha256": "edccefe6b4c4c81c5276d8d40bbd80689caf31625995fb681ba3201cf1f9cf47"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/Nota_costi_interna.txt",
+      "sha256": "fb755ac3f7466bd8040814d6cdb98e04dacfbbf99a7474856587b494c1b8268d"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/Per_Lorenzo.txt",
+      "sha256": "4338844a0341a62f8a2cfc2b0772dddc356149a483267d45ce09f7fe331824ae"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/README.txt",
+      "sha256": "291f472e779769cd381e6b8115ae5910e0f1ba8662e18cc708c2ac51d2a402f4"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/brochure.json",
+      "sha256": "b3b0d190be471a2434ecbb1946df8e43f0cd48790cb5e926a1b6ca336cb836fc"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/build.py",
+      "sha256": "1892c9c4ff88c732fb14f5a97fd40e10f52f7f77a6bd46f6e6ad3d4aec132af1"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/fonti.json",
+      "sha256": "bec595026b52945f220347fb5002304afb46e15fc1b478a51420d3f3bff1ab53"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/modello_costi_interno.json",
+      "sha256": "9df69a3b1ad1755e73cd3007937a0c12c6981c4c63ea52a311993862e9da2bad"
+    },
+    {
+      "path": "marketing/offerta-team-2026-11-12/offerta.json",
+      "sha256": "3e311f5693c388f6bc1b3132e03fed6eda95c34b8d2ca88aac91d08ba9e1d5c9"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/render_editorial.py",
+      "sha256": "588b29383935c09669df5a4ae550a045a8a31eaf6a37a4faa9fe9884a310c34d"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/sorgenti/genera_documenti.py",
+      "sha256": "daa11c78500c7155ee2205243ff3a52a5a5dcc63647b9e1d68f2befc50e6741b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/contenuti.json",
+      "sha256": "90c5f2fec12daae5978832a777a48d7bf052c2134d820d1e2556a20e62ae3d1a"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "sha256": "7ac783ce9a6a8e1b29286bcc9f55c2182c504266c8d8ee1bb52e71fdffaf70cd"
+    },
+    {
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "sha256": "4a5dc8c0b2178dd684b91c22030697948dec2f81ca5c82eb3abbe4dbea5e7af9"
+    },
+    {
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "sha256": "f9b7af5f6c8155f558fa2044cdbeefd749f3d496ffcecb9bf1a8867a4e6877a8"
+    },
+    {
+      "path": "resources/views/landing.blade.php",
+      "sha256": "756984e9f0240742a814ed8979836d181343de0f70249668daaf08a4c65cfc3f"
+    },
+    {
+      "path": "public/landing/styles.css",
+      "sha256": "8b316ba52caf004cb0f1243248198e50dc2ff3ddcc38c8603b624ee35e488201"
+    },
+    {
+      "path": "public/landing/theme.css",
+      "sha256": "cc14eb1c28ae4c7e603247bbb31fbce667983070f65141dbbd20d328cf39b98f"
+    },
+    {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "sha256": "27dfc86e8b651802bcacc4c0e3bd20cff026f08520eb336508eacfa03b38b098"
+    },
+    {
+      "path": "public/editorial/knowledge-day.webp",
+      "sha256": "89ebc86dda3b8d4e081821228bedef1b503753f66f207dae16d4553b412b2755"
+    },
+    {
+      "path": "public/editorial/archive-day.webp",
+      "sha256": "9fc560be44cbee175234397962467c2310f3d778852f987e726d8f723d902e89"
+    },
+    {
+      "path": "public/editorial/community-day.webp",
+      "sha256": "5dee594d23e3dd7abf9a056e9ac56aaee01884760c288e054dca8925aad124ff"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+      "sha256": "b4271789ec5900cbda4e0440f73971d3f1a1ee61773f12031a2064d99f480966"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+      "sha256": "c981528e454b720b85ccd6e488c2a7103ea9f90c7b0ab300bae8186689990e28"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf",
+      "sha256": "5052a3681354f594059e377ec0372caa7553477eb1dbcfc9aa9be5a1c3019f2b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+      "sha256": "fae7b7ff21acefce18c04d8ab55e10fd804e3c55dbd1897b20de0ca9e6ba063b"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+      "sha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+    },
+    {
+      "path": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+      "sha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+    }
+  ],
+  "page_map": {
+    "document": {
+      "title": "AskMyDocs abbonamento a team e servizi di adozione",
+      "brand_name": "AskMyDocs",
+      "edition": "12 NOVEMBRE 2026 / REV 03",
+      "header": "ASKMYDOCS / TEAM E ADOZIONE AI",
+      "footer_note": "Proposta commerciale · IVA esclusa · Immagini illustrative",
+      "author": "",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ]
+    },
+    "page_count": 9,
+    "pages": [
+      {
+        "page": 1,
+        "id": "cover",
+        "layout": "cover",
+        "title": "Una piattaforma per il team\nUn percorso per le persone",
+        "section": "Una piattaforma per il team Un percorso per le persone",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 2,
+        "id": "value",
+        "layout": "article",
+        "title": "Invitare tutto il gruppo\nImparare a lavorare insieme",
+        "section": "Invitare tutto il gruppo Imparare a lavorare insieme",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 3,
+        "id": "case",
+        "layout": "case",
+        "title": "Una domanda che torna\nUn archivio da cui partire",
+        "section": "Una domanda che torna Un archivio da cui partire",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 4,
+        "id": "plans",
+        "layout": "table",
+        "title": "Tre piani\nSempre utenti illimitati",
+        "section": "Tre piani Sempre utenti illimitati",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 5,
+        "id": "usage",
+        "layout": "table",
+        "title": "Un saldo condiviso\nUn budget comprensibile",
+        "section": "Un saldo condiviso Un budget comprensibile",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 6,
+        "id": "consulting",
+        "layout": "table",
+        "title": "La consulenza\ntrasforma il primo utilizzo",
+        "section": "La consulenza trasforma il primo utilizzo",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 7,
+        "id": "courses",
+        "layout": "table",
+        "title": "La formazione è un servizio\nIl suo prezzo è esplicito",
+        "section": "La formazione è un servizio Il suo prezzo è esplicito",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 8,
+        "id": "quotes",
+        "layout": "table",
+        "title": "Il preventivo mostra\nche cosa state acquistando",
+        "section": "Il preventivo mostra che cosa state acquistando",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      },
+      {
+        "page": 9,
+        "id": "closing",
+        "layout": "closing",
+        "title": "Scegliamo il primo lavoro\nPoi costruiamo il percorso",
+        "section": "Scegliamo il primo lavoro Poi costruiamo il percorso",
+        "source_ids": [
+          "TEAM-PROPOSAL",
+          "AMD-FACTS",
+          "AMD-BRAND"
+        ],
+        "feature_ids": []
+      }
+    ]
+  },
+  "feature_page_map": {
+    "F-001": {
+      "pages": [
+        2,
+        3,
+        4
+      ],
+      "claim": "Ricerca e chat con riferimenti alle fonti"
+    },
+    "F-005": {
+      "pages": [
+        2,
+        3
+      ],
+      "claim": "Caricamento e indicizzazione di documenti"
+    },
+    "F-006": {
+      "pages": [
+        3,
+        5
+      ],
+      "claim": "Estrazione OCR di documenti"
+    },
+    "F-034": {
+      "pages": [
+        2,
+        4
+      ],
+      "claim": "Organizzazioni e team"
+    },
+    "F-036": {
+      "pages": [
+        2,
+        3,
+        4
+      ],
+      "claim": "Gestione degli accessi"
+    }
+  },
+  "feature_evidence_limit": "ID del catalogo funzionale storico già verificato, non una nuova demo live. Nuove soglie commerciali, credito, prenotazione budget e code sono proposta da configurare e collaudare.",
+  "checks": {
+    "all_9_pdf_pages_viewed_individually_110dpi": true,
+    "all_3_docx_pages_rendered_and_viewed": true,
+    "selectable_text_pass": true,
+    "no_overflow_or_collisions": true,
+    "annual_and_quote_arithmetic_checked": true,
+    "users_unlimited_courses_optional_no_ai_included": true,
+    "cost_model_positive_with_cloud_plus_25pct": true,
+    "docx_metadata_checked": true,
+    "zip_integrity_checked": true,
+    "unrelated_changes_preserved": true
+  },
+  "commercial_totals_eur_ex_vat": [
+    1888,
+    3728,
+    7688,
+    13938
+  ],
+  "limits": [
+    "Il consumo completo per risposta AskMyDocs in produzione non è ancora riconciliato; niente equivalenze universali domande/crediti",
+    "Sostenibilità degli utenti illimitati subordinata a budget AI, risorse finite, code e limiti di parallelismo del team",
+    "Contatori, saldo, prenotazione budget e limiti di coda da configurare e collaudare prima di applicare questo nuovo listino",
+    "Non sono utili netti; sviluppo evolutivo, struttura generale e imposte esclusi",
+    "Infrastruttura e assistenza sono budget di proposta per team, non costi consuntivi per cliente",
+    "Immagini narrative riutilizzate dagli asset del sito; nessun nuovo prompt o immagine generata",
+    "Nessun codice applicativo o prezzo live modificato; nessuna pubblicazione o invio"
+  ]
+}

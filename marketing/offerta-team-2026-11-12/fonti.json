@@ -1,0 +1,39 @@
+{
+  "sources": [
+    {
+      "id": "ANNOTA-20261112",
+      "url": "https://annota.ai/it/pricing/#plans",
+      "publisher": "Annota AI",
+      "checked_at": "2026-11-12",
+      "supports": "Team 24 euro + IVA per membro/mese, minimo due; quote di crediti e spazio condivise. I crediti per membro si sommano.",
+      "limits": "Prodotti e capacità differenti: confronto della struttura commerciale, non equivalenza delle prestazioni."
+    },
+    {
+      "id": "AMD-CLOUD",
+      "path": "marketing/offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+      "checked_at": "2026-11-12",
+      "supports": "Costi Cloud Surface osservati, separazione main/develop e limiti della misura AI locale"
+    },
+    {
+      "id": "AMD-FACTS",
+      "path": "marketing/analisi/presentazione-prodotto-2026-10-29/inventario-candidato.json",
+      "supports": "ID funzionali di ricerca, fonti, ingestione e organizzazioni; non prova di nuovi limiti commerciali già applicati"
+    },
+    {
+      "id": "AMD-BRAND",
+      "path": "marketing/offerte-con-formazione-2026-11-12/brand.json",
+      "supports": "Identità da landing e asset verificati, font Instrument Serif e Geist"
+    },
+    {
+      "id": "TEAM-PROPOSAL",
+      "path": "offerta.json",
+      "supports": "Proposta commerciale nuova, non tariffa già attiva o approvata da clienti"
+    },
+    {
+      "id": "OR-PRICING",
+      "url": "https://openrouter.ai/pricing",
+      "checked_at": "2026-11-12",
+      "supports": "Commissioni su acquisto crediti distinte dall’inferenza; costo completo da valorizzare senza doppio conteggio"
+    }
+  ]
+}

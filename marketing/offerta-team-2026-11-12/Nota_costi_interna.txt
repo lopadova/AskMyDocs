@@ -1,0 +1,27 @@
+ASKMYDOCS TEAM - NOTA INTERNA DEL 12 NOVEMBRE 2026
+
+Annota Team: 24 euro + IVA per membro/mese, minimo due. Crediti e spazio per membro condivisi. AskMyDocs propone invece 149/299/599 euro mensili equivalenti per team, su annuale, senza crediti AI inclusi. Il confronto riguarda la struttura, non prestazioni o quantità equivalenti.
+Fonte: https://annota.ai/it/pricing/#plans
+
+COSTI FISSI E MARGINI SIMULATI - NON UTILE NETTO
+Team: ricavo annuo 1788 euro; costo diretto ricorrente 1012.00; avvio standard 181.50. Contribuzione anno1 20.7%, rinnovo 30.9%; cloud +25% anno1 9.7%.
+Business: ricavo annuo 3588 euro; costo diretto ricorrente 2024.00; avvio standard 181.50. Contribuzione anno1 26.0%, rinnovo 31.1%; cloud +25% anno1 15.0%.
+Scale: ricavo annuo 7188 euro; costo diretto ricorrente 3520.00; avvio standard 181.50. Contribuzione anno1 36.0%, rinnovo 38.5%; cloud +25% anno1 26.8%.
+
+Ipotesi: tecnico55 euro/ora, supporto45, riserva10% costi, provvigione commerciale10% ricavo e incasso2,5%. Avvio tecnico standard tre ore incluso. Supporto tecnico stimato2/4/8 ore annue; manutenzione110/220/440; cloud720/1440/2400. Il canone è annuale anticipato; non è un piano mensile cancellabile dopo un mese.
+
+CONSUMI AI
+Costo tecnico completo in euro moltiplicato2,5 e arrotondato al credito da0,01 euro superiore. A parità di costo questo dà contribuzione minima43,5% dopo le ipotesi di commissioni/incasso/riserva, prima dei costi generali. Esempi puramente aritmetici nel JSON, non medie di produzione.
+Il credito non utilizzato non viene trattato come margine acquisito nel modello. Il canone finanzia infrastruttura e gestione; il credito finanzia le elaborazioni. Consulenza e corsi sono ricavi e costi separati.
+
+CONTROLLI PRIMA DELL’APPLICAZIONE
+Il consumo completo per risposta AskMyDocs in produzione non è ancora riconciliato; niente equivalenze universali domande/crediti
+Sostenibilità degli utenti illimitati subordinata a budget AI, risorse finite, code e limiti di parallelismo del team
+Contatori, saldo, prenotazione budget e limiti di coda da configurare e collaudare prima di applicare questo nuovo listino
+Non sono utili netti; sviluppo evolutivo, struttura generale e imposte esclusi
+Le fonti Cloud reali sono conservate nell’audit precedente: main con intero DB condiviso attribuito prudenzialmente48,66USD per periodo, totale main+develop73,08USD. Non sono costi per singolo cliente. Non assumere gratuità dai log locali a costo zero.
+
+PROVENIENZA E SUPERAMENTO
+Solo AskMyDocs: sostituisce pacchetti precedenti per utente e corso obbligatorio. Gli altri prodotti restano invariati.
+Vecchi totali dei bundle con AskMyDocs da riformulare prima di riutilizzarli; non fanno parte di questo listino.
+I materiali degli altri tre prodotti non sono stati modificati. Questo lavoro non cambia software, sito, contatori, abbonamenti o dati di produzione.

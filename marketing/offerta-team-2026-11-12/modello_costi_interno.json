@@ -1,0 +1,107 @@
+{
+  "currency": "EUR",
+  "assumptions_not_actual_staff_costs": true,
+  "loaded_technical_hour": 55,
+  "support_hour": 45,
+  "direct_cost_reserve_pct": 10,
+  "hypothetical_sales_commission_pct": 10,
+  "collection_cost_pct_assumption": 2.5,
+  "standard_activation_hours_included": 3,
+  "fixed_service_results": [
+    {
+      "plan": "Team",
+      "annual_revenue": 1788,
+      "cloud_budget": 720,
+      "maintenance_budget": 110,
+      "technical_support_hours_assumption": 2,
+      "recurring_direct_cost": 1012.0,
+      "standard_activation_cost": 181.5,
+      "first_year_contribution_pct": 20.74944071588367,
+      "renewal_contribution_pct": 30.900447427293066,
+      "cloud_plus_25pct_first_year_margin": 9.675615212527964
+    },
+    {
+      "plan": "Business",
+      "annual_revenue": 3588,
+      "cloud_budget": 1440,
+      "maintenance_budget": 220,
+      "technical_support_hours_assumption": 4,
+      "recurring_direct_cost": 2024.0,
+      "standard_activation_cost": 181.5,
+      "first_year_contribution_pct": 26.031215161649943,
+      "renewal_contribution_pct": 31.08974358974359,
+      "cloud_plus_25pct_first_year_margin": 14.994425863991081
+    },
+    {
+      "plan": "Scale",
+      "annual_revenue": 7188,
+      "cloud_budget": 2400,
+      "maintenance_budget": 440,
+      "technical_support_hours_assumption": 8,
+      "recurring_direct_cost": 3520.0,
+      "standard_activation_cost": 181.5,
+      "first_year_contribution_pct": 36.00445186421814,
+      "renewal_contribution_pct": 38.529493600445186,
+      "cloud_plus_25pct_first_year_margin": 26.822481914301616
+    }
+  ],
+  "ai_usage": {
+    "rule": "ceil(technical_cost_eur_complete * 2.5 / 0.01) credits",
+    "credit_value_eur": 0.01,
+    "technical_cost_scope": "Intera operazione: modelli, embedding, OCR, verifiche, tentativi e servizi AI a pagamento; commissioni provider e cambio effettivo di acquisto inclusi una sola volta",
+    "usage_revenue_recognized_in_model": "solo utilizzo, non credito ancora non consumato",
+    "examples_are_arithmetic_not_measured_average": [
+      {
+        "technical_cost_eur_hypothetical": 0.008,
+        "credits": 2,
+        "retail_eur": 0.02,
+        "contribution_pct": 43.5
+      },
+      {
+        "technical_cost_eur_hypothetical": 0.04,
+        "credits": 10,
+        "retail_eur": 0.1,
+        "contribution_pct": 43.5
+      },
+      {
+        "technical_cost_eur_hypothetical": 0.2,
+        "credits": 50,
+        "retail_eur": 0.5,
+        "contribution_pct": 43.5
+      },
+      {
+        "technical_cost_eur_hypothetical": 1.0,
+        "credits": 250,
+        "retail_eur": 2.5,
+        "contribution_pct": 43.5
+      }
+    ]
+  },
+  "consulting": [
+    {
+      "hours": 8,
+      "price": 1200,
+      "direct_cost": 484.0,
+      "contribution_pct": 47.166666666666664
+    },
+    {
+      "hours": 16,
+      "price": 2400,
+      "direct_cost": 968.0,
+      "contribution_pct": 47.166666666666664
+    },
+    {
+      "hours": 28,
+      "price": 4200,
+      "direct_cost": 1694.0,
+      "contribution_pct": 47.166666666666664
+    }
+  ],
+  "cloud_evidence": "../offerte-portafoglio-2026-11-12/revisione02/audit_costi_verificati.json",
+  "limits": [
+    "Il consumo completo per risposta AskMyDocs in produzione non è ancora riconciliato; niente equivalenze universali domande/crediti",
+    "Sostenibilità degli utenti illimitati subordinata a budget AI, risorse finite, code e limiti di parallelismo del team",
+    "Contatori, saldo, prenotazione budget e limiti di coda da configurare e collaudare prima di applicare questo nuovo listino",
+    "Non sono utili netti; sviluppo evolutivo, struttura generale e imposte esclusi"
+  ]
+}

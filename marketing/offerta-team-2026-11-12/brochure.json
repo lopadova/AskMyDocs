@@ -1,0 +1,520 @@
+{
+  "document": {
+    "title": "AskMyDocs abbonamento a team e servizi di adozione",
+    "brand_name": "AskMyDocs",
+    "edition": "12 NOVEMBRE 2026 / REV 03",
+    "header": "ASKMYDOCS / TEAM E ADOZIONE AI",
+    "footer_note": "Proposta commerciale · IVA esclusa · Immagini illustrative",
+    "author": "",
+    "source_ids": [
+      "TEAM-PROPOSAL",
+      "AMD-FACTS",
+      "AMD-BRAND"
+    ]
+  },
+  "theme": {
+    "palette_source": "resources/views/landing.blade.php; public/landing/styles.css e theme.css, variante Humanistic light. Griglia della presentazione prodotto approvata.",
+    "palette": {
+      "paper": "#F4F2ED",
+      "cream": "#EEECE5",
+      "ink": "#19241F",
+      "primary": "#416147",
+      "accent": "#735C34",
+      "muted": "#4D5B53",
+      "line": "#D3D8CA",
+      "pale": "#E4E6DC"
+    },
+    "fonts": {
+      "heading": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Regular.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/InstrumentSerif-Italic.ttf"
+      },
+      "body": {
+        "regular": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-normal.ttf",
+        "bold": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-normal.ttf",
+        "italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-400-italic.ttf",
+        "bold_italic": "marketing/offerte-con-formazione-2026-11-12/assets/fonts/Geist-700-italic.ttf"
+      }
+    },
+    "logo": {
+      "path": "public/brand/askmydocs-wordmark-light.png",
+      "fit": "contain"
+    },
+    "images": {
+      "jpeg_quality": 90,
+      "max_dpi": 180
+    },
+    "folio_format": "{page:02d} / {total:02d}"
+  },
+  "pages": [
+    {
+      "id": "cover",
+      "layout": "cover",
+      "section": "Una piattaforma per il team Un percorso per le persone",
+      "title": "Una piattaforma per il team\nUn percorso per le persone",
+      "deck": "Utenti illimitati, utilizzo sotto controllo.\nConsulenza e formazione si scelgono e si quotano a parte.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "OFFERTA A TEAM",
+      "display_name": "AskMyDocs",
+      "image": {
+        "path": "public/editorial/knowledge-day.webp",
+        "height": 145,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "band_title": "CANONE TEAM / CONSUMI AI / CONSULENZA / CORSI",
+      "band_subtitle": "NUOVO LISTINO ASKMYDOCS / 12 NOVEMBRE 2026"
+    },
+    {
+      "id": "value",
+      "layout": "article",
+      "section": "Invitare tutto il gruppo Imparare a lavorare insieme",
+      "title": "Invitare tutto il gruppo\nImparare a lavorare insieme",
+      "deck": "Il canone riguarda l’organizzazione. Il valore del primo progetto nasce dalla scelta delle fonti, dalle competenze delle persone e dal metodo di verifica.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL MODELLO COMMERCIALE",
+      "columns": [
+        [
+          {
+            "heading": "Un prezzo per il team",
+            "text": "Potete invitare gli utenti autorizzati della stessa organizzazione senza acquistare posti aggiuntivi. Ogni persona ha un account e i propri permessi. Il piano cambia quando servono più spazio o maggiore capacità di elaborazione."
+          },
+          {
+            "heading": "Il software rende disponibili le fonti",
+            "text": "AskMyDocs raccoglie documenti, li indicizza e permette di interrogarli con risposte accompagnate dai riferimenti. Il team deve sapere quali contenuti usare e come controllare ciò che ottiene."
+          }
+        ],
+        [
+          {
+            "heading": "Il primo valore è l’affiancamento",
+            "text": "Per un’azienda all’inizio del percorso AI suggeriamo formazione di base e consulenza su un primo caso concreto. Lavoriamo su domande ricorrenti, materiali, accessi e criteri di riuscita."
+          },
+          {
+            "heading": "Quattro voci riconoscibili",
+            "text": "Abbonamento software, credito AI, consulenza e corsi hanno prezzi separati. Potete acquistare la piattaforma da sola oppure costruire il percorso di adozione più adatto al vostro livello di preparazione."
+          }
+        ]
+      ],
+      "callout": "L’accesso può essere esteso a tutto il gruppo. La formazione e la consulenza preparano le persone a usarlo con criterio."
+    },
+    {
+      "id": "case",
+      "layout": "case",
+      "section": "Una domanda che torna Un archivio da cui partire",
+      "title": "Una domanda che torna\nUn archivio da cui partire",
+      "deck": "Scenario illustrativo: l’ufficio cerca condizioni e riferimenti in fatture, bollette o preventivi già disponibili.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL PRIMO CASO",
+      "image": {
+        "path": "public/editorial/archive-day.webp",
+        "height": 145,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione del prodotto. Scenario esemplificativo, non una testimonianza."
+      },
+      "columns": [
+        [
+          {
+            "heading": "Scegliere le fonti giuste",
+            "text": "Il referente seleziona un corpus leggibile e aggiornato. Nella consulenza possiamo aiutarlo a organizzare i materiali, impostare gli accessi e definire le domande da provare."
+          },
+          {
+            "heading": "Seguire il percorso della risposta",
+            "text": "La ricerca aiuta a ritrovare il documento pertinente e a formulare una risposta. Il referente apre le fonti, controlla i dettagli e riconosce quando la documentazione non basta."
+          }
+        ],
+        [
+          {
+            "heading": "Portare il metodo nel gruppo",
+            "text": "Nel percorso di avvio guidato concordiamo venti domande e ne valutiamo insieme gli esiti. Il team riceve una procedura da usare nelle attività successive."
+          },
+          {
+            "heading": "Riconoscere i confini",
+            "text": "Ricerca documentale, OCR e AI richiedono verifica umana. Contabilità, riconciliazioni fiscali e calcoli certificati hanno un perimetro diverso. La consulenza di avvio si acquista separatamente dal software."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "plans",
+      "layout": "table",
+      "section": "Tre piani Sempre utenti illimitati",
+      "title": "Tre piani\nSempre utenti illimitati",
+      "deck": "Canone per una singola organizzazione aziendale. Importi IVA esclusa. I valori mensili sono equivalenti di un abbonamento annuale fatturato anticipatamente.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "ABBONAMENTO SOFTWARE",
+      "headers": [
+        "CONTENUTO",
+        "TEAM",
+        "BUSINESS",
+        "SCALE"
+      ],
+      "column_weights": [
+        2.1,
+        1,
+        1,
+        1
+      ],
+      "table_font": 9,
+      "padding": 7,
+      "rows": [
+        [
+          "Equivalente al mese per team",
+          "149 €",
+          "299 €",
+          "599 €"
+        ],
+        [
+          "Totale fatturato per 12 mesi",
+          "1.788 €",
+          "3.588 €",
+          "7.188 €"
+        ],
+        [
+          "Utenti nominativi",
+          "Illimitati",
+          "Illimitati",
+          "Illimitati"
+        ],
+        [
+          "Progetti e archivi",
+          "Illimitati",
+          "Illimitati",
+          "Illimitati"
+        ],
+        [
+          "Storage condiviso",
+          "20 GB",
+          "100 GB",
+          "300 GB"
+        ],
+        [
+          "Operazioni AI contemporanee",
+          "2",
+          "5",
+          "10"
+        ],
+        [
+          "Caricamento e lettura dei file",
+          "Inclusi",
+          "Inclusi",
+          "Inclusi"
+        ],
+        [
+          "Attivazione standard del team",
+          "Inclusa",
+          "Inclusa",
+          "Inclusa"
+        ],
+        [
+          "Consumi AI",
+          "A credito",
+          "A credito",
+          "A credito"
+        ],
+        [
+          "Consulenza e corsi",
+          "Extra a scelta",
+          "Extra a scelta",
+          "Extra a scelta"
+        ]
+      ],
+      "note": "Stesse funzioni principali di ricerca documentale, chat con fonti e gestione degli accessi. L’attivazione standard configura team, amministratore, profilo AI e parametri generali. Nessun prezzo per utente e nessun credito AI incluso nel canone. Documenti e progetti entro lo spazio disponibile. Le elaborazioni oltre il parallelismo del piano restano in coda; utenti illimitati non significa risorse di calcolo illimitate. Installazioni private e integrazioni si dimensionano a parte."
+    },
+    {
+      "id": "usage",
+      "layout": "table",
+      "section": "Un saldo condiviso Un budget comprensibile",
+      "title": "Un saldo condiviso\nUn budget comprensibile",
+      "deck": "Il credito AI è separato dal canone ed è condiviso dall’intero team. Un credito equivale a 0,01 € di utilizzo, IVA esclusa.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "UTILIZZO DELL’INTELLIGENZA ARTIFICIALE",
+      "headers": [
+        "VOCE",
+        "REGOLA"
+      ],
+      "column_weights": [
+        1.2,
+        2.5
+      ],
+      "table_font": 9.5,
+      "padding": 8,
+      "rows": [
+        [
+          "Ricariche",
+          "50 € = 5.000 crediti; 100 € = 10.000; 250 € = 25.000"
+        ],
+        [
+          "Operazioni a consumo",
+          "OCR, indicizzazione, risposte e analisi AI"
+        ],
+        [
+          "Calcolo",
+          "2,5 volte il costo tecnico AI completo dell’operazione, arrotondato al credito superiore"
+        ],
+        [
+          "Costo tecnico completo",
+          "Include tutti i passaggi AI e i tentativi necessari, con commissioni provider e cambio effettivo di acquisto"
+        ],
+        [
+          "Esempi di spesa",
+          "100 € coprono 5.000 operazioni da 0,02 €, oppure 1.000 da 0,10 €, oppure 200 da 0,50 €"
+        ],
+        [
+          "Controllo",
+          "Prezzo stimato o massimale prima dell’esecuzione; nessun superamento del budget senza autorizzazione"
+        ],
+        [
+          "Saldo esaurito",
+          "Si fermano le nuove operazioni AI; documenti già disponibili restano leggibili ed esportabili durante il servizio"
+        ],
+        [
+          "Validità",
+          "Crediti acquistati senza scadenza, utilizzabili con abbonamento attivo dello stesso team"
+        ]
+      ],
+      "note": "Gli esempi illustrano la matematica del budget e non garantiscono lo stesso numero di risposte per qualsiasi modello o domanda. I token sono unità tecniche dei modelli e non coincidono con i crediti commerciali. Caricare, leggere o esportare un file non consuma credito AI; estrarlo con OCR, indicizzarlo o analizzarlo sì. Nessuna ricarica automatica obbligatoria."
+    },
+    {
+      "id": "consulting",
+      "layout": "table",
+      "section": "La consulenza trasforma il primo utilizzo",
+      "title": "La consulenza\ntrasforma il primo utilizzo",
+      "deck": "Servizi una tantum, acquistabili separatamente e abbinabili a qualsiasi piano software. Le ore indicate comprendono preparazione, incontri e lavoro sul caso concordato.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CONSULENZA DI ADOZIONE EXTRA",
+      "headers": [
+        "PERCORSO",
+        "PRIMO CASO",
+        "REPARTO",
+        "DIFFUSIONE"
+      ],
+      "column_weights": [
+        1.7,
+        1,
+        1,
+        1.1
+      ],
+      "table_font": 9,
+      "padding": 7,
+      "rows": [
+        [
+          "Prezzo una tantum",
+          "1.200 €",
+          "2.400 €",
+          "4.200 €"
+        ],
+        [
+          "Monte ore complessivo",
+          "8 ore",
+          "16 ore",
+          "28 ore"
+        ],
+        [
+          "Casi di lavoro delimitati",
+          "1",
+          "Fino a 3",
+          "Fino a 6"
+        ],
+        [
+          "Materiali assistiti iniziali",
+          "100 file / 1.000 pagine",
+          "500 file / 5.000 pagine",
+          "1.500 file / 15.000 pagine"
+        ],
+        [
+          "Attività",
+          "Scelta caso, fonti, accessi, laboratorio e 20 domande di prova",
+          "Organizzazione del reparto, referenti, materiali e verifica dei casi",
+          "Metodo comune, responsabilità e piano di diffusione tra reparti"
+        ]
+      ],
+      "note": "Il primo progetto parte dal lavoro che il cliente vuole migliorare. La consulenza include scelta del corpus, configurazione del caso, caricamento assistito entro soglia e verifica con il referente; i consumi AI si addebitano sul credito, senza un secondo costo tecnico già nascosto nella consulenza. Non comprende il corso base, riscrittura integrale dei manuali o sviluppo di integrazioni. Ulteriori ore di consulenza: 150 € online; trasferte quotate prima dell’ordine."
+    },
+    {
+      "id": "courses",
+      "layout": "table",
+      "section": "La formazione è un servizio Il suo prezzo è esplicito",
+      "title": "La formazione è un servizio\nIl suo prezzo è esplicito",
+      "deck": "Corso base AI di otto ore, facoltativo rispetto all’abbonamento e consigliato alle aziende che iniziano. Il prezzo comprende docente, materiali, esercitazioni e verifica finale.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "CORSI EXTRA",
+      "headers": [
+        "MODALITÀ",
+        "PREZZO IVA ESCLUSA",
+        "PARTECIPANTI"
+      ],
+      "column_weights": [
+        1.6,
+        1.1,
+        1.1
+      ],
+      "table_font": 9.5,
+      "padding": 8,
+      "rows": [
+        [
+          "Online condiviso",
+          "240 € a persona",
+          "Posti acquistati"
+        ],
+        [
+          "Coworking condiviso",
+          "320 € a persona",
+          "Posti acquistati"
+        ],
+        [
+          "Online dedicato",
+          "1.400 € per gruppo",
+          "Fino a 8 persone"
+        ],
+        [
+          "In sede del cliente",
+          "1.800 € + trasferta",
+          "Fino a 8 persone"
+        ],
+        [
+          "Trasferta locale proposta",
+          "250 € per visita",
+          "Entro 50 km e massimo 2 ore A/R"
+        ]
+      ],
+      "note": "Programma: due ore sul funzionamento dei modelli, due su richieste e verifica, due su dati e responsabilità, due di esercizi. Dispensa, checklist, attestato di partecipazione e accesso per 90 giorni al solo corso AI su Oraculi con 100 risposte tutor per partecipante. Il corso condiviso si organizza inizialmente ogni quindici giorni: due mezze giornate in coworking o quattro incontri online. Calendario concordato all’ordine e completamento entro 90 giorni. In presenza serve una sala tranquilla con schermo, connessione e un computer per persona; oltre la trasferta locale si fissa il totale prima dell’ordine."
+    },
+    {
+      "id": "quotes",
+      "layout": "table",
+      "section": "Il preventivo mostra che cosa state acquistando",
+      "title": "Il preventivo mostra\nche cosa state acquistando",
+      "deck": "Esempi per il primo anno, IVA esclusa. Il credito è un budget iniziale di utilizzo; corso e consulenza sono scelte separate.",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "QUATTRO VOCI DISTINTE",
+      "headers": [
+        "VOCE",
+        "SOLO TEAM",
+        "PRIMO PROGETTO",
+        "REPARTO"
+      ],
+      "column_weights": [
+        1.8,
+        1,
+        1.1,
+        1.1
+      ],
+      "table_font": 9,
+      "padding": 8,
+      "rows": [
+        [
+          "Piano software",
+          "Team",
+          "Team",
+          "Business"
+        ],
+        [
+          "Abbonamento 12 mesi",
+          "1.788 €",
+          "1.788 €",
+          "3.588 €"
+        ],
+        [
+          "Credito AI iniziale",
+          "100 €",
+          "100 €",
+          "300 €"
+        ],
+        [
+          "Consulenza",
+          "Non acquistata",
+          "1.200 € / 8 ore",
+          "2.400 € / 16 ore"
+        ],
+        [
+          "Corso",
+          "Non acquistato",
+          "640 € / 2 posti coworking",
+          "1.400 € / online fino a 8"
+        ],
+        [
+          "Totale primo anno",
+          "1.888 €",
+          "3.728 €",
+          "7.688 €"
+        ]
+      ],
+      "note": "Esempio Scale: software 7.188 € + credito 500 € + consulenza 4.200 € + corso in sede 1.800 € e trasferta locale 250 € = 13.938 €. Il rinnovo riguarda il solo abbonamento; nuovi crediti e servizi si acquistano quando servono. Software annuale anticipato, crediti prepagati, consulenza e corsi 50% all’ordine e 50% al completamento. Validità fino al 12 dicembre 2026. L’ammissibilità a un bando dipende dal testo vigente; non è un contributo già concesso."
+    },
+    {
+      "id": "closing",
+      "layout": "closing",
+      "section": "Scegliamo il primo lavoro Poi costruiamo il percorso",
+      "title": "Scegliamo il primo lavoro\nPoi costruiamo il percorso",
+      "deck": "La piattaforma dà accesso al gruppo. Consulenza e formazione aiutano l’azienda a costruire un uso comprensibile e verificabile dell’AI.\naskmydocs.surfacesrl.com",
+      "source_ids": [
+        "TEAM-PROPOSAL",
+        "AMD-FACTS",
+        "AMD-BRAND"
+      ],
+      "feature_ids": [],
+      "kicker": "IL PROSSIMO PASSO",
+      "image": {
+        "path": "public/editorial/community-day.webp",
+        "height": 260,
+        "fit": "cover",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Illustrazione editoriale del prodotto"
+      },
+      "quote": "Una singola organizzazione, utenti illimitati, consumi condivisi. L’affiancamento si sceglie in base alle competenze e agli obiettivi del team."
+    }
+  ]
+}

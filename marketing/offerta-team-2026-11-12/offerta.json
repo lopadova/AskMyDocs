@@ -1,0 +1,107 @@
+{
+  "revision": "03 AskMyDocs Team",
+  "date": "2026-11-12",
+  "tax": "IVA esclusa",
+  "valid_until": "2026-12-12",
+  "plans": [
+    {
+      "name": "Team",
+      "monthly_equivalent": 149,
+      "annual_billed": 1788,
+      "term_months": 12,
+      "users": "illimitati",
+      "projects": "illimitati",
+      "storage_gb": 20,
+      "parallel_ai_operations": 2,
+      "included_ai_credit": 0,
+      "included_course": false,
+      "standard_team_activation_included": true
+    },
+    {
+      "name": "Business",
+      "monthly_equivalent": 299,
+      "annual_billed": 3588,
+      "term_months": 12,
+      "users": "illimitati",
+      "projects": "illimitati",
+      "storage_gb": 100,
+      "parallel_ai_operations": 5,
+      "included_ai_credit": 0,
+      "included_course": false,
+      "standard_team_activation_included": true
+    },
+    {
+      "name": "Scale",
+      "monthly_equivalent": 599,
+      "annual_billed": 7188,
+      "term_months": 12,
+      "users": "illimitati",
+      "projects": "illimitati",
+      "storage_gb": 300,
+      "parallel_ai_operations": 10,
+      "included_ai_credit": 0,
+      "included_course": false,
+      "standard_team_activation_included": true
+    }
+  ],
+  "credit_value_eur": 0.01,
+  "topups_eur": [
+    50,
+    100,
+    250
+  ],
+  "credit_expiry": "Crediti acquistati non in scadenza; utilizzabili con abbonamento attivo dello stesso team",
+  "consulting_prices": [
+    1200,
+    2400,
+    4200
+  ],
+  "consulting_hours": [
+    8,
+    16,
+    28
+  ],
+  "course_prices": {
+    "online_shared_per_person": 240,
+    "coworking_per_person": 320,
+    "online_private": 1400,
+    "onsite_private": 1800,
+    "local_travel": 250
+  },
+  "quotes": [
+    {
+      "name": "Solo piattaforma Team",
+      "plan": 0,
+      "credit": 100,
+      "consulting": 0,
+      "course": 0,
+      "total": 1888
+    },
+    {
+      "name": "Primo progetto Team",
+      "plan": 0,
+      "credit": 100,
+      "consulting": 1200,
+      "course": 640,
+      "total": 3728
+    },
+    {
+      "name": "Reparto Business",
+      "plan": 1,
+      "credit": 300,
+      "consulting": 2400,
+      "course": 1400,
+      "total": 7688
+    },
+    {
+      "name": "Diffusione Scale",
+      "plan": 2,
+      "credit": 500,
+      "consulting": 4200,
+      "course": 2050,
+      "total": 13938
+    }
+  ],
+  "supersedes": "Solo AskMyDocs: sostituisce pacchetti precedenti per utente e corso obbligatorio. Gli altri prodotti restano invariati.",
+  "old_portfolio_bundle": "Vecchi totali dei bundle con AskMyDocs da riformulare prima di riutilizzarli; non fanno parte di questo listino."
+}
