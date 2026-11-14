@@ -75,6 +75,11 @@ final class PactAuthTest extends TestCase
         });
         app()->instance(\Padosoft\PactAgent\Contracts\CoordinatorClient::class, $client);
         $context = \App\Agent\AgentExecutionContext::fromArray($run->toArray());
+        $tools = app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $this->user);
+        foreach ($tools as $tool) {
+            $this->assertTrue($tool->readOnly);
+            $this->assertContains($tool->kind, ['knowledge', 'catalog']);
+        }
         app(\App\Ai\AgentChatModelScope::class)->within($context, function (): void {
             app(\App\Pact\InferenceBudget::class)->reserve(); app(\App\Pact\InferenceBudget::class)->reserve();
         });

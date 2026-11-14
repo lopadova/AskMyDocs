@@ -60,6 +60,8 @@ final readonly class AgentToolRegistry
         ?User $user = null,
         array $clientTools = [],
     ): array {
+        $run = \App\Models\AgentRun::query()->forTenant($context->tenantId)->where('run_id', $context->runId)->first();
+        $pact = $run !== null && is_string(data_get($run->input_json, 'pact_task_id'));
         $tools = [
             'search_knowledge_base' => $this->knowledgeTool(),
             'list_knowledge_documents' => $this->catalogTool(),
@@ -81,15 +83,19 @@ final readonly class AgentToolRegistry
                 );
             }
         }
-        $this->mergeMcpTools($tools, $context, $user);
-        foreach (app(\App\ApiTools\ToolCatalog::class)->forContext($context) as $name => $tool) { $tools[$name] = $tool; }
-        $this->mergeApiTools($tools, $context);
-        $this->mergeFreshdeskTools($tools, $context, $user);
-
-        foreach ($clientTools as $tool) {
-            if ($tool instanceof AgentToolDefinition && ! isset($tools[$tool->name])) {
-                $tools[$tool->name] = $tool;
+        // A PACT delegation has no grant to discover or invoke external tools.
+        if (! $pact) {
+            $this->mergeMcpTools($tools, $context, $user);
+            foreach (app(\App\ApiTools\ToolCatalog::class)->forContext($context) as $name => $tool) { $tools[$name] = $tool; }
+            $this->mergeApiTools($tools, $context);
+            $this->mergeFreshdeskTools($tools, $context, $user);
+            foreach ($clientTools as $tool) {
+                if ($tool instanceof AgentToolDefinition && ! isset($tools[$tool->name])) {
+                    $tools[$tool->name] = $tool;
+                }
             }
+        } else {
+            $tools = array_filter($tools, static fn (AgentToolDefinition $tool): bool => $tool->readOnly && in_array($tool->kind, ['knowledge', 'catalog'], true));
         }
 
         return $tools;
