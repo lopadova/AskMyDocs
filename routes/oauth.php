@@ -17,6 +17,7 @@ Route::middleware(['api', \App\Http\Middleware\OAuthResponseHeaders::class])->gr
 Route::middleware(['api', \App\Http\Middleware\OAuthResponseHeaders::class,
     \App\Http\Middleware\AuthenticatePactDelegation::class, 'throttle:oauth-authorize'])->group(function () {
     Route::get('/.well-known/agent-card.json', [\App\Http\Controllers\PactController::class, 'unavailable']);
+    Route::post('/api/pact/bootstrap', \App\Pact\BootstrapController::class);
     Route::post('/api/pact/a2a', [\App\Http\Controllers\PactController::class, 'unavailable']);
 });
 

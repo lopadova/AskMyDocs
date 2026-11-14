@@ -52,7 +52,7 @@ final class OAuthAccessPolicy
 
         if (in_array(PactAuthService::SCOPE, $grant->scopes, true)) {
             $allowedPath = ($request->isMethod('GET') && $request->path() === '.well-known/agent-card.json')
-                || ($request->isMethod('POST') && $request->path() === 'api/pact/a2a');
+                || ($request->isMethod('POST') && in_array($request->path(), ['api/pact/a2a', 'api/pact/bootstrap'], true));
             if (! $allowedPath || $grant->scopes !== [PactAuthService::SCOPE]
                 || ! app(PactAuthService::class)->clientAllowed($grant->client) || ! $token->can(PactAuthService::SCOPE)
                 || $grant->mcp_connection_id !== null || ! is_string($grant->pact_membership_hash)

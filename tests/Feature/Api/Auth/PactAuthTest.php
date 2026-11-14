@@ -76,6 +76,22 @@ final class PactAuthTest extends TestCase
         $this->withToken($token)->postJson('/api/pact/a2a', ['jsonrpc' => '2.0', 'id' => 'two', 'method' => 'GetTask', 'params' => ['id' => $id]], $headers)->assertUnauthorized();
     }
 
+    public function test_bootstrap_encrypts_scoped_credential_and_rejects_other_origins(): void
+    {
+        config(['pact-auth.transport_enabled' => true]);
+        $token = $this->token();
+        $data = ['coordinator_url' => 'https://sorgente.test', 'mcp_endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'fed', 'member_id' => 'member', 'credential' => 'test-secret-mcp'];
+        $this->postJson('/api/pact/bootstrap', $data)->assertUnauthorized();
+        $this->withToken($token)->postJson('/api/pact/bootstrap', $data)->assertOk()->assertJsonPath('accepted', true)->assertJsonMissing(['credential' => 'test-secret-mcp']);
+        $row = \Illuminate\Support\Facades\DB::table('pact_federation_connections')->first();
+        $this->assertSame('acme', $row->tenant_id);
+        $this->assertSame($this->user->id, $row->user_id);
+        $this->assertStringNotContainsString('test-secret-mcp', $row->credential_encrypted);
+        $this->assertSame('test-secret-mcp', \Illuminate\Support\Facades\Crypt::decryptString($row->credential_encrypted));
+        $data['mcp_endpoint'] = 'https://evil.example/mcp/pact';
+        $this->withToken($token)->postJson('/api/pact/bootstrap', $data)->assertUnprocessable();
+    }
+
     private const CALLBACK = 'https://sorgente.test/acme-company/integrations/pact-auth/askmydocs/callback';
     private User $user;
     private OAuthClient $client;
