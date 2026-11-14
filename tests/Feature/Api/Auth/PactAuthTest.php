@@ -80,6 +80,20 @@ final class PactAuthTest extends TestCase
             $this->assertTrue($tool->readOnly);
             $this->assertContains($tool->kind, ['knowledge', 'catalog']);
         }
+        $this->assertArrayHasKey('list_private_sessions', $tools);
+        $this->assertArrayHasKey('read_private_session', $tools);
+        $own = \App\Models\Conversation::create(['tenant_id' => 'acme', 'user_id' => $this->user->id, 'project_key' => 'engineering', 'title' => 'Own session']);
+        $own->messages()->create(['tenant_id' => 'acme', 'role' => 'user', 'content' => 'Private note']);
+        $other = User::create(['name' => 'Other', 'email' => 'pact-other@example.test', 'password' => 'password']);
+        $foreign = \App\Models\Conversation::create(['tenant_id' => 'acme', 'user_id' => $other->id, 'project_key' => 'engineering', 'title' => 'Other user']);
+        $project = \App\Models\Conversation::create(['tenant_id' => 'acme', 'user_id' => $this->user->id, 'project_key' => 'legal', 'title' => 'Other project']);
+        $reader = app(\App\Pact\PrivateSessions::class);
+        $list = $reader->execute('list_private_sessions', [], $context, $run);
+        $this->assertSame([(string) $own->id], array_column($list['sessions'], 'id'));
+        $this->assertSame('Private note', $reader->execute('read_private_session', ['session_id' => (string) $own->id], $context, $run)['session']['messages'][0]['content']);
+        $executed = app(\App\Agent\Tools\AgentServerToolRunner::class)->execute($tools['read_private_session'], ['session_id' => (string) $own->id], $context, $run, new \App\Agent\Budget\AgentBudgetTracker($run, false));
+        $this->assertSame('Private note', $executed->body['session']['messages'][0]['content']);
+        foreach ([$foreign, $project] as $inaccessible) $this->assertSame(['error' => 'session_not_found'], $reader->execute('read_private_session', ['session_id' => (string) $inaccessible->id], $context, $run));
         app(\App\Ai\AgentChatModelScope::class)->within($context, function (): void {
             app(\App\Pact\InferenceBudget::class)->reserve(); app(\App\Pact\InferenceBudget::class)->reserve();
         });
@@ -101,6 +115,8 @@ final class PactAuthTest extends TestCase
             ->assertJsonPath('result.status.state', 'TASK_STATE_COMPLETED')
             ->assertJsonPath('result.artifacts.0.parts.0.data.text', 'Verified answer');
         $this->post('/oauth/revoke', ['client_id' => $this->client->id, 'token' => $token])->assertOk();
+        try { $reader->execute('list_private_sessions', [], $context, $run); $this->fail('Revoked grant must not read sessions.'); }
+        catch (\Pact\PactError) { $this->assertTrue(true); }
         $this->withToken($token)->postJson('/api/pact/a2a', ['jsonrpc' => '2.0', 'id' => 'two', 'method' => 'GetTask', 'params' => ['id' => $id]], $headers)->assertUnauthorized();
     }
 

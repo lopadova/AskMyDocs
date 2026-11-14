@@ -97,6 +97,14 @@ final readonly class AgentToolRegistry
             }
         } else {
             $tools = array_filter($tools, static fn (AgentToolDefinition $tool): bool => $tool->readOnly && in_array($tool->kind, ['knowledge', 'catalog'], true));
+            foreach (['list_private_sessions', 'read_private_session'] as $name) {
+                $tools[$name] = new AgentToolDefinition(name: $name, displayName: $name === 'list_private_sessions' ? 'Own sessions' : 'Read own session',
+                    description: $name === 'list_private_sessions' ? 'List the current user’s sessions in the authorized project.' : 'Read recent messages in one of the current user’s authorized project sessions.',
+                    kind: 'catalog', inputSchema: $name === 'list_private_sessions'
+                        ? ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false]
+                        : ['type' => 'object', 'properties' => ['session_id' => ['type' => 'string']], 'required' => ['session_id'], 'additionalProperties' => false],
+                    readOnly: true, idempotent: true, physicalMinimum: 0, physicalLikely: 0, physicalMaximum: 0, executorReference: $name);
+            }
         }
 
         return $tools;

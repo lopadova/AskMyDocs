@@ -47,7 +47,11 @@ final readonly class AgentServerToolRunner
         return match ($tool->kind) {
             'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress, $waveHandoff),
             'mcp' => $this->executeMcp($tool, $arguments, $context, $run, $budget),
-            'catalog' => $tool->executorReference === 'catalog' ? $this->executeCatalog($arguments, $context, $budget) : $this->executeKnowledgeContext($tool, $arguments, $context, $run, $budget),
+            'catalog' => match ($tool->executorReference) {
+                'catalog' => $this->executeCatalog($arguments, $context, $budget),
+                'list_private_sessions', 'read_private_session' => $this->executePrivateSessions($tool, $arguments, $context, $run, $budget),
+                default => $this->executeKnowledgeContext($tool, $arguments, $context, $run, $budget),
+            },
             'client' => new AgentToolActionResult(
                 ['error' => 'client_tool_requires_handoff'],
                 0,
@@ -56,6 +60,13 @@ final readonly class AgentServerToolRunner
             ),
             default => throw new \DomainException("unsupported_server_tool:{$tool->kind}"),
         };
+    }
+
+    private function executePrivateSessions(AgentToolDefinition $tool, array $arguments, AgentExecutionContext $context, AgentRun $run, AgentBudgetTracker $budget): AgentToolActionResult
+    {
+        $body = app(\App\Pact\PrivateSessions::class)->execute($tool->executorReference, $arguments, $context, $run);
+        $budget->recordResult(0, $this->bytes($body), ! isset($body['error']));
+        return new AgentToolActionResult($body, 0);
     }
 
     private function executeKnowledgeContext(AgentToolDefinition $tool, array $arguments, AgentExecutionContext $context, AgentRun $run, AgentBudgetTracker $budget): AgentToolActionResult
