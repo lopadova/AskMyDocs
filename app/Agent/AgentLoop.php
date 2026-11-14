@@ -481,7 +481,8 @@ final readonly class AgentLoop
                         $plan,
                         $filters,
                     );
-                    if (is_array($result->body['_pact_session_request'] ?? null)) {
+                    if ($tool->name === 'ask_private_session' && $tool->executorReference === 'ask_private_session'
+                        && is_string(data_get($run->input_json, 'pact_task_id')) && is_array($result->body['_pact_session_request'] ?? null)) {
                         $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
                         app(\App\Pact\SessionContinuation::class)->attach($run, $context, $result->body['_pact_session_request'], [
                             'action_id' => $action->id, 'purpose' => $action->purpose, 'execution_id' => $execution->id,
