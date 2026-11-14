@@ -43,6 +43,6 @@ final class BootstrapController
                 'credential_encrypted' => Crypt::encryptString($data['credential']), 'created_at' => now(), 'updated_at' => now(),
             ]);
         });
-        return response()->json(['accepted' => true])->header('Cache-Control', 'no-store');
+        return response()->json(['accepted' => true, 'agent_id' => \Pact\Federation\Policy::externalAgentId('askmydocs', (string) $grant->user_id)])->header('Cache-Control', 'no-store');
     }
 }
