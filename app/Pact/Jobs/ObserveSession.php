@@ -15,6 +15,6 @@ final class ObserveSession implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     public int $tries = 180;
-    public function __construct(public readonly int $handoffId) { $this->onQueue((string) config('agent.queue', 'agent')); $this->afterCommit(); }
+    public function __construct(public readonly int $handoffId) { $this->onConnection((string) config('pact-agent.connection', 'pact_agents')); $this->onQueue((string) config('pact-agent.queue', 'pact-agents')); $this->afterCommit(); }
     public function handle(SessionContinuation $continuation): void { if ($continuation->observe($this->handoffId)) $this->release(2); }
 }

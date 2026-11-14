@@ -39,7 +39,7 @@ final class PactAuthTest extends TestCase
         if (! class_exists(\Padosoft\PactAgent\AgentChatContract::class)) $this->markTestSkipped('Local PACT package is not installed.');
         $this->app->register(\App\Pact\PactIntegrationServiceProvider::class);
         $this->artisan('migrate');
-        config(['pact-auth.transport_enabled' => true]);
+        config(['pact-auth.transport_enabled' => true, 'queue.default' => 'sync', 'pact-agent.connection' => 'pact_agents', 'queue.connections.pact_agents.driver' => 'database']);
         \Illuminate\Support\Facades\Queue::fake();
         $token = $this->token();
         $bootstrap = ['coordinator_url' => 'https://sorgente.test', 'mcp_endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm', 'credential' => 'synthetic-mcp-secret'];
@@ -53,6 +53,9 @@ final class PactAuthTest extends TestCase
         $headers = ['A2A-Version' => '1.0', 'A2A-Extensions' => $core];
         $this->postJson('/api/pact/a2a', $request, $headers + ['Authorization' => ''])->assertUnauthorized();
         $result = $this->withToken($token)->postJson('/api/pact/a2a', $request, $headers)->assertOk();
+        config(['queue.connections.pact_agents.driver' => 'sync']);
+        $this->withToken($token)->postJson('/api/pact/a2a', $request, $headers)->assertStatus(503);
+        config(['queue.connections.pact_agents.driver' => 'database']);
         $id = $result->json('result.task.id');
         $this->assertNotEmpty($id, $result->getContent());
         $task = \Illuminate\Support\Facades\DB::table('pact_agent_tasks')->where('id', $id)->first();
@@ -179,7 +182,7 @@ final class PactAuthTest extends TestCase
 
     public function test_bootstrap_encrypts_scoped_credential_and_rejects_other_origins(): void
     {
-        config(['pact-auth.transport_enabled' => true]);
+        config(['pact-auth.transport_enabled' => true, 'queue.default' => 'sync', 'pact-agent.connection' => 'pact_agents', 'queue.connections.pact_agents.driver' => 'database']);
         $token = $this->token();
         $data = ['coordinator_url' => 'https://sorgente.test', 'mcp_endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'fed', 'member_id' => 'member', 'credential' => 'test-secret-mcp'];
         $this->postJson('/api/pact/bootstrap', $data)->assertUnauthorized();
@@ -198,7 +201,7 @@ final class PactAuthTest extends TestCase
         if (! class_exists(\Padosoft\PactAgent\AgentChatContract::class)) $this->markTestSkipped('Local PACT package is not installed.');
         $this->app->register(\App\Pact\PactIntegrationServiceProvider::class);
         $this->artisan('migrate');
-        config(['pact-auth.transport_enabled' => true]);
+        config(['pact-auth.transport_enabled' => true, 'queue.default' => 'sync', 'pact-agent.connection' => 'pact_agents', 'queue.connections.pact_agents.driver' => 'database']);
         \Illuminate\Support\Facades\Queue::fake();
         $token = $this->token();
         $bootstrap = ['coordinator_url' => 'https://sorgente.test', 'mcp_endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm', 'credential' => 'test-secret'];

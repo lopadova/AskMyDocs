@@ -51,6 +51,29 @@ final class AgentRunTransportTest extends TestCase
             && $job->tenantId === $run->tenant_id);
     }
 
+    public function test_pact_jobs_use_a_dedicated_database_connection_and_queue(): void
+    {
+        config(['queue.default' => 'database', 'queue.connections.database.after_commit' => false,
+            'queue.connections.pact_agents' => ['driver' => 'database', 'connection' => null, 'table' => 'jobs', 'queue' => 'pact-agents', 'retry_after' => 150, 'after_commit' => false],
+            'pact-agent.connection' => 'pact_agents', 'pact-agent.queue' => 'pact-agents', 'agent.queue' => 'agent']);
+        $user = $this->user('pact-queue@example.com');
+        $runs = app(AgentRunDispatcher::class);
+        $ordinary = $runs->dispatch(app(AgentExecutionContextFactory::class)->forUser($user, 'orders'), ['question' => 'Normal'], ['user_id' => $user->id]);
+        $pact = $runs->dispatch(app(AgentExecutionContextFactory::class)->forUser($user, 'orders'), ['question' => 'Federated', 'pact_task_id' => 'task-id'], ['user_id' => $user->id]);
+        \App\Pact\Jobs\ObserveSession::dispatch(17)->beforeCommit();
+        $jobs = \Illuminate\Support\Facades\DB::table('jobs')->orderBy('id')->get();
+        $this->assertCount(3, $jobs);
+        $this->assertSame(['agent', 'pact-agents', 'pact-agents'], $jobs->pluck('queue')->all());
+        $normalJob = unserialize(json_decode($jobs[0]->payload, true)['data']['command']);
+        $pactJob = unserialize(json_decode($jobs[1]->payload, true)['data']['command']);
+        $observer = unserialize(json_decode($jobs[2]->payload, true)['data']['command']);
+        $this->assertSame($ordinary->id, $normalJob->agentRunId);
+        $this->assertNull($normalJob->connection);
+        $this->assertSame($pact->id, $pactJob->agentRunId);
+        $this->assertSame('pact_agents', $pactJob->connection);
+        $this->assertSame('pact_agents', $observer->connection);
+    }
+
     public function test_worker_scopes_the_run_and_restores_long_lived_process_context(): void
     {
         $user = $this->user('worker-context@example.com');

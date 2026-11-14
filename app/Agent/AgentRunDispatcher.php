@@ -65,6 +65,9 @@ final class AgentRunDispatcher
             // Force PendingDispatch destruction inside this try, so dispatch errors
             // are observed without changing Laravel's transport/after-commit policy.
             $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span);
+            if (is_string(data_get($run->input_json, 'pact_task_id'))) {
+                $pending->onConnection((string) config('pact-agent.connection', 'pact_agents'))->onQueue((string) config('pact-agent.queue', 'pact-agents'));
+            }
             unset($pending);
         } catch (\Throwable $exception) {
             $diagnostics->failure($run, $span, $exception);
