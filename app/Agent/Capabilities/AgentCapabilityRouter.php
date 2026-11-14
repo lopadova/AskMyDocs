@@ -19,13 +19,12 @@ final readonly class AgentCapabilityRouter
         $ranked = $this->ranker->rank($question, $turnContext, $snapshot, $hasDocumentEvidence);
         $catalogLimit = max(1, (int) config('agent.planner.router_catalog_limit', 40));
         $candidateLimit = max(1, min(8, (int) config('agent.planner.candidate_limit', 8)));
-        // The first capability rollout is strictly read-only. Keep this guard
-        // at the router boundary as well as in the validator so mutative or
-        // interactive tools never enter the model-visible catalog.
+        // The only scoped write admitted here appends an authorized PACT
+        // session turn; the registry and executor independently check its grant.
         $eligible = array_values(array_filter(
             $ranked,
             static fn (array $item): bool => $item['score'] > -1000
-                && $item['capability']->readOnly
+                && ($item['capability']->readOnly || $item['capability']->tool === 'ask_private_session')
                 && ! $item['capability']->confirmationRequired
                 && ! in_array($item['capability']->risk, ['high', 'critical'], true),
         ));

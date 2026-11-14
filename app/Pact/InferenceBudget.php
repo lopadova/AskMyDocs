@@ -17,6 +17,7 @@ final class InferenceBudget
         $context = app(AgentChatModelScope::class)->context();
         if ($context === null) return;
         $run = AgentRun::query()->forTenant($context->tenantId)->where('run_id', $context->runId)->first();
+        if ($run !== null) app(SessionContinuation::class)->authorizeChild($run);
         $id = $run?->input_json['pact_task_id'] ?? null;
         if ($id === null) return;
         $row = DB::table('pact_agent_tasks')->where(['id' => $id, 'tenant_id' => $context->tenantId])->first();

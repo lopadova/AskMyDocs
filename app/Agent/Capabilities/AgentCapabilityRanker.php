@@ -61,7 +61,7 @@ final class AgentCapabilityRanker
                 $score += 10;
                 $reasons[] = 'detail_operation';
             }
-            if (! $capability->readOnly || $capability->confirmationRequired) {
+            if ((! $capability->readOnly && $capability->tool !== 'ask_private_session') || $capability->confirmationRequired) {
                 $score -= 1000;
                 $reasons[] = 'excluded_by_read_only_policy';
             }

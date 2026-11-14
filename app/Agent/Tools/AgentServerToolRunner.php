@@ -49,6 +49,7 @@ final readonly class AgentServerToolRunner
             'mcp' => $this->executeMcp($tool, $arguments, $context, $run, $budget),
             'catalog' => match ($tool->executorReference) {
                 'catalog' => $this->executeCatalog($arguments, $context, $budget),
+                'ask_private_session' => new AgentToolActionResult(['_pact_session_request' => $arguments], 0, false),
                 'list_private_sessions', 'read_private_session' => $this->executePrivateSessions($tool, $arguments, $context, $run, $budget),
                 default => $this->executeKnowledgeContext($tool, $arguments, $context, $run, $budget),
             },

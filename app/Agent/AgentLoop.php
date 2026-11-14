@@ -81,7 +81,7 @@ final readonly class AgentLoop
         $user = $run->user;
         $tools = array_filter(
             $this->registry->forContext($context, $user instanceof User ? $user : null, [], is_string(data_get($run->input_json, 'pact_task_id'))),
-            static fn (AgentToolDefinition $tool): bool => $tool->readOnly
+            static fn (AgentToolDefinition $tool): bool => ($tool->readOnly || (is_string(data_get($run->input_json, 'pact_task_id')) && $tool->name === 'ask_private_session' && $tool->executorReference === 'ask_private_session' && ($tool->metadata['effect'] ?? null) === 'append_authorized_session_turn'))
                 && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
         );
         $tools = $this->liveSources->apply($tools, data_get($run->input_json, 'live_sources'));
@@ -280,6 +280,7 @@ final readonly class AgentLoop
         }
         if (config('reasoning.parallel_research') && config('reasoning.enabled') && is_array($understanding)
             && ($understanding['available'] ?? false) && count($understanding['subquestions'] ?? []) > 1
+            && ! is_string(data_get($run->input_json, 'pact_task_id'))
             && data_get($run->input_json, 'research_parent_id') === null) {
             return app(AgentResearchCoordinator::class)->collect($run, $evidence, \App\Services\Chat\QuestionUnderstanding::fromArray($understanding));
         }
@@ -480,6 +481,14 @@ final readonly class AgentLoop
                         $plan,
                         $filters,
                     );
+                    if (is_array($result->body['_pact_session_request'] ?? null)) {
+                        $this->checkpoint($run, $evidence, $completed, $results, $retrieved);
+                        app(\App\Pact\SessionContinuation::class)->attach($run, $context, $result->body['_pact_session_request'], [
+                            'action_id' => $action->id, 'purpose' => $action->purpose, 'execution_id' => $execution->id,
+                        ]);
+                        $this->diagnostics->end($run, $toolSpan, metadata: ['operation' => 'pact_session_handoff']);
+                        return $this->outcome('waiting_api_tool', $evidence, $completed, 'pact_session_pending');
+                    }
                     if (is_string($result->body['_api_tool_pending'] ?? null)) {
                         // An accepted asynchronous call is not a completed observation.
                         $this->checkpoint($run, $evidence, $completed, $results, $retrieved);

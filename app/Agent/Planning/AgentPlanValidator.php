@@ -35,7 +35,8 @@ final readonly class AgentPlanValidator
             if (! $tool instanceof AgentToolDefinition) {
                 $this->fail('unknown_tool', "Unknown tool [{$action->tool}].");
             }
-            if (! $tool->readOnly || (bool) ($tool->metadata['confirmation_required'] ?? false)) {
+            $sessionAppend = $tool->name === 'ask_private_session' && $tool->executorReference === 'ask_private_session' && ($tool->metadata['effect'] ?? null) === 'append_authorized_session_turn';
+            if ((! $tool->readOnly && ! $sessionAppend) || (bool) ($tool->metadata['confirmation_required'] ?? false)) {
                 $this->fail('write_tool_forbidden', "Tool [{$action->tool}] is outside the read-only rollout.");
             }
 

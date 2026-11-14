@@ -130,6 +130,19 @@ final readonly class AgentEvidenceAccess
     private function catalogAuthorized(AgentRun $run, array $tool, AgentExecutionContext $context): bool
     {
         $name = $tool['tool'] ?? '';
+        if (in_array($name, ['list_private_sessions', 'read_private_session', 'ask_private_session'], true)) {
+            try {
+                $reader = app(\App\Pact\PrivateSessions::class);
+                if ($name !== 'ask_private_session') {
+                    return $this->masker->maskArray($reader->execute($name, (array) ($tool['arguments'] ?? []), $context, $run)) === ($tool['result'] ?? null);
+                }
+                $handoff = \Illuminate\Support\Facades\DB::table('pact_session_handoffs')->where('parent_run_id', $run->id)->where('execution_id', $tool['execution_id'] ?? null)->where('status', 'completed')->first();
+                $child = $handoff ? AgentRun::query()->forTenant($run->tenant_id)->find($handoff->child_run_id) : null;
+                if (! $handoff || ! $child || ! $reader->query($context, $run)->whereKey($handoff->conversation_id)->exists()) return false;
+                $answer = data_get($child->result_json, 'response.answer');
+                return is_string($answer) && $this->masker->maskArray(['answer' => $answer, 'session_id' => (string) $handoff->conversation_id, 'partial' => $child->status === AgentRun::STATUS_PARTIAL]) === ($tool['result'] ?? null);
+            } catch (\Throwable) { return false; }
+        }
         if (in_array($name, ['search_knowledge_entities', 'read_knowledge_context'], true)) {
             $project = $run->project_key;
             if (! $project || ! $run->user) return false;

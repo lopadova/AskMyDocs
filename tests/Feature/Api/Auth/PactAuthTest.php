@@ -70,14 +70,14 @@ final class PactAuthTest extends TestCase
         $run = \App\Models\AgentRun::query()->forTenant('acme')->where('run_id', $checkpoint['run_id'])->firstOrFail();
         $steps = [];
         $client = \Mockery::mock(\Padosoft\PactAgent\Contracts\CoordinatorClient::class);
-        $client->shouldReceive('reserveStep')->twice()->andReturnUsing(function ($parent, $step) use (&$steps) {
+        $client->shouldReceive('reserveStep')->times(3)->andReturnUsing(function ($parent, $step) use (&$steps) {
             $this->assertSame('root-task', $parent); $this->assertTrue(\Illuminate\Support\Str::isUuid($step)); $steps[] = $step; return ['remaining' => 14];
         });
         app()->instance(\Padosoft\PactAgent\Contracts\CoordinatorClient::class, $client);
         $context = \App\Agent\AgentExecutionContext::fromArray($run->toArray());
         $tools = app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $this->user);
         foreach ($tools as $tool) {
-            $this->assertTrue($tool->readOnly);
+            $this->assertSame($tool->name !== 'ask_private_session', $tool->readOnly);
             $this->assertContains($tool->kind, ['knowledge', 'catalog']);
         }
         $this->assertArrayHasKey('list_private_sessions', $tools);
@@ -94,10 +94,67 @@ final class PactAuthTest extends TestCase
         $executed = app(\App\Agent\Tools\AgentServerToolRunner::class)->execute($tools['read_private_session'], ['session_id' => (string) $own->id], $context, $run, new \App\Agent\Budget\AgentBudgetTracker($run, false));
         $this->assertSame('Private note', $executed->body['session']['messages'][0]['content']);
         foreach ([$foreign, $project] as $inaccessible) $this->assertSame(['error' => 'session_not_found'], $reader->execute('read_private_session', ['session_id' => (string) $inaccessible->id], $context, $run));
+        $second = \App\Models\Conversation::create(['tenant_id' => 'acme', 'user_id' => $this->user->id, 'project_key' => 'engineering', 'title' => 'Second own session']);
+        $execution = $run->toolExecutions()->create(['logical_index' => 1, 'tool_name' => 'ask_private_session', 'tool_kind' => 'catalog', 'status' => 'running']);
+        $handoff = ['action_id' => 'ask-one', 'purpose' => 'Ask the session', 'execution_id' => $execution->id];
+        $continuation = app(\App\Pact\SessionContinuation::class);
+        foreach ([$foreign, $project] as $inaccessible) {
+            try { $continuation->attach($run, $context, ['session_id' => (string) $inaccessible->id, 'question' => 'Question'], $handoff); $this->fail('Foreign session must be inaccessible.'); }
+            catch (\Illuminate\Database\Eloquent\ModelNotFoundException) { $this->assertTrue(true); }
+        }
+        $args = ['session_id' => (string) $own->id, 'question' => 'Question'];
+        $continuation->attach($run, $context, $args, $handoff);
+        $continuation->attach($run, $context, $args, $handoff);
+        try { $continuation->attach($run, $context, ['session_id' => (string) $own->id, 'question' => 'Changed'], $handoff); $this->fail('Conflicting replay must fail.'); }
+        catch (\DomainException $exception) { $this->assertSame('pact_session_idempotency_conflict', $exception->getMessage()); }
+        $row = DB::table('pact_session_handoffs')->first();
+        $this->assertSame(1, DB::table('pact_session_handoffs')->count());
+        $child = \App\Models\AgentRun::query()->findOrFail($row->child_run_id);
+        $this->assertSame($id, data_get($child->input_json, 'pact_task_id'));
+        $this->assertSame('waiting_api_tool', $run->fresh()->status);
+        $this->assertSame('Question', $own->messages()->latest('id')->first()->content);
+        $childContext = \App\Agent\AgentExecutionContext::fromArray($child->toArray());
+        $continuation->authorizeChild($child);
+        app(\App\Ai\AgentChatModelScope::class)->within($childContext, fn () => app(\App\Pact\InferenceBudget::class)->reserve());
+        $childTools = app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($childContext, $this->user);
+        $this->assertArrayNotHasKey('ask_private_session', $childTools);
+        $this->assertTrue($continuation->observe($row->id));
+        config(['kb.investigation.enabled' => false, 'reasoning.enabled' => false, 'agent.waves.enabled' => false, 'agent.waves.combined_initial_planning' => false]);
+        $ai = \Mockery::mock(\App\Ai\AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->andReturnUsing(fn (string $system) => str_contains($system, 'submit_agent_plan')
+            ? new \App\Ai\AiResponse('', 'fake', 'fake', toolCalls: [['name' => 'submit_agent_plan', 'arguments' => ['decision' => 'answer', 'actions' => []]]])
+            : new \App\Ai\AiResponse('', 'fake', 'fake', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => ['completeness' => 'insufficient', 'claims' => [], 'limitations' => ['Nessuna fonte.'], 'requires_selection' => false, 'render_table' => false]]]));
+        $this->app->instance(\App\Ai\AiManager::class, $ai);
+        $retrieval = \Mockery::mock(\App\Services\Kb\Chat\ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->andReturn(new \App\Services\Kb\Retrieval\SearchResult(collect(), collect(), collect()));
+        $this->app->instance(\App\Services\Kb\Chat\ChatRetrievalService::class, $retrieval);
+        $this->app->call([new \App\Jobs\ExecuteAgentRunJob($child->id, 'acme'), 'handle']);
+        app(TenantContext::class)->set('acme');
+        $child->refresh();
+        $this->assertContains($child->status, ['completed', 'partial']);
+        $childAnswer = data_get($child->result_json, 'response.answer');
+        $this->assertNotEmpty($childAnswer);
+        $this->assertFalse($continuation->observe($row->id));
+        $this->assertFalse($continuation->observe($row->id));
+        $this->assertSame($childAnswer, data_get($run->fresh()->result_json, 'action_results.ask-one.answer'));
+        $this->assertSame('queued', $run->fresh()->status);
+        $currentEvidence = app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run->fresh(), $context, data_get($run->fresh()->result_json, 'evidence', []));
+        $this->assertContains('ask_private_session', array_column($currentEvidence['api_tools'], 'tool'));
+        $execution2 = $run->toolExecutions()->create(['logical_index' => 2, 'tool_name' => 'ask_private_session', 'tool_kind' => 'catalog', 'status' => 'running']);
+        $continuation->attach($run->fresh(), $context, ['session_id' => (string) $second->id, 'question' => 'Another question'], ['action_id' => 'ask-two', 'purpose' => 'Ask again', 'execution_id' => $execution2->id]);
+        $row2 = DB::table('pact_session_handoffs')->where('action_id', 'ask-two')->first();
+        $this->assertSame($row2->id, data_get($run->fresh()->result_json, 'pact_session_pending'));
+        app(\App\Agent\AgentRunControl::class)->cancel($run->fresh());
+        $this->assertSame('cancelled', \App\Models\AgentRun::query()->findOrFail($row2->child_run_id)->status);
+        $this->assertFalse($continuation->observe($row2->id));
+        $this->assertSame('cancelled', $run->fresh()->status);
+        $run->forceFill(['status' => 'queued', 'result_json' => []])->save();
+        $this->app->forgetInstance(\App\Ai\AiManager::class);
         app(\App\Ai\AgentChatModelScope::class)->within($context, function (): void {
             app(\App\Pact\InferenceBudget::class)->reserve(); app(\App\Pact\InferenceBudget::class)->reserve();
         });
         $this->assertNotSame($steps[0], $steps[1]);
+        $this->assertNotSame($steps[1], $steps[2]);
         $client->shouldReceive('reserveStep')->once()->andThrow(new \RuntimeException('Budget exhausted'));
         Http::fake();
         try {
@@ -134,6 +191,55 @@ final class PactAuthTest extends TestCase
         $this->assertSame('test-secret-mcp', \Illuminate\Support\Facades\Crypt::decryptString($row->credential_encrypted));
         $data['mcp_endpoint'] = 'https://evil.example/mcp/pact';
         $this->withToken($token)->postJson('/api/pact/bootstrap', $data)->assertUnprocessable();
+    }
+
+    public function test_session_recovery_propagates_child_failure_and_is_idempotent(): void
+    {
+        if (! class_exists(\Padosoft\PactAgent\AgentChatContract::class)) $this->markTestSkipped('Local PACT package is not installed.');
+        $this->app->register(\App\Pact\PactIntegrationServiceProvider::class);
+        $this->artisan('migrate');
+        config(['pact-auth.transport_enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $token = $this->token();
+        $bootstrap = ['coordinator_url' => 'https://sorgente.test', 'mcp_endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm', 'credential' => 'test-secret'];
+        $this->withToken($token)->postJson('/api/pact/bootstrap', $bootstrap)->assertOk();
+        $core = \Pact\Pact::CORE_URI;
+        $wire = ['jsonrpc' => '2.0', 'id' => 'one', 'method' => 'SendMessage', 'params' => ['message' => ['role' => 'ROLE_USER', 'messageId' => 'one', 'parts' => [['data' => ['message' => 'Hello', 'parent_task_id' => 'root', 'coordinator' => ['endpoint' => $bootstrap['mcp_endpoint'], 'federation_id' => 'f', 'member_id' => 'm']]]], 'metadata' => [$core => ['version' => '0.2.0', 'contract' => \Padosoft\PactAgent\AgentChatContract::descriptor(), 'idempotency_key' => 'one']]]]];
+        $id = $this->withToken($token)->postJson('/api/pact/a2a', $wire, ['A2A-Version' => '1.0', 'A2A-Extensions' => $core])->assertOk()->json('result.task.id');
+        (new \Padosoft\PactAgent\Jobs\RunTask($id))->handle(app(\Padosoft\PactAgent\Contracts\Runtime::class), app(\Padosoft\PactAgent\Contracts\IdentityAuthorization::class));
+        $row = DB::table('pact_agent_tasks')->where('id', $id)->first();
+        $run = \App\Models\AgentRun::query()->where('run_id', json_decode($row->checkpoint, true)['run_id'])->firstOrFail();
+        $context = \App\Agent\AgentExecutionContext::fromArray($run->toArray());
+        $session = \App\Models\Conversation::create(['tenant_id' => 'acme', 'user_id' => $this->user->id, 'project_key' => 'engineering', 'title' => 'Recovery']);
+        $service = app(\App\Pact\SessionContinuation::class);
+        config(['kb.investigation.enabled' => false, 'reasoning.enabled' => false, 'agent.waves.enabled' => false, 'agent.waves.combined_initial_planning' => false]);
+        $ai = \Mockery::mock(\App\Ai\AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->andReturn(new \App\Ai\AiResponse('', 'fake', 'fake', toolCalls: [['name' => 'submit_agent_plan', 'arguments' => ['decision' => 'tools', 'actions' => [['id' => 'failure', 'tool' => 'ask_private_session', 'arguments' => ['session_id' => (string) $session->id, 'question' => 'Explain'], 'depends_on' => [], 'purpose' => 'Ask']]]]]));
+        $this->app->instance(\App\Ai\AiManager::class, $ai);
+        $retrieval = \Mockery::mock(\App\Services\Kb\Chat\ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->andReturn(new \App\Services\Kb\Retrieval\SearchResult(collect(), collect(), collect()));
+        $this->app->instance(\App\Services\Kb\Chat\ChatRetrievalService::class, $retrieval);
+        $outcome = app(\App\Agent\AgentLoop::class)->run($run, $context);
+        $this->assertSame('waiting_api_tool', $outcome->decision);
+        $handoff = DB::table('pact_session_handoffs')->first();
+        $child = \App\Models\AgentRun::query()->findOrFail($handoff->child_run_id);
+        $service->recover($run->fresh());
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $child->id);
+        $child->forceFill(['status' => 'failed', 'error_code' => 'provider_failed'])->save();
+        $service->recover($run->fresh());
+        $this->assertSame('session_run_failed', data_get($run->fresh()->result_json, 'action_results.failure.error'));
+        $this->assertFalse($service->observe($handoff->id));
+        $this->assertSame(1, count(data_get($run->fresh()->result_json, 'completed_actions')));
+        $second = \App\Models\Conversation::create(['tenant_id' => 'acme', 'user_id' => $this->user->id, 'project_key' => 'engineering', 'title' => 'Revocation']);
+        $execution2 = $run->toolExecutions()->create(['logical_index' => 2, 'tool_name' => 'ask_private_session', 'tool_kind' => 'catalog', 'status' => 'running']);
+        $service->attach($run->fresh(), $context, ['session_id' => (string) $second->id, 'question' => 'Explain'], ['action_id' => 'revoked', 'purpose' => 'Ask', 'execution_id' => $execution2->id]);
+        $revoked = DB::table('pact_session_handoffs')->where('action_id', 'revoked')->first();
+        $revokedChild = \App\Models\AgentRun::query()->findOrFail($revoked->child_run_id);
+        $this->post('/oauth/revoke', ['client_id' => $this->client->id, 'token' => $token])->assertOk();
+        try { $service->authorizeChild($revokedChild); $this->fail('Revoked child must not start.'); } catch (\Pact\PactError) { $this->assertTrue(true); }
+        $this->assertFalse($service->observe($revoked->id));
+        $this->assertSame('cancelled', $revokedChild->fresh()->status);
+        $this->assertSame('failed', $run->fresh()->status);
     }
 
     private const CALLBACK = 'https://sorgente.test/acme-company/integrations/pact-auth/askmydocs/callback';

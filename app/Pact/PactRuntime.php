@@ -46,6 +46,8 @@ final class PactRuntime implements Runtime, PollableRuntime
         $this->tenant($task['tenant_id']);
         $checkpoint = $task['checkpoint'];
         $run = AgentRun::query()->forTenant($task['tenant_id'])->where('run_id', $checkpoint['run_id'])->where('user_id', $task['user_id'])->where('conversation_id', $checkpoint['conversation_id'])->firstOrFail();
+        app(SessionContinuation::class)->recover($run);
+        $run->refresh();
         if (in_array($run->status, [AgentRun::STATUS_FAILED, AgentRun::STATUS_CANCELLED], true)) return ['state' => 'failed', 'checkpoint' => $checkpoint];
         if (in_array($run->status, [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)) {
             $response = data_get($run->result_json, 'response', []);

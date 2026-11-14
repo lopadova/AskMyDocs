@@ -105,6 +105,12 @@ final readonly class AgentToolRegistry
                         : ['type' => 'object', 'properties' => ['session_id' => ['type' => 'string']], 'required' => ['session_id'], 'additionalProperties' => false],
                     readOnly: true, idempotent: true, physicalMinimum: 0, physicalLikely: 0, physicalMaximum: 0, executorReference: $name);
             }
+            if (! data_get($run?->input_json, 'pact_session_child') && ! data_get($run?->input_json, 'research_parent_id')) {
+                $tools['ask_private_session'] = new AgentToolDefinition(name: 'ask_private_session', displayName: 'Ask own session',
+                    description: 'Ask a question in an existing session owned by the current user in the authorized project, and wait for its answer. This appends a turn to that session.',
+                    kind: 'catalog', inputSchema: ['type' => 'object', 'properties' => ['session_id' => ['type' => 'string'], 'question' => ['type' => 'string']], 'required' => ['session_id', 'question'], 'additionalProperties' => false],
+                    readOnly: false, idempotent: false, physicalMinimum: 0, physicalLikely: 0, physicalMaximum: 0, executorReference: 'ask_private_session', metadata: ['effect' => 'append_authorized_session_turn']);
+            }
         }
 
         return $tools;

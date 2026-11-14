@@ -29,9 +29,10 @@ final readonly class AgentRunControl
                 'cancelled_at' => now(),
                 'completed_at' => now(),
             ])->save();
+            if (data_get($locked->result_json, 'pact_session_pending')) app(\App\Pact\SessionContinuation::class)->cancel($locked);
 
             return $locked;
-        });
+        }, 3);
 
         $pendingTools = array_keys((array) data_get($updated->result_json, 'pending_api_tools', []));
         $legacyPending = data_get($updated->result_json, 'pending_api_tool.run_id');
