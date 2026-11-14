@@ -25,6 +25,15 @@ final class PactAuthTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_octodora_callback_requires_explicit_origin_and_exact_path(): void
+    {
+        config(['pact-auth.allowed_client_origins' => ['http://octodorabot.test'], 'pact-auth.allow_local_http' => true]);
+        $service = app(\App\Services\Auth\PactAuthService::class);
+        $service->checkRedirect('http://octodorabot.test/api/v1/pact/connections/askmydocs/callback');
+        $this->expectException(\Illuminate\Http\Exceptions\HttpResponseException::class);
+        $service->checkRedirect('http://octodorabot.test/api/v1/pact/connections/tixora/callback');
+    }
+
     private const CALLBACK = 'https://sorgente.test/acme-company/integrations/pact-auth/askmydocs/callback';
     private User $user;
     private OAuthClient $client;

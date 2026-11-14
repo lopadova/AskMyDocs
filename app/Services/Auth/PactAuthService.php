@@ -63,8 +63,9 @@ final class PactAuthService
             || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])
             || preg_match('/[\x00-\x20\x7f\\\\]/', $uri) || (! $https && ! $localHttp)
             || ! in_array($origin, config('pact-auth.allowed_client_origins', []), true)
-            || preg_match('#^/[a-z0-9]+(?:-[a-z0-9]+)*/integrations/pact-auth/askmydocs/callback$#D', $parts['path'] ?? '') !== 1) {
-            $this->error('invalid_redirect_uri', 'Use the exact Sorgente company callback on an explicitly allowed client origin.');
+            || (preg_match('#^/[a-z0-9]+(?:-[a-z0-9]+)*/integrations/pact-auth/askmydocs/callback$#D', $parts['path'] ?? '') !== 1
+                && ($parts['path'] ?? '') !== '/api/v1/pact/connections/askmydocs/callback')) {
+            $this->error('invalid_redirect_uri', 'Use a supported exact callback on an explicitly allowed client origin.');
         }
     }
 
