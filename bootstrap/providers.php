@@ -205,4 +205,8 @@ if (class_exists(Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class)) {
     $providers[] = App\Providers\EvalHarnessUiIntegrationServiceProvider::class;
 }
 
+if (class_exists(\Padosoft\PactAgent\PactAgentServiceProvider::class)) {
+    $providers[] = \App\Pact\PactIntegrationServiceProvider::class;
+}
+
 return $providers;

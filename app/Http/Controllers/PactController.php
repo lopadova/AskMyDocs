@@ -5,12 +5,20 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Pact\HttpBinding;
 
 /** Authentication is ready; no PACT transport/contract is installed in this app. */
 final class PactController
 {
-    public function unavailable(): JsonResponse
+    public function unavailable(Request $request): JsonResponse
     {
+        if (config('pact-auth.transport_enabled') && interface_exists(HttpBinding::class) && app()->bound(HttpBinding::class)) {
+            $headers = [];
+            foreach ($request->headers->all() as $key => $values) $headers[$key] = $values[0] ?? '';
+            [$status, $responseHeaders, $body] = app(HttpBinding::class)->handle($request->method(), '/'.$request->path(), $headers, $request->getContent());
+            return response()->json($body, $status, $responseHeaders);
+        }
         // Do not advertise an Agent Card, A2A interface, contract or successful
         // task before a real adapter can validate and execute that contract.
         return response()->json(['error' => 'pact_transport_unavailable',

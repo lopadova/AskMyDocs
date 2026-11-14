@@ -2,6 +2,7 @@
 
 return [
     'enabled' => (bool) env('PACT_AUTH_ENABLED', false),
+    'transport_enabled' => (bool) env('PACT_TRANSPORT_ENABLED', false),
     // Exact client origins, without a trailing slash. No wildcard hosts.
     'allowed_client_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('PACT_AUTH_ALLOWED_CLIENT_ORIGINS', ''))))),
     'allow_local_http' => (bool) env('PACT_AUTH_ALLOW_LOCAL_HTTP', false),

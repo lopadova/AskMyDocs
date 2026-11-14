@@ -34,6 +34,48 @@ final class PactAuthTest extends TestCase
         $service->checkRedirect('http://octodorabot.test/api/v1/pact/connections/tixora/callback');
     }
 
+    public function test_pact_transport_accepts_scoped_tasks_and_revocation_blocks_reads(): void
+    {
+        if (! class_exists(\Padosoft\PactAgent\AgentChatContract::class)) $this->markTestSkipped('Local PACT package is not installed.');
+        $this->app->register(\App\Pact\PactIntegrationServiceProvider::class);
+        $this->artisan('migrate');
+        config(['pact-auth.transport_enabled' => true]);
+        \Illuminate\Support\Facades\Queue::fake();
+        $token = $this->token();
+        $contract = \Padosoft\PactAgent\AgentChatContract::descriptor();
+        $core = \Pact\Pact::CORE_URI;
+        $request = ['jsonrpc' => '2.0', 'id' => 'one', 'method' => 'SendMessage', 'params' => ['message' => [
+            'role' => 'ROLE_USER', 'messageId' => 'message-one', 'parts' => [['data' => ['message' => 'Hello', 'coordinator' => ['endpoint' => 'http://octodorabot.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm']]]],
+            'metadata' => [$core => ['version' => '0.2.0', 'contract' => $contract, 'idempotency_key' => 'key-one']],
+        ]]];
+        $headers = ['A2A-Version' => '1.0', 'A2A-Extensions' => $core];
+        $this->postJson('/api/pact/a2a', $request, $headers)->assertUnauthorized();
+        $result = $this->withToken($token)->postJson('/api/pact/a2a', $request, $headers)->assertOk();
+        $id = $result->json('result.task.id');
+        $this->assertNotEmpty($id, $result->getContent());
+        $task = \Illuminate\Support\Facades\DB::table('pact_agent_tasks')->where('id', $id)->first();
+        $this->assertSame('acme', $task->tenant_id);
+        $this->assertSame('engineering', json_decode($task->payload, true)['principal_context']['project_key']);
+        $this->assertStringNotContainsString($token, $task->payload);
+        $previousTenant = app(TenantContext::class)->current();
+        (new \Padosoft\PactAgent\Jobs\RunTask($id))->handle(app(\Padosoft\PactAgent\Contracts\Runtime::class), app(\Padosoft\PactAgent\Contracts\IdentityAuthorization::class));
+        $task = \Illuminate\Support\Facades\DB::table('pact_agent_tasks')->where('id', $id)->first();
+        $checkpoint = json_decode($task->checkpoint, true);
+        $this->assertSame('running', $task->status);
+        $this->assertDatabaseHas('conversations', ['id' => $checkpoint['conversation_id'], 'tenant_id' => 'acme', 'project_key' => 'engineering', 'user_id' => $this->user->id]);
+        $this->assertDatabaseHas('agent_runs', ['run_id' => $checkpoint['run_id'], 'tenant_id' => 'acme', 'project_key' => 'engineering', 'conversation_id' => $checkpoint['conversation_id']]);
+        $this->assertSame($previousTenant, app(TenantContext::class)->current());
+        \Illuminate\Support\Facades\DB::table('agent_runs')->where('run_id', $checkpoint['run_id'])->update([
+            'status' => 'completed', 'result_json' => json_encode(['response' => ['answer' => 'Verified answer', 'citations' => []]], JSON_THROW_ON_ERROR),
+        ]);
+        $poll = ['jsonrpc' => '2.0', 'id' => 'poll', 'method' => 'GetTask', 'params' => ['id' => $id]];
+        $this->withToken($token)->postJson('/api/pact/a2a', $poll, $headers)->assertOk()
+            ->assertJsonPath('result.status.state', 'TASK_STATE_COMPLETED')
+            ->assertJsonPath('result.artifacts.0.parts.0.data.text', 'Verified answer');
+        $this->post('/oauth/revoke', ['client_id' => $this->client->id, 'token' => $token])->assertOk();
+        $this->withToken($token)->postJson('/api/pact/a2a', ['jsonrpc' => '2.0', 'id' => 'two', 'method' => 'GetTask', 'params' => ['id' => $id]], $headers)->assertUnauthorized();
+    }
+
     private const CALLBACK = 'https://sorgente.test/acme-company/integrations/pact-auth/askmydocs/callback';
     private User $user;
     private OAuthClient $client;
