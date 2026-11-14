@@ -206,6 +206,7 @@ class AiManager
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
         $options = app(AgentChatModelScope::class)->options($options);
+        app(\App\Pact\InferenceBudget::class)->reserve();
         $measurementStart = microtime(true);
         $response = $this->provider()->chat($systemPrompt, $userMessage, $options);
 
@@ -243,6 +244,7 @@ class AiManager
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         $options = app(AgentChatModelScope::class)->options($options);
+        app(\App\Pact\InferenceBudget::class)->reserve();
         $measurementStart = microtime(true);
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
 
@@ -259,6 +261,7 @@ class AiManager
     public function chatWithProvider(string $provider, string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         $options = app(AgentChatModelScope::class)->options($options);
+        app(\App\Pact\InferenceBudget::class)->reserve();
         $measurementStart = microtime(true);
         $response = $this->provider($provider)->chatWithHistory($systemPrompt, $messages, $options);
 
@@ -285,11 +288,13 @@ class AiManager
         // terminal usage of a Generator without wrapping the live SSE path is a
         // scoped follow-up (FinOps streaming coverage). Sync chat +
         // chatWithHistory + embeddings (the bulk of token spend) are covered.
+        app(\App\Pact\InferenceBudget::class)->reserve();
         return $this->provider()->chatStream($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse
     {
+        app(\App\Pact\InferenceBudget::class)->reserve();
         $response = $this->embeddingsProvider()->generateEmbeddings($texts);
 
         // Hybrid providers embed via the SDK (metered by the EmbeddingsGenerated

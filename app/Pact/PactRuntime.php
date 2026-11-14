@@ -29,11 +29,15 @@ final class PactRuntime implements Runtime, PollableRuntime
     {
         $this->tenant($task['tenant_id']);
         $user = User::query()->findOrFail($task['user_id']);
+        $parent = $task['payload']['input']['parent_task_id'] ?? null;
+        if (! is_string($parent) || $parent === '') return ['state' => 'auth_required', 'checkpoint' => ['reason' => 'Federation coordinator task is required.']];
+        try { app(CoordinatorConnection::class)->resolve($task); }
+        catch (\Throwable $e) { return ['state' => 'auth_required', 'checkpoint' => ['reason' => 'Federation coordinator connection is not configured.']]; }
         $project = $task['payload']['principal_context']['project_key'];
         $message = $task['payload']['input']['message'];
         $conversation = $user->conversations()->create(['tenant_id' => $task['tenant_id'], 'project_key' => $project, 'title' => null]);
         $context = app(AgentExecutionContextFactory::class)->forUser($user, $project);
-        $turn = app(AgentChatTurnStarter::class)->start($context, $conversation, $user, $message, ['question' => $message, 'filters' => []]);
+        $turn = app(AgentChatTurnStarter::class)->start($context, $conversation, $user, $message, ['question' => $message, 'filters' => [], 'pact_task_id' => $task['id']]);
         return ['state' => 'running', 'checkpoint' => ['conversation_id' => $conversation->id, 'run_id' => $turn->run->run_id]];
     }
 

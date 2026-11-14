@@ -42,14 +42,16 @@ final class PactAuthTest extends TestCase
         config(['pact-auth.transport_enabled' => true]);
         \Illuminate\Support\Facades\Queue::fake();
         $token = $this->token();
+        $bootstrap = ['coordinator_url' => 'https://sorgente.test', 'mcp_endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm', 'credential' => 'synthetic-mcp-secret'];
+        $this->withToken($token)->postJson('/api/pact/bootstrap', $bootstrap)->assertOk();
         $contract = \Padosoft\PactAgent\AgentChatContract::descriptor();
         $core = \Pact\Pact::CORE_URI;
         $request = ['jsonrpc' => '2.0', 'id' => 'one', 'method' => 'SendMessage', 'params' => ['message' => [
-            'role' => 'ROLE_USER', 'messageId' => 'message-one', 'parts' => [['data' => ['message' => 'Hello', 'coordinator' => ['endpoint' => 'http://octodorabot.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm']]]],
+            'role' => 'ROLE_USER', 'messageId' => 'message-one', 'parts' => [['data' => ['message' => 'Hello', 'parent_task_id' => 'root-task', 'coordinator' => ['endpoint' => 'https://sorgente.test/mcp/pact', 'federation_id' => 'f', 'member_id' => 'm']]]],
             'metadata' => [$core => ['version' => '0.2.0', 'contract' => $contract, 'idempotency_key' => 'key-one']],
         ]]];
         $headers = ['A2A-Version' => '1.0', 'A2A-Extensions' => $core];
-        $this->postJson('/api/pact/a2a', $request, $headers)->assertUnauthorized();
+        $this->postJson('/api/pact/a2a', $request, $headers + ['Authorization' => ''])->assertUnauthorized();
         $result = $this->withToken($token)->postJson('/api/pact/a2a', $request, $headers)->assertOk();
         $id = $result->json('result.task.id');
         $this->assertNotEmpty($id, $result->getContent());
@@ -65,6 +67,27 @@ final class PactAuthTest extends TestCase
         $this->assertDatabaseHas('conversations', ['id' => $checkpoint['conversation_id'], 'tenant_id' => 'acme', 'project_key' => 'engineering', 'user_id' => $this->user->id]);
         $this->assertDatabaseHas('agent_runs', ['run_id' => $checkpoint['run_id'], 'tenant_id' => 'acme', 'project_key' => 'engineering', 'conversation_id' => $checkpoint['conversation_id']]);
         $this->assertSame($previousTenant, app(TenantContext::class)->current());
+        $run = \App\Models\AgentRun::query()->forTenant('acme')->where('run_id', $checkpoint['run_id'])->firstOrFail();
+        $steps = [];
+        $client = \Mockery::mock(\Padosoft\PactAgent\Contracts\CoordinatorClient::class);
+        $client->shouldReceive('reserveStep')->twice()->andReturnUsing(function ($parent, $step) use (&$steps) {
+            $this->assertSame('root-task', $parent); $this->assertTrue(\Illuminate\Support\Str::isUuid($step)); $steps[] = $step; return ['remaining' => 14];
+        });
+        app()->instance(\Padosoft\PactAgent\Contracts\CoordinatorClient::class, $client);
+        $context = \App\Agent\AgentExecutionContext::fromArray($run->toArray());
+        app(\App\Ai\AgentChatModelScope::class)->within($context, function (): void {
+            app(\App\Pact\InferenceBudget::class)->reserve(); app(\App\Pact\InferenceBudget::class)->reserve();
+        });
+        $this->assertNotSame($steps[0], $steps[1]);
+        $client->shouldReceive('reserveStep')->once()->andThrow(new \RuntimeException('Budget exhausted'));
+        Http::fake();
+        try {
+            app(\App\Ai\AgentChatModelScope::class)->within($context, fn () => app(\App\Ai\AiManager::class)->chat('System', 'Hello'));
+            $this->fail('A rejected reservation must prevent inference.');
+        } catch (\RuntimeException $error) {
+            $this->assertSame('Budget exhausted', $error->getMessage());
+        }
+        Http::assertNothingSent();
         \Illuminate\Support\Facades\DB::table('agent_runs')->where('run_id', $checkpoint['run_id'])->update([
             'status' => 'completed', 'result_json' => json_encode(['response' => ['answer' => 'Verified answer', 'citations' => []]], JSON_THROW_ON_ERROR),
         ]);

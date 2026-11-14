@@ -21,6 +21,13 @@ final class PactIntegrationServiceProvider extends ServiceProvider
         $this->app->bind(InboundAuthenticator::class, PactAuthorization::class);
         $this->app->bind(IdentityAuthorization::class, PactAuthorization::class);
         $this->app->bind(Runtime::class, PactRuntime::class);
+        $this->app['config']->set('pact-agent.coordinator.endpoint_resolver', CoordinatorConnection::class);
+        $this->app['config']->set('pact-agent.coordinator.credentials', CoordinatorConnection::class);
+        $hosts = [];
+        if (app()->environment(['local', 'testing']) && config('pact-auth.allow_local_http')) {
+            foreach (config('pact-auth.allowed_client_origins', []) as $origin) if (parse_url($origin, PHP_URL_SCHEME) === 'http') $hosts[] = parse_url($origin, PHP_URL_HOST);
+        }
+        $this->app['config']->set('pact-agent.coordinator.allowed_insecure_hosts', array_values(array_filter($hosts)));
         $origin = rtrim((string) $this->app['config']->get('app.url'), '/');
         $this->app['config']->set('pact-agent.agents.askmydocs', new AgentDefinition('askmydocs', 'AskMyDocs', [
             'endpoint' => $origin.'/api/pact/a2a', 'contract' => AgentChatContract::descriptor(), 'registry_path' => AgentChatContract::registry(),
