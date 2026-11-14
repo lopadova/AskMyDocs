@@ -26,7 +26,7 @@ final readonly class AgentTurnContextBuilder
             $context = AgentExecutionContext::fromArray($run->only(['run_id', 'tenant_id', 'project_key', 'channel', 'actor_type', 'actor_id', 'locale', 'timezone']));
             $filters = app(AgentRetrievalFiltersFactory::class)->forRun($run, $context);
             $turn = $memory->runTurn($run);
-            $tools = app(\App\Agent\Tools\AgentLiveSourceSelection::class)->apply(app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $run->user), data_get($run->input_json, 'live_sources'));
+            $tools = app(\App\Agent\Tools\AgentLiveSourceSelection::class)->apply(app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $run->user, [], is_string(data_get($run->input_json, 'pact_task_id'))), data_get($run->input_json, 'live_sources'));
             $before = $turn === null || $owner->project_key !== $run->project_key ? []
                 : $memory->context($owner, $run->user, $filters, (int) $turn->getKey(), array_keys($tools));
             return ['original_question_context' => array_intersect_key(is_array($before) ? $before : [],

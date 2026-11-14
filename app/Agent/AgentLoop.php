@@ -80,7 +80,7 @@ final readonly class AgentLoop
         }
         $user = $run->user;
         $tools = array_filter(
-            $this->registry->forContext($context, $user instanceof User ? $user : null),
+            $this->registry->forContext($context, $user instanceof User ? $user : null, [], is_string(data_get($run->input_json, 'pact_task_id'))),
             static fn (AgentToolDefinition $tool): bool => $tool->readOnly
                 && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
         );

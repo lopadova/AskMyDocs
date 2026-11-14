@@ -59,9 +59,10 @@ final readonly class AgentToolRegistry
         AgentExecutionContext $context,
         ?User $user = null,
         array $clientTools = [],
+        bool $pactScope = false,
     ): array {
         $run = \App\Models\AgentRun::query()->forTenant($context->tenantId)->where('run_id', $context->runId)->first();
-        $pact = $run !== null && is_string(data_get($run->input_json, 'pact_task_id'));
+        $pact = $pactScope || ($run !== null && is_string(data_get($run->input_json, 'pact_task_id')));
         $tools = [
             'search_knowledge_base' => $this->knowledgeTool(),
             'list_knowledge_documents' => $this->catalogTool(),

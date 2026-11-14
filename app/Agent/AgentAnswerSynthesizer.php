@@ -69,7 +69,7 @@ final readonly class AgentAnswerSynthesizer
         if ($outcome->stopReason === 'session_memory' && $run !== null && $understanding !== null) {
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
             $owner = $memory->runOwner($run);
-            $tools = app(\App\Agent\Tools\AgentLiveSourceSelection::class)->apply(app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $run->user), data_get($run->input_json, 'live_sources'));
+            $tools = app(\App\Agent\Tools\AgentLiveSourceSelection::class)->apply(app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $run->user, [], is_string(data_get($run->input_json, 'pact_task_id'))), data_get($run->input_json, 'live_sources'));
             $answer = $owner === null ? null : app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->answer($owner,
                 \App\Services\Chat\QuestionUnderstanding::fromArray($understanding), $run->user,
                 app(AgentRetrievalFiltersFactory::class)->forRun($run, $context), array_keys($tools));
