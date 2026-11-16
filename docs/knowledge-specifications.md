@@ -2,6 +2,16 @@
 
 Una specifica attiva trasforma i passaggi originali in contributi automatici a entità separate per azienda, progetto, tipo, namespace e identificativo. Gli identificativi restano stringhe: `00123` e `123` sono distinti. Nomi simili non causano fusioni. I progetti senza attivazione esplicita mantengono AutoWiki precedente. I nuovi strumenti nel catalogo agente sono offerti ai progetti attivati.
 
+## Aggiornamento del 16 novembre 2026
+
+OpenRouter è nuovamente disponibile: la prova diretta e le 14 richieste Jev necessarie ai 17 esempi etichettati sono riuscite, senza errori del provider. Tre esempi sono stati fermati dai controlli deterministici prima della chiamata. Il modello restituito è `typesafe/jev-1.13-20260917`.
+
+La calibrazione resta **non utilizzabile**. Alla soglia di misurazione 0,500001 si osservano 2 ammissioni corrette, 12 astensioni e 3 rifiuti deterministici. Nessuna ammissione errata, ma soltanto 2 dei 9 casi positivi sono ammessi. Alla soglia candidata minima 0,51 il richiamo dei positivi è 20% sul gruppo di calibrazione e 25% su quello di validazione: entrambi sotto il requisito del 75%. Nessuna soglia è stata proposta o attivata.
+
+Costo noto complessivo, inclusa la prova diretta: **0,000460026 USD**; latenza cumulativa delle richieste circa **7,57 secondi**. Le metriche aggregate del comando usano la soglia di ripiego 1,0 quando non trovano una calibrazione: il rapporto distingue questi valori dagli esiti effettivi della misurazione e riporta l’analisi delle soglie senza ripetere chiamate a pagamento.
+
+Il [rapporto aggiornato](knowledge-evaluation-2026-11-16.json) conserva risposte, probabilità e consumi. Il precedente blocco HTTP 402 è risolto; occorre migliorare e rivalutare il giudizio semantico prima dell’attivazione. Nessuna impostazione aziendale o di progetto è stata cambiata. Le verifiche nelle sezioni successive documentano il collaudo dell’11 novembre.
+
 ## Contratto e attivazione
 
 L'editor si trova in **Auto-Wiki Settings**. La descrizione italiana può generare una bozza; i campi strutturati permettono di modificare tipi, proprietà, relazioni, namespace, strategie, regole, destinazioni e calibrazione. La modalità JSON avanzata conserva la modifica precisa del contratto. `null` nel progetto eredita l'intero blocco aziendale. Una revisione salvata è immutabile; correggerla crea una revisione nuova. I blocchi sono `types` (tipi/proprietà/relazioni), `identity` (namespace, espressioni e riconoscimento), `admission` (regole e calibrazione), `contributions` (destinazioni).

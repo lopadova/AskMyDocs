@@ -1,0 +1,871 @@
+{
+  "dataset_hash": "0d0c27e12d15d80791e54308acc02ff5da2ec8dc606d21b0554cab85732a5141",
+  "model": "typesafe/jev-1.13",
+  "measured_at": "2026-11-16T16:23:10+00:00",
+  "scope": "synthetic_regression_baseline; validate company examples before production",
+  "calibration": null,
+  "validation": null,
+  "metrics": {
+    "cases": 17,
+    "false_approvals": 0,
+    "recall": 0,
+    "abstentions": 17,
+    "provider_errors": 0,
+    "known_cost_usd": 0.000445326,
+    "latency_ms": 6894.81
+  },
+  "rows": [
+    {
+      "case": "order_sent",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0.6,
+      "support": "documented",
+      "judgment": {
+        "status": "accepted",
+        "support": "documented",
+        "decision": {
+          "id": "gen-dec-1794846183-RtXcITeVmHJTiRagQ34d",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.88
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.6
+            },
+            "support": {
+              "type": "choice",
+              "choice": "documented",
+              "probabilities": {
+                "documented": 0.73,
+                "proposed": 0.05,
+                "contradictory": 0.01,
+                "insufficient": 0.21
+              },
+              "confidence": 0.64
+            }
+          },
+          "usage": {
+            "input_tokens": 743,
+            "output_tokens": 90,
+            "cost": 3.1206e-05
+          },
+          "latency_ms": 474.23
+        }
+      }
+    },
+    {
+      "case": "two_orders_correct",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0.32,
+      "support": "documented",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846184-kdD2zj3L6cbOct1uugjm",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.86
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.58
+            },
+            "support": {
+              "type": "choice",
+              "choice": "documented",
+              "probabilities": {
+                "documented": 0.49,
+                "proposed": 0.18,
+                "contradictory": 0.03,
+                "insufficient": 0.3
+              },
+              "confidence": 0.32
+            }
+          },
+          "usage": {
+            "input_tokens": 752,
+            "output_tokens": 90,
+            "cost": 3.1584e-05
+          },
+          "latency_ms": 554.02
+        }
+      }
+    },
+    {
+      "case": "two_orders_wrong",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": "insufficient",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846184-oaGypBzJ1jLGzRBA6rsp",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.05
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.05
+            },
+            "support": {
+              "type": "choice",
+              "choice": "insufficient",
+              "probabilities": {
+                "documented": 0.13,
+                "proposed": 0.09,
+                "contradictory": 0.31,
+                "insufficient": 0.47
+              },
+              "confidence": 0.29
+            }
+          },
+          "usage": {
+            "input_tokens": 751,
+            "output_tokens": 91,
+            "cost": 3.1542e-05
+          },
+          "latency_ms": 471.6
+        }
+      }
+    },
+    {
+      "case": "leading_zero",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "rejected",
+        "reason": "invalid_identity_or_quote"
+      }
+    },
+    {
+      "case": "ticket_closed_unproven",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": "insufficient",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846185-KUOb9skLYKTzAyrQAEir",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.43
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.08
+            },
+            "support": {
+              "type": "choice",
+              "choice": "insufficient",
+              "probabilities": {
+                "documented": 0.18,
+                "proposed": 0.03,
+                "contradictory": 0.24,
+                "insufficient": 0.55
+              },
+              "confidence": 0.4
+            }
+          },
+          "usage": {
+            "input_tokens": 750,
+            "output_tokens": 91,
+            "cost": 3.15e-05
+          },
+          "latency_ms": 464.22
+        }
+      }
+    },
+    {
+      "case": "suggestion",
+      "split": "calibration",
+      "expected": "proposed",
+      "score": 0.19,
+      "support": "proposed",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846185-Ja3JMKWy3bDJvGKbU6Mp",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.79
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.19
+            },
+            "support": {
+              "type": "choice",
+              "choice": "proposed",
+              "probabilities": {
+                "documented": 0.01,
+                "proposed": 0.98,
+                "contradictory": 0,
+                "insufficient": 0.01
+              },
+              "confidence": 0.97
+            }
+          },
+          "usage": {
+            "input_tokens": 755,
+            "output_tokens": 89,
+            "cost": 3.171e-05
+          },
+          "latency_ms": 477.09
+        }
+      }
+    },
+    {
+      "case": "solution_confirmed",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0.24,
+      "support": "documented",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846186-IttB35Wt0q0QR85DKA3z",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.69
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.24
+            },
+            "support": {
+              "type": "choice",
+              "choice": "documented",
+              "probabilities": {
+                "documented": 0.77,
+                "proposed": 0.01,
+                "contradictory": 0,
+                "insufficient": 0.22
+              },
+              "confidence": 0.69
+            }
+          },
+          "usage": {
+            "input_tokens": 759,
+            "output_tokens": 90,
+            "cost": 3.1878e-05
+          },
+          "latency_ms": 464.91
+        }
+      }
+    },
+    {
+      "case": "procedure_single_reply",
+      "split": "calibration",
+      "expected": "documented",
+      "score": 0.2,
+      "support": "proposed",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846186-zZmT6HTwxp8fbkA0Qb0m",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.29
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.66
+            },
+            "support": {
+              "type": "choice",
+              "choice": "proposed",
+              "probabilities": {
+                "documented": 0.33,
+                "proposed": 0.4,
+                "contradictory": 0.01,
+                "insufficient": 0.26
+              },
+              "confidence": 0.2
+            }
+          },
+          "usage": {
+            "input_tokens": 780,
+            "output_tokens": 89,
+            "cost": 3.276e-05
+          },
+          "latency_ms": 463.89
+        }
+      }
+    },
+    {
+      "case": "name_collision",
+      "split": "calibration",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "rejected",
+        "reason": "invalid_identity_or_quote"
+      }
+    },
+    {
+      "case": "wrong_quote",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0,
+      "support": null,
+      "judgment": {
+        "status": "rejected",
+        "reason": "invalid_identity_or_quote"
+      }
+    },
+    {
+      "case": "delivery_update",
+      "split": "validation",
+      "expected": "documented",
+      "score": 0.51,
+      "support": "documented",
+      "judgment": {
+        "status": "accepted",
+        "support": "documented",
+        "decision": {
+          "id": "gen-dec-1794846186-ZyeyYSxbSYnScoW4smaN",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.86
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.51
+            },
+            "support": {
+              "type": "choice",
+              "choice": "documented",
+              "probabilities": {
+                "documented": 0.89,
+                "proposed": 0.01,
+                "contradictory": 0,
+                "insufficient": 0.1
+              },
+              "confidence": 0.85
+            }
+          },
+          "usage": {
+            "input_tokens": 752,
+            "output_tokens": 90,
+            "cost": 3.1584e-05
+          },
+          "latency_ms": 493.93
+        }
+      }
+    },
+    {
+      "case": "two_order_validation",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0.04,
+      "support": "contradictory",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846187-NLjYCofoZCLwkg3DmUnx",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.04
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.04
+            },
+            "support": {
+              "type": "choice",
+              "choice": "contradictory",
+              "probabilities": {
+                "documented": 0.15,
+                "proposed": 0.02,
+                "contradictory": 0.56,
+                "insufficient": 0.27
+              },
+              "confidence": 0.41
+            }
+          },
+          "usage": {
+            "input_tokens": 753,
+            "output_tokens": 91,
+            "cost": 3.1626e-05
+          },
+          "latency_ms": 445.17
+        }
+      }
+    },
+    {
+      "case": "ticket_proposed_validation",
+      "split": "validation",
+      "expected": "proposed",
+      "score": 0.42,
+      "support": "proposed",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846187-pAPWlFyF0jTLXJLjstGq",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.77
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.42
+            },
+            "support": {
+              "type": "choice",
+              "choice": "proposed",
+              "probabilities": {
+                "documented": 0.01,
+                "proposed": 0.98,
+                "contradictory": 0,
+                "insufficient": 0.01
+              },
+              "confidence": 0.97
+            }
+          },
+          "usage": {
+            "input_tokens": 754,
+            "output_tokens": 89,
+            "cost": 3.1668e-05
+          },
+          "latency_ms": 426.66
+        }
+      }
+    },
+    {
+      "case": "closed_only_validation",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0,
+      "support": "insufficient",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846188-Yu08p45ffcdce2IpAaji",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.25
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.05
+            },
+            "support": {
+              "type": "choice",
+              "choice": "insufficient",
+              "probabilities": {
+                "documented": 0.03,
+                "proposed": 0.03,
+                "contradictory": 0.21,
+                "insufficient": 0.73
+              },
+              "confidence": 0.64
+            }
+          },
+          "usage": {
+            "input_tokens": 749,
+            "output_tokens": 91,
+            "cost": 3.1458e-05
+          },
+          "latency_ms": 463.79
+        }
+      }
+    },
+    {
+      "case": "explicit_conflict",
+      "split": "validation",
+      "expected": "contradictory",
+      "score": 0.48,
+      "support": "contradictory",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846188-t2T63tW7tjP0pLLI0rMm",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.72
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.48
+            },
+            "support": {
+              "type": "choice",
+              "choice": "contradictory",
+              "probabilities": {
+                "documented": 0.02,
+                "proposed": 0,
+                "contradictory": 0.96,
+                "insufficient": 0.02
+              },
+              "confidence": 0.95
+            }
+          },
+          "usage": {
+            "input_tokens": 776,
+            "output_tokens": 91,
+            "cost": 3.2592e-05
+          },
+          "latency_ms": 550.73
+        }
+      }
+    },
+    {
+      "case": "incomplete_procedure",
+      "split": "validation",
+      "expected": "abstain",
+      "score": 0.04,
+      "support": "proposed",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846189-5ILZJ17vTmVtdb58udFn",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.21
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.04
+            },
+            "support": {
+              "type": "choice",
+              "choice": "proposed",
+              "probabilities": {
+                "documented": 0.14,
+                "proposed": 0.69,
+                "contradictory": 0.01,
+                "insufficient": 0.16
+              },
+              "confidence": 0.59
+            }
+          },
+          "usage": {
+            "input_tokens": 754,
+            "output_tokens": 89,
+            "cost": 3.1668e-05
+          },
+          "latency_ms": 489.14
+        }
+      }
+    },
+    {
+      "case": "procedure_validation",
+      "split": "validation",
+      "expected": "documented",
+      "score": 0.15,
+      "support": "documented",
+      "judgment": {
+        "status": "abstained",
+        "reason": "insufficient_or_uncertain",
+        "decision": {
+          "id": "gen-dec-1794846189-C6vFIBnOONCXzzCsGMWO",
+          "model": "typesafe/jev-1.13-20260917",
+          "answers": {
+            "association": {
+              "type": "noul",
+              "probability_true": 0.29
+            },
+            "admission": {
+              "type": "noul",
+              "probability_true": 0.64
+            },
+            "support": {
+              "type": "choice",
+              "choice": "documented",
+              "probabilities": {
+                "documented": 0.36,
+                "proposed": 0.34,
+                "contradictory": 0.01,
+                "insufficient": 0.29
+              },
+              "confidence": 0.15
+            }
+          },
+          "usage": {
+            "input_tokens": 775,
+            "output_tokens": 90,
+            "cost": 3.255e-05
+          },
+          "latency_ms": 655.43
+        }
+      }
+    }
+  ],
+  "connection_probe": {
+    "ok": true,
+    "decision": {
+      "id": "gen-dec-1794846171-bepPTUVCoYpFI0ES4r6v",
+      "model": "typesafe/jev-1.13-20260917",
+      "answers": {
+        "association": {
+          "type": "noul",
+          "probability_true": 0.97
+        }
+      },
+      "usage": {
+        "input_tokens": 350,
+        "output_tokens": 20,
+        "cost": 1.47e-05
+      },
+      "latency_ms": 675.05
+    }
+  },
+  "resolved_models": [
+    "typesafe/jev-1.13-20260917"
+  ],
+  "measurement_summary": {
+    "cases": 17,
+    "successful_decision_requests": 14,
+    "statuses_at_measurement_threshold_0_500001": {
+      "accepted": 2,
+      "abstained": 12,
+      "rejected": 3
+    },
+    "positives": 9,
+    "correct_approvals_at_measurement_threshold": 2,
+    "false_approvals_at_measurement_threshold": 0,
+    "provider_errors": 0,
+    "known_total_cost_usd_including_probe": 0.000460026,
+    "cumulative_latency_ms_including_probe": 7569.86,
+    "projects_activated": false
+  },
+  "threshold_analysis": {
+    "calibration": [
+      {
+        "cases": 9,
+        "threshold": 0.51,
+        "accepted": 1,
+        "correct_approvals": 1,
+        "false_approvals": 0,
+        "recall": 0.2,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 9,
+        "threshold": 0.6,
+        "accepted": 1,
+        "correct_approvals": 1,
+        "false_approvals": 0,
+        "recall": 0.2,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 9,
+        "threshold": 0.7,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.8,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.85,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.9,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.92,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.95,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.97,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      },
+      {
+        "cases": 9,
+        "threshold": 0.99,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 9
+      }
+    ],
+    "validation": [
+      {
+        "cases": 8,
+        "threshold": 0.51,
+        "accepted": 1,
+        "correct_approvals": 1,
+        "false_approvals": 0,
+        "recall": 0.25,
+        "abstentions_or_deterministic_rejections": 7
+      },
+      {
+        "cases": 8,
+        "threshold": 0.6,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.7,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.8,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.85,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.9,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.92,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.95,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.97,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      },
+      {
+        "cases": 8,
+        "threshold": 0.99,
+        "accepted": 0,
+        "correct_approvals": 0,
+        "false_approvals": 0,
+        "recall": 0.0,
+        "abstentions_or_deterministic_rejections": 8
+      }
+    ]
+  },
+  "interpretation": [
+    "The previous HTTP 402 is resolved. The probe and all 14 model-dependent fixture requests succeeded.",
+    "Three of 17 fixtures were rejected by deterministic identity/quote checks and did not call the provider.",
+    "The command metrics use threshold 1.0 when no recommended calibration exists; those aggregate 17 abstentions do not describe the measurement-threshold statuses. See measurement_summary and threshold_analysis.",
+    "No tested threshold reaches the required 75% positive recall on the calibration split. At threshold 0.51: calibration recall 20%, validation recall 25%, zero false approvals.",
+    "No acceptance threshold or project specification was changed. This is a synthetic regression evaluation, not production validation."
+  ]
+}
