@@ -5,68 +5,80 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Services\Kb\Knowledge\KnowledgeContract;
+use App\Services\Kb\Knowledge\KnowledgeEvaluation;
 use App\Services\Kb\Knowledge\KnowledgeExtractor;
 use Illuminate\Console\Command;
 
 final class KbKnowledgeEvaluateCommand extends Command
 {
-    protected $signature = 'kb:knowledge-evaluate {--live : Call Jev on anonymized labeled fixtures} {--output= : Save measured results for audit and calibration}';
+    protected $signature = 'kb:knowledge-evaluate {--live : Call Jev on anonymized labeled fixtures} {--replay= : Recompute a saved report offline without provider calls} {--output= : Save measured results and per-case checkpoints}';
     protected $description = 'Measure entity association, admission, support, abstentions, latency and cost on labeled synthetic cases';
 
-    public function handle(KnowledgeExtractor $extractor): int
+    public function handle(KnowledgeExtractor $extractor, KnowledgeEvaluation $evaluation): int
     {
-        $path = resource_path('fixtures/knowledge/acceptance.json');
-        $cases = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
-        if (! $this->option('live')) {
-            $this->line(json_encode(['mode' => 'preview', 'cases' => $cases], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $dataset = $evaluation->dataset();
+        if (! $this->option('live') && ! $this->option('replay')) {
+            $this->line(json_encode(['mode' => 'preview', 'dataset_hash' => $dataset['hash'], 'cases' => $dataset['cases']], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             return self::SUCCESS;
         }
-        $blocks = app(KnowledgeContract::class)->template();
-        $blocks['admission']['calibration'] = ['threshold' => 0.500001, 'reference' => 'measurement-only'];
+        if ($this->option('live') && $this->option('replay')) { $this->error('Choose live measurement or offline replay.'); return self::FAILURE; }
+        if ($this->option('live') && ! $this->option('output')) { $this->error('Live measurements require --output to checkpoint paid responses.'); return self::FAILURE; }
+        if ($this->option('output') && file_exists($this->option('output'))) { $this->error('Use a new output path to preserve paid measurements.'); return self::FAILURE; }
+        $header = ['dataset_hash' => $dataset['hash'], 'datasets' => $dataset['files'], 'judge_version' => KnowledgeExtractor::JUDGE_VERSION,
+            'model' => config('decisions.models.knowledge_jev.model'), 'measured_at' => now()->toIso8601String()];
         $rows = [];
-        foreach ($cases as $case) {
-            $candidate = $extractor->validate($case['candidate'], $case['source'], ['blocks' => $blocks]);
-            $judgment = $candidate === null ? ['status' => 'rejected', 'reason' => 'invalid_identity_or_quote'] : $extractor->judge($candidate, ['blocks' => $blocks]);
-            $decision = $judgment['decision'] ?? [];
-            $score = min((float) data_get($decision, 'answers.association.probability_true', 0), (float) data_get($decision, 'answers.admission.probability_true', 0),
-                (float) data_get($decision, 'answers.support.confidence', 0), (float) data_get($decision, 'answers.support.probabilities.'.data_get($decision, 'answers.support.choice', ''), 0));
-            if (data_get($decision, 'answers.support.choice') === 'insufficient') $score = 0;
-            $rows[] = ['case' => $case['id'], 'split' => $case['split'], 'expected' => $case['expected'], 'score' => $score,
-                'support' => data_get($decision, 'answers.support.choice'), 'judgment' => $judgment];
-            $this->getOutput()->write('.');
+        if ($this->option('replay')) {
+            try {
+                $saved = json_decode(file_get_contents($this->option('replay')), true, flags: JSON_THROW_ON_ERROR);
+                foreach (['dataset_hash', 'judge_version', 'model'] as $field) {
+                    if (($saved[$field] ?? null) !== $header[$field]) throw new \RuntimeException('Replay dataset, judge or model does not match.');
+                }
+                $indexed = collect($saved['rows'])->keyBy('case');
+                if ($indexed->count() !== count($dataset['cases']) || count($saved['rows']) !== $indexed->count()) throw new \RuntimeException('Replay must contain each case exactly once.');
+                foreach ($dataset['cases'] as $case) {
+                    $old = $indexed->get($case['id']);
+                    if (! is_array($old)) throw new \RuntimeException('Missing replay case.');
+                    $row = $evaluation->row($case, $old['judgment']);
+                    if (($old['input_hash'] ?? null) !== $row['input_hash']) throw new \RuntimeException('Replay input mismatch.');
+                    $decision = $old['judgment']['decision'] ?? null;
+                    if ($decision !== null && ($decision['model'] ?? null) !== $header['model']) throw new \RuntimeException('Replay response model mismatch.');
+                    $rows[] = $row;
+                }
+                foreach (['measurement_runs', 'frozen_protocol', 'protocol_frozen_at', 'notes', 'completed_at', 'extractor_version'] as $field) {
+                    if (isset($saved[$field])) $header[$field] = $saved[$field];
+                }
+                $header['measured_at'] = $saved['measured_at'];
+                $header['replayed_at'] = now()->toIso8601String();
+            } catch (\Throwable $e) { $this->error('Cannot replay: '.$e->getMessage()); return self::FAILURE; }
+        } else {
+            $this->save($this->option('output'), [...$header, 'complete' => false, 'rows' => []]);
+            $blocks = app(KnowledgeContract::class)->template();
+            $blocks['admission']['calibration'] = ['threshold' => KnowledgeEvaluation::MEASUREMENT_THRESHOLD,
+                'reference' => 'measurement-only', 'judge_version' => $header['judge_version'], 'model' => $header['model']];
+            foreach ($dataset['cases'] as $case) {
+                $candidate = $extractor->validate($case['candidate'], $case['source'], ['blocks' => $blocks]);
+                $judgment = $candidate === null ? ['status' => 'rejected', 'reason' => 'invalid_identity_or_quote'] : $extractor->judge($candidate, ['blocks' => $blocks]);
+                $rows[] = $evaluation->row($case, $judgment);
+                // Save each paid result immediately, even if a later case fails.
+                if ($this->option('output')) $this->save($this->option('output'), [...$header, 'complete' => false, 'rows' => $rows]);
+                $this->getOutput()->write('.');
+            }
         }
-        $best = null; $bestRecall = -1;
-        foreach ([0.51, 0.60, 0.70, 0.80, 0.85, 0.90, 0.92, 0.95, 0.97, 0.99] as $threshold) {
-            $metrics = $this->metrics(array_filter($rows, fn ($r) => $r['split'] === 'calibration'), $threshold);
-            if ($metrics['false_approvals'] === 0 && $metrics['recall'] >= 0.75 && $metrics['recall'] > $bestRecall) { $best = $threshold; $bestRecall = $metrics['recall']; }
-        }
-        $validation = $best === null ? null : $this->metrics(array_filter($rows, fn ($r) => $r['split'] === 'validation'), $best);
-        $usable = $validation !== null && $validation['false_approvals'] === 0 && $validation['recall'] >= 0.75;
-        $result = ['dataset_hash' => hash_file('sha256', $path), 'model' => config('decisions.models.jev.model'), 'measured_at' => now()->toIso8601String(),
-            'scope' => 'synthetic_regression_baseline; validate company examples before production',
-            'calibration' => $usable ? ['threshold' => $best, 'reference' => 'synthetic:'.hash_file('sha256', $path)] : null,
-            'validation' => $validation, 'metrics' => $this->metrics($rows, $best ?? 1), 'rows' => $rows];
-        $encoded = json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-        if ($this->option('output')) file_put_contents($this->option('output'), $encoded."\n");
-        $this->newLine(); $this->line($encoded);
-        return $usable ? self::SUCCESS : self::FAILURE;
+        $result = $evaluation->report($rows, [...$header, 'complete' => true]);
+        if ($this->option('output')) $this->save($this->option('output'), $result);
+        $this->newLine(); $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        return $result['calibration'] !== null ? self::SUCCESS : self::FAILURE;
     }
 
-    private function metrics(array $rows, float $threshold): array
+    private function save(string $path, array $data): void
     {
-        $falseApprovals = $positive = $acceptedPositive = $abstentions = $errors = 0;
-        $cost = $latency = 0.0;
-        foreach ($rows as $row) {
-            $expected = $row['expected'] !== 'abstain';
-            $accepted = $row['score'] >= $threshold && $row['support'] !== 'insufficient';
-            $correct = $accepted && $expected && $row['support'] === $row['expected'];
-            $positive += (int) $expected; $acceptedPositive += (int) $correct;
-            $falseApprovals += (int) ($accepted && ! $correct); $abstentions += (int) ! $accepted;
-            $errors += (int) isset($row['judgment']['error']);
-            $cost += (float) data_get($row, 'judgment.decision.usage.cost', 0);
-            $latency += (float) data_get($row, 'judgment.decision.latency_ms', data_get($row, 'judgment.elapsed_ms', 0));
+        $temporary = tempnam(dirname($path), '.knowledge-evaluation-');
+        if ($temporary === false) throw new \RuntimeException('Cannot create evaluation checkpoint.');
+        try {
+            $encoded = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n";
+            if (file_put_contents($temporary, $encoded) === false || ! rename($temporary, $path)) throw new \RuntimeException('Cannot save evaluation checkpoint.');
+        } finally {
+            if (file_exists($temporary)) unlink($temporary);
         }
-        return ['cases' => count($rows), 'false_approvals' => $falseApprovals, 'recall' => $positive ? $acceptedPositive / $positive : 0,
-            'abstentions' => $abstentions, 'provider_errors' => $errors, 'known_cost_usd' => $cost, 'latency_ms' => $latency];
     }
 }

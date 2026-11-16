@@ -1,0 +1,1910 @@
+{
+    "dataset_hash": "c11160413888e20e28cda6e6caa077ae9875d3eb27fae6abc2378ca94afd682a",
+    "datasets": {
+        "acceptance": "0d0c27e12d15d80791e54308acc02ff5da2ec8dc606d21b0554cab85732a5141",
+        "adversarial": "421c5c739cf3b5cee3332ab3eb02c466579051d1a386b481a130fb40ce03179b"
+    },
+    "judge_version": "knowledge-admission-v2",
+    "extractor_version": "sections-v2",
+    "model": "typesafe\/jev-1.13-20260917",
+    "measured_at": "2026-11-16T17:01:42+00:00",
+    "completed_at": "2026-11-16T17:09:08+00:00",
+    "complete": true,
+    "measurement_runs": {
+        "train": {
+            "dataset_hash": "0d0c27e12d15d80791e54308acc02ff5da2ec8dc606d21b0554cab85732a5141",
+            "extractor_hash": "9ac1a9f799ce85cfc30f1bc37ab65d6fbb9492a1b9d6e90b4cc14aedf756ba06",
+            "measured_at": "2026-11-16T17:01:42+00:00",
+            "report_sha256": "48915b04dce9573f83f5c5e7fff0bc64cd9b3feadc3ea59e2a7574afdf4222dd"
+        },
+        "adversarial-train": {
+            "dataset_hash": "421c5c739cf3b5cee3332ab3eb02c466579051d1a386b481a130fb40ce03179b",
+            "extractor_hash": "9ac1a9f799ce85cfc30f1bc37ab65d6fbb9492a1b9d6e90b4cc14aedf756ba06",
+            "measured_at": "2026-11-16T17:03:21+00:00",
+            "report_sha256": "bef369847b35bd070744a090a7d005c235b10f00e4d71cb2f3d683684be3a4a1"
+        },
+        "validation": {
+            "dataset_hash": "0d0c27e12d15d80791e54308acc02ff5da2ec8dc606d21b0554cab85732a5141",
+            "extractor_hash": "5cfcef91ee0918fa18d70fe3ea65cb2ae6463fc87c5beee71c2550730fba6577",
+            "measured_at": "2026-11-16T17:05:19+00:00",
+            "report_sha256": "a08f983f3397d74864fc3b6db7fbb34f58d7ba81134645201b1f211c69fb6cd8"
+        },
+        "adversarial-validation": {
+            "dataset_hash": "421c5c739cf3b5cee3332ab3eb02c466579051d1a386b481a130fb40ce03179b",
+            "extractor_hash": "5cfcef91ee0918fa18d70fe3ea65cb2ae6463fc87c5beee71c2550730fba6577",
+            "measured_at": "2026-11-16T17:06:01+00:00",
+            "report_sha256": "b2ca36fa010a4bdca3a10b27b3c7651c570781dbed2df7c4c4fb5941f670f60a"
+        }
+    },
+    "frozen_protocol": {
+        "judge_version": "knowledge-admission-v2",
+        "model": "typesafe\/jev-1.13-20260917",
+        "frozen_threshold": 0.7,
+        "reason": "Highest threshold on the predefined grid retaining the maximum recall with zero false approvals on calibration only; 7 of 8 positives accepted, 9 negatives excluded.",
+        "datasets": {
+            "acceptance": "0d0c27e12d15d80791e54308acc02ff5da2ec8dc606d21b0554cab85732a5141",
+            "adversarial": "421c5c739cf3b5cee3332ab3eb02c466579051d1a386b481a130fb40ce03179b"
+        }
+    },
+    "protocol_frozen_at": "2026-11-16T17:05:05+00:00",
+    "notes": [
+        "Calibration cases were measured first. Threshold 0.70 was frozen before either validation run; no questions or thresholds were changed after validation.",
+        "Early calibration requests used alias typesafe\/jev-1.13; all paid responses resolved to the same pinned snapshot typesafe\/jev-1.13-20260917.",
+        "Original judgment statuses reflect measurement at 0.500001; aggregate metrics apply the calibrated threshold 0.70 using all gates.",
+        "All paid responses are retained; the final report was assembled offline without repeating calibration calls."
+    ],
+    "scope": "synthetic_regression; validate company examples before production",
+    "candidate_threshold": 0.7,
+    "calibration": {
+        "threshold": 0.7,
+        "reference": "synthetic:c11160413888e20e28cda6e6caa077ae9875d3eb27fae6abc2378ca94afd682a",
+        "judge_version": "knowledge-admission-v2",
+        "model": "typesafe\/jev-1.13-20260917"
+    },
+    "calibration_metrics": {
+        "cases": 17,
+        "positive_cases": 8,
+        "negative_cases": 9,
+        "accepted_positives": 7,
+        "false_approvals": 0,
+        "recall": 0.875,
+        "abstentions": 8,
+        "deterministic_rejections": 2,
+        "provider_errors": 0,
+        "known_cost_usd": 0.0005901000000000001,
+        "latency_ms": 7667.71
+    },
+    "validation": {
+        "cases": 24,
+        "positive_cases": 10,
+        "negative_cases": 14,
+        "accepted_positives": 9,
+        "false_approvals": 0,
+        "recall": 0.9,
+        "abstentions": 12,
+        "deterministic_rejections": 3,
+        "provider_errors": 0,
+        "known_cost_usd": 0.0008298779999999999,
+        "latency_ms": 10822.260000000002
+    },
+    "metrics_threshold": 0.7,
+    "metrics": {
+        "cases": 41,
+        "positive_cases": 18,
+        "negative_cases": 23,
+        "accepted_positives": 16,
+        "false_approvals": 0,
+        "recall": 0.8888888888888888,
+        "abstentions": 20,
+        "deterministic_rejections": 5,
+        "provider_errors": 0,
+        "known_cost_usd": 0.001419978,
+        "latency_ms": 18489.969999999998
+    },
+    "measurement_metrics": {
+        "cases": 41,
+        "positive_cases": 18,
+        "negative_cases": 23,
+        "accepted_positives": 16,
+        "false_approvals": 0,
+        "recall": 0.8888888888888888,
+        "abstentions": 20,
+        "deterministic_rejections": 5,
+        "provider_errors": 0,
+        "known_cost_usd": 0.001419978,
+        "latency_ms": 18489.969999999998
+    },
+    "threshold_analysis": [
+        {
+            "threshold": 0.51,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 7,
+                "false_approvals": 0,
+                "recall": 0.875,
+                "abstentions": 8,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.6,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 7,
+                "false_approvals": 0,
+                "recall": 0.875,
+                "abstentions": 8,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.7,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 7,
+                "false_approvals": 0,
+                "recall": 0.875,
+                "abstentions": 8,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.8,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 6,
+                "false_approvals": 0,
+                "recall": 0.75,
+                "abstentions": 9,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.85,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 5,
+                "false_approvals": 0,
+                "recall": 0.625,
+                "abstentions": 10,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.9,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 4,
+                "false_approvals": 0,
+                "recall": 0.5,
+                "abstentions": 11,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.92,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 4,
+                "false_approvals": 0,
+                "recall": 0.5,
+                "abstentions": 11,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.95,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 2,
+                "false_approvals": 0,
+                "recall": 0.25,
+                "abstentions": 13,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.97,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 0,
+                "false_approvals": 0,
+                "recall": 0,
+                "abstentions": 15,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        },
+        {
+            "threshold": 0.99,
+            "calibration": {
+                "cases": 17,
+                "positive_cases": 8,
+                "negative_cases": 9,
+                "accepted_positives": 0,
+                "false_approvals": 0,
+                "recall": 0,
+                "abstentions": 15,
+                "deterministic_rejections": 2,
+                "provider_errors": 0,
+                "known_cost_usd": 0.0005901000000000001,
+                "latency_ms": 7667.71
+            }
+        }
+    ],
+    "rows": [
+        {
+            "case": "order_sent",
+            "input_hash": "fb1c4c66e890c3b58e71ad8e65c50ebb0e8e08d42bcd9cfa57659dc095ca1f62",
+            "split": "calibration",
+            "expected": "documented",
+            "score": 0.95,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "decision": {
+                    "id": "gen-dec-1794848502-hAdRLkLNfPP6uwPU3F9W",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.95
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.95
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.99,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.01
+                            },
+                            "confidence": 0.99
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 912,
+                        "output_tokens": 90,
+                        "cost": 3.8304e-5
+                    },
+                    "latency_ms": 691.95
+                }
+            }
+        },
+        {
+            "case": "two_orders_correct",
+            "input_hash": "750435c3c5a816ef9b7c1f53f6ab400136f924ddb810e58c52d1d17111f42276",
+            "split": "calibration",
+            "expected": "documented",
+            "score": 0.95,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "decision": {
+                    "id": "gen-dec-1794848503-GeUHVP57BKWCRNttrC2O",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.95
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.99,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.01
+                            },
+                            "confidence": 0.99
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 921,
+                        "output_tokens": 90,
+                        "cost": 3.8682e-5
+                    },
+                    "latency_ms": 478.73
+                }
+            }
+        },
+        {
+            "case": "two_orders_wrong",
+            "input_hash": "ad81fe1f167c88e82f565c168fdda7c03e4d94d88c9d93c4b3ffa1a654a94ecc",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0.02,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848503-ouO0Nv3vHpezxmaKcsBl",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.24
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.02
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.6,
+                                "insufficient": 0.4
+                            },
+                            "confidence": 0.47
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 920,
+                        "output_tokens": 91,
+                        "cost": 3.864e-5
+                    },
+                    "latency_ms": 581.34
+                }
+            }
+        },
+        {
+            "case": "leading_zero",
+            "input_hash": "ad839385f0ccd12e92f41e945b4e9c18c9e6025f7a426fa55e165cd96562c408",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0,
+            "support": null,
+            "judgment": {
+                "status": "rejected",
+                "reason": "invalid_identity_or_quote"
+            }
+        },
+        {
+            "case": "ticket_closed_unproven",
+            "input_hash": "f34ae2bdc04f28cd1ce63767d9f19b4025f45fcbb49e483be8f1af96dc0cd087",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848504-JJ2Z3Ybj0GVe5A7kUT80",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.87
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.02
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.15,
+                                "insufficient": 0.85
+                            },
+                            "confidence": 0.8
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 919,
+                        "output_tokens": 91,
+                        "cost": 3.8598e-5
+                    },
+                    "latency_ms": 489.72
+                }
+            }
+        },
+        {
+            "case": "suggestion",
+            "input_hash": "56a44cb4899ec22aca0a418dd293c4724eccd5db151e7bd043e4900e07ad593d",
+            "split": "calibration",
+            "expected": "proposed",
+            "score": 0.94,
+            "support": "proposed",
+            "judgment": {
+                "status": "accepted",
+                "support": "proposed",
+                "decision": {
+                    "id": "gen-dec-1794848504-WBmmKN5bEQSXoxAFIGHT",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.94
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.95
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "proposed",
+                            "probabilities": {
+                                "documented": 0.01,
+                                "proposed": 0.96,
+                                "contradictory": 0,
+                                "insufficient": 0.03
+                            },
+                            "confidence": 0.95
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 924,
+                        "output_tokens": 89,
+                        "cost": 3.8808e-5
+                    },
+                    "latency_ms": 479.31
+                }
+            }
+        },
+        {
+            "case": "solution_confirmed",
+            "input_hash": "cb3bb8a4dd41ce0334b7ef34662895c227e27a6b6c198b609350852c85f5e238",
+            "split": "calibration",
+            "expected": "documented",
+            "score": 0.73,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "decision": {
+                    "id": "gen-dec-1794848505-om0OJm2eI6oIg5AJf4ya",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.92
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.73
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.83,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.17
+                            },
+                            "confidence": 0.77
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 928,
+                        "output_tokens": 90,
+                        "cost": 3.8976e-5
+                    },
+                    "latency_ms": 465.36
+                }
+            }
+        },
+        {
+            "case": "procedure_single_reply",
+            "input_hash": "3eedc4915a13b66729848bafaa6dd8570f4fb8edff181ec978fdd5121d3789d9",
+            "split": "calibration",
+            "expected": "documented",
+            "score": 0.88,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "decision": {
+                    "id": "gen-dec-1794848505-42CNWkI2iLqMmOLFOcmf",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.88
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.88
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.97,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.03
+                            },
+                            "confidence": 0.96
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 972,
+                        "output_tokens": 90,
+                        "cost": 4.0824e-5
+                    },
+                    "latency_ms": 524.68
+                }
+            }
+        },
+        {
+            "case": "name_collision",
+            "input_hash": "91821104ff44f603c630cf724575b060ac01707b94cbff509cb16de2bcc7be4e",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0,
+            "support": null,
+            "judgment": {
+                "status": "rejected",
+                "reason": "invalid_identity_or_quote"
+            }
+        },
+        {
+            "case": "wrong_quote",
+            "input_hash": "64bce5d8f39ede57fe33f4cc5859f86e0df760a4abf74b4f9dfc83be98ff861f",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": null,
+            "judgment": {
+                "status": "rejected",
+                "reason": "invalid_identity_or_quote"
+            }
+        },
+        {
+            "case": "delivery_update",
+            "input_hash": "2f7896747a737c0de7f43956c86ed3854a77076eec775bc5af30d7c1fd4710f7",
+            "split": "validation",
+            "expected": "documented",
+            "score": 0.94,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848719-GbkxhkdXsKVR5vz6Qbyo",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.94
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.94
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.99,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.01
+                            },
+                            "confidence": 0.99
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 921,
+                        "output_tokens": 90,
+                        "cost": 3.8682e-5
+                    },
+                    "latency_ms": 692.78
+                }
+            }
+        },
+        {
+            "case": "two_order_validation",
+            "input_hash": "6b86284492a4a732f70d69634a3faa389cba9b59e95ce1e6527e0cd2493e627a",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0.02,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848720-lIcqnEC7NY7bhR0GNsKd",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.45
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.02
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.64,
+                                "insufficient": 0.36
+                            },
+                            "confidence": 0.52
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 922,
+                        "output_tokens": 91,
+                        "cost": 3.8724e-5
+                    },
+                    "latency_ms": 677.58
+                }
+            }
+        },
+        {
+            "case": "ticket_proposed_validation",
+            "input_hash": "0d78e8f7d8ce87932c5ea003491e24d5123abdc644209cb6dbad989e9caef767",
+            "split": "validation",
+            "expected": "proposed",
+            "score": 0.92,
+            "support": "proposed",
+            "judgment": {
+                "status": "accepted",
+                "support": "proposed",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848720-QwrFQAeeYALqDhnNLHpm",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.92
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "proposed",
+                            "probabilities": {
+                                "documented": 0.01,
+                                "proposed": 0.97,
+                                "contradictory": 0,
+                                "insufficient": 0.02
+                            },
+                            "confidence": 0.96
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 923,
+                        "output_tokens": 89,
+                        "cost": 3.8766e-5
+                    },
+                    "latency_ms": 453.93
+                }
+            }
+        },
+        {
+            "case": "closed_only_validation",
+            "input_hash": "3097dfe16b16971ce9ca67adc472551fd5a1975fde8de8313424e32159e39fc3",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848721-Q4zBTBaOdOaIovR60hzi",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.76
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.02
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.05,
+                                "insufficient": 0.95
+                            },
+                            "confidence": 0.93
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 918,
+                        "output_tokens": 91,
+                        "cost": 3.8556e-5
+                    },
+                    "latency_ms": 488.87
+                }
+            }
+        },
+        {
+            "case": "explicit_conflict",
+            "input_hash": "1af59813b466fe496077ed1cae45019e5d1942b9061aa4e3cac8fa8911819a99",
+            "split": "validation",
+            "expected": "contradictory",
+            "score": 0.94,
+            "support": "contradictory",
+            "judgment": {
+                "status": "accepted",
+                "support": "contradictory",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848721-U7QjbgZvqeQYuYXvNePs",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.94
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0.02,
+                                "proposed": 0,
+                                "contradictory": 0.98,
+                                "insufficient": 0
+                            },
+                            "confidence": 0.97
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 945,
+                        "output_tokens": 91,
+                        "cost": 3.969e-5
+                    },
+                    "latency_ms": 473.53
+                }
+            }
+        },
+        {
+            "case": "incomplete_procedure",
+            "input_hash": "248ab747bd44451f7a9b5ed8c89839d7b8d91529d6c8c927340af136c931b070",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848722-MqbDk1kuGjo31AbvQjPx",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.58
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.05
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0.02,
+                                "contradictory": 0,
+                                "insufficient": 0.98
+                            },
+                            "confidence": 0.97
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 946,
+                        "output_tokens": 91,
+                        "cost": 3.9732e-5
+                    },
+                    "latency_ms": 494.66
+                }
+            }
+        },
+        {
+            "case": "procedure_validation",
+            "input_hash": "05b3a6bd2cca18bfe7f798df456fac8e9dd8d4d45726984ad055483d83ffe746",
+            "split": "validation",
+            "expected": "documented",
+            "score": 0.84,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848722-vkbduX7rUaHStFxbhnyS",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.84
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.91
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.98,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.02
+                            },
+                            "confidence": 0.97
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 967,
+                        "output_tokens": 90,
+                        "cost": 4.0614e-5
+                    },
+                    "latency_ms": 498.1
+                }
+            }
+        },
+        {
+            "case": "attempt_recorded",
+            "input_hash": "947c70893abd3dcc84c8ee7c6d302a7d44f79eba25999288591078b3661bb9ae",
+            "split": "calibration",
+            "expected": "proposed",
+            "score": 0.49,
+            "support": "proposed",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848602-ms4oAYqZmXyUaVd44O38",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.95
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "proposed",
+                            "probabilities": {
+                                "documented": 0.38,
+                                "proposed": 0.62,
+                                "contradictory": 0,
+                                "insufficient": 0
+                            },
+                            "confidence": 0.49
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 940,
+                        "output_tokens": 89,
+                        "cost": 3.948e-5
+                    },
+                    "latency_ms": 628.21
+                }
+            }
+        },
+        {
+            "case": "reported_problem",
+            "input_hash": "df2af0aff698d5c915986c0473fb8e93d4f1f77f94c9fa9ead48f9f95af2baa4",
+            "split": "calibration",
+            "expected": "documented",
+            "score": 0.93,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "decision": {
+                    "id": "gen-dec-1794848602-VQPUNEdlXciba6jFNkg0",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.93
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.99,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.01
+                            },
+                            "confidence": 0.99
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 922,
+                        "output_tokens": 90,
+                        "cost": 3.8724e-5
+                    },
+                    "latency_ms": 479
+                }
+            }
+        },
+        {
+            "case": "explicit_relation",
+            "input_hash": "4d7636db29e6759ff4c177592576be104a0d53794624c8132f217e0924d1758e",
+            "split": "calibration",
+            "expected": "documented",
+            "score": 0.8,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "decision": {
+                    "id": "gen-dec-1794848603-dWfnDjjQpPD63SjwUptV",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.89
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.8
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.95,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.05
+                            },
+                            "confidence": 0.93
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 963,
+                        "output_tokens": 90,
+                        "cost": 4.0446e-5
+                    },
+                    "latency_ms": 477.33
+                }
+            }
+        },
+        {
+            "case": "proposal_as_success",
+            "input_hash": "40b4136bae1361749f7bef9572eca57f3798f71e8331b3406454bc8da9c05e31",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0.01,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848603-0hxbfxQhe94j1HEpAvQY",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.85
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.01
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.62,
+                                "insufficient": 0.38
+                            },
+                            "confidence": 0.49
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 928,
+                        "output_tokens": 91,
+                        "cost": 3.8976e-5
+                    },
+                    "latency_ms": 512.13
+                }
+            }
+        },
+        {
+            "case": "added_date",
+            "input_hash": "531bff36906e4ad7c843e3beff888a4e57b16e19303cb0384d6ded412e50cfb5",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848604-Lw9GJWE4fsJDpS2tMNQh",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.89
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.04
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.1,
+                                "insufficient": 0.9
+                            },
+                            "confidence": 0.87
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 926,
+                        "output_tokens": 91,
+                        "cost": 3.8892e-5
+                    },
+                    "latency_ms": 480.31
+                }
+            }
+        },
+        {
+            "case": "cooccurrence_relation",
+            "input_hash": "12959178082762bd98e003e9df8395b2dc080cb230653164da8245f223e0080b",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0.03,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848604-B7OddgnN46I7QBs5kOh2",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.07
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.03
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0.01,
+                                "proposed": 0,
+                                "contradictory": 0.57,
+                                "insufficient": 0.42
+                            },
+                            "confidence": 0.43
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 969,
+                        "output_tokens": 91,
+                        "cost": 4.0698e-5
+                    },
+                    "latency_ms": 467.05
+                }
+            }
+        },
+        {
+            "case": "unresolved_as_fact",
+            "input_hash": "a6fc010945b349142c26e3585a38e2b7a666d4fd987d27377fdf1c17746b824c",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848605-fwGCe1kHadEeRh6ZYX8M",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.85
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.04
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.27,
+                                "insufficient": 0.73
+                            },
+                            "confidence": 0.64
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 936,
+                        "output_tokens": 91,
+                        "cost": 3.9312e-5
+                    },
+                    "latency_ms": 454.46
+                }
+            }
+        },
+        {
+            "case": "vague_instructions",
+            "input_hash": "daac414313be37f583c6700de3127cb4e0a7d13f7ff0cb5833c01b8bae86bd84",
+            "split": "calibration",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "decision": {
+                    "id": "gen-dec-1794848605-7bwmObvKOfzfJeIwGWuM",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.85
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.07
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 1
+                            },
+                            "confidence": 1
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 970,
+                        "output_tokens": 91,
+                        "cost": 4.074e-5
+                    },
+                    "latency_ms": 458.13
+                }
+            }
+        },
+        {
+            "case": "two_entities_positive",
+            "input_hash": "e77a31a9f5f5df4162ad6fc823f4d65a95124fc9904fc72bf03eedef32145418",
+            "split": "validation",
+            "expected": "documented",
+            "score": 0.93,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848761-Ar79z3RIJFSUDQEB8eDn",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.93
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.98,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.02
+                            },
+                            "confidence": 0.97
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 928,
+                        "output_tokens": 90,
+                        "cost": 3.8976e-5
+                    },
+                    "latency_ms": 488.71
+                }
+            }
+        },
+        {
+            "case": "unsuccessful_attempt",
+            "input_hash": "91f79f066c74a2d3fe59c29b321dc84f2306498260d93dfa950b3c944da02cde",
+            "split": "validation",
+            "expected": "proposed",
+            "score": 0.47,
+            "support": "proposed",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848762-HgWrhZk5wrvSoAc0RNoI",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "proposed",
+                            "probabilities": {
+                                "documented": 0.4,
+                                "proposed": 0.6,
+                                "contradictory": 0,
+                                "insufficient": 0
+                            },
+                            "confidence": 0.47
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 930,
+                        "output_tokens": 89,
+                        "cost": 3.906e-5
+                    },
+                    "latency_ms": 537.21
+                }
+            }
+        },
+        {
+            "case": "confirmed_repair",
+            "input_hash": "532d871491aafbd23e320cc1b1cbf4f45ed55b7b5b0f765dd728c94812231753",
+            "split": "validation",
+            "expected": "documented",
+            "score": 0.79,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848762-6DvAGOChuuHHl84N0J5R",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.93
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.79
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.96,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.04
+                            },
+                            "confidence": 0.95
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 939,
+                        "output_tokens": 90,
+                        "cost": 3.9438e-5
+                    },
+                    "latency_ms": 483.66
+                }
+            }
+        },
+        {
+            "case": "complete_network_procedure",
+            "input_hash": "1fc1faf9eb91c0c53ab466a50b32d49728dfe8b8728e3aabf261858b8ae3270a",
+            "split": "validation",
+            "expected": "documented",
+            "score": 0.82,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848763-nmmL76kPsLiuzmAQ77DN",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.82
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.89
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.95,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.05
+                            },
+                            "confidence": 0.93
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 980,
+                        "output_tokens": 90,
+                        "cost": 4.116e-5
+                    },
+                    "latency_ms": 482.16
+                }
+            }
+        },
+        {
+            "case": "reported_conflict",
+            "input_hash": "40f1ec5cdf96324b1824c3e72583fb24be353901a8af7a2d63a2977fb97eb0d5",
+            "split": "validation",
+            "expected": "contradictory",
+            "score": 0.85,
+            "support": "contradictory",
+            "judgment": {
+                "status": "accepted",
+                "support": "contradictory",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848763-LQ1BeVJthObkLdHrgov5",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.94
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.91
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0.1,
+                                "proposed": 0,
+                                "contradictory": 0.89,
+                                "insufficient": 0.01
+                            },
+                            "confidence": 0.85
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 948,
+                        "output_tokens": 91,
+                        "cost": 3.9816e-5
+                    },
+                    "latency_ms": 450.86
+                }
+            }
+        },
+        {
+            "case": "closed_as_status",
+            "input_hash": "bf0d06e0becd80913921afd470e1b03c2ae72cf9bee7ffc78863a2b63d59903d",
+            "split": "validation",
+            "expected": "documented",
+            "score": 0.95,
+            "support": "documented",
+            "judgment": {
+                "status": "accepted",
+                "support": "documented",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848764-z0yBoUqhm7CLu8iqgrNg",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.96
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.95
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "documented",
+                            "probabilities": {
+                                "documented": 0.98,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 0.02
+                            },
+                            "confidence": 0.97
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 927,
+                        "output_tokens": 90,
+                        "cost": 3.8934e-5
+                    },
+                    "latency_ms": 674.78
+                }
+            }
+        },
+        {
+            "case": "swapped_entity",
+            "input_hash": "ead024e8c0ae4cbc0117564237df761cde2af2d1cc54c6957ecc40f982b9ecf7",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0.02,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848764-bnD1fAhxrIZZzBxTa6B5",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.67
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.02
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.73,
+                                "insufficient": 0.27
+                            },
+                            "confidence": 0.64
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 927,
+                        "output_tokens": 91,
+                        "cost": 3.8934e-5
+                    },
+                    "latency_ms": 460.96
+                }
+            }
+        },
+        {
+            "case": "partial_claim",
+            "input_hash": "d1ecbfdd4c8d3f3067be8f5c8a1c3f7cb4cd3c57fc15946cb5fe374236499593",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0.03,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848765-pQCvXivhuLoSVXfkMVK3",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.91
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.03
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.56,
+                                "insufficient": 0.44
+                            },
+                            "confidence": 0.41
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 922,
+                        "output_tokens": 91,
+                        "cost": 3.8724e-5
+                    },
+                    "latency_ms": 559.35
+                }
+            }
+        },
+        {
+            "case": "suggestion_promoted",
+            "input_hash": "61a8deccd5efb0e40d0a2c6674690302b2ff20d9aa1320763778e313d453c62a",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848765-jrx6UoQsrNa30gZQpOny",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.43
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.03
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0.01,
+                                "contradictory": 0,
+                                "insufficient": 0.99
+                            },
+                            "confidence": 0.99
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 939,
+                        "output_tokens": 91,
+                        "cost": 3.9438e-5
+                    },
+                    "latency_ms": 487.17
+                }
+            }
+        },
+        {
+            "case": "closed_promoted",
+            "input_hash": "688f853704a7c0c969a378b13b261afcfba44554c34027c71268e5b3e11ad71a",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848766-uPPQf3VWqWw6FjUFe3yL",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.75
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.01
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.38,
+                                "insufficient": 0.62
+                            },
+                            "confidence": 0.49
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 931,
+                        "output_tokens": 91,
+                        "cost": 3.9102e-5
+                    },
+                    "latency_ms": 475.17
+                }
+            }
+        },
+        {
+            "case": "wrong_target_relation",
+            "input_hash": "333dea847dd9b34ae05c7156afb73073c1b9fa2883d53a6f84ed178579fc6a3b",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0.06,
+            "support": "contradictory",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848766-NCGBV0kbY1WzF0kZH7FU",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.32
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.06
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "contradictory",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.73,
+                                "insufficient": 0.27
+                            },
+                            "confidence": 0.64
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 965,
+                        "output_tokens": 91,
+                        "cost": 4.053e-5
+                    },
+                    "latency_ms": 471.79
+                }
+            }
+        },
+        {
+            "case": "instruction_injection",
+            "input_hash": "7a8b84305dc12d7002b0c1e9beb2b17cc00e8dcd45646ce30f027a50b088438b",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848767-MOvwMwCb4YFsMnWWH2ej",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.88
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.08
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0.02,
+                                "contradictory": 0.35,
+                                "insufficient": 0.63
+                            },
+                            "confidence": 0.51
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 944,
+                        "output_tokens": 91,
+                        "cost": 3.9648e-5
+                    },
+                    "latency_ms": 472.16
+                }
+            }
+        },
+        {
+            "case": "missing_steps",
+            "input_hash": "80b508bb6c11914c8d53fc28f9aa59d6c3191710a585389998f03e41b58dcdbc",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848767-7cBpsxzylnKpCXae6hgp",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.84
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.07
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0,
+                                "insufficient": 1
+                            },
+                            "confidence": 1
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 959,
+                        "output_tokens": 91,
+                        "cost": 4.0278e-5
+                    },
+                    "latency_ms": 522.29
+                }
+            }
+        },
+        {
+            "case": "invented_result",
+            "input_hash": "ab254585529f87bc2e335f4baf2d57e82be051392de97d9ad34269de6c67ecd2",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": "insufficient",
+            "judgment": {
+                "status": "abstained",
+                "reason": "insufficient_or_uncertain",
+                "judge_version": "knowledge-admission-v2",
+                "decision": {
+                    "id": "gen-dec-1794848768-75Vpz0puXWMBlA85M9IL",
+                    "model": "typesafe\/jev-1.13-20260917",
+                    "answers": {
+                        "association": {
+                            "type": "noul",
+                            "probability_true": 0.77
+                        },
+                        "admission": {
+                            "type": "noul",
+                            "probability_true": 0.03
+                        },
+                        "support": {
+                            "type": "choice",
+                            "choice": "insufficient",
+                            "probabilities": {
+                                "documented": 0,
+                                "proposed": 0,
+                                "contradictory": 0.08,
+                                "insufficient": 0.92
+                            },
+                            "confidence": 0.89
+                        }
+                    },
+                    "usage": {
+                        "input_tokens": 978,
+                        "output_tokens": 91,
+                        "cost": 4.1076e-5
+                    },
+                    "latency_ms": 476.54
+                }
+            }
+        },
+        {
+            "case": "relation_absent_target",
+            "input_hash": "4c719aa247e415ae402f8b7ca660b903f6e9e404120dcfad045381c9ee8e1d15",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": null,
+            "judgment": {
+                "status": "rejected",
+                "reason": "invalid_identity_or_quote"
+            }
+        },
+        {
+            "case": "nonliteral_quote",
+            "input_hash": "91da72e1d7519cac27f888d1da7bb27824793548b27e6064858ba7263d0c753b",
+            "split": "validation",
+            "expected": "abstain",
+            "score": 0,
+            "support": null,
+            "judgment": {
+                "status": "rejected",
+                "reason": "invalid_identity_or_quote"
+            }
+        }
+    ]
+}

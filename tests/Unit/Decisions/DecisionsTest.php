@@ -58,6 +58,16 @@ final class DecisionsTest extends TestCase
         $builder->decide()->toBool('relevant', 0.8);
     }
 
+    public function test_named_profile_pins_its_model_without_changing_other_consumers(): void
+    {
+        Http::fakeSequence()->push($this->yesNoResponse(0.99))->push($this->yesNoResponse(0.99));
+        Decisions::using('knowledge_jev')->withState(['text' => 'Example'])->relevance()->decide();
+        Decisions::using('jev')->withState(['text' => 'Example'])->relevance()->decide();
+        $requests = Http::recorded()->map(fn ($pair) => $pair[0]['model'])->all();
+        $this->assertSame(['typesafe/jev-1.13-20260917', 'typesafe/jev-1.13'], $requests);
+        $this->assertSame('typesafe/jev-1.13', config('decisions.models.jev.model'));
+    }
+
     public function test_invalid_probability_is_rejected(): void
     {
         Http::fake(['*' => Http::response($this->yesNoResponse(1.2))]);

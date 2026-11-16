@@ -10,6 +10,13 @@ return [
     // Keep complete originals and contradictions; never truncate them to fit.
     'max_state_bytes' => (int) env('DECISION_MAX_STATE_BYTES', 131072),
     'models' => [
+        // Knowledge thresholds are measured against this snapshot, independently
+        // of other decision consumers. A model change requires recalibration.
+        'knowledge_jev' => [
+            'driver' => \App\Decisions\Models\JevDecisionModel::class,
+            'model' => env('KB_KNOWLEDGE_JEV_MODEL', 'typesafe/jev-1.13-20260917'),
+            'timeout' => (int) env('JEV_TIMEOUT', 15),
+        ],
         'jev' => [
             'driver' => \App\Decisions\Models\JevDecisionModel::class,
             'model' => env('JEV_MODEL', 'typesafe/jev-1.13'),

@@ -52,6 +52,8 @@ export function KnowledgeBlockEditor({ block, value, disabled, onChange }: { blo
             <legend>{t('Measured calibration')}</legend>
             <label>{t('Calibration reference')}<input disabled={disabled} value={String((data.calibration as Row | null)?.reference ?? '')} onChange={e => update({ calibration: e.target.value === '' ? null : { ...(data!.calibration as Row ?? {}), reference: e.target.value } })} /></label>
             <label>{t('Measured threshold')}<input type="number" step="0.01" min="0.51" max="1" disabled={disabled} value={String((data.calibration as Row | null)?.threshold ?? '')} onChange={e => update({ calibration: { ...(data!.calibration as Row ?? {}), threshold: e.target.value === '' ? null : Number(e.target.value) } })} /></label>
+            <label>{t('Judge version')}<input disabled={disabled} value={String((data.calibration as Row | null)?.judge_version ?? '')} onChange={e => update({ calibration: { ...(data!.calibration as Row ?? {}), judge_version: e.target.value } })} /></label>
+            <label>{t('Calibrated model')}<input disabled={disabled} value={String((data.calibration as Row | null)?.model ?? '')} onChange={e => update({ calibration: { ...(data!.calibration as Row ?? {}), model: e.target.value } })} /></label>
         </fieldset>}
         <details open={!data && value !== 'null'}><summary>{t('Advanced JSON')}</summary><textarea aria-label={block} rows={10} spellCheck={false} disabled={disabled} value={value} onChange={e => onChange(e.target.value)} /></details>
     </div>;

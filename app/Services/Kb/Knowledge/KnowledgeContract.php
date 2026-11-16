@@ -78,6 +78,10 @@ final class KnowledgeContract
             'admission.calibration' => 'nullable|array',
             'admission.calibration.reference' => 'required_with:admission.calibration|string|max:1000',
             'admission.calibration.threshold' => 'required_with:admission.calibration|numeric|gt:0.5|lte:1',
+            // Legacy revisions remain readable/editable, but the judge refuses
+            // their unversioned calibration until it is measured again.
+            'admission.calibration.judge_version' => 'sometimes|required|string|max:100',
+            'admission.calibration.model' => 'sometimes|required|string|max:200',
             'contributions.destinations' => 'required|array|min:1|max:60',
             'contributions.destinations.*.rule' => 'required|string',
             'contributions.destinations.*.types' => 'required|array|min:1',

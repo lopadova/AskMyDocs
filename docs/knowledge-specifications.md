@@ -2,7 +2,35 @@
 
 Una specifica attiva trasforma i passaggi originali in contributi automatici a entità separate per azienda, progetto, tipo, namespace e identificativo. Gli identificativi restano stringhe: `00123` e `123` sono distinti. Nomi simili non causano fusioni. I progetti senza attivazione esplicita mantengono AutoWiki precedente. I nuovi strumenti nel catalogo agente sono offerti ai progetti attivati.
 
-## Aggiornamento del 16 novembre 2026
+## Calibrazione corretta del 16 novembre 2026
+
+Il giudizio `knowledge-admission-v2` separa il soggetto verificato dal codice, l’affermazione da valutare e il passaggio originale. Il vecchio giudizio chiedeva un identificativo letterale anche per le procedure con identità assegnata dalla fonte; confondeva inoltre la conservazione di una proposta con la conferma della sua efficacia e le istruzioni documentate con un’esecuzione osservata. Le domande ora distinguono attribuzione, fedeltà dell’intera affermazione e categoria del supporto. Una proposta resta proposta; un conflitto resta irrisolto; uno stato chiuso non prova una riparazione.
+
+La soglia **0,70** è stata fissata sui soli casi di calibrazione prima di misurare la validazione. Fra le soglie della griglia con zero ammissioni errate, si sceglie quella con il massimo richiamo e, a parità di richiamo, la più alta. Non sono state cambiate domande o soglia dopo la validazione.
+
+| Gruppo | Casi | Positivi ammessi | Negativi ammessi | Richiamo |
+|---|---:|---:|---:|---:|
+| Calibrazione | 17 | 7 / 8 | 0 / 9 | 87,5% |
+| Validazione | 24 | 9 / 10 | 0 / 14 | 90% |
+| Totale | 41 | 16 / 18 | 0 / 23 | 88,9% |
+
+Sui 17 esempi originali vengono ora ammessi tutti i 9 positivi, contro 2 nella prova precedente. I 24 esempi aggiunti coprono relazioni esplicite e dedotte dalla vicinanza, attributi inventati, fatti scambiati fra due ordini, proposte promosse a successi, conflitti risolti senza prova, istruzioni incomplete e un tentativo di iniettare istruzioni nella fonte. Restano due astensioni corrette dal punto di vista operativo, ma falsi negativi semantici: tentativi senza successo la cui classificazione `proposed` ha confidenza insufficiente. La soglia non viene abbassata per recuperarli.
+
+Sono state effettuate **36 richieste Jev**, senza errori del provider; cinque casi sono respinti dal codice senza chiamata. Costo noto aggiuntivo **0,001419978 USD**, latenza cumulativa **18,49 secondi**. Ogni risposta a pagamento è conservata nel [rapporto calibrato](knowledge-evaluation-2026-11-16-calibrated.json); le misure iniziali non sono state sovrascritte o richiamate per ricomporre il rapporto. Le etichette attese non vengono inviate al modello.
+
+La calibrazione include versione del giudizio e snapshot `typesafe/jev-1.13-20260917`, fissato soltanto per questo flusso. Una calibrazione precedente senza versione, oppure una risposta da un modello diverso, produce astensione. `sections-v2` separa i nuovi checkpoint dai giudizi precedenti. Nessuna specifica aziendale è stata attivata: zero falsi positivi su questi esempi sintetici è una misura di regressione, non una garanzia sui dati aziendali.
+
+Verifiche della correzione: **257 test PHP passati** (1114 asserzioni) nelle suite `tests/Unit/Decisions` e `tests/Feature/Kb/Knowledge`; cinque test React della conoscenza e controllo TypeScript passati. Dopo l’ultima modifica al salvataggio atomico sono stati ripetuti i cinque test del replay (22 asserzioni), tutti passati. Il replay con punteggi salvati deliberatamente alterati ricostruisce comunque 16 ammissioni corrette e zero ammissioni errate dalle risposte originali; input cambiati vengono rifiutati senza chiamate.
+
+Il comando distingue rifiuti deterministici, astensioni ed errori del provider. In assenza di una soglia valida mostra le metriche alla soglia dichiarata di misurazione, senza ricorrere implicitamente a 1,0. È possibile ricalcolare il rapporto senza costi con:
+
+```bash
+php artisan kb:knowledge-evaluate --replay=docs/knowledge-evaluation-2026-11-16-calibrated.json --output=/tmp/knowledge-replayed.json
+```
+
+Il replay verifica dataset, input di ogni caso, versione del giudizio e modello; ricalcola i punteggi dalle risposte conservate. Per una nuova misura usare `--live --output=<nuovo-file>`: il comando richiede il file di output, salva ogni caso immediatamente con sostituzione atomica del checkpoint e non sovrascrive una misura esistente.
+
+## Prova iniziale del 16 novembre 2026
 
 OpenRouter è nuovamente disponibile: la prova diretta e le 14 richieste Jev necessarie ai 17 esempi etichettati sono riuscite, senza errori del provider. Tre esempi sono stati fermati dai controlli deterministici prima della chiamata. Il modello restituito è `typesafe/jev-1.13-20260917`.
 
@@ -20,7 +48,7 @@ Il namespace `procedure` iniziale usa la strategia `source`: una risposta comple
 
 La prova usa al massimo tre sezioni per ciascuna delle cinque fonti selezionate; la risposta dichiara le sezioni non elaborate. La prova non pubblica entità. Attivare non rielabora lo storico. Selezionare progetto, documenti, tipi di fonte o prefisso e avviare la rielaborazione in blocchi con cursore.
 
-La pubblicazione semantica richiede `admission.calibration = {"threshold": <soglia misurata>, "reference": "<riferimento al rapporto>"}`. Senza calibrazione, oppure con provider indisponibile/giudizio incerto, i contributi si astengono e gli originali restano nella ricerca documentale. Non usare una soglia arbitraria.
+La pubblicazione semantica richiede `admission.calibration = {"threshold": <soglia misurata>, "reference": "<riferimento al rapporto>", "judge_version": "knowledge-admission-v2", "model": "typesafe/jev-1.13-20260917"}`. Senza calibrazione, oppure con provider indisponibile/giudizio incerto, i contributi si astengono e gli originali restano nella ricerca documentale. Non usare una soglia arbitraria.
 
 ## Elaborazione e operatività
 
@@ -53,7 +81,7 @@ I nodi e gli archi `entity` sono distinti dalle proiezioni documentali. I lettor
 - `/api/kb/knowledge/documents/{id}/context`: `project_key`, `cursor` di sezione, `limit` fino a tre.
 - MCP: `search_knowledge_entities`, `read_knowledge_context`, scope `mcp:read`; amministrazione con `manage_knowledge_specification` e scope `mcp:tools:write` (non disponibile alle connessioni OAuth read/ingest). Una connessione OAuth di progetto fissa lo scope del progetto.
 - CLI: `kb:knowledge <operazione> <progetto> --tenant=... --actor=...`, operazioni `template`, `versions`, `draft`, `generate`, `activate`, `disable`, `preview`, `reprocess`, `runs`, `search`, `read`. Richiede un utente autorizzato; le operazioni amministrative richiedono ruolo admin/super-admin.
-- `kb:knowledge-evaluate --live --output=<file>` misura le associazioni su esempi sintetici etichettati e propone una soglia solo se calibrazione e validazione separata soddisfano i criteri. Senza `--live` mostra soltanto gli esempi. Serve una successiva validazione sugli esempi dell'azienda.
+- `kb:knowledge-evaluate --live --output=<file>` misura le associazioni su esempi sintetici etichettati e propone una soglia solo se calibrazione e validazione separata soddisfano i criteri. Senza `--live` o `--replay` mostra soltanto gli esempi; `--replay=<rapporto>` ricalcola offline gli esiti salvati. Serve una successiva validazione sugli esempi dell'azienda.
 
 ## Matrice di completamento e verifiche
 
@@ -95,7 +123,7 @@ Il rapporto misurato del provider è in `docs/knowledge-evaluation-2026-11-11.js
 
 La suite architetturale completa ha 34 test passati e un errore preesistente: `GraphExecutorNotAdoptedTest` rileva `FlowNodeHandler` in `app/ApiTools/OperationNode.php`, già presente in `HEAD` prima di questo lavoro. Il controllo R30 dei nuovi modelli passa. Nessuna modifica a quel sottosistema è stata inclusa.
 
-La suite completa dell’intera repository non è stata eseguita: sono state eseguite le suite pertinenti elencate sopra. La generazione semantica reale e una calibrazione utilizzabile restano non validate per HTTP 402. Per attivare su dati aziendali occorrono provider disponibile, valutazione su esempi aziendali, revisione attiva e worker `knowledge`. Nessun progetto aziendale è stato attivato automaticamente.
+La suite completa dell’intera repository non è stata eseguita: sono state eseguite le suite pertinenti elencate sopra. Il collaudo iniziale dell’11 novembre era bloccato da HTTP 402; la correzione e le misure Jev del 16 novembre sono documentate sopra. L’estrazione generativa su fonti aziendali non è coperta dalle fixture sintetiche del giudizio. Per attivare su dati aziendali occorrono valutazione e calibrazione su esempi aziendali, revisione attiva e worker `knowledge`. Nessun progetto aziendale è stato attivato automaticamente.
 
 
 Commit locali dell'implementazione: `b198d1add` (servizi, persistenza e contratti), `b907271ea` (protezione dalle conferme da prosa generata), `c89d73c02` (editor strutturato, esplorazione e test UI). Nessun push o PR. Le modifiche desktop presenti all'inizio sono state escluse.

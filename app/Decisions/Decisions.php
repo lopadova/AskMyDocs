@@ -22,7 +22,7 @@ final class Decisions
             throw new DecisionException("Unknown decision model [{$name}].");
         }
 
-        return new self(app($class));
+        return new self(app($class, ['profile' => $name]));
     }
 
     /** @param array<string,mixed> $state */

@@ -29,6 +29,8 @@ export const IT_MESSAGES: Record<string, string> = {
     "Measured calibration": "Calibrazione misurata",
     "Calibration reference": "Riferimento della calibrazione",
     "Measured threshold": "Soglia misurata",
+    "Judge version": "Versione del giudizio",
+    "Calibrated model": "Modello calibrato",
     "Advanced JSON": "JSON avanzato",
     'Continue with next source batch': 'Continua con le fonti successive',
     'Could not load processing runs.': 'Impossibile caricare le elaborazioni.',

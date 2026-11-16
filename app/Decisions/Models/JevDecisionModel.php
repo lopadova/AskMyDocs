@@ -15,6 +15,8 @@ use Throwable;
 
 final class JevDecisionModel implements IndependentDecisionModel
 {
+    public function __construct(private readonly string $profile = 'jev') {}
+
     public function decide(array $state, array $questions): DecisionResult
     {
         return $this->request($state, $questions, false);
@@ -32,7 +34,7 @@ final class JevDecisionModel implements IndependentDecisionModel
             throw new DecisionException('OpenRouter API key is not configured.');
         }
         $started = microtime(true);
-        $timeout = (int) config('decisions.models.jev.timeout', 15);
+        $timeout = (int) config("decisions.models.{$this->profile}.timeout", 15);
         $context = app(\App\Ai\AgentChatModelScope::class)->context();
         $remaining = $context === null ? null : app(\App\Agent\AgentRunDeadline::class)->activeRemaining($context);
         if ($remaining !== null) {
@@ -49,7 +51,7 @@ final class JevDecisionModel implements IndependentDecisionModel
                             && ($error->response->status() === 429 || $error->response->serverError())),
                     throw: false)
                 ->post('https://openrouter.ai/api/alpha/decisions', [
-                    'model' => config('decisions.models.jev.model'),
+                    'model' => config("decisions.models.{$this->profile}.model"),
                     'state' => $state,
                     'questions' => $questions,
                 ]);
