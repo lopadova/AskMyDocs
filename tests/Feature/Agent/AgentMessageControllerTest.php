@@ -32,6 +32,7 @@ use Padosoft\AskMyDocsConnectorMcp\Models\McpAppInstance;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class AgentMessageControllerTest extends TestCase
@@ -121,10 +122,16 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame(3, data_get(AgentRun::query()->sole()->input_json, 'depth'));
     }
 
-    public function test_chat_reuses_the_rest_of_a_short_document_in_one_final_synthesis_per_turn(): void
+    public static function documentFollowUps(): array
+    {
+        return ['planner finds coverage in the session' => [false], 'sources-only follow-up discards repeated answer' => [true]];
+    }
+
+    #[DataProvider('documentFollowUps')]
+    public function test_chat_reuses_the_rest_of_a_short_document_for_a_follow_up(bool $contextOnly): void
     {
         Queue::fake();
-        config(['agent.waves.enabled' => true, 'reasoning.enabled' => false, 'reasoning.selective_validation' => false,
+        config(['agent.waves.enabled' => true, 'reasoning.enabled' => true, 'reasoning.selective_validation' => false,
             'agent.grounding.enabled' => false, 'kb.investigation.enabled' => false]);
         app(TenantContext::class)->set('acme');
         $user = $this->user('session-document@example.com');
@@ -145,34 +152,42 @@ final class AgentMessageControllerTest extends TestCase
         ]), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $search);
 
-        $questions = ['Come si avvia un reso?', 'Dove va consegnato il modulo?'];
+        $questions = ['Come si avvia un reso?', 'Fammi un esempio dal testo che hai trovato.'];
         $synthesized = [];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->times(5)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, &$synthesized) {
+        $ai->shouldReceive('chatWithHistory')->times(5)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, $contextOnly, &$synthesized) {
             $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
             $tool = $options['tool_choice']['function']['name'];
-            if ($tool === 'submit_agent_plan' && $input['collected_evidence']['documents'] === []) {
-                $this->assertSame($questions[0], $input['question']);
-                return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
-                    'arguments' => ['decision' => 'tools', 'actions' => [['id' => 'manual', 'tool' => 'search_knowledge_base',
-                        'arguments' => ['query' => 'procedura resi'], 'depends_on' => [], 'purpose' => 'Leggi il manuale dei resi']]]]]);
-            }
-            $passage = data_get($input, ($tool === 'submit_agent_plan' ? 'collected_evidence' : 'evidence').'.documents.0.evidence.0');
-            $this->assertSame(implode("\n\n", $pages), $passage['content']);
-            $this->assertTrue($passage['complete_source']);
             if ($tool === 'submit_agent_plan') {
+                if ($input['question'] === $questions[0]) {
+                    // The second plan repeats a successful lookup. The host
+                    // should synthesize from that result without calling again.
+                    return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
+                        'arguments' => ['decision' => 'tools', 'actions' => [['id' => $input['completed_actions'] === [] ? 'manual' : 'manual_again',
+                            'tool' => 'search_knowledge_base', 'arguments' => ['query' => 'procedura resi'], 'depends_on' => [], 'purpose' => 'Leggi il manuale dei resi']]]]]);
+                }
+                $this->assertFalse($contextOnly, 'A sources-only follow-up must not plan more searches.');
+                $this->assertSame(implode("\n\n", $pages), data_get($input, 'collected_evidence.documents.0.evidence.0.content'));
                 return new AiResponse(content: '', provider: 'fake', model: 'fake-agent',
                     toolCalls: [['name' => $tool, 'arguments' => ['decision' => 'answer', 'actions' => []]]]);
             }
 
+            $passage = data_get($input, 'evidence.documents.0.evidence.0');
+            $this->assertSame(implode("\n\n", $pages), $passage['content']);
+            $this->assertTrue($passage['complete_source']);
             $this->assertSame('submit_agent_answer', $tool);
             $this->assertStringContainsString('This submission is the final response', $system);
             $this->assertArrayNotHasKey('supported_artifacts', $input);
+            $firstAnswer = $input['question'] === $questions[0];
+            $retry = in_array($questions[1], $synthesized, true);
+            if ($retry) {
+                $this->assertStringContainsString('only repeated claims already communicated', $system);
+            }
             $synthesized[] = $input['question'];
-            $text = $input['question'] === $questions[0] ? $pages[0] : $pages[2];
+            $text = $firstAnswer || ($contextOnly && ! $retry) ? $pages[0] : $pages[2];
 
             return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
-                'arguments' => ['completeness' => 'complete', 'claims' => [['text' => $text, 'quote' => $text,
+                'arguments' => ['completeness' => 'complete', 'claims' => [['text' => $text, 'quote' => $passage['content'],
                     'document_id' => $input['evidence']['documents'][0]['document_id'], 'tool_execution_id' => null, 'evidence_hash' => $passage['evidence_hash']]],
                     'limitations' => [], 'requires_selection' => false, 'render_table' => false]]]);
         });
@@ -183,13 +198,18 @@ final class AgentMessageControllerTest extends TestCase
             $response->assertAccepted();
             $run = AgentRun::query()->where('run_id', $response->json('run_id'))->firstOrFail();
             $this->assertTrue($run->usesSessionEvidence());
+            $run->update(['result_json' => ['question_understanding' => ['available' => true, 'language' => 'it', 'intent' => $question,
+                'action' => $index === 0 ? 'research' : 'refine', 'transition' => $index === 0 ? 'new' : 'continue',
+                'references_previous_turn' => $index !== 0, 'requires_research' => $index === 0 || ! $contextOnly]]]);
             app(AgentRunHandler::class)->handle($run);
-            $this->assertSame(AgentRun::STATUS_COMPLETED, $run->fresh()->status);
-            $this->assertSame($index === 0 ? 1 : 0, $run->toolExecutions()->count());
+            $this->assertSame(AgentRun::STATUS_COMPLETED, $run->fresh()->status, 'Turn '.($index + 1));
+            $this->assertSame($index === 0 ? 1 : 0, $run->toolExecutions()->where('status', 'completed')->count());
+            $this->assertSame($index === 0 ? 'lookups_already_observed' : ($contextOnly ? 'context_only' : null),
+                data_get($run->fresh()->result_json, 'stop_reason'));
             $this->assertTrue($run->events()->where('type', 'run.completed')->exists());
         }
 
-        $this->assertSame($questions, $synthesized);
+        $this->assertSame($contextOnly ? [...$questions, $questions[1]] : $questions, $synthesized);
         $this->assertSame([$pages[0], $pages[2]], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
     }
 

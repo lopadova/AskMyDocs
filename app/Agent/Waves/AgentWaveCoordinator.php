@@ -161,6 +161,7 @@ final class AgentWaveCoordinator
             $ready = $deferred = [];
             $confirmation = null;
             $depthLimited = false;
+            $alreadyObserved = 0;
             $finished = array_column($completed, null, 'id');
             foreach ($plan->actions as $action) {
                 // Dependencies from THIS plan belong to a later common evaluation.
@@ -189,6 +190,11 @@ final class AgentWaveCoordinator
                     if (($previous['tool'] ?? null) === $tool->name && ($previous['arguments_hash'] ?? null) === $signature
                         && (($previous['status'] ?? null) === 'completed' || ($previous['failure']['retryable'] ?? null) === false)) {
                         $duplicate = true;
+                        $observed = $results[$previous['id']] ?? [];
+                        if (($previous['status'] ?? null) === 'completed'
+                            && ($tool->kind === 'knowledge' ? ($observed['documents'] ?? []) : $observed) !== []) {
+                            $alreadyObserved++;
+                        }
                         break;
                     }
                 }
@@ -219,6 +225,9 @@ final class AgentWaveCoordinator
             if ($ready === []) {
                 $this->checkpoint($run, $evidence, $completed, $results);
                 if ($confirmation !== null) return $this->awaitBudget($run, $evidence, $completed, $confirmation);
+                if ($sessionEvidence && $alreadyObserved === count($plan->actions) && $plan->rejectedActions === [] && $evidence->hasEvidence()) {
+                    return new AgentLoopOutcome('answer', $evidence, $completed, 'lookups_already_observed');
+                }
                 return new AgentLoopOutcome('partial', $evidence, $completed, $depthLimited ? 'dependency_depth_limit' : 'no_runnable_actions');
             }
 
