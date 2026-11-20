@@ -8,6 +8,7 @@ use App\Agent\AgentAnswer;
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentResultProjector;
 use App\Agent\AgentRetrievalFiltersFactory;
+use App\Agent\AgentRunDeadline;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Contracts\AgentRunHandler;
@@ -23,6 +24,7 @@ use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
@@ -124,14 +126,23 @@ final class AgentMessageControllerTest extends TestCase
 
     public static function documentFollowUps(): array
     {
-        return ['planner finds coverage in the session' => [false], 'sources-only follow-up discards repeated answer' => [true]];
+        return [
+            'planner finds coverage in the session' => [false],
+            'sources-only follow-up discards repeated answer' => [true],
+            'source examples marked as composition discard the unchanged reply' => [true, true],
+            'requested formatting may reuse the same facts' => [true, true, true],
+            'source context answers the current request directly' => [true, true, false, true],
+            'a gap in retained evidence starts a targeted search' => [true, true, false, true, true],
+            'coverage verification rejects a generic reply marked complete' => [true, true, false, true, true, true],
+        ];
     }
 
     #[DataProvider('documentFollowUps')]
-    public function test_chat_reuses_the_rest_of_a_short_document_for_a_follow_up(bool $contextOnly): void
+    public function test_chat_reuses_the_rest_of_a_short_document_for_a_follow_up(bool $contextOnly, bool $composition = false,
+        bool $formatOnly = false, bool $probe = false, bool $searchMissing = false, bool $coverageGap = false): void
     {
         Queue::fake();
-        config(['agent.waves.enabled' => true, 'reasoning.enabled' => true, 'reasoning.selective_validation' => false,
+        config(['agent.waves.enabled' => true, 'reasoning.enabled' => true, 'reasoning.selective_validation' => $coverageGap,
             'agent.grounding.enabled' => false, 'kb.investigation.enabled' => false]);
         app(TenantContext::class)->set('acme');
         $user = $this->user('session-document@example.com');
@@ -140,22 +151,56 @@ final class AgentMessageControllerTest extends TestCase
         $document = KnowledgeDocument::create(['tenant_id' => 'acme', 'project_key' => 'crm', 'source_type' => 'pdf',
             'title' => 'Manuale resi', 'source_path' => 'manuals/resi.pdf', 'mime_type' => 'application/pdf', 'status' => 'active',
             'document_hash' => hash('sha256', 'document'), 'version_hash' => hash('sha256', 'version')]);
-        $pages = ['La procedura inizia con la richiesta di reso.', 'Il cliente identifica il collo.', 'Il modulo va consegnato allo sportello.'];
+        $example = 'Per un reso in negozio, il cliente consegna il modulo compilato allo sportello.';
+        $pages = ['La procedura inizia con la richiesta di reso.', 'Il cliente identifica il collo.',
+            $searchMissing ? 'Il modulo contiene i riferimenti del collo.' : $example];
         foreach ($pages as $index => $page) {
             $document->chunks()->create(['tenant_id' => 'acme', 'project_key' => 'crm', 'chunk_order' => $index,
                 'chunk_text' => $page, 'chunk_hash' => hash('sha256', $page)]);
         }
         $first = $document->chunks()->orderBy('chunk_order')->firstOrFail();
         $search = Mockery::mock(ChatRetrievalService::class)->makePartial();
-        $search->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect([
+        $search->shouldReceive('retrieve')->once()->withArgs(fn (string $query) => $query === 'procedura resi')->andReturn(new SearchResult(collect([
             ['chunk_id' => $first->id, 'chunk_text' => $first->chunk_text, 'document' => $document->toArray()],
         ]), collect(), collect()));
+        if ($searchMissing) {
+            $extra = $document->replicate();
+            $extra->forceFill(['title' => 'Esempi resi', 'source_path' => 'manuals/esempi.pdf',
+                'document_hash' => hash('sha256', 'examples'), 'version_hash' => hash('sha256', 'examples-version')])->save();
+            $chunk = $extra->chunks()->create(['tenant_id' => 'acme', 'project_key' => 'crm', 'chunk_order' => 0,
+                'chunk_text' => $example, 'chunk_hash' => hash('sha256', $example)]);
+            $search->shouldReceive('retrieve')->once()->withArgs(fn (string $query) => $query === 'esempio reso in negozio')->andReturn(new SearchResult(collect([
+                ['chunk_id' => $chunk->id, 'chunk_text' => $chunk->chunk_text, 'document' => $extra->toArray()],
+            ]), collect(), collect()));
+        }
         $this->app->instance(ChatRetrievalService::class, $search);
 
-        $questions = ['Come si avvia un reso?', 'Fammi un esempio dal testo che hai trovato.'];
+        $questions = ['Come si avvia un reso?', $formatOnly ? 'Metti la risposta precedente in un elenco.' : 'Fammi un esempio dal testo che hai trovato.'];
+        if ($coverageGap) {
+            config(['ai.providers.openrouter.key' => 'test']);
+            Http::preventStrayRequests();
+            Http::fake(function ($request) use ($questions, $pages) {
+                $answers = [];
+                foreach ($request['questions'] as $key => $criterion) {
+                    if ($criterion['type'] === 'noul') {
+                        $repeatedDefinition = $key === 'covered' && data_get($request->data(), 'state.question') === $questions[1]
+                            && data_get($request->data(), 'state.answer.0') === $pages[0];
+                        $answers[$key] = ['type' => 'noul', 'noul' => $repeatedDefinition ? .66 : .99];
+                    } else {
+                        $choice = array_key_first($criterion['criteria']);
+                        $answers[$key] = ['type' => 'choice', 'choice' => $choice, 'confidence' => 1,
+                            'probabilities' => array_replace(array_fill_keys(array_keys($criterion['criteria']), 0), [$choice => 1])];
+                    }
+                }
+                return Http::response(['id' => 'coverage', 'model' => 'jev-test', 'answers' => $answers]);
+            });
+        }
+        $secondAnswer = $formatOnly ? '- '.$pages[0] : $example;
+        $shouldRetry = $contextOnly && ! $formatOnly && ! $probe;
         $synthesized = [];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->times(5)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, $contextOnly, &$synthesized) {
+        $modelCalls = $searchMissing ? 7 : ($formatOnly || $probe ? 4 : 5);
+        $ai->shouldReceive('chatWithHistory')->times($modelCalls)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, $contextOnly, $secondAnswer, $shouldRetry, $probe, $searchMissing, $coverageGap, &$synthesized) {
             $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
             $tool = $options['tool_choice']['function']['name'];
             if ($tool === 'submit_agent_plan') {
@@ -166,8 +211,22 @@ final class AgentMessageControllerTest extends TestCase
                         'arguments' => ['decision' => 'tools', 'actions' => [['id' => $input['completed_actions'] === [] ? 'manual' : 'manual_again',
                             'tool' => 'search_knowledge_base', 'arguments' => ['query' => 'procedura resi'], 'depends_on' => [], 'purpose' => 'Leggi il manuale dei resi']]]]]);
                 }
-                $this->assertFalse($contextOnly, 'A sources-only follow-up must not plan more searches.');
                 $this->assertSame(implode("\n\n", $pages), data_get($input, 'collected_evidence.documents.0.evidence.0.content'));
+                if ($searchMissing) {
+                    $state = json_decode($input['turn_context'], true, flags: JSON_THROW_ON_ERROR);
+                    if ($coverageGap) {
+                        $this->assertFalse($state['session_context_gap']['coverage_sufficient']);
+                    } else {
+                        $this->assertContains('Manca un esempio di reso in negozio.', $state['session_context_gap']['limitations']);
+                    }
+                    if ($input['completed_actions'] === []) {
+                        return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
+                            'arguments' => ['decision' => 'tools', 'actions' => [['id' => 'example', 'tool' => 'search_knowledge_base',
+                                'arguments' => ['query' => 'esempio reso in negozio'], 'depends_on' => [], 'purpose' => 'Trova l’esempio mancante']]]]]);
+                    }
+                } else {
+                    $this->assertFalse($contextOnly, 'A covered or sources-only follow-up must not plan more searches.');
+                }
                 return new AiResponse(content: '', provider: 'fake', model: 'fake-agent',
                     toolCalls: [['name' => $tool, 'arguments' => ['decision' => 'answer', 'actions' => []]]]);
             }
@@ -179,16 +238,32 @@ final class AgentMessageControllerTest extends TestCase
             $this->assertStringContainsString('This submission is the final response', $system);
             $this->assertArrayNotHasKey('supported_artifacts', $input);
             $firstAnswer = $input['question'] === $questions[0];
+            if (! $firstAnswer && $contextOnly && ! isset($input['session_context_gap'])) {
+                $this->assertStringContainsString('Follow-up from previously collected sources', $system);
+                $this->assertStringContainsString('start with an actual scenario', $system);
+            }
             $retry = in_array($questions[1], $synthesized, true);
-            if ($retry) {
+            if ($retry && $shouldRetry) {
                 $this->assertStringContainsString('only repeated claims already communicated', $system);
             }
             $synthesized[] = $input['question'];
-            $text = $firstAnswer || ($contextOnly && ! $retry) ? $pages[0] : $pages[2];
+            if (! $firstAnswer && $probe) {
+                $navigation = json_decode($input['turn_context'], true, flags: JSON_THROW_ON_ERROR);
+                $this->assertArrayNotHasKey('already_communicated', $navigation['reasoning']);
+                $this->assertStringNotContainsString($pages[0], $input['turn_context']);
+            }
+            $trial = $input['stop_reason'] === 'context_answer_attempt';
+            if ($searchMissing && $trial && ! $coverageGap) {
+                return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
+                    'arguments' => ['completeness' => 'insufficient', 'claims' => [], 'limitations' => ['Manca un esempio di reso in negozio.'],
+                        'requires_selection' => false, 'render_table' => false]]]);
+            }
+            $text = $firstAnswer || ($shouldRetry && ! $retry) || ($coverageGap && $trial) ? $pages[0] : $secondAnswer;
+            $source = $input['evidence']['documents'][$searchMissing && ! $firstAnswer && ! $trial ? 1 : 0];
 
             return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
-                'arguments' => ['completeness' => 'complete', 'claims' => [['text' => $text, 'quote' => $passage['content'],
-                    'document_id' => $input['evidence']['documents'][0]['document_id'], 'tool_execution_id' => null, 'evidence_hash' => $passage['evidence_hash']]],
+                'arguments' => ['completeness' => 'complete', 'claims' => [['text' => $text, 'quote' => $source['evidence'][0]['content'],
+                    'document_id' => $source['document_id'], 'tool_execution_id' => null, 'evidence_hash' => $source['evidence'][0]['evidence_hash']]],
                     'limitations' => [], 'requires_selection' => false, 'render_table' => false]]]);
         });
         $this->app->instance(AiManager::class, $ai);
@@ -200,17 +275,28 @@ final class AgentMessageControllerTest extends TestCase
             $this->assertTrue($run->usesSessionEvidence());
             $run->update(['result_json' => ['question_understanding' => ['available' => true, 'language' => 'it', 'intent' => $question,
                 'action' => $index === 0 ? 'research' : 'refine', 'transition' => $index === 0 ? 'new' : 'continue',
-                'references_previous_turn' => $index !== 0, 'requires_research' => $index === 0 || ! $contextOnly]]]);
+                'references_previous_turn' => $index !== 0, 'requires_research' => $index === 0 || ! $contextOnly,
+                'requires_composition' => $index !== 0 && $composition,
+                'follow_up_target' => $index === 0 || $probe || ! $contextOnly ? 'sources' : ($formatOnly ? 'previous_reply' : 'collected_only')]]]);
+            if ($searchMissing && $index === 1) {
+                config(['queue.default' => 'redis']);
+                app(AgentRunDeadline::class)->within($run, now(), 120, fn () => app(AgentRunHandler::class)->handle($run));
+                $this->assertSame(AgentRun::STATUS_QUEUED, $run->fresh()->status);
+                $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
+                $this->assertSame(0, $run->toolExecutions()->count());
+                $this->assertCount(2, Queue::pushed(ExecuteAgentRunJob::class, fn (ExecuteAgentRunJob $job): bool => $job->agentRunId === $run->id));
+            }
             app(AgentRunHandler::class)->handle($run);
             $this->assertSame(AgentRun::STATUS_COMPLETED, $run->fresh()->status, 'Turn '.($index + 1));
-            $this->assertSame($index === 0 ? 1 : 0, $run->toolExecutions()->where('status', 'completed')->count());
-            $this->assertSame($index === 0 ? 'lookups_already_observed' : ($contextOnly ? 'context_only' : null),
+            $this->assertSame($index === 0 || $searchMissing ? 1 : 0, $run->toolExecutions()->where('status', 'completed')->count());
+            $secondStop = $searchMissing ? null : ($probe ? 'context_answer_attempt' : ($contextOnly ? 'context_only' : null));
+            $this->assertSame($index === 0 ? 'lookups_already_observed' : $secondStop,
                 data_get($run->fresh()->result_json, 'stop_reason'));
             $this->assertTrue($run->events()->where('type', 'run.completed')->exists());
         }
 
-        $this->assertSame($contextOnly ? [...$questions, $questions[1]] : $questions, $synthesized);
-        $this->assertSame([$pages[0], $pages[2]], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
+        $this->assertSame($shouldRetry || $searchMissing ? [...$questions, $questions[1]] : $questions, $synthesized);
+        $this->assertSame([$pages[0], $secondAnswer], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
     }
 
     public function test_an_explicit_depth_is_persisted_on_the_run(): void

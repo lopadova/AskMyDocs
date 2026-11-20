@@ -22,7 +22,7 @@ final class PromptConversationContext
         return $context;
     }
 
-    public static function turn(?string $turnContext): ?string
+    public static function turn(?string $turnContext, bool $sourceEvidenceOnly = false): ?string
     {
         $data = json_decode($turnContext ?? '', true);
         if (! is_array($data)) {
@@ -31,6 +31,18 @@ final class PromptConversationContext
         foreach (['reasoning', 'original_question_context'] as $key) {
             if (is_array($data[$key] ?? null)) {
                 $data[$key] = self::navigation($data[$key]);
+                if ($sourceEvidenceOnly) {
+                    unset($data[$key]['already_communicated'], $data[$key]['verified_facts'], $data[$key]['previous_objective']);
+                    $data[$key]['dialogue'] = array_map(static fn (array $act): array => array_diff_key($act,
+                        ['quoted_claims_for_reference_only' => true]), $data[$key]['dialogue']);
+                }
+            }
+        }
+        if ($sourceEvidenceOnly) {
+            unset($data['previous_runs']);
+            if (isset($data['conversation_messages'])) {
+                $data['conversation_messages'] = array_values(array_filter($data['conversation_messages'],
+                    static fn (array $message): bool => $message['role'] === 'user'));
             }
         }
 

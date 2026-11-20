@@ -22,6 +22,7 @@ use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolFailure;
 use App\ApiTools\ToolContinuation;
 use App\Models\AgentRun;
+use App\Services\Chat\Reasoning\PromptConversationContext;
 use App\Services\Chat\Reasoning\ResearchFailure;
 use App\Services\Widget\WidgetPiiMasker;
 use Illuminate\Support\Facades\DB;
@@ -127,13 +128,15 @@ final class AgentWaveCoordinator
             if (! $iteration->allowed()) return new AgentLoopOutcome('partial', $evidence, $completed, $iteration->reason);
 
             $this->events->publish($run, $completed === [] ? 'plan.created' : 'plan.updated', $completed === [] ? 'plan.created' : 'plan.updated');
+            $plannerContext = $sessionEvidence ? PromptConversationContext::turn($turnContext, sourceEvidenceOnly: true) : $turnContext;
             $start = microtime(true);
             try {
                 $plan = $initialPlan ?? $this->diagnostics->measure($run, 'planner.decide', fn () => app(\App\Ai\AgentChatModelScope::class)->withinBudget($planningSeconds, fn () => $this->planner->decide(
                     $run, (int) $budget->snapshot()['iterations'], $question, $context, $tools, $snapshot, $evidence,
                     $this->history($completed, $depths), $results, json_encode([
-                        'previous_context' => $turnContext,
+                        'previous_context' => $plannerContext,
                         'question_understanding' => data_get($run->result_json, 'question_understanding'),
+                        ...isset($run->result_json['session_context_gap']) ? ['session_context_gap' => $run->result_json['session_context_gap']] : [],
                         'previous_waves' => data_get($run->result_json, 'waves', []),
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
             } catch (\Throwable $exception) {

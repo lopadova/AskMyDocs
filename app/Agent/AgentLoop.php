@@ -26,6 +26,7 @@ use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
+use App\Services\Chat\QuestionAction;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Widget\WidgetPiiMasker;
@@ -107,7 +108,7 @@ final readonly class AgentLoop
 
         $understanding = is_array(data_get($run->result_json, 'question_understanding'))
             ? \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding')) : null;
-        if ($sessionEvidence && ! $retrieved && ! $evidence->hasEvidence()) {
+        if ($sessionEvidence && ! $retrieved && ! $evidence->hasEvidence() && ! isset($run->result_json['session_context_gap'])) {
             $evidence->import($this->diagnostics->measure($run, 'context.session_evidence',
                 fn () => app(AgentSessionEvidence::class)->load($run, $context)));
             $this->checkpoint($run, $evidence, $completed, $results, false);
@@ -139,8 +140,17 @@ final readonly class AgentLoop
             if ($understanding?->asksForProvenance()) {
                 return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
             }
-            if ($understanding !== null && ! $understanding->needsResearch()) {
+            if ($understanding !== null && $understanding->followUpTarget !== 'sources') {
                 return $this->outcome('answer', $evidence, $completed, 'context_only');
+            }
+            if ($understanding !== null && ! $understanding->needsResearch() && ! isset($run->result_json['session_context_gap'])) {
+                $canSearchIfNeeded = in_array($understanding->effectiveAction(), [QuestionAction::Refine, QuestionAction::Research], true);
+                if (! $canSearchIfNeeded) {
+                    return $this->outcome('answer', $evidence, $completed, 'context_only');
+                }
+                if ($evidence->hasEvidence()) {
+                    return $this->outcome('answer', $evidence, $completed, 'context_answer_attempt');
+                }
             }
 
             return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
