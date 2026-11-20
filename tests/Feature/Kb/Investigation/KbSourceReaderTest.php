@@ -136,6 +136,26 @@ final class KbSourceReaderTest extends TestCase
         $this->assertStringNotContainsString('APPENDICE LONTANA', $source['excerpt']);
     }
 
+    public function test_session_reads_a_wider_contiguous_window_around_the_match(): void
+    {
+        config(['kb.investigation.full_source_max_chars' => 100, 'agent.session_evidence.long_source_max_chars' => 190,
+            'agent.session_evidence.long_source_neighbor_radius' => 3]);
+        $document = $this->document('Manuale');
+        $parts = [];
+        foreach (range(0, 10) as $i) {
+            $parts[] = $this->chunk($document, $i, "Capitolo $i. ".str_repeat('dettaglio ', 4));
+        }
+
+        $source = app(KbSourceReader::class)->readCandidate([...$this->candidate($document, $parts[5]), 'session_document_context' => true]);
+
+        $this->assertFalse($source['complete_source']);
+        $this->assertStringContainsString('Capitolo 5', $source['excerpt']);
+        $this->assertStringContainsString('Capitolo 6', $source['excerpt']);
+        $this->assertStringContainsString('Capitolo 7', $source['excerpt']);
+        $this->assertStringNotContainsString('Capitolo 0', $source['excerpt']);
+        $this->assertLessThanOrEqual(190, mb_strlen($source['excerpt']));
+    }
+
     /** @return array<string,mixed> */
     private function triagedMetadata(string $connector, string $original): array
     {

@@ -8,18 +8,25 @@ use App\Agent\AgentAnswer;
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentResultProjector;
 use App\Agent\AgentRetrievalFiltersFactory;
+use App\Ai\AiManager;
+use App\Ai\AiResponse;
+use App\Contracts\AgentRunHandler;
 use App\Http\Controllers\Api\AgentMessageController;
 use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
 use App\Models\Conversation;
+use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Mockery;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as ConnectorTenantContext;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpAppInstance;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpConnection;
@@ -112,6 +119,78 @@ final class AgentMessageControllerTest extends TestCase
         )->assertAccepted();
 
         $this->assertSame(3, data_get(AgentRun::query()->sole()->input_json, 'depth'));
+    }
+
+    public function test_chat_reuses_the_rest_of_a_short_document_in_one_final_synthesis_per_turn(): void
+    {
+        Queue::fake();
+        config(['agent.waves.enabled' => true, 'reasoning.enabled' => false, 'reasoning.selective_validation' => false,
+            'agent.grounding.enabled' => false, 'kb.investigation.enabled' => false]);
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('session-document@example.com');
+        ProjectMembership::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm', 'role' => 'member']);
+        $conversation = Conversation::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm']);
+        $document = KnowledgeDocument::create(['tenant_id' => 'acme', 'project_key' => 'crm', 'source_type' => 'pdf',
+            'title' => 'Manuale resi', 'source_path' => 'manuals/resi.pdf', 'mime_type' => 'application/pdf', 'status' => 'active',
+            'document_hash' => hash('sha256', 'document'), 'version_hash' => hash('sha256', 'version')]);
+        $pages = ['La procedura inizia con la richiesta di reso.', 'Il cliente identifica il collo.', 'Il modulo va consegnato allo sportello.'];
+        foreach ($pages as $index => $page) {
+            $document->chunks()->create(['tenant_id' => 'acme', 'project_key' => 'crm', 'chunk_order' => $index,
+                'chunk_text' => $page, 'chunk_hash' => hash('sha256', $page)]);
+        }
+        $first = $document->chunks()->orderBy('chunk_order')->firstOrFail();
+        $search = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $search->shouldReceive('retrieve')->once()->andReturn(new SearchResult(collect([
+            ['chunk_id' => $first->id, 'chunk_text' => $first->chunk_text, 'document' => $document->toArray()],
+        ]), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $search);
+
+        $questions = ['Come si avvia un reso?', 'Dove va consegnato il modulo?'];
+        $synthesized = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(5)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, &$synthesized) {
+            $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            $tool = $options['tool_choice']['function']['name'];
+            if ($tool === 'submit_agent_plan' && $input['collected_evidence']['documents'] === []) {
+                $this->assertSame($questions[0], $input['question']);
+                return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
+                    'arguments' => ['decision' => 'tools', 'actions' => [['id' => 'manual', 'tool' => 'search_knowledge_base',
+                        'arguments' => ['query' => 'procedura resi'], 'depends_on' => [], 'purpose' => 'Leggi il manuale dei resi']]]]]);
+            }
+            $passage = data_get($input, ($tool === 'submit_agent_plan' ? 'collected_evidence' : 'evidence').'.documents.0.evidence.0');
+            $this->assertSame(implode("\n\n", $pages), $passage['content']);
+            $this->assertTrue($passage['complete_source']);
+            if ($tool === 'submit_agent_plan') {
+                return new AiResponse(content: '', provider: 'fake', model: 'fake-agent',
+                    toolCalls: [['name' => $tool, 'arguments' => ['decision' => 'answer', 'actions' => []]]]);
+            }
+
+            $this->assertSame('submit_agent_answer', $tool);
+            $this->assertStringContainsString('This submission is the final response', $system);
+            $this->assertArrayNotHasKey('supported_artifacts', $input);
+            $synthesized[] = $input['question'];
+            $text = $input['question'] === $questions[0] ? $pages[0] : $pages[2];
+
+            return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
+                'arguments' => ['completeness' => 'complete', 'claims' => [['text' => $text, 'quote' => $text,
+                    'document_id' => $input['evidence']['documents'][0]['document_id'], 'tool_execution_id' => null, 'evidence_hash' => $passage['evidence_hash']]],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false]]]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+
+        foreach ($questions as $index => $question) {
+            $response = $this->actingAs($user)->postJson('/test-conversations/'.$conversation->id.'/messages/agent', ['content' => $question]);
+            $response->assertAccepted();
+            $run = AgentRun::query()->where('run_id', $response->json('run_id'))->firstOrFail();
+            $this->assertTrue($run->usesSessionEvidence());
+            app(AgentRunHandler::class)->handle($run);
+            $this->assertSame(AgentRun::STATUS_COMPLETED, $run->fresh()->status);
+            $this->assertSame($index === 0 ? 1 : 0, $run->toolExecutions()->count());
+            $this->assertTrue($run->events()->where('type', 'run.completed')->exists());
+        }
+
+        $this->assertSame($questions, $synthesized);
+        $this->assertSame([$pages[0], $pages[2]], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
     }
 
     public function test_an_explicit_depth_is_persisted_on_the_run(): void

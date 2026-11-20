@@ -22,7 +22,7 @@ final readonly class AgentInitialPlanning
             return null;
         }
         $depth = max(1, min(5, (int) data_get($run->input_json, 'depth', config('agent.depth.default', 3))));
-        return $this->planner->initialPlanningContract($context, $tools, $snapshot, $depth);
+        return $this->planner->initialPlanningContract($context, $tools, $snapshot, $depth, $run->usesSessionEvidence());
     }
 
     public function consume(AgentRun $run, AgentExecutionContext $context, array $tools, AgentCapabilitySnapshot $snapshot, AgentEvidenceEnvelope $evidence): ?AgentPlan

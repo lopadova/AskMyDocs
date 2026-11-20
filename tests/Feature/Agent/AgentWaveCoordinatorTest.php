@@ -6,10 +6,14 @@ namespace Tests\Feature\Agent;
 
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentLoop;
+use App\Agent\AgentRunDeadline;
+use App\Agent\Evidence\AgentSessionEvidence;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Waves\AgentWaveExecutor;
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
+use App\Contracts\AgentRunHandler;
+use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Models\User;
@@ -20,6 +24,7 @@ use Padosoft\AskMyDocsConnectorMcp\Models\McpConnectionTool;
 use Padosoft\AskMyDocsConnectorMcp\Models\McpServerDefinition;
 use App\Services\Kb\Investigation\KbInvestigationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -101,6 +106,84 @@ final class AgentWaveCoordinatorTest extends TestCase
         $this->assertSame(2, $run->fresh()->counters_json['physical_calls']);
         $this->assertCount(4, $outcome->completedActions);
         $this->assertSame(1, AgentRun::query()->count(), 'Subquestions must not spawn autonomous research runs.');
+    }
+
+    public function test_session_research_counts_the_longest_dependency_chain_after_the_old_time_limit(): void
+    {
+        foreach (['get_orders', 'get_customer', 'get_address', 'get_invoices'] as $tool) {
+            $this->route($tool);
+        }
+        $run = $this->makeRun();
+        $run->update(['input_json' => [...$run->input_json, 'session_evidence' => true, 'depth' => 2],
+            'started_at' => now()->subHour()]);
+
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->once()->ordered()->withArgs(fn ($tasks) => array_keys($tasks) === ['order'])
+            ->andReturn(['order' => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)]);
+        $executor->shouldReceive('run')->once()->ordered()->withArgs(fn ($tasks) => array_keys($tasks) === ['customer', 'address'])
+            ->andReturn(['customer' => new AgentToolActionResult(['customer' => ['id' => 'CUSTOMER-A']], 1),
+                'address' => new AgentToolActionResult(['address' => 'Rome'], 1)]);
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn(
+            $this->plan(['decision' => 'tools', 'actions' => [$this->action('order', 'get_orders')]]),
+            $this->plan(['decision' => 'tools', 'actions' => [$this->action('customer', 'get_customer', ['order']),
+                $this->action('address', 'get_address', ['order'])]]),
+            $this->plan(['decision' => 'tools', 'actions' => [$this->action('invoices', 'get_invoices', ['customer', 'address'])]]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+
+        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
+
+        $this->assertSame('dependency_depth_limit', $outcome->stopReason);
+        $this->assertSame('partial', $outcome->decision);
+        $executions = $run->toolExecutions()->orderBy('logical_index')->get();
+        $this->assertSame([1, 2, 2], $executions->where('status', 'completed')->map(fn ($call) => $call->result_meta_json['dependency_depth'])->values()->all());
+        $this->assertSame('dependency_depth_limit', $executions->last()->error_code);
+        $this->assertCount(3, $outcome->evidence->apiTools());
+    }
+
+    public function test_session_research_resumes_from_the_saved_wave_on_a_new_queue_delivery(): void
+    {
+        Queue::fake();
+        config(['queue.default' => 'redis', 'reasoning.selective_validation' => false, 'agent.grounding.enabled' => false]);
+        $this->route('get_orders');
+        $run = $this->makeRun();
+        $run->update(['input_json' => [...$run->input_json, 'session_evidence' => true]]);
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->once()->andReturn(['order' => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)]);
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturn(
+            $this->plan(['decision' => 'tools', 'actions' => [$this->action('order', 'get_orders')]]),
+            $this->plan(['decision' => 'answer', 'actions' => []]),
+            new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => 'submit_agent_answer',
+                'arguments' => ['completeness' => 'insufficient', 'claims' => [], 'limitations' => [], 'requires_selection' => false, 'render_table' => false]]]),
+        );
+        $this->app->instance(AiManager::class, $ai);
+        $deadline = app(AgentRunDeadline::class);
+        $handler = app(AgentRunHandler::class);
+
+        $deadline->within($run, now(), 120, fn () => $handler->handle($run));
+
+        $this->assertSame(AgentRun::STATUS_QUEUED, $run->fresh()->status);
+        $this->assertSame('ORDER-42', data_get($run->fresh()->result_json, 'evidence.api_tools.0.result.order.id'));
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+
+        $deadline->within($run, now(), 120, fn () => $handler->handle($run));
+
+        $this->assertTrue($run->fresh()->isTerminal());
+        $this->assertCount(1, $run->toolExecutions()->get());
+        $this->assertSame(1, $run->events()->where('type', 'run.started')->count());
+        Queue::assertPushed(ExecuteAgentRunJob::class, 1);
+
+        $followUp = $run->replicate(['result_json', 'plan_json', 'counters_json', 'completed_at', 'started_at']);
+        $followUp->forceFill(['run_id' => Str::uuid()->toString(), 'status' => AgentRun::STATUS_QUEUED])->save();
+        $session = app(AgentSessionEvidence::class);
+        $this->assertSame('ORDER-42', data_get($session->load($followUp, $this->context($followUp)), 'api_tools.0.result.order.id'));
+        $followUp->update(['input_json' => [...$followUp->input_json, 'live_sources' => ['api' => [], 'mcp' => []]]]);
+        $this->assertSame([], $session->load($followUp, $this->context($followUp))['api_tools']);
     }
 
     public function test_missing_profile_blocks_research_before_planning_or_dispatching_tools(): void

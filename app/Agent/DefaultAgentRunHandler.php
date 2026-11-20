@@ -48,7 +48,8 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             // lock. Its queued continuation may already have been acknowledged
             // by a competing worker; re-drive after releasing our own lock.
             $current = $run->fresh();
-            if ($current?->status === AgentRun::STATUS_QUEUED && data_get($current->result_json, 'api_tool_resumptions', []) !== []) {
+            if ($current?->status === AgentRun::STATUS_QUEUED
+                && (data_get($current->result_json, 'api_tool_resumptions', []) !== [] || data_get($current->result_json, 'research_continuation') === true)) {
                 app(AgentRunDispatcher::class)->enqueue($current);
             }
         }
@@ -93,6 +94,8 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             'status' => AgentRun::STATUS_RUNNING,
             'started_at' => $run->started_at ?? now(),
             'error_code' => null,
+            ...isset($run->result_json['research_continuation'])
+                ? ['result_json' => array_diff_key($run->result_json, ['research_continuation' => true])] : [],
         ])->save();
         if ($firstStart) {
             $this->events->publish($run, 'run.started', 'run.started');
@@ -103,6 +106,10 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         try {
             $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
             $outcome = $this->loop->run($run, $context, $turnContext);
+            if ($outcome->decision === 'continue_research') {
+                $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'research_continuation']);
+                return;
+            }
             if ($outcome->requiresInteraction()) {
                 $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
                 return;
@@ -110,7 +117,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
             $this->events->publish($run, 'synthesis.started', 'synthesis.started');
             $run->refresh();
-            if (config('reasoning.enabled')) {
+            if (config('reasoning.enabled') || $run->usesSessionEvidence()) {
                 $safe = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
                 $safe->import(app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $outcome->evidence->jsonSerialize(),
                     data_get($run->result_json, 'question_understanding.transition') === 'recap'));
@@ -188,6 +195,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 'result_json' => array_merge((array) $locked->result_json, [
                     'phase' => 'final', 'decision' => $outcome->decision,
                     'stop_reason' => $outcome->stopReason, 'response' => $answer->jsonSerialize(),
+                    ...$locked->usesSessionEvidence() ? ['evidence' => $outcome->evidence->jsonSerialize()] : [],
                 ]),
                 'completed_at' => now(), 'error_code' => null,
             ])->save();

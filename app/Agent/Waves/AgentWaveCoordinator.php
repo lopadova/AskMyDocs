@@ -47,6 +47,7 @@ final class AgentWaveCoordinator
         $completed = (array) data_get($run->result_json, 'completed_actions', []);
         $results = (array) data_get($run->result_json, 'action_results', []);
         $budget = new AgentBudgetTracker($run);
+        $sessionEvidence = $run->usesSessionEvidence();
         if (data_get($run->result_json, 'wave_dispatching', false)
             && $this->recoverOpenWave($run, $evidence, $completed, $results, $budget)) {
             return new AgentLoopOutcome('waiting_api_tool', $evidence, $completed, 'api_tool_pending');
@@ -65,7 +66,7 @@ final class AgentWaveCoordinator
             // that another query or a synthesis repair can resolve. Preserve
             // it across retries so the host's actionable message reaches chat.
             foreach ($completed as $entry) {
-                if (($entry['kind'] ?? null) === 'knowledge' && ($entry['status'] ?? null) === 'failed'
+                if (! $sessionEvidence && ($entry['kind'] ?? null) === 'knowledge' && ($entry['status'] ?? null) === 'failed'
                     && (data_get($entry, 'failure.code') === 'retrieval_profile_required'
                         || data_get($entry, 'result.error') === 'retrieval_profile_required')) {
                     return new AgentLoopOutcome('answer', $evidence, $completed, 'retrieval_profile_required');
@@ -98,18 +99,20 @@ final class AgentWaveCoordinator
                 $results['current_selection'] = $results['selected_row'] = $selected;
             }
             $this->checkpoint($run, $evidence, $completed, $results);
+            $depths = $sessionEvidence ? $this->executionDepths($run) : [];
             $initialPlan = data_get($run->result_json, 'initial_plan.status') === 'pending'
                 ? $this->diagnostics->measure($run, 'planner.initial_plan', fn () => app(\App\Agent\Planning\AgentInitialPlanning::class)
                     ->consume($run, $context, $tools, $snapshot, $evidence), ['operation' => 'validate_combined_plan']) : null;
             $minimumWaveSeconds = min((float) config('agent.waves.timeout_seconds', 45),
                 max(1, (float) config('agent.waves.minimum_dispatch_seconds', 5)));
-            $planningSeconds = $initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
-                (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000);
+            $planningSeconds = $sessionEvidence ? (float) config('agent.synthesis.request_timeout_seconds', 60)
+                : ($initialPlan !== null ? 0 : max((float) config('agent.planner.time_reserve_seconds', 30),
+                    (int) ($budget->snapshot()['last_planning_ms'] ?? 0) / 1000));
             // A useful observation must not be abandoned merely because the
             // planning estimate exceeds the remaining collection allowance.
             // Bound the actual requests (including correction) instead, still
             // leaving a useful wave and the existing answer reserve intact.
-            if ($initialPlan === null) {
+            if (! $sessionEvidence && $initialPlan === null) {
                 $planningSeconds = min($planningSeconds, max(0, $this->researchTimeRemaining($run, $budget) - $minimumWaveSeconds));
                 $minimumPlanningSeconds = min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
                 if ($planningSeconds < $minimumPlanningSeconds) {
@@ -117,7 +120,7 @@ final class AgentWaveCoordinator
                     return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
                 }
             }
-            if ($this->insufficientResearchTime($run, $budget, $planningSeconds + $minimumWaveSeconds, 'research_planning')) {
+            if (! $sessionEvidence && $this->insufficientResearchTime($run, $budget, $planningSeconds + $minimumWaveSeconds, 'research_planning')) {
                 return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
             }
             $iteration = $budget->beginIteration($planningSeconds + $minimumWaveSeconds);
@@ -128,14 +131,14 @@ final class AgentWaveCoordinator
             try {
                 $plan = $initialPlan ?? $this->diagnostics->measure($run, 'planner.decide', fn () => app(\App\Ai\AgentChatModelScope::class)->withinBudget($planningSeconds, fn () => $this->planner->decide(
                     $run, (int) $budget->snapshot()['iterations'], $question, $context, $tools, $snapshot, $evidence,
-                    $this->history($completed), $results, json_encode([
+                    $this->history($completed, $depths), $results, json_encode([
                         'previous_context' => $turnContext,
                         'question_understanding' => data_get($run->result_json, 'question_understanding'),
                         'previous_waves' => data_get($run->result_json, 'waves', []),
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
             } catch (\Throwable $exception) {
                 $minimumAfterFailure = $minimumWaveSeconds + min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
-                if ($this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
+                if (! $sessionEvidence && $this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
                     return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
                 }
                 if (! $evidence->hasEvidence()) throw $exception;
@@ -150,13 +153,14 @@ final class AgentWaveCoordinator
 
             // Planning can exceed its estimate. Check again before reserving calls
             // or creating executions, keeping the collected evidence for synthesis.
-            if ($this->insufficientResearchTime($run, $budget, $minimumWaveSeconds, 'research_wave')) {
+            if (! $sessionEvidence && $this->insufficientResearchTime($run, $budget, $minimumWaveSeconds, 'research_wave')) {
                 return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
             }
 
             $waveId = (string) Str::uuid();
             $ready = $deferred = [];
             $confirmation = null;
+            $depthLimited = false;
             $finished = array_column($completed, null, 'id');
             foreach ($plan->actions as $action) {
                 // Dependencies from THIS plan belong to a later common evaluation.
@@ -166,6 +170,13 @@ final class AgentWaveCoordinator
                     continue;
                 }
                 $tool = $tools[$action->tool];
+                $depth = 1 + max([0, ...array_map(fn (string $parent): int => $depths[$parent] ?? 0, $action->dependsOn)]);
+                if ($sessionEvidence && $depth > $budget->depthLevel()) {
+                    $depthLimited = true;
+                    $this->skipped($run, $action, $tool, 'dependency_depth_limit', $completed);
+                    $evidence->addWarning('dependency_depth_limit', $tool->name);
+                    continue;
+                }
                 try {
                     $arguments = app(AgentArgumentResolver::class)->resolve($action->arguments, $results);
                 } catch (\Throwable) {
@@ -198,7 +209,7 @@ final class AgentWaveCoordinator
                     $this->skipped($run, $action, $tool, $decision->reason ?? 'budget_limit', $completed);
                     continue;
                 }
-                $ready[$action->id] = ['action' => $action, 'tool' => $tool, 'arguments' => $arguments,
+                $ready[$action->id] = ['action' => $action, 'tool' => $tool, 'arguments' => $arguments, 'dependency_depth' => $depth,
                     'argument_bindings' => app(\App\Agent\Evidence\ToolResultLineage::class)->capture(
                         $action->arguments, $arguments, $completed, $evidence->jsonSerialize())];
             }
@@ -208,7 +219,7 @@ final class AgentWaveCoordinator
             if ($ready === []) {
                 $this->checkpoint($run, $evidence, $completed, $results);
                 if ($confirmation !== null) return $this->awaitBudget($run, $evidence, $completed, $confirmation);
-                return new AgentLoopOutcome('partial', $evidence, $completed, 'no_runnable_actions');
+                return new AgentLoopOutcome('partial', $evidence, $completed, $depthLimited ? 'dependency_depth_limit' : 'no_runnable_actions');
             }
 
             // Divide the physical allowance BEFORE dispatch: isolated workers cannot
@@ -234,6 +245,7 @@ final class AgentWaveCoordinator
                     'api_route_id' => $item['tool']->kind === 'api' && is_int($item['tool']->executorReference) ? $item['tool']->executorReference : null,
                     'status' => 'running', 'depends_on_json' => $item['action']->dependsOn,
                     'result_meta_json' => ['action_id' => $id, 'wave_id' => $waveId, 'physical_quota' => $quota, 'arguments_hash' => $this->signature($item['arguments']),
+                        ...$sessionEvidence ? ['dependency_depth' => $item['dependency_depth']] : [],
                         'argument_bindings' => $item['argument_bindings']],
                     'arguments_json' => $this->masker->maskArray($item['arguments']) ?? [], 'started_at' => now(),
                 ]);
@@ -255,9 +267,16 @@ final class AgentWaveCoordinator
             });
             $this->events->publish($run, 'wave.started', data: $wave);
             $started = microtime(true);
-            $waveTimeout = min((float) config('agent.waves.timeout_seconds', 45), $this->researchTimeRemaining($run, $budget));
-            $observations = $this->diagnostics->measure($run, 'wave.execute', fn () => $this->executor->run($tasks,
-                diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout), ['operation' => 'parallel_wave', 'concurrency' => AgentWaveExecutor::concurrency()]);
+            $waveTimeout = $sessionEvidence ? null : min((float) config('agent.waves.timeout_seconds', 45), $this->researchTimeRemaining($run, $budget));
+            $observations = $this->diagnostics->measure($run, 'wave.execute', function () use ($tasks, $run, $waveTimeout, $sessionEvidence): array {
+                $observations = [];
+                $batches = $sessionEvidence ? array_chunk($tasks, AgentWaveExecutor::concurrency(), true) : [$tasks];
+                foreach ($batches as $batch) {
+                    $this->control->ensureActive($run);
+                    $observations += $this->executor->run($batch, diagnostics: $this->diagnostics->observer($run), timeoutSeconds: $waveTimeout);
+                }
+                return $observations;
+            }, ['operation' => 'parallel_wave', 'concurrency' => AgentWaveExecutor::concurrency()]);
             $this->control->ensureActive($run);
             $pending = $interactions = [];
             $registered = [];
@@ -355,9 +374,34 @@ final class AgentWaveCoordinator
             $this->events->publish($run, 'wave.completed', data: $wave);
             if ($interactions !== []) return $this->awaitInteractions($run, $evidence, $completed);
             if ($confirmation !== null) return $this->awaitBudget($run, $evidence, $completed, $confirmation);
+            if ($sessionEvidence && app(AgentRunDeadline::class)->activeRemaining($context) !== null
+                && config('queue.connections.'.config('queue.default').'.driver') !== 'sync') {
+                DB::transaction(function () use ($run): void {
+                    $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
+                    $this->control->ensureActive($locked);
+                    $locked->forceFill(['status' => AgentRun::STATUS_QUEUED,
+                        'result_json' => [...(array) $locked->result_json, 'research_continuation' => true]])->save();
+                });
+
+                return new AgentLoopOutcome('continue_research', $evidence, $completed);
+            }
             // This is the only back-edge. No worker or dependent action can
             // advance until all wave observations have crossed the common barrier.
         }
+    }
+
+    /** @return array<string,int> */
+    private function executionDepths(AgentRun $run): array
+    {
+        $depths = [];
+        foreach ($run->toolExecutions()->where('status', 'completed')->get(['result_meta_json']) as $execution) {
+            $id = data_get($execution->result_meta_json, 'action_id');
+            if (is_string($id)) {
+                $depths[$id] = (int) data_get($execution->result_meta_json, 'dependency_depth', 1);
+            }
+        }
+
+        return $depths;
     }
 
     private function researchTimeRemaining(AgentRun $run, AgentBudgetTracker $budget): float
@@ -483,9 +527,12 @@ final class AgentWaveCoordinator
             'status' => 'skipped', 'error_code' => $code];
     }
 
-    private function history(array $completed): array
+    private function history(array $completed, array $depths): array
     {
-        return array_map(fn ($entry) => array_intersect_key($entry, array_flip(['id', 'tool', 'status', 'purpose', 'failure', 'error_code'])), array_slice($completed, -40));
+        return array_map(fn ($entry) => [
+            ...array_intersect_key($entry, array_flip(['id', 'tool', 'status', 'purpose', 'failure', 'error_code'])),
+            ...isset($depths[$entry['id']]) ? ['dependency_depth' => $depths[$entry['id']]] : [],
+        ], array_slice($completed, -40));
     }
 
     private function signature(array $arguments): string

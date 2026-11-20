@@ -20,6 +20,12 @@ return [
         'minimum_dispatch_seconds' => max(1, (int) env('AGENT_WAVE_MINIMUM_DISPATCH_SECONDS', 5)),
     ],
     'progressive' => ['enabled' => (bool) env('AGENT_PROGRESSIVE_ANSWERS_ENABLED', true)],
+    'session_evidence' => [
+        'previous_turns' => 12,
+        'previous_bytes' => max(0, (int) env('AGENT_SESSION_EVIDENCE_BYTES', 262144)),
+        'long_source_neighbor_radius' => 4,
+        'long_source_max_chars' => 24000,
+    ],
     'finalization' => ['safety_seconds' => 5, 'provider_reserve_seconds' => 10, 'repair_min_seconds' => 45, 'presentation_min_seconds' => 45],
     'queue' => env('AGENT_QUEUE', 'agent'),
     // Must remain below the queue connection's retry_after. See the reasoning runbook.
@@ -101,20 +107,8 @@ return [
     | Investigation depth (1-5, user-facing "livello di approfondimento")
     |--------------------------------------------------------------------------
     |
-    | A per-run multiplier applied by AgentBudgetTracker::limit() to the
-    | depth-eligible entries in `limits` above (iterations, logical_soft/
-    | hard, physical_hard, both time budgets, evidence_bytes) — NOT to
-    | consecutive_errors/duplicate_calls, which stay fixed loop-safety
-    | guards regardless of how deep the caller asked to go. A higher depth
-    | gives the planner more plan->act->observe cycles to decide it needs
-    | another cascading KB search (or another tool call), and more evidence
-    | headroom + wall-clock time to actually finish that investigation — the
-    | run is durable/async (AgentRun + polling), so a longer time budget
-    | never blocks the initiating HTTP request.
-    |
-    | Level 3 = 1.0x = today's unscaled defaults, so a caller that never
-    | sends `depth` (or any pre-existing client) behaves byte-identically
-    | to before this knob existed.
+    | Authenticated text chat uses depth as the maximum path length in the
+    | dependency graph. The multipliers below apply to other agent paths.
     |
     */
     'depth' => [

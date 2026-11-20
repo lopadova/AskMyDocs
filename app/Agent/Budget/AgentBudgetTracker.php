@@ -47,7 +47,7 @@ final class AgentBudgetTracker
         if ((int) $this->state['iterations'] >= $this->limit('iterations', 8)) {
             return AgentBudgetDecision::stop('iteration_limit');
         }
-        if ($this->elapsedSeconds() + max(0, $expectedPlanningSeconds) >= $this->timeLimit()) {
+        if (! $this->run->usesSessionEvidence() && $this->elapsedSeconds() + max(0, $expectedPlanningSeconds) >= $this->timeLimit()) {
             return AgentBudgetDecision::stop('time_limit');
         }
 
@@ -75,7 +75,7 @@ final class AgentBudgetTracker
         if ((int) $this->state['evidence_bytes'] >= $this->limit('evidence_bytes', 524288)) {
             return AgentBudgetDecision::stop('evidence_size_limit');
         }
-        if ($this->elapsedSeconds() >= $this->timeLimit()) {
+        if (! $this->run->usesSessionEvidence() && $this->elapsedSeconds() >= $this->timeLimit()) {
             return AgentBudgetDecision::stop('time_limit');
         }
 
@@ -166,7 +166,7 @@ final class AgentBudgetTracker
             'logical_soft' => $this->limit('logical_soft', 12),
             'logical_hard' => $this->logicalHard(),
             'physical_hard' => $this->physicalHard(),
-            'time_limit_seconds' => $this->timeLimit(),
+            ...$this->run->usesSessionEvidence() ? ['dependency_depth_limit' => $this->depthLevel()] : ['time_limit_seconds' => $this->timeLimit()],
         ];
     }
 
@@ -211,7 +211,7 @@ final class AgentBudgetTracker
             return max(0, $allocation);
         }
         $base = max(1, (int) config('agent.limits.'.$key, $default));
-        if (! in_array($key, self::DEPTH_SCALED_LIMITS, true)) {
+        if ($this->run->usesSessionEvidence() || ! in_array($key, self::DEPTH_SCALED_LIMITS, true)) {
             return $base;
         }
 
@@ -230,13 +230,9 @@ final class AgentBudgetTracker
     }
 
     /**
-     * "Livello di approfondimento": 1-5, defaults to `agent.depth.default`
-     * (3 = 1.0x) when the caller never set one. Stamped on the run's own
-     * input_json at turn-start (AgentMessageController) rather than read
-     * live from the request, so a run's effective budget stays fixed for
-     * its whole (possibly resumed-after-confirmation) lifetime.
+     * Fixed for the entire run, including queued continuations.
      */
-    private function depthLevel(): int
+    public function depthLevel(): int
     {
         $depth = (int) data_get($this->run->input_json, 'depth', (int) config('agent.depth.default', 3));
 

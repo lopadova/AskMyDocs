@@ -9,7 +9,7 @@ use App\Agent\Evidence\ToolResultLineage;
 /** Projects original evidence, never model-provided quotations or wrapper search terms. */
 final class EvidenceProjector
 {
-    public function forPrompt(array $evidence): array
+    public function forPrompt(array $evidence, bool $preserveToolResult = false): array
     {
         $originalEvidence = $evidence;
         $choice = 0;
@@ -46,7 +46,7 @@ final class EvidenceProjector
             }
             $evidence['api_tools'][$index]['record_sources'] = $recordSources;
             unset($evidence['api_tools'][$index]['source_ref']);
-            if ($records !== []) {
+            if ($records !== [] && ! $preserveToolResult) {
                 $evidence['api_tools'][$index]['result'] = ['records' => array_column($records, 'record'),
                     'record_paths' => array_column($records, 'path'), 'retrieved_at' => $tool['retrieved_at'] ?? null];
             }
