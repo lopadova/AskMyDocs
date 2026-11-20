@@ -124,11 +124,16 @@ final class AgentMessageControllerTest extends TestCase
 
     public static function documentFollowUps(): array
     {
-        return ['planner finds coverage in the session' => [false], 'sources-only follow-up discards repeated answer' => [true]];
+        return [
+            'planner finds coverage in the session' => [false],
+            'sources-only follow-up discards repeated answer' => [true],
+            'source examples marked as composition discard the unchanged reply' => [true, true],
+            'requested formatting may reuse the same facts' => [true, true, true],
+        ];
     }
 
     #[DataProvider('documentFollowUps')]
-    public function test_chat_reuses_the_rest_of_a_short_document_for_a_follow_up(bool $contextOnly): void
+    public function test_chat_reuses_the_rest_of_a_short_document_for_a_follow_up(bool $contextOnly, bool $composition = false, bool $formatOnly = false): void
     {
         Queue::fake();
         config(['agent.waves.enabled' => true, 'reasoning.enabled' => true, 'reasoning.selective_validation' => false,
@@ -140,7 +145,8 @@ final class AgentMessageControllerTest extends TestCase
         $document = KnowledgeDocument::create(['tenant_id' => 'acme', 'project_key' => 'crm', 'source_type' => 'pdf',
             'title' => 'Manuale resi', 'source_path' => 'manuals/resi.pdf', 'mime_type' => 'application/pdf', 'status' => 'active',
             'document_hash' => hash('sha256', 'document'), 'version_hash' => hash('sha256', 'version')]);
-        $pages = ['La procedura inizia con la richiesta di reso.', 'Il cliente identifica il collo.', 'Il modulo va consegnato allo sportello.'];
+        $pages = ['La procedura inizia con la richiesta di reso.', 'Il cliente identifica il collo.',
+            'Per un reso in negozio, il cliente consegna il modulo compilato allo sportello.'];
         foreach ($pages as $index => $page) {
             $document->chunks()->create(['tenant_id' => 'acme', 'project_key' => 'crm', 'chunk_order' => $index,
                 'chunk_text' => $page, 'chunk_hash' => hash('sha256', $page)]);
@@ -152,10 +158,12 @@ final class AgentMessageControllerTest extends TestCase
         ]), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $search);
 
-        $questions = ['Come si avvia un reso?', 'Fammi un esempio dal testo che hai trovato.'];
+        $questions = ['Come si avvia un reso?', $formatOnly ? 'Metti la risposta precedente in un elenco.' : 'Fammi un esempio dal testo che hai trovato.'];
+        $secondAnswer = $formatOnly ? '- '.$pages[0] : $pages[2];
+        $shouldRetry = $contextOnly && ! $formatOnly;
         $synthesized = [];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithHistory')->times(5)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, $contextOnly, &$synthesized) {
+        $ai->shouldReceive('chatWithHistory')->times($formatOnly ? 4 : 5)->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $pages, $contextOnly, $secondAnswer, $shouldRetry, &$synthesized) {
             $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
             $tool = $options['tool_choice']['function']['name'];
             if ($tool === 'submit_agent_plan') {
@@ -179,12 +187,16 @@ final class AgentMessageControllerTest extends TestCase
             $this->assertStringContainsString('This submission is the final response', $system);
             $this->assertArrayNotHasKey('supported_artifacts', $input);
             $firstAnswer = $input['question'] === $questions[0];
+            if (! $firstAnswer && $contextOnly) {
+                $this->assertStringContainsString('Follow-up from previously collected sources', $system);
+                $this->assertStringContainsString('start with an actual scenario', $system);
+            }
             $retry = in_array($questions[1], $synthesized, true);
             if ($retry) {
                 $this->assertStringContainsString('only repeated claims already communicated', $system);
             }
             $synthesized[] = $input['question'];
-            $text = $firstAnswer || ($contextOnly && ! $retry) ? $pages[0] : $pages[2];
+            $text = $firstAnswer || ($shouldRetry && ! $retry) ? $pages[0] : $secondAnswer;
 
             return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool,
                 'arguments' => ['completeness' => 'complete', 'claims' => [['text' => $text, 'quote' => $passage['content'],
@@ -200,7 +212,8 @@ final class AgentMessageControllerTest extends TestCase
             $this->assertTrue($run->usesSessionEvidence());
             $run->update(['result_json' => ['question_understanding' => ['available' => true, 'language' => 'it', 'intent' => $question,
                 'action' => $index === 0 ? 'research' : 'refine', 'transition' => $index === 0 ? 'new' : 'continue',
-                'references_previous_turn' => $index !== 0, 'requires_research' => $index === 0 || ! $contextOnly]]]);
+                'references_previous_turn' => $index !== 0, 'requires_research' => $index === 0 || ! $contextOnly,
+                'requires_composition' => $index !== 0 && $composition]]]);
             app(AgentRunHandler::class)->handle($run);
             $this->assertSame(AgentRun::STATUS_COMPLETED, $run->fresh()->status, 'Turn '.($index + 1));
             $this->assertSame($index === 0 ? 1 : 0, $run->toolExecutions()->where('status', 'completed')->count());
@@ -209,8 +222,8 @@ final class AgentMessageControllerTest extends TestCase
             $this->assertTrue($run->events()->where('type', 'run.completed')->exists());
         }
 
-        $this->assertSame($contextOnly ? [...$questions, $questions[1]] : $questions, $synthesized);
-        $this->assertSame([$pages[0], $pages[2]], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
+        $this->assertSame($shouldRetry ? [...$questions, $questions[1]] : $questions, $synthesized);
+        $this->assertSame([$pages[0], $secondAnswer], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
     }
 
     public function test_an_explicit_depth_is_persisted_on_the_run(): void

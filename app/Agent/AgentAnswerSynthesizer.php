@@ -123,19 +123,21 @@ final readonly class AgentAnswerSynthesizer
         } else {
             [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext, run: $run);
         }
-        if ($sessionFinal && ($understanding['action'] ?? null) === QuestionAction::Refine->value
-            && ! ($understanding['requires_composition'] ?? false)) {
-            $communicated = array_column(data_get(json_decode($turnContext ?? '{}', true), 'reasoning.already_communicated', []), 'text');
+        if ($sessionFinal && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
+            $composition = ($understanding['requires_composition'] ?? false) === true;
+            $communicated = $composition ? $this->previousSessionClaims($run)
+                : array_column(data_get(json_decode($turnContext ?? '{}', true), 'reasoning.already_communicated', []), 'text');
             $claims = $payload['claims'] ?? null;
             if ($communicated !== [] && is_array($claims) && $claims !== []) {
-                $payload['claims'] = $this->freshFollowUpClaims($claims, $communicated);
+                $payload['claims'] = $this->followUpClaims($claims, $communicated, $composition, $payload['requested_speech_act'] ?? null);
                 if ($payload['claims'] === [] && ! ($payload['render_table'] ?? false) && ! ($payload['requires_selection'] ?? false)) {
                     if (! app(AgentRunDeadline::class)->skip($run, 'session_followup_answer_retry',
                         config('agent.finalization.provider_reserve_seconds', 10) + 5)) {
                         try {
                             [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext,
                                 run: $run, followUpCorrection: true);
-                            $payload['claims'] = $this->freshFollowUpClaims((array) ($payload['claims'] ?? []), $communicated);
+                            $payload['claims'] = $this->followUpClaims((array) ($payload['claims'] ?? []), $communicated,
+                                $composition, $payload['requested_speech_act'] ?? null);
                         } catch (\UnexpectedValueException|\Illuminate\Http\Client\ConnectionException|\Illuminate\Http\Client\RequestException $exception) {
                             Log::warning('Agent session follow-up correction was unavailable.', ['run_id' => $context->runId, 'error' => $exception::class]);
                         }
@@ -579,8 +581,17 @@ Answer the original question as a whole in one submission. Cover every requested
 For a refinement, answer the specific additional request in question. Use already_communicated only to identify what the user has read. When asked for examples from the sources, look for actual scenarios or sequences in the source text and describe their concrete steps, input or documented output. A product description or a list of features does not answer a request for examples. Attribute each scenario to its supporting passage and preserve any distinction between a documented demo and a measured result.
 PROMPT;
         }
+        if ($sessionFinal && $outcome->stopReason === 'context_only' && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
+            $system .= <<<'PROMPT'
+
+## Follow-up from previously collected sources
+The current question is the deliverable. Use its resolved subquestions to identify the subject, then look inside evidence for passages that directly supply the requested detail. Earlier answers and already_communicated are comparison and navigation only. The requires_composition flag describes how to present the answer; it does not change what the user is asking for.
+For a request for examples, start with an actual scenario, sample or worked workflow from the supplied sources. In each example state the starting material and what the source says to do or what it shows. Separate distinct examples and attach their supporting passages. A description of the tool's purpose or capabilities supplies background, not an example. When the sources describe a procedure but report no actual outcome, describe it as a documented procedure. Report which requested detail is unavailable if the sources lack it.
+For a request to reformat earlier facts, use the requested structure, such as a Markdown table or list, while preserving supported values. For a request for additional detail, keep any recap to the minimum needed to identify the example or subject. Before submitting, check that the visible result delivers the requested example, detail or new presentation.
+PROMPT;
+        }
         if ($followUpCorrection) {
-            $system .= "\nThe previous submission only repeated claims already communicated. Find new details in the collected sources that directly answer this follow-up. When no such detail is supported, submit no claims and explain that gap in limitations.";
+            $system .= "\nThe previous submission only repeated claims already communicated. Answer the concrete request from the supporting passages. For a request to reformat facts, change their presentation as requested. For additional details, choose source-supported information that was absent from the earlier answer. If the requested detail is unavailable, submit no claims and explain that gap in limitations.";
         }
         if ($structuredRetry) {
             $system .= "\nThe previous attempt did not produce a usable complete structured response. Produce one complete submit_agent_answer function call conforming to its schema. Use only the original authorized evidence below; the failed attempt supplies no facts. Keep the response concise and close every JSON value.";
@@ -1474,8 +1485,27 @@ PROMPT;
             && count(array_intersect_key($currentGroups, $previousGroups)) / count($currentGroups) >= 0.45;
     }
 
-    private function freshFollowUpClaims(array $claims, array $communicated): array
+    private function previousSessionClaims(?AgentRun $run): array
     {
+        $turnId = (int) data_get($run?->input_json, 'user_message_id', 0);
+        $message = $run?->conversation?->messages()->where('role', 'assistant')
+            ->when($turnId > 0, fn ($query) => $query->where('id', '<', $turnId))
+            ->latest('id')->first(['metadata']);
+
+        return array_values(array_filter(array_column((array) data_get($message?->metadata, 'grounding.claims', []), 'text'), 'is_string'));
+    }
+
+    private function followUpClaims(array $claims, array $communicated, bool $composition, mixed $speechAct): array
+    {
+        if ($composition) {
+            // Compare visible wording and layout, independently of citation choices.
+            $proposed = array_values(array_filter(array_column($claims, 'text'), 'is_string'));
+            $repeatsPresentation = array_map('trim', $proposed) === array_map('trim', $communicated)
+                && (! is_string($speechAct) || trim($speechAct) === '');
+
+            return $repeatsPresentation ? [] : $claims;
+        }
+
         $alreadyShown = array_fill_keys(array_map($this->normalizedAnswerText(...), array_filter($communicated, 'is_string')), true);
 
         return array_values(array_filter($claims, fn ($claim) => ! is_string($claim['text'] ?? null)
