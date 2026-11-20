@@ -26,7 +26,6 @@ use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
-use App\Services\Chat\QuestionAction;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Widget\WidgetPiiMasker;
@@ -140,8 +139,7 @@ final readonly class AgentLoop
             if ($understanding?->asksForProvenance()) {
                 return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
             }
-            if ($understanding?->needsClarification || $understanding?->isAssistantConversation()
-                || $understanding?->effectiveAction() === QuestionAction::Recap) {
+            if ($understanding !== null && ! $understanding->needsResearch()) {
                 return $this->outcome('answer', $evidence, $completed, 'context_only');
             }
 
