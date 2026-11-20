@@ -104,50 +104,68 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
         $executionSpan = $diagnostics->begin($run, 'run.execute', ['runtime' => $diagnostics->runtime()]);
         try {
-            $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
-            $outcome = $this->loop->run($run, $context, $turnContext);
-            if ($outcome->decision === 'continue_research') {
-                $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'research_continuation']);
-                return;
-            }
-            if ($outcome->requiresInteraction()) {
-                $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
-                return;
-            }
-
-            $this->events->publish($run, 'synthesis.started', 'synthesis.started');
-            $run->refresh();
-            if (config('reasoning.enabled') || $run->usesSessionEvidence()) {
-                $safe = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
-                $safe->import(app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $outcome->evidence->jsonSerialize(),
-                    data_get($run->result_json, 'question_understanding.transition') === 'recap'));
-                $outcome = new AgentLoopOutcome($outcome->decision, $safe, $outcome->completedActions, $outcome->stopReason);
-                $turnContext = $this->turnContext($run);
-                $owner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
-                if ($owner !== null) {
-                    $decodedContext = json_decode($turnContext ?? '{}', true) ?: [];
-                    $decodedContext['reasoning']['already_communicated'] = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)
-                        ->communicatedForEvidence($owner, $safe->jsonSerialize());
-                    $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            while (true) {
+                $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
+                $outcome = $this->loop->run($run, $context, $turnContext);
+                if ($outcome->decision === 'continue_research') {
+                    $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'research_continuation']);
+                    return;
                 }
-            }
-            $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
-                trim((string) data_get($run->input_json, 'question', '')),
-                $context,
-                $outcome,
-                $turnContext,
-                is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
-                durableRunId: $run->run_id,
-            ));
-            $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
-                ? AgentRun::STATUS_PARTIAL
-                : AgentRun::STATUS_COMPLETED;
-            $saved = $this->finalize($run, $status, $outcome, $answer);
-            if (! $saved) {
-                $diagnostics->end($run, $executionSpan, $run->fresh()->status === AgentRun::STATUS_CANCELLED ? 'cancelled' : 'completed', ['operation' => 'terminal_already_recorded']);
+                if ($outcome->requiresInteraction()) {
+                    $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
+                    return;
+                }
+
+                $contextAttempt = $outcome->stopReason === 'context_answer_attempt';
+                if (! $contextAttempt) {
+                    $this->events->publish($run, 'synthesis.started', 'synthesis.started');
+                }
+                $run->refresh();
+                if (config('reasoning.enabled') || $run->usesSessionEvidence()) {
+                    $safe = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+                    $safe->import(app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $outcome->evidence->jsonSerialize(),
+                        data_get($run->result_json, 'question_understanding.transition') === 'recap'));
+                    $outcome = new AgentLoopOutcome($outcome->decision, $safe, $outcome->completedActions, $outcome->stopReason);
+                    $turnContext = $this->turnContext($run);
+                    $owner = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)->runOwner($run);
+                    if ($owner !== null) {
+                        $decodedContext = json_decode($turnContext ?? '{}', true) ?: [];
+                        $decodedContext['reasoning']['already_communicated'] = app(\App\Services\Chat\Reasoning\ConversationReasoning::class)
+                            ->communicatedForEvidence($owner, $safe->jsonSerialize());
+                        $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                    }
+                }
+                $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
+                    trim((string) data_get($run->input_json, 'question', '')),
+                    $context,
+                    $outcome,
+                    $turnContext,
+                    is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
+                    durableRunId: $run->run_id,
+                ));
+                if ($contextAttempt && $answer->completeness !== 'complete') {
+                    if ($this->continueAfterContextGap($run, $context, $outcome, $answer)) {
+                        $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'context_gap_continuation']);
+                        return;
+                    }
+
+                    continue;
+                }
+                if ($contextAttempt) {
+                    $this->events->publish($run, 'synthesis.started', 'synthesis.started');
+                }
+                $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
+                    ? AgentRun::STATUS_PARTIAL
+                    : AgentRun::STATUS_COMPLETED;
+                $saved = $this->finalize($run, $status, $outcome, $answer);
+                if (! $saved) {
+                    $diagnostics->end($run, $executionSpan, $run->fresh()->status === AgentRun::STATUS_CANCELLED ? 'cancelled' : 'completed', ['operation' => 'terminal_already_recorded']);
+                    return;
+                }
+                $diagnostics->end($run, $executionSpan);
+
                 return;
             }
-            $diagnostics->end($run, $executionSpan);
         } catch (AgentRunCancelledException $exception) {
             $diagnostics->failure($run, $executionSpan, $exception, ['error_handled' => true]);
             // AgentRunControl already persisted and published the cancellation.
@@ -181,6 +199,31 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     data: ['error_code' => $locked->error_code], canCancel: false);
             });
         }
+    }
+
+    private function continueAfterContextGap(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $outcome, AgentAnswer $answer): bool
+    {
+        $queued = app(AgentRunDeadline::class)->activeRemaining($context) !== null
+            && config('queue.connections.'.config('queue.default').'.driver') !== 'sync';
+        \Illuminate\Support\Facades\DB::transaction(function () use ($run, $outcome, $answer, $queued): void {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
+            app(AgentRunControl::class)->ensureActive($locked);
+            $locked->forceFill([
+                ...$queued ? ['status' => AgentRun::STATUS_QUEUED] : [],
+                'result_json' => [...(array) $locked->result_json,
+                    'evidence' => $outcome->evidence->jsonSerialize(),
+                    'session_context_gap' => [
+                        'completeness' => $answer->completeness,
+                        'limitations' => $answer->limitations,
+                        'coverage_sufficient' => data_get($answer->grounding, 'coverage_validation.sufficient'),
+                    ],
+                    ...$queued ? ['research_continuation' => true] : [],
+                ],
+            ])->save();
+        });
+        $run->refresh();
+
+        return $queued;
     }
 
     private function finalize(AgentRun $run, string $status, AgentLoopOutcome $outcome, AgentAnswer $answer): bool

@@ -38,6 +38,9 @@ final readonly class AgentAnswerSynthesizer
         $diagnostics = app(ProviderDiagnostics::class);
         $run = $diagnostics->resolve($durableRunId, $context->tenantId);
         $sessionFinal = $run?->usesSessionEvidence() ?? false;
+        $contextAttempt = $sessionFinal && $outcome->stopReason === 'context_answer_attempt';
+        $validationRun = $contextAttempt ? null : $run;
+        $validationRunId = $contextAttempt ? null : $durableRunId;
         if ($sessionFinal && $understanding !== null) {
             $understanding['independent_research'] = false;
         }
@@ -123,7 +126,8 @@ final readonly class AgentAnswerSynthesizer
         } else {
             [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext, run: $run);
         }
-        if ($sessionFinal && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
+        if ($sessionFinal && ! $contextAttempt && ! isset($run->result_json['session_context_gap'])
+            && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
             $composition = ($understanding['requires_composition'] ?? false) === true;
             $communicated = $composition ? $this->previousSessionClaims($run)
                 : array_column(data_get(json_decode($turnContext ?? '{}', true), 'reasoning.already_communicated', []), 'text');
@@ -172,22 +176,22 @@ final readonly class AgentAnswerSynthesizer
         $grounding = $diagnostics->measure($run, 'validation.grounding', fn () => $selective
             ? app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $evidence, $payload['claims'] ?? [],
                 $understanding ?? [], $context->projectKey, $context->tenantId,
-                $sessionFinal ? [] : data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
+                $sessionFinal ? [] : data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $validationRunId,
                 data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])),
                 preserveClaimOrder: $sessionFinal)
             : ($batchEnabled
             ? ($this->batchEvaluator ?? app(AgentClaimBatchEvaluator::class))
-                ->evaluate($question, $evidence, $payload['claims'] ?? null, $mentions, $context->projectKey, $context->tenantId, $run)
+                ->evaluate($question, $evidence, $payload['claims'] ?? null, $mentions, $context->projectKey, $context->tenantId, $validationRun)
             : ($presentationOnly
             ? ['valid' => true, 'reason' => null, 'terms' => [], 'claims' => []]
             : (! config('agent.grounding.enabled', true)
                 ? $this->deterministicSubset($question, $evidence, $payload['claims'] ?? [])
                 : $this->grounding->validate($question, $evidence, $payload['claims'] ?? null, $mentions)))), ['operation' => $selective ? 'focused_claims' : ($batchEnabled ? 'claim_batch' : 'deterministic')]);
         if (! $batchEnabled) {
-            $grounding = $this->semanticGate($question, $grounding, $presentationOnly, run: $run);
+            $grounding = $this->semanticGate($question, $grounding, $presentationOnly, run: $validationRun);
         }
         if ($selective) {
-            $this->checkpoint($run, $context, $evidence, $grounding);
+            $this->checkpoint($validationRun, $context, $evidence, $grounding);
         }
         $repair = null;
         if ($sessionFinal && $selective && $grounding['valid']) {
@@ -388,7 +392,7 @@ final readonly class AgentAnswerSynthesizer
         if (! $selective && ! $presentationOnly && config('agent.grounding.enabled', true)
             && ($batchEnabled || config('agent.grounding.semantic.enabled', false))) {
             $grounding = app(\App\Agent\Grounding\OriginalQuestionRelevanceEvaluator::class)->apply(
-                $question, $grounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []), $durableRunId, tenantId: $context->tenantId);
+                $question, $grounding, $understanding ?? [], data_get(json_decode($turnContext ?? '{}', true), 'reasoning', []), $validationRunId, tenantId: $context->tenantId);
         }
         if (! $grounding['valid'] && ! $independent) {
             Log::notice('Agent claim grounding blocked an answer.', [
@@ -397,6 +401,10 @@ final readonly class AgentAnswerSynthesizer
                 'reason' => $grounding['reason'],
                 'terms' => $grounding['terms'],
             ]);
+
+            if ($contextAttempt) {
+                $grounding['missing_details'] = array_map($this->masker->maskString(...), $this->limitations($payload['limitations'] ?? []));
+            }
 
             return $this->insufficientAnswer($context, $grounding, $response->model, $repair, $evidence, $outcome->completedActions);
         }
@@ -463,7 +471,7 @@ final readonly class AgentAnswerSynthesizer
                 );
             }
         }
-        $this->checkpoint($run, $context, $evidence, $grounding);
+        $this->checkpoint($validationRun, $context, $evidence, $grounding);
         $displayGrounding = $grounding;
         $presentation = null;
         $presentationParagraphs = null;
@@ -484,7 +492,7 @@ final readonly class AgentAnswerSynthesizer
         $speechAct = $payload['requested_speech_act'] ?? null;
         if ($sessionFinal && ! $presentationOnly && $grounding['claims'] !== [] && ($understanding['requires_composition'] ?? false)
             && is_string($speechAct) && trim($speechAct) !== '' && mb_strlen($speechAct) <= 500
-            && app(\App\Agent\Grounding\RequestedSpeechActEvaluator::class)->evaluate($question, $speechAct, $grounding['claims'], $durableRunId, $context->tenantId)['accepted']) {
+            && app(\App\Agent\Grounding\RequestedSpeechActEvaluator::class)->evaluate($question, $speechAct, $grounding['claims'], $validationRunId, $context->tenantId)['accepted']) {
             $answer .= "\n\n".trim($speechAct);
         }
         if ($selective && ! $independent && ($grounding['partial'] ?? false)
@@ -513,7 +521,7 @@ final readonly class AgentAnswerSynthesizer
             $presentedAnswer .= "\n\n".$excerpt['text'];
         }
 
-        $memoryClaims = app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->verify($evidence,
+        $memoryClaims = $contextAttempt ? [] : app(\App\Services\Chat\Reasoning\SessionMemoryConsolidator::class)->verify($evidence,
             is_array($payload['memory_candidates'] ?? null) ? $payload['memory_candidates'] : [],
             \App\Services\Chat\QuestionUnderstanding::fromArray($understanding ?? []), $context->tenantId, $context->projectKey, $durableRunId);
         return new AgentAnswer(
@@ -581,7 +589,8 @@ Answer the original question as a whole in one submission. Cover every requested
 For a refinement, answer the specific additional request in question. Use already_communicated only to identify what the user has read. When asked for examples from the sources, look for actual scenarios or sequences in the source text and describe their concrete steps, input or documented output. A product description or a list of features does not answer a request for examples. Attribute each scenario to its supporting passage and preserve any distinction between a documented demo and a measured result.
 PROMPT;
         }
-        if ($sessionFinal && $outcome->stopReason === 'context_only' && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
+        if ($sessionFinal && in_array($outcome->stopReason, ['context_only', 'context_answer_attempt'], true)
+            && in_array($understanding['action'] ?? null, [QuestionAction::Research->value, QuestionAction::Refine->value], true)) {
             $system .= <<<'PROMPT'
 
 ## Follow-up from previously collected sources
@@ -589,6 +598,12 @@ The current question is the deliverable. Use its resolved subquestions to identi
 For a request for examples, start with an actual scenario, sample or worked workflow from the supplied sources. In each example state the starting material and what the source says to do or what it shows. Separate distinct examples and attach their supporting passages. A description of the tool's purpose or capabilities supplies background, not an example. When the sources describe a procedure but report no actual outcome, describe it as a documented procedure. Report which requested detail is unavailable if the sources lack it.
 For a request to reformat earlier facts, use the requested structure, such as a Markdown table or list, while preserving supported values. For a request for additional detail, keep any recap to the minimum needed to identify the example or subject. Before submitting, check that the visible result delivers the requested example, detail or new presentation.
 PROMPT;
+        }
+        if ($sessionFinal && $outcome->stopReason === 'context_answer_attempt') {
+            $system .= "\nTry to answer the current question from the supplied evidence before any further lookup. Mark completeness=complete only when the sources support every material requested detail and the answer actually gives it. For partial or insufficient coverage, put specific missing information in limitations so the host can target a further lookup. General background does not fill a missing detail.";
+        }
+        if (isset($run->result_json['session_context_gap'])) {
+            $system .= "\nA trial answer from retained context left a gap. Use the current question and the supporting passages to fill it. The session_context_gap field is diagnostic feedback about coverage, not source evidence.";
         }
         if ($followUpCorrection) {
             $system .= "\nThe previous submission only repeated claims already communicated. Answer the concrete request from the supporting passages. For a request to reformat facts, change their presentation as requested. For additional details, choose source-supported information that was absent from the earlier answer. If the requested detail is unavailable, submit no claims and explain that gap in limitations.";
@@ -620,7 +635,9 @@ PROMPT;
         if (array_filter($understanding['subquestions'] ?? [], static fn ($task) => ($task['aspect'] ?? '') === 'next_steps')) {
             $system .= "\nCURRENT TASK: assess remaining actions for the referenced issue. Begin the first claim with the concrete issue, not the entire case/order: for example, 'Per la sola segnalazione di [issue] relativa a [case], dalle email del [date] non emerge la necessità di [specific action]: alle [time] [named speaker] conferma [documented correction]'. Use this form ONLY when the source documents a resolution; otherwise name the still-pending request or the specific missing confirmation. Preserve the source date AND time when available, so the latest update is explicit. Name the speaker directly. Adapt every placeholder to the sources and requested locale. Compare the messages before deciding: a later correction supersedes the earlier report about that specific issue. Name the concrete action and its object; do not use a vague conclusion such as 'no further actions/interventions'. Never broaden the assessment to the whole case. Bind the assessment to the later update and keep other outcomes unconfirmed. Do not add separate claims retelling the superseded complaint; the assessment already conveys its significance. Keep only the scoped conclusion and any material missing confirmation, including during repair.";
         }
-        $promptTurnContext = \App\Services\Chat\Reasoning\PromptConversationContext::turn($turnContext);
+        $sourceEvidenceOnly = $sessionFinal && ($understanding['follow_up_target'] ?? 'sources') !== 'previous_reply'
+            && in_array($understanding['action'] ?? null, [QuestionAction::Research->value, QuestionAction::Refine->value], true);
+        $promptTurnContext = \App\Services\Chat\Reasoning\PromptConversationContext::turn($turnContext, $sourceEvidenceOnly);
         $model = app(AgentAnswerModel::class)->synthesis($context, $repairAttempt);
         $promptEvidence = config('reasoning.selective_validation')
             ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forPrompt($evidence, preserveToolResult: $sessionFinal) : $evidence;
@@ -660,6 +677,7 @@ PROMPT;
             [['role' => 'user', 'content' => json_encode([
                 'question' => $question, 'question_understanding' => $understanding, 'turn_context' => $promptTurnContext,
                 'retrieval_decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason,
+                ...isset($run->result_json['session_context_gap']) ? ['session_context_gap' => $run->result_json['session_context_gap']] : [],
                 'table_artifact_available' => $tableArtifact !== null && ! $repairAttempt && $claimBudget === null,
                 ...$sessionFinal && $tableArtifact !== null ? ['supported_artifacts' => [['type' => 'ui-data-table',
                     'purpose' => 'Display a verified collection of structured tool records.']]] : [],
@@ -1382,7 +1400,7 @@ PROMPT;
                 : 'The other consulted sources are insufficient to answer this request.';
         }
         return new AgentAnswer($answer, $context->locale, 'insufficient', [], [], array_values(array_unique([
-            $grounding['reason'], ...$failures === [] ? [] : ['live_tool_failed'],
+            $grounding['reason'], ...($grounding['missing_details'] ?? []), ...$failures === [] ? [] : ['live_tool_failed'],
         ])), null, false, array_filter([
             'status' => 'blocked',
             'model' => $model,
