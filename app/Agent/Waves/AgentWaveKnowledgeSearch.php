@@ -55,6 +55,9 @@ final class AgentWaveKnowledgeSearch
                 if ($id < 1) {
                     continue;
                 }
+                if ($run->usesSessionEvidence()) {
+                    $candidate['session_document_context'] = true;
+                }
                 try {
                     $source = $diagnostics('kb.source_read', fn () => app(KbSourceReader::class)->readCandidate($candidate, $context->projectKey, $run->user, $filters, $diagnostics),
                         ['wait_reason' => 'local_source_read', 'error_handled' => true]);
@@ -81,7 +84,9 @@ final class AgentWaveKnowledgeSearch
                 ]);
                 $sources[$key] = $candidate;
                 $provenance[$key] = ['complete_source' => $source['complete_source'],
-                    'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null, 'coverage' => $source['coverage'] ?? ['partial' => ! $source['complete_source']]];
+                    'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null,
+                    'coverage' => $source['coverage'] ?? ['partial' => ! $source['complete_source']],
+                    ...$run->usesSessionEvidence() ? ['session_document_context' => true] : []];
                 if (count($sources) >= $limit) {
                     break;
                 }

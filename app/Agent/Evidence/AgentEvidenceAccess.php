@@ -36,7 +36,7 @@ final readonly class AgentEvidenceAccess
             $chunks = [];
             foreach ($document['evidence'] ?? [] as $chunk) {
                 $source = $this->reader->readCandidate(['document' => ['id' => $document['document_id'] ?? 0],
-                    'chunk_id' => $chunk['chunk_id'] ?? 0, ...array_intersect_key($chunk, array_flip(['knowledge_observation_id', 'knowledge_section_ordinal']))], $context->projectKey, $run->user, $filters);
+                    'chunk_id' => $chunk['chunk_id'] ?? 0, ...array_intersect_key($chunk, array_flip(['knowledge_observation_id', 'knowledge_section_ordinal', 'session_document_context']))], $context->projectKey, $run->user, $filters);
                 $current = $source === null ? '' : $this->masker->maskString($source['excerpt']);
                 $original = $chunk['content'] ?? '';
                 // A changed or revoked passage loses its old verification; never silently rebind its hash.
@@ -50,11 +50,12 @@ final readonly class AgentEvidenceAccess
                     $chunks[] = [...$chunk, 'source_title' => $this->masker->maskString($source['title']),
                         'verified_identifier_hashes' => array_map(fn ($id) => hash('sha256', $id), $matches),
                         'complete_source' => ($source['complete_source'] ?? false) && trim($current) === trim($original)];
-                    if (($source['complete_source'] ?? false) && $current !== $original) {
-                        // A fresh full read is separate evidence, never a new
+                    if ((($source['complete_source'] ?? false) || ($chunk['session_document_context'] ?? false)) && $current !== $original) {
+                        // A fresh expanded read is separate evidence, never a new
                         // interpretation of the persisted excerpt's old hash.
                         $chunks[] = [...end($chunks), 'content' => $current,
-                            'evidence_hash' => hash('sha256', $current), 'complete_source' => true];
+                            'evidence_hash' => hash('sha256', $current), 'complete_source' => (bool) ($source['complete_source'] ?? false),
+                            'coverage' => $source['coverage'] ?? ($chunk['coverage'] ?? []), 'source_chunk_ids' => $source['chunk_ids']];
                     }
                 } elseif ($current !== '' && ($source['evidence_origin'] ?? null) === 'verified_email_original') {
                     // The reader has checked the immutable email's original hash.
@@ -63,7 +64,7 @@ final readonly class AgentEvidenceAccess
                     $identityText = $source['title']."\n".$source['excerpt'];
                     $matches = array_values(array_filter($identifiers,
                         fn ($id) => \App\Services\Chat\Reasoning\EvidenceProjector::contains($identityText, $id)));
-                    $chunks[] = [...array_intersect_key($chunk, array_flip(['chunk_id', 'research_flow_ids'])),
+                    $chunks[] = [...array_intersect_key($chunk, array_flip(['chunk_id', 'research_flow_ids', 'session_document_context'])),
                         'content' => $current, 'evidence_hash' => hash('sha256', $current),
                         'source_title' => $this->masker->maskString($source['title']),
                         'verified_identifier_hashes' => array_map(fn ($id) => hash('sha256', $id), $matches),
@@ -93,10 +94,14 @@ final readonly class AgentEvidenceAccess
                 && data_get($sourceRun->input_json, 'research_parent_id') === $run->id
                 && $sourceRun->actor_type === $run->actor_type && $sourceRun->actor_id === $run->actor_id;
             $memoryReuse = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->allowsTool($run, $tool);
+            $sessionReuse = $run->usesSessionEvidence() && ($tool['session_context'] ?? false) && ($definition?->readOnly ?? false) && $sameConversation
+                && $sourceRun->channel === 'chat' && $sourceRun->id < $run->id
+                && in_array($sourceRun->status, [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)
+                && data_get($execution->result_meta_json, 'result') === ($tool['result'] ?? null);
             if ($definition !== null && $execution !== null && $execution->status === 'completed'
                 && (! isset($tool['session_memory_observation_id']) || $memoryReuse)
                 && $execution->tool_name === $tool['tool'] && $sameConversation
-                && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $memoryReuse || $this->contextTaskAllows($run, $tool))
+                && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $memoryReuse || $sessionReuse || $this->contextTaskAllows($run, $tool))
                 && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool, $context))
                 && ($tool['executor_reference'] ?? null) === $definition->executorReference
                 && hash_equals((string) ($tool['evidence_hash'] ?? ''), hash('sha256', (string) json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE)))) {

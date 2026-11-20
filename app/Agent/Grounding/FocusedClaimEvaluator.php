@@ -13,7 +13,7 @@ final readonly class FocusedClaimEvaluator
 {
     public function __construct(private AgentClaimGroundingValidator $validator, private EvidenceProjector $projector) {}
 
-    public function evaluate(string $question, array $evidence, mixed $claims, array $understanding, ?string $project = '', string $tenant = '', array $communicated = [], ?string $runId = null, array $navigation = [], bool $repairAttempt = false, string $decisionSlot = 'focused_decision'): array
+    public function evaluate(string $question, array $evidence, mixed $claims, array $understanding, ?string $project = '', string $tenant = '', array $communicated = [], ?string $runId = null, array $navigation = [], bool $repairAttempt = false, string $decisionSlot = 'focused_decision', bool $preserveClaimOrder = false): array
     {
         $project ??= '';
         $threshold = (float) config('reasoning.threshold', 0.8);
@@ -273,6 +273,9 @@ final readonly class FocusedClaimEvaluator
             $sourceExcerpts[] = $this->sourceExcerpt($pairs[$key], $excerpt);
         }
         $renderedTexts = [];
+        if ($preserveClaimOrder) {
+            uasort($pairs, fn ($left, $right) => $left['check']['claim_index'] <=> $right['check']['claim_index']);
+        }
         foreach ($pairs as $key => $pair) {
             $category = $decisions[$key]['choice'] ?? null;
             $probability = $category === null ? null : ($decisions[$key]['probabilities'][$category] ?? null);

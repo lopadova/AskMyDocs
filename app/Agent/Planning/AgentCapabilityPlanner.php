@@ -33,6 +33,8 @@ final readonly class AgentCapabilityPlanner
         array $completedActions,
         array $results,
         ?string $turnContext,
+        int $depth = 3,
+        bool $sessionEvidence = false,
     ): AgentCapabilityPlanningResult {
         $route = $this->router->route($question, $turnContext, $snapshot, $evidence->documents() !== []);
         $candidateTools = array_intersect_key($tools, array_flip($route->candidateTools));
@@ -55,6 +57,8 @@ final readonly class AgentCapabilityPlanner
             $completedActions,
             $turnContext,
             $candidateSnapshot,
+            depth: $sessionEvidence ? $depth : 3,
+            sessionEvidence: $sessionEvidence,
         );
         $attempt = $this->normalized($attempt, $candidateTools);
         $plannerLatency = $attempt->latencyMs;
@@ -75,6 +79,8 @@ final readonly class AgentCapabilityPlanner
                 $turnContext,
                 $candidateSnapshot,
                 $exception->validationCode.': '.$exception->getMessage(),
+                depth: $sessionEvidence ? $depth : 3,
+                sessionEvidence: $sessionEvidence,
             );
             $attempt = $this->normalized($attempt, $candidateTools);
             $plannerLatency += $attempt->latencyMs;

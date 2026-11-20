@@ -86,11 +86,8 @@ final class AgentResultProjector
      * run actually attempted, over the whole run (every re-plan iteration,
      * not just what the final answer cites). Counts every EXECUTED attempt
      * (completed or failed), never one skipped before it ran (a dependency-
-     * resolution failure). AgentLoop's always-on retrieval before the first
-     * planning iteration is not an AgentToolExecution row — it is a
-     * special-cased first step — so it is the +1 baseline: every run that
-     * reaches here (this method only runs after AgentLoop::run() produced
-     * an outcome) has always attempted exactly one.
+     * resolution failure). Legacy agent paths can have an implicit KB lookup
+     * before planning. Session-backed chat counts the actual search executions.
      *
      * @return array{kb_searches: int, tool_calls: int}
      */
@@ -113,7 +110,8 @@ final class AgentResultProjector
             // search too — it's a lookup ABOUT the KB, same as 'knowledge',
             // just by title instead of by content. Omitting it here would
             // make a catalog-tool call invisible in the badge.
-            'kb_searches' => max(1, $kbSearches) + $attempted->whereIn('tool_kind', ['knowledge', 'catalog'])->count(),
+            'kb_searches' => ($run->usesSessionEvidence() ? $kbSearches : max(1, $kbSearches))
+                + $attempted->whereIn('tool_kind', ['knowledge', 'catalog'])->count(),
             'tool_calls' => $attempted->whereIn('tool_kind', ['mcp', 'api'])->count(),
         ];
     }

@@ -56,11 +56,7 @@ export interface ComposerProps {
      */
     filters: FilterState;
     onFiltersChange: (next: FilterState | ((prev: FilterState) => FilterState)) => void;
-    /**
-     * "Investigation depth" (1-5, default 3) — how many cascading
-     * plan->act->observe cycles the agent is allowed before it must
-     * synthesize a final answer. Controlled, same pattern as `filters`.
-     */
+    /** Maximum length of a chain of dependent research actions. */
     depth: number;
     onDepthChange: (next: number) => void;
     liveSources?: LiveSourceCatalog;
@@ -386,7 +382,7 @@ export function Composer({
                                 ))}
                             </SelectField>
                         </div>
-                        <div className="chat-composer-scope" title={translateInterface("How many cascading searches the agent runs before answering")}>
+                        <div className="chat-composer-scope" title={translateInterface("Maximum number of dependent research steps. Parallel lookups share a level.")}>
                             <span aria-hidden="true"><Icon.Sliders size={12} /></span>
                             <SelectField
                                 data-testid="chat-depth-picker"
@@ -394,11 +390,11 @@ export function Composer({
                                 onValueChange={(value) => onDepthChange(Number(value))}
                                 aria-label={translateInterface("Investigation depth")}
                             >
-                                <SelectOption value={1}>{translateInterface("Depth 1 · quick")}</SelectOption>
+                                <SelectOption value={1}>{translateInterface("Depth 1")}</SelectOption>
                                 <SelectOption value={2}>{translateInterface("Depth 2")}</SelectOption>
-                                <SelectOption value={3}>{translateInterface("Depth 3 · balanced")}</SelectOption>
+                                <SelectOption value={3}>{translateInterface("Depth 3")}</SelectOption>
                                 <SelectOption value={4}>{translateInterface("Depth 4")}</SelectOption>
-                                <SelectOption value={5}>{translateInterface("Depth 5 · thorough")}</SelectOption>
+                                <SelectOption value={5}>{translateInterface("Depth 5")}</SelectOption>
                             </SelectField>
                         </div>
                         <ContextChip icon="Book" label={translateInterface("canonical only")} />

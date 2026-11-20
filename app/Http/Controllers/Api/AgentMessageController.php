@@ -38,12 +38,7 @@ final class AgentMessageController extends Controller
                 'selection' => ['sometimes', 'array'],
                 'selection.message_id' => ['required_with:selection', 'integer', 'min:1'],
                 'selection.row_key' => ['required_with:selection', 'string', 'max:128'],
-                // "Livello di approfondimento": how many cascading plan->act
-                // cycles (AgentBudgetTracker) the run is allowed before it
-                // must synthesize. 1 = shallow/fast, 5 = deep/thorough.
-                // Optional — omitting it keeps today's behaviour exactly
-                // (AgentBudgetTracker defaults to agent.depth.default = 3 =
-                // 1.0x = unscaled).
+                // Maximum number of dependent research actions on one path.
                 'depth' => ['sometimes', 'integer', 'between:1,5'],
                 'qa' => ['sometimes', 'array:campaign_id,round,case_id,turn'],
                 'qa.campaign_id' => ['required_with:qa', 'uuid'],
@@ -71,10 +66,8 @@ final class AgentMessageController extends Controller
         $input = [
             'question' => $question,
             'filters' => is_array($validated['filters'] ?? null) ? $validated['filters'] : [],
-            // Always stamped (never left absent), resolved to a concrete
-            // 1-5 value here rather than deferred to AgentBudgetTracker's
-            // own default — an AgentRun row is then self-documenting about
-            // which depth it actually ran at, audit/debugging-friendly.
+            'session_evidence' => (bool) config('agent.waves.enabled', true),
+            // Keep the limit stable across queued continuations and retries.
             'depth' => max(1, min(5, (int) ($validated['depth'] ?? config('agent.depth.default', 3)))),
         ];
         if ($appContext !== null && $mcpAppId !== null) {

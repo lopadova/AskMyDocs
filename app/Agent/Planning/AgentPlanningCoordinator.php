@@ -40,6 +40,7 @@ final readonly class AgentPlanningCoordinator
         ?string $turnContext,
     ): AgentPlan {
         $depth = $this->depthFor($run);
+        $sessionEvidence = $run->usesSessionEvidence();
         $mode = $this->modes->forContext($context);
         if ($mode === 'classic') {
             return $this->classic->decide(
@@ -47,13 +48,14 @@ final readonly class AgentPlanningCoordinator
                 validationError: $completedActions === [] && data_get($run->result_json, 'initial_plan.reason') === 'requested_source_coverage_required'
                     ? 'The initial plan omitted operational data from a source explicitly requested by the user. Include the relevant selected live API/MCP lookup; an indexed document mentioning that system cannot replace it.' : null,
                 depth: $depth,
+                sessionEvidence: $sessionEvidence,
             );
         }
 
         $classic = null;
         if ($mode === 'shadow') {
             $classic = $this->classicAttempt(
-                $question, $context, $tools, $evidence, $completedActions, $turnContext, $depth,
+                $question, $context, $tools, $evidence, $completedActions, $turnContext, $depth, $sessionEvidence,
             );
         }
 
@@ -67,13 +69,15 @@ final readonly class AgentPlanningCoordinator
                 $completedActions,
                 $results,
                 $turnContext,
+                $depth,
+                $sessionEvidence,
             );
             $this->safeReport($run, $iteration, $mode, $snapshot, $classic, $capability);
 
             return $mode === 'shadow' ? $classic->plan : $capability->plan;
         } catch (Throwable $exception) {
             $fallback = $classic ?? $this->classicAttempt(
-                $question, $context, $tools, $evidence, $completedActions, $turnContext, $depth,
+                $question, $context, $tools, $evidence, $completedActions, $turnContext, $depth, $sessionEvidence,
             );
             $this->safeReport($run, $iteration, $mode, $snapshot, $fallback, null, $exception);
 
@@ -93,9 +97,10 @@ final readonly class AgentPlanningCoordinator
         array $completedActions,
         ?string $turnContext,
         int $depth = 3,
+        bool $sessionEvidence = false,
     ): AgentPlannerAttempt {
         return $this->classic->decideAttempt(
-            $question, $context, $tools, $evidence, $completedActions, $turnContext, depth: $depth,
+            $question, $context, $tools, $evidence, $completedActions, $turnContext, depth: $depth, sessionEvidence: $sessionEvidence,
         );
     }
 

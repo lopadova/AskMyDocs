@@ -29,11 +29,18 @@ class KbSourceReader
      */
     public function readCandidate(array $candidate, ?string $projectKey = null, ?User $actor = null, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters = null, ?\Closure $diagnostics = null): ?array
     {
+        $sessionContext = ($candidate['session_document_context'] ?? false) === true;
+        $window = max(1, (int) ($sessionContext ? config('agent.session_evidence.long_source_max_chars', 24000)
+            : config('kb.investigation.long_source_max_chars', 9000)));
         if (isset($candidate['knowledge_section_ordinal']) && $projectKey !== null) {
             $context = app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($this->tenant->current(), $projectKey,
                 (int) data_get($candidate, 'document.id'), $actor, (int) $candidate['knowledge_section_ordinal'], 1, $filters);
             $section = $context['sections'][0] ?? null;
             if (! $section || $section['ordinal'] !== (int) $candidate['knowledge_section_ordinal']) return null;
+            if ($sessionContext) {
+                $expanded = $this->readDocumentContext($candidate, $context['document_id'], $section['chunk_id'], $section['text'], $projectKey, $actor, $filters, $diagnostics);
+                if ($expanded !== null) return $expanded;
+            }
             return ['document_id' => $context['document_id'], 'title' => $context['title'], 'source_path' => $context['source_path'],
                 'source_type' => 'original', 'excerpt' => $section['text'], 'complete_source' => ! $context['coverage']['partial'],
                 'chunk_ids' => [$section['chunk_id']], 'candidate' => $candidate, 'coverage' => $context['coverage'],
@@ -43,6 +50,10 @@ class KbSourceReader
             $event = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class)->observation(
                 $this->tenant->current(), $projectKey, (int) $candidate['knowledge_observation_id'], $actor, $filters);
             if ($event === null) return null;
+            if ($sessionContext) {
+                $expanded = $this->readDocumentContext($candidate, $event['source']['document_id'], $event['source']['chunk_id'], $event['quote'], $projectKey, $actor, $filters, $diagnostics);
+                if ($expanded !== null) return $expanded;
+            }
             return ['document_id' => $event['source']['document_id'], 'title' => $event['source']['title'],
                 'source_path' => $event['source']['source_path'], 'source_type' => $event['source']['source_type'],
                 'excerpt' => $event['quote'], 'complete_source' => false, 'chunk_ids' => [$event['source']['chunk_id']],
@@ -100,7 +111,7 @@ class KbSourceReader
             ->where('knowledge_document_id', $document->id)
             ->orderBy('chunk_order')
             ->get(['id', 'chunk_order', 'chunk_text']);
-        $totalChars = $chunks->sum(fn (KnowledgeChunk $chunk): int => mb_strlen((string) $chunk->chunk_text));
+        $totalChars = $chunks->sum(fn (KnowledgeChunk $chunk): int => mb_strlen((string) $chunk->chunk_text)) + max(0, $chunks->count() - 1) * 2;
         $fullLimit = (int) config('kb.investigation.full_source_max_chars', 24000);
         $isShort = $totalChars <= $fullLimit;
 
@@ -141,7 +152,6 @@ class KbSourceReader
                 if ($position === false) {
                     return null;
                 }
-                $window = max(1, (int) config('kb.investigation.long_source_max_chars', 9000));
                 $start = max(0, $position - intdiv($window, 3));
                 if ($start > 0 && $window >= 600) {
                     // Preserve the email identity and table column headings.
@@ -161,13 +171,25 @@ class KbSourceReader
             $excerpt = $chunks->pluck('chunk_text')->implode("\n\n");
             $usedChunks = $chunks;
         } else {
-            $radius = max(0, (int) config('kb.investigation.long_source_neighbor_radius', 1));
+            $radius = max(0, (int) ($sessionContext ? config('agent.session_evidence.long_source_neighbor_radius', 4)
+                : config('kb.investigation.long_source_neighbor_radius', 1)));
             $usedChunks = $chunks
                 ->filter(fn (KnowledgeChunk $chunk): bool => $chunk->chunk_order >= $anchor->chunk_order - $radius
                     && $chunk->chunk_order <= $anchor->chunk_order + $radius)
                 ->values();
             $excerpt = $usedChunks->pluck('chunk_text')->implode("\n\n");
-            $excerpt = mb_substr($excerpt, 0, (int) config('kb.investigation.long_source_max_chars', 9000));
+            $anchorOffset = $usedChunks->where('chunk_order', '<', $anchor->chunk_order)
+                ->sum(fn (KnowledgeChunk $chunk): int => mb_strlen((string) $chunk->chunk_text) + 2);
+            $start = $sessionContext ? min(max(0, $anchorOffset - intdiv($window, 3)), max(0, mb_strlen($excerpt) - $window)) : 0;
+            $excerpt = mb_substr($excerpt, $start, $window);
+            $offset = 0;
+            $usedChunks = $usedChunks->filter(function (KnowledgeChunk $chunk) use (&$offset, $start, $window): bool {
+                $end = $offset + mb_strlen((string) $chunk->chunk_text);
+                $included = $end > $start && $offset < $start + $window;
+                $offset = $end + 2;
+
+                return $included;
+            })->values();
         }
 
         $excerpt = trim($excerpt);
@@ -189,5 +211,17 @@ class KbSourceReader
                 'partial' => ! $isShort, 'unread_chunk_ids' => $chunks->whereNotIn('id', $usedChunks->pluck('id')->all())->pluck('id')->all()],
             ...$evidenceOrigin === null ? [] : ['evidence_origin' => $evidenceOrigin],
         ];
+    }
+
+    private function readDocumentContext(array $candidate, int $documentId, ?int $chunkId, string $anchor, string $projectKey,
+        ?User $actor, ?\App\Services\Kb\Retrieval\RetrievalFilters $filters, ?\Closure $diagnostics): ?array
+    {
+        if ($chunkId === null) {
+            return null;
+        }
+        $expanded = $this->readCandidate(['document' => ['id' => $documentId], 'chunk_id' => $chunkId, 'session_document_context' => true],
+            $projectKey, $actor, $filters, $diagnostics);
+
+        return $expanded !== null && str_contains($expanded['excerpt'], $anchor) ? [...$expanded, 'candidate' => $candidate] : null;
     }
 }

@@ -8,6 +8,7 @@ use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
+use App\Agent\Evidence\AgentSessionEvidence;
 use App\Agent\Planning\AgentArgumentResolver;
 use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
@@ -25,6 +26,7 @@ use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentToolExecution;
 use App\Models\User;
+use App\Services\Chat\QuestionAction;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Investigation\KbInvestigationService;
 use App\Services\Widget\WidgetPiiMasker;
@@ -68,6 +70,7 @@ final readonly class AgentLoop
         $budget = new AgentBudgetTracker($run);
         $filters = $this->retrievalFilters->forRun($run, $context);
         [$evidence, $completed, $results, $retrieved] = $this->restore($run);
+        $sessionEvidence = $run->usesSessionEvidence();
         $selectedRecord = data_get($run->input_json, 'selection.record');
         if (is_array($selectedRecord)) {
             if (config('reasoning.enabled')) {
@@ -105,10 +108,16 @@ final readonly class AgentLoop
 
         $understanding = is_array(data_get($run->result_json, 'question_understanding'))
             ? \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding')) : null;
+        if ($sessionEvidence && ! $retrieved && ! $evidence->hasEvidence()) {
+            $evidence->import($this->diagnostics->measure($run, 'context.session_evidence',
+                fn () => app(AgentSessionEvidence::class)->load($run, $context)));
+            $this->checkpoint($run, $evidence, $completed, $results, false);
+        }
         if (! $retrieved && $understanding === null) {
             $this->control->ensureActive($run);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $initialPlanning = app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
+            $initialPlanning = $sessionEvidence && $evidence->hasEvidence() ? null
+                : app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
             $understanding = $this->diagnostics->measure($run, $initialPlanning === null ? 'question.interpretation' : 'question.initial_plan',
                 fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
                     $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot,
@@ -123,6 +132,20 @@ final readonly class AgentLoop
                             'capability_hash' => $capabilitySnapshot->hash, 'status' => 'pending']]]])->save();
                 });
             }
+        }
+        if ($sessionEvidence) {
+            if ($understanding?->available === false) {
+                return $this->outcome('partial', $evidence, $completed, 'question_interpretation_unavailable');
+            }
+            if ($understanding?->asksForProvenance()) {
+                return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
+            }
+            if ($understanding?->needsClarification || $understanding?->isAssistantConversation()
+                || $understanding?->effectiveAction() === QuestionAction::Recap) {
+                return $this->outcome('answer', $evidence, $completed, 'context_only');
+            }
+
+            return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
         }
         if (config('agent.waves.enabled', true) && config('kb.investigation.enabled', true)
             && $understanding?->available && $understanding->needsResearch() && ! $understanding->needsClarification) {

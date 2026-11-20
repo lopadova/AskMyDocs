@@ -62,6 +62,12 @@ final class AgentRun extends Model
     public function toolExecutions(): HasMany { return $this->hasMany(AgentToolExecution::class); }
     public function plannerShadowReports(): HasMany { return $this->hasMany(AgentPlannerShadowReport::class); }
 
+    public function usesSessionEvidence(): bool
+    {
+        return $this->channel === 'chat' && $this->conversation_id !== null && $this->user_id !== null
+            && ($this->input_json['session_evidence'] ?? false) === true;
+    }
+
     public function isTerminal(): bool
     {
         return in_array($this->status, [
