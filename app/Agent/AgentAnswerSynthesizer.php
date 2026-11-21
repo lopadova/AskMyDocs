@@ -638,8 +638,9 @@ PROMPT;
         if (array_filter($understanding['subquestions'] ?? [], static fn ($task) => ($task['aspect'] ?? '') === 'next_steps')) {
             $system .= "\nCURRENT TASK: assess remaining actions for the referenced issue. Begin the first claim with the concrete issue, not the entire case/order: for example, 'Per la sola segnalazione di [issue] relativa a [case], dalle email del [date] non emerge la necessità di [specific action]: alle [time] [named speaker] conferma [documented correction]'. Use this form ONLY when the source documents a resolution; otherwise name the still-pending request or the specific missing confirmation. Preserve the source date AND time when available, so the latest update is explicit. Name the speaker directly. Adapt every placeholder to the sources and requested locale. Compare the messages before deciding: a later correction supersedes the earlier report about that specific issue. Name the concrete action and its object; do not use a vague conclusion such as 'no further actions/interventions'. Never broaden the assessment to the whole case. Bind the assessment to the later update and keep other outcomes unconfirmed. Do not add separate claims retelling the superseded complaint; the assessment already conveys its significance. Keep only the scoped conclusion and any material missing confirmation, including during repair.";
         }
-        $sourceEvidenceOnly = $sessionFinal && ($understanding['follow_up_target'] ?? 'sources') !== 'previous_reply'
-            && in_array($understanding['action'] ?? null, [QuestionAction::Research->value, QuestionAction::Refine->value], true);
+        $sourceEvidenceOnly = $sessionFinal
+            && in_array($understanding['action'] ?? null, [QuestionAction::Research->value, QuestionAction::Refine->value], true)
+            && \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->effectiveFollowUpTarget() !== 'previous_reply';
         $promptTurnContext = \App\Services\Chat\Reasoning\PromptConversationContext::turn($turnContext, $sourceEvidenceOnly);
         $model = app(AgentAnswerModel::class)->synthesis($context, $repairAttempt);
         $promptEvidence = config('reasoning.selective_validation')

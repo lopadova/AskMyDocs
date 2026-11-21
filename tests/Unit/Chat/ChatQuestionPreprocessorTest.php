@@ -18,7 +18,8 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $focus = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status', 'fields' => ['status']];
         $payload = ['language' => 'it', 'intent' => 'Controllare ORDER-A', 'action' => 'research',
             'kb_queries' => [], 'mentions' => [], 'references_previous_turn' => false,
-            'context_mode' => 'new', 'requires_research' => true, 'transition' => 'new', 'focus' => $focus,
+            'context_mode' => 'new', 'requires_research' => true, 'follow_up_target' => 'previous_reply',
+            'transition' => 'new', 'focus' => $focus,
             'subquestions' => [[...$focus, 'question' => str_repeat('PRIVATE-TASK-', 50), 'kb_queries' => [],
                 'context_mode' => 'new', 'requires_research' => true]],
             'resolved_references' => [], 'needs_clarification' => false, 'clarification' => ''];
@@ -32,6 +33,8 @@ final class ChatQuestionPreprocessorTest extends TestCase
         $result = (new ChatQuestionPreprocessor($ai))->interpret('Controlla lo stato di ORDER-A.', reasoningContext: []);
         $this->assertTrue($result->available);
         $this->assertTrue($result->needsResearch());
+        $this->assertSame('sources', $result->effectiveFollowUpTarget());
+        $this->assertArrayNotHasKey('follow_up_target', $result->toArray());
         $this->assertSame(['location' => 'subquestion', 'task_index' => 0, 'rule' => 'task_question_too_long'],
             $calls[1]['validation_details']['research_contract']);
         $this->assertStringNotContainsString('PRIVATE-TASK', json_encode($calls[1]['validation_details']));
@@ -47,12 +50,14 @@ final class ChatQuestionPreprocessorTest extends TestCase
             $this->assertSame('boolean', $schema['properties']['requires_composition']['type']);
             return $this->response(['language' => 'it', 'intent' => 'Presentare in tabella i fatti già mostrati',
                 'action' => 'recap', 'kb_queries' => [], 'mentions' => [], 'references_previous_turn' => true,
-                'context_mode' => 'conversation', 'requires_research' => false, 'requires_composition' => true]);
+                'context_mode' => 'conversation', 'requires_research' => false, 'requires_composition' => true,
+                'follow_up_target' => 'previous_reply']);
         });
         $result = (new ChatQuestionPreprocessor($ai))->interpret('Metti i fatti appena mostrati in una tabella.');
         $this->assertTrue($result->available);
         $this->assertTrue($result->requiresComposition);
         $this->assertFalse($result->needsResearch());
+        $this->assertSame('previous_reply', $result->effectiveFollowUpTarget());
     }
 
     public function test_focus_repair_receives_a_closed_diagnostic_without_loosening_registered_references(): void

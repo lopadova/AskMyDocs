@@ -101,6 +101,15 @@ final readonly class QuestionUnderstanding
             || ($this->asksToReadSource() && $this->referencesPreviousTurn));
     }
 
+    public function effectiveFollowUpTarget(): string
+    {
+        if ($this->followUpTarget === 'previous_reply' && (! $this->referencesPreviousTurn || $this->needsResearch())) {
+            return 'sources';
+        }
+
+        return $this->followUpTarget;
+    }
+
     /** Only these tasks may explain historical observations without refreshing them. */
     public function contextOnlyTasks(): array
     {
@@ -117,6 +126,8 @@ final readonly class QuestionUnderstanding
 
     public function toArray(): array
     {
+        $target = $this->effectiveFollowUpTarget();
+
         return ['language' => $this->language, 'intent' => $this->intent, 'action' => $this->effectiveAction()->value, 'kb_queries' => $this->kbQueries,
             'mentions' => $this->mentions, 'references_previous_turn' => $this->referencesPreviousTurn,
             'available' => $this->available, 'focus' => $this->focus, 'subquestions' => $this->subquestions,
@@ -128,7 +139,7 @@ final readonly class QuestionUnderstanding
             ...$this->memoryResolution === [] ? [] : ['memory_resolution' => $this->memoryResolution],
             ...$this->failureDetails === [] ? [] : ['failure_details' => $this->failureDetails],
             ...$this->requiresComposition ? ['requires_composition' => true] : [],
-            ...$this->followUpTarget !== 'sources' ? ['follow_up_target' => $this->followUpTarget] : []];
+            ...$target !== 'sources' ? ['follow_up_target' => $target] : []];
     }
 
     public function withMemoryRouting(array $subquestions, array $resolution): self
