@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Evidence\AgentEvidenceEnvelope;
+use App\Services\Chat\QuestionAction;
+use App\Services\Chat\QuestionUnderstanding;
 
 final readonly class AgentLoopOutcome
 {
@@ -15,6 +17,15 @@ final readonly class AgentLoopOutcome
         public array $completedActions,
         public ?string $stopReason = null,
     ) {}
+
+    public static function assessSession(AgentEvidenceEnvelope $evidence, ?QuestionUnderstanding $understanding, array $completed = []): self
+    {
+        if ($evidence->hasEvidence() && $understanding?->effectiveAction() !== QuestionAction::Recheck) {
+            return new self('answer', $evidence, $completed, 'context_answer_attempt');
+        }
+
+        return new self('request_research', $evidence, $completed);
+    }
 
     public function awaitingConfirmation(): bool
     {

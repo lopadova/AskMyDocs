@@ -139,6 +139,11 @@ final readonly class AgentLoop
                 return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
             }
             if ($understanding?->available === false) {
+                // The original user message and authorized evidence are still usable
+                // if the optional structured interpretation could not be produced.
+                if ($run->usesConcurrentSession()) {
+                    return AgentLoopOutcome::assessSession($evidence, null, $completed);
+                }
                 return $this->outcome('partial', $evidence, $completed, 'question_interpretation_unavailable');
             }
             if ($understanding?->asksForProvenance()) {
@@ -151,11 +156,7 @@ final readonly class AgentLoop
                 if ($understanding?->isAssistantConversation() || $understanding?->needsClarification) {
                     return $this->outcome('answer', $evidence, $completed, 'context_only');
                 }
-                if ($evidence->hasEvidence() && $understanding?->effectiveAction() !== QuestionAction::Recheck) {
-                    return $this->outcome('answer', $evidence, $completed, 'context_answer_attempt');
-                }
-
-                return $this->outcome('request_research', $evidence, $completed);
+                return AgentLoopOutcome::assessSession($evidence, $understanding, $completed);
             }
             if ($understanding !== null && ! $understanding->needsResearch() && ! isset($run->result_json['session_context_gap'])) {
                 $canSearchIfNeeded = in_array($understanding->effectiveAction(), [QuestionAction::Refine, QuestionAction::Research], true);

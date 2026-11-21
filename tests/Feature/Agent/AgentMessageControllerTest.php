@@ -299,7 +299,13 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame([$pages[0], $secondAnswer], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
     }
 
-    public function test_session_answers_from_retained_evidence_while_research_waits_in_order(): void
+    public static function queuedQuestionCoverage(): array
+    {
+        return ['field already collected' => [true], 'field needs its own lookup' => [false]];
+    }
+
+    #[DataProvider('queuedQuestionCoverage')]
+    public function test_session_answers_from_retained_evidence_while_research_waits_in_order(bool $fieldIncluded): void
     {
         Queue::fake();
         config(['agent.concurrent_session' => true, 'agent.waves.enabled' => true, 'reasoning.enabled' => true,
@@ -314,10 +320,13 @@ final class AgentMessageControllerTest extends TestCase
         $searches = [];
         $search = Mockery::mock(ChatRetrievalService::class)->makePartial();
         foreach ($queries as $index => $query) {
+            if ($index === 2 && $fieldIncluded) {
+                continue;
+            }
             $document = KnowledgeDocument::create(['tenant_id' => 'acme', 'project_key' => 'crm', 'source_type' => 'pdf',
                 'title' => $query, 'source_path' => "manuals/{$index}.pdf", 'mime_type' => 'application/pdf', 'status' => 'active',
                 'document_hash' => hash('sha256', $query), 'version_hash' => hash('sha256', $index.$query)]);
-            foreach ($index === 0 ? [$facts[0], $facts[3]] : [$facts[$index]] as $order => $page) {
+            foreach (match ($index) { 0 => [$facts[0], $facts[3]], 1 => $fieldIncluded ? [$facts[1], $facts[2]] : [$facts[1]], default => [$facts[$index]] } as $order => $page) {
                 $document->chunks()->create(['tenant_id' => 'acme', 'project_key' => 'crm', 'chunk_order' => $order,
                     'chunk_text' => $page, 'chunk_hash' => hash('sha256', $page)]);
             }
@@ -356,7 +365,7 @@ final class AgentMessageControllerTest extends TestCase
                 foreach (match (true) {
                     $partial => [$facts[0]],
                     $index === 1 => [$facts[0], $facts[1]],
-                    $index === 2 && $trial => [],
+                    $index === 2 && $trial && ! str_contains(json_encode($input['evidence'], JSON_UNESCAPED_UNICODE), $facts[2]) => [],
                     default => [$facts[$index]],
                 } as $fact) {
                     $source = collect($input['evidence']['documents'])->first(fn (array $source) => str_contains($source['evidence'][0]['content'], $fact));
@@ -377,7 +386,8 @@ final class AgentMessageControllerTest extends TestCase
                 ['content' => $questions[$index]])->assertAccepted()->assertJsonPath('concurrent_session', true);
             $run = AgentRun::query()->where('run_id', $response->json('run_id'))->firstOrFail();
             Queue::assertPushedOn('agent-session', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $run->id);
-            $run->update(['result_json' => ['question_understanding' => ['available' => true, 'language' => 'it',
+            $run->update(['result_json' => ['question_understanding' => ['available' => $index !== 3, 'language' => 'it',
+                // A malformed classifier response still leaves the actual question and sources.
                 'intent' => $questions[$index], 'action' => 'research', 'requires_research' => true,
                 // The saved classification can wrongly point to an earlier reply even on the first turn.
                 'follow_up_target' => $index === 0 ? 'previous_reply' : 'sources']]]);
@@ -387,6 +397,8 @@ final class AgentMessageControllerTest extends TestCase
         $work = fn (AgentRun $run) => app(AgentRunHandler::class)->handle($run->fresh());
         $phase = fn (AgentRun $run) => data_get($run->fresh()->result_json, 'session_research.state');
         $seed = $send(0);
+        $work($seed);
+        $this->assertSame('reassess', $phase($seed));
         $work($seed);
         $this->assertSame('active', $phase($seed));
         $this->assertSame([], $searches);
@@ -406,6 +418,8 @@ final class AgentMessageControllerTest extends TestCase
         $work($queued);
         $this->assertSame('waiting', $phase($queued), 'An older assessment retains priority.');
         $work($partial);
+        $this->assertSame('reassess', $phase($partial));
+        $work($partial);
         $this->assertSame('active', $phase($partial));
         $this->assertSame($queries[0], end($searches));
         $preview = $conversation->messages()->where('metadata->session_interim', true)->sole();
@@ -422,15 +436,24 @@ final class AgentMessageControllerTest extends TestCase
 
         $work($partial);
         $this->assertSame('ready', $phase($partial));
-        $this->assertSame('active', $phase($queued));
+        $this->assertSame('waiting', $phase($queued));
         $this->assertFalse($conversation->messages()->where('agent_run_id', $partial->id)->exists());
         $work($partial);
         $this->assertStringContainsString($facts[1], $conversation->messages()->where('agent_run_id', $partial->id)->sole()->content);
+        $this->assertSame('reassess', $phase($queued));
         $work($queued);
-        $work($queued);
+        if (! $fieldIncluded) {
+            $this->assertSame('active', $phase($queued));
+            $work($queued);
+            $work($queued);
+        }
+        $this->assertTrue($queued->fresh()->isTerminal());
+        $work($queued); // Redelivery after the final answer.
+        $this->assertSame($fieldIncluded ? 0 : 1, $queued->toolExecutions()->count());
         $this->assertSame($facts[2], $conversation->messages()->where('agent_run_id', $queued->id)->sole()->content);
-        $this->assertSame($queries, $searches);
-        $this->assertSame([[0, false], [2, true], [1, true], [3, true], [1, false], [2, false]], $answers);
+        $this->assertSame($fieldIncluded ? array_slice($queries, 0, 2) : $queries, $searches);
+        $this->assertSame([[0, false], [2, true], [1, true], [1, true], [3, true], [1, false], [2, true],
+            ...$fieldIncluded ? [] : [[2, false]]], $answers);
     }
 
     public function test_an_explicit_depth_is_persisted_on_the_run(): void

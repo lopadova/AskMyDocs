@@ -95,7 +95,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
         } catch (\Throwable) {
             return;
         }
-        if ($run === null || (($this->sessionStage ?? null) !== null && $this->sessionStage !== $run->sessionStage())) {
+        if ($run === null || (($this->sessionStage ?? null) !== null && $this->sessionStage !== $run->sessionDeliveryStage())) {
             return;
         }
 
@@ -124,7 +124,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
                 // A duplicate delivery may fail after another worker completed
                 // the run or persisted a valid interaction handoff.
                 if ($run === null || ! in_array($run->status, [AgentRun::STATUS_QUEUED, AgentRun::STATUS_RUNNING], true)
-                    || (($this->sessionStage ?? null) !== null && $this->sessionStage !== $run->sessionStage())) {
+                    || (($this->sessionStage ?? null) !== null && $this->sessionStage !== $run->sessionDeliveryStage())) {
                     return;
                 }
                 $errorCode = $exception !== null && preg_match('/timeout|timedout/i', $exception::class) === 1

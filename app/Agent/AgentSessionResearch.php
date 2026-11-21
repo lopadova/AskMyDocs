@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Agent\Budget\AgentBudgetTracker;
+use App\Agent\Evidence\AgentEvidenceAccess;
+use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Evidence\AgentSessionEvidence;
 use App\Models\AgentRun;
 use App\Models\Conversation;
+use App\Services\Chat\QuestionUnderstanding;
 use Illuminate\Support\Facades\DB;
 
 /** Owns source collection and the FIFO of research requests for a text session. */
@@ -23,32 +27,50 @@ final readonly class AgentSessionResearch
         private AgentRunControl $control,
     ) {}
 
-    public function request(AgentRun $run, AgentLoopOutcome $outcome, ?AgentAnswer $partial = null): void
+    public function request(AgentRun $run, AgentLoopOutcome $outcome, ?AgentAnswer $answer = null, int $depthFloor = 0): void
     {
-        DB::transaction(function () use ($run, $outcome, $partial): void {
+        DB::transaction(function () use ($run, $outcome, $answer, $depthFloor): void {
             $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
-            if ($locked->isTerminal() || isset($locked->result_json['session_research'])) {
+            if ($locked->isTerminal() || $locked->sessionDeliveryStage() !== $run->sessionDeliveryStage()) {
                 return;
             }
-            $showPartial = $partial?->completeness === 'partial'
-                && ($partial->grounding['claims'] ?? []) !== [];
-            $locked->forceFill([
-                'status' => AgentRun::STATUS_QUEUED,
-                'result_json' => [...(array) $locked->result_json, 'retrieval_completed' => true,
-                    'evidence' => $outcome->evidence->jsonSerialize(),
-                    'session_research' => ['state' => 'waiting'],
-                    'session_context_gap' => $partial === null ? null : [
-                        'completeness' => $partial->completeness, 'limitations' => $partial->limitations,
-                        'coverage_sufficient' => data_get($partial->grounding, 'coverage_validation.sufficient'),
-                    ],
-                ],
-            ])->save();
-            if ($showPartial) {
-                $this->projector->project($locked, $partial, interim: true);
+
+            $state = $locked->result_json ?? [];
+            $stage = $locked->sessionStage();
+            $firstRequest = $stage === 'conversation';
+            if (! $firstRequest && ! in_array($stage, ['reassess', 'ready'], true)) {
+                return;
             }
-            $this->events->publish($locked, 'research.queued',
-                $showPartial ? 'research.queued_after_partial' : 'research.queued_without_answer',
-                data: ['interim_reply' => $showPartial]);
+            $alreadyShown = (bool) data_get($state, 'session_research.interim_sent');
+            $showPartial = ! $alreadyShown && $answer?->completeness === 'partial' && ($answer->grounding['claims'] ?? []) !== [];
+            $state['retrieval_completed'] = true;
+            $state['evidence'] = $outcome->evidence->jsonSerialize();
+            $state['session_research'] = ['state' => $firstRequest ? 'waiting' : 'active', 'interim_sent' => $alreadyShown || $showPartial];
+            if (! $firstRequest) {
+                $state['session_research']['depth_floor'] = $depthFloor;
+                $state['session_research']['baseline'] = $this->sourceHashes($outcome->evidence);
+                $state['research_continuation'] = true;
+                if ($stage === 'ready') {
+                    // Other questions can read the completed collection while this
+                    // turn researches its remaining gap.
+                    $state['session_research']['published_evidence'] = $state['evidence'];
+                }
+            }
+            if ($answer !== null) {
+                $state['session_context_gap'] = [
+                    'completeness' => $answer->completeness, 'limitations' => $answer->limitations,
+                    'coverage_sufficient' => data_get($answer->grounding, 'coverage_validation.sufficient'),
+                ];
+            }
+            $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => $state])->save();
+            if ($showPartial) {
+                $this->projector->project($locked, $answer, interim: true);
+            }
+            if ($firstRequest || $showPartial) {
+                $this->events->publish($locked, 'research.queued',
+                    $showPartial ? 'research.queued_after_partial' : 'research.queued_without_answer',
+                    data: ['interim_reply' => $showPartial]);
+            }
         }, 3);
     }
 
@@ -67,7 +89,7 @@ final readonly class AgentSessionResearch
                 ->where('user_id', $run->user_id)
                 ->where('input_json->concurrent_session', true)
                 ->whereNotIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL, AgentRun::STATUS_CANCELLED, AgentRun::STATUS_FAILED]);
-            if ((clone $pending)->where('result_json->session_research->state', 'active')->exists()) {
+            if ((clone $pending)->whereIn('result_json->session_research->state', ['reassess', 'active', 'ready'])->exists()) {
                 return null;
             }
             // An older turn still checking the session may need the first research slot.
@@ -81,7 +103,9 @@ final readonly class AgentSessionResearch
             if ($locked->isTerminal()) {
                 return null;
             }
-            $locked->forceFill(['result_json' => [...$locked->result_json, 'session_research' => ['state' => 'active']]])->save();
+            $state = $locked->result_json;
+            $state['session_research']['state'] = 'reassess';
+            $locked->forceFill(['result_json' => $state])->save();
 
             return $locked;
         }, 3);
@@ -101,7 +125,7 @@ final readonly class AgentSessionResearch
             report($exception);
             DB::transaction(function () use ($run): void {
                 $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
-                if ($locked->status === AgentRun::STATUS_QUEUED && $locked->sessionStage() === $run->sessionStage()) {
+                if ($locked->status === AgentRun::STATUS_QUEUED && $locked->sessionDeliveryStage() === $run->sessionDeliveryStage()) {
                     $locked->forceFill(['status' => AgentRun::STATUS_FAILED, 'error_code' => 'session_dispatch_failed', 'completed_at' => now()])->save();
                     $this->events->publish($locked, 'run.failed', 'run.failed', canCancel: false);
                 }
@@ -111,28 +135,75 @@ final readonly class AgentSessionResearch
         }
     }
 
+    public function reassess(AgentRun $run, AgentExecutionContext $context): AgentLoopOutcome
+    {
+        // No collection has started for this turn. Rebuild from the latest
+        // authorized session sources, including the preceding FIFO owner's result.
+        $evidence = $this->evidence->empty();
+        $original = app(AgentEvidenceAccess::class)->current($run, $context, (array) data_get($run->result_json, 'evidence', []));
+        $retained = $this->retainedEvidence->load($run, $context);
+        $known = array_column($retained['api_tools'], 'execution_id');
+        $original['api_tools'] = array_filter($original['api_tools'], fn ($item) => ! in_array($item['execution_id'], $known, true));
+        $evidence->import($retained);
+        $evidence->import($original);
+
+        return AgentLoopOutcome::assessSession($evidence, QuestionUnderstanding::fromArray($run->result_json['question_understanding'] ?? []));
+    }
+
     public function collect(AgentRun $run, AgentExecutionContext $context, ?string $turnContext): AgentLoopOutcome
     {
-        if (! isset($run->result_json['session_research']['collection_started'])) {
-            // Earlier queued requests may have obtained new evidence while this turn was waiting.
-            $envelope = $this->evidence->empty();
-            $retained = $this->retainedEvidence->load($run, $context);
-            $original = (array) data_get($run->result_json, 'evidence', []);
-            $envelope->import($original);
-            $knownExecutions = array_column($envelope->apiTools(), 'execution_id');
-            $retained['api_tools'] = array_filter($retained['api_tools'], fn ($tool): bool => ! in_array($tool['execution_id'] ?? null, $knownExecutions, true));
-            $envelope->import($retained);
-            DB::transaction(function () use ($run, $envelope): void {
+        if (! data_get($run->result_json, 'session_research.collection_started')) {
+            $legacyReservation = ! isset($run->result_json['session_research']['baseline']);
+            DB::transaction(function () use ($run, $legacyReservation): void {
                 $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
                 $this->control->ensureActive($locked);
-                $locked->forceFill(['result_json' => [...$locked->result_json, 'evidence' => $envelope->jsonSerialize(),
-                    'session_research' => ['state' => 'active', 'collection_started' => true]]])->save();
+                $state = $locked->result_json;
+                // Pre-upgrade active reservations went straight from FIFO to the research worker.
+                if ($legacyReservation) {
+                    $state['session_research']['state'] = 'reassess';
+                    $state['research_continuation'] = true;
+                    $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => $state])->save();
+                    return;
+                }
+                $state['session_research']['collection_started'] = true;
+                $locked->forceFill(['result_json' => $state])->save();
                 $this->events->publish($locked, 'research.started', 'research.started');
             }, 3);
             $run->refresh();
+            if ($legacyReservation) {
+                return new AgentLoopOutcome('continue_research', $this->evidence->empty(), []);
+            }
         }
 
         return $this->loop->run($run, $context, $turnContext, collectOnly: true);
+    }
+
+    public function deepen(AgentRun $run, AgentLoopOutcome $outcome, AgentAnswer $answer): bool
+    {
+        if ($answer->completeness === 'complete' || $answer->requiresSelection || $answer->limitations === []
+            || ! in_array($outcome->stopReason, [null, 'lookups_already_observed'], true)
+            || array_diff($this->sourceHashes($outcome->evidence), data_get($run->result_json, 'session_research.baseline', [])) === []) {
+            return false;
+        }
+        $depth = (int) $run->toolExecutions()->where('status', 'completed')->max('result_meta_json->dependency_depth');
+        if ($depth < 1 || $depth >= (new AgentBudgetTracker($run))->depthLevel()) {
+            return false;
+        }
+
+        $this->request($run, $outcome, $answer, $depth);
+
+        return true;
+    }
+
+    /** Compare source contents, independent of execution IDs and retrieval timestamps. */
+    private function sourceHashes(AgentEvidenceEnvelope $evidence): array
+    {
+        $hashes = array_column($evidence->apiTools(), 'evidence_hash');
+        foreach ($evidence->documents() as $document) {
+            array_push($hashes, ...array_column($document['evidence'], 'evidence_hash'));
+        }
+
+        return array_values(array_unique($hashes));
     }
 
     public function complete(AgentRun $run, AgentLoopOutcome $outcome): void
@@ -140,10 +211,13 @@ final readonly class AgentSessionResearch
         DB::transaction(function () use ($run, $outcome): void {
             $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
             $this->control->ensureActive($locked);
-            $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => [...(array) $locked->result_json,
-                'evidence' => $outcome->evidence->jsonSerialize(), 'research_continuation' => true,
-                'session_research' => ['state' => 'ready', 'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason],
-            ]])->save();
+            $state = $locked->result_json;
+            unset($state['session_research']['published_evidence']);
+            $state['evidence'] = $outcome->evidence->jsonSerialize();
+            $state['research_continuation'] = true;
+            $state['session_research'] = [...$state['session_research'], 'state' => 'ready',
+                'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason];
+            $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => $state])->save();
         });
     }
 
@@ -152,7 +226,7 @@ final readonly class AgentSessionResearch
         $evidence = $this->evidence->empty();
         $evidence->import((array) data_get($run->result_json, 'evidence', []));
 
-        return new AgentLoopOutcome((string) data_get($run->result_json, 'session_research.decision'), $evidence, [],
+        return new AgentLoopOutcome((string) data_get($run->result_json, 'session_research.decision'), $evidence, $run->result_json['completed_actions'] ?? [],
             data_get($run->result_json, 'session_research.stop_reason'));
     }
 }

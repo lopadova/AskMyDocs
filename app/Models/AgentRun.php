@@ -78,6 +78,15 @@ final class AgentRun extends Model
         return $this->usesConcurrentSession() ? (string) data_get($this->result_json, 'session_research.state', 'conversation') : null;
     }
 
+    /** Fence redeliveries from earlier collection/refinement rounds. */
+    public function sessionDeliveryStage(): ?string
+    {
+        $stage = $this->sessionStage();
+        $depth = (int) data_get($this->result_json, 'session_research.depth_floor', 0);
+
+        return $stage !== null && $depth > 0 ? $stage.'.'.$depth : $stage;
+    }
+
     public function isTerminal(): bool
     {
         return in_array($this->status, [

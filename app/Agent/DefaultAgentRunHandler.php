@@ -52,7 +52,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             if ($current?->usesConcurrentSession()) {
                 $research = app(AgentSessionResearch::class);
                 $dispatchFailed = $continuation && ! $research->enqueue($current);
-                if ($dispatchFailed || $current->isTerminal() || in_array($current->sessionStage(), ['waiting', 'ready'], true)) {
+                if ($dispatchFailed || $current->isTerminal() || $current->sessionStage() === 'waiting') {
                     $research->startNext($current);
                 }
             } elseif ($continuation) {
@@ -66,7 +66,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         $run->refresh();
         $researchPhase = $run->sessionStage();
         $delivery = \Illuminate\Support\Facades\Context::getHidden('agent.session_stage');
-        if ($researchPhase === 'waiting' || ($delivery !== null && $delivery !== $researchPhase)) {
+        if ($researchPhase === 'waiting' || ($delivery !== null && $delivery !== $run->sessionDeliveryStage())) {
             return;
         }
         if ($run->isTerminal() || in_array($run->status, [
@@ -129,6 +129,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             while (true) {
                 $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
                 $outcome = match ($researchPhase) {
+                    'reassess' => app(AgentSessionResearch::class)->reassess($run, $context),
                     'active' => app(AgentSessionResearch::class)->collect($run, $context, $turnContext),
                     'ready' => app(AgentSessionResearch::class)->result($run),
                     default => $this->loop->run($run, $context, $turnContext),
@@ -179,7 +180,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
                     durableRunId: $run->run_id,
                 ));
-                if ($contextAttempt && $answer->completeness !== 'complete') {
+                if ($contextAttempt && ! $answer->requiresSelection && $answer->completeness !== 'complete') {
                     if ($run->usesConcurrentSession()) {
                         app(AgentSessionResearch::class)->request($run, $outcome, $answer);
                         $diagnostics->end($run, $executionSpan);
@@ -192,10 +193,15 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
                     continue;
                 }
+                if ($researchPhase === 'ready' && app(AgentSessionResearch::class)->deepen($run, $outcome, $answer)) {
+                    $diagnostics->end($run, $executionSpan);
+                    return;
+                }
                 if ($contextAttempt) {
                     $this->events->publish($run, 'synthesis.started', 'synthesis.started');
                 }
                 $status = $outcome->decision === 'partial' || $answer->completeness === 'partial'
+                    || ($researchPhase === 'ready' && $answer->completeness === 'insufficient')
                     ? AgentRun::STATUS_PARTIAL
                     : AgentRun::STATUS_COMPLETED;
                 $saved = $this->finalize($run, $status, $outcome, $answer);

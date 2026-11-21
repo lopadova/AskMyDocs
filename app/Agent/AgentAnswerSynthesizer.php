@@ -402,7 +402,7 @@ final readonly class AgentAnswerSynthesizer
                 'terms' => $grounding['terms'],
             ]);
 
-            if ($contextAttempt) {
+            if ($contextAttempt || $run?->sessionStage() === 'ready') {
                 $grounding['missing_details'] = array_map($this->masker->maskString(...), $this->limitations($payload['limitations'] ?? []));
             }
 
@@ -511,6 +511,13 @@ final readonly class AgentAnswerSynthesizer
         $presentedAnswer = $artifact === null
             ? ($presentationOnly && $answer === '' ? (str_starts_with($context->locale, 'it') ? 'Non ho record verificabili per la tabella richiesta.' : 'I have no verified records for the requested table.') : $answer)
             : $this->artifactHandoff($context->locale, $requiresSelection);
+        if ($run?->sessionStage() === 'ready' && $completeness !== 'complete') {
+            foreach ($this->limitations($payload['limitations'] ?? []) as $missing) {
+                if (! str_contains($presentedAnswer, $missing)) {
+                    $presentedAnswer .= "\n\n".$missing;
+                }
+            }
+        }
         $sourceLimitations = app(AgentSourceLimitations::class)->forClaims($evidence['api_tools'], $grounding['claims'], $context->locale);
         foreach ($sourceLimitations as $note) {
             if (! str_contains($presentedAnswer, $note['text'])) {
@@ -599,7 +606,7 @@ For a request for examples, start with an actual scenario, sample or worked work
 For a request to reformat earlier facts, use the requested structure, such as a Markdown table or list, while preserving supported values. For a request for additional detail, keep any recap to the minimum needed to identify the example or subject. Before submitting, check that the visible result delivers the requested example, detail or new presentation.
 PROMPT;
         }
-        if ($sessionFinal && $outcome->stopReason === 'context_answer_attempt') {
+        if ($sessionFinal && ($outcome->stopReason === 'context_answer_attempt' || $run->sessionStage() === 'ready')) {
             $system .= "\nTry to answer the current question from the supplied evidence before any further lookup. Mark completeness=complete only when the sources support every material requested detail and the answer actually gives it. For partial or insufficient coverage, put specific missing information in limitations so the host can target a further lookup. General background does not fill a missing detail.";
             if ($run->usesConcurrentSession()) {
                 $system .= "\nFor partial coverage, submit every independently supported part as a usable answer now, with its evidence. Use partial when there are supported claims and material details remain missing. Use insufficient when none of the requested facts can be supported. In each limitation specify the missing field, entity, condition, or source detail the collection service needs to find. Limitations do not substitute for the supported claims.";
@@ -1017,7 +1024,7 @@ The structured question_understanding defines the CURRENT focus and active subqu
 For a follow-up, answer the NEW focus and avoid restating the previous answer. If the user asks what to do, separate an action requested in an email from an established company procedure; do not present the request as a general rule unless an authorized source supports that rule. If there is no new supported detail, say so briefly.
 For a next-steps assessment, answer the current operational question directly using the latest relevant documented update. State whether that specific reported issue still needs action, who is expected to act when documented, and which requested confirmation remains missing. A later correction or resolution can supersede an earlier request; do not present the earlier issue as still pending merely because it appears in quoted history. Keep the conclusion scoped to that issue and the source dates: a resolved label/barcode problem does not prove that a return was received, refunded or closed. Distinguish a source-backed assessment or explicitly conditional proposed check from an action already completed or an established company procedure. Cite the original supporting passage for each claim. Do not replace this assessment with another list or summary of emails, or with all fields of an API record.
 reasoning.already_communicated lists earlier statements whose original source passage was reauthorized and reread unchanged. It is not additional evidence. For refine, avoid repeating unchanged facts unless needed to identify the answer. For research, recheck or recap, answer the currently requested facts even if discussed earlier; conversation continuity alone does not suppress an explicitly requested answer. On recap, label old live observations with their retrieved_at date; never describe a historical snapshot as current.
-Sources marked historical_context are previous observations, even in a mixed request. They may explain only the contextual task with requires_research=false. State their observation date and never use them to answer a task requiring refreshed/current facts.
+Sources marked session_context contain previously collected fields. Use a matching field to answer a follow-up about the same record, including a field not mentioned in the earlier reply. A preliminary requires_research classification can predate the collection. State the observation date when relevant. If the user requests refreshed facts, historical observations cannot establish their current value. Other sources marked historical_context may explain only the contextual task with requires_research=false.
 When a selected record's fields disagree with a name or identifier in an earlier request, describe and continue with the selected record; do not relabel it as the earlier candidate.
 When a source supplies source_ref, prefer copying that short reference into the claim and set document_id=null, tool_execution_id=null, evidence_hash="". The host resolves it only against the current authorized sources and validates the quote and full hash; never invent a reference. Otherwise copy the selected source's claim_source fields exactly, using separate JSON keys document_id, tool_execution_id and evidence_hash. Never shorten, calculate or repair a hash yourself. For tool records also copy the selected record_path from record_paths.
 For a case history, read the entire supplied conversation and cover the requested problem, customer response and latest documented merchant response, rather than stopping at the opening notice. Include the documented handling plan and conditions governing an unresolved outcome: a later follow-up does not erase an earlier investigation proposal or conditional refund. Keep promises qualified as promises, independently from completed actions. Preserve who performed each action. Never invent a message date from another case or from retrieval time. State recorded observations as historical; a document retrieved now does not establish current availability or an action completed today. A promised refund or shipment is not proof of execution.
@@ -1402,6 +1409,9 @@ PROMPT;
             }
             $answer .= $italian ? ' Le altre fonti consultate non bastano per rispondere a questa richiesta.'
                 : 'The other consulted sources are insufficient to answer this request.';
+        }
+        foreach ($grounding['missing_details'] ?? [] as $missing) {
+            $answer .= "\n\n".$missing;
         }
         return new AgentAnswer($answer, $context->locale, 'insufficient', [], [], array_values(array_unique([
             $grounding['reason'], ...($grounding['missing_details'] ?? []), ...$failures === [] ? [] : ['live_tool_failed'],
