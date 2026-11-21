@@ -68,6 +68,14 @@ final readonly class AgentPlanArgumentConstraints
 
     public function validateArguments(AgentToolDefinition $tool, array $arguments, bool $allowReferences = false, array $identifierSources = []): void
     {
+        if ($tool->name === 'search_knowledge_base' && $tool->kind === 'knowledge') {
+            $query = $arguments['query'] ?? null;
+            $reference = $allowReferences && is_array($query) && isset($query['$from'], $query['path']);
+            if (! $reference && (! is_string($query) || trim($query) === '')) {
+                throw new AgentPlanValidationException('knowledge_query_required',
+                    'Put a nonempty search string in arguments.query for search_knowledge_base.');
+            }
+        }
         if ($tool->kind !== 'api') {
             return;
         }
