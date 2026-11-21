@@ -173,8 +173,11 @@ Con `AGENT_CONCURRENT_SESSION=true`, predisporre un pool dedicato a
 `AGENT_SESSION_QUEUE` (predefinita `agent-session`) prima del rilascio.
 Questo pool valuta le nuove domande e scrive le risposte. Il pool di
 `AGENT_QUEUE` continua a raccogliere le fonti. Entrambi devono poter avanzare
-in parallelo. Il flusso si attiva per impostazione predefinita negli ambienti
-`local` e `testing`. Per disattivare il flusso
+in parallelo. Il flusso è abilitato per impostazione predefinita. Ogni worker
+segnala nella cache condivisa le code che sta servendo. La chat attende un
+worker dedicato alla coda di sessione e un altro sulla coda di raccolta,
+sulla stessa connessione. In attesa dei due segnali le nuove domande seguono
+il percorso seriale. Per disattivare il flusso
 quando è già in uso, lasciare attivo il worker di sessione fino a esaurimento
 dei turni già avviati.
 
