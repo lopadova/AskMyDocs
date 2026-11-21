@@ -34,7 +34,6 @@ export interface ComposerProps {
      * the mention search against a non-existent slug.
      */
     projectKey?: string | null;
-    modelLabel?: string;
     onRequireConversation?: () => Promise<number | null>;
     /**
      * T2.7 — optional list of project keys to populate the filter

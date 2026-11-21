@@ -65,7 +65,7 @@ export function ChatView(): ReactNode {
         projectLabel,
         projectScopeValue,
         teamProjectKeys,
-        headerMeta,
+        lastAnswerModel,
         canViewKb,
         chat,
         realtime,
@@ -176,13 +176,15 @@ export function ChatView(): ReactNode {
                                             onChange={onScopeChange}
                                         />
                                     </div>
-                                    <div className="chat-header-context-pill" data-kind="model">
-                                        <span className="chat-header-context-icon" aria-hidden="true">
-                                            <Icon.Brain size={11} />
-                                        </span>
-                                        <span className="chat-header-context-label">{translateInterface("Model")}</span>
-                                        <span className="chat-model-chip">{headerMeta}</span>
-                                    </div>
+                                    {lastAnswerModel && (
+                                        <div className="chat-header-context-pill" data-kind="model">
+                                            <span className="chat-header-context-icon" aria-hidden="true">
+                                                <Icon.Brain size={11} />
+                                            </span>
+                                            <span className="chat-header-context-label">{translateInterface("Last answer model")}</span>
+                                            <span className="chat-model-chip">{lastAnswerModel}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             {activeId !== null && (
@@ -236,7 +238,6 @@ export function ChatView(): ReactNode {
                             conversationId={activeId}
                             projectLabel={projectLabel}
                             projectKey={projectKey}
-                            modelLabel={headerMeta}
                             onRequireConversation={requireConversation}
                             availableProjects={teamProjectKeys}
                             availableCollections={collections}
