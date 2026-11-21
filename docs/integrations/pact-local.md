@@ -1,6 +1,6 @@
 # PACT local development
 
-The unreleased PACT packages are loaded only for local development. Check out `laravel-pact-agent` and `Pact` beside this project, then run `php scripts/install-pact-local.php`. The script starts from the committed lock, resolves only the three local packages offline and leaves the production Composer manifest and lock unchanged. A later regular Composer install removes these local packages. No release or production dependency is implied.
+The [native PACT client](pact-client.md) handles domain-based pairing. To develop the optional legacy PactAuth adapter, check out `laravel-pact-agent` beside this project, then run `php scripts/install-pact-local.php`. The script starts from the committed lock and adds the local adapter while keeping the versioned PACT packages. A regular Composer install removes the local adapter.
 
 The existing PactAuth grant remains mandatory and is scoped to its approved project. Set `PACT_AUTH_ENABLED` and, only when a local PACT integration is intentionally configured, `PACT_TRANSPORT_ENABLED`. Add the exact Octodora Bot origin to `PACT_AUTH_ALLOWED_CLIENT_ORIGINS`; local HTTP also requires `PACT_AUTH_ALLOW_LOCAL_HTTP`. Run the host and package migrations and a queue worker before testing tasks. Configure the host's existing AI provider separately. Federation bootstrap requires an explicitly allowlisted coordinator origin and stores its MCP credential encrypted per grant.
 

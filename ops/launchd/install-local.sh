@@ -24,6 +24,12 @@ for template in "${script_dir}"/*.plist.template; do
     if [[ "${1:-}" == "--triage-only" && "${label}" != com.askmydocsdev.queue-email-triage-* ]]; then
         continue
     fi
+    if [[ "${1:-}" == "--pact-only" && "${label}" != com.askmydocsdev.pact-* ]]; then
+        continue
+    fi
+    if [[ "${label}" == com.askmydocsdev.pact-* && ! -f "${project_root}/storage/app/pact/installation.json" ]]; then
+        continue
+    fi
     destination="${launch_agents_dir}/${label}.plist"
 
     sed \

@@ -39,12 +39,13 @@ vi.mock('./use-realtime-agent', () => ({
 
 const sendMessage = vi.fn(async () => undefined);
 let agentOptions: { onFinish?: () => void; filters?: unknown } = {};
+let agentMessages: Message[] = [];
 
 vi.mock('./use-agent-chat', () => ({
     useAgentChat: (options: { onFinish?: () => void; filters?: unknown }) => {
         agentOptions = options;
         return {
-            messages: [] as Message[],
+            messages: agentMessages,
             status: 'ready',
             error: null,
             events: [],
@@ -103,6 +104,7 @@ function harness() {
 beforeEach(() => {
     routeParams = {};
     agentOptions = {};
+    agentMessages = [];
     sendMessage.mockClear();
     vi.mocked(nav.toNewChat).mockClear();
     vi.mocked(nav.toConversation).mockClear();
@@ -132,6 +134,28 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     window.localStorage.clear();
+});
+
+describe('useChatSession — last answer model', () => {
+    it('uses the recorded synthesis model of the last answer even with a newer user message', () => {
+        const { result, rerender } = harness();
+        expect(result.current.lastAnswerModel).toBeNull();
+
+        agentMessages = [
+            { id: 1, role: 'assistant', content: '', metadata: { provider: 'openai', model: 'older-model' }, rating: null, created_at: '' },
+            { id: 2, role: 'assistant', content: '', metadata: { provider: 'agent', model: 'planner+synthesizer', grounding: { model: 'qa-coda' } }, rating: null, created_at: '' },
+            { id: 3, role: 'user', content: '', metadata: null, rating: null, created_at: '' },
+        ];
+        rerender();
+        expect(result.current.lastAnswerModel).toBe('qa-coda');
+
+        agentMessages = [...agentMessages, {
+            id: 4, role: 'assistant', content: '', rating: null, created_at: '',
+            metadata: { provider: 'agent', model: 'planner+synthesizer', grounding: { model: 'deterministic_source_read' } },
+        }];
+        rerender();
+        expect(result.current.lastAnswerModel).toBeNull();
+    });
 });
 
 describe('toError', () => {

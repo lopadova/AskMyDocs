@@ -18,6 +18,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -66,6 +67,14 @@ class AuthController extends Controller
 
         RateLimiter::clear($key);
         $request->session()->regenerate();
+        $intended = $request->session()->get('url.intended');
+        $pactAuthorize = Route::has('pact.oauth.authorize') ? route('pact.oauth.authorize') : null;
+        $pactReturn = $pactAuthorize !== null && is_string($intended) && str_starts_with($intended, $pactAuthorize.'?')
+            ? route('pact.oauth.authorize', absolute: false).substr($intended, strlen($pactAuthorize))
+            : null;
+        if ($pactReturn !== null) {
+            $request->session()->forget('url.intended');
+        }
 
         return response()->json([
             'user' => [
@@ -75,6 +84,7 @@ class AuthController extends Controller
                 'locale' => SupportedLocale::normalize($user->locale),
             ],
             'abilities' => [],
+            ...($pactReturn === null ? [] : ['redirect_to' => $pactReturn]),
         ], 200);
     }
 

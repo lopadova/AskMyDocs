@@ -81,7 +81,7 @@ export interface UseChatSessionResult {
     projectLabel: string;
     projectScopeValue: string | null;
     teamProjectKeys: string[];
-    headerMeta: string;
+    lastAnswerModel: string | null;
     canViewKb: boolean;
     researchBlocked: boolean;
 
@@ -220,13 +220,6 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     useEffect(() => {
         setScope(null);
     }, [currentTeam]);
-
-    // R18 debt (pre-existing, inherited by every surface that renders a
-    // model chip): the header model is a frozen literal, not the provider
-    // the turn actually ran on (that only comes back in
-    // `message.metadata.model`). Kept HERE, in the single shared hook, so
-    // there is exactly one place to fix when a real model picker lands.
-    const [headerMeta] = useState<string>('claude-sonnet-4.5');
 
     // Clicking a citation opens the cited document in an in-chat modal — for
     // EVERY reader, not only admins. The modal fetches the source through a
@@ -837,6 +830,14 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
     // event. The hook reloads that canonical history, so every rendered item
     // already carries numeric ids, citations, API provenance and feedback.
     const threadMessages = chat.messages;
+    const lastAnswer = [...threadMessages].reverse().find((message) => message.role === 'assistant')?.metadata;
+    const recordedModel = lastAnswer?.provider === 'agent'
+        ? lastAnswer.grounding?.model
+        : lastAnswer?.provider && lastAnswer.provider !== 'server' ? lastAnswer.model : null;
+    const modelName = typeof recordedModel === 'string' ? recordedModel.trim() : '';
+    const lastAnswerModel = modelName && !['deterministic_source_read', 'independent-research'].includes(modelName)
+        ? modelName
+        : null;
 
     return {
         activeId,
@@ -848,7 +849,7 @@ export function useChatSession({ nav }: UseChatSessionOptions): UseChatSessionRe
         projectLabel,
         projectScopeValue,
         teamProjectKeys,
-        headerMeta,
+        lastAnswerModel,
         canViewKb,
 
         researchBlocked,

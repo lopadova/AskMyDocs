@@ -263,6 +263,7 @@ export const IT_MESSAGES: Record<string, string> = {
     'Search your history or start a new conversation.': 'Cerca nella cronologia o avvia una nuova conversazione.',
     'Conversation messages': 'Messaggi della conversazione', 'Saved filter presets': 'Filtri salvati',
     'Presets': 'Filtri salvati', 'Add chat filter': 'Aggiungi filtro', 'Filter': 'Filtro',
+    'Last answer model': 'Modello ultima risposta',
     '{count} filters selected': '{count} filtri selezionati', 'Live data sources': 'Fonti dati live',
     '{kind} sources: {count} of {total} enabled': 'Fonti {kind}: {count} di {total} attive',
     '{kind} source settings': 'Impostazioni fonti {kind}', 'Close {kind} source settings': 'Chiudi impostazioni fonti {kind}',

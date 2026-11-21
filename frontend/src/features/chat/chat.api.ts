@@ -205,6 +205,7 @@ export interface CitationDocument {
 export interface MessageMetadata {
     provider?: string;
     model?: string;
+    grounding?: { model?: string | null };
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
