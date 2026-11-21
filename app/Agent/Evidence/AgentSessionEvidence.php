@@ -20,7 +20,8 @@ final readonly class AgentSessionEvidence
             ->where('channel', 'chat')->where('conversation_id', $run->conversation_id)
             ->where('project_key', $run->project_key)->where('user_id', $run->user_id)
             ->where('id', '<', $run->id)->whereNull('input_json->research_parent_id')
-            ->whereIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL])
+            ->where(fn ($query) => $query->whereIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL])
+                ->orWhere('result_json->session_research->state', 'ready'))
             ->latest('id')->limit((int) config('agent.session_evidence.previous_turns', 12))->cursor();
         $seen = [];
 

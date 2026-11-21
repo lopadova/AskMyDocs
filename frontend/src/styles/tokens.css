@@ -1261,6 +1261,15 @@ textarea:focus-visible {
   max-width: 860px;
   margin: 0 auto;
 }
+.chat-reply-context {
+  max-width: 75ch;
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chat-suggested-followups-shell {
   flex: 0 0 auto;
   width: 100%;

@@ -142,7 +142,7 @@ final class AgentMessageControllerTest extends TestCase
         bool $formatOnly = false, bool $probe = false, bool $searchMissing = false, bool $coverageGap = false): void
     {
         Queue::fake();
-        config(['agent.waves.enabled' => true, 'reasoning.enabled' => true, 'reasoning.selective_validation' => $coverageGap,
+        config(['agent.waves.enabled' => true, 'agent.concurrent_session' => false, 'reasoning.enabled' => true, 'reasoning.selective_validation' => $coverageGap,
             'agent.grounding.enabled' => false, 'kb.investigation.enabled' => false]);
         app(TenantContext::class)->set('acme');
         $user = $this->user('session-document@example.com');
@@ -297,6 +297,139 @@ final class AgentMessageControllerTest extends TestCase
 
         $this->assertSame($shouldRetry || $searchMissing ? [...$questions, $questions[1]] : $questions, $synthesized);
         $this->assertSame([$pages[0], $secondAnswer], $conversation->messages()->where('role', 'assistant')->orderBy('id')->pluck('content')->all());
+    }
+
+    public function test_session_answers_from_retained_evidence_while_research_waits_in_order(): void
+    {
+        Queue::fake();
+        config(['agent.concurrent_session' => true, 'agent.waves.enabled' => true, 'reasoning.enabled' => true,
+            'reasoning.selective_validation' => false, 'agent.grounding.enabled' => false, 'kb.investigation.enabled' => false]);
+        app(TenantContext::class)->set('acme');
+        $user = $this->user('interactive-session@example.com');
+        ProjectMembership::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm', 'role' => 'member']);
+        $conversation = Conversation::create(['tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'crm']);
+        $questions = ['Come si avvia un reso?', 'Come si avvia un reso e chi rimborsa?', 'Dove si invia il modulo?', 'Quanto dura la finestra del reso?'];
+        $facts = ['Compila il modulo di reso.', 'Il negozio emette il rimborso.', 'Invia il modulo allo sportello.', 'La finestra è di trenta giorni.'];
+        $queries = ['procedura reso', 'chi emette rimborso', 'invio modulo'];
+        $searches = [];
+        $search = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        foreach ($queries as $index => $query) {
+            $document = KnowledgeDocument::create(['tenant_id' => 'acme', 'project_key' => 'crm', 'source_type' => 'pdf',
+                'title' => $query, 'source_path' => "manuals/{$index}.pdf", 'mime_type' => 'application/pdf', 'status' => 'active',
+                'document_hash' => hash('sha256', $query), 'version_hash' => hash('sha256', $index.$query)]);
+            foreach ($index === 0 ? [$facts[0], $facts[3]] : [$facts[$index]] as $order => $page) {
+                $document->chunks()->create(['tenant_id' => 'acme', 'project_key' => 'crm', 'chunk_order' => $order,
+                    'chunk_text' => $page, 'chunk_hash' => hash('sha256', $page)]);
+            }
+            $chunk = $document->chunks()->orderBy('chunk_order')->firstOrFail();
+            $search->shouldReceive('retrieve')->once()->withArgs(fn (string $actual) => $actual === $query)
+                ->andReturnUsing(function () use ($chunk, $document, $query, &$searches): SearchResult {
+                    $searches[] = $query;
+
+                    return new SearchResult(collect([['chunk_id' => $chunk->id, 'chunk_text' => $chunk->chunk_text,
+                        'document' => $document->toArray()]]), collect(), collect());
+                });
+        }
+        $this->app->instance(ChatRetrievalService::class, $search);
+        $answers = [];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function (string $system, array $messages, array $options) use ($questions, $facts, $queries, &$answers): AiResponse {
+            $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            $tool = $options['tool_choice']['function']['name'];
+            $index = array_search($input['question'], $questions, true);
+            $trial = ($input['stop_reason'] ?? null) === 'context_answer_attempt';
+            $gap = 'Serve sapere chi emette il rimborso.';
+            if ($tool === 'submit_agent_plan') {
+                $this->assertLessThan(3, $index);
+                if ($index === 1) {
+                    $this->assertContains($gap, data_get(json_decode($input['turn_context'], true), 'session_context_gap.limitations'));
+                }
+                $arguments = $input['completed_actions'] === [] ? ['decision' => 'tools', 'actions' => [[
+                    'id' => 'manual', 'tool' => 'search_knowledge_base', 'arguments' => ['query' => $queries[$index]],
+                    'depends_on' => [], 'purpose' => 'Recupera il dato richiesto',
+                ]]] : ['decision' => 'answer', 'actions' => []];
+            } else {
+                $this->assertSame('submit_agent_answer', $tool);
+                $answers[] = [$index, $trial];
+                $partial = $index === 1 && $trial;
+                $claims = [];
+                foreach (match (true) {
+                    $partial => [$facts[0]],
+                    $index === 1 => [$facts[0], $facts[1]],
+                    $index === 2 && $trial => [],
+                    default => [$facts[$index]],
+                } as $fact) {
+                    $source = collect($input['evidence']['documents'])->first(fn (array $source) => str_contains($source['evidence'][0]['content'], $fact));
+                    $this->assertNotNull($source, $fact);
+                    $claims[] = ['text' => $fact, 'quote' => $fact, 'document_id' => $source['document_id'],
+                        'tool_execution_id' => null, 'evidence_hash' => $source['evidence'][0]['evidence_hash']];
+                }
+                $arguments = ['completeness' => $partial ? 'partial' : ($claims === [] ? 'insufficient' : 'complete'),
+                    'claims' => $claims, 'limitations' => $partial ? [$gap] : [], 'requires_selection' => false, 'render_table' => false];
+            }
+
+            return new AiResponse(content: '', provider: 'fake', model: 'fake-agent', toolCalls: [['name' => $tool, 'arguments' => $arguments]]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+
+        $send = function (int $index) use ($questions, $user, $conversation): AgentRun {
+            $response = $this->actingAs($user)->postJson('/test-conversations/'.$conversation->id.'/messages/agent',
+                ['content' => $questions[$index]])->assertAccepted()->assertJsonPath('concurrent_session', true);
+            $run = AgentRun::query()->where('run_id', $response->json('run_id'))->firstOrFail();
+            Queue::assertPushedOn('agent-session', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $run->id);
+            $run->update(['result_json' => ['question_understanding' => ['available' => true, 'language' => 'it',
+                'intent' => $questions[$index], 'action' => 'research', 'requires_research' => true,
+                'follow_up_target' => 'sources']]]);
+
+            return $run;
+        };
+        $work = fn (AgentRun $run) => app(AgentRunHandler::class)->handle($run->fresh());
+        $phase = fn (AgentRun $run) => data_get($run->fresh()->result_json, 'session_research.state');
+        $seed = $send(0);
+        $work($seed);
+        $this->assertSame('active', $phase($seed));
+        $this->assertSame([], $searches);
+        $this->assertSame('research.queued_without_answer', $seed->events()->where('type', 'research.queued')->sole()->message_key);
+        Queue::assertPushedOn('agent', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $seed->id);
+        \Illuminate\Support\Facades\Context::scope(fn () => $work($seed), hidden: ['agent.session_stage' => 'conversation']);
+        $this->assertSame([], $searches, 'A repeated conversational delivery cannot collect sources.');
+        $work($seed);
+        $this->assertSame('ready', $phase($seed));
+        \Illuminate\Support\Facades\Context::scope(fn () => $work($seed), hidden: ['agent.session_stage' => 'active']);
+        $this->assertSame([], $answers);
+        $work($seed);
+
+        $partial = $send(1);
+        $queued = $send(2);
+        $covered = $send(3);
+        $work($queued);
+        $this->assertSame('waiting', $phase($queued), 'An older assessment retains priority.');
+        $work($partial);
+        $this->assertSame('active', $phase($partial));
+        $this->assertSame($queries[0], end($searches));
+        $preview = $conversation->messages()->where('metadata->session_interim', true)->sole();
+        $this->assertSame('research.queued_after_partial', $partial->events()->where('type', 'research.queued')->sole()->message_key);
+        $this->assertStringContainsString($facts[0], $preview->content);
+        $this->assertSame(data_get($partial->input_json, 'user_message_id'), data_get($preview->metadata, 'reply_to_user_message_id'));
+        $work($covered);
+        $this->assertSame('completed', $covered->fresh()->status);
+        $this->assertSame($facts[3], $conversation->messages()->where('agent_run_id', $covered->id)->sole()->content);
+        $this->assertSame([$queries[0]], $searches);
+        $activity = app(\App\Services\Chat\ConversationActivityService::class)->list($user->id, 'acme')[0];
+        $this->assertSame([$partial->run_id, $queued->run_id], array_column($activity['runs'], 'run_id'));
+        $this->assertSame($partial->run_id, $activity['run']['run_id']);
+
+        $work($partial);
+        $this->assertSame('ready', $phase($partial));
+        $this->assertSame('active', $phase($queued));
+        $this->assertFalse($conversation->messages()->where('agent_run_id', $partial->id)->exists());
+        $work($partial);
+        $this->assertStringContainsString($facts[1], $conversation->messages()->where('agent_run_id', $partial->id)->sole()->content);
+        $work($queued);
+        $work($queued);
+        $this->assertSame($facts[2], $conversation->messages()->where('agent_run_id', $queued->id)->sole()->content);
+        $this->assertSame($queries, $searches);
+        $this->assertSame([[0, false], [2, true], [1, true], [3, true], [1, false], [2, false]], $answers);
     }
 
     public function test_an_explicit_depth_is_persisted_on_the_run(): void

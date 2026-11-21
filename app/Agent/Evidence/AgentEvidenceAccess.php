@@ -96,7 +96,8 @@ final readonly class AgentEvidenceAccess
             $memoryReuse = app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->allowsTool($run, $tool);
             $sessionReuse = $run->usesSessionEvidence() && ($tool['session_context'] ?? false) && ($definition?->readOnly ?? false) && $sameConversation
                 && $sourceRun->channel === 'chat' && $sourceRun->id < $run->id
-                && in_array($sourceRun->status, [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)
+                && (in_array($sourceRun->status, [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL], true)
+                    || data_get($sourceRun->result_json, 'session_research.state') === 'ready')
                 && data_get($execution->result_meta_json, 'result') === ($tool['result'] ?? null);
             if ($definition !== null && $execution !== null && $execution->status === 'completed'
                 && (! isset($tool['session_memory_observation_id']) || $memoryReuse)

@@ -43,6 +43,7 @@ final readonly class AgentChatTurnStarter
             $displayContent,
             $input,
             $messageMetadata,
+            $inline,
         ): AgentChatTurn {
             // Serialize creation, not the long research itself. Voice and text
             // share this fence; internal research branches are not new turns.
@@ -53,10 +54,13 @@ final readonly class AgentChatTurnStarter
             if ($previousQa !== null && data_get($input, 'qa.campaign_id') !== data_get($previousQa->input_json, 'qa.campaign_id')) {
                 throw \Illuminate\Validation\ValidationException::withMessages(['qa' => 'qa_campaign_context_required']);
             }
+            $concurrent = ! $inline && ($input['session_evidence'] ?? false) && ($input['concurrent_session'] ?? false);
             $busy = AgentRun::query()->forTenant($context->tenantId)
                 ->where('conversation_id', $conversation->id)
                 ->whereNull('input_json->research_parent_id')
                 ->whereNotIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL, AgentRun::STATUS_FAILED, AgentRun::STATUS_CANCELLED])
+                ->when($concurrent, fn ($query) => $query->where(fn ($query) => $query->whereNull('input_json->concurrent_session')
+                    ->orWhere('input_json->concurrent_session', false)))
                 ->exists();
             if ($busy) {
                 throw new AgentConversationBusy($context->locale);

@@ -109,4 +109,11 @@ class Conversation extends Model
         return $this->hasOne(AgentRun::class)->ofMany(['id' => 'max'],
             fn ($query) => $query->whereNull('input_json->research_parent_id'));
     }
+
+    public function pendingSessionRuns(): HasMany
+    {
+        return $this->hasMany(AgentRun::class)->where('input_json->concurrent_session', true)
+            ->whereNotIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL, AgentRun::STATUS_FAILED, AgentRun::STATUS_CANCELLED])
+            ->orderBy('id');
+    }
 }

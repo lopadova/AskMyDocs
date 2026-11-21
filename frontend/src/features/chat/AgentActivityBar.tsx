@@ -546,6 +546,12 @@ function activityStage(
         return { kind: 'documents', title: locale === 'it' ? 'Risultati verificati' : 'Verified findings',
             detail: locale === 'it' ? 'La ricerca continua sulle altre fonti.' : 'Research continues across the remaining sources.' };
     }
+    if (event?.type === 'research.queued' || event?.type === 'research.started' || event?.message_key === 'run.assessing') {
+        const title = event.type === 'research.queued' ? (italian ? 'Ricerca in coda' : 'Search queued')
+            : event.type === 'research.started' ? (italian ? 'Ricerca in corso' : 'Searching')
+                : (italian ? 'Verifico il contesto' : 'Checking context');
+        return { kind: 'planning', title, detail: event.message ?? '' };
+    }
     if (event?.type.startsWith('research.')) {
         const copy = researchTaskCopy(locale);
         const status = event.data.task_status;

@@ -17,7 +17,7 @@ final class AgentResultProjector
 {
     public function __construct(private readonly WidgetPiiMasker $masker) {}
 
-    public function project(AgentRun $run, AgentAnswer $answer): void
+    public function project(AgentRun $run, AgentAnswer $answer, bool $interim = false): void
     {
         if ($run->channel === 'widget') {
             $this->projectWidget($run, $answer);
@@ -38,46 +38,50 @@ final class AgentResultProjector
         }
 
         $fromMemory = ($answer->grounding['model'] ?? '') === 'verified_session_memory';
-        Message::query()->firstOrCreate(
-            ['agent_run_id' => $run->id],
-            [
-                'conversation_id' => $conversation->id,
-                'role' => 'assistant',
-                'content' => $answer->answer,
-                'confidence' => null,
-                'refusal_reason' => $answer->completeness === 'insufficient' ? 'insufficient_data' : null,
-                'metadata' => [
-                    'agent_run_id' => $run->run_id,
-                    'provider' => $fromMemory || in_array($answer->grounding['status'] ?? '', ['provenance', 'conversational', 'host_verified'], true) ? 'server' : 'agent',
-                    'model' => $fromMemory ? 'verified-session-memory' : match ($answer->grounding['status'] ?? '') {
-                        'provenance' => 'answer-provenance',
-                        'conversational', 'host_verified' => 'assistant-conversation',
-                        default => 'planner+synthesizer',
-                    },
-                    'citations' => $answer->citations,
-                    'tool_sources' => $answer->toolSources,
-                    'tool_calls_count' => $fromMemory || ($answer->grounding['status'] ?? '') === 'provenance' ? 0 : count($answer->toolSources),
-                    // "Livello di approfondimento" visibility: how many KB
-                    // searches and MCP/API calls this run actually attempted
-                    // over its WHOLE lifetime — not just the ones that ended
-                    // up cited (tool_sources/citations above are answer-only,
-                    // narrower). Surfaced as a chat-message badge.
-                    'search_stats' => $this->searchStats($run),
-                    'tool_calls' => array_map(static fn (array $source): array => [
-                        'id' => (string) ($source['execution_id'] ?? ''),
-                        'name' => (string) ($source['tool'] ?? ''),
-                        'status' => 'ok',
-                    ], $fromMemory || ($answer->grounding['status'] ?? '') === 'provenance' ? [] : $answer->toolSources),
-                    'completeness' => $answer->completeness,
-                    'limitations' => $answer->limitations,
-                    'locale' => $answer->locale,
-                    'grounding' => $answer->grounding,
-                    'agent_artifact' => $answer->artifact,
-                    'requires_selection' => $answer->requiresSelection,
-                ],
-                'created_at' => now(),
+        $attributes = [
+            'conversation_id' => $conversation->id,
+            'role' => 'assistant',
+            'content' => $answer->answer,
+            'confidence' => null,
+            'refusal_reason' => $answer->completeness === 'insufficient' ? 'insufficient_data' : null,
+            'metadata' => [
+                'agent_run_id' => $run->run_id,
+                ...$run->usesConcurrentSession() ? ['reply_to_user_message_id' => data_get($run->input_json, 'user_message_id')] : [],
+                ...$interim ? ['session_interim' => true] : [],
+                'provider' => $fromMemory || in_array($answer->grounding['status'] ?? '', ['provenance', 'conversational', 'host_verified'], true) ? 'server' : 'agent',
+                'model' => $fromMemory ? 'verified-session-memory' : match ($answer->grounding['status'] ?? '') {
+                    'provenance' => 'answer-provenance',
+                    'conversational', 'host_verified' => 'assistant-conversation',
+                    default => 'planner+synthesizer',
+                },
+                'citations' => $answer->citations,
+                'tool_sources' => $answer->toolSources,
+                'tool_calls_count' => $fromMemory || ($answer->grounding['status'] ?? '') === 'provenance' ? 0 : count($answer->toolSources),
+                // "Livello di approfondimento" visibility: how many KB
+                // searches and MCP/API calls this run actually attempted
+                // over its WHOLE lifetime — not just the ones that ended
+                // up cited (tool_sources/citations above are answer-only,
+                // narrower). Surfaced as a chat-message badge.
+                'search_stats' => $this->searchStats($run),
+                'tool_calls' => array_map(static fn (array $source): array => [
+                    'id' => (string) ($source['execution_id'] ?? ''),
+                    'name' => (string) ($source['tool'] ?? ''),
+                    'status' => 'ok',
+                ], $fromMemory || ($answer->grounding['status'] ?? '') === 'provenance' ? [] : $answer->toolSources),
+                'completeness' => $answer->completeness,
+                'limitations' => $answer->limitations,
+                'locale' => $answer->locale,
+                'grounding' => $answer->grounding,
+                'agent_artifact' => $answer->artifact,
+                'requires_selection' => $answer->requiresSelection,
             ],
-        );
+            'created_at' => now(),
+        ];
+        if ($interim) {
+            $conversation->messages()->create($attributes);
+        } else {
+            Message::query()->firstOrCreate(['agent_run_id' => $run->id], $attributes);
+        }
         $conversation->touch();
     }
 

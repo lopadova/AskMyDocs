@@ -32,7 +32,7 @@ final readonly class AgentTurnContextBuilder
             return ['original_question_context' => array_intersect_key(is_array($before) ? $before : [],
                 array_flip(['dialogue', 'known_identifiers', 'verified_relations', 'references', 'objective'])),
                 'reasoning' => $owner->project_key === $run->project_key && data_get($run->result_json, 'question_understanding.available') !== false
-                ? $memory->context($owner, $run->user, $filters, null, array_keys($tools)) : [],
+                ? ($run->usesConcurrentSession() ? $before : $memory->context($owner, $run->user, $filters, null, array_keys($tools))) : [],
                 'current_selection' => array_intersect_key((array) data_get($run->input_json, 'selection.record', []),
                     array_flip(['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode']))];
         }

@@ -169,6 +169,8 @@ export const IT_MESSAGES: Record<string, string> = {
     'Search continues in the background': 'La ricerca prosegue in background',
     'Search failed': 'Ricerca non riuscita',
     'Confirmation needed': 'Conferma richiesta',
+    'Verified so far': 'Verificato finora',
+    'Stop current activity': 'Interrompi l’attività corrente',
     'Unread reply received {minutes} minutes ago': 'Risposta da leggere ricevuta {minutes} minuti fa',
     ...operational,
     '{count}-day window': 'Ultimi {count} giorni',

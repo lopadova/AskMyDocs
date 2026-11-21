@@ -19,9 +19,9 @@ export interface UseAgentChatOptions {
 
 export interface UseAgentChatResult extends Omit<AgentChatState, 'unreadAt'> {
     sendMessage: (message: { text: string }, options?: AgentMessageOptions) => Promise<void>;
-    stop: () => void;
+    stop: (runId?: string) => void;
     regenerate: () => void;
-    continueRun: () => Promise<void>;
+    continueRun: (runId?: string) => Promise<void>;
     adoptExternalRun: (run: AgentTurnStarted) => Promise<void>;
     setMessages: (next: SetStateAction<Message[]>) => void;
 }
@@ -44,10 +44,14 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatResult {
     const sendMessage = useCallback((message: { text: string }, messageOptions?: AgentMessageOptions) =>
         session.sendMessage(message, options, messageOptions), [session, options]);
     const adoptExternalRun = useCallback((run: AgentTurnStarted) => session.adoptExternalRun(run, options), [session, options]);
-    const continueRun = useCallback(() => session.continueRun(options), [session, options]);
+    const continueRun = useCallback((runId?: string) => session.continueRun(options, runId), [session, options]);
     const regenerate = useCallback(() => {
-        const last = [...session.store.getState().messages].reverse().find((message) => message.role === 'user');
-        if (last) void sendMessage({ text: last.content }).catch(() => undefined);
+        const { messages, concurrentSession } = session.store.getState();
+        const newestFirst = [...messages].reverse();
+        const lastReply = concurrentSession ? newestFirst.find((message) => message.role === 'assistant' && !message.metadata?.session_interim) : null;
+        const replyTo = lastReply?.metadata?.reply_to_user_message_id;
+        const question = newestFirst.find((message) => message.role === 'user' && (replyTo === undefined || message.id === replyTo));
+        if (question) void sendMessage({ text: question.content }).catch(() => undefined);
     }, [session, sendMessage]);
 
     return { ...state, sendMessage, adoptExternalRun, continueRun, regenerate, stop: session.stop, setMessages: session.setMessages };

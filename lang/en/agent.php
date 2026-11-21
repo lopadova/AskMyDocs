@@ -5,12 +5,18 @@ declare(strict_types=1);
 return [
     'unknown' => 'The assistant is working.',
     'run' => [
+        'assessing' => 'I’m checking the information already available.',
         'started' => 'I am starting the search.',
         'completed' => 'The answer is ready.',
         'partial' => 'The available information is ready, but the search is incomplete.',
         'failed' => 'I could not complete the search.',
         'cancelled' => 'The search was cancelled.',
         'awaiting_confirmation' => 'More calls are needed to continue this search.',
+    ],
+    'research' => [
+        'queued_after_partial' => 'The search for the missing details is queued. You can keep chatting.',
+        'queued_without_answer' => 'I need more information to answer. The search is queued.',
+        'started' => 'I’m looking for the missing information.',
     ],
     'retrieval' => [
         'started' => 'Searching the document knowledge base.',

@@ -5,12 +5,18 @@ declare(strict_types=1);
 return [
     'unknown' => 'L’assistente sta lavorando.',
     'run' => [
+        'assessing' => 'Controllo le informazioni già disponibili.',
         'started' => 'Avvio la ricerca.',
         'completed' => 'La risposta è pronta.',
         'partial' => 'Le informazioni disponibili sono pronte, ma la ricerca non è completa.',
         'failed' => 'Non sono riuscito a completare la ricerca.',
         'cancelled' => 'La ricerca è stata annullata.',
         'awaiting_confirmation' => 'Servono altre chiamate per continuare questa ricerca.',
+    ],
+    'research' => [
+        'queued_after_partial' => 'La ricerca dei dettagli mancanti è in coda. Puoi continuare a scrivere.',
+        'queued_without_answer' => 'Mi servono altre informazioni per rispondere. La ricerca è in coda.',
+        'started' => 'Cerco le informazioni mancanti.',
     ],
     'retrieval' => [
         'started' => 'Cerco nella nuvola dei documenti.',

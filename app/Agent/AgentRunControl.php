@@ -5,11 +5,19 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Models\AgentRun;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 final readonly class AgentRunControl
 {
     public function __construct(private AgentEventPublisher $events) {}
+
+    public function executionLock(AgentRun $run): Lock
+    {
+        return Cache::lock('agent-run:'.$run->tenant_id.':'.$run->run_id,
+            max(120, (int) config('agent.job_timeout_seconds', 120)) + 60);
+    }
 
     public function cancel(AgentRun $run): AgentRun
     {
@@ -43,6 +51,10 @@ final readonly class AgentRunControl
         }
 
         $this->events->publish($updated, 'run.cancelled', 'run.cancelled', canCancel: false);
+        if ($updated->usesConcurrentSession()) {
+            // An executing collector releases the slot from its own finally block.
+            $this->executionLock($updated)->get(fn () => app(AgentSessionResearch::class)->startNext($updated));
+        }
 
         return $updated->refresh();
     }

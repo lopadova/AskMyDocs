@@ -56,6 +56,7 @@ export interface ConsumeAgentRunOptions {
     initialSequence?: number;
     reconnectDelayMs?: number;
     waitForUpdate?: (signal: AbortSignal) => Promise<void>;
+    skipResumedConfirmations?: boolean;
 }
 
 const STOP_EVENTS: Record<string, AgentRunStopReason> = {
@@ -97,7 +98,7 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
 
             let stopped: AgentRunStreamResult | null = null;
             if (response.headers.get('Content-Type')?.includes('application/json')) {
-                const page = await response.json() as { events: AgentRunEvent[]; has_more: boolean };
+                const page = await response.json() as { events: AgentRunEvent[]; has_more: boolean; status?: string };
                 throwIfAborted(controller.signal);
                 if (!Array.isArray(page.events) || page.events.length > 101) {
                     throw new AgentRunStreamError('Invalid agent event page.', 0, 'invalid_event');
@@ -107,6 +108,10 @@ export async function consumeAgentRun(options: ConsumeAgentRunOptions): Promise<
                     lastSequence = event.sequence;
                     options.onEvent(event);
                     const reason = STOP_EVENTS[event.type];
+                    if (reason === 'awaiting_confirmation' && options.skipResumedConfirmations && (
+                        (page.status && page.status !== 'awaiting_confirmation')
+                        || page.events.some((later) => later.sequence > event.sequence && later.type === 'budget.extended')
+                    )) continue;
                     if (reason) return { reason, event, lastSequence };
                 }
                 throwIfAborted(controller.signal);
