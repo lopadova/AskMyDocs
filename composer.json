@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "agents-full-duplex/laravel-realtime-agent": "^0.1",
+        "agents-full-duplex/laravel-realtime-agent": "^0.2",
         "laravel/ai": "^0.11",
         "laravel/framework": "^13.0",
         "laravel/mcp": "^0.9",
