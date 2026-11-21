@@ -71,6 +71,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         $context = $this->context($run);
         try {
             $context->assertMatches($run);
+            app(\App\Pact\Native\TaskAccess::class)->assertRun($run);
             app(\App\Pact\SessionContinuation::class)->authorizeChild($run);
         } catch (\DomainException) {
             $run->forceFill([
