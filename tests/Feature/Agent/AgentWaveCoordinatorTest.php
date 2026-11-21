@@ -152,7 +152,7 @@ final class AgentWaveCoordinatorTest extends TestCase
         $run = $this->makeRun();
         $run->update(['input_json' => [...$run->input_json, 'session_evidence' => true]]);
         $executor = Mockery::mock(AgentWaveExecutor::class);
-        $executor->shouldReceive('run')->once()->andReturn(['order' => new AgentToolActionResult(['order' => ['id' => 'ORDER-42']], 1)]);
+        $executor->shouldReceive('run')->once()->andReturn(['order' => new AgentToolActionResult(['order' => ['id' => 'ORDER-42', 'address' => 'Via dei Larici 18']], 1)]);
         $this->app->instance(AgentWaveExecutor::class, $executor);
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')->times(3)->andReturn(
@@ -182,8 +182,86 @@ final class AgentWaveCoordinatorTest extends TestCase
         $followUp->forceFill(['run_id' => Str::uuid()->toString(), 'status' => AgentRun::STATUS_QUEUED])->save();
         $session = app(AgentSessionEvidence::class);
         $this->assertSame('ORDER-42', data_get($session->load($followUp, $this->context($followUp)), 'api_tools.0.result.order.id'));
+        $followUp->update(['input_json' => [...$followUp->input_json, 'concurrent_session' => true, 'question' => 'Dammi anche l’indirizzo del cliente.'],
+            'result_json' => ['session_research' => ['state' => 'active']]]); // Reservation from before queue reassessment existed.
+        $followUpAi = Mockery::mock(AiManager::class);
+        $followUpAi->shouldReceive('chatWithHistory')->once()->andReturnUsing(function ($system, $messages, $options) {
+            $this->assertSame('submit_agent_answer', $options['tool_choice']['function']['name']);
+            $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            $tool = $input['evidence']['api_tools'][0];
+            $address = $tool['result']['order']['address'];
+            return new AiResponse('', 'fake', 'test', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
+                'completeness' => 'complete', 'claims' => [['text' => $address, 'quote' => $address, 'document_id' => null,
+                    'tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash']]],
+                'limitations' => [], 'requires_selection' => false, 'render_table' => false]]]);
+        });
+        $this->app->instance(AiManager::class, $followUpAi);
+        app(AgentRunHandler::class)->handle($followUp);
+        $this->assertSame('reassess', $followUp->fresh()->sessionStage());
+        app(AgentRunHandler::class)->handle($followUp->fresh());
+        $this->assertSame('Via dei Larici 18', $followUp->conversation->messages()->where('agent_run_id', $followUp->id)->sole()->content);
+        $this->assertSame(0, $followUp->toolExecutions()->count());
         $followUp->update(['input_json' => [...$followUp->input_json, 'live_sources' => ['api' => [], 'mcp' => []]]]);
         $this->assertSame([], $session->load($followUp, $this->context($followUp))['api_tools']);
+    }
+
+    public static function refinementDepths(): array
+    {
+        return ['depth exhausted' => [1, [1]], 'same evidence ends refinement' => [3, [1, 2]]];
+    }
+
+    #[DataProvider('refinementDepths')]
+    public function test_collected_answer_targets_its_gap_and_stops_on_depth_or_no_progress(int $limit, array $depths): void
+    {
+        Queue::fake();
+        config(['reasoning.selective_validation' => false, 'agent.grounding.enabled' => false]);
+        $run = $this->makeRun();
+        $this->route('get_orders');
+        $this->route('get_customer');
+        $run->update(['input_json' => [...$run->input_json, 'session_evidence' => true, 'concurrent_session' => true, 'depth' => $limit]]);
+        $order = ['order' => ['id' => 'ORDER-42', 'customer' => 'Aurora']];
+        $executor = Mockery::mock(AgentWaveExecutor::class);
+        $executor->shouldReceive('run')->times(count($depths))->andReturnUsing(
+            fn (array $tasks) => [array_key_first($tasks) => new AgentToolActionResult($order, 1)]
+        );
+        $this->app->instance(AgentWaveExecutor::class, $executor);
+        $gap = 'Manca l’indirizzo del cliente Aurora.';
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function ($system, $messages, $options) use ($gap) {
+            $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            if ($options['tool_choice']['function']['name'] === 'submit_agent_answer') {
+                return new AiResponse('', 'fake', 'test', toolCalls: [['name' => 'submit_agent_answer',
+                    'arguments' => ['completeness' => 'insufficient', 'claims' => [], 'limitations' => [$gap],
+                        'requires_selection' => false, 'render_table' => false]]]);
+            }
+            $history = $input['completed_actions'];
+            $feedback = data_get(json_decode($input['turn_context'], true), 'session_context_gap.limitations', []);
+            $action = match (true) {
+                $history === [] => $this->action('order', 'get_orders'),
+                count($history) === 1 && in_array($gap, $feedback, true) => $this->action('address', 'get_customer'),
+                default => null,
+            };
+            return $this->plan(['decision' => $action ? 'tools' : 'answer', 'actions' => $action ? [$action] : []]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+
+        $work = fn () => app(AgentRunHandler::class)->handle($run->fresh());
+        for ($i = 0; $i < 10 && ! $run->fresh()->isTerminal(); $i++) {
+            if ($run->fresh()->sessionDeliveryStage() === 'active.1') {
+                $reader = $run->replicate(['result_json', 'counters_json', 'started_at', 'completed_at']);
+                $reader->forceFill(['run_id' => Str::uuid()->toString(), 'status' => AgentRun::STATUS_COMPLETED])->save();
+                $this->assertSame('Aurora', data_get(app(AgentSessionEvidence::class)->load($reader, $this->context($reader)),
+                    'api_tools.0.result.order.customer'));
+                // A delayed timeout from the first collection cannot fail or repeat this round.
+                (new ExecuteAgentRunJob($run->id, $run->tenant_id, sessionStage: 'active'))->failed(null);
+                $this->assertFalse($run->fresh()->isTerminal());
+            }
+            $work();
+        }
+        $this->assertSame('partial', $run->fresh()->status);
+        $this->assertStringContainsString($gap, $run->conversation->messages()->where('agent_run_id', $run->id)->sole()->content);
+        $this->assertSame($depths, $run->toolExecutions()->orderBy('logical_index')->get()
+            ->map(fn ($execution) => $execution->result_meta_json['dependency_depth'])->all());
     }
 
     public function test_missing_profile_blocks_research_before_planning_or_dispatching_tools(): void

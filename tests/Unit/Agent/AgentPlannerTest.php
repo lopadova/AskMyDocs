@@ -26,6 +26,27 @@ use Tests\TestCase;
  */
 final class AgentPlannerTest extends TestCase
 {
+    public function test_missing_knowledge_query_is_corrected_before_dispatch(): void
+    {
+        $tool = new \App\Agent\Tools\AgentToolDefinition('search_knowledge_base', 'Knowledge base', 'Search documents',
+            'knowledge', ['type' => 'object'], true, true, 0, 0, 0);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system, $messages) use ($tool) {
+            $feedback = json_decode($messages[0]['content'], true)['validation_error'];
+            if ($feedback !== null) {
+                $this->assertStringContainsString('arguments.query', $feedback);
+            }
+            return new AiResponse('', 'fake', 'planner', toolCalls: [['name' => 'submit_agent_plan', 'arguments' => [
+                'decision' => 'tools', 'actions' => [['id' => 'lookup', 'tool' => $tool->name,
+                    'arguments' => $feedback === null ? [] : ['query' => 'punto di ritiro'], 'purpose' => 'Find the pickup point']],
+            ]]]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $plan = app(AgentPlanner::class)->decide('Dove ritiro il pacco?', $this->context(), [$tool->name => $tool],
+            app(AgentEvidenceFactory::class)->empty());
+        $this->assertSame('punto di ritiro', $plan->actions[0]->arguments['query']);
+    }
+
     public function test_repeated_wrong_namespace_does_not_discard_an_independent_valid_read(): void
     {
         $orders = new \App\Agent\Tools\AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',

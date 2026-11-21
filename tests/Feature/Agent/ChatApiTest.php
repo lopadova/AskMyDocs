@@ -60,6 +60,25 @@ final class ChatApiTest extends TestCase
         $this->api('GET', "/api/chat/runs/$id")->assertOk()->assertJsonPath('terminal', true);
     }
 
+    public function test_chat_api_waits_for_separate_session_and_research_workers(): void
+    {
+        config(['agent.concurrent_session' => true, 'agent.verify_session_workers' => true, 'agent.waves.enabled' => true,
+            'queue.default' => 'database', 'agent.session_queue' => 'chat-qa', 'agent.queue' => 'research-qa']);
+        $workers = new \App\Agent\AgentSessionWorkers;
+        $workers->observe(new \Illuminate\Queue\Events\Looping('database', 'chat-qa,research-qa'));
+        $this->assertFalse($workers->available());
+        $workers->observe(new \Illuminate\Queue\Events\Looping('database', 'chat-qa'));
+        $this->assertFalse($workers->available());
+        (new \App\Agent\AgentSessionWorkers)->observe(new \Illuminate\Queue\Events\Looping('database', 'research-qa,default'));
+
+        $conversation = $this->api('POST', '/api/chat/conversations', ['project_key' => 'orders'])->assertCreated()->json('id');
+        foreach (['Order details', 'The customer address too'] as $question) {
+            $this->api('POST', "/api/chat/conversations/$conversation/messages", ['content' => $question])
+                ->assertAccepted()->assertJsonPath('concurrent_session', true);
+        }
+        Queue::assertPushedOn('chat-qa', ExecuteAgentRunJob::class);
+    }
+
     public function test_headless_routes_have_unique_names_and_a_working_preflight(): void
     {
         $names = collect(app('router')->getRoutes())->filter(fn ($route) => in_array(\App\Http\Middleware\ChatApiTokenAccess::class, $route->middleware(), true))

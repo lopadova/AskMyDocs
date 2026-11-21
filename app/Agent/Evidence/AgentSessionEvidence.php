@@ -21,7 +21,8 @@ final readonly class AgentSessionEvidence
             ->where('project_key', $run->project_key)->where('user_id', $run->user_id)
             ->where('id', '<', $run->id)->whereNull('input_json->research_parent_id')
             ->where(fn ($query) => $query->whereIn('status', [AgentRun::STATUS_COMPLETED, AgentRun::STATUS_PARTIAL])
-                ->orWhere('result_json->session_research->state', 'ready'))
+                ->orWhere('result_json->session_research->state', 'ready')
+                ->orWhereNotNull('result_json->session_research->published_evidence'))
             ->latest('id')->limit((int) config('agent.session_evidence.previous_turns', 12))->cursor();
         $seen = [];
 
@@ -30,7 +31,8 @@ final readonly class AgentSessionEvidence
                 break;
             }
             $batch = ['documents' => [], 'api_tools' => []];
-            foreach (data_get($previous->result_json, 'evidence.documents', []) as $document) {
+            $snapshot = data_get($previous->result_json, 'session_research.published_evidence') ?? $previous->result_json['evidence'] ?? [];
+            foreach ($snapshot['documents'] ?? [] as $document) {
                 foreach ($document['evidence'] ?? [] as $chunk) {
                     $key = 'document:'.($document['document_id'] ?? '').':'.($chunk['evidence_hash'] ?? '');
                     if (isset($seen[$key])) {
@@ -43,7 +45,7 @@ final readonly class AgentSessionEvidence
                     ], array_flip(['session_memory_observation_id', 'research_flow_ids']));
                 }
             }
-            foreach (data_get($previous->result_json, 'evidence.api_tools', []) as $tool) {
+            foreach ($snapshot['api_tools'] ?? [] as $tool) {
                 $key = 'tool:'.($tool['execution_id'] ?? '');
                 if (isset($seen[$key])) {
                     continue;

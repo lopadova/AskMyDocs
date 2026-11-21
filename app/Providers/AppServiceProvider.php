@@ -278,6 +278,10 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->app->singleton(\App\Agent\AgentSessionWorkers::class);
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Queue\Events\Looping::class,
+            fn ($event) => app(\App\Agent\AgentSessionWorkers::class)->observe($event));
+
         // Decorate the package's SSRF-safe transport per request so MCP OAuth
         // onboarding failures can report every attempted URL/status without
         // ever capturing credential headers or request payloads.

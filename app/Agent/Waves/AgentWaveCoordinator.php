@@ -164,6 +164,7 @@ final class AgentWaveCoordinator
             $ready = $deferred = [];
             $confirmation = null;
             $depthLimited = false;
+            $depthFloor = (int) data_get($run->result_json, 'session_research.depth_floor', 0);
             $alreadyObserved = 0;
             $finished = array_column($completed, null, 'id');
             foreach ($plan->actions as $action) {
@@ -174,7 +175,7 @@ final class AgentWaveCoordinator
                     continue;
                 }
                 $tool = $tools[$action->tool];
-                $depth = 1 + max([0, ...array_map(fn (string $parent): int => $depths[$parent] ?? 0, $action->dependsOn)]);
+                $depth = 1 + max([$depthFloor, ...array_map(fn (string $parent): int => $depths[$parent] ?? 0, $action->dependsOn)]);
                 if ($sessionEvidence && $depth > $budget->depthLevel()) {
                     $depthLimited = true;
                     $this->skipped($run, $action, $tool, 'dependency_depth_limit', $completed);

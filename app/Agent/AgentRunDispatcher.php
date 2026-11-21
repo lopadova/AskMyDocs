@@ -67,7 +67,7 @@ final class AgentRunDispatcher
         try {
             // Force PendingDispatch destruction inside this try, so dispatch errors
             // are observed without changing Laravel's transport/after-commit policy.
-            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span, $stage);
+            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span, $run->sessionDeliveryStage());
             if ($sessionQueue !== null) {
                 $pending->onQueue($sessionQueue);
             }

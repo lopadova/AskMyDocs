@@ -29,7 +29,8 @@ return [
     'finalization' => ['safety_seconds' => 5, 'provider_reserve_seconds' => 10, 'repair_min_seconds' => 45, 'presentation_min_seconds' => 45],
     'queue' => env('AGENT_QUEUE', 'agent'),
     'session_queue' => env('AGENT_SESSION_QUEUE', 'agent-session'),
-    'concurrent_session' => (bool) env('AGENT_CONCURRENT_SESSION', in_array(env('APP_ENV'), ['local', 'testing'], true)),
+    'concurrent_session' => (bool) env('AGENT_CONCURRENT_SESSION', true),
+    'verify_session_workers' => env('APP_ENV') !== 'testing',
     // Must remain below the queue connection's retry_after. See the reasoning runbook.
     'job_timeout_seconds' => (int) env('AGENT_JOB_TIMEOUT', 120),
     'planner' => [
