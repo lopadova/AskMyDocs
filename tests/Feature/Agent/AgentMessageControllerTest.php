@@ -277,7 +277,7 @@ final class AgentMessageControllerTest extends TestCase
                 'action' => $index === 0 ? 'research' : 'refine', 'transition' => $index === 0 ? 'new' : 'continue',
                 'references_previous_turn' => $index !== 0, 'requires_research' => $index === 0 || ! $contextOnly,
                 'requires_composition' => $index !== 0 && $composition,
-                'follow_up_target' => $index === 0 || $probe || ! $contextOnly ? 'sources' : ($formatOnly ? 'previous_reply' : 'collected_only')]]]);
+                'follow_up_target' => $index === 0 || $formatOnly ? 'previous_reply' : ($probe || ! $contextOnly ? 'sources' : 'collected_only')]]]);
             if ($searchMissing && $index === 1) {
                 config(['queue.default' => 'redis']);
                 app(AgentRunDeadline::class)->within($run, now(), 120, fn () => app(AgentRunHandler::class)->handle($run));
@@ -379,7 +379,8 @@ final class AgentMessageControllerTest extends TestCase
             Queue::assertPushedOn('agent-session', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $run->id);
             $run->update(['result_json' => ['question_understanding' => ['available' => true, 'language' => 'it',
                 'intent' => $questions[$index], 'action' => 'research', 'requires_research' => true,
-                'follow_up_target' => 'sources']]]);
+                // The saved classification can wrongly point to an earlier reply even on the first turn.
+                'follow_up_target' => $index === 0 ? 'previous_reply' : 'sources']]]);
 
             return $run;
         };

@@ -144,7 +144,7 @@ final readonly class AgentLoop
             if ($understanding?->asksForProvenance()) {
                 return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
             }
-            if ($understanding !== null && $understanding->followUpTarget !== 'sources') {
+            if ($understanding !== null && $understanding->effectiveFollowUpTarget() !== 'sources') {
                 return $this->outcome('answer', $evidence, $completed, 'context_only');
             }
             if ($run->usesConcurrentSession()) {
