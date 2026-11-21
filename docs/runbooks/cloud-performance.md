@@ -169,6 +169,15 @@ che le ascoltano prima di cambiare una destinazione. Creare pool/queue e regolar
 min/max sono azioni Cloud future, con quota e costo verificati. Non cambiare
 AGENT_QUEUE senza predisporre il consumatore e gestire i messaggi già in coda.
 
+Con `AGENT_CONCURRENT_SESSION=true`, predisporre un pool dedicato a
+`AGENT_SESSION_QUEUE` (predefinita `agent-session`) prima del rilascio.
+Questo pool valuta le nuove domande e scrive le risposte. Il pool di
+`AGENT_QUEUE` continua a raccogliere le fonti. Entrambi devono poter avanzare
+in parallelo. Il flusso si attiva per impostazione predefinita negli ambienti
+`local` e `testing`. Per disattivare il flusso
+quando è già in uso, lasciare attivo il worker di sessione fino a esaurimento
+dei turni già avviati.
+
 Coordinare durata dei figli, budget complessivo del job e timeout dei provider con
 margine per cleanup/finalizzazione. Su Redis/database il lease supera il timeout
 del job; su Cloud la visibilità è gestita ed estesa dal servizio: `retry_after=null`

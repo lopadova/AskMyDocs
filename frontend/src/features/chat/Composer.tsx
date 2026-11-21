@@ -82,6 +82,7 @@ export interface ComposerProps {
      * 'streaming'`). Disables the textarea + flips Send → Stop.
      */
     isStreaming: boolean;
+    allowConcurrentTurns?: boolean;
     researchBlocked?: boolean;
     realtime?: Pick<UseRealtimeAgentResult, 'status' | 'error' | 'active' | 'start' | 'stop'> & {
         availability?: RealtimeAgentFeatureStatus;
@@ -120,6 +121,7 @@ export function Composer({
     onSend,
     onStop,
     isStreaming,
+    allowConcurrentTurns = false,
     researchBlocked = false,
     realtime,
     error,
@@ -162,7 +164,7 @@ export function Composer({
     // "#42". Survives across turns inside the same composer mount.
     const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
     const realtimeVoiceActive = realtime?.active === true && realtime.status !== 'paused';
-    const composerDisabled = researchBlocked || isStreaming || realtimeVoiceActive;
+    const composerDisabled = researchBlocked || (isStreaming && !allowConcurrentTurns) || realtimeVoiceActive;
 
     const send = async () => {
         // Re-entrancy + concurrency guard. `isStreaming` catches the
@@ -447,31 +449,19 @@ export function Composer({
                         testId={serverError ? 'chat-composer-error' : 'message-error'}
                         autoOpen={serverError === null && visibleLocalError !== null}
                     />
-                    {/*
-                      * v4.0/W3.2 — Send / Stop morph: while a stream
-                      * is in flight (`isStreaming`), render
-                      * `chat-composer-stop` instead of
-                      * `chat-composer-send` so the user can abort the
-                      * stream without remembering a keyboard shortcut.
-                      * The two buttons share the same primary slot so
-                      * the layout stays stable; the testid changes so
-                      * Playwright scenarios can target whichever is
-                      * relevant. The send button stays as a `submit`
-                      * button so Enter still works pre-stream;
-                      * `chat-composer-stop` is `type="button"` so it
-                      * doesn't accidentally fire form submit.
-                    */}
-                    {isStreaming ? (
+                    {/* Concurrent sessions keep Send available while an activity can be stopped. */}
+                    {isStreaming && (
                         <Button
                             variant="secondary"
                             size="sm"
                             data-testid="chat-composer-stop"
                             onClick={() => onStop?.()}
-                            aria-label={translateInterface("Stop streaming")}
+                            aria-label={translateInterface(allowConcurrentTurns ? "Stop current activity" : "Stop streaming")}
                             leadingIcon={<Icon.Close size={12} />}
                         >
                             {translateInterface("Stop")}</Button>
-                    ) : (
+                    )}
+                    {(!isStreaming || allowConcurrentTurns) && (
                         <Button
                             type="submit"
                             variant="primary"

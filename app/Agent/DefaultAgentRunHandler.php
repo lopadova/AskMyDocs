@@ -32,8 +32,7 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         $lockSpan = $diagnostics->begin($run, 'run.lock');
         // A redelivered parent must not finalize a snapshot while another worker
         // is still collecting its branches. Child locks alone cannot prevent it.
-        $lock = \Illuminate\Support\Facades\Cache::lock('agent-run:'.$run->tenant_id.':'.$run->run_id,
-            max(120, (int) config('agent.job_timeout_seconds', 120)) + 60);
+        $lock = app(AgentRunControl::class)->executionLock($run);
         if (! $lock->get()) {
             $diagnostics->end($run, $lockSpan, metadata: ['lock_acquired' => false]);
             return;
@@ -48,8 +47,15 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             // lock. Its queued continuation may already have been acknowledged
             // by a competing worker; re-drive after releasing our own lock.
             $current = $run->fresh();
-            if ($current?->status === AgentRun::STATUS_QUEUED
-                && (data_get($current->result_json, 'api_tool_resumptions', []) !== [] || data_get($current->result_json, 'research_continuation') === true)) {
+            $continuation = $current?->status === AgentRun::STATUS_QUEUED
+                && (data_get($current->result_json, 'api_tool_resumptions', []) !== [] || data_get($current->result_json, 'research_continuation') === true);
+            if ($current?->usesConcurrentSession()) {
+                $research = app(AgentSessionResearch::class);
+                $dispatchFailed = $continuation && ! $research->enqueue($current);
+                if ($dispatchFailed || $current->isTerminal() || in_array($current->sessionStage(), ['waiting', 'ready'], true)) {
+                    $research->startNext($current);
+                }
+            } elseif ($continuation) {
                 app(AgentRunDispatcher::class)->enqueue($current);
             }
         }
@@ -58,6 +64,11 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
     private function handleOwned(AgentRun $run): void
     {
         $run->refresh();
+        $researchPhase = $run->sessionStage();
+        $delivery = \Illuminate\Support\Facades\Context::getHidden('agent.session_stage');
+        if ($researchPhase === 'waiting' || ($delivery !== null && $delivery !== $researchPhase)) {
+            return;
+        }
         if ($run->isTerminal() || in_array($run->status, [
             AgentRun::STATUS_AWAITING_CONFIRMATION,
             AgentRun::STATUS_AWAITING_MCP_CONFIRMATION,
@@ -89,30 +100,55 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             return;
         }
         $context->activate();
-        $firstStart = ! $run->events()->where('type', 'run.started')->exists();
-        $run->forceFill([
-            'status' => AgentRun::STATUS_RUNNING,
-            'started_at' => $run->started_at ?? now(),
-            'error_code' => null,
-            ...isset($run->result_json['research_continuation'])
-                ? ['result_json' => array_diff_key($run->result_json, ['research_continuation' => true])] : [],
-        ])->save();
-        if ($firstStart) {
-            $this->events->publish($run, 'run.started', 'run.started');
+        $started = \Illuminate\Support\Facades\DB::transaction(function () use ($run): bool {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
+            if ($locked->isTerminal()) {
+                return false;
+            }
+            $locked->forceFill([
+                'status' => AgentRun::STATUS_RUNNING,
+                'started_at' => $locked->started_at ?? now(),
+                'error_code' => null,
+                ...isset($locked->result_json['research_continuation'])
+                    ? ['result_json' => array_diff_key($locked->result_json, ['research_continuation' => true])] : [],
+            ])->save();
+            if (! $locked->events()->where('type', 'run.started')->exists()) {
+                $this->events->publish($locked, 'run.started', $locked->usesConcurrentSession() ? 'run.assessing' : 'run.started');
+            }
+
+            return true;
+        }, 3);
+        if (! $started) {
+            return;
         }
+        $run->refresh();
 
         $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
         $executionSpan = $diagnostics->begin($run, 'run.execute', ['runtime' => $diagnostics->runtime()]);
         try {
             while (true) {
                 $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
-                $outcome = $this->loop->run($run, $context, $turnContext);
+                $outcome = match ($researchPhase) {
+                    'active' => app(AgentSessionResearch::class)->collect($run, $context, $turnContext),
+                    'ready' => app(AgentSessionResearch::class)->result($run),
+                    default => $this->loop->run($run, $context, $turnContext),
+                };
                 if ($outcome->decision === 'continue_research') {
                     $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'research_continuation']);
                     return;
                 }
                 if ($outcome->requiresInteraction()) {
                     $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
+                    return;
+                }
+                if ($researchPhase === 'active' || $outcome->decision === 'request_research') {
+                    $research = app(AgentSessionResearch::class);
+                    if ($researchPhase === 'active') {
+                        $research->complete($run, $outcome);
+                    } else {
+                        $research->request($run, $outcome);
+                    }
+                    $diagnostics->end($run, $executionSpan);
                     return;
                 }
 
@@ -144,6 +180,11 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     durableRunId: $run->run_id,
                 ));
                 if ($contextAttempt && $answer->completeness !== 'complete') {
+                    if ($run->usesConcurrentSession()) {
+                        app(AgentSessionResearch::class)->request($run, $outcome, $answer);
+                        $diagnostics->end($run, $executionSpan);
+                        return;
+                    }
                     if ($this->continueAfterContextGap($run, $context, $outcome, $answer)) {
                         $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'context_gap_continuation']);
                         return;

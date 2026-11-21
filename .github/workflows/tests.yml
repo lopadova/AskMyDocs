@@ -746,7 +746,7 @@ jobs:
           tail -100 storage/logs/artisan-serve-outbound.log || true
           exit 1
 
-      - name: Start agent and KB queue worker (testing)
+      - name: Start session, research and KB queue workers (testing)
         env:
           APP_ENV: testing
           AI_PROVIDER: fake
@@ -759,27 +759,30 @@ jobs:
           API_CONNECTOR_HTTPS_ONLY: 'false'
         run: |
           mkdir -p storage/logs
-          setsid -f php artisan queue:work database \
-              --queue=agent,kb-ingest,default --sleep=1 --tries=3 --no-interaction \
-              > storage/logs/queue-worker.log 2>&1
-          for i in $(seq 1 10); do
-            wpid=$(pgrep -f 'artisan queue:work' | head -1)
-            if [ -n "$wpid" ]; then
-              wpgid=$(ps -o pgid= -p "$wpid" 2>/dev/null | tr -d ' ')
-              if [ -n "$wpgid" ]; then
-                echo "$wpgid" > /tmp/queue-worker.pgid
-                echo "Agent and KB queue worker up (PID=$wpid, PGID=$wpgid)"
-              else
-                echo "$wpid" > /tmp/queue-worker.pid
-                echo "Agent and KB queue worker up (PID=$wpid; no PGID)"
+          start_worker() {
+            local queues="$1" name="$2" wpid wpgid
+            setsid -f php artisan queue:work database \
+                --queue="$queues" --sleep=1 --tries=3 --no-interaction \
+                > "storage/logs/$name.log" 2>&1
+            for i in $(seq 1 10); do
+              wpid=$(pgrep -f "artisan queue:work database --queue=$queues " | head -1 || true)
+              if [ -n "$wpid" ]; then
+                wpgid=$(ps -o pgid= -p "$wpid" 2>/dev/null | tr -d ' ')
+                if [ -n "$wpgid" ]; then
+                  echo "$wpgid" > "/tmp/$name.pgid"
+                else
+                  echo "$wpid" > "/tmp/$name.pid"
+                fi
+                return 0
               fi
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Queue worker did not start in time"
-          tail -100 storage/logs/queue-worker.log || true
-          exit 1
+              sleep 1
+            done
+            echo "Queue worker $name did not start in time"
+            tail -100 "storage/logs/$name.log" || true
+            return 1
+          }
+          start_worker agent,kb-ingest,default queue-worker
+          start_worker agent-session session-worker
 
       - name: Run Playwright (chromium)
         env:
@@ -952,16 +955,12 @@ jobs:
               kill -KILL -- "$target" 2>/dev/null || true
             fi
           }
-          if [ -f /tmp/queue-worker.pgid ]; then
-            wpgid=$(cat /tmp/queue-worker.pgid)
-            echo "Stopping queue worker process group (pgid=$wpgid)..."
-            term_then_kill "-$wpgid" "queue-worker PG"
-            rm -f /tmp/queue-worker.pgid
-          elif [ -f /tmp/queue-worker.pid ]; then
-            wpid=$(cat /tmp/queue-worker.pid)
-            echo "Stopping queue worker (pid=$wpid)..."
-            term_then_kill "$wpid" "queue-worker PID"
-            rm -f /tmp/queue-worker.pid
-          else
-            echo "(no /tmp/queue-worker.pgid or .pid — worker step never ran)"
-          fi
+          for name in queue-worker session-worker; do
+            if [ -f "/tmp/$name.pgid" ]; then
+              term_then_kill "-$(cat "/tmp/$name.pgid")"
+              rm -f "/tmp/$name.pgid"
+            elif [ -f "/tmp/$name.pid" ]; then
+              term_then_kill "$(cat "/tmp/$name.pid")"
+              rm -f "/tmp/$name.pid"
+            fi
+          done

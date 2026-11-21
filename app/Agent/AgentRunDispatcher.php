@@ -56,15 +56,21 @@ final class AgentRunDispatcher
     {
         $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
         $runtime = $diagnostics->runtime();
+        $stage = $run->sessionStage();
+        $sessionQueue = $stage !== null && $stage !== 'active'
+            ? (string) config('agent.session_queue', 'agent-session') : null;
         $span = $diagnostics->begin($run, 'queue.wait', [
             'wait_for' => 'worker_receipt', 'queue_connection' => $runtime['queue_connection'] ?? null,
-            'queue_driver' => $runtime['queue_driver'] ?? null, 'queue_name' => $runtime['queue_name'] ?? null,
+            'queue_driver' => $runtime['queue_driver'] ?? null, 'queue_name' => $sessionQueue ?? ($runtime['queue_name'] ?? null),
             'runtime' => $runtime,
         ]);
         try {
             // Force PendingDispatch destruction inside this try, so dispatch errors
             // are observed without changing Laravel's transport/after-commit policy.
-            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span);
+            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span, $stage);
+            if ($sessionQueue !== null) {
+                $pending->onQueue($sessionQueue);
+            }
             if (is_string(data_get($run->input_json, 'pact_task_id'))) {
                 $pending->onConnection((string) config('pact-agent.connection', 'pact_agents'))->onQueue((string) config('pact-agent.queue', 'pact-agents'));
             }

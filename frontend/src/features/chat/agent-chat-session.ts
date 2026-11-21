@@ -24,6 +24,18 @@ interface TurnOptions {
     onError?: (error: Error) => void;
 }
 
+type SessionRun = AgentRunReference & { confirmation: AgentConfirmation | null };
+
+interface SessionRunWatch {
+    run: SessionRun;
+    sequence: number;
+    controller?: AbortController;
+    onFinish?: () => void;
+    onError?: (error: Error) => void;
+}
+
+const terminalStatuses = ['completed', 'partial', 'failed', 'cancelled'];
+
 export interface AgentChatState {
     messages: Message[];
     status: UseChatHelpers<UIMessage>['status'];
@@ -32,13 +44,15 @@ export interface AgentChatState {
     activeRun: AgentRunReference | null;
     confirmation: AgentConfirmation | null;
     unreadAt: number | null;
+    concurrentSession: boolean;
+    sessionRuns: SessionRun[];
 }
 
 /** A conversation owns its request. React views only subscribe and detach. */
 export class AgentChatSession {
     readonly store = createStore<AgentChatState>(() => ({
         messages: [], status: 'ready', error: null, events: [],
-        activeRun: null, confirmation: null, unreadAt: null,
+        activeRun: null, confirmation: null, unreadAt: null, concurrentSession: false, sessionRuns: [],
     }));
     private controller: AbortController | null = null;
     private generation = 0;
@@ -52,6 +66,8 @@ export class AgentChatSession {
     private requestedReadThrough = 0;
     private acknowledging = false;
     private recoveredRunId: string | null = null;
+    private readonly sessionWatches = new Map<string, SessionRunWatch>();
+    private readonly settledSessionRuns = new Set<string>();
 
     constructor(readonly conversationId: number | null, private readonly tenantId: string | null) {}
 
@@ -79,7 +95,8 @@ export class AgentChatSession {
         const reply = [...this.store.getState().messages].reverse().find((message) => message.role === 'assistant');
         if (reply) this.latestReplyId = Math.max(this.latestReplyId, reply.id);
         if (this.viewers > 0) {
-            this.requestedReadThrough = Math.max(this.requestedReadThrough, this.latestReplyId);
+            const displayedId = this.store.getState().concurrentSession ? reply?.id ?? 0 : this.latestReplyId;
+            this.requestedReadThrough = Math.max(this.requestedReadThrough, displayedId);
             this.store.setState({ unreadAt: null });
         } else if (this.latestReplyId > 0 && this.latestReplyId <= Math.max(this.readThrough, this.requestedReadThrough)) {
             this.store.setState({ unreadAt: null });
@@ -122,6 +139,16 @@ export class AgentChatSession {
         }
         if (this.viewers > 0) this.readDisplayedReply();
         else void this.acknowledgeRead();
+        if (activity.runs || activity.run?.concurrent_session) {
+            this.store.setState({ concurrentSession: true });
+            for (const run of activity.runs ?? (activity.run ? [activity.run] : [])) {
+                if (!terminalStatuses.includes(run.status)) this.trackSessionRun(run, { onFinish });
+            }
+            this.syncSessionRuns();
+            const last = [...this.store.getState().messages].reverse().find((message) => message.role === 'assistant')?.id ?? 0;
+            if (this.viewers > 0 && this.latestReplyId > last) void this.refreshSessionHistory(onFinish);
+            return;
+        }
         const waitingForConfirmation = this.store.getState().confirmation !== null && this.store.getState().status === 'ready';
         if ((this.inFlight && !waitingForConfirmation) || this.refreshing) return;
         const run = activity.run;
@@ -201,17 +228,35 @@ export class AgentChatSession {
     }
 
     sendMessage = async ({ text }: { text: string }, options: TurnOptions, messageOptions?: AgentMessageOptions): Promise<void> => {
+        const args = [this.conversationId!, text,
+            isFilterStateEmpty(options.filters) ? undefined : options.filters,
+            messageOptions?.mcpAppId, messageOptions?.selection, options.liveSources, options.depth] as const;
+        const post = () => this.tenantId === null
+            ? chatApi.startAgentTurn(...args)
+            : chatApi.startAgentTurn(...args, this.tenantId);
+        if (this.store.getState().concurrentSession && !this.inFlight) {
+            this.store.setState({ error: null });
+            const run = await post();
+            if (this.disposed) return;
+            if (run.concurrent_session) {
+                this.acceptSessionTurn(run, options);
+            } else {
+                this.store.setState({ concurrentSession: false });
+                await this.adoptExternalRun(run, options);
+            }
+            return;
+        }
         const { controller, generation } = this.begin();
         try {
-            const args = [this.conversationId!, text,
-                isFilterStateEmpty(options.filters) ? undefined : options.filters,
-                messageOptions?.mcpAppId, messageOptions?.selection, options.liveSources, options.depth] as const;
-            const run = await (this.tenantId === null
-                ? chatApi.startAgentTurn(...args)
-                : chatApi.startAgentTurn(...args, this.tenantId));
+            const run = await post();
             if (generation !== this.generation || controller.signal.aborted) {
                 // Stop can precede the POST response containing the run id.
                 if (!this.disposed) void this.cancel(run);
+                return;
+            }
+            if (run.concurrent_session) {
+                this.inFlight = false;
+                this.acceptSessionTurn(run, options);
                 return;
             }
             this.adopt(run);
@@ -228,7 +273,7 @@ export class AgentChatSession {
 
     adoptExternalRun = async (run: AgentTurnStarted, options: TurnOptions): Promise<void> => {
         if (this.store.getState().activeRun?.run_id === run.run_id && this.inFlight) return;
-        if (this.inFlight) throw new Error('A request is already in progress.');
+        if (this.inFlight || this.sessionWatches.size > 0) throw new Error('A request is already in progress.');
         const { controller, generation } = this.begin();
         this.adopt(run);
         try {
@@ -238,6 +283,94 @@ export class AgentChatSession {
             throw reason;
         }
     };
+
+    private acceptSessionTurn(run: AgentTurnStarted, options: TurnOptions): void {
+        this.store.setState((state) => ({
+            concurrentSession: true,
+            messages: state.messages.some((message) => message.id === run.user_message.id)
+                ? state.messages : [...state.messages, run.user_message].sort((a, b) => a.id - b.id),
+        }));
+        this.trackSessionRun({ ...run, confirmation: null }, options);
+        this.syncSessionRuns();
+    }
+
+    private trackSessionRun(run: SessionRun, callbacks: Pick<TurnOptions, 'onFinish' | 'onError'>): void {
+        if (this.settledSessionRuns.has(run.run_id)) return;
+        const watch = this.sessionWatches.get(run.run_id) ?? { run, sequence: 0, ...callbacks };
+        if (!watch.controller && (watch.run.confirmation || run.confirmation)) watch.run = run;
+        this.sessionWatches.set(run.run_id, watch);
+        this.watchSessionRun(watch);
+    }
+
+    private syncSessionRuns(): void {
+        const sessionRuns = [...this.sessionWatches.values()].map(({ run }) => run);
+        const activeRun = sessionRuns.find((run) => !run.confirmation) ?? sessionRuns[0] ?? null;
+        this.store.setState({
+            sessionRuns, activeRun, confirmation: activeRun?.confirmation ?? null,
+            status: activeRun && !activeRun.confirmation ? 'streaming' : 'ready',
+        });
+    }
+
+    private watchSessionRun(watch: SessionRunWatch): void {
+        if (watch.controller || this.disposed || this.viewers === 0 || document.visibilityState === 'hidden') return;
+        const controller = new AbortController();
+        watch.controller = controller;
+        void consumeAgentRun({
+            initialSequence: watch.sequence,
+            signal: controller.signal,
+            open: (after, signal) => this.fetchEvents(watch.run.events_url, after, signal),
+            waitForUpdate: (signal) => waitForAgentUpdate(watch.run.run_id, signal),
+            skipResumedConfirmations: true,
+            onEvent: (event) => {
+                watch.sequence = event.sequence;
+                this.store.setState(({ events }) => {
+                    const others = events.filter((item) => item.run_id !== event.run_id && this.sessionWatches.has(item.run_id));
+                    const turnEvents = events.filter((item) => item.run_id === event.run_id).slice(-79);
+                    return { events: [...others, ...turnEvents, event] };
+                });
+                if (event.type === 'research.queued' && event.data.interim_reply === true) void this.refreshSessionHistory();
+            },
+        }).then((result) => {
+            if (controller.signal.aborted) return;
+            if (result.reason === 'awaiting_confirmation') {
+                watch.run = { ...watch.run, status: 'awaiting_confirmation', confirmation: watch.run.confirmation ?? confirmationFrom(result.event) };
+                this.syncSessionRuns();
+                return;
+            }
+            const runId = watch.run.run_id;
+            this.settledSessionRuns.add(runId);
+            this.sessionWatches.delete(runId);
+            this.syncSessionRuns();
+            if (result.reason === 'failed') {
+                const error = new Error(result.event.message ?? 'The agent could not complete the search.');
+                this.store.setState({ error });
+                watch.onError?.(error);
+            }
+            void this.refreshSessionHistory(watch.onFinish);
+        }).catch(() => {
+            // The durable run is recovered by the next activity snapshot.
+        }).finally(() => {
+            if (watch.controller === controller) delete watch.controller;
+        });
+    }
+
+    private async refreshSessionHistory(onFinish?: () => void): Promise<void> {
+        if (this.disposed || this.conversationId === null || this.viewers === 0) return;
+        try {
+            const messages = await (this.tenantId === null
+                ? chatApi.listMessages(this.conversationId)
+                : chatApi.listMessages(this.conversationId, this.tenantId));
+            if (this.disposed) return;
+            // A concurrent POST can materialize a newer question while this
+            // history request is returning an earlier reply.
+            this.setMessages((current) => [...new Map([...current, ...messages].map((message) => [message.id, message])).values()]
+                .sort((a, b) => a.id - b.id));
+            this.readDisplayedReply();
+            onFinish?.();
+        } catch {
+            // A later activity snapshot retries the transcript request.
+        }
+    }
 
     private adopt(run: AgentTurnStarted): void {
         this.recoveredRunId = run.run_id;
@@ -281,12 +414,7 @@ export class AgentChatSession {
     private async settle(result: AgentRunStreamResult, generation: number, options: TurnOptions): Promise<void> {
         if (generation !== this.generation) return;
         if (result.reason === 'awaiting_confirmation') {
-            const raw = result.event.data.extension ?? result.event.data.requested_extension;
-            const extension = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {};
-            this.store.setState({ status: 'ready', confirmation: {
-                physicalExtension: Math.max(1, Number(extension.physical_extension ?? extension.physical ?? 25)),
-                logicalExtension: Math.max(0, Number(extension.logical_extension ?? extension.logical ?? 0)),
-            } });
+            this.store.setState({ status: 'ready', confirmation: confirmationFrom(result.event) });
             return;
         }
         if (result.reason === 'failed') throw new Error(result.event.message ?? 'The agent could not complete the search.');
@@ -322,8 +450,14 @@ export class AgentChatSession {
         options.onError?.(error);
     }
 
-    stop = (): void => {
+    stop = (runId?: string): void => {
         const run = this.store.getState().activeRun;
+        const watch = this.sessionWatches.get(runId ?? run?.run_id ?? '');
+        if (watch) {
+            void this.cancel(watch.run).then(() => this.watchSessionRun(watch));
+            return;
+        }
+        if (runId) return;
         ++this.generation;
         this.controller?.abort();
         this.inFlight = false;
@@ -337,8 +471,22 @@ export class AgentChatSession {
             : chatApi.cancelAgentRun(run.cancel_url, this.tenantId)).catch(() => undefined);
     }
 
-    continueRun = async (options: TurnOptions): Promise<void> => {
+    continueRun = async (options: TurnOptions, runId?: string): Promise<void> => {
         const { activeRun: run, confirmation, status } = this.store.getState();
+        const watch = this.sessionWatches.get(runId ?? run?.run_id ?? '');
+        if (watch) {
+            const extension = watch.run.confirmation;
+            if (!extension) return;
+            const args = [watch.run.continue_url, extension.physicalExtension, extension.logicalExtension] as const;
+            await (this.tenantId === null ? chatApi.continueAgentRun(...args) : chatApi.continueAgentRun(...args, this.tenantId));
+            watch.controller?.abort();
+            delete watch.controller;
+            watch.run = { ...watch.run, status: 'queued', confirmation: null };
+            this.syncSessionRuns();
+            this.watchSessionRun(watch);
+            return;
+        }
+        if (runId) return;
         if (!run || !confirmation || status === 'submitted' || status === 'streaming') return;
         const generation = ++this.generation;
         const controller = new AbortController();
@@ -358,6 +506,10 @@ export class AgentChatSession {
     };
 
     suspend(): void {
+        for (const watch of this.sessionWatches.values()) {
+            watch.controller?.abort();
+            delete watch.controller;
+        }
         // Keep the one-off startup POST alive until its durable run id arrives.
         // Leaving the view must never cancel the server-owned request.
         if (this.inFlight && this.store.getState().status === 'submitted' && !this.store.getState().activeRun) return;
@@ -368,6 +520,8 @@ export class AgentChatSession {
     }
 
     resumeVisible(): void {
+        for (const watch of this.sessionWatches.values()) this.watchSessionRun(watch);
+        if (this.sessionWatches.size > 0) return;
         const run = this.store.getState().activeRun;
         if (!this.disposed && this.viewers > 0 && !this.inFlight && this.store.getState().confirmation === null && run
             && document.visibilityState !== 'hidden'
@@ -380,6 +534,7 @@ export class AgentChatSession {
         this.disposed = true;
         ++this.generation;
         this.controller?.abort();
+        for (const watch of this.sessionWatches.values()) watch.controller?.abort();
     }
 
     private fetchEvents(url: string, after: number, signal: AbortSignal): Promise<Response> {
@@ -392,6 +547,15 @@ export class AgentChatSession {
             method: 'GET', credentials: 'same-origin', cache: 'no-store', headers, signal,
         });
     }
+}
+
+function confirmationFrom(event: AgentRunEvent): AgentConfirmation {
+    const raw = event.data.extension ?? event.data.requested_extension;
+    const extension = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {};
+    return {
+        physicalExtension: Math.max(1, Number(extension.physical_extension ?? extension.physical ?? 25)),
+        logicalExtension: Math.max(0, Number(extension.logical_extension ?? extension.logical ?? 0)),
+    };
 }
 
 const sessions = new Map<string, AgentChatSession>();

@@ -126,7 +126,7 @@ final readonly class AgentAnswerSynthesizer
         } else {
             [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext, run: $run);
         }
-        if ($sessionFinal && ! $contextAttempt && ! isset($run->result_json['session_context_gap'])
+        if ($sessionFinal && ! $run->usesConcurrentSession() && ! $contextAttempt && ! isset($run->result_json['session_context_gap'])
             && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
             $composition = ($understanding['requires_composition'] ?? false) === true;
             $communicated = $composition ? $this->previousSessionClaims($run)
@@ -601,6 +601,9 @@ PROMPT;
         }
         if ($sessionFinal && $outcome->stopReason === 'context_answer_attempt') {
             $system .= "\nTry to answer the current question from the supplied evidence before any further lookup. Mark completeness=complete only when the sources support every material requested detail and the answer actually gives it. For partial or insufficient coverage, put specific missing information in limitations so the host can target a further lookup. General background does not fill a missing detail.";
+            if ($run->usesConcurrentSession()) {
+                $system .= "\nFor partial coverage, submit every independently supported part as a usable answer now, with its evidence. Use partial when there are supported claims and material details remain missing. Use insufficient when none of the requested facts can be supported. In each limitation specify the missing field, entity, condition, or source detail the collection service needs to find. Limitations do not substitute for the supported claims.";
+            }
         }
         if (isset($run->result_json['session_context_gap'])) {
             $system .= "\nA trial answer from retained context left a gap. Use the current question and the supporting passages to fill it. The session_context_gap field is diagnostic feedback about coverage, not source evidence.";

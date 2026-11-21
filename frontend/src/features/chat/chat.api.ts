@@ -203,6 +203,8 @@ export interface CitationDocument {
 }
 
 export interface MessageMetadata {
+    session_interim?: boolean;
+    reply_to_user_message_id?: number;
     provider?: string;
     model?: string;
     prompt_tokens?: number;
@@ -348,6 +350,7 @@ export interface AgentRunLink {
 }
 
 export interface AgentRunReference {
+    concurrent_session?: boolean;
     run_id: string;
     status: string;
     locale: string;
@@ -365,6 +368,7 @@ export interface ConversationActivity {
     last_read_message_id: number;
     latest_reply: { message_id: number; created_at: string } | null;
     run: (AgentRunReference & { confirmation: { physicalExtension: number; logicalExtension: number } | null }) | null;
+    runs?: NonNullable<ConversationActivity['run']>[];
 }
 
 export interface RealtimeAgentConnection {

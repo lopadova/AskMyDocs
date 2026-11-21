@@ -31,6 +31,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
         public readonly int $agentRunId,
         public readonly string $tenantId,
         public readonly ?string $diagnosticQueueSpanId = null,
+        public readonly ?string $sessionStage = null,
     ) {
         $this->timeout = max(30, (int) config('agent.job_timeout_seconds', 120));
         $this->onQueue((string) config('agent.queue', 'agent'));
@@ -66,8 +67,11 @@ final class ExecuteAgentRunJob implements ShouldQueue
                 Auth::setUser($run->user);
             }
 
-            app(\App\Agent\AgentRunDeadline::class)->within($run, $workerStartedAt, $this->timeout,
-                fn () => $handler->handle($run));
+            \Illuminate\Support\Facades\Context::scope(
+                fn () => app(\App\Agent\AgentRunDeadline::class)->within($run, $workerStartedAt, $this->timeout,
+                    fn () => $handler->handle($run)),
+                hidden: ['agent.session_stage' => $this->sessionStage ?? null],
+            );
             $diagnostics->end($run, $span);
         } catch (\Throwable $exception) {
             $diagnostics->failure($run, $span, $exception);
@@ -91,7 +95,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
         } catch (\Throwable) {
             return;
         }
-        if ($run === null) {
+        if ($run === null || (($this->sessionStage ?? null) !== null && $this->sessionStage !== $run->sessionStage())) {
             return;
         }
 
@@ -109,6 +113,7 @@ final class ExecuteAgentRunJob implements ShouldQueue
 
         if (app(\App\Agent\VerifiedAnswerCheckpoint::class)->recover($run,
             $exception instanceof \Illuminate\Queue\TimeoutExceededException ? 'worker_timeout' : 'agent_run_failed')) {
+            app(\App\Agent\AgentSessionResearch::class)->startNext($run);
             return;
         }
 
@@ -118,7 +123,8 @@ final class ExecuteAgentRunJob implements ShouldQueue
                     ->whereKey($this->agentRunId)->lockForUpdate()->first();
                 // A duplicate delivery may fail after another worker completed
                 // the run or persisted a valid interaction handoff.
-                if ($run === null || ! in_array($run->status, [AgentRun::STATUS_QUEUED, AgentRun::STATUS_RUNNING], true)) {
+                if ($run === null || ! in_array($run->status, [AgentRun::STATUS_QUEUED, AgentRun::STATUS_RUNNING], true)
+                    || (($this->sessionStage ?? null) !== null && $this->sessionStage !== $run->sessionStage())) {
                     return;
                 }
                 $errorCode = $exception !== null && preg_match('/timeout|timedout/i', $exception::class) === 1
@@ -133,6 +139,8 @@ final class ExecuteAgentRunJob implements ShouldQueue
             });
         } catch (\Throwable) {
             // Queue failure reporting must not replace the original failure.
+        } finally {
+            app(\App\Agent\AgentSessionResearch::class)->startNext($run);
         }
     }
 

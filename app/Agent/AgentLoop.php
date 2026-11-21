@@ -60,6 +60,7 @@ final readonly class AgentLoop
         AgentRun $run,
         AgentExecutionContext $context,
         ?string $turnContext = null,
+        bool $collectOnly = false,
     ): AgentLoopOutcome
     {
         $question = trim((string) data_get($run->input_json, 'question', ''));
@@ -116,7 +117,7 @@ final readonly class AgentLoop
         if (! $retrieved && $understanding === null) {
             $this->control->ensureActive($run);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $initialPlanning = $sessionEvidence && $evidence->hasEvidence() ? null
+            $initialPlanning = $run->usesConcurrentSession() || ($sessionEvidence && $evidence->hasEvidence()) ? null
                 : app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
             $understanding = $this->diagnostics->measure($run, $initialPlanning === null ? 'question.interpretation' : 'question.initial_plan',
                 fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
@@ -134,6 +135,9 @@ final readonly class AgentLoop
             }
         }
         if ($sessionEvidence) {
+            if ($collectOnly) {
+                return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
+            }
             if ($understanding?->available === false) {
                 return $this->outcome('partial', $evidence, $completed, 'question_interpretation_unavailable');
             }
@@ -142,6 +146,16 @@ final readonly class AgentLoop
             }
             if ($understanding !== null && $understanding->followUpTarget !== 'sources') {
                 return $this->outcome('answer', $evidence, $completed, 'context_only');
+            }
+            if ($run->usesConcurrentSession()) {
+                if ($understanding?->isAssistantConversation() || $understanding?->needsClarification) {
+                    return $this->outcome('answer', $evidence, $completed, 'context_only');
+                }
+                if ($evidence->hasEvidence() && $understanding?->effectiveAction() !== QuestionAction::Recheck) {
+                    return $this->outcome('answer', $evidence, $completed, 'context_answer_attempt');
+                }
+
+                return $this->outcome('request_research', $evidence, $completed);
             }
             if ($understanding !== null && ! $understanding->needsResearch() && ! isset($run->result_json['session_context_gap'])) {
                 $canSearchIfNeeded = in_array($understanding->effectiveAction(), [QuestionAction::Refine, QuestionAction::Research], true);

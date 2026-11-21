@@ -22,6 +22,45 @@ afterEach(() => {
 });
 
 describe('durable chat activity recovery', () => {
+    it('keeps both watches open and loads an interim reply before either turn completes', async () => {
+        const launch = (id: number) => ({
+            ...snapshot('queued').run!,
+            concurrent_session: true,
+            run_id: `run-${id}`,
+            events_url: `/events/${id}`,
+            user_message: { ...reply, id, role: 'user' as const, content: `Question ${id}` },
+        });
+        const first = launch(1);
+        const second = launch(3);
+        vi.spyOn(chatApi, 'startAgentTurn').mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+        const streams = new Map<string, ReadableStreamDefaultController<Uint8Array>>();
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(new ReadableStream<Uint8Array>({
+            start(controller) { streams.set(url.split('?')[0], controller); },
+        }))));
+        const event = (run: typeof first, sequence: number, type: string, data = {}) => {
+            streams.get(run.events_url)!.enqueue(new TextEncoder().encode(
+                `data: ${JSON.stringify({ run_id: run.run_id, sequence, type, data })}\n\n`,
+            ));
+        };
+        const chat = session();
+        chat.attach();
+        await chat.sendMessage({ text: first.user_message.content }, { filters: {} });
+        await chat.sendMessage({ text: second.user_message.content }, { filters: {} });
+        expect(chat.store.getState().sessionRuns.map((run) => run.run_id)).toEqual([first.run_id, second.run_id]);
+        const interim = { ...reply, id: 2, content: 'What we already know', metadata: { session_interim: true } };
+        vi.mocked(chatApi.listMessages).mockResolvedValue([first.user_message, interim]);
+        event(first, 1, 'research.queued', { interim_reply: true });
+        await waitFor(() => expect(chat.store.getState().messages).toEqual([first.user_message, interim, second.user_message]));
+        const secondReply = { ...reply, id: 4, content: 'Answer from retained evidence' };
+        vi.mocked(chatApi.listMessages).mockResolvedValue([first.user_message, interim, second.user_message, secondReply]);
+        event(second, 1, 'run.completed');
+        await waitFor(() => expect(chat.store.getState().messages.at(-1)).toEqual(secondReply));
+        expect(chat.store.getState().status).toBe('streaming');
+        expect(chat.store.getState().sessionRuns.map((run) => run.run_id)).toEqual([first.run_id]);
+        event(first, 2, 'run.completed');
+        await waitFor(() => expect(chat.store.getState().status).toBe('ready'));
+    });
+
     it('opens no connections for background conversations and pauses the active replay when the app is hidden', async () => {
         const signals: AbortSignal[] = [];
         const request = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {

@@ -68,6 +68,16 @@ final class AgentRun extends Model
             && ($this->input_json['session_evidence'] ?? false) === true;
     }
 
+    public function usesConcurrentSession(): bool
+    {
+        return $this->usesSessionEvidence() && ($this->input_json['concurrent_session'] ?? false) === true;
+    }
+
+    public function sessionStage(): ?string
+    {
+        return $this->usesConcurrentSession() ? (string) data_get($this->result_json, 'session_research.state', 'conversation') : null;
+    }
+
     public function isTerminal(): bool
     {
         return in_array($this->status, [

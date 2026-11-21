@@ -219,9 +219,11 @@ export function ChatView(): ReactNode {
                             onAgentArtifactSelection={handleAgentArtifactSelection}
                             agentEvents={chat.events}
                             activeAgentRunId={chat.activeRun?.run_id ?? null}
+                            sessionRuns={chat.sessionRuns}
+                            concurrentSession={chat.concurrentSession}
                             awaitingAgentConfirmation={chat.confirmation !== null}
                             onCancelAgent={chat.stop}
-                            onContinueAgent={() => void chat.continueRun()}
+                            onContinueAgent={(runId) => void chat.continueRun(runId).catch(() => undefined)}
                         />
 
                         <SuggestedFollowups
@@ -250,6 +252,7 @@ export function ChatView(): ReactNode {
                             onSend={handleSend}
                             onStop={chat.stop}
                             isStreaming={isStreaming}
+                            allowConcurrentTurns={chat.concurrentSession}
                             realtime={{ ...realtime, availability: realtimeAvailability }}
                             error={composerError}
                         />

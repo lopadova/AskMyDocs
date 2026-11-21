@@ -157,6 +157,19 @@ describe('Composer', () => {
         expect(onStop).toHaveBeenCalledTimes(1);
     });
 
+    it('accepts a keyboard submission while a concurrent search can still be stopped', () => {
+        const props = makeProps({ isStreaming: true });
+        renderWithClient(<Composer {...props} allowConcurrentTurns />);
+        const input = screen.getByTestId('chat-composer-input');
+        expect(input).toBeEnabled();
+        expect(screen.getByTestId('chat-composer-send')).toBeEnabled();
+        expect(screen.getByTestId('chat-composer-stop')).toBeEnabled();
+        fireEvent.change(input, { target: { value: 'Quanto dura il reso?' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(props.onSend).toHaveBeenCalledWith('Quanto dura il reso?');
+        expect(props.onStop).not.toHaveBeenCalled();
+    });
+
     it('surfaces an external error via chat-composer-error', () => {
         const props = makeProps({ error: new Error('Provider rate limited') });
         renderWithClient(<Composer {...props} />);

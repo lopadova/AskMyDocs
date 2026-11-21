@@ -67,6 +67,8 @@ final class AgentMessageController extends Controller
             'question' => $question,
             'filters' => is_array($validated['filters'] ?? null) ? $validated['filters'] : [],
             'session_evidence' => (bool) config('agent.waves.enabled', true),
+            'concurrent_session' => config('agent.waves.enabled', true) && config('agent.concurrent_session', true)
+                && ! $request->routeIs('api.chat.*') && ! isset($validated['qa']),
             // Keep the limit stable across queued continuations and retries.
             'depth' => max(1, min(5, (int) ($validated['depth'] ?? config('agent.depth.default', 3)))),
         ];
@@ -103,6 +105,7 @@ final class AgentMessageController extends Controller
 
         return response()->json([
             'run_id' => $run->run_id,
+            ...$run->usesConcurrentSession() ? ['concurrent_session' => true] : [],
             'status' => $run->status,
             'locale' => $run->locale,
             'events_url' => $runBase.$run->run_id.'/events',

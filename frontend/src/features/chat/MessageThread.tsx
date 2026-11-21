@@ -18,6 +18,8 @@ import {
     getTextContent,
 } from './message-shape-adapters';
 import type { AgentArtifactSelection } from './AgentTableArtifact';
+import type { AgentChatState } from './agent-chat-session';
+import type { MessageMetadata } from './chat.api';
 
 const noop = (): void => undefined;
 
@@ -80,9 +82,11 @@ export interface MessageThreadProps {
     onAgentArtifactSelection?: (selection: AgentArtifactSelection) => Promise<void>;
     agentEvents?: AgentRunEvent[];
     activeAgentRunId?: string | null;
+    sessionRuns?: AgentChatState['sessionRuns'];
+    concurrentSession?: boolean;
     awaitingAgentConfirmation?: boolean;
-    onCancelAgent?: () => void;
-    onContinueAgent?: () => void;
+    onCancelAgent?: (runId?: string) => void;
+    onContinueAgent?: (runId?: string) => void;
 }
 
 /**
@@ -116,6 +120,8 @@ export function MessageThread({
     onAgentArtifactSelection,
     agentEvents = [],
     activeAgentRunId = null,
+    sessionRuns = [],
+    concurrentSession = false,
     awaitingAgentConfirmation = false,
     onCancelAgent,
     onContinueAgent,
@@ -196,7 +202,7 @@ export function MessageThread({
             data-state={state}
             aria-label={t('Conversation messages')}
             aria-live="polite"
-            aria-busy={isLoadingHistory || isStreaming}
+            aria-busy={isLoadingHistory || (isStreaming && !concurrentSession)}
             className="chat-thread-scroll"
         >
             <div className="chat-thread-content">
@@ -250,41 +256,47 @@ export function MessageThread({
 
                     return messages.map((m, i) => {
                         const isLast = i === messages.length - 1;
-                        const streaming = isStreaming && isLast && m.role === 'assistant';
+                        const streaming = isStreaming && !concurrentSession && isLast && m.role === 'assistant';
                         const mid = getMessageId(m);
                         const numericId = typeof mid === 'number' ? mid : null;
+                        const metadata = m.metadata as MessageMetadata | null | undefined;
+                        const replyTo = metadata?.reply_to_user_message_id;
+                        const originalQuestion = replyTo && replyTo !== getMessageId(messages[i - 1] ?? m)
+                            ? messages.find((message) => getMessageId(message) === replyTo) : undefined;
                         // Regenerate: only the LAST assistant turn,
                         // and only when NOT mid-stream (re-clicking
                         // mid-stream would race with the in-flight
                         // request).
                         const regenerateHandler =
-                            i === lastAssistantIdx && !isStreaming && onRegenerate
+                            i === lastAssistantIdx && !metadata?.session_interim && !isStreaming && sessionRuns.length === 0 && onRegenerate
                                 ? onRegenerate
                                 : undefined;
                         // Branch: any assistant message persisted
                         // (numericId set) when not mid-stream.
                         const branchHandler =
-                            m.role === 'assistant' && numericId !== null && !isStreaming && onBranchAt
+                            m.role === 'assistant' && numericId !== null && !metadata?.session_interim && !isStreaming && sessionRuns.length === 0 && onBranchAt
                                 ? () => onBranchAt(numericId)
                                 : undefined;
                         // Edit: any user message when not mid-stream
                          // and we have an edit callback.
                         const editHandler =
-                            m.role === 'user' && !isStreaming && onEditUserMessage
+                            m.role === 'user' && !isStreaming && sessionRuns.length === 0 && onEditUserMessage
                                 ? (newText: string) => onEditUserMessage(i, numericId, newText)
                                 : undefined;
                         const persistedActivity = m.role === 'assistant' ? getAgentActivity(m) : [];
                         const messageRunId = getAgentRunId(m);
+                        const sessionRun = sessionRuns.find((run) => run.run_id === messageRunId);
+                        const runActive = concurrentSession ? Boolean(sessionRun && !sessionRun.confirmation) : isStreaming;
+                        const runPaused = concurrentSession ? Boolean(sessionRun?.confirmation) : awaitingAgentConfirmation;
                         const hasFinalAnswer = messageRunId !== null && messages.some((message) => message.role === 'assistant'
                             && getAgentRunId(message) === messageRunId);
                         const findingEvents = m.role !== 'user' || messageRunId === null ? [] : [...new Map([
                             ...getAgentActivity(m), ...agentEvents.filter((event) => event.run_id === messageRunId),
                         ].map((event) => [event.sequence, event])).values()].sort((a, b) => a.sequence - b.sequence);
                         const showLiveActivityAfterMessage = m.role === 'user'
-                            && activeAgentRunId !== null
-                            && messageRunId === activeAgentRunId
-                            && !activeRunHasPersistedActivity
-                            && (isStreaming || awaitingAgentConfirmation || agentEvents.length > 0);
+                            && (concurrentSession ? sessionRun !== undefined : (
+                                activeAgentRunId !== null && messageRunId === activeAgentRunId && !activeRunHasPersistedActivity
+                                && (isStreaming || awaitingAgentConfirmation || agentEvents.length > 0)));
 
                         const renderMessage = (activityInfo: ReactNode = null) => (
                             <MessageBubble
@@ -305,6 +317,13 @@ export function MessageThread({
 
                         return (
                             <Fragment key={getMessageId(m)}>
+                                {(metadata?.session_interim || originalQuestion) && m.role === 'assistant' && (
+                                    <p className="chat-reply-context">
+                                        {metadata?.session_interim && (t('Verified so far'))}
+                                        {metadata?.session_interim && originalQuestion && ' · '}
+                                        {originalQuestion && getTextContent(originalQuestion)}
+                                    </p>
+                                )}
                                 {persistedActivity.length > 0 ? (
                                     <AgentActivityBar
                                         events={persistedActivity}
@@ -318,17 +337,17 @@ export function MessageThread({
                                         {renderMessage}
                                     </AgentActivityBar>
                                 ) : renderMessage()}
-                                {m.role === 'user' && !hasFinalAnswer && <ProgressiveAnswer events={findingEvents}
+                                {!concurrentSession && m.role === 'user' && !hasFinalAnswer && <ProgressiveAnswer events={findingEvents}
                                     active={isStreaming && activeAgentRunId === messageRunId}
                                     paused={awaitingAgentConfirmation && activeAgentRunId === messageRunId} onOpenSource={onOpenSource} />}
                                 {showLiveActivityAfterMessage && (
                                     <AgentActivityBar
-                                        events={agentEvents}
-                                        active={isStreaming}
-                                        awaitingConfirmation={awaitingAgentConfirmation}
-                                        onCancel={onCancelAgent ?? noop}
-                                        onContinue={onContinueAgent ?? noop}
-                                        instanceId={`run-${activeAgentRunId}`}
+                                        events={concurrentSession ? findingEvents : agentEvents}
+                                        active={runActive}
+                                        awaitingConfirmation={runPaused}
+                                        onCancel={() => onCancelAgent?.(sessionRun?.run_id)}
+                                        onContinue={() => onContinueAgent?.(sessionRun?.run_id)}
+                                        instanceId={`run-${messageRunId}`}
                                         embedded
                                     />
                                 )}

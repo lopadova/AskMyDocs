@@ -1,7 +1,7 @@
 # Local queue and scheduler services
 
 `install-local.sh` installs user-scoped `launchd` services for this checkout:
-the `agent,kb-ingest,default` worker, dedicated `connectors` and `freshdesk`
+the `agent,kb-ingest,default` worker, a separate `agent-session` worker for conversational turns and final answers, dedicated `connectors` and `freshdesk`
 workers, two email-triage workers, and Laravel's persistent scheduler. The
 templates keep paths as tokens so the repository never stores a developer's
 home directory or secrets.
@@ -19,4 +19,5 @@ Run once after changing worker topology:
 ```
 
 Check a service with `launchctl print gui/$(id -u)/com.askmydocsdev.queue-core`.
+Add the session worker to an existing setup with `ops/launchd/install-local.sh --agent-session-only`.
 The standard and error logs are under `storage/logs/launchd-*.log`.

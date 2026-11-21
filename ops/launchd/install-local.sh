@@ -24,6 +24,9 @@ for template in "${script_dir}"/*.plist.template; do
     if [[ "${1:-}" == "--triage-only" && "${label}" != com.askmydocsdev.queue-email-triage-* ]]; then
         continue
     fi
+    if [[ "${1:-}" == "--agent-session-only" && "${label}" != com.askmydocsdev.queue-agent-session ]]; then
+        continue
+    fi
     destination="${launch_agents_dir}/${label}.plist"
 
     sed \
