@@ -14,7 +14,8 @@ return [
         'awaiting_confirmation' => 'Servono altre chiamate per continuare questa ricerca.',
     ],
     'research' => [
-        'queued' => 'La ricerca è in coda. Puoi continuare a scrivere.',
+        'queued_after_partial' => 'La ricerca dei dettagli mancanti è in coda. Puoi continuare a scrivere.',
+        'queued_without_answer' => 'Mi servono altre informazioni per rispondere. La ricerca è in coda.',
         'started' => 'Cerco le informazioni mancanti.',
     ],
     'retrieval' => [

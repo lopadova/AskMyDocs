@@ -14,7 +14,8 @@ return [
         'awaiting_confirmation' => 'More calls are needed to continue this search.',
     ],
     'research' => [
-        'queued' => 'The research is queued. You can keep chatting.',
+        'queued_after_partial' => 'The search for the missing details is queued. You can keep chatting.',
+        'queued_without_answer' => 'I need more information to answer. The search is queued.',
         'started' => 'I’m looking for the missing information.',
     ],
     'retrieval' => [

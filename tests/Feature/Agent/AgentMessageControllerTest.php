@@ -389,6 +389,7 @@ final class AgentMessageControllerTest extends TestCase
         $work($seed);
         $this->assertSame('active', $phase($seed));
         $this->assertSame([], $searches);
+        $this->assertSame('research.queued_without_answer', $seed->events()->where('type', 'research.queued')->sole()->message_key);
         Queue::assertPushedOn('agent', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $seed->id);
         \Illuminate\Support\Facades\Context::scope(fn () => $work($seed), hidden: ['agent.session_stage' => 'conversation']);
         $this->assertSame([], $searches, 'A repeated conversational delivery cannot collect sources.');
@@ -407,6 +408,7 @@ final class AgentMessageControllerTest extends TestCase
         $this->assertSame('active', $phase($partial));
         $this->assertSame($queries[0], end($searches));
         $preview = $conversation->messages()->where('metadata->session_interim', true)->sole();
+        $this->assertSame('research.queued_after_partial', $partial->events()->where('type', 'research.queued')->sole()->message_key);
         $this->assertStringContainsString($facts[0], $preview->content);
         $this->assertSame(data_get($partial->input_json, 'user_message_id'), data_get($preview->metadata, 'reply_to_user_message_id'));
         $work($covered);

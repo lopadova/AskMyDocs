@@ -46,7 +46,9 @@ final readonly class AgentSessionResearch
             if ($showPartial) {
                 $this->projector->project($locked, $partial, interim: true);
             }
-            $this->events->publish($locked, 'research.queued', 'research.queued', data: ['interim_reply' => $showPartial]);
+            $this->events->publish($locked, 'research.queued',
+                $showPartial ? 'research.queued_after_partial' : 'research.queued_without_answer',
+                data: ['interim_reply' => $showPartial]);
         }, 3);
     }
 
