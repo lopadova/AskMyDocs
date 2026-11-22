@@ -11,7 +11,7 @@ final readonly class AgentPlan implements JsonSerializable
 {
     /** @param list<AgentPlannedAction> $actions @param list<AgentPlannedAction> $rejectedActions */
     public function __construct(public string $decision, public array $actions, public AgentProgress $estimate,
-        public array $rejectedActions = []) {}
+        public array $rejectedActions = [], public array $rejectionCodes = []) {}
 
     public function shouldCallTools(): bool
     {
@@ -26,8 +26,13 @@ final readonly class AgentPlan implements JsonSerializable
             'actions' => array_map(static fn (AgentPlannedAction $action): array => $action->jsonSerialize(), $this->actions),
             'estimate' => $this->estimate->jsonSerialize(),
             ...$this->rejectedActions === [] ? [] : ['rejected_actions' => array_map(
-                static fn (AgentPlannedAction $action): array => $action->jsonSerialize(), $this->rejectedActions,
+                fn (AgentPlannedAction $action): array => [...$action->jsonSerialize(), 'error_code' => $this->rejectionCode($action)], $this->rejectedActions,
             )],
         ];
+    }
+
+    public function rejectionCode(AgentPlannedAction $action): string
+    {
+        return $this->rejectionCodes[$action->id] ?? 'input_pattern_branch_rejected';
     }
 }

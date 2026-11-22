@@ -20,14 +20,14 @@ final readonly class AgentPlanArgumentConstraints
     }
 
     /**
-     * After the bounded correction failed, keep only independently valid branches.
+     * Keep branches whose arguments and dependencies are independently valid.
      * Malformed schemas and other plan errors still fail closed. No value is rewritten.
      * @param list<string> $completedActionIds
      */
     public function independentValidBranches(AgentPlan $plan, array $tools, array $completedActionIds = [], array $identifierSources = []): AgentPlan
     {
         $kept = $rejected = [];
-        $rejectedIds = [];
+        $rejectionCodes = [];
         foreach ($plan->actions as $action) {
             $dependencies = $action->dependsOn;
             $arguments = $action->arguments;
@@ -36,26 +36,29 @@ final readonly class AgentPlanArgumentConstraints
                     $dependencies[] = $value;
                 }
             });
-            $blocked = array_intersect($dependencies, $rejectedIds) !== [];
-            if (! $blocked) {
+            $rejectedDependency = array_intersect($dependencies, array_keys($rejectionCodes));
+            $code = $rejectedDependency === [] ? null : $rejectionCodes[reset($rejectedDependency)];
+            if ($code === null) {
                 try {
                     $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources);
                 } catch (AgentPlanValidationException $exception) {
-                    if ($exception->validationCode !== 'input_pattern_mismatch') {
+                    if (! in_array($exception->validationCode, ['input_pattern_mismatch', 'knowledge_query_required'], true)) {
                         throw $exception;
                     }
-                    $blocked = true;
+                    $code = $exception->validationCode === 'input_pattern_mismatch'
+                        ? 'input_pattern_branch_rejected' : $exception->validationCode;
                 }
             }
-            if ($blocked) {
+            if ($code !== null) {
                 $rejected[] = $action;
-                $rejectedIds[] = $action->id;
+                $rejectionCodes[$action->id] = $code;
             } else {
                 $kept[] = $action;
             }
         }
         if ($kept === [] || $rejected === []) {
-            throw new AgentPlanValidationException('input_pattern_mismatch', 'No independent valid branch remains after input pattern checks.');
+            throw new AgentPlanValidationException(in_array('knowledge_query_required', $rejectionCodes, true)
+                ? 'knowledge_query_required' : 'input_pattern_mismatch', 'No independent valid branch remains after argument checks.');
         }
 
         // Reparse the reduced graph, including all dependency checks and fresh estimates.
@@ -63,7 +66,7 @@ final readonly class AgentPlanArgumentConstraints
             static fn (AgentPlannedAction $action): array => $action->jsonSerialize(), $kept,
         )], $tools, count($kept), $completedActionIds);
 
-        return new AgentPlan($validated->decision, $validated->actions, $validated->estimate, $rejected);
+        return new AgentPlan($validated->decision, $validated->actions, $validated->estimate, $rejected, $rejectionCodes);
     }
 
     public function validateArguments(AgentToolDefinition $tool, array $arguments, bool $allowReferences = false, array $identifierSources = []): void
