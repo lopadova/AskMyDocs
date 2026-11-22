@@ -14,7 +14,6 @@ use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlannedAction;
 use App\Agent\Planning\AgentPlanningCoordinator;
-use App\Agent\Tools\AgentLiveSourceSelection;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolDefinition;
@@ -40,7 +39,6 @@ final readonly class AgentLoop
         private AgentPlanningCoordinator $planner,
         private AgentCapabilitySnapshotBuilder $capabilities,
         private AgentToolRegistry $registry,
-        private AgentLiveSourceSelection $liveSources,
         private AgentArgumentResolver $arguments,
         private AgentAmbiguousSelectionGuard $ambiguousSelection,
         private AgentServerToolRunner $serverTools,
@@ -60,7 +58,6 @@ final readonly class AgentLoop
         AgentRun $run,
         AgentExecutionContext $context,
         ?string $turnContext = null,
-        bool $collectOnly = false,
     ): AgentLoopOutcome
     {
         $question = trim((string) data_get($run->input_json, 'question', ''));
@@ -83,12 +80,7 @@ final readonly class AgentLoop
             $results['selected_row'] = $selectedRecord;
         }
         $user = $run->user;
-        $tools = array_filter(
-            $this->registry->forContext($context, $user instanceof User ? $user : null, [], is_string(data_get($run->input_json, 'pact_task_id'))),
-            static fn (AgentToolDefinition $tool): bool => ($tool->readOnly || (is_string(data_get($run->input_json, 'pact_task_id')) && $tool->name === 'ask_private_session' && $tool->executorReference === 'ask_private_session' && ($tool->metadata['effect'] ?? null) === 'append_authorized_session_turn'))
-                && ! (bool) ($tool->metadata['confirmation_required'] ?? false),
-        );
-        $tools = $this->liveSources->apply($tools, data_get($run->input_json, 'live_sources'));
+        $tools = $this->registry->forResearch($run, $context);
         $capabilitySnapshot = $this->capabilities->build($tools);
 
         if (config('reasoning.enabled')) {
@@ -117,7 +109,7 @@ final readonly class AgentLoop
         if (! $retrieved && $understanding === null) {
             $this->control->ensureActive($run);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $initialPlanning = $run->usesConcurrentSession() || ($sessionEvidence && ($evidence->hasEvidence() || $evidence->documentCoordinates() !== [])) ? null
+            $initialPlanning = $sessionEvidence ? null
                 : app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
             $understanding = $this->diagnostics->measure($run, $initialPlanning === null ? 'question.interpretation' : 'question.initial_plan',
                 fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
@@ -135,46 +127,7 @@ final readonly class AgentLoop
             }
         }
         if ($sessionEvidence) {
-            if ($collectOnly) {
-                return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
-            }
-            if ($understanding?->available === false) {
-                // The original user message and authorized evidence are still usable
-                // if the optional structured interpretation could not be produced.
-                $assessment = AgentLoopOutcome::assessSession($evidence, null, $completed);
-                if ($run->usesConcurrentSession() || (! isset($run->result_json['session_context_gap']) && $assessment->decision === 'answer')) {
-                    return $assessment;
-                }
-                return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
-            }
-            if ($understanding?->asksForProvenance()) {
-                return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
-            }
-            $coverageGap = $run->result_json['session_context_gap'] ?? null;
-            if ($understanding !== null && $understanding->effectiveFollowUpTarget($coverageGap) !== 'sources') {
-                return $this->outcome('answer', $evidence, $completed, 'context_only');
-            }
-            if ($understanding?->isAssistantConversation() || $understanding?->needsClarification) {
-                return $this->outcome('answer', $evidence, $completed, 'context_only');
-            }
-            if ($run->usesConcurrentSession() || ($understanding?->deliverable !== null && $coverageGap === null)) {
-                $assessment = AgentLoopOutcome::assessSession($evidence, $understanding, $completed);
-                if ($run->usesConcurrentSession() || $assessment->decision === 'answer') {
-                    return $assessment;
-                }
-            }
-            if ($understanding !== null && $understanding->deliverable === null && $coverageGap === null
-                && ! $understanding->requiresCurrentObservation() && ! $understanding->needsResearch()) {
-                $canSearchIfNeeded = in_array($understanding->effectiveAction(), [QuestionAction::Refine, QuestionAction::Research], true);
-                if (! $canSearchIfNeeded) {
-                    return $this->outcome('answer', $evidence, $completed, 'context_only');
-                }
-                if ($evidence->hasEvidence()) {
-                    return $this->outcome('answer', $evidence, $completed, 'context_answer_attempt');
-                }
-            }
-
-            return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
+            return app(AgentSessionAgent::class)->decide($run, $evidence, $understanding, $completed);
         }
         if (config('agent.waves.enabled', true) && config('kb.investigation.enabled', true)
             && $understanding?->available && $understanding->needsResearch() && ! $understanding->needsClarification) {

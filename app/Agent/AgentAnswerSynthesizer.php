@@ -431,7 +431,7 @@ final readonly class AgentAnswerSynthesizer
                 'terms' => $grounding['terms'],
             ]);
 
-            if ($contextAttempt || $run?->sessionStage() === 'ready') {
+            if ($contextAttempt || in_array($run?->sessionStage(), ['active', 'ready'], true)) {
                 $grounding['missing_details'] = array_map($this->masker->maskString(...), $this->limitations($payload['limitations'] ?? []));
             }
 
@@ -541,7 +541,7 @@ final readonly class AgentAnswerSynthesizer
             : $this->artifactHandoff($context->locale, $requiresSelection);
         if ($checkTable && ($grounding['coverage_validation']['sufficient'] ?? null) !== true) {
             $presentedAnswer .= "\n\n".$this->coverageNotice($grounding['coverage_validation'], $context->locale);
-        } elseif ($run?->sessionStage() === 'ready' && $completeness !== 'complete') {
+        } elseif (in_array($run?->sessionStage(), ['active', 'ready'], true) && $completeness !== 'complete') {
             foreach ($this->limitations($payload['limitations'] ?? []) as $missing) {
                 if (! str_contains($presentedAnswer, $missing)) {
                     $presentedAnswer .= "\n\n".$missing;
@@ -706,7 +706,7 @@ For a request for examples, start with an actual scenario, sample or worked work
 For a request to reformat earlier facts, use the requested structure, such as a Markdown table or list, while preserving supported values. For a request for additional detail, keep any recap to the minimum needed to identify the example or subject. Before submitting, check that the visible result delivers the requested example, detail or new presentation.
 PROMPT;
         }
-        if ($sessionFinal && ($outcome->stopReason === 'context_answer_attempt' || $run->sessionStage() === 'ready')) {
+        if ($sessionFinal && ($outcome->stopReason === 'context_answer_attempt' || in_array($run->sessionStage(), ['active', 'ready'], true))) {
             $system .= "\nTry to answer the current question from the supplied evidence before any further lookup. Mark completeness=complete only when the sources support every material requested detail and the answer actually gives it. For partial or insufficient coverage, put specific missing information in limitations so the host can target a further lookup. General background does not fill a missing detail.";
             if ($run->usesConcurrentSession()) {
                 $system .= "\nFor partial coverage, submit every independently supported part as a usable answer now, with its evidence. Use partial when there are supported claims and material details remain missing. Use insufficient when none of the requested facts can be supported. In each limitation specify the missing field, entity, condition, or source detail the collection service needs to find. Limitations do not substitute for the supported claims.";

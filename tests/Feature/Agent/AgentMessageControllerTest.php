@@ -409,7 +409,13 @@ final class AgentMessageControllerTest extends TestCase
         $work($seed);
         $this->assertSame('ready', $phase($seed));
         \Illuminate\Support\Facades\Context::scope(fn () => $work($seed), hidden: ['agent.session_stage' => 'active']);
-        $this->assertSame([], $answers);
+        $this->assertSame([[0, false]], $answers);
+        $this->assertSame($facts[0], data_get($seed->fresh()->result_json, 'session_research.result.answer.answer'));
+        $this->assertFalse($conversation->messages()->where('agent_run_id', $seed->id)->exists());
+        $checkpoint = data_get($seed->fresh()->result_json, 'session_research.result');
+        $empty = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+        // A completed worker draft cannot be handed to the session after its sources become unavailable.
+        $this->assertNull(\App\Agent\AgentSessionResearchResult::restore($checkpoint, new \App\Agent\AgentLoopOutcome('answer', $empty, [])));
         $work($seed);
 
         $partial = $send(1);

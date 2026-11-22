@@ -134,8 +134,9 @@ final class AgentWaveCoordinatorTest extends TestCase
         );
         $this->app->instance(AiManager::class, $ai);
 
-        $outcome = app(AgentLoop::class)->run($run, $this->context($run));
-
+        $this->assertSame('request_research', app(AgentLoop::class)->run($run, $this->context($run))->decision);
+        $this->assertSame(0, $run->toolExecutions()->count());
+        $outcome = app(\App\Agent\AgentSessionResearch::class)->execute($run, $this->context($run), null);
         $this->assertSame('dependency_depth_limit', $outcome->stopReason);
         $this->assertSame('partial', $outcome->decision);
         $executions = $run->toolExecutions()->orderBy('logical_index')->get();

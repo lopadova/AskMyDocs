@@ -125,15 +125,22 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
         $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
         $executionSpan = $diagnostics->begin($run, 'run.execute', ['runtime' => $diagnostics->runtime()]);
+        $session = $run->usesSessionEvidence() ? app(AgentSessionAgent::class) : null;
+        $research = $session === null ? null : app(AgentSessionResearch::class);
         try {
             while (true) {
                 $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
                 $outcome = match ($researchPhase) {
-                    'reassess' => app(AgentSessionResearch::class)->reassess($run, $context),
-                    'active' => app(AgentSessionResearch::class)->collect($run, $context, $turnContext),
-                    'ready' => app(AgentSessionResearch::class)->result($run),
+                    'reassess' => $research->reassess($run, $context),
+                    'active' => $research->collect($run, $context, $turnContext),
+                    'ready' => $research->result($run),
                     default => $this->loop->run($run, $context, $turnContext),
                 };
+                $researchReturned = in_array($researchPhase, ['active', 'ready'], true);
+                if ($outcome->decision === 'request_research' && ! $run->usesConcurrentSession()) {
+                    $outcome = $diagnostics->measure($run, 'session.research', fn () => $research->execute($run, $context, $turnContext));
+                    $researchReturned = true;
+                }
                 if ($outcome->decision === 'continue_research') {
                     $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'research_continuation']);
                     return;
@@ -142,19 +149,14 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'interaction_handoff']);
                     return;
                 }
-                if ($researchPhase === 'active' || $outcome->decision === 'request_research') {
-                    $research = app(AgentSessionResearch::class);
-                    if ($researchPhase === 'active') {
-                        $research->complete($run, $outcome);
-                    } else {
-                        $research->request($run, $outcome);
-                    }
+                if ($outcome->decision === 'request_research') {
+                    $research->request($run, $outcome);
                     $diagnostics->end($run, $executionSpan);
                     return;
                 }
 
                 $contextAttempt = $outcome->stopReason === 'context_answer_attempt';
-                if (! $contextAttempt) {
+                if (! $contextAttempt && ($researchPhase !== 'ready' || ! isset($run->result_json['session_research']['result']))) {
                     $this->events->publish($run, 'synthesis.started', 'synthesis.started');
                 }
                 $run->refresh();
@@ -172,25 +174,28 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                         $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
                     }
                 }
-                $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
-                    trim((string) data_get($run->input_json, 'question', '')),
-                    $context,
-                    $outcome,
-                    $turnContext,
-                    is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
-                    durableRunId: $run->run_id,
-                ));
-                $understanding = $run->result_json['question_understanding'] ?? [];
-                // Older interpretations could call a request for detail a rewrite.
-                // An explicit restriction on the sources remains binding.
-                $reopenContext = $outcome->stopReason === 'context_only'
-                    && ! isset($run->result_json['session_context_gap'])
-                    && ($understanding['follow_up_target'] ?? null) === 'previous_reply'
-                    && ($understanding['deliverable']['kind'] ?? null) !== 'rewrite'
-                    && in_array($answer->grounding['coverage_validation']['next_action'] ?? null, ['read', 'search'], true);
-                if (($contextAttempt || $reopenContext) && $answer->needsSessionSources()) {
+                if ($researchReturned) {
+                    $result = AgentSessionResearchResult::restore((array) data_get($run->result_json, 'session_research.result', []), $outcome)
+                        ?? $diagnostics->measure($run, 'synthesis.execute', fn () => $research->respond($run, $context, $outcome, $turnContext));
+                    if ($researchPhase === 'active') {
+                        $research->complete($run, $result);
+                        $diagnostics->end($run, $executionSpan);
+                        return;
+                    }
+                    $outcome = $result->sources;
+                    $answer = $session->answer($run, $context, $result, $turnContext);
+                } elseif ($session !== null) {
+                    $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $session->answer($run, $context, $outcome, $turnContext));
+                } else {
+                    $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
+                        trim((string) data_get($run->input_json, 'question', '')), $context, $outcome, $turnContext,
+                        is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
+                        durableRunId: $run->run_id,
+                    ));
+                }
+                if ($session?->needsResearch($run, $outcome, $answer)) {
                     if ($run->usesConcurrentSession()) {
-                        app(AgentSessionResearch::class)->request($run, $outcome, $answer);
+                        $research->request($run, $outcome, $answer);
                         $diagnostics->end($run, $executionSpan);
                         return;
                     }
@@ -201,10 +206,9 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
                     continue;
                 }
-                $serialCollection = $run->usesSessionEvidence() && ! $run->usesConcurrentSession()
+                $serialCollection = $researchReturned && ! $run->usesConcurrentSession()
                     && in_array($answer->grounding['coverage_validation']['next_action'] ?? null, ['read', 'search'], true);
                 if ($researchPhase === 'ready' || $serialCollection) {
-                    $research = app(AgentSessionResearch::class);
                     $depth = $research->nextDepth($run, $outcome, $answer);
                     if ($depth !== null) {
                         if ($run->usesConcurrentSession()) {

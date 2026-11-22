@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
+use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
 use App\Agent\Evidence\AgentEvidenceAccess;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Evidence\AgentSessionEvidence;
+use App\Agent\Tools\AgentToolRegistry;
+use App\Agent\Waves\AgentWaveCoordinator;
 use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Services\Chat\QuestionUnderstanding;
@@ -18,7 +21,10 @@ use Illuminate\Support\Facades\DB;
 final readonly class AgentSessionResearch
 {
     public function __construct(
-        private AgentLoop $loop,
+        private AgentWaveCoordinator $waves,
+        private AgentToolRegistry $tools,
+        private AgentCapabilitySnapshotBuilder $capabilities,
+        private AgentAnswerSynthesizer $answers,
         private AgentEvidenceFactory $evidence,
         private AgentSessionEvidence $retainedEvidence,
         private AgentRunDispatcher $dispatcher,
@@ -172,7 +178,22 @@ final readonly class AgentSessionResearch
             }
         }
 
-        return $this->loop->run($run, $context, $turnContext, collectOnly: true);
+        return $this->execute($run, $context, $turnContext);
+    }
+
+    public function execute(AgentRun $run, AgentExecutionContext $context, ?string $turnContext): AgentLoopOutcome
+    {
+        $tools = $this->tools->forResearch($run, $context);
+
+        return $this->waves->run($run, $context, $turnContext, $tools, $this->capabilities->build($tools));
+    }
+
+    public function respond(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $sources, ?string $turnContext): AgentSessionResearchResult
+    {
+        $answer = $this->answers->synthesize(trim((string) data_get($run->input_json, 'question')), $context, $sources, $turnContext,
+            $run->result_json['question_understanding'] ?? null, durableRunId: $run->run_id);
+
+        return new AgentSessionResearchResult($answer, $sources);
     }
 
     public function nextDepth(AgentRun $run, AgentLoopOutcome $outcome, AgentAnswer $answer): ?int
@@ -203,9 +224,10 @@ final readonly class AgentSessionResearch
         return array_values(array_unique($hashes));
     }
 
-    public function complete(AgentRun $run, AgentLoopOutcome $outcome): void
+    public function complete(AgentRun $run, AgentSessionResearchResult $result): void
     {
-        DB::transaction(function () use ($run, $outcome): void {
+        DB::transaction(function () use ($run, $result): void {
+            $outcome = $result->sources;
             $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
             $this->control->ensureActive($locked);
             $state = $locked->result_json;
@@ -213,7 +235,7 @@ final readonly class AgentSessionResearch
             $state['evidence'] = $outcome->evidence->jsonSerialize();
             $state['research_continuation'] = true;
             $state['session_research'] = [...$state['session_research'], 'state' => 'ready',
-                'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason];
+                'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason, 'result' => $result->checkpoint()];
             $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => $state])->save();
         });
     }

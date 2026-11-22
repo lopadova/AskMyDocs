@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Agent\Tools;
 
 use App\Agent\AgentExecutionContext;
+use App\Models\AgentRun;
 use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\Registry\McpServerRegistry;
@@ -20,6 +21,18 @@ use Padosoft\AskMyDocsConnectorFreshdesk\Tools\FreshdeskTools;
 
 final readonly class AgentToolRegistry
 {
+    /** Tools exposed to the internal research workflow for this turn. */
+    public function forResearch(AgentRun $run, AgentExecutionContext $context): array
+    {
+        $pact = is_string(data_get($run->input_json, 'pact_task_id'));
+        $tools = array_filter($this->forContext($context, $run->user, [], $pact),
+            static fn (AgentToolDefinition $tool): bool => ($tool->readOnly || ($pact && $tool->name === 'ask_private_session'
+                && $tool->executorReference === 'ask_private_session' && ($tool->metadata['effect'] ?? null) === 'append_authorized_session_turn'))
+                && ! ($tool->metadata['confirmation_required'] ?? false));
+
+        return app(AgentLiveSourceSelection::class)->apply($tools, data_get($run->input_json, 'live_sources'));
+    }
+
     /**
      * Physical messages one MCP tool call costs. askmydocs-mcp-pack 2.0
      * negotiates on every call and the host builds a fresh client per call, so
