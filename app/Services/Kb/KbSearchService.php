@@ -927,10 +927,18 @@ class KbSearchService
     /** Read-only revalidation for memory references, using the SAME filters as fresh retrieval. */
     public function allowsMemoryCandidate(int $documentId, int $chunkId, RetrievalFilters $filters): bool
     {
+        return $this->allowedMemoryChunkIds($documentId, [$chunkId], $filters) !== [];
+    }
+
+    /** Revalidate the chunk IDs in one source map without loading each chunk's body again. */
+    public function allowedMemoryChunkIds(int $documentId, array $chunkIds, RetrievalFilters $filters): array
+    {
+        if ($chunkIds === []) return [];
         $query = KnowledgeChunk::query()->forTenant(app(TenantContext::class)->current())
-            ->whereKey($chunkId)->where('knowledge_document_id', $documentId)->with('document');
+            ->select(['id', 'knowledge_document_id'])->whereIntegerInRaw('knowledge_chunks.id', $chunkIds)
+            ->where('knowledge_document_id', $documentId)->with('document');
         $this->applyFilters($query, $filters);
-        return $this->filterByFolderGlobs($query->get(), $filters->folderGlobs)->isNotEmpty();
+        return $this->filterByFolderGlobs($query->get(), $filters->folderGlobs)->pluck('id')->all();
     }
 
     /**

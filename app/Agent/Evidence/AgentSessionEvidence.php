@@ -24,15 +24,26 @@ final readonly class AgentSessionEvidence
                 ->orWhere('result_json->session_research->state', 'ready')
                 ->orWhereNotNull('result_json->session_research->published_evidence'))
             ->latest('id')->limit((int) config('agent.session_evidence.previous_turns', 12))->cursor();
-        $seen = [];
+        $seen = $coordinates = [];
 
         foreach ($previousRuns as $previous) {
-            if ($remaining <= 0) {
-                break;
-            }
+            if ($remaining <= 0 && count($coordinates) >= AgentEvidenceEnvelope::MAX_DOCUMENT_COORDINATES) break;
             $batch = ['documents' => [], 'api_tools' => []];
             $snapshot = data_get($previous->result_json, 'session_research.published_evidence') ?? $previous->result_json['evidence'] ?? [];
+            $references = [];
             foreach ($snapshot['documents'] ?? [] as $document) {
+                $chunk = $document['evidence'][0] ?? [];
+                if (isset($document['document_id'], $chunk['chunk_id'])) {
+                    $references[] = ['document_id' => $document['document_id'], 'chunk_id' => $chunk['chunk_id']];
+                }
+            }
+            foreach ([...($snapshot['document_coordinates'] ?? []), ...$references] as $reference) {
+                $id = (int) ($reference['document_id'] ?? 0);
+                if ($id > 0 && ! isset($coordinates[$id]) && ! isset($batch['document_coordinates'][$id]) && count($coordinates) + count($batch['document_coordinates'] ?? []) < AgentEvidenceEnvelope::MAX_DOCUMENT_COORDINATES) {
+                    $batch['document_coordinates'][$id] = $reference;
+                }
+            }
+            foreach ($remaining > 0 ? ($snapshot['documents'] ?? []) : [] as $document) {
                 foreach ($document['evidence'] ?? [] as $chunk) {
                     $key = 'document:'.($document['document_id'] ?? '').':'.($chunk['evidence_hash'] ?? '');
                     if (isset($seen[$key])) {
@@ -45,7 +56,7 @@ final readonly class AgentSessionEvidence
                     ], array_flip(['session_memory_observation_id', 'research_flow_ids']));
                 }
             }
-            foreach ($snapshot['api_tools'] ?? [] as $tool) {
+            foreach ($remaining > 0 ? ($snapshot['api_tools'] ?? []) : [] as $tool) {
                 $key = 'tool:'.($tool['execution_id'] ?? '');
                 if (isset($seen[$key])) {
                     continue;
@@ -54,10 +65,11 @@ final readonly class AgentSessionEvidence
                 $batch['api_tools'][] = [...array_diff_key($tool, array_flip(['session_memory_observation_id', 'research_flow_ids', 'expires_at'])),
                     'session_context' => true, 'historical_context' => true];
             }
-            if ($batch['documents'] === [] && $batch['api_tools'] === []) {
+            if ($batch['documents'] === [] && $batch['api_tools'] === [] && empty($batch['document_coordinates'])) {
                 continue;
             }
             $safe = $this->access->current($run, $context, $batch);
+            foreach ($safe['document_coordinates'] ?? [] as $reference) $coordinates[$reference['document_id']] = $reference;
             foreach (array_keys($collection) as $kind) {
                 foreach ($safe[$kind] as $item) {
                     $bytes = strlen(json_encode($item, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
@@ -69,6 +81,7 @@ final readonly class AgentSessionEvidence
             }
         }
 
+        if ($coordinates !== []) $collection['document_coordinates'] = array_values($coordinates);
         return $collection;
     }
 }

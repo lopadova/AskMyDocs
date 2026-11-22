@@ -160,6 +160,142 @@ final class KnowledgeAcceptanceTest extends TestCase
         $this->assertSame($two, $read['sections'][0]['text']);
     }
 
+    public function test_session_reads_a_distant_section_from_retained_coordinates_without_knowledge_enrichment(): void
+    {
+        $this->actingAs($this->actor);
+        $doc = $this->document(['Introduction', str_repeat('Other chapters. ', 2000), 'Compare two views with the same garment.'], type: 'pdf');
+        $first = $doc->chunks()->orderBy('chunk_order')->firstOrFail();
+        $conversation = \App\Models\Conversation::create(['tenant_id' => 'test-tenant', 'project_key' => 'eng', 'user_id' => $this->actor->id]);
+        $attributes = ['tenant_id' => 'test-tenant', 'project_key' => 'eng', 'user_id' => $this->actor->id, 'actor_type' => 'user',
+            'actor_id' => (string) $this->actor->id, 'channel' => 'chat', 'locale' => 'en', 'timezone' => 'UTC',
+            'conversation_id' => $conversation->id, 'input_json' => ['session_evidence' => true]];
+        \App\Models\AgentRun::create([...$attributes, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'status' => 'completed',
+            'result_json' => ['evidence' => ['documents' => [['document_id' => $doc->id, 'title' => $doc->title,
+                'evidence' => [['content' => $first->chunk_text, 'chunk_id' => $first->id, 'evidence_hash' => $first->chunk_hash]]]]]]]);
+        $run = \App\Models\AgentRun::create([...$attributes, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'status' => 'running']);
+        $context = \App\Agent\AgentExecutionContext::fromArray($run->toArray());
+        config(['agent.session_evidence.previous_bytes' => 0]);
+        $collection = app(\App\Agent\Evidence\AgentSessionEvidence::class)->load($run, $context);
+        $this->assertSame([], $collection['documents']);
+        $this->assertSame($doc->id, $collection['document_coordinates'][0]['document_id']);
+        $envelope = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
+        $envelope->import($collection);
+        $this->assertFalse($envelope->hasEvidence());
+        $tools = app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $this->actor);
+        $this->assertArrayNotHasKey('search_knowledge_entities', $tools);
+        $tool = $tools['read_knowledge_context'];
+        $this->assertSame(['document_id'], $tool->inputSchema['required']);
+        $runner = app(\App\Agent\Tools\AgentServerToolRunner::class);
+        $budget = new \App\Agent\Budget\AgentBudgetTracker($run, false);
+        $firstPage = $runner->execute($tool, ['document_id' => $doc->id], $context, $run, $budget);
+        $last = collect($firstPage->body['section_map'])->last()['ordinal'];
+        $this->assertGreaterThan(3, $last);
+        $request = ['document_id' => $doc->id, 'cursor' => $last, 'source_version' => $firstPage->body['source_version']];
+        $read = $runner->execute($tool, $request, $context, $run, $budget);
+        $this->assertSame('Compare two views with the same garment.', $read->body['documents'][0]['evidence'][0]['content']);
+        $this->assertSame(0, $read->physicalRequests);
+        $this->assertNull($read->body['next_cursor']);
+        $doc->forceFill(['version_hash' => hash('sha256', 'new revision')])->save();
+        $this->assertFalse($runner->execute($tool, $request, $context, $run, $budget)->successful());
+        $access = app(\App\Agent\Evidence\AgentEvidenceAccess::class);
+        $this->assertEmpty($access->current($run, $context, $collection)['document_coordinates'] ?? []);
+        $doc->delete();
+        $this->assertEmpty(app(\App\Agent\Evidence\AgentSessionEvidence::class)->load($run, $context)['document_coordinates'] ?? []);
+    }
+
+    public function test_gap_read_opens_a_known_file_first_then_the_planner_uses_its_map_and_can_search(): void
+    {
+        $this->actingAs($this->actor);
+        $doc = $this->document(['Introduction.', 'A documented scenario in the last chapter.'], type: 'pdf');
+        $anchor = $doc->chunks()->firstOrFail();
+        $conversation = \App\Models\Conversation::create(['tenant_id' => 'test-tenant', 'project_key' => 'eng', 'user_id' => $this->actor->id]);
+        $run = \App\Models\AgentRun::create(['tenant_id' => 'test-tenant', 'project_key' => 'eng', 'user_id' => $this->actor->id,
+            'actor_type' => 'user', 'actor_id' => (string) $this->actor->id, 'channel' => 'chat', 'locale' => 'en', 'timezone' => 'UTC',
+            'started_at' => now(), 'conversation_id' => $conversation->id, 'run_id' => (string) \Illuminate\Support\Str::uuid(), 'status' => 'running',
+            'input_json' => ['session_evidence' => true, 'question' => 'Give me two examples.'],
+            'result_json' => ['session_context_gap' => ['next_action' => 'read', 'tasks' => [
+                ['next_action' => 'read', 'source_document_ids' => [$doc->id, $doc->id + 1000]]]],
+                'evidence' => ['document_coordinates' => [['document_id' => $doc->id, 'chunk_id' => $anchor->id]]]]]);
+        config(['agent.planner.mode' => 'classic', 'kb.investigation.enabled' => false]);
+        $retrieval = \Mockery::mock(\App\Services\Kb\Chat\ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->once()->andReturn(new \App\Services\Kb\Retrieval\SearchResult(collect(), collect(), collect()));
+        $this->app->instance(\App\Services\Kb\Chat\ChatRetrievalService::class, $retrieval);
+
+        $ai = \Mockery::mock(\App\Ai\AiManager::class);
+        $step = 0;
+        $ai->shouldReceive('chatWithHistory')->times(3)->andReturnUsing(function ($system, $messages) use ($doc, &$step, $run) {
+            $payload = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            $action = fn ($id, $tool, $arguments) => ['id' => $id, 'tool' => $tool, 'purpose' => 'Check the requested example', 'arguments' => $arguments];
+            if (++$step === 1) {
+                $this->assertSame(['read_knowledge_context'], $run->toolExecutions()->pluck('tool_name')->all());
+                $first = $payload['collected_evidence']['api_tools'][0]['result'];
+                $this->assertSame('Section 1', $first['section_map'][1]['heading']);
+                $args = ['document_id' => $doc->id, 'source_version' => $first['source_version'], 'limit' => 1];
+                $actions = [$action('repeat_page', 'read_knowledge_context', [...$args, 'cursor' => 0]),
+                    $action('open_chapter', 'read_knowledge_context', [...$args, 'cursor' => $first['section_map'][1]['ordinal']])];
+            } elseif ($step === 2) {
+                $this->assertSame('duplicate_call_avoided', $run->toolExecutions()->where('status', 'skipped')->value('error_code'));
+                $actions = [$action('other_example', 'search_knowledge_base', ['query' => 'an additional documented example'])];
+            } else {
+                $actions = [];
+            }
+            return new \App\Ai\AiResponse('', 'fake', 'test', toolCalls: [['name' => 'submit_agent_plan',
+                'arguments' => ['decision' => $actions === [] ? 'answer' : 'tools', 'actions' => $actions]]]);
+        });
+        $this->app->instance(\App\Ai\AiManager::class, $ai);
+        $context = \App\Agent\AgentExecutionContext::fromArray($run->toArray());
+        $tools = app(\App\Agent\Tools\AgentToolRegistry::class)->forContext($context, $this->actor);
+        $snapshot = app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class)->build($tools);
+        $outcome = app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, null, $tools, $snapshot);
+        $this->assertSame('answer', $outcome->decision, (string) $outcome->stopReason);
+        $firstExecution = $run->toolExecutions()->orderBy('logical_index')->firstOrFail();
+        $this->assertSame('read_document_sections', data_get($firstExecution->result_meta_json, 'stats.operation'));
+        $this->assertSame(1, data_get($firstExecution->result_meta_json, 'stats.sections_read'));
+        $this->assertSame(['read_knowledge_context', 'read_knowledge_context', 'search_knowledge_base'],
+            $run->toolExecutions()->where('status', 'completed')->orderBy('logical_index')->pluck('tool_name')->all());
+        $this->assertStringContainsString('documented scenario', json_encode($outcome->evidence->documents(), JSON_THROW_ON_ERROR));
+    }
+
+    public function test_generated_wiki_navigation_returns_only_originals_visible_in_the_current_scope(): void
+    {
+        config(['kb.mentions.mode' => 'filter']);
+        $original = $this->document(['Verified procedure for returning an item.']);
+        $original->forceFill(['slug' => 'returns'])->save();
+        $other = $this->document(['Another original.']);
+        $other->forceFill(['slug' => 'other'])->save();
+        $wiki = $this->document(['Synthetic unverified content.']);
+        $wiki->forceFill(['slug' => 'auto-returns', 'is_canonical' => true, 'generation_source' => 'auto',
+            'frontmatter_json' => ['related' => ['returns', 'other']]])->save();
+        $scope = new \App\Services\Kb\Retrieval\RetrievalFilters(projectKeys: ['eng'], docIds: [$wiki->id, $original->id]);
+        $reader = app(KnowledgeDocumentContext::class);
+        $data = $reader->read('test-tenant', 'eng', $wiki->id, $this->actor, filters: $scope);
+        $this->assertSame([], $data['sections']);
+        $this->assertSame([$original->id], array_column($data['linked_originals'], 'document_id'));
+        $anchor = $wiki->chunks()->firstOrFail();
+        $candidate = app(\App\Services\Kb\Investigation\KbSourceReader::class)->readCandidate(
+            ['document' => ['id' => $wiki->id], 'chunk_id' => $anchor->id, 'session_document_context' => true], 'eng', $this->actor, $scope);
+        $this->assertSame('', $candidate['excerpt']);
+        $this->assertSame($data['linked_originals'], $candidate['navigation_coordinates']);
+        $read = $reader->read('test-tenant', 'eng', $data['linked_originals'][0]['document_id'], $this->actor, filters: $scope);
+        $this->assertSame('Verified procedure for returning an item.', $read['sections'][0]['text']);
+        $this->assertNull($reader->read('test-tenant', 'eng', $other->id, $this->actor, filters: $scope));
+    }
+
+    public function test_targeted_read_uses_the_verified_email_body_and_excludes_triage_text(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('kb');
+        $original = 'The customer asked for a replacement.';
+        $doc = $this->document([$original."\n\nAutomatic triage: item refunded."]);
+        $doc->forceFill(['metadata' => ['connector' => 'imap', 'disk' => 'kb', 'email_body_hash' => hash('sha256', $original),
+            'email_triage' => ['evaluation_id' => 1, 'original_hash' => hash('sha256', $original)]]])->save();
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($doc->source_path, $original);
+        $read = app(KnowledgeDocumentContext::class)->read('test-tenant', 'eng', $doc->id, $this->actor);
+        $this->assertSame($original, $read['sections'][0]['text']);
+        $this->assertSame(hash('sha256', $original), $read['sections'][0]['text_hash']);
+        \Illuminate\Support\Facades\Storage::disk('kb')->put($doc->source_path, 'Changed.');
+        $this->assertNull(app(KnowledgeDocumentContext::class)->read('test-tenant', 'eng', $doc->id, $this->actor));
+    }
+
     public function test_revision_changes_are_stale_until_selective_reprocessing_and_no_eager_dispatch(): void
     {
         $this->activate();

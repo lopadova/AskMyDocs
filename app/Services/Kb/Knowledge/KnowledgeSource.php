@@ -11,13 +11,16 @@ use App\Services\EmailTriage\EmailConnectorRegistry;
 
 final class KnowledgeSource
 {
+    public function navigationOnly(KnowledgeDocument $doc): bool
+    {
+        return (bool) data_get($doc->metadata, 'autowiki_concept')
+            || ($doc->is_canonical && $doc->generation_source === 'auto' && $doc->source_type !== FreshdeskCaseStudyLineage::SOURCE_TYPE);
+    }
+
     /** Original text only; generated summaries and triage cards are never evidence. */
     public function parts(KnowledgeDocument $doc): array
     {
-        if ($doc->status !== 'active' || $doc->deleted_at !== null || data_get($doc->metadata, 'autowiki_concept') || data_get($doc->metadata, 'generated_fixture') === true) return [];
-        // Generated canonical prose cannot become independent evidence for itself.
-        // OCR/raw text is still an original source; Freshdesk has verified original lineage below.
-        if ($doc->is_canonical && $doc->generation_source === 'auto' && $doc->source_type !== FreshdeskCaseStudyLineage::SOURCE_TYPE) return [];
+        if ($doc->status !== 'active' || $doc->deleted_at !== null || $this->navigationOnly($doc) || data_get($doc->metadata, 'generated_fixture') === true) return [];
         $chunks = KnowledgeChunk::query()->forTenant($doc->tenant_id)->where('knowledge_document_id', $doc->id)->orderBy('chunk_order')->get();
         if ($doc->source_type === FreshdeskCaseStudyLineage::SOURCE_TYPE) {
             $original = app(FreshdeskCaseStudyLineage::class)->originalEvidence($doc);

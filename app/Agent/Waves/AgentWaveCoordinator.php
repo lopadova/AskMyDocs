@@ -18,6 +18,8 @@ use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Planning\AgentAmbiguousSelectionGuard;
 use App\Agent\Planning\AgentArgumentResolver;
 use App\Agent\Planning\AgentPlanningCoordinator;
+use App\Agent\Planning\AgentPlan;
+use App\Agent\Planning\AgentPlanParser;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolFailure;
 use App\ApiTools\ToolContinuation;
@@ -101,9 +103,10 @@ final class AgentWaveCoordinator
             }
             $this->checkpoint($run, $evidence, $completed, $results);
             $depths = $sessionEvidence ? $this->executionDepths($run) : [];
-            $initialPlan = data_get($run->result_json, 'initial_plan.status') === 'pending'
+            $readPlan = $sessionEvidence ? $this->documentGapPlan($run, $tools, $evidence, $completed) : null;
+            $initialPlan = $readPlan ?? (data_get($run->result_json, 'initial_plan.status') === 'pending'
                 ? $this->diagnostics->measure($run, 'planner.initial_plan', fn () => app(\App\Agent\Planning\AgentInitialPlanning::class)
-                    ->consume($run, $context, $tools, $snapshot, $evidence), ['operation' => 'validate_combined_plan']) : null;
+                    ->consume($run, $context, $tools, $snapshot, $evidence), ['operation' => 'validate_combined_plan']) : null);
             $minimumWaveSeconds = min((float) config('agent.waves.timeout_seconds', 45),
                 max(1, (float) config('agent.waves.minimum_dispatch_seconds', 5)));
             $planningSeconds = $sessionEvidence ? (float) config('agent.synthesis.request_timeout_seconds', 60)
@@ -188,6 +191,15 @@ final class AgentWaveCoordinator
                     $this->skipped($run, $action, $tool, 'dependency_resolution_failed', $completed);
                     continue;
                 }
+                if ($tool->name === 'read_knowledge_context' && isset($arguments['document_id'])) {
+                    $arguments['cursor'] = max(0, (int) ($arguments['cursor'] ?? 0));
+                    $arguments['limit'] = max(1, min(3, (int) ($arguments['limit'] ?? 1)));
+                    if ($this->alreadyReadPage($evidence, $arguments)) {
+                        $alreadyObserved++;
+                        $this->skipped($run, $action, $tool, 'duplicate_call_avoided', $completed);
+                        continue;
+                    }
+                }
                 $signature = $this->signature($arguments);
                 $duplicate = false;
                 foreach ($completed as $previous) {
@@ -206,7 +218,9 @@ final class AgentWaveCoordinator
                     $this->skipped($run, $action, $tool, 'duplicate_call_avoided', $completed);
                     continue;
                 }
-                if (app(AgentAmbiguousSelectionGuard::class)->blocks($evidence->apiTools(), $arguments,
+                $knownDocumentRead = $tool->name === 'read_knowledge_context' && isset($arguments['document_id'])
+                    && in_array((int) $arguments['document_id'], array_column([...$evidence->documents(), ...$evidence->documentCoordinates()], 'document_id'), true);
+                if (! $knownDocumentRead && app(AgentAmbiguousSelectionGuard::class)->blocks($evidence->apiTools(), $arguments,
                     is_array(data_get($run->input_json, 'selection')) ? data_get($run->input_json, 'selection') : null)) {
                     $this->skipped($run, $action, $tool, 'ambiguous_selection_required', $completed);
                     continue;
@@ -332,7 +346,7 @@ final class AgentWaveCoordinator
                 $before = $evidence->byteSize();
                 if ($tool->name === 'read_knowledge_context') $evidence->import(['documents' => $body['documents'] ?? []]);
                 if ($tool->kind === 'knowledge') {
-                    $evidence->import(['documents' => $body['documents'] ?? []]);
+                    $evidence->import(['documents' => $body['documents'] ?? [], 'document_coordinates' => $body['document_coordinates'] ?? []]);
                     $budget->recordKnowledgeSearchResult($evidence->byteSize() > $before);
                 } else {
                     $evidence->addToolResult($tool, $item['arguments'], $observation->body, $execution->id, $item['argument_bindings']);
@@ -401,6 +415,59 @@ final class AgentWaveCoordinator
             // This is the only back-edge. No worker or dependent action can
             // advance until all wave observations have crossed the common barrier.
         }
+    }
+
+    /** A verifier can name a known file to open; only current authorized IDs can become actions. */
+    private function documentGapPlan(AgentRun $run, array $tools, AgentEvidenceEnvelope $evidence, array $completed): ?AgentPlan
+    {
+        if (! isset($tools['read_knowledge_context'])) return null;
+        $ids = [];
+        foreach (data_get($run->result_json, 'session_context_gap.tasks', []) as $task) {
+            if (($task['next_action'] ?? null) === 'read') {
+                foreach ($task['source_document_ids'] ?? [] as $id) $ids[(int) $id] = true;
+            }
+        }
+        if ($ids === []) return null;
+        $known = array_column([...$evidence->documents(), ...$evidence->documentCoordinates()], 'document_id');
+        $pending = array_intersect(array_keys($ids), $known);
+        if ($pending === []) return null;
+        // A current or retained page supplies a section map. The planner chooses a chapter from it.
+        $observed = [];
+        foreach ($evidence->apiTools() as $observation) {
+            if (($observation['tool'] ?? null) === 'read_knowledge_context' && isset($observation['result']['section_map'])) {
+                $observed[] = (int) $observation['result']['document_id'];
+            }
+        }
+        // Even an inaccessible/depleted document is attempted only once before handing the gap back to planning.
+        foreach ($run->toolExecutions()->where('tool_name', 'read_knowledge_context')->get(['arguments_json']) as $execution) {
+            $observed[] = (int) ($execution->arguments_json['document_id'] ?? 0);
+        }
+        $maximum = max(1, (int) config('agent.planner.max_actions_per_plan', 20));
+        $completeIds = array_column($completed, 'id');
+        $actions = [];
+        foreach (array_slice(array_diff($pending, $observed), 0, $maximum) as $id) {
+            $actionId = 'open_source_'.$id;
+            while (in_array($actionId, $completeIds, true)) $actionId .= '_r';
+            $actions[] = ['id' => $actionId, 'tool' => 'read_knowledge_context', 'arguments' => ['document_id' => $id],
+                'purpose' => 'Read the original document and its section map', 'depends_on' => []];
+        }
+        return $actions === [] ? null : app(AgentPlanParser::class)->parse(['decision' => 'tools', 'actions' => $actions],
+            $tools, $maximum, $completeIds);
+    }
+
+    private function alreadyReadPage(AgentEvidenceEnvelope $evidence, array $arguments): bool
+    {
+        foreach ($evidence->apiTools() as $observation) {
+            if (($observation['tool'] ?? null) !== 'read_knowledge_context' || ! isset($observation['result']['section_map'])) continue;
+            $previous = $observation['arguments'] ?? [];
+            if ((int) ($previous['document_id'] ?? 0) === (int) $arguments['document_id']
+                && max(0, (int) ($previous['cursor'] ?? 0)) === $arguments['cursor']
+                && max(1, min(3, (int) ($previous['limit'] ?? 1))) === $arguments['limit']
+                && (! isset($arguments['source_version']) || ($observation['result']['source_version'] ?? null) === $arguments['source_version'])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** @return array<string,int> */
