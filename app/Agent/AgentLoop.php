@@ -117,12 +117,12 @@ final readonly class AgentLoop
         if (! $retrieved && $understanding === null) {
             $this->control->ensureActive($run);
             $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
-            $initialPlanning = $run->usesConcurrentSession() || ($sessionEvidence && $evidence->hasEvidence()) ? null
+            $initialPlanning = $run->usesConcurrentSession() || ($sessionEvidence && ($evidence->hasEvidence() || $evidence->documentCoordinates() !== [])) ? null
                 : app(\App\Agent\Planning\AgentInitialPlanning::class)->contract($run, $context, $tools, $capabilitySnapshot);
             $understanding = $this->diagnostics->measure($run, $initialPlanning === null ? 'question.interpretation' : 'question.initial_plan',
                 fn () => app(\App\Services\Chat\ChatTurnInterpreter::class)->prepare($question, $context->projectKey,
                     $filters, $turnContext, $user instanceof User ? $user : null, $memory->runOwner($run), $memory->runTurn($run), $capabilitySnapshot,
-                    initialPlanning: $initialPlanning),
+                    initialPlanning: $initialPlanning, textSession: $sessionEvidence),
                 ['wait_reason' => 'provider_response']);
             if ($understanding !== null) {
                 \Illuminate\Support\Facades\DB::transaction(function () use ($run, $understanding, $capabilitySnapshot): void {
@@ -141,24 +141,30 @@ final readonly class AgentLoop
             if ($understanding?->available === false) {
                 // The original user message and authorized evidence are still usable
                 // if the optional structured interpretation could not be produced.
-                if ($run->usesConcurrentSession()) {
-                    return AgentLoopOutcome::assessSession($evidence, null, $completed);
+                $assessment = AgentLoopOutcome::assessSession($evidence, null, $completed);
+                if ($run->usesConcurrentSession() || (! isset($run->result_json['session_context_gap']) && $assessment->decision === 'answer')) {
+                    return $assessment;
                 }
-                return $this->outcome('partial', $evidence, $completed, 'question_interpretation_unavailable');
+                return app(\App\Agent\Waves\AgentWaveCoordinator::class)->run($run, $context, $turnContext, $tools, $capabilitySnapshot);
             }
             if ($understanding?->asksForProvenance()) {
                 return $this->outcome('answer', $evidence, $completed, 'answer_provenance');
             }
-            if ($understanding !== null && $understanding->effectiveFollowUpTarget() !== 'sources') {
+            $coverageGap = $run->result_json['session_context_gap'] ?? null;
+            if ($understanding !== null && $understanding->effectiveFollowUpTarget($coverageGap) !== 'sources') {
                 return $this->outcome('answer', $evidence, $completed, 'context_only');
             }
-            if ($run->usesConcurrentSession()) {
-                if ($understanding?->isAssistantConversation() || $understanding?->needsClarification) {
-                    return $this->outcome('answer', $evidence, $completed, 'context_only');
-                }
-                return AgentLoopOutcome::assessSession($evidence, $understanding, $completed);
+            if ($understanding?->isAssistantConversation() || $understanding?->needsClarification) {
+                return $this->outcome('answer', $evidence, $completed, 'context_only');
             }
-            if ($understanding !== null && ! $understanding->needsResearch() && ! isset($run->result_json['session_context_gap'])) {
+            if ($run->usesConcurrentSession() || ($understanding?->deliverable !== null && $coverageGap === null)) {
+                $assessment = AgentLoopOutcome::assessSession($evidence, $understanding, $completed);
+                if ($run->usesConcurrentSession() || $assessment->decision === 'answer') {
+                    return $assessment;
+                }
+            }
+            if ($understanding !== null && $understanding->deliverable === null && $coverageGap === null
+                && ! $understanding->requiresCurrentObservation() && ! $understanding->needsResearch()) {
                 $canSearchIfNeeded = in_array($understanding->effectiveAction(), [QuestionAction::Refine, QuestionAction::Research], true);
                 if (! $canSearchIfNeeded) {
                     return $this->outcome('answer', $evidence, $completed, 'context_only');

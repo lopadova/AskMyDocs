@@ -15,6 +15,7 @@ final readonly class AgentCapabilityRouter
         ?string $turnContext,
         AgentCapabilitySnapshot $snapshot,
         bool $hasDocumentEvidence,
+        bool $hasKnownDocuments = false,
     ): AgentCapabilityRoute {
         $ranked = $this->ranker->rank($question, $turnContext, $snapshot, $hasDocumentEvidence);
         $catalogLimit = max(1, (int) config('agent.planner.router_catalog_limit', 40));
@@ -61,6 +62,7 @@ PROMPT,
                     'question' => $question,
                     'turn_context' => $turnContext,
                     'initial_document_evidence_available' => $hasDocumentEvidence,
+                    ...$hasKnownDocuments ? ['known_documents_can_be_read_by_id' => true] : [],
                     'capabilities' => array_map(static fn (array $item): array => [
                         'capability' => $item['capability']->compact(),
                         'deterministic_score' => $item['score'],
@@ -117,6 +119,11 @@ PROMPT,
                     static fn (array $item): bool => $item['score'] > 0,
                 )), 0, $candidateLimit),
             );
+        }
+        // Keep the direct document reader available alongside a proposed KB discovery when the session has known files.
+        if ($hasKnownDocuments && count($selected) < $candidateLimit && ! ($payload['live_data_required'] ?? false) && $snapshot->get('read_knowledge_context') !== null
+            && array_intersect($selected, ['search_knowledge_base', 'list_knowledge_documents'])) {
+            $selected = array_values(array_unique(['read_knowledge_context', ...$selected]));
         }
         $selected = array_slice($selected, 0, $candidateLimit);
         $reasons = array_values(array_slice(array_filter(

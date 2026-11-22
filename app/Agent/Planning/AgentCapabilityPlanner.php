@@ -36,7 +36,8 @@ final readonly class AgentCapabilityPlanner
         int $depth = 3,
         bool $sessionEvidence = false,
     ): AgentCapabilityPlanningResult {
-        $route = $this->router->route($question, $turnContext, $snapshot, $evidence->documents() !== []);
+        $route = $this->router->route($question, $turnContext, $snapshot, $evidence->documents() !== [],
+            hasKnownDocuments: $sessionEvidence && ($evidence->documents() !== [] || $evidence->documentCoordinates() !== []));
         $candidateTools = array_intersect_key($tools, array_flip($route->candidateTools));
         $candidateCapabilities = array_intersect_key($snapshot->capabilities, $candidateTools);
         $encoded = json_encode(array_map(

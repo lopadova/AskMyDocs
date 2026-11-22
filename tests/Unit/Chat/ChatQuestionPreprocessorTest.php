@@ -6,13 +6,115 @@ namespace Tests\Unit\Chat;
 
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
+use App\Agent\AgentLoopOutcome;
+use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Services\Chat\ChatQuestionPreprocessor;
+use App\Services\Chat\QuestionUnderstanding;
 use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class ChatQuestionPreprocessorTest extends TestCase
 {
+    public static function deliverables(): array
+    {
+        return [
+            'plural source examples after an overview' => ['Fammi qualche esempio.', 'examples', null, 'source_context', 'previous_reply', 'sources', 2],
+            'an explicit quantity' => ['Mostrami tre casi.', 'examples', 3, 'source_context', 'previous_reply', 'sources', 3],
+            'one example' => ['Mi fai un esempio?', 'examples', 1, 'source_context', 'sources', 'sources', 1],
+            'rewrite of the wording' => ['Riscrivilo in elenco.', 'rewrite', null, 'source_context', 'previous_reply', 'previous_reply', null],
+            'explicit evidence restriction' => ['Usa solo i dati raccolti.', 'examples', 2, 'source_context', 'collected_only', 'collected_only', 2],
+            'current value' => ['E in questo momento?', 'answer', null, 'current', 'previous_reply', 'sources', null],
+        ];
+    }
+
+    #[DataProvider('deliverables')]
+    public function test_requested_result_survives_interpretation_and_resolves_the_follow_up_route(string $question, string $kind, ?int $quantity,
+        string $freshness, string $target, string $expectedTarget, ?int $expectedQuantity): void
+    {
+        $focus = ['topic' => 'catalogo', 'identifiers' => [], 'aspect' => 'disponibilità', 'fields' => ['*']];
+        $deliverable = compact('kind', 'quantity', 'freshness');
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturnUsing(function ($provider, $prompt, $messages, $options) use ($target, $deliverable, $focus, $question) {
+            $schema = $options['response_format']['json_schema']['schema'];
+            $this->assertContains('deliverable', $schema['required']);
+            $this->assertSame($schema['properties']['deliverable'], $schema['properties']['subquestions']['items']['properties']['deliverable']);
+
+            return $this->response(['language' => 'it', 'action' => 'refine', 'intent' => $question, 'mentions' => [], 'kb_queries' => [],
+                'references_previous_turn' => true, 'context_mode' => 'conversation', 'requires_research' => false,
+                'transition' => 'continue', 'follow_up_target' => $target, 'deliverable' => $deliverable, 'focus' => $focus,
+                'subquestions' => [[...$focus, 'question' => $question, 'context_mode' => 'conversation', 'requires_research' => false,
+                    'kb_queries' => [], 'deliverable' => $deliverable]], 'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '']);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret($question, reasoningContext: [], textSession: true);
+        $this->assertTrue($result->available);
+        $restored = QuestionUnderstanding::fromArray($result->toArray());
+        $this->assertSame($expectedTarget, $restored->effectiveFollowUpTarget(['next_action' => 'search']));
+        $this->assertSame($expectedQuantity, $restored->deliverable['quantity']);
+        $this->assertSame($restored->deliverable, $restored->forSubquestion(0)->deliverable);
+        $this->assertSame($freshness === 'current', $restored->needsResearch());
+    }
+
+    public function test_historical_observations_cannot_finish_current_requests_during_fifo_reassessment(): void
+    {
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->import(['api_tools' => [['tool' => 'orders', 'execution_id' => 11, 'result' => ['status' => 'shipped'],
+            'historical_context' => true, 'retrieved_at' => '2025-04-01T08:00:00Z']]]);
+        $context = ['kind' => 'summary', 'quantity' => null, 'freshness' => 'source_context'];
+        $current = ['kind' => 'answer', 'quantity' => null, 'freshness' => 'current'];
+        $q = QuestionUnderstanding::fromArray(['available' => true, 'action' => 'research', 'deliverable' => $current,
+            'subquestions' => [['deliverable' => $context], ['deliverable' => $current]]]);
+        $this->assertFalse($q->requiresCurrentObservationFor(0));
+        $this->assertTrue($q->requiresCurrentObservationFor(1));
+        $outcome = AgentLoopOutcome::assessSession($evidence, $q);
+        $this->assertSame('request_research', $outcome->decision);
+        $this->assertSame($evidence, $outcome->evidence);
+        $recap = QuestionUnderstanding::fromArray(['available' => true, 'action' => 'recap', 'deliverable' => $context]);
+        $this->assertSame('context_answer_attempt', AgentLoopOutcome::assessSession($evidence, $recap)->stopReason);
+    }
+
+    public function test_history_and_current_state_keep_separate_tasks_for_the_same_order(): void
+    {
+        $case = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'fields' => ['*']];
+        $history = [...$case, 'aspect' => 'messaggio del cliente'];
+        $status = [...$case, 'aspect' => 'stato oggi'];
+        $current = ['kind' => 'answer', 'quantity' => null, 'freshness' => 'current'];
+        $tasks = [
+            [...$history, 'question' => 'Cosa ha scritto il cliente per ORDER-A?', 'kb_queries' => [],
+                'deliverable' => [...$current, 'kind' => 'summary', 'freshness' => 'source_context'], 'context_mode' => 'conversation', 'requires_research' => false],
+            [...$status, 'question' => 'Qual è lo stato attuale di ORDER-A?', 'kb_queries' => [],
+                'deliverable' => $current, 'context_mode' => 'conversation', 'requires_research' => true],
+        ];
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithProvider')->once()->andReturnUsing(function ($provider, $prompt, $messages, $options) use ($history, $current, $tasks) {
+            $this->assertStringContainsString('two independently verifiable results', $prompt);
+            $schema = $options['response_format']['json_schema']['schema']['properties']['subquestions'];
+            $this->assertStringContainsString('separately requested current state', $schema['description']);
+            return $this->response(['language' => 'it', 'action' => 'research', 'intent' => 'Ricostruire messaggio e stato',
+                'mentions' => [], 'kb_queries' => [], 'references_previous_turn' => true, 'context_mode' => 'conversation',
+                'requires_research' => true, 'transition' => 'continue', 'follow_up_target' => 'sources', 'deliverable' => $current,
+                'focus' => $history, 'subquestions' => $tasks, 'resolved_references' => ['ORDER-A'], 'needs_clarification' => false, 'clarification' => '']);
+        });
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Cosa aveva scritto il cliente e come sta oggi l’ordine?',
+            reasoningContext: ['known_identifiers' => ['ORDER-A']], textSession: true);
+        $this->assertTrue($result->available);
+        $this->assertCount(2, $result->subquestions);
+        $this->assertSame(['ORDER-A'], $result->forSubquestion(0)->targetIdentifiers());
+        $this->assertSame(['ORDER-A'], $result->forSubquestion(1)->targetIdentifiers());
+        $this->assertFalse($result->requiresCurrentObservationFor(0));
+        $this->assertTrue($result->requiresCurrentObservationFor(1));
+    }
+
+    public function test_legacy_previous_reply_can_recover_only_after_a_source_gap_is_identified(): void
+    {
+        $legacy = QuestionUnderstanding::fromArray(['available' => true, 'action' => 'refine', 'references_previous_turn' => true,
+            'requires_research' => false, 'follow_up_target' => 'previous_reply']);
+        $this->assertNull($legacy->deliverable);
+        $this->assertSame('previous_reply', $legacy->effectiveFollowUpTarget());
+        $this->assertSame('previous_reply', $legacy->effectiveFollowUpTarget(['next_action' => 'compose']));
+        $this->assertSame('sources', $legacy->effectiveFollowUpTarget(['next_action' => 'read']));
+    }
+
     public function test_research_contract_repair_receives_only_the_task_index_and_closed_rule(): void
     {
         $focus = ['topic' => 'order', 'identifiers' => ['ORDER-A'], 'aspect' => 'status', 'fields' => ['status']];
@@ -25,12 +127,17 @@ final class ChatQuestionPreprocessorTest extends TestCase
             'resolved_references' => [], 'needs_clarification' => false, 'clarification' => ''];
         $calls = [];
         $ai = Mockery::mock(AiManager::class);
-        $ai->shouldReceive('chatWithProvider')->twice()->andReturnUsing(function ($provider, $prompt, $messages) use (&$calls, $payload) {
+        $ai->shouldReceive('chatWithProvider')->twice()->andReturnUsing(function ($provider, $prompt, $messages, $options) use (&$calls, $payload) {
             $calls[] = json_decode($messages[0]['content'], true);
+            $schema = $options['response_format']['json_schema']['schema'];
+            $this->assertArrayNotHasKey('deliverable', $schema['properties']);
+            $this->assertArrayNotHasKey('deliverable', $schema['properties']['subquestions']['items']['properties']);
+            $this->assertStringNotContainsString('State the deliverable for the whole turn', $prompt);
+            $this->assertArrayNotHasKey('open_tasks', end($calls)['reasoning_context']);
             if (count($calls) === 2) $payload['subquestions'][0]['question'] = 'Qual è lo stato di ORDER-A?';
             return $this->response($payload);
         });
-        $result = (new ChatQuestionPreprocessor($ai))->interpret('Controlla lo stato di ORDER-A.', reasoningContext: []);
+        $result = (new ChatQuestionPreprocessor($ai))->interpret('Controlla lo stato di ORDER-A.', reasoningContext: ['open_tasks' => []]);
         $this->assertTrue($result->available);
         $this->assertTrue($result->needsResearch());
         $this->assertSame('sources', $result->effectiveFollowUpTarget());

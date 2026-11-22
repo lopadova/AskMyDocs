@@ -83,7 +83,7 @@ final class AgentToolRegistryTest extends TestCase
             $user,
         );
 
-        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents', $tool->local_name], array_keys($tools));
+        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents', 'read_knowledge_context', $tool->local_name], array_keys($tools));
         $definition = $tools[$tool->local_name];
         $this->assertSame('mcp', $definition->kind);
         $this->assertSame('list-my-orders', $definition->displayName);
@@ -168,7 +168,7 @@ final class AgentToolRegistryTest extends TestCase
             $user,
         );
 
-        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents'], array_keys($tools));
+        $this->assertSame(['search_knowledge_base', 'list_knowledge_documents', 'read_knowledge_context'], array_keys($tools));
     }
 
     private function route(string $tenant, string $project, string $slug, ?array $pagination = null): ApiRoute

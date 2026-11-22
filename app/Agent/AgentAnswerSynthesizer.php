@@ -126,7 +126,7 @@ final readonly class AgentAnswerSynthesizer
         } else {
             [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext, run: $run);
         }
-        if ($sessionFinal && ! $run->usesConcurrentSession() && ! $contextAttempt && ! isset($run->result_json['session_context_gap'])
+        if ($sessionFinal && ! config('reasoning.selective_validation') && ! $run->usesConcurrentSession() && ! $contextAttempt && ! isset($run->result_json['session_context_gap'])
             && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
             $composition = ($understanding['requires_composition'] ?? false) === true;
             $communicated = $composition ? $this->previousSessionClaims($run)
@@ -159,21 +159,26 @@ final readonly class AgentAnswerSynthesizer
         // A live table cannot replace a mixed document/record investigation.
         // Selection is still allowed: it resolves an ambiguous target first.
         $renderTable = (bool) ($payload['render_table'] ?? false) && ($evidence['documents'] ?? []) === [];
+        $tableTools = $sessionFinal ? $this->sessionTableSources($evidence['api_tools'], $understanding ?? [], $requiresSelection) : $evidence['api_tools'];
+        if ($tableTools === []) $renderTable = false;
         $payload['render_table'] = $renderTable;
         $artifact = ! $requiresSelection && ! $renderTable ? null : $this->artifacts->fromToolEvidence(
             config('reasoning.selective_validation')
-                ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forTable($evidence['api_tools'], $understanding ?? [], $context->tenantId, $context->projectKey)
-                : $evidence['api_tools'],
+                ? app(\App\Services\Chat\Reasoning\EvidenceProjector::class)->forTable($tableTools, $understanding ?? [], $context->tenantId, $context->projectKey)
+                : $tableTools,
             $requiresSelection, $renderTable,
             is_array($payload['tool_execution_ids'] ?? null) ? $payload['tool_execution_ids'] : [],
         );
         // A model's table flag cannot discard factual document claims when
         // there is no authorized structured artifact to render them instead.
         $presentationOnly = ! $independent && $artifact !== null;
-        $selective = ! $presentationOnly && config('reasoning.selective_validation', true);
+        $checkTable = $sessionFinal && $presentationOnly && ! $requiresSelection && config('reasoning.selective_validation', true);
+        $selective = (! $presentationOnly || $checkTable) && config('reasoning.selective_validation', true);
         $batchEnabled = $selective || (! $presentationOnly && config('agent.grounding.enabled', true)
             && config('agent.grounding.batch.enabled', true));
-        $grounding = $diagnostics->measure($run, 'validation.grounding', fn () => $selective
+        $grounding = $diagnostics->measure($run, 'validation.grounding', fn () => $presentationOnly
+            ? ['valid' => true, 'reason' => null, 'terms' => [], 'claims' => [], 'semantic_validation' => []]
+            : ($selective
             ? app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $evidence, $payload['claims'] ?? [],
                 $understanding ?? [], $context->projectKey, $context->tenantId,
                 $sessionFinal ? [] : data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $validationRunId,
@@ -182,8 +187,6 @@ final readonly class AgentAnswerSynthesizer
             : ($batchEnabled
             ? ($this->batchEvaluator ?? app(AgentClaimBatchEvaluator::class))
                 ->evaluate($question, $evidence, $payload['claims'] ?? null, $mentions, $context->projectKey, $context->tenantId, $validationRun)
-            : ($presentationOnly
-            ? ['valid' => true, 'reason' => null, 'terms' => [], 'claims' => []]
             : (! config('agent.grounding.enabled', true)
                 ? $this->deterministicSubset($question, $evidence, $payload['claims'] ?? [])
                 : $this->grounding->validate($question, $evidence, $payload['claims'] ?? null, $mentions)))), ['operation' => $selective ? 'focused_claims' : ($batchEnabled ? 'claim_batch' : 'deterministic')]);
@@ -194,14 +197,21 @@ final readonly class AgentAnswerSynthesizer
             $this->checkpoint($validationRun, $context, $evidence, $grounding);
         }
         $repair = null;
-        if ($sessionFinal && $selective && $grounding['valid']) {
-            $coverage = $this->evaluateCoverage($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? [], $run);
+        $coverageInput = $understanding ?? [];
+        if ($sessionFinal && $selective) {
+            // Reauthorized statements already visible in the conversation are comparison material only.
+            $previous = array_column(data_get(json_decode($turnContext ?? '{}', true), 'reasoning.already_communicated', []), 'text');
+            if ($previous !== []) $coverageInput['previous_answer_for_comparison'] = $previous;
+            $grounding['verified_speech_act'] = $this->verifiedSpeechAct($question, $payload, $grounding, $understanding ?? [], $validationRunId, $context->tenantId);
+            $coverage = $this->evaluateCoverage($question, $evidence, $grounding['claims'] ?? [], $coverageInput, $grounding['source_excerpts'] ?? [], $run,
+                $grounding['verified_speech_act'], $checkTable ? $artifact : null);
             $grounding['coverage_validation'] = $coverage;
-            $grounding['partial'] = ($grounding['partial'] ?? false) || ($coverage['sufficient'] ?? null) === false;
+            $grounding['partial'] = ($grounding['partial'] ?? false) || $coverage['sufficient'] !== true;
         }
-        if (! $sessionFinal && $selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
-            && ($grounding['reason'] ?? null) !== 'no_new_detail') {
-            $coverage = $this->evaluateCoverage($question, $evidence, $grounding['claims'], $understanding ?? [], $grounding['source_excerpts'] ?? [], $run);
+        $sessionComposition = $sessionFinal && $selective && ($coverage['next_action'] ?? null) === 'compose';
+        if ($selective && config('reasoning.selective_repair', true) && $outcome->evidence->hasEvidence()
+            && ($sessionComposition || (! $sessionFinal && ($grounding['reason'] ?? null) !== 'no_new_detail'))) {
+            $coverage ??= $this->evaluateCoverage($question, $evidence, $grounding['claims'], $coverageInput, $grounding['source_excerpts'] ?? [], $run);
             $grounding['coverage_validation'] = $coverage;
             $providerFailed = array_filter($grounding['semantic_validation'] ?? [], fn ($stage) => ($stage['status'] ?? null) === 'error');
             if (! $providerFailed && (! $grounding['valid'] || ($grounding['partial'] ?? false) || $coverage['sufficient'] === false)
@@ -237,26 +247,33 @@ final readonly class AgentAnswerSynthesizer
                     }
                     $repaired = app(\App\Agent\Grounding\FocusedClaimEvaluator::class)->evaluate($question, $repairEvidence,
                         $repairedPayload['claims'] ?? [], $understanding ?? [], $context->projectKey, $context->tenantId,
-                        data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $durableRunId,
-                        data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])), repairAttempt: true);
+                        $sessionFinal ? [] : data_get(json_decode($turnContext ?? '{}', true), 'reasoning.communicated_fact_ids', []), $validationRunId,
+                        data_get(json_decode($turnContext ?? '{}', true), 'original_question_context', data_get(json_decode($turnContext ?? '{}', true), 'reasoning', [])), repairAttempt: true,
+                        preserveClaimOrder: $sessionFinal);
                     $retainedExcerpts = [];
                     foreach ([...($grounding['source_excerpts'] ?? []), ...($repaired['source_excerpts'] ?? [])] as $excerpt) {
                         $retainedExcerpts[hash('sha256', json_encode([$excerpt['document_id'], $excerpt['evidence_hash'], $excerpt['text']]))] = $excerpt;
                     }
                     $repaired['source_excerpts'] = array_values($retainedExcerpts);
+                    $repaired['verified_speech_act'] = $sessionFinal ? $this->verifiedSpeechAct($question, $repairedPayload, $repaired, $understanding ?? [], $validationRunId, $context->tenantId) : null;
                     $repairedCoverage = $repaired['valid']
-                        ? $this->evaluateCoverage($question, $repairEvidence, $repaired['claims'], $understanding ?? [], $repaired['source_excerpts'], $run) : null;
+                        ? $this->evaluateCoverage($question, $evidence, $repaired['claims'], $coverageInput, $repaired['source_excerpts'], $run, $repaired['verified_speech_act']) : null;
                     $repair['candidate_semantic_validation'] = $repaired['semantic_validation'] ?? [];
                     $repair['candidate_coverage'] = $repairedCoverage;
                     $repair['candidate_reason'] = $repaired['reason'] ?? null;
                     $improved = $this->repairImprovesCoverage($grounding, $repaired, $coverage, $repairedCoverage);
-                    if ($repaired['valid'] && $improved) {
+                    if ($repaired['valid'] && $improved && (! $checkTable || $repairedCoverage['sufficient'] === true)) {
                         $grounding = $repaired;
+                        if ($checkTable) {
+                            $artifact = null;
+                            $presentationOnly = false;
+                            $checkTable = false;
+                        }
                         $payload = $repairedPayload;
                         $response = $repairedResponse;
                         $repair['status'] = 'accepted';
                         $grounding['coverage_validation'] = $repairedCoverage;
-                    } elseif ($repaired['valid']) {
+                    } elseif ($repaired['valid'] && ! $checkTable) {
                         $augmented = app(\App\Agent\Grounding\VerifiedRepairAdditions::class)->augment(
                             $question, $grounding, $repaired, $durableRunId, $context->tenantId);
                         if ($augmented !== null) {
@@ -265,7 +282,7 @@ final readonly class AgentAnswerSynthesizer
                             // Preserve every old fact; never label this complete
                             // without evaluating the combined answer separately.
                             $augmented['coverage_validation'] = $this->evaluateCoverage($question, $evidence,
-                                $augmented['claims'], $understanding ?? [], $augmented['source_excerpts'] ?? [], $run);
+                                $augmented['claims'], $coverageInput, $augmented['source_excerpts'] ?? [], $run, $augmented['verified_speech_act'] ?? null);
                             $grounding = $augmented;
                             $payload['claims'] = $augmented['claims'];
                             if (isset($repairedPayload['requested_speech_act'])) $payload['requested_speech_act'] = $repairedPayload['requested_speech_act'];
@@ -280,7 +297,7 @@ final readonly class AgentAnswerSynthesizer
                     $repair['exception_class'] = $exception::class;
                 }
             }
-            if (($grounding['coverage_validation']['sufficient'] ?? null) === false
+            if (($sessionFinal && ($grounding['coverage_validation']['sufficient'] ?? null) !== true) || ($grounding['coverage_validation']['sufficient'] ?? null) === false
                 || ($grounding['coverage_validation']['reason'] ?? null) === 'deadline') {
                 $grounding['partial'] = true;
             }
@@ -295,11 +312,23 @@ final readonly class AgentAnswerSynthesizer
             }
         }
         if ($batchEnabled && ($grounding['partial'] ?? false)) {
+            if ($sessionComposition && ($grounding['coverage_validation']['next_action'] ?? null) === 'compose') {
+                foreach ($grounding['coverage_validation']['tasks'] as &$task) {
+                    if (($task['additional_read_passages'] ?? []) === [] || $task['next_action'] !== 'compose') continue;
+                    $task['next_action'] = 'read';
+                    $task['source_passages'] = $task['additional_read_passages'];
+                    $task['source_document_ids'] = array_values(array_unique(array_column($task['source_passages'], 'document_id')));
+                }
+                unset($task);
+                $actions = array_column($grounding['coverage_validation']['tasks'], 'next_action');
+                if (in_array('read', $actions, true)) $grounding['coverage_validation']['next_action'] = 'read';
+                elseif (in_array('search', $actions, true)) $grounding['coverage_validation']['next_action'] = 'search';
+            }
             $payload['completeness'] = 'partial';
             if (data_get($grounding, 'coverage_validation.sufficient') !== true) {
-                $payload['limitations'][] = str_starts_with($context->locale, 'it')
+                $payload['limitations'][] = $sessionFinal && isset($grounding['coverage_validation']) ? $this->coverageNotice($grounding['coverage_validation'], $context->locale) : (str_starts_with($context->locale, 'it')
                     ? 'Alcuni dettagli non sono stati confermati semanticamente o sono stati omessi.'
-                    : 'Some details were not semantically confirmed or were omitted.';
+                    : 'Some details were not semantically confirmed or were omitted.');
             }
         }
 
@@ -489,17 +518,16 @@ final readonly class AgentAnswerSynthesizer
         }
         $answer = $independent ? $this->composeResearch($understanding, $displayGrounding, $payload, $context->locale, $presentationParagraphs)
             : implode("\n\n", array_column($displayGrounding['claims'], 'text'));
-        $speechAct = $payload['requested_speech_act'] ?? null;
-        if ($sessionFinal && ! $presentationOnly && $grounding['claims'] !== [] && ($understanding['requires_composition'] ?? false)
-            && is_string($speechAct) && trim($speechAct) !== '' && mb_strlen($speechAct) <= 500
-            && app(\App\Agent\Grounding\RequestedSpeechActEvaluator::class)->evaluate($question, $speechAct, $grounding['claims'], $validationRunId, $context->tenantId)['accepted']) {
-            $answer .= "\n\n".trim($speechAct);
+        if ($sessionFinal && ! $presentationOnly) {
+            $speechAct = $selective ? ($grounding['verified_speech_act'] ?? null)
+                : $this->verifiedSpeechAct($question, $payload, $grounding, $understanding ?? [], $validationRunId, $context->tenantId);
+            if ($speechAct !== null) $answer .= "\n\n".$speechAct;
         }
         if ($selective && ! $independent && ($grounding['partial'] ?? false)
             && data_get($grounding, 'coverage_validation.sufficient') !== true) {
-            $answer .= "\n\n".(str_starts_with($context->locale, 'it')
+            $answer .= "\n\n".($sessionFinal ? $this->coverageNotice($grounding['coverage_validation'], $context->locale) : (str_starts_with($context->locale, 'it')
                 ? 'Potrebbero esserci aspetti della richiesta ancora da verificare.'
-                : 'Some aspects of the request may still need verification.');
+                : 'Some aspects of the request may still need verification.'));
         }
 
         $completeness = (string) ($payload['completeness'] ?? 'partial');
@@ -511,14 +539,17 @@ final readonly class AgentAnswerSynthesizer
         $presentedAnswer = $artifact === null
             ? ($presentationOnly && $answer === '' ? (str_starts_with($context->locale, 'it') ? 'Non ho record verificabili per la tabella richiesta.' : 'I have no verified records for the requested table.') : $answer)
             : $this->artifactHandoff($context->locale, $requiresSelection);
-        if ($run?->sessionStage() === 'ready' && $completeness !== 'complete') {
+        if ($checkTable && ($grounding['coverage_validation']['sufficient'] ?? null) !== true) {
+            $presentedAnswer .= "\n\n".$this->coverageNotice($grounding['coverage_validation'], $context->locale);
+        } elseif ($run?->sessionStage() === 'ready' && $completeness !== 'complete') {
             foreach ($this->limitations($payload['limitations'] ?? []) as $missing) {
                 if (! str_contains($presentedAnswer, $missing)) {
                     $presentedAnswer .= "\n\n".$missing;
                 }
             }
         }
-        $sourceLimitations = app(AgentSourceLimitations::class)->forClaims($evidence['api_tools'], $grounding['claims'], $context->locale);
+        $displaySources = $checkTable ? $this->tableSource($artifact, $evidence['api_tools']) : $grounding['claims'];
+        $sourceLimitations = app(AgentSourceLimitations::class)->forClaims($evidence['api_tools'], $displaySources, $context->locale);
         foreach ($sourceLimitations as $note) {
             if (! str_contains($presentedAnswer, $note['text'])) {
                 $presentedAnswer .= "\n\n".$note['text'];
@@ -537,7 +568,7 @@ final readonly class AgentAnswerSynthesizer
             locale: $context->locale,
             completeness: $completeness,
             citations: $this->selectedDocuments($evidence['documents'], [...$grounding['claims'], ...($grounding['source_excerpts'] ?? [])]),
-            toolSources: $this->selectedTools($evidence['api_tools'], $grounding['claims']),
+            toolSources: $this->selectedTools($evidence['api_tools'], $displaySources),
             limitations: array_map(
                 $this->masker->maskString(...),
                 $this->limitations($payload['limitations'] ?? []),
@@ -561,13 +592,82 @@ final readonly class AgentAnswerSynthesizer
         );
     }
 
-    private function evaluateCoverage(string $question, array $evidence, array $claims, array $understanding, array $excerpts, ?AgentRun $run): array
+    private function sessionTableSources(array $tools, array $understanding, bool $selection = false): array
+    {
+        // One table shows one execution. Compound answers use source-bound prose or Markdown tables.
+        if (! $selection && count($understanding['subquestions'] ?? []) > 1) return [];
+        if (! \App\Services\Chat\QuestionUnderstanding::fromArray($understanding)->requiresCurrentObservation()) return $tools;
+        $allowed = [];
+        foreach ($tools as $tool) {
+            if (\App\Services\Chat\Reasoning\EvidenceProjector::isLiveRecordObservation($tool)) {
+                $allowed[] = $tool;
+            } elseif ($selection && \App\Services\Chat\Reasoning\EvidenceProjector::isPreviousObservation($tool)) {
+                $rows = array_values(array_filter(array_map(
+                    fn ($entry) => \App\Services\Chat\Reasoning\EvidenceProjector::identityFields($entry['record'], $tool['presentation']['identity_fields'] ?? []),
+                    \App\Services\Chat\Reasoning\EvidenceProjector::records($tool))));
+                if ($rows !== []) $allowed[] = [...$tool, 'result' => ['records' => $rows],
+                    'presentation' => [...($tool['presentation'] ?? []), 'collection_path' => 'records']];
+            }
+        }
+        return $allowed;
+    }
+
+    private function verifiedSpeechAct(string $question, array $payload, array $grounding, array $understanding, ?string $runId, string $tenant): ?string
+    {
+        $speechAct = $payload['requested_speech_act'] ?? null;
+        if (! ($understanding['requires_composition'] ?? false) || ($grounding['claims'] ?? []) === []
+            || ! is_string($speechAct) || trim($speechAct) === '' || mb_strlen($speechAct) > 500) return null;
+
+        return app(\App\Agent\Grounding\RequestedSpeechActEvaluator::class)
+            ->evaluate($question, $speechAct, $grounding['claims'], $runId, $tenant)['accepted'] ? trim($speechAct) : null;
+    }
+
+    private function coverageNotice(array $coverage, string $locale): string
+    {
+        $italian = str_starts_with($locale, 'it');
+        if (($coverage['next_action'] ?? null) === 'verification_unavailable') {
+            return $italian ? 'La verifica di completezza della risposta non è disponibile.' : 'The answer completeness check is unavailable.';
+        }
+        $missing = array_column(array_filter($coverage['tasks'] ?? [], fn ($task) => $task['status'] !== 'satisfied'), 'question');
+        if ($missing !== []) return ($italian ? 'Rimane da approfondire: ' : 'Still to be addressed: ').implode(' ', $missing);
+
+        return $italian ? 'La risposta è parziale.' : 'This answer is partial.';
+    }
+
+    private function tableSource(array $artifact, array $tools): array
+    {
+        foreach ($tools as $tool) {
+            if ($tool['execution_id'] === $artifact['source_execution_id']) {
+                return [['tool_execution_id' => $tool['execution_id'], 'evidence_hash' => $tool['evidence_hash']]];
+            }
+        }
+        return [];
+    }
+
+    private function evaluateCoverage(string $question, array $evidence, array $claims, array $understanding, array $excerpts, ?AgentRun $run, ?string $speechAct = null, ?array $artifact = null): array
     {
         if (app(AgentRunDeadline::class)->skip($run, 'answer_coverage', 5)) {
+            if ($run?->usesSessionEvidence()) {
+                return [...\App\Agent\Grounding\AnswerCoverageEvaluator::unavailable($question, $understanding['subquestions'] ?? [], 'skipped'), 'reason' => 'deadline'];
+            }
             return ['status' => 'skipped', 'reason' => 'deadline', 'sufficient' => null, 'source_document_ids' => []];
         }
 
-        return app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $claims, $understanding, $excerpts, $run);
+        $visible = null;
+        if ($run?->usesSessionEvidence()) {
+            $locale = (string) ($understanding['language'] ?? $run->locale);
+            if ($artifact !== null) $claims = $this->tableSource($artifact, $evidence['api_tools']);
+            $notes = app(AgentSourceLimitations::class)->forClaims($evidence['api_tools'] ?? [], $claims, $locale);
+            $body = implode("\n\n", [...array_column($claims, 'text'), ...$speechAct !== null ? [$speechAct] : [],
+                ...array_column($notes, 'text'), ...array_column($excerpts, 'text')]);
+            $body = $this->masker->maskForDisplay(app(VerifiedMarkdownTables::class)->normalize($body), $locale);
+            $visible = $body === '' ? [] : explode("\n\n", $body);
+            if ($artifact !== null) {
+                $visible[] = ['columns' => $artifact['columns'], 'rows' => array_column($artifact['rows'], 'values'),
+                    'total_rows' => $artifact['total_rows'], 'truncated' => $artifact['truncated']];
+            }
+        }
+        return app(\App\Agent\Grounding\AnswerCoverageEvaluator::class)->evaluate($question, $evidence, $claims, $understanding, $excerpts, $run, $visible);
     }
 
     private function checkpoint(?AgentRun $run, AgentExecutionContext $context, array $evidence, array $grounding): void
@@ -679,7 +779,7 @@ PROMPT;
         // A table in document text is not a structured tool artifact. Tell the
         // draft which handoff can actually be rendered before it omits rows.
         $tableArtifact = ($evidence['documents'] ?? []) === []
-            ? $this->artifacts->fromToolEvidence($evidence['api_tools'] ?? [], false, true) : null;
+            ? $this->artifacts->fromToolEvidence($sessionFinal ? $this->sessionTableSources($evidence['api_tools'] ?? [], $understanding ?? []) : ($evidence['api_tools'] ?? []), false, true) : null;
         if ($tableArtifact === null || $repairAttempt || $claimBudget !== null) {
             $submission['function']['parameters']['properties']['render_table']['enum'] = [false];
         }
@@ -690,7 +790,7 @@ PROMPT;
                 'retrieval_decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason,
                 ...isset($run->result_json['session_context_gap']) ? ['session_context_gap' => $run->result_json['session_context_gap']] : [],
                 'table_artifact_available' => $tableArtifact !== null && ! $repairAttempt && $claimBudget === null,
-                ...$sessionFinal && $tableArtifact !== null ? ['supported_artifacts' => [['type' => 'ui-data-table',
+                ...$sessionFinal && $tableArtifact !== null && ! $repairAttempt && $claimBudget === null ? ['supported_artifacts' => [['type' => 'ui-data-table',
                     'purpose' => 'Display a verified collection of structured tool records.']]] : [],
                 'evidence' => $promptEvidence,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]],

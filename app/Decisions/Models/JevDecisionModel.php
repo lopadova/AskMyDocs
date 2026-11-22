@@ -15,7 +15,7 @@ use Throwable;
 
 final class JevDecisionModel implements IndependentDecisionModel
 {
-    public function __construct(private readonly string $profile = 'jev') {}
+    public function __construct(private readonly string $profile = 'jev', private readonly bool $singleAttempt = false) {}
 
     public function decide(array $state, array $questions): DecisionResult
     {
@@ -45,7 +45,7 @@ final class JevDecisionModel implements IndependentDecisionModel
             $response = Http::withToken($key)
                 ->acceptJson()
                 ->timeout($timeout)
-                ->retry($remaining === null ? 3 : 1, fn (int $attempt): int => 750 * $attempt,
+                ->retry($remaining === null && ! $this->singleAttempt ? 3 : 1, fn (int $attempt): int => 750 * $attempt,
                     fn (Throwable $error): bool => $error instanceof ConnectionException
                         || ($error instanceof RequestException
                             && ($error->response->status() === 429 || $error->response->serverError())),
@@ -59,7 +59,7 @@ final class JevDecisionModel implements IndependentDecisionModel
             throw new DecisionException('Decision provider is unavailable.', previous: $exception);
         }
         if (! $response->successful()) {
-            throw new DecisionException('Decision provider returned HTTP '.$response->status().'.');
+            throw new DecisionException('Decision provider returned HTTP '.$response->status().'.', $response->status());
         }
         $data = $response->json();
         if (! is_array($data) || ! is_array($data['answers'] ?? null)

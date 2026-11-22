@@ -95,6 +95,14 @@ class KbSourceReader
             return null;
         }
 
+        if ($sessionContext && app(\App\Services\Kb\Knowledge\KnowledgeSource::class)->navigationOnly($document)) {
+            // A generated page points the session at original documents. It supplies no verifiable business text.
+            $links = $actor && $filters ? app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)
+                ->linkedOriginals($document, $actor, $filters) : [];
+            return ['document_id' => $documentId, 'excerpt' => '', 'complete_source' => false, 'chunk_ids' => [],
+                'navigation_coordinates' => $links];
+        }
+
         if ($document->source_type === \App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::SOURCE_TYPE) {
             $excerpt = app(\App\Connectors\Freshdesk\FreshdeskCaseStudyLineage::class)->originalEvidence($document);
             if ($excerpt === null || trim($excerpt) === '') {

@@ -13,6 +13,10 @@ final class AgentEvidenceEnvelope implements JsonSerializable
     /** @var array<string,array<string,mixed>> */
     private array $documents = [];
 
+    /** Navigation is budgeted separately from source text and can never establish a fact. */
+    public const MAX_DOCUMENT_COORDINATES = 64;
+    private array $documentCoordinates = [];
+
     /** @var list<array<string,mixed>> */
     private array $apiTools = [];
 
@@ -60,6 +64,11 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         ?int $executionId = null,
         array $argumentBindings = [],
     ): void {
+        if ($tool->name === 'read_knowledge_context' && isset($arguments['document_id']) && empty($result['sections'])
+            && isset($result['linked_originals'])) {
+            $this->import(['document_coordinates' => $result['linked_originals']]);
+            return;
+        }
         $maskedArguments = $this->masker->maskArray($arguments) ?? [];
         $maskedResult = $this->masker->maskArray($result) ?? [];
         $this->apiTools[] = [
@@ -85,6 +94,13 @@ final class AgentEvidenceEnvelope implements JsonSerializable
     /** Import a previously masked checkpoint without changing its provenance. */
     public function import(array $payload): void
     {
+        foreach ($payload['document_coordinates'] ?? [] as $coordinate) {
+            $id = (int) ($coordinate['document_id'] ?? 0);
+            if ($id > 0 && ! isset($this->documentCoordinates[$id]) && count($this->documentCoordinates) < self::MAX_DOCUMENT_COORDINATES) {
+                $this->documentCoordinates[$id] = $this->masker->maskArray(array_intersect_key($coordinate,
+                    array_flip(['document_id', 'chunk_id', 'heading', 'title', 'document_version', 'chunk_hash'])));
+            }
+        }
         foreach (is_array($payload['documents'] ?? null) ? $payload['documents'] : [] as $document) {
             if (is_array($document)) {
                 $this->addDocument($document);
@@ -114,6 +130,11 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         return $this->apiTools;
     }
 
+    public function documentCoordinates(): array
+    {
+        return array_values($this->documentCoordinates);
+    }
+
     public function hasEvidence(): bool
     {
         return $this->documents !== [] || $this->apiTools !== [];
@@ -124,13 +145,14 @@ final class AgentEvidenceEnvelope implements JsonSerializable
         return strlen((string) json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE));
     }
 
-    /** @return array{documents:list<array<string,mixed>>,api_tools:list<array<string,mixed>>,warnings:list<array{code:string,source:string|null}>} */
+    /** @return array{document_coordinates?:list<array<string,mixed>>,documents:list<array<string,mixed>>,api_tools:list<array<string,mixed>>,warnings:list<array{code:string,source:string|null}>} */
     public function jsonSerialize(): array
     {
         return [
             'documents' => $this->documents(),
             'api_tools' => $this->apiTools,
             'warnings' => $this->warnings,
+            ...$this->documentCoordinates === [] ? [] : ['document_coordinates' => $this->documentCoordinates()],
         ];
     }
 

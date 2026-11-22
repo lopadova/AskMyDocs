@@ -46,10 +46,10 @@ final class AgentWaveKnowledgeSearch
         $wiki = app(\App\Services\Kb\Knowledge\KnowledgeReadService::class)->candidates($context->tenantId, $context->projectKey, $query, $run->user, $filters);
         $exact = $wiki->concat($exact)->values();
         $sources = [];
-        $provenance = [];
+        $provenance = $coordinates = [];
         $alreadyCollected = $this->collectedEvidence($run);
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
-        $collect = function ($candidates) use (&$sources, &$provenance, &$stats, $alreadyCollected, $limit, $diagnostics, $run, $context, $filters): void {
+        $collect = function ($candidates) use (&$sources, &$provenance, &$coordinates, &$stats, $alreadyCollected, $limit, $diagnostics, $run, $context, $filters): void {
             foreach ($candidates->unique(fn ($c) => ($c['knowledge_observation_id'] ?? '').':'.data_get($c, 'chunk_id')) as $candidate) {
                 $id = (int) data_get($candidate, 'document.id', 0);
                 if ($id < 1) {
@@ -66,6 +66,10 @@ final class AgentWaveKnowledgeSearch
                     continue;
                 }
                 if ($source === null) {
+                    continue;
+                }
+                if (isset($source['navigation_coordinates'])) {
+                    foreach ($source['navigation_coordinates'] as $link) $coordinates[$link['document_id']] = $link;
                     continue;
                 }
                 $candidate['chunk_text'] = $source['excerpt'];
@@ -119,7 +123,7 @@ final class AgentWaveKnowledgeSearch
         unset($document);
         $partial = $stats !== [];
         return new AgentToolActionResult(
-            ['documents' => $documents],
+            ['documents' => $documents, ...$coordinates === [] ? [] : ['document_coordinates' => array_values($coordinates)]],
             0,
             ! $partial,
             $partial ? 'retrieval_partial' : null,

@@ -44,6 +44,7 @@ final readonly class FocusedClaimEvaluator
         }
         // Round-robin allocation keeps a verbose first topic from exhausting the ten-decision budget.
         $ordered = [];
+        $intent = \App\Services\Chat\QuestionUnderstanding::fromArray([...$understanding, 'subquestions' => $subs]);
         foreach ($candidates as $candidate) {
             $ordered[$candidate['sub'] ?? -1][] = $candidate;
         }
@@ -61,6 +62,14 @@ final readonly class FocusedClaimEvaluator
             $ids = $subIndex === null ? [] : ($subs[$subIndex]['identifiers'] ?? []);
             $scopedEvidence = ($understanding['independent_research'] ?? false) && $subIndex !== null
                 ? \App\Agent\Evidence\ResearchEvidence::forFlow($evidence, $subIndex) : $evidence;
+            if ($subIndex !== null && $intent->requiresCurrentObservationFor($subIndex)) {
+                $scopedEvidence['api_tools'] = array_values(array_filter($scopedEvidence['api_tools'] ?? [],
+                    EvidenceProjector::isLiveRecordObservation(...)));
+                $deliverable = $subs[$subIndex]['deliverable'] ?? (count($subs) === 1 ? $intent->deliverable : null);
+                if (($deliverable['freshness'] ?? null) === 'current') {
+                    $scopedEvidence['documents'] = [];
+                }
+            }
             $originalSource = array_intersect_key($claim, array_flip(['source_ref', 'document_id', 'tool_execution_id', 'evidence_hash', 'record_path']));
             $resolved = $this->projector->resolveSourceIdentity($scopedEvidence, $claim);
             $sourceRecovered = $resolved !== $claim;

@@ -14,7 +14,7 @@ final class Decisions
 
     private function __construct(private readonly DecisionModel $model) {}
 
-    public static function using(?string $model = null): self
+    public static function using(?string $model = null, bool $singleAttempt = false): self
     {
         $name = $model ?? (string) config('decisions.default', 'jev');
         $class = config("decisions.models.{$name}.driver");
@@ -22,7 +22,7 @@ final class Decisions
             throw new DecisionException("Unknown decision model [{$name}].");
         }
 
-        return new self(app($class, ['profile' => $name]));
+        return new self(app($class, ['profile' => $name, ...$singleAttempt ? ['singleAttempt' => true] : []]));
     }
 
     /** @param array<string,mixed> $state */

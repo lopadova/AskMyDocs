@@ -130,7 +130,8 @@ final readonly class SessionFactMemory
             $proposals = array_values(array_filter($understanding->memoryDecisions, fn ($d) => is_array($d) && ($d['task_index'] ?? null) === $index));
             $proposal = count($proposals) === 1 ? $proposals[0] : [];
             $ids = is_array($proposal['fact_ids'] ?? null) ? $proposal['fact_ids'] : [];
-            $refresh = ($proposal !== [] && ($proposal['refresh_requested'] ?? true) !== false) || $understanding->effectiveAction() === QuestionAction::Recheck;
+            $refresh = $understanding->requiresCurrentObservationFor($index) || ($proposal !== [] && ($proposal['refresh_requested'] ?? true) !== false)
+                || $understanding->effectiveAction() === QuestionAction::Recheck;
             $historical = $understanding->effectiveAction() === QuestionAction::Recap;
             $accepted = $excluded = [];
             foreach ($ids as $id) {

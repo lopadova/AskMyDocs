@@ -19,7 +19,16 @@ final class DecisionOnce
         }
         $diagnostics = app(ProviderDiagnostics::class);
         $diagnosticRun = $diagnostics->resolve($runId, $tenantId);
-        $memo = DB::transaction(function () use ($runId, $signature, $slot): array {
+        $operation = $slot;
+        if ($diagnosticRun?->usesSessionEvidence() && isset($diagnosticRun->result_json['session_context_gap'])
+            && ! str_starts_with($slot, 'progressive_decision_')) {
+            // A further authorized collection can change the facts that need validation.
+            // Redeliveries within that same collection still share the durable decision.
+            $depth = (int) ($diagnosticRun->result_json['session_research']['depth_floor']
+                ?? $diagnosticRun->result_json['session_context_gap']['depth_floor'] ?? 0);
+            $slot .= '_session_recovery_'.$depth;
+        }
+        $memo = DB::transaction(function () use ($runId, $signature, $slot, $operation): array {
             $run = AgentRun::query()->where('run_id', $runId)->lockForUpdate()->first();
             if ($run === null) {
                 return ['ephemeral' => true]; // Unit-level/non-durable synthesizer use.
@@ -27,6 +36,9 @@ final class DecisionOnce
             $payload = $run->result_json ?? [];
             if (isset($payload[$slot])) {
                 return $payload[$slot];
+            }
+            if ($slot !== $operation && ($payload[$operation]['signature'] ?? null) === $signature) {
+                return $payload[$operation]; // Includes compatible decisions recorded before scoped slots existed.
             }
             $payload[$slot] = ['signature' => $signature, 'status' => 'dispatched'];
             $run->forceFill(['result_json' => $payload])->save();
@@ -41,7 +53,7 @@ final class DecisionOnce
             $diagnostics->failure($diagnosticRun, $span, $exception, ['wait_reason' => 'already_dispatched_no_replay', 'error_handled' => true]);
             throw $exception;
         }
-        $result = $diagnostics->measure($diagnosticRun, 'provider.decision', $call, $diagnostics->decisionMetadata($slot));
+        $result = $diagnostics->measure($diagnosticRun, 'provider.decision', $call, $diagnostics->decisionMetadata($operation));
         if (! isset($memo['ephemeral'])) {
             DB::transaction(function () use ($runId, $signature, $result, $slot): void {
                 $run = AgentRun::query()->where('run_id', $runId)->lockForUpdate()->firstOrFail();

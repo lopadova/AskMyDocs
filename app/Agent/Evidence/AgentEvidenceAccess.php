@@ -27,6 +27,14 @@ final readonly class AgentEvidenceAccess
         $allowed = $this->selection->apply($this->registry->forContext($context, $run->user), data_get($run->input_json, 'live_sources'));
         $identifiers = \App\Services\Chat\QuestionUnderstanding::fromArray(data_get($run->result_json, 'question_understanding', []))->targetIdentifiers();
         $safe = ['documents' => [], 'api_tools' => [], 'warnings' => $evidence['warnings'] ?? []];
+        if ($run->usesSessionEvidence() && $context->projectKey !== null && isset($allowed['read_knowledge_context'])) {
+            $reader = app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class);
+            foreach (array_slice($evidence['document_coordinates'] ?? [], 0, AgentEvidenceEnvelope::MAX_DOCUMENT_COORDINATES) as $reference) {
+                $coordinate = $reader->coordinate($context->tenantId, $context->projectKey, (int) ($reference['document_id'] ?? 0),
+                    (int) ($reference['chunk_id'] ?? 0), $run->user, $filters, $reference['document_version'] ?? null, $reference['chunk_hash'] ?? null);
+                if ($coordinate !== null) $safe['document_coordinates'][] = $this->masker->maskArray($coordinate);
+            }
+        }
         foreach ($evidence['documents'] ?? [] as $document) {
             if (isset($document['session_memory_observation_id'])
                 && ! app(\App\Services\Chat\Reasoning\SessionFactMemory::class)->allowsDocument($run, $document)) {
@@ -105,6 +113,7 @@ final readonly class AgentEvidenceAccess
                 && (! isset($tool['session_memory_observation_id']) || $memoryReuse)
                 && $execution->tool_name === $tool['tool'] && $sameConversation
                 && ($sourceRun->id === $run->id || $researchChild || $historicalRecap || $memoryReuse || $sessionReuse || $this->contextTaskAllows($run, $tool))
+                && ($definition->name !== 'read_knowledge_context' || isset($tool['arguments']['document_id']) || isset($definition->inputSchema['properties']['entity_id']))
                 && ($definition->kind !== 'catalog' || $this->catalogAuthorized($run, $tool, $context))
                 && ($tool['executor_reference'] ?? null) === $definition->executorReference
                 && hash_equals((string) ($tool['evidence_hash'] ?? ''), hash('sha256', (string) json_encode($tool['result'] ?? [], JSON_UNESCAPED_UNICODE)))) {
@@ -165,9 +174,18 @@ final readonly class AgentEvidenceAccess
                 $current = $reader->observation($run->tenant_id, $project, (int) ($event['id'] ?? 0), $run->user, $filters);
                 if ($current === null || $this->masker->maskArray($current) !== $event) return false;
             }
-            foreach ($result['sections'] ?? [] as $section) {
-                $current = app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($run->tenant_id, $project, (int) ($result['document_id'] ?? 0), $run->user, (int) $section['ordinal'], 1, $filters);
-                if (! $current || ($current['sections'][0]['text_hash'] ?? null) !== $section['text_hash']) return false;
+            if (isset($tool['arguments']['document_id'])) {
+                $current = app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($run->tenant_id, $project,
+                    (int) $tool['arguments']['document_id'], $run->user, (int) ($tool['arguments']['cursor'] ?? 0), (int) ($tool['arguments']['limit'] ?? 1),
+                    $filters, $result['source_version'] ?? null);
+                if ($current === null) return false;
+                // Older checkpoints had a full map even when reading a later page. Discard them if metadata or visibility changed.
+                $keys = array_flip(['document_id', 'title', 'source_path', 'sections', 'section_map', 'linked_originals']);
+                $observed = array_intersect_key($result, $keys);
+                $now = $this->masker->maskArray(array_intersect_key($current, $observed));
+                foreach ($observed as $key => $value) {
+                    if (! array_key_exists($key, $now) || $now[$key] !== $value) return false;
+                }
             }
             return true;
         }

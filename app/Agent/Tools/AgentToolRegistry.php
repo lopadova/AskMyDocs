@@ -67,20 +67,31 @@ final readonly class AgentToolRegistry
             'search_knowledge_base' => $this->knowledgeTool(),
             'list_knowledge_documents' => $this->catalogTool(),
         ];
-        if ($user !== null && $context->projectKey !== null && $context->channel !== 'widget'
-            && app(\App\Services\Kb\Knowledge\KnowledgeSpecificationService::class)->effective($context->tenantId, $context->projectKey) !== null) {
-            foreach (['search_knowledge_entities', 'read_knowledge_context'] as $name) {
-                $tools[$name] = new AgentToolDefinition(
-                    name: $name, displayName: $name === 'search_knowledge_entities' ? 'Knowledge entities' : 'Original knowledge context',
-                    description: $name === 'search_knowledge_entities'
-                        ? 'Resolve exact identifiers within the current project and optional namespace, or find reusable knowledge. Returns only entities supported by authorized originals. Preserve leading zeroes. Then use read_knowledge_context for history.'
-                        : 'Read an entity timeline with verified original passages, relations and coverage. Or read a document by section cursor using its section map to explore distant chapters. Pass entity_id OR document_id. Continue with next_cursor until the requested coverage is reached.',
+        if ($user !== null && $context->projectKey !== null && $context->channel !== 'widget') {
+            $entitiesEnabled = app(\App\Services\Kb\Knowledge\KnowledgeSpecificationService::class)
+                ->effective($context->tenantId, $context->projectKey) !== null;
+            if ($entitiesEnabled) {
+                $tools['search_knowledge_entities'] = new AgentToolDefinition(
+                    name: 'search_knowledge_entities', displayName: 'Knowledge entities',
+                    description: 'Resolve exact identifiers within the current project and optional namespace. Preserve leading zeroes. Use read_knowledge_context for the verified original history.',
                     kind: 'catalog', inputSchema: ['type' => 'object', 'properties' => [
-                        'query' => ['type' => 'string'], 'namespace' => ['type' => 'string'],
-                        'entity_id' => ['type' => 'integer'], 'document_id' => ['type' => 'integer'],
-                        'cursor' => ['type' => 'integer'], 'limit' => ['type' => 'integer'],
+                        'query' => ['type' => 'string'], 'namespace' => ['type' => 'string'], 'limit' => ['type' => 'integer'],
                     ], 'additionalProperties' => false], readOnly: true, idempotent: true,
-                    physicalMinimum: 0, physicalLikely: 0, physicalMaximum: 0, executorReference: $name,
+                    physicalMinimum: 0, physicalLikely: 0, physicalMaximum: 0, executorReference: 'search_knowledge_entities',
+                );
+            }
+            if ($entitiesEnabled || $context->channel === 'chat') {
+                $properties = ['document_id' => ['type' => 'integer'], 'cursor' => ['type' => 'integer'],
+                    'limit' => ['type' => 'integer'], 'source_version' => ['type' => 'string']];
+                if ($entitiesEnabled) $properties['entity_id'] = ['type' => 'integer'];
+                $tools['read_knowledge_context'] = new AgentToolDefinition(
+                    name: 'read_knowledge_context', displayName: 'Original knowledge context',
+                    description: 'Open a known document or email by document_id. Use the section map to jump to an ordinal with cursor and the returned source_version. Read up to three sections per call. Follow original document coordinates from a wiki page.'
+                        .($entitiesEnabled ? ' Alternatively pass entity_id to read its verified timeline.' : ''),
+                    kind: 'catalog', inputSchema: ['type' => 'object', 'properties' => $properties,
+                        ...$entitiesEnabled ? [] : ['required' => ['document_id']], 'additionalProperties' => false],
+                    readOnly: true, idempotent: true, physicalMinimum: 0, physicalLikely: 0, physicalMaximum: 0,
+                    executorReference: 'read_knowledge_context',
                 );
             }
         }

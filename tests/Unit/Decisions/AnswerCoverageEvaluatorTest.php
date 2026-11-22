@@ -8,9 +8,71 @@ use Tests\TestCase;
 
 final class AnswerCoverageEvaluatorTest extends TestCase
 {
+    public function test_recovery_uses_the_uncited_manual_and_preserves_the_covered_task(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (isset($request['questions']['covered'])) {
+                return Http::response(['model' => 'fixture', 'answers' => [
+                    'covered' => ['type' => 'noul', 'noul' => .36],
+                    'task_0' => ['type' => 'noul', 'noul' => .99],
+                    'task_1' => ['type' => 'noul', 'noul' => .20],
+                ]]);
+            }
+            $this->assertSame('Give two documented examples.', $request['state']['missing_task']);
+            $answers = [];
+            foreach ($request['questions'] as $key => $criterion) {
+                $j = (int) substr($key, 7);
+                $action = $request['state']['sources'][$j]['document_id'] === 2 ? 'compose' : 'search';
+                $answers[$key] = ['type' => 'choice', 'choice' => $action, 'confidence' => 1,
+                    'probabilities' => array_replace(array_fill_keys(array_keys($criterion['criteria']), 0), [$action => 1])];
+            }
+            return Http::response(['model' => 'fixture', 'answers' => $answers]);
+        });
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('What does it do? Give two examples.', ['documents' => [
+            ['document_id' => 1, 'title' => 'Presentation', 'evidence' => [['content' => 'The tool prepares outfit images.']]],
+            ['document_id' => 2, 'title' => 'Manual', 'evidence' => [['content' => 'Keep the garment and vary the pose. Then keep the pose and vary only the backdrop.']]],
+        ]], [['text' => 'The tool prepares outfit images.', 'document_id' => 1, 'subquestion_id' => 0]],
+            ['deliverable' => ['kind' => 'examples', 'quantity' => 2, 'freshness' => 'source_context'],
+                'subquestions' => [['question' => 'What does it do?', 'identifiers' => ['OUTFIT']], ['question' => 'Give two documented examples.']]],
+            run: new \App\Models\AgentRun(['channel' => 'chat', 'user_id' => 1, 'conversation_id' => 1, 'input_json' => ['session_evidence' => true]]));
+        $this->assertSame('compose', $result['next_action']);
+        $this->assertSame([1, 2], $result['source_document_ids']);
+        $this->assertSame(['satisfied', 'missing'], array_column($result['tasks'], 'status'));
+        $this->assertSame([2], $result['tasks'][1]['source_document_ids']);
+        Http::assertSentCount(2);
+    }
+
     public static function partitionRelevance(): array
     {
         return [[.02, false, true], [.02, true, false], [.25, false, false]];
+    }
+
+    public function test_a_known_document_without_text_can_be_read_but_cannot_support_composition(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.threshold' => .8]);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (isset($request['questions']['covered'])) {
+                $this->assertSame([], $request['state']['sources']);
+                return Http::response(['model' => 'fixture', 'answers' => array_fill_keys(array_keys($request['questions']), ['type' => 'noul', 'noul' => .01])]);
+            }
+            $source = $request['questions']['source_0'];
+            $this->assertArrayNotHasKey('compose', $source['criteria']);
+            $this->assertTrue($request['state']['sources'][0]['navigation_only']);
+            return Http::response(['model' => 'fixture', 'answers' => ['source_0' => ['type' => 'choice', 'choice' => 'read', 'confidence' => 1,
+                'probabilities' => ['read' => 1, 'search' => 0]]]]);
+        });
+        $run = new \App\Models\AgentRun(['channel' => 'chat', 'user_id' => 1, 'conversation_id' => 1, 'input_json' => ['session_evidence' => true]]);
+        $result = app(AnswerCoverageEvaluator::class)->evaluate('Show a worked example.', ['document_coordinates' => [[
+            'document_id' => 12, 'chunk_id' => 75, 'title' => 'Worked examples', 'heading' => 'Outfits',
+        ]]], [], run: $run);
+        $this->assertFalse($result['sufficient']);
+        $this->assertSame([], $result['source_document_ids']);
+        $this->assertSame('read', $result['next_action']);
+        $this->assertSame([12], $result['tasks'][0]['source_document_ids']);
+        $this->assertSame(75, $result['tasks'][0]['source_passages'][0]['chunk_id']);
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('partitionRelevance')]

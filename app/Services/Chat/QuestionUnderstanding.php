@@ -33,6 +33,7 @@ final readonly class QuestionUnderstanding
         public array $failureDetails = [],
         public bool $requiresComposition = false,
         public string $followUpTarget = 'sources',
+        public ?array $deliverable = null,
     ) {}
 
     /** @return list<string> */
@@ -97,17 +98,57 @@ final readonly class QuestionUnderstanding
         if (! $this->available || $this->needsClarification || $this->isAssistantConversation()) {
             return false;
         }
+        if ($this->deliverable !== null && $this->requiresCurrentObservation()) {
+            return true;
+        }
         return $this->requiresResearch ?? ! ($this->asksForProvenance() || $this->effectiveAction() === QuestionAction::Recap
             || ($this->asksToReadSource() && $this->referencesPreviousTurn));
     }
 
-    public function effectiveFollowUpTarget(): string
+    public function requiresCurrentObservation(): bool
     {
-        if ($this->followUpTarget === 'previous_reply' && (! $this->referencesPreviousTurn || $this->needsResearch())) {
+        if (($this->deliverable['freshness'] ?? null) === 'current') {
+            return true;
+        }
+        foreach (array_keys($this->subquestions ?: [$this->focus]) as $index) {
+            if ($this->requiresCurrentObservationFor($index)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public function requiresCurrentObservationFor(int $index): bool
+    {
+        $task = $this->subquestions[$index] ?? [];
+        return ($task['deliverable']['freshness'] ?? null) === 'current'
+            || (count($this->subquestions) <= 1 && ($this->deliverable['freshness'] ?? null) === 'current')
+            || array_filter($this->memoryDecisions, static fn ($decision) => ($decision['task_index'] ?? null) === $index
+                && ($decision['refresh_requested'] ?? false) === true) !== []
+            || array_filter($this->memoryResolution['tasks'] ?? [], static fn ($task) => ($task['task_index'] ?? null) === $index
+                && ($task['decision'] ?? null) === 'refresh') !== [];
+    }
+
+    public function effectiveFollowUpTarget(?array $coverageGap = null): string
+    {
+        if ($this->deliverable === null) {
+            if ($this->followUpTarget === 'previous_reply' && (! $this->referencesPreviousTurn || $this->needsResearch()
+                || in_array($coverageGap['next_action'] ?? null, ['read', 'search'], true))) {
+                return 'sources';
+            }
+            return $this->followUpTarget;
+        }
+        if ($this->followUpTarget === 'collected_only') {
+            return 'collected_only';
+        }
+        if (! $this->referencesPreviousTurn || $this->effectiveContextMode() === QuestionContextMode::Mixed || $this->requiresCurrentObservation()) {
             return 'sources';
         }
+        // New factual detail can concern the same subject without transforming the earlier wording.
+        $rewrite = $this->deliverable['kind'] === 'rewrite'
+            && array_filter($this->subquestions, static fn ($sub) => ($sub['deliverable']['kind'] ?? 'rewrite') !== 'rewrite') === [];
 
-        return $this->followUpTarget;
+        return $rewrite ? 'previous_reply' : 'sources';
     }
 
     /** Only these tasks may explain historical observations without refreshing them. */
@@ -135,6 +176,7 @@ final readonly class QuestionUnderstanding
             'needs_clarification' => $this->needsClarification, 'clarification' => $this->clarification,
             'failure_reason' => $this->failureReason, 'context_mode' => $this->effectiveContextMode()->value,
             'requires_research' => $this->needsResearch(),
+            ...$this->deliverable === null ? [] : ['deliverable' => $this->deliverable],
             ...$this->memoryDecisions === [] ? [] : ['memory_decisions' => $this->memoryDecisions],
             ...$this->memoryResolution === [] ? [] : ['memory_resolution' => $this->memoryResolution],
             ...$this->failureDetails === [] ? [] : ['failure_details' => $this->failureDetails],
@@ -150,7 +192,7 @@ final readonly class QuestionUnderstanding
         return new self($this->language, $this->intent, array_values(array_merge(...array_map(fn ($sub) => $sub['kb_queries'] ?? [], $subquestions))),
             $this->mentions, $mode !== QuestionContextMode::NewRequest, $this->available, $this->focus, $subquestions,
             $this->resolvedReferences, $this->transition, $this->needsClarification, $this->clarification, $this->failureReason,
-            $this->action, $mode, $research, $resolution['fact_ids'] === [] ? $this->initialPlan : null, $this->memoryDecisions, $resolution, $this->failureDetails, $this->requiresComposition, $this->followUpTarget);
+            $this->action, $mode, $research, $resolution['fact_ids'] === [] ? $this->initialPlan : null, $this->memoryDecisions, $resolution, $this->failureDetails, $this->requiresComposition, $this->followUpTarget, $this->deliverable);
     }
 
     /** Each branch owns an objective and search seeds, never the combined parent intent. */
@@ -160,17 +202,23 @@ final readonly class QuestionUnderstanding
         $focus = array_intersect_key($sub, array_flip(['topic', 'identifiers', 'aspect', 'fields']));
         $question = $sub['question'] ?? trim(implode(' ', [$sub['topic'], implode(' ', $sub['identifiers']), $sub['aspect']]));
         $queries = $sub['kb_queries'] ?? [$question];
+        $deliverable = $sub['deliverable'] ?? (count($this->subquestions) === 1 ? $this->deliverable : null);
+        if ($deliverable !== null && $this->requiresCurrentObservationFor($index)) {
+            $deliverable['freshness'] = 'current';
+        }
         return new self($this->language, $question, $queries,
             array_values(array_filter($this->mentions, fn ($mention) => in_array(is_array($mention) ? $mention['text'] : $mention, $sub['identifiers'], true))),
             (($sub['context_mode'] ?? null) === 'new' ? false : $this->referencesPreviousTurn), $this->available, $focus, [$sub],
             array_values(array_intersect($this->resolvedReferences, $sub['identifiers'])), $this->transition,
             $this->needsClarification, $this->clarification, $this->failureReason, $this->effectiveAction(),
             isset($sub['context_mode']) ? QuestionContextMode::from($sub['context_mode']) : $this->effectiveContextMode(),
-            $sub['requires_research'] ?? $this->requiresResearch, null, [], $this->memoryResolution === [] ? [] : [
+            $sub['requires_research'] ?? $this->requiresResearch, null,
+            array_map(fn ($decision) => [...$decision, 'task_index' => 0], array_values(array_filter($this->memoryDecisions,
+                fn ($decision) => ($decision['task_index'] ?? null) === $index))), $this->memoryResolution === [] ? [] : [
                 'tasks' => array_map(fn ($task) => [...$task, 'task_index' => 0], array_values(array_filter($this->memoryResolution['tasks'] ?? [], fn ($task) => $task['task_index'] === $index))),
                 'fact_ids' => $this->memoryResolution['tasks'][$index]['fact_ids'] ?? [],
                 'complete' => ($this->memoryResolution['tasks'][$index]['decision'] ?? '') === 'reuse',
-            ], $this->failureDetails, $this->requiresComposition, $this->followUpTarget);
+            ], $this->failureDetails, $this->requiresComposition, $this->followUpTarget, $deliverable);
     }
 
     public static function fromArray(array $data): self
@@ -185,6 +233,7 @@ final readonly class QuestionUnderstanding
             is_array($data['memory_decisions'] ?? null) ? $data['memory_decisions'] : [],
             is_array($data['memory_resolution'] ?? null) ? $data['memory_resolution'] : [],
             is_array($data['failure_details'] ?? null) ? $data['failure_details'] : [], ($data['requires_composition'] ?? false) === true,
-            in_array($data['follow_up_target'] ?? null, self::FOLLOW_UP_TARGETS, true) ? $data['follow_up_target'] : 'sources');
+            in_array($data['follow_up_target'] ?? null, self::FOLLOW_UP_TARGETS, true) ? $data['follow_up_target'] : 'sources',
+            AnswerDeliverable::parse($data['deliverable'] ?? null));
     }
 }

@@ -20,7 +20,8 @@ final readonly class AgentLoopOutcome
 
     public static function assessSession(AgentEvidenceEnvelope $evidence, ?QuestionUnderstanding $understanding, array $completed = []): self
     {
-        if ($evidence->hasEvidence() && $understanding?->effectiveAction() !== QuestionAction::Recheck) {
+        if ($evidence->hasEvidence() && $understanding?->effectiveAction() !== QuestionAction::Recheck
+            && ! $understanding?->requiresCurrentObservation()) {
             return new self('answer', $evidence, $completed, 'context_answer_attempt');
         }
 

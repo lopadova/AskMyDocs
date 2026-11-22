@@ -80,8 +80,8 @@ final readonly class AgentServerToolRunner
         $body = match ($tool->executorReference) {
             'search_knowledge_entities' => $reader->search($context->tenantId, $context->projectKey, (string) ($arguments['query'] ?? ''), $run->user, $arguments['namespace'] ?? null, (int) ($arguments['limit'] ?? 20), $filters),
             'read_knowledge_context' => isset($arguments['document_id'])
-                ? app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($context->tenantId, $context->projectKey, (int) $arguments['document_id'], $run->user, (int) ($arguments['cursor'] ?? 0), (int) ($arguments['limit'] ?? 1), $filters)
-                : $reader->context($context->tenantId, $context->projectKey, (int) ($arguments['entity_id'] ?? 0), $run->user, isset($arguments['cursor']) ? (int) $arguments['cursor'] : null, (int) ($arguments['limit'] ?? 20), $filters),
+                ? app(\App\Services\Kb\Knowledge\KnowledgeDocumentContext::class)->read($context->tenantId, $context->projectKey, (int) $arguments['document_id'], $run->user, (int) ($arguments['cursor'] ?? 0), (int) ($arguments['limit'] ?? 1), $filters, $arguments['source_version'] ?? null)
+                : (isset($tool->inputSchema['properties']['entity_id']) ? $reader->context($context->tenantId, $context->projectKey, (int) ($arguments['entity_id'] ?? 0), $run->user, isset($arguments['cursor']) ? (int) $arguments['cursor'] : null, (int) ($arguments['limit'] ?? 20), $filters) : null),
             default => throw new \DomainException('unknown_knowledge_context_tool'),
         };
         $body ??= ['error' => 'knowledge_context_unavailable'];
@@ -99,8 +99,12 @@ final readonly class AgentServerToolRunner
             }
             $body['documents'] = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->fromSearchResult(new \App\Services\Kb\Retrieval\SearchResult(collect($candidates), collect(), collect()))->documents();
         }
-        $budget->recordResult(0, $this->bytes($body), true);
-        return new AgentToolActionResult($body, 0);
+        $read = $tool->name === 'read_knowledge_context' && isset($arguments['document_id']);
+        $stats = $read ? ['operation' => 'read_document_sections', 'document_id' => (int) $arguments['document_id'],
+            'cursor' => (int) ($arguments['cursor'] ?? 0), 'sections_read' => count($body['sections'] ?? []),
+            'source_map_partial' => $body['coverage']['map_truncated'] ?? null] : [];
+        $budget->recordResult(0, $this->bytes($body), ! isset($body['error']));
+        return new AgentToolActionResult($body, 0, stats: $stats);
     }
 
     /**

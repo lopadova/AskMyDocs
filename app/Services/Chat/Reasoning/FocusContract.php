@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Chat\Reasoning;
 
+use App\Services\Chat\AnswerDeliverable;
 use App\Services\Chat\QuestionContextMode;
 
 /** Strict model output is still untrusted. Context references must be server-known. */
 final class FocusContract
 {
-    public static function schema(): array
+    public static function schema(bool $textSession = false): array
     {
         $strings = ['type' => 'array', 'maxItems' => 12, 'items' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120]];
         $focus = ['type' => 'object', 'additionalProperties' => false,
@@ -26,17 +27,24 @@ final class FocusContract
             'kb_queries' => ['type' => 'array', 'maxItems' => 3, 'items' => ['type' => 'string', 'maxLength' => 500],
                 'description' => 'Empty when requires_research=false or this task needs only API/MCP research. Otherwise up to 3 independent KB searches serving ONLY this question. Research is not restricted to the KB.'],
         ];
+        if ($textSession) {
+            $subquestion['required'][] = 'deliverable';
+            $subquestion['properties']['deliverable'] = AnswerDeliverable::schema();
+        }
         return [
             'transition' => ['type' => 'string', 'enum' => ['new', 'continue', 'switch', 'correct', 'recap', 'provenance']],
             'focus' => $focus,
-            'subquestions' => ['type' => 'array', 'maxItems' => 10, 'items' => $subquestion, 'description' => 'Decompose unrelated requests into separate standalone questions. Include the EXACT focus topic, identifiers, aspect and fields in one subquestion, without adding a paraphrased duplicate of that request. Keep dependent steps for one request together: one case history and its corresponding live API lookup form one task. Never copy previous subquestions.'],
+            'subquestions' => ['type' => 'array', 'maxItems' => 10, 'items' => $subquestion,
+                'description' => $textSession
+                    ? 'Return one task per independently requested result. Keep dependent lookups inside their task. Give a historical account and a separately requested current state their own tasks even for the same case; use their shared case reference. Include the exact primary focus in the task list.'
+                    : 'Decompose unrelated requests into separate standalone questions. Include the EXACT focus topic, identifiers, aspect and fields in one subquestion, without adding a paraphrased duplicate of that request. Keep dependent steps for one request together: one case history and its corresponding live API lookup form one task. Never copy previous subquestions.'],
             'resolved_references' => $strings + ['description' => 'Every identifier used in focus or subquestions but not literally typed now MUST be listed here, and MUST be in known_identifiers.'],
             'needs_clarification' => ['type' => 'boolean'],
             'clarification' => ['type' => 'string', 'maxLength' => 500],
         ];
     }
 
-    public static function validate(array $data, array $known, array $literal): array
+    public static function validate(array $data, array $known, array $literal, bool $textSession = false): array
     {
         $conversation = in_array($data['action'] ?? null, ['greeting', 'capabilities'], true);
         if (! in_array($data['transition'] ?? null, self::schema()['transition']['enum'], true)
@@ -49,7 +57,15 @@ final class FocusContract
         if (array_diff($resolved, $known) !== []) {
             throw new \UnexpectedValueException('Unregistered context reference.');
         }
-        foreach ([$data['focus'], ...$data['subquestions']] as $focus) {
+        foreach ([$data['focus'], ...$data['subquestions']] as $index => $focus) {
+            if ($textSession && $index > 0 && is_array($focus) && array_key_exists('deliverable', $focus)) {
+                $deliverable = AnswerDeliverable::parse($focus['deliverable']);
+                if ($deliverable === null) {
+                    throw new \UnexpectedValueException('Invalid task deliverable.');
+                }
+                $data['subquestions'][$index - 1]['deliverable'] = $deliverable;
+                unset($focus['deliverable']);
+            }
             if (! is_array($focus) || ! in_array(count($focus), [4, 6, 8], true) || ! is_string($focus['topic'] ?? null)
                 || ! is_string($focus['aspect'] ?? null) || mb_strlen($focus['topic']) > 300 || mb_strlen($focus['aspect']) > 300) {
                 throw new \UnexpectedValueException('Invalid focus shape.');
