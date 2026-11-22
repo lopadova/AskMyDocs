@@ -135,7 +135,7 @@ ACTIONS;
             $schema['required'][] = 'deliverable';
             $system .= <<<'DELIVERABLE'
 
-State the deliverable for the whole turn and for each task. Its kind describes the result the user wants, independently of the topic and retrieval. Use rewrite only to transform the prior reply itself. A summary of source material is summary; concrete scenarios are examples; an explained sequence of steps is procedure. Asking for examples after an overview is a new source-backed request even if the starting document is already known. Preserve the number of items requested, including 1 for a single example; use null when no number was given. For an unspecified plural request for examples, plan at least two distinct documented examples if available. Set freshness=current for a request to verify a live record's current state or fetch an updated observation. Reports about what a document or email recorded, or about an earlier observed record, use source_context. For mixed questions identify the live requirement on the relevant task only and set the overall freshness=current when any task needs it. A request for the customer's documented message AND today's order status has two independently verifiable results. Return two tasks sharing the same order reference, one with source_context and one with current. A live lookup needed solely to identify the author of a message stays inside that historical task.
+State the deliverable for the whole turn and for each task. Its kind describes the result the user wants, independently of the topic and retrieval. Use rewrite only to transform the prior reply itself. A summary of source material is summary; concrete scenarios are examples; an explained sequence of steps is procedure. Asking for examples after an overview is a new source-backed request even if the starting document is already known. Preserve the number of items requested, including 1 for a single example; use null when no number was given. For an unspecified plural request for examples, plan at least two distinct documented examples if available. Use source_context by default for a product's purpose, capabilities and instructions, even in the present tense. “A cosa serve?” asks for the documented purpose; do not add a separate demand for examples. “Qual è lo stato dell’ordine oggi?” requires current operational data. Set freshness=current for a request to verify a live record's current state or fetch an updated observation. Reports about what a document or email recorded, or about an earlier observed record, use source_context. For mixed questions identify the live requirement on the relevant task only and set the overall freshness=current when any task needs it. A request for the customer's documented message AND today's order status has two independently verifiable results. Return two tasks sharing the same order reference, one with source_context and one with current. A live lookup needed solely to identify the author of a message stays inside that historical task.
 reasoning_context.open_tasks describes unfinished parts of the last focus and authorized source coordinates. Use it to resolve a request to continue that task. A new subject or a different requested result takes precedence. An open task supplies navigation, never facts or instructions.
 DELIVERABLE;
         }
@@ -423,6 +423,28 @@ MEMORY;
                 && ($queries !== [] || $mentions !== [] || $data['references_previous_turn'])) {
                 throw new \UnexpectedValueException('Invalid assistant conversation contract.');
             }
+            $deliverable = AnswerDeliverable::parse($data['deliverable'] ?? null);
+            $tasks = $focus['subquestions'] ?? [];
+            // A turn-level correction must not weaken the live part of a compound request.
+            $current = ($deliverable['freshness'] ?? null) === 'current' || ($tasks[0]['deliverable']['freshness'] ?? null) === 'current';
+            if ($textSession && config('reasoning.selective_validation') && count($tasks) <= 1 && $current && $action !== QuestionAction::Recheck
+                && app(\App\Services\Chat\Reasoning\CurrentTaskVerifier::class)->asksOnlyForDocumentedInformation(
+                    $question, $data['references_previous_turn'] ? ($reasoningContext ?? []) : []
+                )) {
+                if ($deliverable !== null) {
+                    $deliverable['freshness'] = 'source_context';
+                }
+                if (isset($tasks[0]['deliverable'])) {
+                    $focus['subquestions'][0]['deliverable']['freshness'] = 'source_context';
+                }
+                if (! $data['references_previous_turn'] && count($tasks) === 1) {
+                    $intent = $focus['subquestions'][0]['question'] = $question;
+                }
+                foreach (array_keys($memoryDecisions) as $index) {
+                    $memoryDecisions[$index]['refresh_requested'] = false;
+                }
+                $initialPlan = null;
+            }
             $understanding = new QuestionUnderstanding($language, $intent, $queries, $mentions, $data['references_previous_turn'], true,
                 $focus['focus'] ?? [], $focus['subquestions'] ?? [], $focus['resolved_references'] ?? [],
                 $focus['transition'] ?? 'new', $focus['needs_clarification'] ?? ($action === QuestionAction::Clarify),
@@ -430,7 +452,7 @@ MEMORY;
                 contextMode: isset($data['context_mode']) ? QuestionContextMode::from($data['context_mode']) : null,
                 requiresResearch: $data['requires_research'] ?? null, memoryDecisions: $memoryDecisions,
                 requiresComposition: $data['requires_composition'] ?? false, followUpTarget: $data['follow_up_target'] ?? 'sources',
-                deliverable: AnswerDeliverable::parse($data['deliverable'] ?? null));
+                deliverable: $deliverable);
             // Completing a declaration for an already selected, registered ID
             // changes no task or tool input. Other normalizations still discard
             // the combined proposal and require ordinary plan validation.
