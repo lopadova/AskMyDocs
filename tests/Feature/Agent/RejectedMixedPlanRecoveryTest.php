@@ -16,6 +16,7 @@ use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -43,11 +44,19 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
         return [
             'ordinary planner also rejected' => [true],
             'ordinary planner omits the correspondence' => [false],
+            'malformed draft then connection failure' => [false, true],
+            'research worker hands off a failed draft with sources' => [false, true, true],
+            'correspondence revoked before recovery' => [false, true, false, true],
         ];
     }
 
     #[DataProvider('plannerOutcomes')]
-    public function test_rejected_plan_recovers_the_order_comparison_and_documentary_conclusion(bool $ordinaryRejected): void
+    public function test_rejected_plan_recovers_the_order_comparison_and_documentary_conclusion(
+        bool $ordinaryRejected,
+        bool $synthesisFailed = false,
+        bool $concurrent = false,
+        bool $revoked = false,
+    ): void
     {
         config(['agent.waves.enabled' => true, 'agent.waves.combined_initial_planning' => true,
             'agent.planner.mode' => 'classic', 'reasoning.enabled' => true,
@@ -66,6 +75,7 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
             'channel' => 'chat', 'actor_type' => 'user', 'actor_id' => (string) $user->id, 'user_id' => $user->id,
             'conversation_id' => $conversation->id, 'locale' => 'it', 'timezone' => 'Europe/Rome', 'status' => 'queued',
             'input_json' => ['question' => $message->content, 'user_message_id' => $message->id, 'session_evidence' => true,
+                'concurrent_session' => $concurrent,
                 'live_sources' => ['api' => ['api:'.$connector->id], 'mcp' => []]]]);
 
         $excerpt = self::RETURN_ITEM.' '.self::QUOTE.".\n".self::CONDITION;
@@ -80,28 +90,50 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
             ['chunk_id' => $chunk->id, 'chunk_text' => $excerpt, 'document' => $document->toArray()],
         ]), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
-        $this->fakeProviders($ordinaryRejected);
+        $drafts = 0;
+        $this->fakeProviders($ordinaryRejected, $synthesisFailed, $drafts, $revoked ? $document : null);
 
-        app(AgentRunHandler::class)->handle($run);
+        for ($delivery = 0; $delivery < 8 && ! $run->fresh()->isTerminal(); $delivery++) {
+            app(AgentRunHandler::class)->handle($run->fresh());
+        }
         app(AgentRunHandler::class)->handle($run->fresh());
         $run->refresh();
-        $this->assertSame(AgentRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame($synthesisFailed ? AgentRun::STATUS_PARTIAL : AgentRun::STATUS_COMPLETED, $run->status);
         $this->assertArrayNotHasKey('initial_plan', $run->result_json);
         if ($ordinaryRejected) {
             $this->assertTrue($run->events()->where('payload_json->data->operation', 'initial_document_recovery')->exists());
         }
         $this->assertEqualsCanonicalizing(['search_knowledge_base', self::TOOL, self::TOOL],
-            $run->toolExecutions()->where('status', 'completed')->pluck('tool_name')->all());
+            $run->toolExecutions()->pluck('tool_name')->all());
         $answer = $run->result_json['response'];
-        $this->assertSame('complete', $answer['completeness']);
-        $this->assertSame([$document->id], array_column($answer['citations'], 'document_id'));
+        $this->assertSame($synthesisFailed ? 'partial' : 'complete', $answer['completeness']);
+        $this->assertSame($revoked ? [] : [$document->id], array_column($answer['citations'], 'document_id'));
         $this->assertCount(2, $answer['tool_sources']);
         $body = $conversation->messages()->where('role', 'assistant')->sole()->content;
-        $this->assertStringContainsString('U726180: AULW-VA01, taglia 40', $body);
-        $this->assertStringContainsString('U726256: AULW-VA01, taglia 41', $body);
-        $this->assertStringContainsString(self::RETURN_ITEM, $body);
-        $this->assertStringContainsString('autorizzazione condizionata', $body);
-        $this->assertStringContainsString('conferma di cosa ha ricevuto', $body);
+        if ($synthesisFailed) {
+            $this->assertSame(2, $drafts);
+            $this->assertSame('synthesis_unavailable', $run->result_json['stop_reason']);
+            $this->assertSame('verification_unavailable', data_get($answer, 'grounding.coverage_validation.next_action'));
+            $this->assertSame([], $answer['grounding']['claims']);
+            $this->assertStringContainsString('| U726180 | AULW-VA01-2025.1_2025 | 40 |', html_entity_decode($body));
+            $this->assertStringContainsString('| U726256 | AULW-VA01-2025.1_2025 | 41 |', html_entity_decode($body));
+            if ($revoked) {
+                $this->assertStringNotContainsString(self::QUOTE, html_entity_decode($body));
+            } else {
+                $this->assertStringContainsString(self::QUOTE, html_entity_decode($body));
+            }
+        } else {
+            $this->assertStringContainsString('U726180: AULW-VA01, taglia 40', $body);
+            $this->assertStringContainsString('U726256: AULW-VA01, taglia 41', $body);
+            $this->assertStringContainsString('autorizzazione condizionata', $body);
+        }
+        if ($revoked) {
+            $this->assertStringNotContainsString(self::RETURN_ITEM, $body);
+            $this->assertStringNotContainsString('conferma di cosa ha ricevuto', $body);
+        } else {
+            $this->assertStringContainsString(self::RETURN_ITEM, $body);
+            $this->assertStringContainsString('conferma di cosa ha ricevuto', $body);
+        }
         foreach (array_keys(self::ORDERS) as $id) {
             Http::assertSent(fn ($request) => $request->url() === self::ENDPOINT.'/'.$id);
         }
@@ -118,11 +150,21 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
                     'properties' => ['ord_codiceweb' => ['type' => 'string', 'pattern' => '^U[0-9]+$', 'x-require-observed-identifier' => true]]]]]);
         ApiRouteParameter::create(['tenant_id' => 'acme', 'api_route_id' => $route->id, 'name' => 'ord_codiceweb',
             'location' => 'path', 'source' => 'llm', 'type' => 'string', 'required' => true]);
+        $route->forceFill(['output_schema' => [
+            'type' => 'object', 'properties' => ['order' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                'articoli' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'articolo' => ['type' => 'array', 'x-field' => 'items', 'items' => ['type' => 'object', 'properties' => [
+                        'art_pcode' => ['type' => 'string', 'x-field' => 'reference'],
+                        'variante' => ['type' => 'integer', 'x-field' => 'variant'],
+                    ]]],
+                ]]],
+            ]]]],
+        ]])->save();
 
         return $connector;
     }
 
-    private function fakeProviders(bool $ordinaryRejected): void
+    private function fakeProviders(bool $ordinaryRejected, bool $synthesisFailed, int &$drafts, ?KnowledgeDocument $revoked): void
     {
         Http::fake(function ($request) {
             if (str_starts_with($request->url(), self::ENDPOINT.'/')) {
@@ -169,7 +211,7 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
             return new AiResponse(json_encode($data, JSON_THROW_ON_ERROR), 'fake', 'fixture');
         });
         $attempts = 0;
-        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function ($system, $messages, $options) use (&$attempts, $ordinaryRejected) {
+        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function ($system, $messages, $options) use (&$attempts, &$drafts, $ordinaryRejected, $synthesisFailed, $revoked) {
             $state = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
             $tool = $options['tool_choice']['function']['name'];
             if ($tool === 'submit_agent_plan') {
@@ -186,6 +228,14 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
                 }
                 $payload = ['decision' => $actions === [] ? 'answer' : 'tools', 'actions' => $actions];
             } else {
+                $drafts++;
+                if ($synthesisFailed) {
+                    if ($drafts === 1) {
+                        return new AiResponse('Not a structured draft.', 'fake', 'fixture');
+                    }
+                    $revoked?->delete();
+                    throw new ConnectionException('Simulated synthesis timeout.');
+                }
                 $claims = [];
                 foreach ($state['evidence']['api_tools'] as $observation) {
                     $record = $observation['result']['order'][0];

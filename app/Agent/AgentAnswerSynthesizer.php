@@ -34,6 +34,7 @@ final readonly class AgentAnswerSynthesizer
         ?string $turnContext = null,
         ?array $understanding = null,
         ?string $durableRunId = null,
+        bool $recoverCollectedEvidence = false,
     ): AgentAnswer {
         $diagnostics = app(ProviderDiagnostics::class);
         $run = $diagnostics->resolve($durableRunId, $context->tenantId);
@@ -124,7 +125,15 @@ final readonly class AgentAnswerSynthesizer
         if ($independent) {
             [$response, $payload] = $this->researchDrafts($context, $outcome, $understanding, $durableRunId);
         } else {
-            [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext, run: $run);
+            try {
+                [$response, $payload] = $this->structuredDraft($question, $context, $outcome, $understanding, $turnContext,
+                    run: $run, reserveRecovery: $recoverCollectedEvidence);
+            } catch (\UnexpectedValueException|\Illuminate\Http\Client\ConnectionException|\Illuminate\Http\Client\RequestException $exception) {
+                if (! $recoverCollectedEvidence) {
+                    throw $exception;
+                }
+                throw new AgentDraftUnavailable('Synthesis did not produce a usable draft.', previous: $exception);
+            }
         }
         if ($sessionFinal && ! config('reasoning.selective_validation') && ! $run->usesConcurrentSession() && ! $contextAttempt && ! isset($run->result_json['session_context_gap'])
             && ($understanding['action'] ?? null) === QuestionAction::Refine->value) {
@@ -806,7 +815,7 @@ PROMPT;
     /** Malformed output or a connection failure gets one retry with the same evidence. */
     private function structuredDraft(string $question, AgentExecutionContext $context, AgentLoopOutcome $outcome,
         ?array $understanding, ?string $turnContext = null, ?int $claimBudget = null, bool $repairAttempt = false, ?AgentRun $run = null,
-        bool $followUpCorrection = false): array
+        bool $followUpCorrection = false, bool $reserveRecovery = false): array
     {
         $diagnostics = app(ProviderDiagnostics::class);
         for ($attempt = 0; $attempt < 2; $attempt++) {
@@ -817,9 +826,15 @@ PROMPT;
                 'operation' => $repairAttempt ? 'repair_draft' : 'structured_draft', 'attempt' => $attempt + 1,
             ]);
             try {
-                $response = $this->draft($question, $context, $outcome, $understanding, $turnContext,
+                $request = fn () => $this->draft($question, $context, $outcome, $understanding, $turnContext,
                     claimBudget: $claimBudget, repairAttempt: $repairAttempt, structuredRetry: $attempt === 1, run: $run, parentSpanId: $span,
                     followUpCorrection: $followUpCorrection);
+                $remaining = $reserveRecovery ? app(AgentRunDeadline::class)->activeRemaining($context) : null;
+                if ($remaining !== null && $remaining < 4) {
+                    throw new \UnexpectedValueException('Worker deadline leaves no time for a draft and evidence recovery.');
+                }
+                $response = $remaining === null ? $request()
+                    : app(\App\Ai\AgentChatModelScope::class)->withinBudget($remaining - 3, $request);
                 $payload = $this->payload($response->toolCalls, $response->content);
                 // Choices are local to THIS exact prompt. Persist full identities
                 // before task drafts merge or a later envelope changes ordering.

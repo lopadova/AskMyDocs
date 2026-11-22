@@ -6,10 +6,12 @@ namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
+use App\Agent\Debug\RunDiagnostics;
 use App\Agent\Evidence\AgentEvidenceAccess;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Evidence\AgentSessionEvidence;
+use App\Agent\Grounding\CollectedEvidenceAnswer;
 use App\Agent\Tools\AgentToolRegistry;
 use App\Agent\Waves\AgentWaveCoordinator;
 use App\Models\AgentRun;
@@ -190,8 +192,21 @@ final readonly class AgentSessionResearch
 
     public function respond(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $sources, ?string $turnContext): AgentSessionResearchResult
     {
-        $answer = $this->answers->synthesize(trim((string) data_get($run->input_json, 'question')), $context, $sources, $turnContext,
-            $run->result_json['question_understanding'] ?? null, durableRunId: $run->run_id);
+        $question = trim((string) data_get($run->input_json, 'question'));
+        $understanding = $run->result_json['question_understanding'] ?? null;
+        try {
+            $answer = $this->answers->synthesize($question, $context, $sources, $turnContext, $understanding,
+                durableRunId: $run->run_id, recoverCollectedEvidence: true);
+        } catch (AgentDraftUnavailable $exception) {
+            $this->control->ensureActive($run);
+            $safe = $this->evidence->empty();
+            $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $sources->evidence->jsonSerialize()));
+            $sources = new AgentLoopOutcome('partial', $safe, $sources->completedActions, 'synthesis_unavailable');
+            $answer = app(RunDiagnostics::class)->measure($run, 'synthesis.recovery',
+                fn () => app(CollectedEvidenceAnswer::class)->present($question, QuestionUnderstanding::fromArray($understanding ?? []),
+                    $safe->jsonSerialize(), $context->locale),
+                ['operation' => 'render_collected_evidence', 'error_class' => get_class($exception->getPrevious() ?? $exception)]);
+        }
 
         return new AgentSessionResearchResult($answer, $sources);
     }
