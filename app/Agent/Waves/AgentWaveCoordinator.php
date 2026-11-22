@@ -20,6 +20,7 @@ use App\Agent\Planning\AgentArgumentResolver;
 use App\Agent\Planning\AgentPlanningCoordinator;
 use App\Agent\Planning\AgentPlan;
 use App\Agent\Planning\AgentPlanParser;
+use App\Agent\Planning\AgentPlanValidationException;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Agent\Tools\AgentToolFailure;
 use App\ApiTools\ToolContinuation;
@@ -142,15 +143,31 @@ final class AgentWaveCoordinator
                         ...isset($run->result_json['session_context_gap']) ? ['session_context_gap' => $run->result_json['session_context_gap']] : [],
                         'previous_waves' => data_get($run->result_json, 'waves', []),
                     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))), ['wait_reason' => 'provider_response']);
+                if (! $plan->shouldCallTools() && ! $evidence->hasEvidence() && $completed === [] && $sessionEvidence
+                    && data_get($run->result_json, 'question_understanding.requires_research') === true) {
+                    throw new AgentPlanValidationException('initial_observation_required', 'Research requires an initial observation.');
+                }
             } catch (\Throwable $exception) {
                 $minimumAfterFailure = $minimumWaveSeconds + min(5, max(1, (float) config('agent.planner.time_reserve_seconds', 30)));
                 if (! $sessionEvidence && $this->insufficientResearchTime($run, $budget, $minimumAfterFailure, 'research_planning')) {
                     return new AgentLoopOutcome('partial', $evidence, $completed, 'time_limit');
                 }
-                if (! $evidence->hasEvidence()) throw $exception;
-                $evidence->addWarning('planner_recovery', 'agent_planner');
-                $this->checkpoint($run, $evidence, $completed, $results);
-                return new AgentLoopOutcome('partial', $evidence, $completed, 'planner_recovery');
+                $plan = $sessionEvidence && $exception instanceof \UnexpectedValueException && ! $evidence->hasEvidence()
+                    ? $this->rejectedInitialPlanRecovery($run, $tools, $completed) : null;
+                if ($plan === null) {
+                    if (! $evidence->hasEvidence() && ! ($sessionEvidence && $exception instanceof \UnexpectedValueException)) {
+                        throw $exception;
+                    }
+                    $evidence->addWarning('planner_recovery', 'agent_planner');
+                    $this->checkpoint($run, $evidence, $completed, $results);
+                    return new AgentLoopOutcome('partial', $evidence, $completed, 'planner_recovery');
+                }
+                $this->events->publish($run, 'plan.updated', data: ['operation' => 'initial_document_recovery',
+                    'validation_code' => $exception instanceof AgentPlanValidationException ? $exception->validationCode : 'planner_output_invalid']);
+            }
+            if ($sessionEvidence && $plan->shouldCallTools() && ! $evidence->hasEvidence()
+                && ! array_intersect(['search_knowledge_base', 'read_knowledge_context'], array_column($plan->actions, 'tool'))) {
+                $plan = $this->rejectedInitialPlanRecovery($run, $tools, $completed, $plan) ?? $plan;
             }
             $budget->recordPlanningDuration((int) round((microtime(true) - $start) * 1000));
             $run->forceFill(['plan_json' => $plan->jsonSerialize()])->save();
@@ -415,6 +432,45 @@ final class AgentWaveCoordinator
             // This is the only back-edge. No worker or dependent action can
             // advance until all wave observations have crossed the common barrier.
         }
+    }
+
+    /** Start with the validated search seeds. Live tool arguments still require an ordinary validated plan. */
+    private function rejectedInitialPlanRecovery(AgentRun $run, array $tools, array $completed, ?AgentPlan $livePlan = null): ?AgentPlan
+    {
+        if ($completed !== [] || ! isset($tools['search_knowledge_base']) || $run->toolExecutions()->exists()) {
+            return null;
+        }
+        $understanding = \App\Services\Chat\QuestionUnderstanding::fromArray($run->result_json['question_understanding'] ?? []);
+        if (! $understanding->needsResearch() || $understanding->effectiveFollowUpTarget() !== 'sources') {
+            return null;
+        }
+        $documentTasks = array_filter($understanding->subquestions, static fn ($task) => ($task['deliverable']['freshness'] ?? null) === 'source_context');
+        if ($documentTasks === [] && $understanding->requiresCurrentObservation()) {
+            return null;
+        }
+        if ($livePlan !== null && ($documentTasks === [] || ! $understanding->requiresCurrentObservation() || $livePlan->rejectedActions !== [])) {
+            return null;
+        }
+        $queries = $documentTasks === [] ? $understanding->kbQueries : array_merge(...array_column($documentTasks, 'kb_queries'));
+        $maximum = max(1, (int) config('agent.planner.max_actions_per_plan', 8));
+        $actions = [];
+        $alreadyPlanned = $livePlan?->actions ?? [];
+        $usedIds = array_column($alreadyPlanned, 'id');
+        $availableSlots = max(0, min(3, $maximum - count($alreadyPlanned)));
+        foreach (array_slice(array_unique(array_filter($queries)), 0, $availableSlots) as $query) {
+            $id = 'recovery_search_'.count($actions);
+            while (in_array($id, $usedIds, true)) {
+                $id .= '_';
+            }
+            $actions[] = ['id' => $id, 'tool' => 'search_knowledge_base',
+                'arguments' => ['query' => $query], 'purpose' => 'Retrieve documents for the validated request', 'depends_on' => []];
+        }
+        if ($actions === []) {
+            return null;
+        }
+        return app(AgentPlanParser::class)->parse(['decision' => 'tools', 'actions' => [
+            ...array_map(static fn ($action) => $action->jsonSerialize(), $alreadyPlanned), ...$actions,
+        ]], $tools, $maximum);
     }
 
     /** A verifier can name a known file to open; only current authorized IDs can become actions. */

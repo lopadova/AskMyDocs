@@ -43,10 +43,14 @@ final readonly class AgentPlanningCoordinator
         $sessionEvidence = $run->usesSessionEvidence();
         $mode = $this->modes->forContext($context);
         if ($mode === 'classic') {
+            $initialCorrection = $completedActions === [] ? match (data_get($run->result_json, 'initial_plan.reason')) {
+                'requested_source_coverage_required' => 'The initial plan omitted operational data from a source explicitly requested by the user. Include the relevant selected live API/MCP lookup; an indexed document mentioning that system cannot replace it.',
+                'initial_observation_required', 'invalid_plan' => 'The initial plan was rejected before any sources were read. Plan the first authorized tool calls for the requested research. For a comparison of documents with a named live system, search the documents and read the requested records from that system. Keep each distinct requested record reference and search the correspondence for the documentary part.',
+                default => null,
+            } : null;
             return $this->classic->decide(
                 $question, $context, $tools, $evidence, $completedActions, $turnContext,
-                validationError: $completedActions === [] && data_get($run->result_json, 'initial_plan.reason') === 'requested_source_coverage_required'
-                    ? 'The initial plan omitted operational data from a source explicitly requested by the user. Include the relevant selected live API/MCP lookup; an indexed document mentioning that system cannot replace it.' : null,
+                validationError: $initialCorrection,
                 depth: $depth,
                 sessionEvidence: $sessionEvidence,
             );
