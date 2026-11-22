@@ -180,7 +180,15 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     is_array(data_get($run->result_json, 'question_understanding')) ? data_get($run->result_json, 'question_understanding') : null,
                     durableRunId: $run->run_id,
                 ));
-                if ($contextAttempt && ! $answer->requiresSelection && $answer->completeness !== 'complete') {
+                $understanding = $run->result_json['question_understanding'] ?? [];
+                // Older interpretations could call a request for detail a rewrite.
+                // An explicit restriction on the sources remains binding.
+                $reopenContext = $outcome->stopReason === 'context_only'
+                    && ! isset($run->result_json['session_context_gap'])
+                    && ($understanding['follow_up_target'] ?? null) === 'previous_reply'
+                    && ($understanding['deliverable']['kind'] ?? null) !== 'rewrite'
+                    && in_array($answer->grounding['coverage_validation']['next_action'] ?? null, ['read', 'search'], true);
+                if (($contextAttempt || $reopenContext) && $answer->needsSessionSources()) {
                     if ($run->usesConcurrentSession()) {
                         app(AgentSessionResearch::class)->request($run, $outcome, $answer);
                         $diagnostics->end($run, $executionSpan);
@@ -193,9 +201,20 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
 
                     continue;
                 }
-                if ($researchPhase === 'ready' && app(AgentSessionResearch::class)->deepen($run, $outcome, $answer)) {
-                    $diagnostics->end($run, $executionSpan);
-                    return;
+                $serialCollection = $run->usesSessionEvidence() && ! $run->usesConcurrentSession()
+                    && in_array($answer->grounding['coverage_validation']['next_action'] ?? null, ['read', 'search'], true);
+                if ($researchPhase === 'ready' || $serialCollection) {
+                    $research = app(AgentSessionResearch::class);
+                    $depth = $research->nextDepth($run, $outcome, $answer);
+                    if ($depth !== null) {
+                        if ($run->usesConcurrentSession()) {
+                            $research->request($run, $outcome, $answer, $depth);
+                        } elseif (! $this->continueAfterContextGap($run, $context, $outcome, $answer, $depth)) {
+                            continue;
+                        }
+                        $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'research_continuation']);
+                        return;
+                    }
                 }
                 if ($contextAttempt) {
                     $this->events->publish($run, 'synthesis.started', 'synthesis.started');
@@ -248,22 +267,19 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         }
     }
 
-    private function continueAfterContextGap(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $outcome, AgentAnswer $answer): bool
+    private function continueAfterContextGap(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $outcome, AgentAnswer $answer, int $depthFloor = 0): bool
     {
         $queued = app(AgentRunDeadline::class)->activeRemaining($context) !== null
             && config('queue.connections.'.config('queue.default').'.driver') !== 'sync';
-        \Illuminate\Support\Facades\DB::transaction(function () use ($run, $outcome, $answer, $queued): void {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($run, $outcome, $answer, $queued, $depthFloor): void {
             $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
             app(AgentRunControl::class)->ensureActive($locked);
             $locked->forceFill([
                 ...$queued ? ['status' => AgentRun::STATUS_QUEUED] : [],
                 'result_json' => [...(array) $locked->result_json,
                     'evidence' => $outcome->evidence->jsonSerialize(),
-                    'session_context_gap' => [
-                        'completeness' => $answer->completeness,
-                        'limitations' => $answer->limitations,
-                        'coverage_sufficient' => data_get($answer->grounding, 'coverage_validation.sufficient'),
-                    ],
+                    'session_context_gap' => [...$answer->sessionGap(), 'depth_floor' => $depthFloor,
+                        'source_hashes' => app(AgentSessionResearch::class)->sourceHashes($outcome->evidence)],
                     ...$queued ? ['research_continuation' => true] : [],
                 ],
             ])->save();

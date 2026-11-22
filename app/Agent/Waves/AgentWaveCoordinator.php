@@ -167,7 +167,7 @@ final class AgentWaveCoordinator
             $ready = $deferred = [];
             $confirmation = null;
             $depthLimited = false;
-            $depthFloor = (int) data_get($run->result_json, 'session_research.depth_floor', 0);
+            $depthFloor = (int) ($run->result_json['session_research']['depth_floor'] ?? $run->result_json['session_context_gap']['depth_floor'] ?? 0);
             $alreadyObserved = 0;
             $finished = array_column($completed, null, 'id');
             foreach ($plan->actions as $action) {

@@ -77,7 +77,9 @@ final class VerifiedAnswerCheckpoint
                         && ($item['evidence_hash'] ?? null) === ($chunk['evidence_hash'] ?? null));
                     if ($originalChunk === null) return false;
                     $source = app(\App\Services\Kb\Investigation\KbSourceReader::class)->readCandidate([
-                        'document' => ['id' => $document['document_id']], 'chunk_id' => $chunk['chunk_id'] ?? 0], $context->projectKey, $run->user, $filters);
+                        'document' => ['id' => $document['document_id']], 'chunk_id' => $chunk['chunk_id'] ?? 0,
+                        ...array_intersect_key($originalChunk, array_flip(['knowledge_section_ordinal', 'knowledge_observation_id', 'session_document_context'])),
+                    ], $context->projectKey, $run->user, $filters);
                     if ($source === null) return false;
                     $masker = app(\App\Services\Widget\WidgetPiiMasker::class);
                     return $masker->maskString($source['excerpt']) === ($originalChunk['content'] ?? null)

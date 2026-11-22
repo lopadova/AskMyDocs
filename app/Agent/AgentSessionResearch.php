@@ -42,7 +42,7 @@ final readonly class AgentSessionResearch
                 return;
             }
             $alreadyShown = (bool) data_get($state, 'session_research.interim_sent');
-            $showPartial = ! $alreadyShown && $answer?->completeness === 'partial' && ($answer->grounding['claims'] ?? []) !== [];
+            $showPartial = ! $alreadyShown && $answer?->hasUsefulInterimAnswer();
             $state['retrieval_completed'] = true;
             $state['evidence'] = $outcome->evidence->jsonSerialize();
             $state['session_research'] = ['state' => $firstRequest ? 'waiting' : 'active', 'interim_sent' => $alreadyShown || $showPartial];
@@ -57,10 +57,7 @@ final readonly class AgentSessionResearch
                 }
             }
             if ($answer !== null) {
-                $state['session_context_gap'] = [
-                    'completeness' => $answer->completeness, 'limitations' => $answer->limitations,
-                    'coverage_sufficient' => data_get($answer->grounding, 'coverage_validation.sufficient'),
-                ];
+                $state['session_context_gap'] = $answer->sessionGap();
             }
             $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => $state])->save();
             if ($showPartial) {
@@ -178,25 +175,25 @@ final readonly class AgentSessionResearch
         return $this->loop->run($run, $context, $turnContext, collectOnly: true);
     }
 
-    public function deepen(AgentRun $run, AgentLoopOutcome $outcome, AgentAnswer $answer): bool
+    public function nextDepth(AgentRun $run, AgentLoopOutcome $outcome, AgentAnswer $answer): ?int
     {
-        if ($answer->completeness === 'complete' || $answer->requiresSelection || $answer->limitations === []
+        $baseline = $run->usesConcurrentSession() ? data_get($run->result_json, 'session_research.baseline', [])
+            : data_get($run->result_json, 'session_context_gap.source_hashes', []);
+        if (! $answer->needsSessionSources() || ($answer->limitations === [] && ! isset($answer->grounding['coverage_validation']['next_action']))
             || ! in_array($outcome->stopReason, [null, 'lookups_already_observed'], true)
-            || array_diff($this->sourceHashes($outcome->evidence), data_get($run->result_json, 'session_research.baseline', [])) === []) {
-            return false;
+            || array_diff($this->sourceHashes($outcome->evidence), $baseline) === []) {
+            return null;
         }
         $depth = (int) $run->toolExecutions()->where('status', 'completed')->max('result_meta_json->dependency_depth');
         if ($depth < 1 || $depth >= (new AgentBudgetTracker($run))->depthLevel()) {
-            return false;
+            return null;
         }
 
-        $this->request($run, $outcome, $answer, $depth);
-
-        return true;
+        return $depth;
     }
 
     /** Compare source contents, independent of execution IDs and retrieval timestamps. */
-    private function sourceHashes(AgentEvidenceEnvelope $evidence): array
+    public function sourceHashes(AgentEvidenceEnvelope $evidence): array
     {
         $hashes = array_column($evidence->apiTools(), 'evidence_hash');
         foreach ($evidence->documents() as $document) {

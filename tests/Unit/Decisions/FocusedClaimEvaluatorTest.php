@@ -268,6 +268,23 @@ class FocusedClaimEvaluatorTest extends TestCase
         $this->assertSame('exact_record_fields', $result['semantic_validation'][0]['checks'][0]['fallback']);
     }
 
+    public function test_historical_tool_claim_survives_for_the_previous_observation_but_cannot_answer_the_current_task(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $u] = $this->fixture();
+        $evidence['api_tools'][0]['historical_context'] = true;
+        $u['subquestions'][0]['deliverable'] = ['kind' => 'answer', 'freshness' => 'source_context', 'quantity' => null];
+        $u['subquestions'][] = [...$u['subquestions'][0], 'aspect' => 'current status',
+            'deliverable' => ['kind' => 'answer', 'freshness' => 'current', 'quantity' => null]];
+        $result = app(FocusedClaimEvaluator::class)->evaluate('What was recorded and what is its status now?', $evidence, [
+            [...$claims[0], 'subquestion_id' => 0, 'text' => 'TRACK-55 was recorded as scheduled.'],
+            [...$claims[0], 'subquestion_id' => 1],
+        ], $u, 'demo', 'acme');
+        $this->assertSame([0], array_column($result['claims'], 'subquestion_id'));
+        $this->assertSame('unverified', $result['subquestions'][1]['status']);
+        $this->assertTrue($result['partial']);
+    }
+
     private function fixture(): array
     {
         $record = ['id' => 'SHIP-12', 'trackingCode' => 'TRACK-55', 'status' => 'scheduled', 'orderId' => 'ORDER-22', 'customerId' => 'RO-LONGO'];
@@ -278,6 +295,24 @@ class FocusedClaimEvaluatorTest extends TestCase
             ['text' => 'HUB-MI-07 accepts ADR class 3 freight.', 'quote' => 'paraphrased', 'document_id' => 26, 'evidence_hash' => 'hub']];
         $focus = ['topic' => 'shipment', 'identifiers' => ['TRACK-55'], 'aspect' => 'status', 'fields' => ['status']];
         return [$evidence, $claims, ['focus' => $focus, 'subquestions' => [$focus], 'transition' => 'switch']];
+    }
+
+    public function test_rereading_indexed_mail_does_not_refresh_the_status_of_an_order(): void
+    {
+        $this->fake();
+        [$evidence, $claims, $understanding] = $this->fixture();
+        $text = 'TRACK-55 is scheduled.';
+        $evidence['documents'][0]['evidence'][0]['content'] = $text;
+        $evidence['api_tools'][0]['tool'] = 'read_knowledge_context';
+        $evidence['api_tools'][0]['kind'] = 'catalog';
+        $understanding['subquestions'][0]['deliverable'] = ['kind' => 'answer', 'quantity' => null, 'freshness' => 'current'];
+        $candidates = [$claims[0], [...$claims[1], 'text' => $text, 'quote' => $text]];
+        $verify = fn ($sources) => app(FocusedClaimEvaluator::class)->evaluate('What is the current status of TRACK-55?',
+            $sources, $candidates, $understanding, 'demo', 'acme');
+        $this->assertSame([], $verify($evidence)['claims']);
+        $evidence['api_tools'][0]['tool'] = 'get_shipment';
+        $evidence['api_tools'][0]['kind'] = 'api';
+        $this->assertSame([67], array_column($verify($evidence)['claims'], 'tool_execution_id'));
     }
 
     private function fake(array $categories = [], float $probability = .95): void

@@ -211,14 +211,35 @@ final class EvidenceProjector
         return [];
     }
 
+    public static function isPreviousObservation(array $tool): bool
+    {
+        return ($tool['historical_context'] ?? false) || ($tool['session_context'] ?? false) || isset($tool['session_memory_observation_id']);
+    }
+
+    /** Reading indexed text during this turn does not refresh a business record. */
+    public static function isLiveRecordObservation(array $tool): bool
+    {
+        return ! self::isPreviousObservation($tool)
+            && ! in_array($tool['kind'] ?? null, ['catalog', 'knowledge'], true)
+            && ! in_array($tool['tool'] ?? null, ['read_knowledge_context', 'search_knowledge_entities', 'search_knowledge_base', 'list_knowledge_documents'], true);
+    }
+
     public static function identities(array $record, array $declaredFields = []): array
+    {
+        return array_values(array_map('strval', self::identityFields($record, $declaredFields)));
+    }
+
+    public static function identityFields(array $record, array $declaredFields = []): array
     {
         // Foreign keys and emailEvidence are not the identity of the returned record.
         $fields = $declaredFields !== [] ? array_values(array_filter($declaredFields,
             static fn ($key) => is_string($key) && preg_match('/^[a-zA-Z0-9_-]+$/', $key)))
             : ['id', 'code', 'trackingCode', 'sku', 'orderNumber', 'customerCode', 'productCode'];
-        return array_values(array_filter(array_map(fn ($key) => isset($record[$key]) && is_scalar($record[$key])
-            ? (string) $record[$key] : null, $fields)));
+        $selection = [];
+        foreach ($fields as $key) {
+            if (isset($record[$key]) && is_scalar($record[$key]) && (bool) (string) $record[$key]) $selection[$key] = $record[$key];
+        }
+        return $selection;
     }
 
     public function bind(array $evidence, array $claim, array $ids, string $tenant, string $project): array

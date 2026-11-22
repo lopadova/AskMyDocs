@@ -118,4 +118,153 @@ final class FinalizationDeadlineTest extends TestCase
             'chunk_order' => 0, 'chunk_text' => $text, 'chunk_hash' => $hash]);
         return [$run, $document, $chunk];
     }
+
+    public static function sessionVerificationFailures(): array
+    {
+        return [
+            'transient 503' => [503, true, 0, 2, 'complete'],
+            'persistent 503' => [503, false, 0, 2, 'partial'],
+            'permanent 400' => [400, false, 0, 1, 'partial'],
+            'worker deadline' => [503, false, 113, 0, 'partial'],
+        ];
+    }
+
+    public function test_current_table_cannot_disclose_cached_values_but_can_offer_cached_identifiers_for_selection(): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.selective_validation' => true]);
+        Http::preventStrayRequests();
+        Http::fake(fn ($request) => Http::response(['model' => 'fixture',
+            'answers' => array_fill_keys(array_keys($request['questions']), ['type' => 'noul', 'noul' => .01])]));
+        app(TenantContext::class)->set('acme');
+        [$run] = $this->fixture();
+        $run->forceFill(['input_json' => [...$run->input_json, 'session_evidence' => true]])->save();
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->import(['api_tools' => [['execution_id' => 7, 'tool' => 'orders', 'evidence_hash' => 'old',
+            'historical_context' => false, 'session_memory_observation_id' => 'cached', 'result' => ['records' => [
+                ['id' => 'A1', 'status' => 'old-private-status'], ['id' => 'A2', 'status' => 'old-private-status'],
+            ]]]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturnUsing(function ($system, $messages) {
+            $state = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            $this->assertFalse($state['table_artifact_available']);
+            return new AiResponse('', 'fake', 'test', toolCalls: [['name' => 'submit_agent_answer', 'arguments' => [
+                'completeness' => 'complete', 'claims' => [], 'limitations' => [], 'requires_selection' => false, 'render_table' => true,
+            ]]]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+        $intent = ['deliverable' => ['kind' => 'answer', 'quantity' => null, 'freshness' => 'current']];
+        $synth = app(AgentAnswerSynthesizer::class);
+        foreach ([false, true] as $selection) {
+            $answer = $synth->synthesize('Show current statuses.', AgentExecutionContext::fromArray($run->toArray()),
+                new AgentLoopOutcome('answer', $evidence, [], $selection ? 'ambiguous_selection_required' : null),
+                understanding: $intent, durableRunId: $run->run_id);
+            $this->assertSame($selection, $answer->requiresSelection);
+            $this->assertStringNotContainsString('old-private-status', $answer->answer.json_encode($answer->artifact));
+            if ($selection) {
+                $this->assertSame([['id' => 'A1'], ['id' => 'A2']], array_column($answer->artifact['rows'], 'record'));
+            } else {
+                $this->assertNull($answer->artifact);
+                $this->assertNotSame('complete', $answer->completeness);
+            }
+        }
+    }
+
+    public static function tableVerification(): array
+    {
+        return ['verified visible cells' => [false], 'coverage unavailable' => [true]];
+    }
+
+    #[DataProvider('tableVerification')]
+    public function test_session_checks_visible_table_cells_and_preserves_the_execution_reference(bool $outage): void
+    {
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.selective_validation' => true]);
+        app(TenantContext::class)->set('acme');
+        [$run] = $this->fixture();
+        $run->update(['input_json' => [...$run->input_json, 'session_evidence' => true]]);
+        $observed = [];
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use (&$observed, $outage) {
+            $observed[] = $request['state']['answer'];
+            return $outage ? Http::response([], 503) : Http::response(['model' => 'fixture',
+                'answers' => array_fill_keys(array_keys($request['questions']), ['type' => 'noul', 'noul' => .99])]);
+        });
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->import(['api_tools' => [['execution_id' => 7, 'tool' => 'orders', 'evidence_hash' => 'current',
+            'result' => ['records' => [['id' => 'A1', 'status' => 'open', 'name' => 'Sample', 'number' => 'N1',
+                'date' => '2026-01-01', 'amount' => 10, 'currency' => 'EUR', 'omitted_field' => 'invisible-value']]]]]]);
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'test',
+            toolCalls: [['name' => 'submit_agent_answer', 'arguments' => ['completeness' => 'complete',
+                'claims' => [], 'limitations' => [], 'requires_selection' => false, 'render_table' => true]]]));
+        $this->app->instance(AiManager::class, $ai);
+        $answer = app(AgentAnswerSynthesizer::class)->synthesize('Show the current orders in a table.',
+            AgentExecutionContext::fromArray($run->toArray()), new AgentLoopOutcome('answer', $evidence, []),
+            understanding: ['deliverable' => ['kind' => 'answer', 'quantity' => null, 'freshness' => 'current'],
+                'subquestions' => [['question' => 'Show the current orders in a table.', 'topic' => 'orders', 'identifiers' => [], 'aspect' => 'list', 'fields' => ['*']]]],
+            durableRunId: $run->run_id);
+
+        $this->assertCount($outage ? 2 : 1, $observed);
+        $this->assertSame(array_column($answer->artifact['rows'], 'values'), $observed[0][0]['rows']);
+        $this->assertStringNotContainsString('invisible-value', json_encode($observed));
+        $this->assertSame($outage ? 'unknown' : 'satisfied', data_get($answer->grounding, 'coverage_validation.tasks.0.status'));
+        $this->assertSame($outage ? 'partial' : 'complete', $answer->completeness);
+        $this->assertSame(7, $answer->toolSources[0]['execution_id']);
+        $this->assertSame($outage, str_contains($answer->answer, 'unavailable'));
+    }
+
+    #[DataProvider('sessionVerificationFailures')]
+    public function test_session_verification_retries_only_the_check_and_never_upgrades_unknown_coverage(
+        int $failure, bool $recovers, int $elapsed, int $attempts, string $expected
+    ): void {
+        $this->travelTo(now()->startOfSecond());
+        config(['ai.providers.openrouter.key' => 'test', 'reasoning.selective_validation' => true,
+            'reasoning.selective_repair' => true, 'agent.job_timeout_seconds' => 120, 'agent.finalization.safety_seconds' => 5]);
+        app(TenantContext::class)->set('acme');
+        app(\Padosoft\AskMyDocsConnectorBase\Support\TenantContext::class)->set('acme');
+        [$run, $document, $chunk] = $this->fixture();
+        $run->forceFill(['input_json' => [...$run->input_json, 'session_evidence' => true]])->save();
+        $this->travel($elapsed)->seconds();
+        Http::preventStrayRequests();
+        $coverageCalls = 0;
+        Http::fake(function ($request) use ($failure, $recovers, &$coverageCalls) {
+            if (isset($request['questions']['covered'])) {
+                $coverageCalls++;
+                if (! $recovers || $coverageCalls === 1) return Http::response([], $failure);
+            }
+            $answers = [];
+            foreach ($request['questions'] as $key => $criterion) {
+                if ($criterion['type'] === 'noul') {
+                    $answers[$key] = ['type' => 'noul', 'noul' => .99];
+                    continue;
+                }
+                $p = array_fill_keys(array_keys($criterion['criteria']), 0);
+                $first = array_key_first($p);
+                $p[$first] = 1;
+                $answers[$key] = ['type' => 'choice', 'choice' => $first, 'confidence' => 1, 'probabilities' => $p];
+            }
+            return Http::response(['id' => 'test', 'model' => 'test', 'answers' => $answers]);
+        });
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->once()->andReturn(new AiResponse('', 'fake', 'test', toolCalls: [[
+            'name' => 'submit_agent_answer', 'arguments' => ['completeness' => 'complete', 'claims' => [[
+                'text' => $chunk->chunk_text, 'document_id' => $document->id, 'evidence_hash' => $chunk->chunk_hash,
+                'subquestion_id' => 0]], 'limitations' => [], 'render_table' => false, 'requires_selection' => false],
+        ]]));
+        $this->app->instance(AiManager::class, $ai);
+        $evidence = app(AgentEvidenceFactory::class)->empty();
+        $evidence->addDocument(['document_id' => $document->id, 'title' => $document->title, 'origin' => 'primary', 'evidence' => [[
+            'chunk_id' => $chunk->id, 'content' => $chunk->chunk_text, 'evidence_hash' => $chunk->chunk_hash, 'complete_source' => true,
+        ]]]);
+        $question = $run->input_json['question'];
+        $focus = ['topic' => 'case', 'identifiers' => ['CASE-A'], 'aspect' => 'resolution', 'fields' => ['*']];
+        $answer = app(AgentAnswerSynthesizer::class)->synthesize($question, AgentExecutionContext::fromArray($run->toArray()),
+            new AgentLoopOutcome('answer', $evidence, []), understanding: ['focus' => $focus, 'subquestions' => [[...$focus, 'question' => $question]]],
+            durableRunId: $run->run_id);
+
+        $this->assertSame($attempts, $coverageCalls);
+        $this->assertSame($expected, $answer->completeness);
+        $this->assertStringContainsString($chunk->chunk_text, $answer->answer);
+        $this->assertSame($recovers ? 'answer' : 'verification_unavailable', data_get($answer->grounding, 'coverage_validation.next_action'));
+        $this->assertSame($recovers ? 'satisfied' : 'unknown', data_get($answer->grounding, 'coverage_validation.tasks.0.status'));
+    }
 }
