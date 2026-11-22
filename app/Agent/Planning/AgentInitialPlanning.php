@@ -67,7 +67,9 @@ final readonly class AgentInitialPlanning
             $plan = app(AgentPlanParser::class)->parse($proposal, $tools, (int) config('agent.planner.max_actions_per_plan', 20));
             // An interpretation is not source evidence; research cannot finish
             // before collecting observations merely because its proposal says so.
-            if (! $plan->shouldCallTools()) throw new \UnexpectedValueException('Research requires an initial observation.');
+            if (! $plan->shouldCallTools()) {
+                throw new AgentPlanValidationException('initial_observation_required', 'Research requires an initial observation.');
+            }
             $guard = app(AgentIdentifierSources::class);
             app(AgentPlanArgumentConstraints::class)->validate($plan, $tools,
                 $guard->required($tools) ? $guard->forRun($run, $evidence) : []);

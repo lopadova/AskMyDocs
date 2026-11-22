@@ -27,6 +27,7 @@ final readonly class FocusedClaimEvaluator
         }
         $pairs = $checks = $accepted = $literalAnchors = [];
         $state = ['question' => $question, 'focus' => $focus, 'subquestions' => $subs, 'sources' => [], 'pairs' => []];
+        $intent = \App\Services\Chat\QuestionUnderstanding::fromArray([...$understanding, 'subquestions' => $subs]);
         $candidates = [];
         foreach (is_array($claims) ? $claims : [] as $index => $claim) {
             if (! is_array($claim)) {
@@ -36,15 +37,21 @@ final readonly class FocusedClaimEvaluator
             $subIndex = count($matches) === 1 ? $matches[0] : (count($subs) === 1 ? 0 : null);
             // In independent research the server, not the draft model, assigns the
             // originating task. Never move its claim to another task to make it pass.
-            if ((($understanding['independent_research'] ?? false) || count($matches) !== 1)
-                && isset($claim['subquestion_id']) && is_int($claim['subquestion_id']) && isset($subs[$claim['subquestion_id']])) {
-                $subIndex = $claim['subquestion_id'];
+            $declared = $claim['subquestion_id'] ?? null;
+            if (is_int($declared) && isset($subs[$declared])) {
+                // Correspondence about a return can mention one order without naming the return in every sentence.
+                // Bind it to the declared documentary task, where its source still has to prove the case identity.
+                $documentary = $subIndex !== null && $intent->requiresCurrentObservationFor($subIndex)
+                    && ($subs[$declared]['deliverable']['freshness'] ?? null) === 'source_context'
+                    && isset($this->projector->resolveSourceIdentity($evidence, $claim)['document_id']);
+                if (($understanding['independent_research'] ?? false) || count($matches) !== 1 || $documentary) {
+                    $subIndex = $declared;
+                }
             }
             $candidates[] = ['index' => $index, 'claim' => $claim, 'sub' => $subIndex];
         }
         // Round-robin allocation keeps a verbose first topic from exhausting the ten-decision budget.
         $ordered = [];
-        $intent = \App\Services\Chat\QuestionUnderstanding::fromArray([...$understanding, 'subquestions' => $subs]);
         foreach ($candidates as $candidate) {
             $ordered[$candidate['sub'] ?? -1][] = $candidate;
         }
