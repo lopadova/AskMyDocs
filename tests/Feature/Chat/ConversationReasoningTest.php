@@ -174,6 +174,59 @@ class ConversationReasoningTest extends TestCase
         app(ConversationReasoning::class)->prepare($two, $turn, 'private');
     }
 
+    public function test_only_satisfied_tasks_close_and_the_next_turn_can_resume_the_missing_request(): void
+    {
+        $conversation = $this->conversation();
+        $turn = $conversation->messages()->create(['role' => 'user', 'content' => 'Cosa diceva la mail e qual è lo stato di oggi?']);
+        $email = ['topic' => 'resi', 'identifiers' => [], 'aspect' => 'email', 'fields' => [], 'question' => 'Cosa diceva la mail?'];
+        $order = [...$email, 'aspect' => 'ordine', 'question' => 'Qual è lo stato di oggi?'];
+        $memory = app(ConversationReasoning::class);
+        $state = $memory->state($conversation);
+        $state['focus_turn'] = $turn->id;
+        foreach ([$email, $order] as $task) {
+            $state['subquestions'][hash('sha256', json_encode($task))] = [...$task, 'status' => 'open'];
+        }
+        $conversation->forceFill(['reasoning_state' => $state])->save();
+        $run = \App\Models\AgentRun::create(['tenant_id' => $conversation->tenant_id, 'project_key' => 'demo',
+            'run_id' => (string) \Illuminate\Support\Str::uuid(), 'user_id' => $conversation->user_id, 'conversation_id' => $conversation->id,
+            'actor_type' => 'user', 'actor_id' => (string) $conversation->user_id, 'channel' => 'chat', 'locale' => 'it', 'timezone' => 'UTC',
+            'status' => 'partial', 'input_json' => ['user_message_id' => $turn->id, 'session_evidence' => true]]);
+        $grounding = ['subquestions' => [[...$email, 'status' => 'answered'], [...$order, 'status' => 'answered']],
+            'coverage_validation' => ['tasks' => [
+                ['status' => 'satisfied', 'next_action' => 'answer', 'source_document_ids' => []],
+                ['status' => 'missing', 'next_action' => 'search', 'source_document_ids' => [999],
+                    'source_passages' => [['document_id' => 999, 'chunk_id' => 1000, 'heading' => 'Private heading']]],
+            ]]];
+        $answer = new \App\Agent\AgentAnswer('La mail confermava la richiesta di reso.', 'it', 'partial', [], [], grounding: $grounding);
+        $conversation->messages()->create(['agent_run_id' => $run->id, 'role' => 'assistant', 'content' => $answer->answer]);
+        $memory->finishRun($run, [], $answer);
+        $conversation->refresh();
+        $this->assertSame(['answered', 'unverified'], array_column($conversation->reasoning_state['subquestions'], 'status'));
+        $context = $memory->context($conversation);
+        $this->assertSame([['question' => $order['question'], 'coverage_status' => 'missing',
+            'next_action' => 'search', 'source_document_ids' => []]], $context['open_tasks']);
+        $this->assertCount(1, $conversation->reasoning_state['issues']);
+        $this->assertArrayHasKey('source_passages', array_values($conversation->reasoning_state['issues'])[0]);
+        $this->assertStringNotContainsString('Private heading', json_encode($context, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_recovered_legacy_answer_keeps_the_original_question_open_when_no_interpretation_was_saved(): void
+    {
+        $chat = $this->conversation();
+        $turn = $chat->messages()->create(['role' => 'user', 'content' => 'Quali sono gli esempi disponibili?']);
+        $memory = app(ConversationReasoning::class);
+        $chat->forceFill(['reasoning_state' => [...$memory->state($chat), 'focus_turn' => $turn->id]])->save();
+        $run = \App\Models\AgentRun::create(['tenant_id' => $chat->tenant_id, 'project_key' => 'demo',
+            'run_id' => (string) \Illuminate\Support\Str::uuid(), 'user_id' => $chat->user_id, 'conversation_id' => $chat->id,
+            'actor_type' => 'user', 'actor_id' => (string) $chat->user_id, 'channel' => 'chat', 'status' => 'partial',
+            'locale' => 'it', 'timezone' => 'UTC', 'input_json' => ['user_message_id' => $turn->id, 'session_evidence' => true]]);
+        $answer = new \App\Agent\AgentAnswer('Un esempio verificato.', 'it', 'partial', [], [], grounding: ['recovery' => 'timeout']);
+        $chat->messages()->create(['agent_run_id' => $run->id, 'role' => 'assistant', 'content' => $answer->answer]);
+        $memory->finishRun($run, [], $answer);
+        $this->assertSame([['question' => $turn->content, 'coverage_status' => 'unknown',
+            'next_action' => 'verification_unavailable', 'source_document_ids' => []]], $memory->context($chat->fresh())['open_tasks']);
+    }
+
     public function test_source_read_dialogue_remembers_authorized_target_without_copying_business_prose(): void
     {
         $conversation = $this->conversation();

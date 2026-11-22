@@ -247,6 +247,17 @@ class VerifiedSessionMemoryTest extends TestCase
         $this->assertSame([], $this->memory->evidence($this->chat, $routed, $this->user, allowedTools: [self::TOOL])['api_tools']);
     }
 
+    public function test_a_current_record_request_overrides_a_proposal_to_reuse_the_last_observation(): void
+    {
+        $this->source();
+        $understanding = $this->understanding([$this->fact('status')['fact_id']])->toArray();
+        $understanding['deliverable'] = ['kind' => 'answer', 'quantity' => null, 'freshness' => 'current'];
+        $routed = $this->route(QuestionUnderstanding::fromArray($understanding));
+        $this->assertSame('refresh', $routed->memoryResolution['tasks'][0]['decision']);
+        $this->assertSame([], $routed->memoryResolution['fact_ids']);
+        $this->assertSame([], $this->memory->evidence($this->chat, $routed, $this->user, allowedTools: [self::TOOL])['api_tools']);
+    }
+
     public function test_partial_request_reuses_status_and_searches_only_missing_tracking(): void
     {
         $this->source(['id' => 'ORD-123', 'status' => 'processing']);

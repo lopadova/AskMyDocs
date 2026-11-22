@@ -54,7 +54,29 @@ final readonly class ConversationReasoning
             ? WidgetSessionStep::query()->where('agent_run_id', $run->id)->first()
             : \App\Models\Message::query()->where('agent_run_id', $run->id)->first();
         if ($owner !== null && $turn !== null && $saved !== null) {
-            $this->finish($owner, $turn, $saved, $evidence, $answer->grounding['claims'] ?? [], $answer->grounding['subquestions'] ?? []);
+            $coverage = $answer->grounding['subquestions'] ?? [];
+            $checks = $run->usesSessionEvidence() ? ($answer->grounding['coverage_validation']['tasks'] ?? []) : [];
+            $recovered = $run->usesSessionEvidence() && isset($answer->grounding['recovery']);
+            if ($checks !== [] || $recovered) {
+                $coverage = $coverage ?: (data_get($run->result_json, 'question_understanding.subquestions')
+                    ?: array_map(static fn ($check) => ['question' => $check['question']], $checks));
+                if ($coverage === []) {
+                    $coverage = [['question' => $run->input_json['question'] ?? $turn->content]];
+                }
+                foreach ($coverage as $index => &$task) {
+                    $check = $checks[$index] ?? [];
+                    $result = $check['status'] ?? 'unknown';
+                    $task['status'] = $result === 'satisfied' ? 'answered' : 'unverified';
+                    $task['coverage_status'] = $result;
+                    $task['next_action'] = $check['next_action'] ?? 'verification_unavailable';
+                    $task['source_document_ids'] = $check['source_document_ids'] ?? [];
+                    if (! empty($check['source_passages'])) {
+                        $task['source_passages'] = $check['source_passages'];
+                    }
+                }
+                unset($task);
+            }
+            $this->finish($owner, $turn, $saved, $evidence, $answer->grounding['claims'] ?? [], $coverage);
         }
     }
 
@@ -152,27 +174,48 @@ final readonly class ConversationReasoning
         foreach ($state['evidence'] as $reference) {
             if (($reference['kind'] ?? '') === 'tool' && $allowedTools !== []
                 && ! in_array($reference['tool'] ?? '', $allowedTools, true)) continue;
-            if (! $this->authorized($owner, $reference, $actor, $filters)) {
+            if (($reference['kind'] ?? '') === 'document') {
+                $current = $this->reader->readCandidate(['document' => ['id' => $reference['document_id']], 'chunk_id' => $reference['chunk_id']], (string) $owner->project_key, $actor, $filters);
+                if ($current === null) {
+                    continue;
+                }
+                $validDocumentHashes[] = hash('sha256', $this->masker->maskString($current['excerpt']));
+                $validDocumentHashes[] = hash('sha256', $current['excerpt']);
+            } elseif (! $this->authorized($owner, $reference, $actor, $filters)) {
                 continue;
             }
             $known = array_merge($known, $reference['identifiers'] ?? []);
             $relations = array_merge($relations, $reference['relations'] ?? []);
-            if (($reference['kind'] ?? '') === 'document') {
-                $current = $this->reader->readCandidate(['document' => ['id' => $reference['document_id']], 'chunk_id' => $reference['chunk_id']], (string) $owner->project_key, $actor);
-                if ($current !== null) {
-                    $validDocumentHashes[] = hash('sha256', $this->masker->maskString($current['excerpt']));
-                    $validDocumentHashes[] = hash('sha256', $current['excerpt']);
-                }
-            }
             $references[] = array_intersect_key($reference, array_flip(['kind', 'document_id', 'chunk_id', 'execution_id', 'tool', 'record_path', 'identifier_fields', 'identifiers', 'hash', 'retrieved_at', 'status']));
         }
         $focus = $state['focus'];
         $focus['identifiers'] = array_values(array_intersect($focus['identifiers'] ?? [], $known));
         $subquestions = array_values(array_filter($state['subquestions'], fn ($sub) => array_diff($sub['identifiers'] ?? [], $known) === []));
+        $openTasks = [];
+        $documentIds = array_column($references, 'document_id');
+        $chunkIds = array_column($references, 'chunk_id');
+        $executionIds = array_column($references, 'execution_id');
+        foreach ($state['issues'] as $issue) {
+            if (($issue['turn'] ?? null) !== $state['focus_turn'] || ! isset($issue['coverage_status'])
+                || array_diff($issue['focus']['identifiers'] ?? [], $known) !== []) {
+                continue;
+            }
+            $passages = array_values(array_filter($issue['source_passages'] ?? [], static fn ($source) =>
+                (isset($source['chunk_id']) && in_array($source['chunk_id'], $chunkIds, true))
+                || (isset($source['tool_execution_id']) && in_array($source['tool_execution_id'], $executionIds, true))));
+            $openTasks[] = [
+                'question' => $issue['focus']['question'] ?? '',
+                'coverage_status' => $issue['coverage_status'], 'next_action' => $issue['next_action'],
+                'source_document_ids' => array_values(array_intersect($issue['source_document_ids'] ?? [], $documentIds)),
+                ...$passages === [] ? [] : ['source_passages' => array_map(static fn ($source) =>
+                    array_intersect_key($source, array_flip(['document_id', 'chunk_id', 'tool_execution_id'])), $passages)],
+            ];
+        }
         $facts = app(SessionFactMemory::class)->projection($owner, $actor, $filters, $allowedTools, $beforeTurn, question: $question);
         foreach ($facts as $fact) $known = [...$known, ...$fact['subject_identifiers']];
         return $this->redactor->redact($this->masker->maskArray([
             'focus' => $focus, 'subquestions' => $subquestions, 'objective' => $state['objective'], 'language' => $state['language'],
+            ...$openTasks === [] ? [] : ['open_tasks' => $openTasks],
             'dialogue' => $this->dialogue($owner, $beforeTurn, $references),
             'known_identifiers' => array_values(array_unique($known)), 'verified_relations' => $relations,
             'references' => $references, 'communicated_fact_ids' => array_keys($state['communicated']),
@@ -253,13 +296,28 @@ final readonly class ConversationReasoning
             if ($turn->getKey() === $state['focus_turn']) {
                 foreach ($coverage as $sub) {
                     $status = $sub['status'];
-                    unset($sub['status']);
+                    $details = array_intersect_key($sub, array_flip(['coverage_status', 'next_action', 'source_document_ids', 'source_passages']));
+                    $sub = array_diff_key($sub, ['status' => true] + $details);
                     $key = hash('sha256', json_encode($sub));
+                    // JSON columns may reorder object keys between preparation and delivery.
+                    if (! isset($state['subquestions'][$key])) {
+                        foreach ($state['subquestions'] as $candidate => $stored) {
+                            if (array_diff_key($stored, array_flip(['status', 'coverage_status'])) == $sub) {
+                                $key = $candidate;
+                                break;
+                            }
+                        }
+                    }
                     if (isset($state['subquestions'][$key])) {
                         $state['subquestions'][$key]['status'] = $status;
+                        if (isset($details['coverage_status'])) {
+                            $state['subquestions'][$key]['coverage_status'] = $details['coverage_status'];
+                        }
                     }
                     if ($status !== 'answered') {
-                        $state['issues'][$key] = ['kind' => $status === 'conflicting' ? 'conflict' : 'missing_information', 'focus' => $sub, 'status' => 'open'];
+                        $kind = ($details['coverage_status'] ?? null) === 'unknown' ? 'verification_unavailable'
+                            : ($status === 'conflicting' ? 'conflict' : 'missing_information');
+                        $state['issues'][$key] = [...$details, 'kind' => $kind, 'focus' => $sub, 'turn' => $turn->getKey(), 'status' => 'open'];
                     } else {
                         unset($state['issues'][$key]);
                     }
@@ -438,7 +496,9 @@ final readonly class ConversationReasoning
                     'action' => $action, 'sources_shown' => $shown,
                     'quoted_claims_for_reference_only' => $this->quotedClaims($metadata,
                         (string) ($record->content ?? data_get($record->args_json, 'content', '')), $authorizedReferences),
-                    'answered_questions' => data_get($metadata, 'reasoning.subquestions', []),
+                    // Source navigation is projected from the currently authorized references above.
+                    'answered_questions' => array_map(static fn ($task) => array_diff_key($task, ['source_passages' => true, 'source_document_ids' => true]),
+                        array_filter((array) data_get($metadata, 'reasoning.subquestions', []), 'is_array')),
                     // Offers are server-written dialogue acts, not business facts.
                     // This replaces parsing the previous answer for "would you like...".
                     'offered_actions' => array_values(array_filter((array) data_get($metadata, 'grounding.offered_actions', []),
