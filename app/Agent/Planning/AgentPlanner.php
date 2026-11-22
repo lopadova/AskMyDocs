@@ -66,12 +66,18 @@ final readonly class AgentPlanner
         $correction = $validationError;
         $identifierGuard = app(AgentIdentifierSources::class);
         $identifierSources = $identifierGuard->required($tools) ? $identifierGuard->forContext($context, $evidence) : [];
+        $constraints = app(AgentPlanArgumentConstraints::class);
+        $completedIds = array_values(array_filter(array_column($completedActions, 'id'), 'is_string'));
+        $offeredTools = $tools;
+        $liveOnly = false;
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $plan = null;
             $started = microtime(true);
             $response = $this->ai->chatWithHistory(
-                $this->systemPrompt($context, $capabilities, $depth, sessionEvidence: $sessionEvidence),
+                $this->systemPrompt($context, $liveOnly && $capabilities !== null
+                    ? app(\App\Agent\Capabilities\AgentCapabilitySnapshotBuilder::class)->build($offeredTools) : $capabilities,
+                    $depth, sessionEvidence: $sessionEvidence),
                 [[
                     'role' => 'user',
                     'content' => json_encode([
@@ -79,7 +85,7 @@ final readonly class AgentPlanner
                         'turn_context' => $turnContext,
                         'available_tools' => array_map(
                             static fn (AgentToolDefinition $tool): array => $tool->plannerPayload(),
-                            $tools,
+                            $offeredTools,
                         ),
                         'evidence_summary' => $this->summarizer->summarize($evidence, $capabilities),
                         ...$sessionEvidence ? ['collected_evidence' => $evidence->jsonSerialize()] : [],
@@ -99,36 +105,71 @@ final readonly class AgentPlanner
 
             try {
                 $payload = $this->payload($response->toolCalls, $response->content);
-                $payload = (new AgentPlanActionIdNormalizer)->normalize($payload,
-                    array_values(array_filter(array_column($completedActions, 'id'), 'is_string')));
+                $payload = (new AgentPlanActionIdNormalizer)->normalize($payload, $completedIds);
                 $plan = $this->parser->parse(
                     $payload,
-                    $tools,
+                    $offeredTools,
                     (int) config('agent.planner.max_actions_per_plan', 8),
-                    array_values(array_filter(array_column($completedActions, 'id'), 'is_string')),
+                    $completedIds,
                 );
-                app(AgentPlanArgumentConstraints::class)->validate($plan, $tools, $identifierSources);
+                $constraints->validate($plan, $offeredTools, $identifierSources);
+                if ($liveOnly && ! $plan->shouldCallTools()) {
+                    throw new AgentPlanValidationException('requested_source_coverage_required', 'The requested live lookup is still missing.');
+                }
                 $this->liveSourceCoverage->validate($question, $plan, $tools, $completedActions);
 
                 return new AgentPlannerAttempt($plan, $latencyMs, $promptTokens, $completionTokens);
             } catch (\UnexpectedValueException $exception) {
-                if ($attempt === 1) {
-                    if ($plan !== null && $exception instanceof AgentPlanValidationException
-                        && $exception->validationCode === 'input_pattern_mismatch') {
-                        $safePlan = app(AgentPlanArgumentConstraints::class)->independentValidBranches($plan, $tools,
-                            array_values(array_filter(array_column($completedActions, 'id'), 'is_string')), $identifierSources);
-                        $this->liveSourceCoverage->validate($question, $safePlan, $tools, $completedActions);
+                $code = $exception instanceof AgentPlanValidationException ? $exception->validationCode : null;
+                $badSearch = $sessionEvidence && $code === 'knowledge_query_required';
+                if ($plan !== null && ($badSearch || ($attempt === 1 && $code === 'input_pattern_mismatch'))) {
+                    try {
+                        $safePlan = $constraints->independentValidBranches($plan, $offeredTools, $completedIds, $identifierSources);
+                        $hasLiveBranch = array_filter($safePlan->actions, fn ($action) => $this->isLiveRead($offeredTools[$action->tool])) !== [];
+                        if (! $badSearch || $hasLiveBranch || $attempt === 1) {
+                            $this->liveSourceCoverage->validate($question, $safePlan, $tools, $completedActions);
 
-                        return new AgentPlannerAttempt($safePlan, $latencyMs, $promptTokens, $completionTokens);
+                            return new AgentPlannerAttempt($safePlan, $latencyMs, $promptTokens, $completionTokens);
+                        }
+                    } catch (AgentPlanValidationException $recoveryError) {
+                        if (! $badSearch) {
+                            throw $recoveryError;
+                        }
                     }
+                }
+                if ($attempt === 1) {
                     throw $exception;
                 }
 
                 $correction = $this->correction($exception);
+                if ($badSearch && ($liveTools = $this->pendingLiveTools($tools, $completedActions, $turnContext)) !== []) {
+                    $offeredTools = $liveTools;
+                    $liveOnly = true;
+                    $correction = 'knowledge_query_required: A document lookup had invalid arguments. Recover the pending current-record tasks using only the live lookup tools supplied in this attempt. The host keeps already collected documents and handles document search separately.';
+                }
             }
         }
 
         throw new \LogicException('Planner correction loop terminated unexpectedly.');
+    }
+
+    private function isLiveRead(AgentToolDefinition $tool): bool
+    {
+        return $tool->readOnly && in_array($tool->kind, ['api', 'mcp'], true)
+            && ! ($tool->metadata['confirmation_required'] ?? false);
+    }
+
+    private function pendingLiveTools(array $tools, array $completedActions, ?string $turnContext): array
+    {
+        $state = json_decode($turnContext ?? '{}', true);
+        $intent = \App\Services\Chat\QuestionUnderstanding::fromArray($state['question_understanding'] ?? []);
+        if (! $intent->available || ! $intent->requiresCurrentObservation()) {
+            return [];
+        }
+        $liveTools = array_filter($tools, $this->isLiveRead(...));
+        $attempted = array_column(array_filter($completedActions, static fn ($action) =>
+            in_array($action['status'] ?? null, ['completed', 'failed'], true)), 'tool');
+        return array_intersect($attempted, array_keys($liveTools)) === [] ? $liveTools : [];
     }
 
     /** The same planning policy, embedded in the interpretation response for a fresh first wave. */

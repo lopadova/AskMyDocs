@@ -47,6 +47,8 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
             'malformed draft then connection failure' => [false, true],
             'research worker hands off a failed draft with sources' => [false, true, true],
             'correspondence revoked before recovery' => [false, true, false, true],
+            'invalid document lookup preserves independent live orders' => [false, false, false, false, 'preserve_live'],
+            'invalid document lookup after a saved document wave' => [false, true, false, false, 'retry_live'],
         ];
     }
 
@@ -56,6 +58,7 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
         bool $synthesisFailed = false,
         bool $concurrent = false,
         bool $revoked = false,
+        ?string $invalidSearch = null,
     ): void
     {
         config(['agent.waves.enabled' => true, 'agent.waves.combined_initial_planning' => true,
@@ -91,7 +94,7 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
         ]), collect(), collect()));
         $this->app->instance(ChatRetrievalService::class, $retrieval);
         $drafts = 0;
-        $this->fakeProviders($ordinaryRejected, $synthesisFailed, $drafts, $revoked ? $document : null);
+        $this->fakeProviders($ordinaryRejected, $synthesisFailed, $drafts, $revoked ? $document : null, $invalidSearch);
 
         for ($delivery = 0; $delivery < 8 && ! $run->fresh()->isTerminal(); $delivery++) {
             app(AgentRunHandler::class)->handle($run->fresh());
@@ -104,7 +107,10 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
             $this->assertTrue($run->events()->where('payload_json->data->operation', 'initial_document_recovery')->exists());
         }
         $this->assertEqualsCanonicalizing(['search_knowledge_base', self::TOOL, self::TOOL],
-            $run->toolExecutions()->pluck('tool_name')->all());
+            $run->toolExecutions()->where('status', 'completed')->pluck('tool_name')->all());
+        if ($invalidSearch === 'preserve_live') {
+            $this->assertSame(['knowledge_query_required'], $run->toolExecutions()->where('status', 'skipped')->pluck('error_code')->all());
+        }
         $answer = $run->result_json['response'];
         $this->assertSame($synthesisFailed ? 'partial' : 'complete', $answer['completeness']);
         $this->assertSame($revoked ? [] : [$document->id], array_column($answer['citations'], 'document_id'));
@@ -164,7 +170,7 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
         return $connector;
     }
 
-    private function fakeProviders(bool $ordinaryRejected, bool $synthesisFailed, int &$drafts, ?KnowledgeDocument $revoked): void
+    private function fakeProviders(bool $ordinaryRejected, bool $synthesisFailed, int &$drafts, ?KnowledgeDocument $revoked, ?string $invalidSearch): void
     {
         Http::fake(function ($request) {
             if (str_starts_with($request->url(), self::ENDPOINT.'/')) {
@@ -211,7 +217,7 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
             return new AiResponse(json_encode($data, JSON_THROW_ON_ERROR), 'fake', 'fixture');
         });
         $attempts = 0;
-        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function ($system, $messages, $options) use (&$attempts, &$drafts, $ordinaryRejected, $synthesisFailed, $revoked) {
+        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function ($system, $messages, $options) use (&$attempts, &$drafts, $ordinaryRejected, $synthesisFailed, $revoked, $invalidSearch) {
             $state = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
             $tool = $options['tool_choice']['function']['name'];
             if ($tool === 'submit_agent_plan') {
@@ -224,6 +230,26 @@ final class RejectedMixedPlanRecoveryTest extends TestCase
                     foreach (array_keys(self::ORDERS) as $id) {
                         $actions[] = ['id' => 'lookup_'.strtolower($id), 'tool' => self::TOOL, 'arguments' => ['ord_codiceweb' => $id],
                             'depends_on' => [], 'purpose' => 'Leggi articoli e taglie'];
+                    }
+                }
+                if ($invalidSearch !== null && ! $lookedUp) {
+                    $badSearch = ['id' => 'bad_search', 'tool' => 'search_knowledge_base',
+                        'arguments' => ['query' => ''], 'depends_on' => [], 'purpose' => 'Cerca le email'];
+                    if ($invalidSearch === 'preserve_live') {
+                        $this->assertSame(1, $attempts, 'The valid Gescat calls leave in the first wave.');
+                        $actions = [$badSearch, ...$actions];
+                    } elseif (isset($state['available_tools']['search_knowledge_base'])) {
+                        $actions = [$badSearch];
+                    } else {
+                        $this->assertSame([self::TOOL], array_keys($state['available_tools']));
+                        $this->assertStringContainsString('knowledge_query_required', $state['validation_error']);
+                        // The first scoped retry still has no usable plan. After the
+                        // document recovery, the next retry reads only the missing orders.
+                        if ($state['completed_actions'] === []) {
+                            $actions = [];
+                        } else {
+                            $this->assertSame(['search_knowledge_base'], array_column($state['completed_actions'], 'tool'));
+                        }
                     }
                 }
                 $payload = ['decision' => $actions === [] ? 'answer' : 'tools', 'actions' => $actions];

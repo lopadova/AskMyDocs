@@ -3,6 +3,7 @@
 namespace Tests\Unit\Agent;
 
 use App\Agent\Planning\AgentPlanArgumentConstraints;
+use App\Agent\Planning\AgentPlanParser;
 use App\Agent\Planning\AgentPlanValidationException;
 use App\Agent\Tools\AgentToolDefinition;
 use PHPUnit\Framework\TestCase;
@@ -35,6 +36,24 @@ class AgentPlanArgumentConstraintsTest extends TestCase
             'invalid', 'orders', ['reference' => 'RETURN-42'], [], 'Read return')], new \App\Agent\AgentProgress);
         $this->expectException(AgentPlanValidationException::class);
         (new AgentPlanArgumentConstraints)->independentValidBranches($plan, ['orders' => $this->tool()]);
+    }
+
+    public function test_missing_search_query_rejects_only_the_search_and_its_dependencies(): void
+    {
+        $tools = ['orders' => $this->observedTool(), 'search_knowledge_base' => new AgentToolDefinition(
+            'search_knowledge_base', 'Documents', 'Search indexed text', 'knowledge', ['type' => 'object'], true, true, 0, 0, 0,
+        )];
+        $plan = (new AgentPlanParser)->parse(['decision' => 'tools', 'actions' => [
+            ['id' => 'documents', 'tool' => 'search_knowledge_base', 'arguments' => [], 'purpose' => 'Search correspondence'],
+            ['id' => 'dependent', 'tool' => 'orders', 'arguments' => ['reference' => ['$from' => 'documents', 'path' => 'reference']],
+                'depends_on' => ['documents'], 'purpose' => 'Read the discovered order'],
+            ['id' => 'independent', 'tool' => 'orders', 'arguments' => ['reference' => 'ORDER-42'], 'purpose' => 'Read the requested order'],
+        ]], $tools);
+
+        $safe = (new AgentPlanArgumentConstraints)->independentValidBranches($plan, $tools, identifierSources: ['ORDER-42']);
+        $this->assertSame(['independent'], array_column($safe->actions, 'id'));
+        $this->assertSame(['documents' => 'knowledge_query_required', 'dependent' => 'knowledge_query_required'], $safe->rejectionCodes);
+        $this->assertSame(['reference' => 'ORDER-42'], $safe->actions[0]->arguments);
     }
 
     private function tool(string $kind = 'api'): AgentToolDefinition

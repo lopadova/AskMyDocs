@@ -255,7 +255,7 @@ final class AgentWaveCoordinator
                         $action->arguments, $arguments, $completed, $evidence->jsonSerialize())];
             }
             foreach ($plan->rejectedActions as $action) {
-                $this->skipped($run, $action, $tools[$action->tool], 'input_pattern_branch_rejected', $completed);
+                $this->skipped($run, $action, $tools[$action->tool], $plan->rejectionCode($action), $completed);
             }
             if ($ready === []) {
                 $this->checkpoint($run, $evidence, $completed, $results);
@@ -448,14 +448,15 @@ final class AgentWaveCoordinator
         if ($documentTasks === [] && $understanding->requiresCurrentObservation()) {
             return null;
         }
-        if ($livePlan !== null && ($documentTasks === [] || ! $understanding->requiresCurrentObservation() || $livePlan->rejectedActions !== [])) {
+        if ($livePlan !== null && ($documentTasks === [] || ! $understanding->requiresCurrentObservation()
+            || array_diff($livePlan->rejectionCodes, ['knowledge_query_required']) !== [])) {
             return null;
         }
         $queries = $documentTasks === [] ? $understanding->kbQueries : array_merge(...array_column($documentTasks, 'kb_queries'));
         $maximum = max(1, (int) config('agent.planner.max_actions_per_plan', 8));
         $actions = [];
         $alreadyPlanned = $livePlan?->actions ?? [];
-        $usedIds = array_column($alreadyPlanned, 'id');
+        $usedIds = array_column([...$alreadyPlanned, ...($livePlan?->rejectedActions ?? [])], 'id');
         $availableSlots = max(0, min(3, $maximum - count($alreadyPlanned)));
         foreach (array_slice(array_unique(array_filter($queries)), 0, $availableSlots) as $query) {
             $id = 'recovery_search_'.count($actions);
@@ -468,9 +469,12 @@ final class AgentWaveCoordinator
         if ($actions === []) {
             return null;
         }
-        return app(AgentPlanParser::class)->parse(['decision' => 'tools', 'actions' => [
+        $combined = app(AgentPlanParser::class)->parse(['decision' => 'tools', 'actions' => [
             ...array_map(static fn ($action) => $action->jsonSerialize(), $alreadyPlanned), ...$actions,
         ]], $tools, $maximum);
+
+        return new AgentPlan($combined->decision, $combined->actions, $combined->estimate,
+            $livePlan?->rejectedActions ?? [], $livePlan?->rejectionCodes ?? []);
     }
 
     /** A verifier can name a known file to open; only current authorized IDs can become actions. */
