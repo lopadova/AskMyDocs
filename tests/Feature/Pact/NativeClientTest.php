@@ -44,6 +44,7 @@ use PactLaravel\Models\Member;
 use PactLaravel\Models\OAuthClient;
 use PactLaravel\Models\Task;
 use PactLaravel\PactServiceProvider;
+use PactLaravel\Runtime\ExecuteTaskJob;
 use PactLaravel\Runtime\TaskService;
 use PactLaravel\Runtime\Worker;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -71,6 +72,7 @@ final class NativeClientTest extends TestCase
             'pact.role' => 'client',
             'pact.url' => 'https://askmydocsdev.test',
             'pact.handler' => ChatHandler::class,
+            'pact.queue' => ['connection' => null, 'name' => null],
             'pact.contract_path' => $sdk.'/resources/contracts/agent-chat/contract.json',
             'pact.contract_registry' => $sdk.'/resources/contracts/agent-chat/registry.json',
         ]);
@@ -271,6 +273,31 @@ final class NativeClientTest extends TestCase
             'text' => 'Consulta il capitolo Installazione.',
             'sources' => [['title' => 'Guida di installazione']],
         ], data_get($task->value, 'artifacts.0.parts.0.data'));
+    }
+
+    public function test_the_pact_worker_hands_off_new_tasks_to_the_shared_agent_queue(): void
+    {
+        config([
+            'queue.default' => 'database',
+            'agent.queue' => 'shared-agent',
+            'pact.queue.name' => 'shared-agent',
+        ]);
+        $subject = $this->subject();
+        $connection = $this->connection($subject);
+        $this->submit($connection, [
+            'message' => 'Qual è la risposta?',
+            'coordinator' => ['endpoint' => 'https://master.test/pact/mcp', 'federation_id' => $connection->federation_id, 'member_id' => $connection->member_id],
+        ]);
+
+        $worker = app(Worker::class);
+        $this->assertTrue($worker->workOnce());
+        Queue::assertPushedOn('shared-agent', ExecuteTaskJob::class);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+
+        Queue::pushed(ExecuteTaskJob::class)->sole()->handle($worker);
+
+        $run = AgentRun::query()->forTenant($subject->tenant_id)->sole();
+        Queue::assertPushedOn('shared-agent', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $run->id);
     }
 
     public static function sharedQueues(): array

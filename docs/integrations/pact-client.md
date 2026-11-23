@@ -28,9 +28,9 @@ Start the PACT protocol worker under the process supervisor.
 php artisan pact:work --no-interaction
 ```
 
-This worker processes the PACT outbox. AskMyDocs agent runs use the existing application workers on the default queue connection. On Herd, `./ops/launchd/install-local.sh --pact-only` installs the protocol worker.
+This worker processes the PACT outbox. With an asynchronous `QUEUE_CONNECTION`, it sends PACT handler jobs to `AGENT_QUEUE`, the queue already served by AskMyDocs chat workers. With `sync`, the PACT worker calls the handler directly. On Herd, `./ops/launchd/install-local.sh --pact-only` installs the protocol worker.
 
-To also route the PACT handler through the existing local Laravel queue, set `PACT_QUEUE_CONNECTION=pact_client` and `PACT_QUEUE=pact-client`. These values are optional per environment. Rebuild the config cache and restart the workers after changing them.
+Use `PACT_QUEUE_CONNECTION` or `PACT_QUEUE` only to override this routing for the PACT handler. Rebuild the config cache and restart the workers after changing these settings.
 
 ## Laravel Cloud
 
