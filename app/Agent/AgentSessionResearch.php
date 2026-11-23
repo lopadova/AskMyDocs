@@ -5,15 +5,10 @@ declare(strict_types=1);
 namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
-use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
-use App\Agent\Debug\RunDiagnostics;
 use App\Agent\Evidence\AgentEvidenceAccess;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Evidence\AgentSessionEvidence;
-use App\Agent\Grounding\CollectedEvidenceAnswer;
-use App\Agent\Tools\AgentToolRegistry;
-use App\Agent\Waves\AgentWaveCoordinator;
 use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Services\Chat\QuestionUnderstanding;
@@ -23,10 +18,7 @@ use Illuminate\Support\Facades\DB;
 final readonly class AgentSessionResearch
 {
     public function __construct(
-        private AgentWaveCoordinator $waves,
-        private AgentToolRegistry $tools,
-        private AgentCapabilitySnapshotBuilder $capabilities,
-        private AgentAnswerSynthesizer $answers,
+        private AgentContextGenerator $generator,
         private AgentEvidenceFactory $evidence,
         private AgentSessionEvidence $retainedEvidence,
         private AgentRunDispatcher $dispatcher,
@@ -180,35 +172,7 @@ final readonly class AgentSessionResearch
             }
         }
 
-        return $this->execute($run, $context, $turnContext);
-    }
-
-    public function execute(AgentRun $run, AgentExecutionContext $context, ?string $turnContext): AgentLoopOutcome
-    {
-        $tools = $this->tools->forResearch($run, $context);
-
-        return $this->waves->run($run, $context, $turnContext, $tools, $this->capabilities->build($tools));
-    }
-
-    public function respond(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $sources, ?string $turnContext): AgentSessionResearchResult
-    {
-        $question = trim((string) data_get($run->input_json, 'question'));
-        $understanding = $run->result_json['question_understanding'] ?? null;
-        try {
-            $answer = $this->answers->synthesize($question, $context, $sources, $turnContext, $understanding,
-                durableRunId: $run->run_id, recoverCollectedEvidence: true);
-        } catch (AgentDraftUnavailable $exception) {
-            $this->control->ensureActive($run);
-            $safe = $this->evidence->empty();
-            $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $sources->evidence->jsonSerialize()));
-            $sources = new AgentLoopOutcome('partial', $safe, $sources->completedActions, 'synthesis_unavailable');
-            $answer = app(RunDiagnostics::class)->measure($run, 'synthesis.recovery',
-                fn () => app(CollectedEvidenceAnswer::class)->present($question, QuestionUnderstanding::fromArray($understanding ?? []),
-                    $safe->jsonSerialize(), $context->locale),
-                ['operation' => 'render_collected_evidence', 'error_class' => get_class($exception->getPrevious() ?? $exception)]);
-        }
-
-        return new AgentSessionResearchResult($answer, $sources);
+        return $this->generator->generate($run, $context, $turnContext);
     }
 
     public function nextDepth(AgentRun $run, AgentLoopOutcome $outcome, AgentAnswer $answer): ?int
@@ -239,10 +203,9 @@ final readonly class AgentSessionResearch
         return array_values(array_unique($hashes));
     }
 
-    public function complete(AgentRun $run, AgentSessionResearchResult $result): void
+    public function complete(AgentRun $run, AgentLoopOutcome $outcome): void
     {
-        DB::transaction(function () use ($run, $result): void {
-            $outcome = $result->sources;
+        DB::transaction(function () use ($run, $outcome): void {
             $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
             $this->control->ensureActive($locked);
             $state = $locked->result_json;
@@ -250,7 +213,7 @@ final readonly class AgentSessionResearch
             $state['evidence'] = $outcome->evidence->jsonSerialize();
             $state['research_continuation'] = true;
             $state['session_research'] = [...$state['session_research'], 'state' => 'ready',
-                'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason, 'result' => $result->checkpoint()];
+                'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason];
             $locked->forceFill(['status' => AgentRun::STATUS_QUEUED, 'result_json' => $state])->save();
         });
     }

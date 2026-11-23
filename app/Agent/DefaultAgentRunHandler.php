@@ -130,15 +130,18 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
         try {
             while (true) {
                 $turnContext = $diagnostics->measure($run, 'context.prepare', fn () => $this->turnContext($run));
-                $outcome = match ($researchPhase) {
-                    'reassess' => $research->reassess($run, $context),
-                    'active' => $research->collect($run, $context, $turnContext),
-                    'ready' => $research->result($run),
+                $consoleContinuation = $run->isConsoleContext() && ($run->result_json['phase'] ?? null) === 'collection';
+                $outcome = match (true) {
+                    $researchPhase === 'reassess' => $research->reassess($run, $context),
+                    $researchPhase === 'active' => $research->collect($run, $context, $turnContext),
+                    $researchPhase === 'ready' => $research->result($run),
+                    $consoleContinuation => app(AgentContextGenerator::class)->generate($run, $context, $turnContext),
                     default => $this->loop->run($run, $context, $turnContext),
                 };
-                $researchReturned = in_array($researchPhase, ['active', 'ready'], true);
+                $researchReturned = $researchPhase === 'ready';
                 if ($outcome->decision === 'request_research' && ! $run->usesConcurrentSession()) {
-                    $outcome = $diagnostics->measure($run, 'session.research', fn () => $research->execute($run, $context, $turnContext));
+                    $outcome = $diagnostics->measure($run, 'session.research',
+                        fn () => app(AgentContextGenerator::class)->generate($run, $context, $turnContext));
                     $researchReturned = true;
                 }
                 if ($outcome->decision === 'continue_research') {
@@ -152,6 +155,16 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 if ($outcome->decision === 'request_research') {
                     $research->request($run, $outcome);
                     $diagnostics->end($run, $executionSpan);
+                    return;
+                }
+                if ($researchPhase === 'active') {
+                    $research->complete($run, $outcome);
+                    $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'context_generated']);
+                    return;
+                }
+                if ($run->isConsoleContext()) {
+                    $this->finishContext($run, $context, $outcome);
+                    $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'context_generated']);
                     return;
                 }
 
@@ -174,18 +187,13 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                         $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
                     }
                 }
-                if ($researchReturned) {
-                    $result = AgentSessionResearchResult::restore((array) data_get($run->result_json, 'session_research.result', []), $outcome)
-                        ?? $diagnostics->measure($run, 'synthesis.execute', fn () => $research->respond($run, $context, $outcome, $turnContext));
-                    if ($researchPhase === 'active') {
-                        $research->complete($run, $result);
-                        $diagnostics->end($run, $executionSpan);
-                        return;
-                    }
+                if ($session !== null) {
+                    $saved = $researchPhase === 'ready'
+                        ? AgentSessionAnswer::restore((array) data_get($run->result_json, 'session_research.result', []), $outcome) : null;
+                    $result = $saved ?? $diagnostics->measure($run, 'synthesis.execute',
+                        fn () => $session->compose($run, $context, $outcome, $turnContext, $researchReturned));
                     $outcome = $result->sources;
-                    $answer = $session->answer($run, $context, $result, $turnContext);
-                } elseif ($session !== null) {
-                    $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $session->answer($run, $context, $outcome, $turnContext));
+                    $answer = $result->answer;
                 } else {
                     $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
                         trim((string) data_get($run->input_json, 'question', '')), $context, $outcome, $turnContext,
@@ -321,6 +329,24 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
             );
 
             return true;
+        });
+    }
+
+    private function finishContext(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $outcome): void
+    {
+        $evidence = app(\App\Agent\Evidence\AgentEvidenceAccess::class)->current($run, $context, $outcome->evidence->jsonSerialize());
+        \Illuminate\Support\Facades\DB::transaction(function () use ($run, $outcome, $evidence): void {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
+            app(AgentRunControl::class)->ensureActive($locked);
+            $partial = in_array($outcome->decision, ['partial', 'insufficient'], true);
+            $locked->forceFill([
+                'status' => $partial ? AgentRun::STATUS_PARTIAL : AgentRun::STATUS_COMPLETED,
+                'completed_at' => now(),
+                'result_json' => [...(array) $locked->result_json, 'phase' => 'context', 'retrieval_completed' => true,
+                    'decision' => $outcome->decision, 'stop_reason' => $outcome->stopReason, 'evidence' => $evidence],
+            ])->save();
+            $this->events->publish($locked, $partial ? 'run.partial' : 'run.completed',
+                data: ['phase' => 'context'], canCancel: false);
         });
     }
 

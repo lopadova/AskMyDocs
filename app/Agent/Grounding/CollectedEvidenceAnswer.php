@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Agent\Grounding;
 
 use App\Agent\AgentAnswer;
+use App\Agent\AgentDraftUnavailable;
+use App\Agent\Debug\RunDiagnostics;
 use App\Agent\Evidence\DeclaredRecordCollections;
+use App\Models\AgentRun;
 use App\Services\Chat\QuestionUnderstanding;
 use App\Services\Chat\Reasoning\EvidenceProjector;
 use App\Services\Kb\Retrieval\QueryTagExtractor;
@@ -15,6 +18,14 @@ final readonly class CollectedEvidenceAnswer
     public function __construct(private QueryTagExtractor $tags) {}
 
     /** The caller has reauthorized the current evidence envelope. */
+    public function recover(AgentRun $run, array $evidence, string $locale, AgentDraftUnavailable $failure): AgentAnswer
+    {
+        return app(RunDiagnostics::class)->measure($run, 'synthesis.recovery',
+            fn () => $this->present(trim((string) data_get($run->input_json, 'question')),
+                QuestionUnderstanding::fromArray($run->result_json['question_understanding'] ?? []), $evidence, $locale),
+            ['operation' => 'render_collected_evidence', 'error_class' => get_class($failure->getPrevious() ?? $failure)]);
+    }
+
     public function present(string $question, QuestionUnderstanding $intent, array $evidence, string $locale): AgentAnswer
     {
         $italian = str_starts_with($locale, 'it');
@@ -26,24 +37,43 @@ final readonly class CollectedEvidenceAnswer
             : $this->excerpts($evidence['documents'], $question, $identifiers, array_column($rows, 2));
         $sections = [];
         if ($rows !== []) {
-            $header = $italian ? '| Riferimento | Articolo | Taglia / variante |' : '| Reference | Item | Size / variant |';
-            $sections[] = implode("\n", [$header, '| --- | --- | --- |',
-                ...array_map(fn (array $row): string => '| '.implode(' | ', array_map($this->literal(...), $row)).' |', $rows)]);
+            $sections[] = $this->describeRecords($rows, $italian);
         }
+        $notice = $italian
+            ? 'La sintesi è parziale. Le conclusioni che richiedono di incrociare queste fonti restano da verificare.'
+            : 'This is a partial answer. Conclusions that depend on reconciling these sources still need verification.';
+        $sections[] = $notice;
         if ($excerpts !== []) {
             $heading = $italian ? '**Estratti dalle fonti raccolte**' : '**Excerpts from the collected sources**';
             $sections[] = $heading."\n\n".implode("\n\n", array_map(
                 fn (array $excerpt): string => '> '.$this->literal($excerpt['text']), $excerpts));
         }
-        $notice = $italian
-            ? 'La sintesi non è disponibile. La risposta è parziale e le conclusioni richieste restano da verificare.'
-            : 'Synthesis is unavailable. This answer is partial and the requested conclusions still need verification.';
-        $sections[] = $notice;
-
         return new AgentAnswer(implode("\n\n", $sections), $locale, 'partial', $citations, $tools, [$notice],
             grounding: ['status' => 'collected_evidence', 'reason' => 'synthesis_unavailable', 'claims' => [],
                 'source_excerpts' => $excerpts, 'recovery' => ['reason' => 'synthesis_unavailable'],
                 'coverage_validation' => AnswerCoverageEvaluator::unavailable($question, $intent->subquestions, 'skipped')]);
+    }
+
+    private function describeRecords(array $rows, bool $italian): string
+    {
+        $byArticle = [];
+        foreach ($rows as [$reference, $item, $variant]) {
+            $byArticle[$item][$variant][] = $this->literal($reference);
+        }
+        $lines = [];
+        foreach ($byArticle as $item => $variants) {
+            $values = [];
+            foreach ($variants as $variant => $references) {
+                $tag = $this->literal((string) $variant);
+                $orders = implode(', ', $references);
+                $values[] = $italian ? "taglia / variante {$tag} per {$orders}" : "size / variant {$tag} for {$orders}";
+            }
+            $code = $this->literal((string) $item);
+            $details = implode(', ', $values);
+            $lines[] = $italian ? "I record riportano l’articolo {$code} in {$details}." : "The records show item {$code} in {$details}.";
+        }
+
+        return implode("\n\n", $lines);
     }
 
     private function records(array $observations, array $identifiers): array

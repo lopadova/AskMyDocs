@@ -4,16 +4,12 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
-/** The research tool returns both the verified answer and the sources acquired for this turn. */
-final readonly class AgentSessionResearchResult
+/** A session answer paired with the evidence that was available to compose it. */
+final readonly class AgentSessionAnswer
 {
     public function __construct(public AgentAnswer $answer, public AgentLoopOutcome $sources) {}
 
-    public function checkpoint(): array
-    {
-        return ['answer' => $this->answer->jsonSerialize(), 'source_fingerprint' => self::fingerprint($this->sources)];
-    }
-
+    /** Pre-split research workers could already have saved a verified answer. */
     public static function restore(array $checkpoint, AgentLoopOutcome $sources): ?self
     {
         $answer = $checkpoint['answer'] ?? null;

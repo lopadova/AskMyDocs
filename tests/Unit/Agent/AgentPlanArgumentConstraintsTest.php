@@ -72,6 +72,18 @@ class AgentPlanArgumentConstraintsTest extends TestCase
         $this->assertSame(['reference' => 'ORDER-42'], $arguments);
     }
 
+    public function test_a_targeted_read_requires_a_filter_but_a_collection_can_omit_it(): void
+    {
+        $tool = $this->observedTool();
+        $guard = new AgentPlanArgumentConstraints;
+        $guard->validateArguments($tool, []);
+        $guard->validateArguments($tool, ['reference' => 'ORDER-42'], identifierSources: ['ORDER-42'], targets: ['ORDER-42']);
+
+        $this->expectException(AgentPlanValidationException::class);
+        $this->expectExceptionMessage('needs an exact record filter');
+        $guard->validateArguments($tool, [], targets: ['ORDER-42']);
+    }
+
     public function test_a_wrong_entity_namespace_is_rejected_without_rewriting_it(): void
     {
         $this->expectException(AgentPlanValidationException::class);
@@ -122,6 +134,6 @@ class AgentPlanArgumentConstraintsTest extends TestCase
     {
         return new AgentToolDefinition(name: 'orders', displayName: 'Orders', description: 'Read orders', kind: 'api',
             inputSchema: ['type' => 'object', 'properties' => ['reference' => ['type' => 'string', 'pattern' => '^ORDER-[0-9]+$', 'x-require-observed-identifier' => true]]],
-            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1);
+            readOnly: true, idempotent: true, physicalMinimum: 1, physicalLikely: 1, physicalMaximum: 1, metadata: ['identity_fields' => ['reference']]);
     }
 }
