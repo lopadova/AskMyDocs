@@ -8,6 +8,7 @@ use App\Models\AgentRun;
 use PactLaravel\Models\Connection;
 use PactLaravel\Models\Member;
 use PactLaravel\Models\Task;
+use PactLaravel\Runtime\TaskService;
 
 final class TaskAccess
 {
@@ -50,5 +51,21 @@ final class TaskAccess
             || ! $this->permits($task)) {
             throw new \DomainException('The PACT client authorization is no longer active.');
         }
+    }
+
+    public function reportProgress(AgentRun $run, string $stage): void
+    {
+        $taskId = data_get($run->input_json, 'pact_client_task_id');
+        if (! is_string($taskId) || $run->isTerminal() || ! method_exists(TaskService::class, 'reportProgress')) {
+            return;
+        }
+
+        try {
+            $this->assertRun($run);
+        } catch (\DomainException) {
+            return;
+        }
+
+        rescue(fn () => app(TaskService::class)->reportProgress($taskId, $stage));
     }
 }

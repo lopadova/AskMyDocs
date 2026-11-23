@@ -8,6 +8,7 @@ use App\Agent\Debug\KbActivityDebugPayload;
 use App\Mcp\Debug\McpActivityDebugPayload;
 use App\Models\AgentRun;
 use App\Models\AgentRunEvent;
+use App\Pact\Native\TaskAccess;
 use App\Services\Widget\WidgetPiiMasker;
 use Illuminate\Support\Facades\DB;
 
@@ -120,6 +121,21 @@ final readonly class AgentEventPublisher
             $run->setAttribute('last_sequence', $sequence)->syncOriginalAttribute('last_sequence');
 
             app(AgentRealtime::class)->notifyAfterCommit($locked, $sequence);
+            if (is_string(data_get($locked->input_json, 'pact_client_task_id'))) {
+                $stage = match ($type) {
+                    'run.started' => 'Sto esaminando la richiesta…',
+                    'retrieval.started' => 'Sto cercando nei documenti…',
+                    'research.started' => 'Sto approfondendo la ricerca…',
+                    'tool.started' => ($data['tool'] ?? null) === 'search_knowledge_base'
+                        ? 'Sto cercando nei documenti…'
+                        : 'Sto consultando una fonte…',
+                    'synthesis.started' => 'Sto preparando la risposta…',
+                    default => null,
+                };
+                if ($stage !== null) {
+                    DB::afterCommit(fn () => app(TaskAccess::class)->reportProgress($locked, $stage));
+                }
+            }
 
             return $event;
         }, 3);

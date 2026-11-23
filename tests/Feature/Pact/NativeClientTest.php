@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Pact;
 
 use App\Agent\AgentExecutionContext;
+use App\Agent\AgentEventPublisher;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolRegistry;
@@ -210,6 +211,16 @@ final class NativeClientTest extends TestCase
         $this->assertSame($subject->project_key, $run->project_key);
         $this->assertSame($task->id, $run->input_json['pact_client_task_id']);
         Queue::assertPushedOn('pact-client', ExecuteAgentRunJob::class);
+        if (method_exists(TaskService::class, 'reportProgress')) {
+            app(AgentEventPublisher::class)->publish($run, 'retrieval.started', 'retrieval.started');
+            $progress = $this->rpc($connection, 'GetTask', ['id' => $task->id])['metadata'][Pact::CORE_URI]['progress'];
+            $this->assertSame('Sto cercando nei documenti…', $progress['stage']);
+            $this->assertNull($progress['percentage']);
+            app(TaskAccess::class)->reportProgress($run, 'Sto verificando le fonti…');
+            $latest = $this->rpc($connection, 'GetTask', ['id' => $task->id])['metadata'][Pact::CORE_URI]['progress'];
+            $this->assertSame('Sto verificando le fonti…', $latest['stage']);
+            $this->assertGreaterThan($progress['sequence'], $latest['sequence']);
+        }
 
         // Deliver the poll after the initial PACT lease has completed.
         $this->travel(4)->seconds();

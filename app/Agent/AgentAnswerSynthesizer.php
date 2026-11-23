@@ -11,6 +11,7 @@ use App\Agent\Grounding\AgentClaimGroundingValidator;
 use App\Agent\Grounding\AgentSemanticGroundingJudge;
 use App\Ai\AiManager;
 use App\Models\AgentRun;
+use App\Pact\Native\TaskAccess;
 use App\Services\Chat\QuestionAction;
 use App\Services\Widget\WidgetPiiMasker;
 use Illuminate\Support\Facades\Log;
@@ -185,6 +186,9 @@ final readonly class AgentAnswerSynthesizer
         $selective = (! $presentationOnly || $checkTable) && config('reasoning.selective_validation', true);
         $batchEnabled = $selective || (! $presentationOnly && config('agent.grounding.enabled', true)
             && config('agent.grounding.batch.enabled', true));
+        if ($validationRun !== null && ! $presentationOnly && is_string(data_get($validationRun->input_json, 'pact_client_task_id'))) {
+            app(TaskAccess::class)->reportProgress($validationRun, 'Sto verificando le fonti…');
+        }
         $grounding = $diagnostics->measure($run, 'validation.grounding', fn () => $presentationOnly
             ? ['valid' => true, 'reason' => null, 'terms' => [], 'claims' => [], 'semantic_validation' => []]
             : ($selective
