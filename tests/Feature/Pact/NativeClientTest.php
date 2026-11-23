@@ -8,6 +8,7 @@ use App\Agent\AgentExecutionContext;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
 use App\Models\ProjectMembership;
@@ -18,10 +19,14 @@ use App\Pact\Native\ConsentScope;
 use App\Pact\Native\Subject;
 use App\Pact\Native\SubjectResolver;
 use App\Pact\Native\TaskAccess;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use League\OAuth2\Server\AuthorizationServer;
+use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
 use Pact\Pact;
 use Pact\PactError;
 use PactLaravel\Models\Connection;
@@ -62,33 +67,15 @@ final class NativeClientTest extends TestCase
 
     public function test_an_active_account_can_select_a_project_without_email_verification(): void
     {
-        config(['pact.auth.middleware' => [ConsentScope::class]]);
-        $this->app->register(PactServiceProvider::class);
-        $this->app['router']->getRoutes()->refreshNameLookups();
-
+        $parameters = $this->authorizeParameters();
         $subject = $this->subject();
         $user = User::query()->findOrFail($subject->user_id);
         $user->forceFill(['email_verified_at' => null])->save();
-        $client = OAuthClient::query()->create([
-            'oauth_client_id' => (string) Str::uuid(),
-            'master_url' => 'https://master.test',
-            'callback_url' => 'https://master.test/pact/oauth/callback',
-        ]);
-        $parameters = [
-            'client_id' => $client->oauth_client_id,
-            'redirect_uri' => $client->callback_url,
-            'response_type' => 'code',
-            'state' => Str::random(40),
-            'code_challenge' => str_repeat('a', 43),
-            'code_challenge_method' => 'S256',
-        ];
-
         $this->actingAsWithoutTenant($user, 'web');
+
         $authorize = route('pact.oauth.authorize', $parameters);
         $this->get($authorize)->assertOk()->assertSee($subject->project_key);
-        $this->post(route('pact.oauth.select-project'), [
-            'project' => hash('sha256', $subject->tenant_id."\0".$subject->project_key),
-        ])->assertRedirect($authorize)->assertSessionHas('pact.client.selected_subject.id', (string) $subject->id);
+        $this->selectProject($subject)->assertRedirect($authorize)->assertSessionHas('pact.client.selected_subject.id', (string) $subject->id);
         $this->assertNotNull(app(SubjectResolver::class)->find((string) $subject->id));
 
         $this->get(route('pact.oauth.authorize', [
@@ -99,6 +86,74 @@ final class NativeClientTest extends TestCase
         $user->forceFill(['is_active' => false])->save();
         $this->get($authorize)->assertForbidden();
         $this->assertNull(app(SubjectResolver::class)->find((string) $subject->id));
+    }
+
+    public function test_approval_restarts_project_selection_if_the_tenant_changed(): void
+    {
+        $parameters = $this->authorizeParameters();
+        $oauth = $this->mockAuthorizationServer();
+        $subject = $this->subject();
+        $this->actingAsWithoutTenant(User::query()->findOrFail($subject->user_id), 'web');
+        $authorize = route('pact.oauth.authorize', $parameters);
+        $this->get($authorize)->assertOk();
+        $this->selectProject($subject)->assertRedirect($authorize);
+
+        $this->get($authorize)->assertOk()->assertViewIs('pact::consent');
+        $token = session('authToken');
+        $approve = route('pact.oauth.approve');
+        $this->withSession([AuthorizeTenantHeader::ACTIVE_TENANT_SESSION_KEY => 'another-tenant'])
+            ->post($approve, ['auth_token' => $token])
+            ->assertStatus(303)
+            ->assertRedirect($authorize)
+            ->assertSessionMissing('pact.client.selected_subject')
+            ->assertSessionMissing('authToken');
+
+        $this->get($authorize)->assertOk()->assertSee('Scegli di nuovo il progetto');
+        $this->selectProject($subject)->assertRedirect($authorize);
+        $this->get($authorize)->assertOk()->assertViewIs('pact::consent');
+        $this->assertNotSame($token, session('authToken'));
+
+        $callback = $parameters['redirect_uri'].'?code=example&state='.$parameters['state'];
+        $oauth->expects($this->once())->method('completeAuthorizationRequest')
+            ->with($this->callback(fn (AuthorizationRequest $request): bool => $request->isAuthorizationApproved()
+                && $request->getUser()?->getIdentifier() === (string) $subject->id))
+            ->willReturn(new Response(302, ['Location' => $callback]));
+        $this->post($approve, ['auth_token' => session('authToken')])
+            ->assertOk()->assertViewIs('pact-client.return')->assertViewHas('callback', $callback);
+    }
+
+    public function test_an_old_approval_does_not_interrupt_the_current_consent(): void
+    {
+        $authorize = route('pact.oauth.authorize', $this->authorizeParameters());
+        $this->mockAuthorizationServer()->expects($this->never())->method('completeAuthorizationRequest');
+        $subject = $this->subject();
+        $this->actingAsWithoutTenant(User::query()->findOrFail($subject->user_id), 'web');
+        $this->get($authorize)->assertOk();
+        $this->selectProject($subject)->assertRedirect($authorize);
+
+        $this->get($authorize)->assertOk()->assertViewIs('pact::consent');
+        $token = session('authToken');
+        $this->post(route('pact.oauth.approve'), ['auth_token' => Str::random(40)])
+            ->assertConflict()
+            ->assertSee('avvia un nuovo collegamento')
+            ->assertSessionHas('authToken', $token)
+            ->assertSessionHas('pact.client.selected_subject.id', (string) $subject->id);
+    }
+
+    public function test_expired_consent_and_a_bare_authorization_url_explain_how_to_restart(): void
+    {
+        $authorize = route('pact.oauth.authorize', $this->authorizeParameters());
+        $this->mockAuthorizationServer()->expects($this->never())->method('completeAuthorizationRequest');
+        $subject = $this->subject();
+        $this->actingAsWithoutTenant(User::query()->findOrFail($subject->user_id), 'web');
+        $this->get($authorize)->assertOk();
+        $this->selectProject($subject)->assertRedirect($authorize);
+        $this->get($authorize)->assertOk()->assertViewIs('pact::consent');
+
+        $this->travel(11)->minutes();
+        $this->post(route('pact.oauth.approve'), ['auth_token' => session('authToken')])
+            ->assertConflict()->assertViewIs('pact-client.restart')->assertHeader('Referrer-Policy', 'no-referrer');
+        $this->get(route('pact.oauth.authorize'))->assertBadRequest()->assertViewIs('pact-client.restart');
     }
 
     public function test_diagnostic_ping_does_not_enqueue_an_askmydocs_turn(): void
@@ -272,6 +327,49 @@ final class NativeClientTest extends TestCase
         } finally {
             Http::assertSentCount(1);
         }
+    }
+
+    private function mockAuthorizationServer(): AuthorizationServer
+    {
+        $server = $this->createMock(AuthorizationServer::class);
+        $server->method('validateAuthorizationRequest')->willReturnCallback(static function (): AuthorizationRequest {
+            $authorization = new AuthorizationRequest;
+            $authorization->setGrantTypeId('authorization_code');
+
+            return $authorization;
+        });
+        $this->app->instance(AuthorizationServer::class, $server);
+
+        return $server;
+    }
+
+    private function authorizeParameters(): array
+    {
+        config(['pact.auth.middleware' => [ConsentScope::class]]);
+        $this->app->register(PactServiceProvider::class);
+        $this->app['router']->getRoutes()->refreshNameLookups();
+
+        $client = OAuthClient::query()->create([
+            'oauth_client_id' => (string) Str::uuid(),
+            'master_url' => 'https://master.test',
+            'callback_url' => 'https://master.test/pact/oauth/callback',
+        ]);
+
+        return [
+            'client_id' => $client->oauth_client_id,
+            'redirect_uri' => $client->callback_url,
+            'response_type' => 'code',
+            'state' => Str::random(40),
+            'code_challenge' => str_repeat('a', 43),
+            'code_challenge_method' => 'S256',
+        ];
+    }
+
+    private function selectProject(Subject $subject): TestResponse
+    {
+        return $this->post(route('pact.oauth.select-project'), [
+            'project' => hash('sha256', $subject->tenant_id."\0".$subject->project_key),
+        ]);
     }
 
     private function apiRoute(Subject $subject, string $name, string $method, ?string $project = null): ApiRoute

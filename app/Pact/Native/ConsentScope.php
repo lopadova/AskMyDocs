@@ -8,7 +8,6 @@ use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Models\User;
 use App\Services\Auth\UserTeamsResolver;
 use Closure;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use PactLaravel\Models\OAuthClient;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,6 +17,7 @@ final readonly class ConsentScope
 {
     private const DRAFT = 'pact.client.project_draft';
     private const SELECTION = 'pact.client.selected_subject';
+    private const OAUTH_SESSION = ['pact.oauth.identity', 'authToken', 'authRequest'];
 
     public function __construct(private UserTeamsResolver $teams, private SubjectResolver $subjects) {}
 
@@ -25,23 +25,17 @@ final readonly class ConsentScope
     {
         $user = $this->user($request);
         $session = $request->session();
-        $callback = $session->get(self::SELECTION.'.callback');
-        if ($request->routeIs('pact.oauth.deny')) {
-            $session->forget([self::DRAFT, self::SELECTION]);
-
-            return $this->returnToMaster($next($request), $callback);
-        }
-        if ($request->routeIs('pact.oauth.approve')) {
-            $request->attributes->set(Subject::class, $this->subject($request, $user));
-            $session->forget([self::DRAFT, self::SELECTION]);
-
-            return $this->returnToMaster($next($request), $callback);
+        if ($request->routeIs('pact.oauth.approve', 'pact.oauth.deny')) {
+            return $this->decide($request, $user, $next);
         }
 
         $parameters = array_filter(
             $request->only(['client_id', 'redirect_uri', 'response_type', 'scope', 'state', 'code_challenge', 'code_challenge_method']),
             static fn ($value) => $value !== null,
         );
+        if ($parameters === []) {
+            return $this->restart(400);
+        }
         abort_unless(($parameters['response_type'] ?? null) === 'code'
             && ($parameters['code_challenge_method'] ?? null) === 'S256'
             && is_string($parameters['code_challenge'] ?? null)
@@ -55,17 +49,19 @@ final readonly class ConsentScope
 
             return $this->privateResponse($next($request));
         }
-        $session->forget(self::SELECTION);
+        $session->forget([self::SELECTION, ...self::OAUTH_SESSION]);
         $session->put(self::DRAFT, ['user' => $user->id, 'parameters' => $parameters, 'until' => now()->addMinutes(10)->timestamp]);
 
         return $this->privateResponse(response()->view('pact-client.project', ['client' => $client, 'teams' => $this->choices($user)]));
     }
 
-    public function select(Request $request): RedirectResponse
+    public function select(Request $request): Response
     {
         $user = $this->user($request);
         $draft = $request->session()->get(self::DRAFT, []);
-        abort_unless($this->matchesDraft($draft, $user), 403);
+        if (! $this->matchesDraft($draft, $user)) {
+            return $this->restart();
+        }
         $choice = $request->input('project');
         $redirect = redirect()->route('pact.oauth.authorize', $draft['parameters']);
         foreach ($this->choices($user) as $team) {
@@ -77,7 +73,8 @@ final readonly class ConsentScope
                 abort_unless($subject->authorizedUser() !== null, 403);
                 $request->session()->put([
                     self::SELECTION => [
-                        'id' => (string) $subject->id, 'until' => $draft['until'], 'callback' => $draft['parameters']['redirect_uri'],
+                        ...$draft,
+                        'id' => (string) $subject->id,
                     ],
                     AuthorizeTenantHeader::ACTIVE_TENANT_SESSION_KEY => $subject->tenant_id,
                 ]);
@@ -87,6 +84,41 @@ final readonly class ConsentScope
         }
 
         return $redirect->withErrors(['project' => 'Scegli un progetto a cui hai accesso.']);
+    }
+
+    private function decide(Request $request, User $user, Closure $next): Response
+    {
+        $session = $request->session();
+        $selection = $session->get(self::SELECTION, []);
+        $token = $request->input('auth_token');
+        $expected = $session->get('authToken');
+        // An old form must not consume the current Passport request.
+        if (! $this->matchesDraft($selection, $user) || ! is_string($token)
+            || ! is_string($expected) || ! hash_equals($expected, $token)) {
+            return $this->restart();
+        }
+
+        $approving = $request->routeIs('pact.oauth.approve');
+        $subject = $approving ? $this->subject($request, $user) : null;
+        if (! $session->has('authRequest') || ($approving && ($subject === null
+            || $session->get('pact.oauth.identity') !== (string) $subject->id))) {
+            $session->forget([self::DRAFT, self::SELECTION, ...self::OAUTH_SESSION]);
+
+            return $this->privateResponse(redirect()->route('pact.oauth.authorize', $selection['parameters'], 303)
+                ->with('pact.client.reselect', true));
+        }
+
+        if ($subject !== null) {
+            $request->attributes->set(Subject::class, $subject);
+        }
+        $session->forget([self::DRAFT, self::SELECTION]);
+
+        return $this->returnToMaster($next($request), $selection['parameters']['redirect_uri']);
+    }
+
+    private function restart(int $status = 409): Response
+    {
+        return $this->privateResponse(response()->view('pact-client.restart', [], $status));
     }
 
     private function user(Request $request): User
