@@ -15,8 +15,6 @@ use Symfony\Component\HttpFoundation\Response;
 /** Binds the native OAuth consent to a project selected by the local user. */
 final readonly class ConsentScope
 {
-    private const DRAFT = 'pact.client.project_draft';
-    private const SELECTION = 'pact.client.selected_subject';
     private const OAUTH_SESSION = ['pact.oauth.identity', 'authToken', 'authRequest'];
 
     public function __construct(private UserTeamsResolver $teams, private SubjectResolver $subjects) {}
@@ -24,7 +22,6 @@ final readonly class ConsentScope
     public function handle(Request $request, Closure $next): Response
     {
         $user = $this->user($request);
-        $session = $request->session();
         if ($request->routeIs('pact.oauth.approve', 'pact.oauth.deny')) {
             return $this->decide($request, $user, $next);
         }
@@ -41,29 +38,29 @@ final readonly class ConsentScope
             && is_string($parameters['code_challenge'] ?? null)
             && preg_match('/^[A-Za-z0-9_-]{43}$/D', $parameters['code_challenge']) === 1, 400);
         $client = $this->client($parameters);
-        $draft = $session->get(self::DRAFT, []);
-        $subject = $this->subject($request, $user);
-        if ($subject !== null && $this->matchesDraft($draft, $user) && $draft['parameters'] === $parameters) {
-            $request->attributes->set(Subject::class, $subject);
-            $session->forget(self::DRAFT);
+        if ($request->query->has('pact_consent')) {
+            $consent = PendingConsent::fromRequest($request, $user);
+            if ($consent === null || $consent->parameters !== $parameters || $consent->subject_id === null) {
+                return $this->restart();
+            }
 
-            return $this->privateResponse($next($request));
+            return $this->showConsent($request, $consent, $client, $next);
         }
-        $session->forget([self::SELECTION, ...self::OAUTH_SESSION]);
-        $session->put(self::DRAFT, ['user' => $user->id, 'parameters' => $parameters, 'until' => now()->addMinutes(10)->timestamp]);
+        $consent = PendingConsent::start($request, $user, $parameters);
 
-        return $this->privateResponse(response()->view('pact-client.project', ['client' => $client, 'teams' => $this->choices($user)]));
+        return $this->privateResponse(response()->view('pact-client.project', [
+            'client' => $client, 'teams' => $this->choices($user), 'consentId' => $consent->id,
+        ]));
     }
 
     public function select(Request $request): Response
     {
         $user = $this->user($request);
-        $draft = $request->session()->get(self::DRAFT, []);
-        if (! $this->matchesDraft($draft, $user)) {
+        $consent = PendingConsent::fromRequest($request, $user);
+        if ($consent === null || $consent->subject_id !== null) {
             return $this->restart();
         }
         $choice = $request->input('project');
-        $redirect = redirect()->route('pact.oauth.authorize', $draft['parameters']);
         foreach ($this->choices($user) as $team) {
             foreach ($team['projects'] as $project) {
                 if ($choice !== $project['selection']) {
@@ -71,49 +68,95 @@ final readonly class ConsentScope
                 }
                 $subject = Subject::query()->firstOrCreate(['user_id' => $user->id, 'tenant_id' => $team['tenant_id'], 'project_key' => $project['project_key']]);
                 abort_unless($subject->authorizedUser() !== null, 403);
-                $request->session()->put([
-                    self::SELECTION => [
-                        ...$draft,
-                        'id' => (string) $subject->id,
-                    ],
-                    AuthorizeTenantHeader::ACTIVE_TENANT_SESSION_KEY => $subject->tenant_id,
+                $selected = $consent->pending()->whereNull('subject_id')->update([
+                    'subject_id' => $subject->id,
+                    'active_tenant' => $request->session()->get(AuthorizeTenantHeader::ACTIVE_TENANT_SESSION_KEY),
                 ]);
+                if ($selected !== 1) {
+                    return $this->restart();
+                }
 
-                return $redirect;
+                return $this->privateResponse(redirect()->route('pact.oauth.authorize', [
+                    ...$consent->parameters, 'pact_consent' => $consent->id,
+                ], 303));
             }
         }
 
-        return $redirect->withErrors(['project' => 'Scegli un progetto a cui hai accesso.']);
+        $consent->pending()->whereNull('subject_id')->delete();
+
+        return $this->privateResponse(redirect()->route('pact.oauth.authorize', $consent->parameters, 303)
+            ->withErrors(['project' => 'Scegli un progetto a cui hai accesso.']));
+    }
+
+    private function showConsent(Request $request, PendingConsent $consent, OAuthClient $client, Closure $next): Response
+    {
+        $subject = $this->subject($request, $consent);
+        if ($subject === null) {
+            return $this->reselect($consent);
+        }
+        $request->attributes->set(Subject::class, $subject);
+        $request->attributes->set(PendingConsent::class, $consent);
+        $session = $request->session();
+        $passport = $consent->passport;
+        if ($passport === null) {
+            // Passport takes its request from the session during a decision. Keep
+            // those fields request-local and persist the SDK snapshot per consent.
+            $session->forget(self::OAUTH_SESSION);
+            try {
+                $response = $next($request);
+                $passport = array_combine(self::OAUTH_SESSION, array_map($session->get(...), self::OAUTH_SESSION));
+            } finally {
+                $session->forget(self::OAUTH_SESSION);
+            }
+            if (! $response->isSuccessful() || in_array(null, $passport, true)) {
+                return $this->privateResponse($response);
+            }
+            $consent->forceFill(['passport' => $passport]);
+            if ($consent->pending()->whereNull('passport')->update($consent->getDirty()) === 1) {
+                return $this->privateResponse($response);
+            }
+            // Two GETs can prepare the same request. Both forms use the first snapshot.
+            $passport = $consent->pending()->first()?->passport;
+        }
+
+        return $passport === null ? $this->restart() : $this->privateResponse(response()->view('pact::consent', [
+            'client' => $client, 'authToken' => $passport['authToken'],
+        ]));
     }
 
     private function decide(Request $request, User $user, Closure $next): Response
     {
-        $session = $request->session();
-        $selection = $session->get(self::SELECTION, []);
+        $consent = PendingConsent::fromRequest($request, $user);
+        $passport = $consent?->passport;
         $token = $request->input('auth_token');
-        $expected = $session->get('authToken');
-        // An old form must not consume the current Passport request.
-        if (! $this->matchesDraft($selection, $user) || ! is_string($token)
-            || ! is_string($expected) || ! hash_equals($expected, $token)) {
+        if ($passport === null || ! is_string($token) || ! hash_equals($passport['authToken'], $token)) {
             return $this->restart();
         }
-
-        $approving = $request->routeIs('pact.oauth.approve');
-        $subject = $approving ? $this->subject($request, $user) : null;
-        if (! $session->has('authRequest') || ($approving && ($subject === null
-            || $session->get('pact.oauth.identity') !== (string) $subject->id))) {
-            $session->forget([self::DRAFT, self::SELECTION, ...self::OAUTH_SESSION]);
-
-            return $this->privateResponse(redirect()->route('pact.oauth.authorize', $selection['parameters'], 303)
-                ->with('pact.client.reselect', true));
-        }
-
-        if ($subject !== null) {
+        if ($request->routeIs('pact.oauth.approve')) {
+            $subject = $this->subject($request, $consent);
+            if ($subject === null || $passport['pact.oauth.identity'] !== (string) $subject->id) {
+                return $this->reselect($consent);
+            }
             $request->attributes->set(Subject::class, $subject);
         }
-        $session->forget([self::DRAFT, self::SELECTION]);
+        if ($consent->pending()->delete() !== 1) {
+            return $this->restart();
+        }
+        $session = $request->session();
+        $session->put($passport);
+        try {
+            return $this->returnToMaster($next($request), $consent->parameters['redirect_uri']);
+        } finally {
+            $session->forget(self::OAUTH_SESSION);
+        }
+    }
 
-        return $this->returnToMaster($next($request), $selection['parameters']['redirect_uri']);
+    private function reselect(PendingConsent $consent): Response
+    {
+        $consent->pending()->delete();
+
+        return $this->privateResponse(redirect()->route('pact.oauth.authorize', $consent->parameters, 303)
+            ->with('pact.client.reselect', true));
     }
 
     private function restart(int $status = 409): Response
@@ -138,21 +181,13 @@ final readonly class ConsentScope
         return $client;
     }
 
-    private function subject(Request $request, User $user): ?Subject
+    private function subject(Request $request, PendingConsent $consent): ?Subject
     {
-        $selection = $request->session()->get(self::SELECTION, []);
-        if (($selection['until'] ?? 0) < now()->timestamp || ! is_string($selection['id'] ?? null)) {
-            return null;
-        }
-        $subject = $this->subjects->find($selection['id']);
+        $subject = $this->subjects->find((string) $consent->subject_id);
+        $activeTenant = $request->session()->get(AuthorizeTenantHeader::ACTIVE_TENANT_SESSION_KEY);
 
-        return $subject instanceof Subject && (int) $subject->user_id === (int) $user->id
-            && $subject->tenant_id === $request->session()->get(AuthorizeTenantHeader::ACTIVE_TENANT_SESSION_KEY) ? $subject : null;
-    }
-
-    private function matchesDraft(array $draft, User $user): bool
-    {
-        return ($draft['user'] ?? null) === $user->id && ($draft['until'] ?? 0) >= now()->timestamp;
+        return $subject instanceof Subject && (int) $subject->user_id === (int) $consent->user_id
+            && in_array($activeTenant, [null, $consent->active_tenant, $subject->tenant_id], true) ? $subject : null;
     }
 
     private function choices(User $user): array

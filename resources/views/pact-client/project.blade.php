@@ -20,6 +20,7 @@
         @else
             <form method="post" action="{{ route('pact.oauth.select-project') }}">
                 @csrf
+                <input type="hidden" name="pact_consent" value="{{ $consentId }}">
                 <label for="pact-project">Organizzazione e progetto</label>
                 <select id="pact-project" name="project" required @error('project') aria-invalid="true" aria-describedby="pact-project-error" @enderror>
                     <option value="">Scegli un progetto</option>

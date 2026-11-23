@@ -41,7 +41,10 @@ final class ClientServiceProvider extends ServiceProvider
             return;
         }
         View::composer('pact::layout', static fn ($view) => $view->with('pactStyleNonce', Vite::cspNonce()));
-        View::composer('pact::consent', static fn ($view) => $view->with('pactSubject', request()->attributes->get(Subject::class)));
+        View::composer('pact::consent', static fn ($view) => $view->with([
+            'pactSubject' => request()->attributes->get(Subject::class),
+            'consentId' => request()->attributes->get(PendingConsent::class)?->id,
+        ]));
         Route::post(trim((string) config('pact.prefix', 'pact'), '/').'/oauth/select-project', [ConsentScope::class, 'select'])
             ->middleware(['web', 'auth:web', 'throttle:20,1'])
             ->name('pact.oauth.select-project');

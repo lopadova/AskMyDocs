@@ -21,8 +21,18 @@
         </ul>
         <p class="pact-hint">Dopo l’autorizzazione tornerai al coordinatore per completare il collegamento. L’agente inizierà a lavorare dopo la conferma dell’attivazione.</p>
         <div class="pact-actions">
-            <form method="post" action="{{ route('pact.oauth.approve') }}">@csrf<input type="hidden" name="auth_token" value="{{ $authToken }}"><button class="pact-button" type="submit">Autorizza collegamento @include('pact::partials.icon', ['name' => 'arrow-right'])</button></form>
-            <form method="post" action="{{ route('pact.oauth.deny') }}">@csrf<input type="hidden" name="auth_token" value="{{ $authToken }}"><button class="pact-button pact-button-secondary" type="submit">Annulla</button></form>
+            <form method="post" action="{{ route('pact.oauth.approve') }}">
+                @csrf
+                <input type="hidden" name="pact_consent" value="{{ $consentId }}">
+                <input type="hidden" name="auth_token" value="{{ $authToken }}">
+                <button class="pact-button" type="submit">Autorizza collegamento @include('pact::partials.icon', ['name' => 'arrow-right'])</button>
+            </form>
+            <form method="post" action="{{ route('pact.oauth.deny') }}">
+                @csrf
+                <input type="hidden" name="pact_consent" value="{{ $consentId }}">
+                <input type="hidden" name="auth_token" value="{{ $authToken }}">
+                <button class="pact-button pact-button-secondary" type="submit">Annulla</button>
+            </form>
         </div>
     </section>
 </div>
