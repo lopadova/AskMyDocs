@@ -13,11 +13,13 @@ use Aws\S3\S3ClientInterface;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\HandleExceptions;
 use Illuminate\Foundation\Bootstrap\LoadConfiguration;
+use Illuminate\Foundation\CloudBootstrapper;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Str;
 use Mockery;
@@ -114,6 +116,133 @@ final class PactInstallationBackupTest extends TestCase
         } finally {
             $this->assertFileDoesNotExist($this->storage.'/app/pact/installation.json');
         }
+    }
+
+    public function test_only_a_missing_object_allows_deploy_to_initialize_state(): void
+    {
+        $s3 = Mockery::mock(S3ClientInterface::class);
+        $s3->shouldReceive('getObject')->once()->andThrow($this->missingObject());
+        $state = $this->backup($s3, $this->storage);
+        $this->assertFalse($state->restoreIfPresent());
+        $this->assertFileDoesNotExist($this->storage.'/app/pact/installation.json');
+
+        $s3->shouldReceive('getObject')->once()
+            ->andThrow(new S3Exception('Bucket is missing', new Command('GetObject'), [
+                'code' => 'NoSuchBucket', 'response' => new Response(404),
+            ]));
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('could not be read or decrypted');
+        $state->restoreIfPresent();
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_cloud_deploy_creates_the_bundle_and_cold_redeploys_reuse_it_automatically(): void
+    {
+        $ciphertext = null;
+        $existingBundle = static function (Command $command) use (&$ciphertext): Result {
+            self::assertSame('GetObject', $command->getName());
+
+            return new Result(['Body' => $ciphertext]);
+        };
+        $firstDeploy = new MockHandler([
+            $this->missingObject(),
+            static function (Command $command) use (&$ciphertext): Result {
+                self::assertSame('PutObject', $command->getName());
+                self::assertSame('*', $command['IfNoneMatch']);
+                self::assertSame('cloud-private', $command['Bucket']);
+                self::assertSame('askmydocs/pact/askmydocs.example.test/installation.v1.enc', $command['Key']);
+                $ciphertext = (string) $command['Body'];
+
+                return new Result;
+            },
+            $existingBundle,
+            $existingBundle,
+        ]);
+        $app = $this->bootCloudApplication('first-deploy', 'pact-client:deploy', $firstDeploy);
+        $kernel = $app->make(Kernel::class);
+        $this->assertSame(0, $kernel->call('pact-client:deploy', ['--prepare-only' => true]), $kernel->output());
+        $this->assertStringNotContainsString('PRIVATE KEY', $ciphertext);
+
+        $app['db']->connection()->getSchemaBuilder()->create('oauth_clients', static fn (Blueprint $table) => $table->id());
+        $this->assertSame(0, $kernel->call('pact-client:deploy'), $kernel->output());
+        $this->assertTrue($app['db']->connection()->getSchemaBuilder()->hasTable('pact_connections'));
+        $this->assertTrue($app['db']->connection('pact_passport')->getSchemaBuilder()->hasTable('oauth_clients'));
+
+        $newDeploy = $this->bootCloudApplication('next-deploy', 'pact-client:deploy', new MockHandler([$existingBundle, $existingBundle]));
+        $nextKernel = $newDeploy->make(Kernel::class);
+        $this->assertSame(0, $nextKernel->call('pact-client:deploy', ['--prepare-only' => true]), $nextKernel->output());
+        $this->assertSame(0, $nextKernel->call('pact-client:deploy'), $nextKernel->output());
+
+        $worker = $this->bootCloudApplication('new-worker', 'pact:work', new MockHandler([$existingBundle]));
+        $build = $this->bootCloudApplication('build', 'route:cache', new MockHandler);
+        $this->assertSame('pact/oauth/authorize', $build['router']->getRoutes()->getByName('pact.oauth.authorize')?->uri());
+        $this->assertFileDoesNotExist($build->storagePath('app/pact/private.pem'));
+        $legacyPipeline = $this->bootCloudApplication('migrate-first', 'migrate', new MockHandler([$this->missingObject()]));
+        $this->assertFileDoesNotExist($legacyPipeline->storagePath('app/pact/installation.json'));
+
+        foreach (['app/pact/installation.json', 'app/pact/private.pem', 'oauth-private.key'] as $path) {
+            $initial = file_get_contents($app->storagePath($path));
+            $this->assertSame($initial, file_get_contents($newDeploy->storagePath($path)));
+            $this->assertSame($initial, file_get_contents($worker->storagePath($path)));
+        }
+
+        $lost = $this->bootCloudApplication('lost-state', 'pact-client:deploy', new MockHandler([$this->missingObject()]));
+        $lostKernel = $lost->make(Kernel::class);
+        $this->assertSame(1, $lostKernel->call('pact-client:deploy', ['--prepare-only' => true]));
+        $this->assertStringContainsString('The PACT database already exists', $lostKernel->output());
+        $this->assertFileDoesNotExist($lost->storagePath('app/pact/installation.json'));
+    }
+
+    private function bootCloudApplication(string $replica, string $command, MockHandler $s3): Application
+    {
+        $storage = $this->storage.'/'.$replica;
+        (new Filesystem)->ensureDirectoryExists($storage.'/framework/views', 0700);
+        $database = $this->storage.'/deploy.sqlite';
+        if (! is_file($database)) {
+            touch($database);
+        }
+        $_ENV['APP_CONFIG_CACHE'] = $storage.'/config.php';
+        $_ENV['APP_ROUTES_CACHE'] = $storage.'/routes.php';
+        $_SERVER['argv'] = ['artisan', $command];
+        $_SERVER['LARAVEL_CLOUD_DISK_CONFIG'] = json_encode([[
+            'disk' => 'cloud-private', 'bucket' => 'cloud-private', 'url' => null,
+            'access_key_id' => 'fixture', 'access_key_secret' => 'fixture',
+            'endpoint' => 'https://storage.example.test', 'is_default' => true,
+        ]], JSON_THROW_ON_ERROR);
+
+        $app = require dirname(__DIR__, 3).'/bootstrap/app.php';
+        $app->useStoragePath($storage);
+        $app->afterBootstrapping(HandleExceptions::class, static function (): void {
+            restore_error_handler();
+            restore_exception_handler();
+        });
+        $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($s3, $database, $storage): void {
+            CloudBootstrapper::configureDisks($app);
+            $app['config']->set([
+                'app.key' => 'base64:'.base64_encode($this->encrypter->getKey()),
+                'app.url' => self::ORIGIN,
+                'view.compiled' => $storage.'/framework/views',
+                'database.default' => 'sqlite',
+                'database.connections.sqlite.database' => $database,
+                'pact.state' => [],
+                'passport.connection' => 'pact_passport',
+                'passport.private_key' => null,
+                'passport.public_key' => null,
+                'filesystems.default' => 'cloud-private',
+                'filesystems.disks.cloud-private.handler' => $s3,
+            ]);
+        });
+        $app->make(Kernel::class)->bootstrap();
+
+        return $app;
+    }
+
+    private function missingObject(): S3Exception
+    {
+        return new S3Exception('Object is missing', new Command('GetObject'), [
+            'code' => 'NoSuchKey', 'response' => new Response(404),
+        ]);
     }
 
     #[RunInSeparateProcess]

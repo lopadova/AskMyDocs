@@ -9,4 +9,4 @@ trap 'rmdir "${pact_deploy_cache_dir}"' EXIT
 
 APP_CONFIG_CACHE="${pact_deploy_cache_dir}/config.php" \
 APP_ROUTES_CACHE="${pact_deploy_cache_dir}/routes.php" \
-    php artisan pact-client:deploy --no-interaction
+    php artisan pact-client:deploy --no-interaction "$@"

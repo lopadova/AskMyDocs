@@ -1,11 +1,12 @@
 <?php
 
 use App\Pact\Native\PactInstallationBackup;
-use Illuminate\Foundation\Bootstrap\RegisterProviders;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Bootstrap\RegisterProviders;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Symfony\Component\Console\Input\ArgvInput;
 
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -258,9 +259,35 @@ $app = Application::configure(basePath: dirname(__DIR__))
     ->create();
 
 $app->beforeBootstrapping(RegisterProviders::class, static function (Application $app): void {
-    if ($app['config']->get('pact.state.restore')) {
-        PactInstallationBackup::forApplication($app)->restore();
+    if (! PactInstallationBackup::enabled($app)) {
+        return;
     }
+    $arguments = $_SERVER['argv'] ?? [];
+    $command = $app->runningInConsole() && basename($arguments[0] ?? '') === 'artisan'
+        ? (new ArgvInput($arguments))->getFirstArgument()
+        : null;
+
+    // Build commands can compile the client routes before the first deploy
+    // without fetching signing keys into the release image.
+    if (in_array($command, ['package:discover', 'optimize', 'config:cache', 'route:cache', 'event:cache', 'view:cache'], true)) {
+        $app['config']->set('pact.role', 'client');
+
+        return;
+    }
+    if (in_array($command, ['pact-client:deploy', 'pact-state:backup'], true)) {
+        return;
+    }
+
+    $state = PactInstallationBackup::forApplication($app);
+    if ($command === 'migrate') {
+        // Existing production pipelines may run host migrations before the
+        // PACT deploy command. That command owns first-time provisioning.
+        $state->restoreIfPresent();
+
+        return;
+    }
+
+    $state->restore();
 });
 
 return $app;
