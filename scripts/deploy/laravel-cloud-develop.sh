@@ -75,6 +75,8 @@ if [[ "${init_seed}" == true && "${resolved_seed_password_length:-0}" -lt 12 ]];
     exit 1
 fi
 
+bash scripts/deploy/pact-client.sh --prepare-only
+
 if [[ "${reset_database}" == true ]]; then
     echo "Directive [reset-database] found: rebuilding the develop database."
     php artisan migrate:fresh --force --no-interaction

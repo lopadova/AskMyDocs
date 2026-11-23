@@ -2,14 +2,15 @@
 
 declare(strict_types=1);
 
-use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Bootstrap\LoadConfiguration;
+use Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables;
 
 $root = dirname(__DIR__, 2);
 
 require $root.'/vendor/autoload.php';
 
 $app = require $root.'/bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
+$app->bootstrapWith([LoadEnvironmentVariables::class, LoadConfiguration::class]);
 
 $environment = (string) config('develop-deploy.environment', '');
 if ($environment === '') {

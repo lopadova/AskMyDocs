@@ -7,10 +7,12 @@ namespace App\Pact\Native;
 use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3ClientInterface;
 use Closure;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Foundation\Application;
+use PactLaravel\Support\UrlPolicy;
 use RuntimeException;
 use SensitiveParameter;
 
@@ -31,18 +33,27 @@ final class PactInstallationBackup
         private readonly bool $passportUsesFiles,
     ) {}
 
+    public static function enabled(Application $app): bool
+    {
+        $config = $app['config'];
+
+        return $config->get('pact.enabled', true) && ($config->get('pact.state.restore') ?? (
+            filled($config->get('filesystems.disks.pact-state.bucket'))
+            || (bool) json_decode($_SERVER['LARAVEL_CLOUD_DISK_CONFIG'] ?? '[]', true)
+        ));
+    }
+
     public static function forApplication(Application $app): self
     {
         $config = $app['config'];
-        $disk = $config->get('filesystems.disks.'.$config->get('pact.state.disk'), []);
-        if (($disk['driver'] ?? null) !== 's3' || empty($disk['bucket'])
-            || ! empty($disk['url']) || ($disk['visibility'] ?? null) === 'public') {
-            throw new RuntimeException('Configure a dedicated private S3 disk for PACT state.');
+        $disk = self::disk($config);
+        if (! self::isPrivateS3($disk)) {
+            throw new RuntimeException('Attach a private S3 disk or configure PACT_STATE_DISK for this environment.');
         }
-        $object = trim(trim((string) ($disk['root'] ?? ''), '/').'/'.trim((string) $config->get('pact.state.object'), '/'), '/');
-        if ($object === '' || ! $config->get('pact.state.object')) {
-            throw new RuntimeException('Configure the S3 object key for PACT state.');
-        }
+        $origin = UrlPolicy::origin(rtrim((string) ($config->get('pact.url') ?: $config->get('app.url')), '/'));
+        [, $namespace] = explode('://', $origin, 2);
+        $object = $config->get('pact.state.object') ?: 'askmydocs/pact/'.$namespace.'/installation.v1.enc';
+        $object = trim(trim((string) ($disk['root'] ?? ''), '/').'/'.trim((string) $object, '/'), '/');
         $key = (string) $config->get('app.key');
         if (str_starts_with($key, 'base64:')) {
             $key = base64_decode(substr($key, 7), true) ?: '';
@@ -64,9 +75,33 @@ final class PactInstallationBackup
             $disk['bucket'],
             $object,
             $app->storagePath(),
-            rtrim($config->get('pact.url') ?: $config->get('app.url'), '/'),
+            $origin,
             blank($passportPrivate),
         );
+    }
+
+    private static function disk(Repository $config): array
+    {
+        $disks = $config->get('filesystems.disks', []);
+        $name = $config->get('pact.state.disk');
+        if (filled($name)) {
+            return $disks[$name] ?? [];
+        }
+        foreach (array_unique(['pact-state', $config->get('filesystems.default')]) as $candidate) {
+            $disk = $disks[$candidate] ?? [];
+            if (self::isPrivateS3($disk)) {
+                return $disk;
+            }
+        }
+        $privateDisks = array_filter($disks, self::isPrivateS3(...));
+
+        return count($privateDisks) === 1 ? reset($privateDisks) : [];
+    }
+
+    private static function isPrivateS3(array $disk): bool
+    {
+        return ($disk['driver'] ?? null) === 's3' && filled($disk['bucket'] ?? null)
+            && blank($disk['url'] ?? null) && ($disk['visibility'] ?? null) !== 'public';
     }
 
     public function backup(): void
@@ -95,11 +130,22 @@ final class PactInstallationBackup
 
     public function restore(): void
     {
+        $this->hydrate(allowMissing: false);
+    }
+
+    /** Only the pre-deploy command can provision a missing object. */
+    public function restoreIfPresent(): bool
+    {
+        return $this->hydrate(allowMissing: true);
+    }
+
+    private function hydrate(bool $allowMissing): bool
+    {
         $directory = $this->storage.'/app/pact';
         $marker = $directory.'/restored';
         $source = hash('sha256', json_encode([$this->bucket, $this->object, $this->origin, $this->passportUsesFiles], JSON_THROW_ON_ERROR));
-        if ($this->isRestored($marker, $source)) {
-            return;
+        if (! $allowMissing && $this->isRestored($marker, $source)) {
+            return true;
         }
         if (! is_dir($directory) && ! @mkdir($directory, 0700, true) && ! is_dir($directory)) {
             throw new RuntimeException('Cannot create the PACT installation directory.');
@@ -113,10 +159,13 @@ final class PactInstallationBackup
             if (! flock($lock, LOCK_EX)) {
                 throw new RuntimeException('Cannot lock the PACT installation.');
             }
-            if ($this->isRestored($marker, $source)) {
-                return;
+            if (! $allowMissing && $this->isRestored($marker, $source)) {
+                return true;
             }
-            $files = $this->read();
+            $files = $this->read($allowMissing);
+            if ($files === null) {
+                return false;
+            }
             foreach ($files as $path => $contents) {
                 $destination = $this->storage.'/'.$path;
                 if (is_file($destination) && @file_get_contents($destination) !== $contents) {
@@ -130,6 +179,8 @@ final class PactInstallationBackup
                 }
             }
             $this->write($marker, $source);
+
+            return true;
         } finally {
             fclose($lock);
         }
@@ -161,13 +212,18 @@ final class PactInstallationBackup
         return true;
     }
 
-    /** @return array<string, string> */
-    private function read(): array
+    /** @return array<string, string>|null */
+    private function read(bool $allowMissing = false): ?array
     {
         try {
             $response = $this->client()->getObject(['Bucket' => $this->bucket, 'Key' => $this->object]);
             $payload = json_decode($this->encrypter->decryptString((string) $response['Body']), true);
-        } catch (S3Exception|DecryptException) {
+        } catch (S3Exception $exception) {
+            if ($allowMissing && $exception->getStatusCode() === 404 && $exception->getAwsErrorCode() === 'NoSuchKey') {
+                return null;
+            }
+            throw new RuntimeException('The PACT backup could not be read or decrypted. Verify the private disk and APP_KEY.');
+        } catch (DecryptException) {
             throw new RuntimeException('The PACT backup could not be read or decrypted. Verify the private disk and APP_KEY.');
         }
         if (($payload['version'] ?? null) !== 1 || ! is_array($payload['files'] ?? null)) {

@@ -14,8 +14,8 @@ return [
     'contract_path' => $diagnostic ? null : $contractDirectory.'/contract.json',
     'contract_registry' => $diagnostic ? null : $contractDirectory.'/registry.json',
     'state' => [
-        'restore' => (bool) env('PACT_STATE_RESTORE', false),
-        'disk' => env('PACT_STATE_DISK', 'pact-state'),
+        'restore' => env('PACT_STATE_RESTORE'),
+        'disk' => env('PACT_STATE_DISK'),
         'object' => env('PACT_STATE_OBJECT'),
     ],
 ];
