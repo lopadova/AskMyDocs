@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Agent;
 
+use App\Agent\AgentContextGenerator;
 use App\Agent\AgentExecutionContext;
 use App\Agent\AgentLoop;
 use App\Agent\AgentRunDeadline;
@@ -136,7 +137,7 @@ final class AgentWaveCoordinatorTest extends TestCase
 
         $this->assertSame('request_research', app(AgentLoop::class)->run($run, $this->context($run))->decision);
         $this->assertSame(0, $run->toolExecutions()->count());
-        $outcome = app(\App\Agent\AgentSessionResearch::class)->execute($run, $this->context($run), null);
+        $outcome = app(AgentContextGenerator::class)->generate($run, $this->context($run), null);
         $this->assertSame('dependency_depth_limit', $outcome->stopReason);
         $this->assertSame('partial', $outcome->decision);
         $executions = $run->toolExecutions()->orderBy('logical_index')->get();
