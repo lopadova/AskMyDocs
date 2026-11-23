@@ -23,6 +23,18 @@ return [
 
     'disks' => [
 
+        'pact-state' => [
+            'driver' => 's3',
+            'key' => env('PACT_STATE_S3_ACCESS_KEY_ID'),
+            'secret' => env('PACT_STATE_S3_SECRET_ACCESS_KEY'),
+            'region' => env('PACT_STATE_S3_REGION', 'auto'),
+            'bucket' => env('PACT_STATE_S3_BUCKET'),
+            'endpoint' => env('PACT_STATE_S3_ENDPOINT'),
+            'use_path_style_endpoint' => (bool) env('PACT_STATE_S3_PATH_STYLE', false),
+            'visibility' => 'private',
+            'throw' => true,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app'),
