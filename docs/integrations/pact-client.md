@@ -22,7 +22,7 @@ Run the Passport migration path explicitly because the installer detects the hos
 
 Use HTTPS and an `APP_URL` that matches the site. On the first Herd install, pass one `--allow-local-host` per local peer on both sites. The SDK requires these entries for local addresses even over HTTPS. For an existing local installation, add only the required Herd hostnames to `local_hosts` in `storage/app/pact/installation.json`, then rebuild the caches and restart `pact:work`. Local peer entries belong in the local installation only.
 
-Start both workers under the process supervisor in each environment.
+Start both workers under the process supervisor when using the database queue directly.
 
 ```sh
 php artisan pact:work --no-interaction
@@ -32,6 +32,8 @@ php artisan queue:work pact_client --queue=pact-client --sleep=1 --no-interactio
 The first worker processes the PACT outbox. The second handles AskMyDocs agent runs and uses the application database queue. On Herd, `./ops/launchd/install-local.sh --pact-only` installs both user services.
 
 ## Laravel Cloud
+
+Create a standard Managed Queue named `pact-client` and enable the App cluster scheduler. The existing `pact:work` process receives PACT tasks. The scheduler forwards committed jobs, including any backlog, to the Managed Queue, where Cloud's worker runs them. The database queue keeps each job until Cloud accepts it. [Managed queues](https://laravel.com/cloud/docs/queues) · [Scheduled tasks](https://laravel.com/cloud/docs/scheduled-tasks)
 
 During Cloud setup, attach a private S3 disk with read, list and write access. AskMyDocs uses `pact-state` if configured, otherwise the private default S3 disk or the sole private S3 disk. `PACT_STATE_DISK` selects a different disk when needed. The object key defaults to `askmydocs/pact/<environment-host>/installation.v1.enc`. Keep `PACT_STATE_OBJECT` if the environment already uses a custom key. For an external bucket, the `pact-state` disk reads `PACT_STATE_S3_*` from `.env.example`.
 
