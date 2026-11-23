@@ -409,14 +409,12 @@ final class AgentMessageControllerTest extends TestCase
         $work($seed);
         $this->assertSame('ready', $phase($seed));
         \Illuminate\Support\Facades\Context::scope(fn () => $work($seed), hidden: ['agent.session_stage' => 'active']);
-        $this->assertSame([[0, false]], $answers);
-        $this->assertSame($facts[0], data_get($seed->fresh()->result_json, 'session_research.result.answer.answer'));
+        $this->assertSame([], $answers, 'The research worker must stop after collecting context.');
+        $this->assertStringContainsString($facts[0], data_get($seed->fresh()->result_json, 'evidence.documents.0.evidence.0.content'));
         $this->assertFalse($conversation->messages()->where('agent_run_id', $seed->id)->exists());
-        $checkpoint = data_get($seed->fresh()->result_json, 'session_research.result');
-        $empty = app(\App\Agent\Evidence\AgentEvidenceFactory::class)->empty();
-        // A completed worker draft cannot be handed to the session after its sources become unavailable.
-        $this->assertNull(\App\Agent\AgentSessionResearchResult::restore($checkpoint, new \App\Agent\AgentLoopOutcome('answer', $empty, [])));
         $work($seed);
+        $this->assertSame([[0, false]], $answers);
+        $this->assertSame($facts[0], $conversation->messages()->where('agent_run_id', $seed->id)->sole()->content);
 
         $partial = $send(1);
         $queued = $send(2);

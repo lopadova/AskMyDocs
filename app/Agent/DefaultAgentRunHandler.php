@@ -136,9 +136,10 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                     'ready' => $research->result($run),
                     default => $this->loop->run($run, $context, $turnContext),
                 };
-                $researchReturned = in_array($researchPhase, ['active', 'ready'], true);
+                $researchReturned = $researchPhase === 'ready';
                 if ($outcome->decision === 'request_research' && ! $run->usesConcurrentSession()) {
-                    $outcome = $diagnostics->measure($run, 'session.research', fn () => $research->execute($run, $context, $turnContext));
+                    $outcome = $diagnostics->measure($run, 'session.research',
+                        fn () => app(AgentContextGenerator::class)->generate($run, $context, $turnContext));
                     $researchReturned = true;
                 }
                 if ($outcome->decision === 'continue_research') {
@@ -152,6 +153,11 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                 if ($outcome->decision === 'request_research') {
                     $research->request($run, $outcome);
                     $diagnostics->end($run, $executionSpan);
+                    return;
+                }
+                if ($researchPhase === 'active') {
+                    $research->complete($run, $outcome);
+                    $diagnostics->end($run, $executionSpan, metadata: ['operation' => 'context_generated']);
                     return;
                 }
 
@@ -174,18 +180,13 @@ final readonly class DefaultAgentRunHandler implements AgentRunHandler
                         $turnContext = json_encode($decodedContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
                     }
                 }
-                if ($researchReturned) {
-                    $result = AgentSessionResearchResult::restore((array) data_get($run->result_json, 'session_research.result', []), $outcome)
-                        ?? $diagnostics->measure($run, 'synthesis.execute', fn () => $research->respond($run, $context, $outcome, $turnContext));
-                    if ($researchPhase === 'active') {
-                        $research->complete($run, $result);
-                        $diagnostics->end($run, $executionSpan);
-                        return;
-                    }
+                if ($session !== null) {
+                    $saved = $researchPhase === 'ready'
+                        ? AgentSessionAnswer::restore((array) data_get($run->result_json, 'session_research.result', []), $outcome) : null;
+                    $result = $saved ?? $diagnostics->measure($run, 'synthesis.execute',
+                        fn () => $session->compose($run, $context, $outcome, $turnContext, $researchReturned));
                     $outcome = $result->sources;
-                    $answer = $session->answer($run, $context, $result, $turnContext);
-                } elseif ($session !== null) {
-                    $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $session->answer($run, $context, $outcome, $turnContext));
+                    $answer = $result->answer;
                 } else {
                     $answer = $diagnostics->measure($run, 'synthesis.execute', fn () => $this->synthesizer->synthesize(
                         trim((string) data_get($run->input_json, 'question', '')), $context, $outcome, $turnContext,

@@ -6,12 +6,13 @@ namespace App\Agent;
 
 use App\Agent\Evidence\AgentEvidenceAccess;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
+use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Grounding\CollectedEvidenceAnswer;
 use App\Models\AgentRun;
 use App\Services\Chat\QuestionAction;
 use App\Services\Chat\QuestionUnderstanding;
 
-/** Owns the conversation. The research tool implements collection and supplies a sourced answer. */
+/** Assesses the conversation and composes the user's answer from authorized evidence. */
 final readonly class AgentSessionAgent
 {
     public function __construct(private AgentAnswerSynthesizer $answers) {}
@@ -45,22 +46,22 @@ final readonly class AgentSessionAgent
         return new AgentLoopOutcome('request_research', $evidence, $completed);
     }
 
-    public function answer(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome|AgentSessionResearchResult $input, ?string $turnContext): AgentAnswer
+    public function compose(AgentRun $run, AgentExecutionContext $context, AgentLoopOutcome $sources, ?string $turnContext,
+        bool $collected = false): AgentSessionAnswer
     {
-        if ($input instanceof AgentSessionResearchResult) {
-            return $input->answer;
-        }
-
         try {
-            return $this->answers->synthesize(trim((string) data_get($run->input_json, 'question')), $context, $input, $turnContext,
+            $answer = $this->answers->synthesize(trim((string) data_get($run->input_json, 'question')), $context, $sources, $turnContext,
                 $run->result_json['question_understanding'] ?? null, durableRunId: $run->run_id,
-                recoverCollectedEvidence: $input->stopReason === 'context_answer_attempt' && $input->evidence->hasEvidence());
+                recoverCollectedEvidence: $collected || ($sources->stopReason === 'context_answer_attempt' && $sources->evidence->hasEvidence()));
         } catch (AgentDraftUnavailable $exception) {
             app(AgentRunControl::class)->ensureActive($run);
-            $safe = app(AgentEvidenceAccess::class)->current($run, $context, $input->evidence->jsonSerialize());
-
-            return app(CollectedEvidenceAnswer::class)->recover($run, $safe, $context->locale, $exception);
+            $safe = app(AgentEvidenceFactory::class)->empty();
+            $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $sources->evidence->jsonSerialize()));
+            $sources = new AgentLoopOutcome('partial', $safe, $sources->completedActions, 'synthesis_unavailable');
+            $answer = app(CollectedEvidenceAnswer::class)->recover($run, $safe->jsonSerialize(), $context->locale, $exception);
         }
+
+        return new AgentSessionAnswer($answer, $sources);
     }
 
     public function needsResearch(AgentRun $run, AgentLoopOutcome $sources, AgentAnswer $answer): bool
