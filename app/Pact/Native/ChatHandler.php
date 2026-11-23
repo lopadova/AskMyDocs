@@ -49,7 +49,9 @@ final readonly class ChatHandler implements AgentHandler
             return $this->error('AUTHORIZATION', 'Il collegamento o l’accesso al progetto non è più attivo.');
         }
 
-        $question = trim((string) ($context->input['message'] ?? ''));
+        $question = trim(method_exists($context, 'readableMessage')
+            ? $context->readableMessage()
+            : (string) ($context->input['message'] ?? ''));
         if ($question === '') {
             return $this->error('INVALID_INPUT', 'Inserisci una domanda.');
         }

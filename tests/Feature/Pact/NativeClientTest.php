@@ -12,6 +12,7 @@ use App\Agent\Tools\AgentToolRegistry;
 use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
+use App\Models\Message;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Pact\Native\ChatHandler;
@@ -21,8 +22,11 @@ use App\Pact\Native\PendingConsent;
 use App\Pact\Native\Subject;
 use App\Pact\Native\SubjectResolver;
 use App\Pact\Native\TaskAccess;
+use App\Support\TenantContext;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -31,6 +35,7 @@ use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
 use Pact\Pact;
 use Pact\PactError;
+use PactLaravel\Execution\AgentContext;
 use PactLaravel\Models\Connection;
 use PactLaravel\Models\Member;
 use PactLaravel\Models\OAuthClient;
@@ -260,6 +265,41 @@ final class NativeClientTest extends TestCase
             'text' => 'Consulta il capitolo Installazione.',
             'sources' => [['title' => 'Guida di installazione']],
         ], data_get($task->value, 'artifacts.0.parts.0.data'));
+    }
+
+    public function test_structured_briefs_are_readable_for_new_and_existing_pact_messages(): void
+    {
+        if (! method_exists(AgentContext::class, 'readableMessage')) {
+            $this->markTestSkipped('Requires the structured-call SDK.');
+        }
+
+        $subject = $this->subject();
+        $connection = $this->connection($subject);
+        $body = json_encode([
+            'task_id' => (string) Str::uuid(), 'run_id' => (string) Str::uuid(), 'revision' => 2, 'kind' => 'execution',
+            'work' => ['task' => ['title' => 'Controlla le guide', 'description' => 'Confronta le fonti disponibili.', 'specifications' => 'Cita la guida.'], 'attachments' => [], 'handoffs' => []],
+        ], JSON_THROW_ON_ERROR);
+        $task = $this->submit($connection, [
+            'message' => $body,
+            'coordinator' => ['endpoint' => 'https://master.test/pact/mcp', 'federation_id' => $connection->federation_id, 'member_id' => $connection->member_id],
+        ]);
+        $this->assertTrue(app(Worker::class)->workOnce());
+        $run = AgentRun::query()->forTenant($subject->tenant_id)->sole();
+        $message = Message::query()->forTenant($subject->tenant_id)->findOrFail($run->input_json['user_message_id']);
+        $readable = "Controlla le guide\n\nConfronta le fonti disponibili.\n\nSpecifiche\nCita la guida.";
+        $this->assertSame($readable, $run->input_json['question']);
+        $this->assertSame($readable, $message->content);
+        $this->assertSame($body, $task->fresh()->checkpoint['input']['message']);
+
+        $message->update(['content' => $body]);
+        $user = User::query()->findOrFail($subject->user_id);
+        app(TenantContext::class)->set($subject->tenant_id);
+        $url = '/conversations/'.$run->conversation_id.'/messages';
+        app('router')->getRoutes()->match(Request::create($url))->middleware(SubstituteBindings::class);
+        $this->actingAsWithoutTenant($user, 'web')->withHeader('X-Tenant-Id', $subject->tenant_id)
+            ->getJson($url)
+            ->assertOk()->assertJsonPath('0.content', $readable);
+        $this->assertSame($body, $message->fresh()->content);
     }
 
     public function test_a_foreign_connection_cannot_read_a_task_and_removed_membership_blocks_work(): void

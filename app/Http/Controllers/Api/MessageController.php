@@ -27,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use PactLaravel\Execution\StructuredAgentCall;
 
 class MessageController extends Controller
 {
@@ -77,6 +78,10 @@ class MessageController extends Controller
                     ->all());
 
         $messages->each(function (Message $message) use ($activityByRun, $toolReferences): void {
+            if ($message->role === 'user' && ($message->metadata['origin'] ?? null) === 'pact'
+                && is_string($message->content) && class_exists(StructuredAgentCall::class)) {
+                $message->setAttribute('content', app(StructuredAgentCall::class)->readable($message->content));
+            }
             $activity = $message->agent_run_id === null
                 ? []
                 : ($activityByRun->get($message->agent_run_id) ?? []);
