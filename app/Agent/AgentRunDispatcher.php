@@ -54,35 +54,62 @@ final class AgentRunDispatcher
 
     public function enqueue(AgentRun $run): void
     {
+        if (is_string(data_get($run->input_json, 'pact_client_task_id'))) {
+            // The shared queue can pick up the job as soon as it is published.
+            $run->getConnection()->afterCommit(fn () => $this->push($run, pactClient: true));
+
+            return;
+        }
+
+        $this->push($run, pactClient: false);
+    }
+
+    private function push(AgentRun $run, bool $pactClient): void
+    {
         $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class);
         $runtime = $diagnostics->runtime();
         $stage = $run->sessionStage();
         $sessionQueue = $stage !== null && $stage !== 'active'
             ? (string) config('agent.session_queue', 'agent-session') : null;
-        $pactClient = is_string(data_get($run->input_json, 'pact_client_task_id'));
+        $deliveryStage = $run->sessionDeliveryStage();
         $span = $diagnostics->begin($run, 'queue.wait', [
             'wait_for' => 'worker_receipt',
-            'queue_connection' => $pactClient ? 'pact_client' : ($runtime['queue_connection'] ?? null),
-            'queue_driver' => $pactClient ? 'database' : ($runtime['queue_driver'] ?? null),
-            'queue_name' => $pactClient ? 'pact-client' : ($sessionQueue ?? ($runtime['queue_name'] ?? null)),
+            'queue_connection' => $runtime['queue_connection'] ?? null,
+            'queue_driver' => $runtime['queue_driver'] ?? null,
+            'queue_name' => $sessionQueue ?? ($runtime['queue_name'] ?? null),
             'runtime' => $runtime,
         ]);
         try {
             // Force PendingDispatch destruction inside this try, so dispatch errors
             // are observed without changing Laravel's transport/after-commit policy.
-            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span, $run->sessionDeliveryStage());
+            $pending = ExecuteAgentRunJob::dispatch($run->id, $run->tenant_id, $span, $deliveryStage);
             if ($sessionQueue !== null) {
                 $pending->onQueue($sessionQueue);
             }
-            if ($pactClient) {
-                $pending->onConnection('pact_client')->onQueue('pact-client');
-            } elseif (is_string(data_get($run->input_json, 'pact_task_id'))) {
+            if (! $pactClient && is_string(data_get($run->input_json, 'pact_task_id'))) {
                 $pending->onConnection((string) config('pact-agent.connection', 'pact_agents'))->onQueue((string) config('pact-agent.queue', 'pact-agents'));
             }
             unset($pending);
         } catch (\Throwable $exception) {
             $diagnostics->failure($run, $span, $exception);
+            if ($pactClient) {
+                $this->failUndeliveredRun($run, $deliveryStage);
+            }
+
             throw $exception;
         }
+    }
+
+    private function failUndeliveredRun(AgentRun $run, ?string $deliveryStage): void
+    {
+        $run->getConnection()->transaction(function () use ($run, $deliveryStage): void {
+            $locked = AgentRun::query()->forTenant($run->tenant_id)->lockForUpdate()->findOrFail($run->id);
+            if ($locked->status !== AgentRun::STATUS_QUEUED || $locked->sessionDeliveryStage() !== $deliveryStage) {
+                return;
+            }
+
+            $locked->forceFill(['status' => AgentRun::STATUS_FAILED, 'error_code' => 'session_dispatch_failed', 'completed_at' => now()])->save();
+            app(AgentEventPublisher::class)->publish($locked, 'run.failed', 'run.failed', canCancel: false);
+        });
     }
 }

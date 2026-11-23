@@ -7,6 +7,7 @@ namespace App\Pact\Native;
 use App\Agent\AgentChatTurnStarter;
 use App\Agent\AgentExecutionContextFactory;
 use App\Agent\AgentRunControl;
+use App\Agent\AgentSessionWorkers;
 use App\Compliance\TenantContextBridge;
 use App\Models\AgentRun;
 use App\Models\Conversation;
@@ -104,11 +105,13 @@ final readonly class ChatHandler implements AgentHandler
                             ->where('project_key', $subject->project_key)->findOrFail($previous->conversation_id);
                     $text = $this->redactor->redact($question);
                     $execution = $this->contexts->forUser($user, $subject->project_key, runId: $id);
+                    $sessionEvidence = (bool) config('agent.waves.enabled', true);
                     return $this->turns->start($execution, $conversation, $user, $text, [
                         'question' => $text,
                         'pact_client_task_id' => $context->taskId,
                         'pact_client_invocation_id' => $context->invocationId,
-                        'session_evidence' => (bool) config('agent.waves.enabled', true),
+                        'session_evidence' => $sessionEvidence,
+                        'concurrent_session' => $sessionEvidence && app(AgentSessionWorkers::class)->available(),
                     ], ['origin' => 'pact'])->run;
                 } finally {
                     $tenant->set($priorTenant);

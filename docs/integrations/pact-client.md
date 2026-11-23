@@ -22,20 +22,19 @@ Run the Passport migration path explicitly because the installer detects the hos
 
 Use HTTPS and an `APP_URL` that matches the site. On the first Herd install, pass one `--allow-local-host` per local peer on both sites. The SDK requires these entries for local addresses even over HTTPS. For an existing local installation, add only the required Herd hostnames to `local_hosts` in `storage/app/pact/installation.json`, then rebuild the caches and restart `pact:work`. Local peer entries belong in the local installation only.
 
-Start both workers under the process supervisor when using the database queue directly.
+Start the PACT protocol worker under the process supervisor.
 
 ```sh
 php artisan pact:work --no-interaction
-php artisan queue:work pact_client --queue=pact-client --sleep=1 --no-interaction --max-time=3600
 ```
 
-The first worker processes the PACT outbox. The second handles AskMyDocs agent runs and uses the application database queue. On Herd, `./ops/launchd/install-local.sh --pact-only` installs both user services.
+This worker processes the PACT outbox. AskMyDocs agent runs use the existing application workers on the default queue connection. On Herd, `./ops/launchd/install-local.sh --pact-only` installs the protocol worker.
 
 To also route the PACT handler through the existing local Laravel queue, set `PACT_QUEUE_CONNECTION=pact_client` and `PACT_QUEUE=pact-client`. These values are optional per environment. Rebuild the config cache and restart the workers after changing them.
 
 ## Laravel Cloud
 
-Create a standard Managed Queue named `pact-client` and enable the App cluster scheduler. The existing `pact:work` process receives PACT tasks. The scheduler forwards committed jobs, including any backlog, to the Managed Queue, where Cloud's worker runs them. The database queue keeps each job until Cloud accepts it. [Managed queues](https://laravel.com/cloud/docs/queues) · [Scheduled tasks](https://laravel.com/cloud/docs/scheduled-tasks)
+The existing `pact:work` process receives PACT tasks. New agent runs use the same queues as AskMyDocs chat on `QUEUE_CONNECTION`. When the session and research workers are available, `AGENT_SESSION_QUEUE` handles the conversation and `AGENT_QUEUE` handles research. With the serial chat path, `AGENT_QUEUE` handles the entire turn. If AskMyDocs chat uses Managed Queues, PACT uses them as well.
 
 During Cloud setup, attach a private S3 disk with read, list and write access. AskMyDocs uses `pact-state` if configured, otherwise the private default S3 disk or the sole private S3 disk. `PACT_STATE_DISK` selects a different disk when needed. The object key defaults to `askmydocs/pact/<environment-host>/installation.v1.enc`. Keep `PACT_STATE_OBJECT` if the environment already uses a custom key. For an external bucket, the `pact-state` disk reads `PACT_STATE_S3_*` from `.env.example`.
 
