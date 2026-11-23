@@ -4,6 +4,7 @@ import type { AuthMePayload, AuthUser } from '../../lib/auth-store';
 export type LoginResponse = {
     user: AuthUser;
     abilities?: unknown[];
+    redirect_to?: string;
 };
 
 export async function login(email: string, password: string, remember: boolean): Promise<LoginResponse> {

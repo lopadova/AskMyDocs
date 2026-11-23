@@ -15,6 +15,8 @@
 /bootstrap/cache/*
 !/bootstrap/cache/.gitkeep
 /storage/app/*
+/storage/oauth-private.key
+/storage/oauth-public.key
 !/storage/app/.gitkeep
 !/storage/app/public/
 /storage/app/public/*
