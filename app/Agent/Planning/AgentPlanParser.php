@@ -74,7 +74,7 @@ final class AgentPlanParser
                 throw new \UnexpectedValueException('Planner purpose must be a short operational label.');
             }
 
-            $arguments = is_array($raw['arguments'] ?? null) ? $raw['arguments'] : [];
+            $arguments = self::arguments($raw);
             $actions[] = new AgentPlannedAction($id, $toolName, $arguments, $dependsOn, $purpose);
             $knownIds[$id] = true;
         }
@@ -84,6 +84,24 @@ final class AgentPlanParser
         }
 
         return new AgentPlan($decision, $actions, $this->estimate($actions, $tools));
+    }
+
+    public static function arguments(array $action): array
+    {
+        if (! array_key_exists('arguments_json', $action)) {
+            $arguments = $action['arguments'] ?? [];
+            if (! is_array($arguments) || ($arguments !== [] && array_is_list($arguments))) {
+                throw new \UnexpectedValueException('Tool arguments must be an object.');
+            }
+
+            return $arguments;
+        }
+        $json = $action['arguments_json'];
+        if (array_key_exists('arguments', $action) || ! is_string($json) || ! json_decode($json) instanceof \stdClass) {
+            throw new \UnexpectedValueException('Tool arguments_json must encode a single JSON object.');
+        }
+
+        return json_decode($json, true);
     }
 
     /** @param list<AgentPlannedAction> $actions @param array<string,AgentToolDefinition> $tools */

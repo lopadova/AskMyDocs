@@ -26,7 +26,7 @@ final class AgentPlanActionIdNormalizer
         }
         foreach ($payload['actions'] as $action) {
             $references = is_array($action['depends_on'] ?? null) ? $action['depends_on'] : [];
-            $this->references($action['arguments'] ?? [], $references);
+            $this->references(AgentPlanParser::arguments($action), $references);
             if (array_intersect(array_filter($references, 'is_string'), $collisions) !== []) {
                 return $payload; // It is unclear whether a reference means the old or the new action.
             }

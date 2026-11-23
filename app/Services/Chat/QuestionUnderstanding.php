@@ -129,6 +129,19 @@ final readonly class QuestionUnderstanding
                 && ($task['decision'] ?? null) === 'refresh') !== [];
     }
 
+    /** @return list<string> */
+    public function currentTargetIdentifiers(): array
+    {
+        $identifiers = [];
+        foreach (($this->subquestions ?: [$this->focus]) as $index => $task) {
+            if ($this->requiresCurrentObservationFor($index)) {
+                array_push($identifiers, ...($task['identifiers'] ?? []));
+            }
+        }
+
+        return array_values(array_unique($identifiers));
+    }
+
     public function effectiveFollowUpTarget(?array $coverageGap = null): string
     {
         if ($this->deliverable === null) {

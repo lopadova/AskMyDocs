@@ -10,6 +10,7 @@ use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceSummarizer;
 use App\Agent\Tools\AgentToolDefinition;
 use App\Ai\AiManager;
+use App\Services\Chat\QuestionUnderstanding;
 
 final readonly class AgentPlanner
 {
@@ -67,6 +68,9 @@ final readonly class AgentPlanner
         $identifierGuard = app(AgentIdentifierSources::class);
         $identifierSources = $identifierGuard->required($tools) ? $identifierGuard->forContext($context, $evidence) : [];
         $constraints = app(AgentPlanArgumentConstraints::class);
+        $state = json_decode($turnContext ?? '{}', true);
+        $intent = QuestionUnderstanding::fromArray($state['question_understanding'] ?? []);
+        $targets = $sessionEvidence ? $intent->currentTargetIdentifiers() : [];
         $completedIds = array_values(array_filter(array_column($completedActions, 'id'), 'is_string'));
         $offeredTools = $tools;
         $liveOnly = false;
@@ -112,7 +116,7 @@ final readonly class AgentPlanner
                     (int) config('agent.planner.max_actions_per_plan', 8),
                     $completedIds,
                 );
-                $constraints->validate($plan, $offeredTools, $identifierSources);
+                $constraints->validate($plan, $offeredTools, $identifierSources, $targets);
                 if ($liveOnly && ! $plan->shouldCallTools()) {
                     throw new AgentPlanValidationException('requested_source_coverage_required', 'The requested live lookup is still missing.');
                 }
@@ -122,9 +126,9 @@ final readonly class AgentPlanner
             } catch (\UnexpectedValueException $exception) {
                 $code = $exception instanceof AgentPlanValidationException ? $exception->validationCode : null;
                 $badSearch = $sessionEvidence && $code === 'knowledge_query_required';
-                if ($plan !== null && ($badSearch || ($attempt === 1 && $code === 'input_pattern_mismatch'))) {
+                if ($plan !== null && ($badSearch || ($attempt === 1 && in_array($code, ['input_pattern_mismatch', 'lookup_identifier_required'], true)))) {
                     try {
-                        $safePlan = $constraints->independentValidBranches($plan, $offeredTools, $completedIds, $identifierSources);
+                        $safePlan = $constraints->independentValidBranches($plan, $offeredTools, $completedIds, $identifierSources, $targets);
                         $hasLiveBranch = array_filter($safePlan->actions, fn ($action) => $this->isLiveRead($offeredTools[$action->tool])) !== [];
                         if (! $badSearch || $hasLiveBranch || $attempt === 1) {
                             $this->liveSourceCoverage->validate($question, $safePlan, $tools, $completedActions);
@@ -145,7 +149,7 @@ final readonly class AgentPlanner
                 if ($badSearch && ($liveTools = $this->pendingLiveTools($tools, $completedActions, $turnContext)) !== []) {
                     $offeredTools = $liveTools;
                     $liveOnly = true;
-                    $correction = 'knowledge_query_required: A document lookup had invalid arguments. Recover the pending current-record tasks using only the live lookup tools supplied in this attempt. The host keeps already collected documents and handles document search separately.';
+                    $correction = 'knowledge_query_required: A document lookup had invalid arguments. Recover only pending current-record tasks with the supplied tools. Pass each exact identifier in arguments_json under the matching filter. The host handles document search separately.';
                 }
             }
         }
@@ -162,7 +166,7 @@ final readonly class AgentPlanner
     private function pendingLiveTools(array $tools, array $completedActions, ?string $turnContext): array
     {
         $state = json_decode($turnContext ?? '{}', true);
-        $intent = \App\Services\Chat\QuestionUnderstanding::fromArray($state['question_understanding'] ?? []);
+        $intent = QuestionUnderstanding::fromArray($state['question_understanding'] ?? []);
         if (! $intent->available || ! $intent->requiresCurrentObservation()) {
             return [];
         }
@@ -176,12 +180,6 @@ final readonly class AgentPlanner
     public function initialPlanningContract(AgentExecutionContext $context, array $tools, AgentCapabilitySnapshot $snapshot, int $depth, bool $sessionEvidence = false): array
     {
         $schema = $this->submissionTool()['function']['parameters'];
-        $action = &$schema['properties']['actions']['items'];
-        unset($action['properties']['arguments']);
-        // Strict response schemas cannot express arbitrary tool argument maps.
-        // Decode this string before applying the ordinary plan validators.
-        $action['properties']['arguments_json'] = ['type' => 'string', 'description' => 'A JSON object containing the exact tool arguments; use {} for no arguments.'];
-        $action['required'] = ['id', 'tool', 'arguments_json', 'depends_on', 'purpose'];
         $instructions = str_replace('Return a structured plan through submit_agent_plan.',
             'Return the first-wave plan in initial_plan of the interpretation JSON; encode tool arguments in arguments_json. Do not invoke submit_agent_plan.',
             $this->systemPrompt($context, $snapshot, $depth, false, $sessionEvidence));
@@ -228,6 +226,7 @@ When structured filters, sort and limit fully express the request, omit an optio
 The current question overrides stale constraints from turn_context. Negations and phrases such as "any status" prohibit carrying forward or inventing the corresponding positive filter. For a request about one entity prefer expect=one; for a requested collection prefer expect=many. Never use expect=best to avoid user disambiguation.
 Plans may contain sequential dependencies. For a value produced by an earlier action use {"\$from":"step_id","path":"a.path.declared.by.the.capability"}. Keep this explicit reference instead of copying a literal value: the host records and verifies the dependency between the original field, the actual input and the returned record identity. Never assume items.0 or another result path that is not declared; execute the parent step and re-plan when its result shape is unknown.
 Check every literal API argument against its declared type and pattern. Different identifier namespaces identify different entities. Do not send a return code to an orders search. Remove an incompatible action or select the matching tool; keep independent valid actions and never rewrite an identifier to make it fit.
+Encode arguments_json as an object string containing the exact argument names and values. For a lookup by reference, put the identifier in its declared filter, even when that filter is optional for broad listing. Separate requests for different exact identifiers when the filter accepts only one value. Never substitute an unfiltered listing for a lookup by reference.
 Action ids are globally unique for the entire run. Never reuse an id present in completed_actions, including after re-planning.
 completed_actions.failure contains host-recorded operational errors, not business facts. When retryable=false, never repeat that tool with the same arguments. Correct a documented input, choose another relevant authorized source, or stop with insufficient. An HTTP 200 with api_response_format_mismatch is not a successful data retrieval. Do not replace a requested current/latest list with historical document mentions that cannot establish ordering or completeness.
 Action ids are opaque internal graph keys, not translated labels or entity names. Use short neutral ASCII keys such as step_1, step_2, with the schema's lowercase letters, digits, underscores and hyphens only. Put human names and localized descriptions in purpose and arguments instead; preserve exact depends_on and \$from references to these graph keys.
@@ -292,11 +291,11 @@ PROMPT;
                                         'description' => 'Globally unique action identifier for the entire run; never reuse an id from completed_actions. Lowercase letters, digits, underscores and hyphens only.',
                                     ],
                                     'tool' => ['type' => 'string'],
-                                    'arguments' => ['type' => 'object'],
+                                    'arguments_json' => ['type' => 'string', 'description' => 'A JSON object encoded as a string with exact tool argument names and values. Use "{}" only for a call that needs no arguments.'],
                                     'depends_on' => ['type' => 'array', 'items' => ['type' => 'string']],
                                     'purpose' => ['type' => 'string', 'maxLength' => 160],
                                 ],
-                                'required' => ['id', 'tool', 'arguments', 'depends_on', 'purpose'],
+                                'required' => ['id', 'tool', 'arguments_json', 'depends_on', 'purpose'],
                                 'additionalProperties' => false,
                             ],
                         ],

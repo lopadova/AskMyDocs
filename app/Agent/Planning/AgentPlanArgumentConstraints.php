@@ -12,10 +12,10 @@ final readonly class AgentPlanArgumentConstraints
 {
     public function __construct(private Validator $schema = new Validator) {}
 
-    public function validate(AgentPlan $plan, array $tools, array $identifierSources = []): void
+    public function validate(AgentPlan $plan, array $tools, array $identifierSources = [], array $targets = []): void
     {
         foreach ($plan->actions as $action) {
-            $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources);
+            $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources, targets: $targets);
         }
     }
 
@@ -24,7 +24,7 @@ final readonly class AgentPlanArgumentConstraints
      * Malformed schemas and other plan errors still fail closed. No value is rewritten.
      * @param list<string> $completedActionIds
      */
-    public function independentValidBranches(AgentPlan $plan, array $tools, array $completedActionIds = [], array $identifierSources = []): AgentPlan
+    public function independentValidBranches(AgentPlan $plan, array $tools, array $completedActionIds = [], array $identifierSources = [], array $targets = []): AgentPlan
     {
         $kept = $rejected = [];
         $rejectionCodes = [];
@@ -40,9 +40,9 @@ final readonly class AgentPlanArgumentConstraints
             $code = $rejectedDependency === [] ? null : $rejectionCodes[reset($rejectedDependency)];
             if ($code === null) {
                 try {
-                    $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources);
+                    $this->validateArguments($tools[$action->tool], $action->arguments, allowReferences: true, identifierSources: $identifierSources, targets: $targets);
                 } catch (AgentPlanValidationException $exception) {
-                    if (! in_array($exception->validationCode, ['input_pattern_mismatch', 'knowledge_query_required'], true)) {
+                    if (! in_array($exception->validationCode, ['input_pattern_mismatch', 'knowledge_query_required', 'lookup_identifier_required'], true)) {
                         throw $exception;
                     }
                     $code = $exception->validationCode === 'input_pattern_mismatch'
@@ -57,8 +57,9 @@ final readonly class AgentPlanArgumentConstraints
             }
         }
         if ($kept === [] || $rejected === []) {
-            throw new AgentPlanValidationException(in_array('knowledge_query_required', $rejectionCodes, true)
-                ? 'knowledge_query_required' : 'input_pattern_mismatch', 'No independent valid branch remains after argument checks.');
+            $code = in_array('knowledge_query_required', $rejectionCodes, true) ? 'knowledge_query_required'
+                : (in_array('lookup_identifier_required', $rejectionCodes, true) ? 'lookup_identifier_required' : 'input_pattern_mismatch');
+            throw new AgentPlanValidationException($code, 'No independent valid branch remains after argument checks.');
         }
 
         // Reparse the reduced graph, including all dependency checks and fresh estimates.
@@ -69,7 +70,7 @@ final readonly class AgentPlanArgumentConstraints
         return new AgentPlan($validated->decision, $validated->actions, $validated->estimate, $rejected, $rejectionCodes);
     }
 
-    public function validateArguments(AgentToolDefinition $tool, array $arguments, bool $allowReferences = false, array $identifierSources = []): void
+    public function validateArguments(AgentToolDefinition $tool, array $arguments, bool $allowReferences = false, array $identifierSources = [], array $targets = []): void
     {
         if ($tool->name === 'search_knowledge_base' && $tool->kind === 'knowledge') {
             $query = $arguments['query'] ?? null;
@@ -82,6 +83,7 @@ final readonly class AgentPlanArgumentConstraints
         if ($tool->kind !== 'api') {
             return;
         }
+        $this->requireTargetFilter($tool, $arguments, $targets);
         foreach ($tool->inputSchema['properties'] ?? [] as $field => $definition) {
             if (! is_array($definition) || ! is_string($definition['pattern'] ?? null)
                 || ! array_key_exists($field, $arguments)) {
@@ -105,6 +107,35 @@ final readonly class AgentPlanArgumentConstraints
                 throw new AgentPlanValidationException('input_pattern_mismatch',
                     "Identifier [{$value}] for [{$tool->name}.{$field}] was not observed in the original request or authorized source content. Never derive or rewrite a target identifier. Use an exact observed value or remove this action, preserving independent valid actions.");
             }
+        }
+    }
+
+    private function requireTargetFilter(AgentToolDefinition $tool, array $arguments, array $targets): void
+    {
+        if ($targets === [] || ! $tool->readOnly) {
+            return;
+        }
+        $compatible = [];
+        foreach ($tool->metadata['identity_fields'] ?? [] as $field) {
+            $input = $tool->inputSchema['properties'][$field] ?? [];
+            if (($input['type'] ?? null) !== 'string') {
+                continue;
+            }
+            // A parsed dependency or another explicit value can identify the
+            // same record via a connector's alternate identifier.
+            if (isset($arguments[$field]) && $arguments[$field] !== '' && $arguments[$field] !== []) {
+                return;
+            }
+            foreach ($targets as $target) {
+                if (is_string($target) && $this->schema->validate($target, (object) array_intersect_key($input,
+                    array_flip(['type', 'pattern'])))->isValid()) {
+                    $compatible[$field][] = $target;
+                }
+            }
+        }
+        if ($compatible !== []) {
+            throw new AgentPlanValidationException('lookup_identifier_required',
+                "Tool [{$tool->name}] needs an exact record filter for this lookup. Use one compatible field and value from ".json_encode($compatible).'.');
         }
     }
 }

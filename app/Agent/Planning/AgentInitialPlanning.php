@@ -52,17 +52,12 @@ final readonly class AgentInitialPlanning
                 || ! is_array($proposal['actions'] ?? null) || ! array_is_list($proposal['actions'])) {
                 throw new \UnexpectedValueException('Invalid combined plan shape.');
             }
-            foreach ($proposal['actions'] as &$action) {
+            foreach ($proposal['actions'] as $action) {
                 if (! is_array($action) || array_diff(array_keys($action), ['id', 'tool', 'arguments_json', 'depends_on', 'purpose']) !== []
                     || ! is_string($action['arguments_json'] ?? null)) {
                     throw new \UnexpectedValueException('Invalid combined plan action.');
                 }
-                $arguments = json_decode($action['arguments_json'], false, 512, JSON_THROW_ON_ERROR);
-                if (! $arguments instanceof \stdClass) throw new \UnexpectedValueException('Tool arguments must be an object.');
-                $action['arguments'] = json_decode($action['arguments_json'], true, 512, JSON_THROW_ON_ERROR);
-                unset($action['arguments_json']);
             }
-            unset($action);
             $proposal = (new AgentPlanActionIdNormalizer)->normalize($proposal, []);
             $plan = app(AgentPlanParser::class)->parse($proposal, $tools, (int) config('agent.planner.max_actions_per_plan', 20));
             // An interpretation is not source evidence; research cannot finish
@@ -71,8 +66,10 @@ final readonly class AgentInitialPlanning
                 throw new AgentPlanValidationException('initial_observation_required', 'Research requires an initial observation.');
             }
             $guard = app(AgentIdentifierSources::class);
+            $intent = \App\Services\Chat\QuestionUnderstanding::fromArray($run->result_json['question_understanding'] ?? []);
             app(AgentPlanArgumentConstraints::class)->validate($plan, $tools,
-                $guard->required($tools) ? $guard->forRun($run, $evidence) : []);
+                $guard->required($tools) ? $guard->forRun($run, $evidence) : [],
+                $run->usesSessionEvidence() ? $intent->currentTargetIdentifiers() : []);
             app(AgentLiveSourceCoverage::class)->validate((string) data_get($run->input_json, 'question'), $plan, $tools, []);
             return $plan;
         } catch (\UnexpectedValueException|\JsonException $exception) {
