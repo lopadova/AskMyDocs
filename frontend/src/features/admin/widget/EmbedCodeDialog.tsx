@@ -186,8 +186,8 @@ export function EmbedCodeDialog({
         if (resolvedBase) {
             cfg.push(`    apiBase: '${jsString(resolvedBase)}',`);
         }
-        if (userAuthEnabled && userTokenUrl.trim()) {
-            cfg.push(`    userTokenUrl: '${jsString(userTokenUrl.trim())}',`);
+        if (userAuthEnabled) {
+            cfg.push(`    userTokenUrl: '${jsString(userTokenUrl.trim() || '/api/askmydocs/widget-user-token')}',`);
         }
         if (mode === 'inline') {
             // Inline chat mounts into a host container; both lines are required.
@@ -304,17 +304,6 @@ export function EmbedCodeDialog({
         "        ->header('Cache-Control', 'no-store');",
         "})->middleware('auth');",
     ].join('\n');
-    const authenticatedBrowserSnippet = [
-        '<script>',
-        '  window.AskMyDocsWidget = {',
-        `    key: '${jsString(publicKey)}',`,
-        ...(resolvedBase ? [`    apiBase: '${jsString(resolvedBase)}',`] : []),
-        `    userTokenUrl: '${jsString(userTokenUrl.trim() || '/api/askmydocs/widget-user-token')}',`,
-        '  };',
-        '</script>',
-        `<script src="${scriptSrc}" defer></script>`,
-    ].join('\n');
-
     const proxyConfigSnippet = [
         '<script>',
         '  window.AskMyDocsWidget = {',
@@ -736,7 +725,7 @@ export function EmbedCodeDialog({
                                     3. Browser bootstrap
                                 </span>
                                 <CodeBlock
-                                    code={authenticatedBrowserSnippet}
+                                    code={snippet}
                                     lang="HTML"
                                     snippetTestId="admin-widget-embed-auth-browser"
                                     copyTestId="admin-widget-embed-auth-browser-copy"

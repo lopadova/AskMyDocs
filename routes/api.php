@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
 use App\Http\Controllers\Api\Admin\McpTenantTokenController;
 use App\Http\Controllers\Api\Admin\WidgetKeyAdminController;
+use App\Http\Controllers\Api\Admin\WidgetProjectSetupController;
 use App\Http\Controllers\Api\Admin\WidgetSessionAdminController;
 use App\Http\Controllers\Api\Admin\McpToolCallAuditController;
 use App\Http\Controllers\Api\Admin\RoleController;
@@ -1430,27 +1431,34 @@ Route::middleware([
     'tenant.authorize',
     'can:manageWidgetKeys',
 ])
-    ->prefix('admin/widget-keys')
+    ->prefix('admin')
     ->group(function () {
-        Route::get('/', [WidgetKeyAdminController::class, 'index'])
-            ->name('api.admin.widget-keys.index');
-        Route::post('/', [WidgetKeyAdminController::class, 'store'])
-            ->name('api.admin.widget-keys.store');
-        Route::patch('/{id}', [WidgetKeyAdminController::class, 'update'])
-            ->whereNumber('id')
-            ->name('api.admin.widget-keys.update');
-        Route::delete('/{id}', [WidgetKeyAdminController::class, 'destroy'])
-            ->whereNumber('id')
-            ->name('api.admin.widget-keys.destroy');
-        Route::post('/{id}/rotate', [WidgetKeyAdminController::class, 'rotate'])
-            ->whereNumber('id')
-            ->name('api.admin.widget-keys.rotate');
-        Route::post('/{id}/revoke', [WidgetKeyAdminController::class, 'revoke'])
-            ->whereNumber('id')
-            ->name('api.admin.widget-keys.revoke');
-        Route::post('/{id}/rotate-identity-secret', [WidgetKeyAdminController::class, 'rotateIdentitySecret'])
-            ->whereNumber('id')
-            ->name('api.admin.widget-keys.rotate-identity-secret');
+        Route::get('widget-setups', [WidgetProjectSetupController::class, 'index'])->name('api.admin.widget-setups.index');
+        Route::post('widget-setups', [WidgetProjectSetupController::class, 'store'])->name('api.admin.widget-setups.store');
+        Route::get('widget-setups/{id}', [WidgetProjectSetupController::class, 'show'])->whereNumber('id')->name('api.admin.widget-setups.show');
+        Route::post('widget-setups/{id}/key', [WidgetProjectSetupController::class, 'issueKey'])->whereNumber('id')->name('api.admin.widget-setups.key');
+
+        Route::prefix('widget-keys')->group(function () {
+            Route::get('/', [WidgetKeyAdminController::class, 'index'])
+                ->name('api.admin.widget-keys.index');
+            Route::post('/', [WidgetKeyAdminController::class, 'store'])
+                ->name('api.admin.widget-keys.store');
+            Route::patch('/{id}', [WidgetKeyAdminController::class, 'update'])
+                ->whereNumber('id')
+                ->name('api.admin.widget-keys.update');
+            Route::delete('/{id}', [WidgetKeyAdminController::class, 'destroy'])
+                ->whereNumber('id')
+                ->name('api.admin.widget-keys.destroy');
+            Route::post('/{id}/rotate', [WidgetKeyAdminController::class, 'rotate'])
+                ->whereNumber('id')
+                ->name('api.admin.widget-keys.rotate');
+            Route::post('/{id}/revoke', [WidgetKeyAdminController::class, 'revoke'])
+                ->whereNumber('id')
+                ->name('api.admin.widget-keys.revoke');
+            Route::post('/{id}/rotate-identity-secret', [WidgetKeyAdminController::class, 'rotateIdentitySecret'])
+                ->whereNumber('id')
+                ->name('api.admin.widget-keys.rotate-identity-secret');
+        });
     });
 
 /*

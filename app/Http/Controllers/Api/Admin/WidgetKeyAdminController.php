@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
-use App\Models\Project;
 use App\Models\User;
 use App\Models\WidgetKey;
 use App\Services\Admin\ProjectCatalogService;
@@ -14,6 +13,7 @@ use App\Services\Widget\Exceptions\WidgetIdentityCredentialNotFound;
 use App\Services\Widget\Exceptions\WidgetIdentityCredentialUnauthorized;
 use App\Services\Widget\WidgetIdentityCredentialService;
 use App\Services\Widget\WidgetIntroService;
+use App\Services\Widget\WidgetKeyIssuer;
 use App\Services\Widget\WidgetThemeService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +41,7 @@ final class WidgetKeyAdminController extends Controller
         private readonly WidgetIntroService $intro,
         private readonly WidgetIdentityCredentialService $identityCredentials,
         private readonly ProjectCatalogService $projects,
+        private readonly WidgetKeyIssuer $issuer,
     ) {}
 
     /** List all widget keys for the current tenant. */
@@ -91,88 +92,18 @@ final class WidgetKeyAdminController extends Controller
             // farebbe risolvere zero tool → degrado/errore a runtime.
             'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
+            'data_agent_enabled' => ['nullable', 'boolean'],
             'user_auth_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme') + $this->intro->rules('intro'));
 
-        $introConfig = array_key_exists('intro', $validated)
-            ? $this->intro->sanitize(is_array($validated['intro']) ? $validated['intro'] : [])
-            : null;
-        if ($introConfig !== null) {
-            $this->intro->assertUsable($introConfig);
-        }
+        $issued = $this->issuer->issue($tenantId, $validated, $this->actor($request));
 
-        $plainSecret = 'sk_'.Str::random(40);
-        $publicKey = 'pk_'.Str::random(32);
-
-        [$row, $identitySecret] = DB::transaction(function () use (
-            $tenantId,
-            $validated,
-            $publicKey,
-            $plainSecret,
-            $request,
-            $introConfig,
-        ): array {
-            // Serialize widget creation with registry deletion. A first-class
-            // project has a lockable row shared with ProjectController::destroy;
-            // legacy catalogue entries intentionally have no registry row, so
-            // they remain valid through the historical document/membership/key
-            // sources. Re-checking the catalogue inside the transaction closes
-            // the window between request validation and the insert.
-            Project::query()
-                ->forTenant($tenantId)
-                ->where('project_key', $validated['project_key'])
-                ->lockForUpdate()
-                ->first(['id']);
-
-            if (! $this->projects->contains($validated['project_key'])) {
-                throw ValidationException::withMessages([
-                    'project_key' => ['The selected project is not available for this tenant.'],
-                ]);
-            }
-
-            // Identity auth starts disabled: the shared service below is the
-            // only writer for user_auth_enabled, its hash and its version.
-            $row = WidgetKey::query()->create([
-                'tenant_id' => $tenantId,
-                'project_key' => $validated['project_key'],
-                'public_key' => $publicKey,
-                // #4 — Hash::make() respects config('hashing.driver').
-                'secret_hash' => Hash::make($plainSecret),
-                'label' => $validated['label'],
-                'allowed_origins' => $validated['allowed_origins'] ?? [],
-                'rate_limit' => $validated['rate_limit'] ?? 60,
-                'skill' => $validated['skill'] ?? 'askmydocs-assistant@1',
-                'host_tools_enabled' => $validated['host_tools_enabled'] ?? false,
-                'is_active' => true,
-                // Tema esplicito solo se fornito; altrimenti null → il widget
-                // risolve i default (snippet di create resta minimale).
-                'theme_config' => array_key_exists('theme', $validated)
-                    ? $this->theme->sanitize($validated['theme'])
-                    : null,
-                'intro_config' => $introConfig,
-            ]);
-
-            if (! ($validated['user_auth_enabled'] ?? false)) {
-                return [$row, null];
-            }
-
-            $result = $this->identityCredentials->enable(
-                keyId: (int) $row->id,
-                tenantId: $tenantId,
-                expectedVersion: 0,
-                actor: $this->actor($request),
-                surface: WidgetIdentityCredentialService::SURFACE_HTTP,
-            );
-
-            return [$result->key, $result->plainSecret];
-        });
-
-        // Return the secret ONCE — never again available after this response.
+        // Return the secrets once, on creation.
         return response()->json([
-            'data' => $this->serialize($row),
-            'plain_secret' => $plainSecret,
-            'public_key' => $publicKey,
-            'identity_plain_secret' => $identitySecret,
+            'data' => $this->serialize($issued['key']),
+            'plain_secret' => $issued['plain_secret'],
+            'public_key' => $issued['key']->public_key,
+            'identity_plain_secret' => $issued['identity_plain_secret'],
         ], 201);
     }
 
@@ -200,6 +131,7 @@ final class WidgetKeyAdminController extends Controller
             // #15 — formato skill del registry.
             'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
+            'data_agent_enabled' => ['nullable', 'boolean'],
             'user_auth_enabled' => ['nullable', 'boolean'],
             'identity_credential_version' => [
                 'required_with:user_auth_enabled',
@@ -401,6 +333,7 @@ final class WidgetKeyAdminController extends Controller
             'rate_limit' => $row->rate_limit,
             'skill' => $row->skill,
             'host_tools_enabled' => $row->host_tools_enabled,
+            'data_agent_enabled' => $row->data_agent_enabled,
             'user_auth_enabled' => $row->user_auth_enabled,
             'identity_credential_version' => $row->identity_credential_version,
             'is_active' => $row->is_active,

@@ -1,11 +1,13 @@
 import { useUiTranslation } from "../../../lib/ui-locale";
 import { useState } from 'react';
+import { Button } from '../../../components/Button';
 import { useAuthStore } from '../../../lib/auth-store';
 import { WidgetKeysView } from './WidgetKeysView';
 import { WidgetSessionsView } from './WidgetSessionsView';
 import { WidgetIntegrationGuideView } from './WidgetIntegrationGuideView';
+import { WidgetProjectSetupView } from './WidgetProjectSetupView';
 
-type Tab = 'keys' | 'sessions' | 'guide';
+type Tab = 'keys' | 'sessions' | 'guide' | 'setup';
 
 /**
  * M6.4+M6.5 — Widget admin container with tabs for Keys, Sessions and the
@@ -91,6 +93,20 @@ export function WidgetAdminView() {
                     >
                         {translateInterface("Integration")}</button>
                 )}
+                {isSuperAdmin && (
+                    <Button
+                        size="sm"
+                        variant={tab === 'setup' ? 'secondary' : 'quiet'}
+                        className="my-1"
+                        data-testid="admin-widget-tab-setup"
+                        role="tab"
+                        aria-selected={tab === 'setup'}
+                        aria-controls="admin-widget-panel-setup"
+                        onClick={() => setTab('setup')}
+                    >
+                        {translateInterface('Widget setup')}
+                    </Button>
+                )}
             </nav>
 
             {isSuperAdmin && (
@@ -119,6 +135,11 @@ export function WidgetAdminView() {
                     hidden={tab !== 'guide'}
                 >
                     {tab === 'guide' && <WidgetIntegrationGuideView />}
+                </div>
+            )}
+            {isSuperAdmin && (
+                <div id="admin-widget-panel-setup" role="tabpanel" aria-labelledby="admin-widget-tab-setup" hidden={tab !== 'setup'}>
+                    {tab === 'setup' && <WidgetProjectSetupView onManageKeys={() => setTab('keys')} />}
                 </div>
             )}
         </div>
