@@ -92,7 +92,7 @@ final readonly class ConsentScope
     private function user(Request $request): User
     {
         $user = $request->user('web');
-        abort_unless($user instanceof User && $user->is_active && $user->email_verified_at !== null, 403);
+        abort_unless($user instanceof User && $user->is_active, 403);
 
         return $user;
     }

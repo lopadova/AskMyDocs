@@ -14,6 +14,7 @@ use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Pact\Native\ChatHandler;
 use App\Pact\Native\ClientServiceProvider;
+use App\Pact\Native\ConsentScope;
 use App\Pact\Native\Subject;
 use App\Pact\Native\SubjectResolver;
 use App\Pact\Native\TaskAccess;
@@ -25,7 +26,9 @@ use Pact\Pact;
 use Pact\PactError;
 use PactLaravel\Models\Connection;
 use PactLaravel\Models\Member;
+use PactLaravel\Models\OAuthClient;
 use PactLaravel\Models\Task;
+use PactLaravel\PactServiceProvider;
 use PactLaravel\Runtime\TaskService;
 use PactLaravel\Runtime\Worker;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
@@ -55,6 +58,47 @@ final class NativeClientTest extends TestCase
         ]);
         $this->app->register(ClientServiceProvider::class);
         Queue::fake();
+    }
+
+    public function test_an_active_account_can_select_a_project_without_email_verification(): void
+    {
+        config(['pact.auth.middleware' => [ConsentScope::class]]);
+        $this->app->register(PactServiceProvider::class);
+        $this->app['router']->getRoutes()->refreshNameLookups();
+
+        $subject = $this->subject();
+        $user = User::query()->findOrFail($subject->user_id);
+        $user->forceFill(['email_verified_at' => null])->save();
+        $client = OAuthClient::query()->create([
+            'oauth_client_id' => (string) Str::uuid(),
+            'master_url' => 'https://master.test',
+            'callback_url' => 'https://master.test/pact/oauth/callback',
+        ]);
+        $parameters = [
+            'client_id' => $client->oauth_client_id,
+            'redirect_uri' => $client->callback_url,
+            'response_type' => 'code',
+            'state' => Str::random(40),
+            'code_challenge' => str_repeat('a', 43),
+            'code_challenge_method' => 'S256',
+        ];
+
+        $this->actingAsWithoutTenant($user, 'web');
+        $authorize = route('pact.oauth.authorize', $parameters);
+        $this->get($authorize)->assertOk()->assertSee($subject->project_key);
+        $this->post(route('pact.oauth.select-project'), [
+            'project' => hash('sha256', $subject->tenant_id."\0".$subject->project_key),
+        ])->assertRedirect($authorize)->assertSessionHas('pact.client.selected_subject.id', (string) $subject->id);
+        $this->assertNotNull(app(SubjectResolver::class)->find((string) $subject->id));
+
+        $this->get(route('pact.oauth.authorize', [
+            ...$parameters,
+            'redirect_uri' => 'https://master.test/other',
+        ]))->assertForbidden();
+
+        $user->forceFill(['is_active' => false])->save();
+        $this->get($authorize)->assertForbidden();
+        $this->assertNull(app(SubjectResolver::class)->find((string) $subject->id));
     }
 
     public function test_diagnostic_ping_does_not_enqueue_an_askmydocs_turn(): void

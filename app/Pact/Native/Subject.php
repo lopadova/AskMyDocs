@@ -28,7 +28,7 @@ final class Subject extends Model implements Identity
     public function authorizedUser(): ?User
     {
         $user = User::query()->find($this->user_id);
-        if ($user === null || $user->email_verified_at === null || in_array($this->project_key, ['', '*'], true)
+        if ($user === null || in_array($this->project_key, ['', '*'], true)
             || ! app(OAuthAccessPolicy::class)->canUseTenant($user, $this->tenant_id)
             || ! ProjectMembership::query()->forTenant($this->tenant_id)->where('user_id', $this->user_id)
                 ->where('project_key', $this->project_key)->whereIn('role', self::PROJECT_ROLES)->exists()) {
