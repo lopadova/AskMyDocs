@@ -64,8 +64,13 @@ final class AgentRun extends Model
 
     public function usesSessionEvidence(): bool
     {
-        return $this->channel === 'chat' && $this->conversation_id !== null && $this->user_id !== null
+        return $this->channel === 'chat' && ($this->conversation_id !== null || $this->isConsoleContext()) && $this->user_id !== null
             && ($this->input_json['session_evidence'] ?? false) === true;
+    }
+
+    public function isConsoleContext(): bool
+    {
+        return $this->conversation_id === null && ($this->input_json['console_context'] ?? false) === true;
     }
 
     public function usesConcurrentSession(): bool

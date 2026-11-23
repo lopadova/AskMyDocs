@@ -15,6 +15,9 @@ final readonly class AgentSessionEvidence
     public function load(AgentRun $run, AgentExecutionContext $context): array
     {
         $collection = ['documents' => [], 'api_tools' => []];
+        if ($run->conversation_id === null) {
+            return $collection;
+        }
         $remaining = (int) config('agent.session_evidence.previous_bytes', 262144);
         $previousRuns = AgentRun::query()->forTenant($run->tenant_id)
             ->where('channel', 'chat')->where('conversation_id', $run->conversation_id)

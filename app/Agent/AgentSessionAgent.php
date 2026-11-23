@@ -54,9 +54,12 @@ final readonly class AgentSessionAgent
                 $run->result_json['question_understanding'] ?? null, durableRunId: $run->run_id,
                 recoverCollectedEvidence: $collected || ($sources->stopReason === 'context_answer_attempt' && $sources->evidence->hasEvidence()));
         } catch (AgentDraftUnavailable $exception) {
-            app(AgentRunControl::class)->ensureActive($run);
+            if (! $run->isConsoleContext() || ($run->result_json['phase'] ?? null) !== 'context') {
+                app(AgentRunControl::class)->ensureActive($run);
+            }
             $safe = app(AgentEvidenceFactory::class)->empty();
-            $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $sources->evidence->jsonSerialize()));
+            $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $sources->evidence->jsonSerialize(),
+                allowDocumentExpansion: ! $run->isConsoleContext()));
             $sources = new AgentLoopOutcome('partial', $safe, $sources->completedActions, 'synthesis_unavailable');
             $answer = app(CollectedEvidenceAnswer::class)->recover($run, $safe->jsonSerialize(), $context->locale, $exception);
         }

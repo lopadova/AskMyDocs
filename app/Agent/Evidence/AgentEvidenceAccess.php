@@ -20,7 +20,8 @@ final readonly class AgentEvidenceAccess
         private AgentRetrievalFiltersFactory $filters, private AgentLiveSourceSelection $selection,
         private WidgetPiiMasker $masker) {}
 
-    public function current(AgentRun $run, AgentExecutionContext $context, array $evidence, bool $historicalRecap = false): array
+    public function current(AgentRun $run, AgentExecutionContext $context, array $evidence, bool $historicalRecap = false,
+        bool $allowDocumentExpansion = true): array
     {
         $context->assertMatches($run);
         $filters = $this->filters->forRun($run, $context);
@@ -58,14 +59,15 @@ final readonly class AgentEvidenceAccess
                     $chunks[] = [...$chunk, 'source_title' => $this->masker->maskString($source['title']),
                         'verified_identifier_hashes' => array_map(fn ($id) => hash('sha256', $id), $matches),
                         'complete_source' => ($source['complete_source'] ?? false) && trim($current) === trim($original)];
-                    if ((($source['complete_source'] ?? false) || ($chunk['session_document_context'] ?? false)) && $current !== $original) {
+                    if ($allowDocumentExpansion && (($source['complete_source'] ?? false) || ($chunk['session_document_context'] ?? false))
+                        && $current !== $original) {
                         // A fresh expanded read is separate evidence, never a new
                         // interpretation of the persisted excerpt's old hash.
                         $chunks[] = [...end($chunks), 'content' => $current,
                             'evidence_hash' => hash('sha256', $current), 'complete_source' => (bool) ($source['complete_source'] ?? false),
                             'coverage' => $source['coverage'] ?? ($chunk['coverage'] ?? []), 'source_chunk_ids' => $source['chunk_ids']];
                     }
-                } elseif ($current !== '' && ($source['evidence_origin'] ?? null) === 'verified_email_original') {
+                } elseif ($allowDocumentExpansion && $current !== '' && ($source['evidence_origin'] ?? null) === 'verified_email_original') {
                     // The reader has checked the immutable email's original hash.
                     // An indexed/card excerpt may differ from that original. Discard
                     // its old hash and facts; authorize only this freshly read text.
@@ -94,8 +96,8 @@ final readonly class AgentEvidenceAccess
             $sourceRun = $execution?->run;
             $sameConversation = $sourceRun !== null && $sourceRun->tenant_id === $run->tenant_id
                 && $sourceRun->project_key === $run->project_key && $sourceRun->user_id === $run->user_id
-                && ($run->conversation_id !== null ? $sourceRun->conversation_id === $run->conversation_id
-                    : ($run->widget_session_id !== null && $sourceRun->widget_session_id === $run->widget_session_id));
+                && ($sourceRun->id === $run->id || ($run->conversation_id !== null ? $sourceRun->conversation_id === $run->conversation_id
+                    : ($run->widget_session_id !== null && $sourceRun->widget_session_id === $run->widget_session_id)));
             $definition = $allowed[$tool['tool'] ?? ''] ?? null;
             $researchChild = $sourceRun !== null
                 && in_array($sourceRun->id, data_get($run->result_json, 'research_runs', []), true)

@@ -20,6 +20,12 @@ final readonly class AgentTurnContextBuilder
     /** @return array<string, mixed> */
     public function build(AgentRun $run, ?string $mcpAppContext = null): array
     {
+        if ($run->isConsoleContext()) {
+            $dialogue = $this->redactor->redact((array) data_get($run->input_json, 'console_dialogue', []));
+
+            return $dialogue === [] ? [] : ['reasoning' => ['dialogue' => $dialogue],
+                'original_question_context' => ['dialogue' => $dialogue]];
+        }
         $memory = app(\App\Services\Chat\Reasoning\ConversationReasoning::class);
         $owner = $memory->runOwner($run);
         if ($memory->enabled() && $owner !== null) {
