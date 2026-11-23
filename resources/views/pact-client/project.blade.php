@@ -12,6 +12,9 @@
     <section class="pact-panel" aria-labelledby="pact-project-title">
         <h2 id="pact-project-title">Progetto autorizzato</h2>
         <div class="pact-origin"><span class="pact-hint">Coordinatore richiedente</span><span class="pact-domain">{{ $client->master_url }}</span></div>
+        @if(session('pact.client.reselect'))
+            <p class="pact-notice" role="status">Scegli di nuovo il progetto e conferma il consenso per continuare.</p>
+        @endif
         @if($teams === [])
             <p class="pact-notice" role="status">Il tuo account non ha progetti disponibili per il collegamento.</p>
         @else
