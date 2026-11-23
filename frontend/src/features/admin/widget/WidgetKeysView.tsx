@@ -40,6 +40,7 @@ interface WidgetKeyRow {
     skill: string;
     /** Operational switch: the host app may provide tools to the widget (HTP). */
     host_tools_enabled: boolean;
+    data_agent_enabled?: boolean;
     user_auth_enabled: boolean;
     identity_credential_version: number;
     is_active: boolean;
@@ -298,10 +299,10 @@ export function WidgetKeysView() {
 
     // Edit path for the operational host-tools switch (PATCH host_tools_enabled).
     // Keeps the value coupled to the orchestrator double-gate (skill AND key).
-    const toggleHostTools = useMutation({
-        mutationFn: async (vars: { id: number; enabled: boolean }) => {
+    const toggleCapability = useMutation({
+        mutationFn: async (vars: { id: number; enabled: boolean; field: 'host_tools_enabled' | 'data_agent_enabled' }) => {
             await api.patch(`/api/admin/widget-keys/${vars.id}`, {
-                host_tools_enabled: vars.enabled,
+                [vars.field]: vars.enabled,
             });
         },
         onSuccess: async () => {
@@ -772,15 +773,15 @@ export function WidgetKeysView() {
             )}
 
             {/* Host-tools toggle failure (R14: never fail silently) */}
-            {toggleHostTools.isError && (
+            {toggleCapability.isError && (
                 <Alert
                     variant="destructive"
-                    data-testid="admin-widget-keys-host-tools-error"
+                    data-testid={toggleCapability.variables.field === 'host_tools_enabled' ? 'admin-widget-keys-host-tools-error' : 'admin-widget-keys-data-agent-error'}
                 >
                     <Ban aria-hidden />
-                    <AlertTitle>{translateInterface("Could not update host tools.")}</AlertTitle>
+                    <AlertTitle>{translateInterface(toggleCapability.variables.field === 'host_tools_enabled' ? 'Could not update host tools.' : 'Could not update data agent access.')}</AlertTitle>
                     <AlertDescription>
-                        {extractApiError(toggleHostTools.error)}
+                        {extractApiError(toggleCapability.error)}
                     </AlertDescription>
                 </Alert>
             )}
@@ -835,6 +836,7 @@ export function WidgetKeysView() {
                                 <th>{translateInterface("Origins")}</th>
                                 <th>{translateInterface("Rate")}</th>
                                 <th>{translateInterface("Host tools")}</th>
+                                <th>{translateInterface('Data agent')}</th>
                                 <th>{translateInterface("User auth")}</th>
                                 <th>{translateInterface("Status")}</th>
                                 <th>{translateInterface("Sessions")}</th>
@@ -886,11 +888,12 @@ export function WidgetKeysView() {
                                                 type="checkbox"
                                                 data-testid={`admin-widget-keys-${key.id}-host-tools-toggle`}
                                                 checked={key.host_tools_enabled}
-                                                disabled={toggleHostTools.isPending}
+                                                disabled={toggleCapability.isPending}
                                                 onChange={(e) =>
-                                                    toggleHostTools.mutate({
+                                                    toggleCapability.mutate({
                                                         id: key.id,
                                                         enabled: e.target.checked,
+                                                        field: 'host_tools_enabled',
                                                     })
                                                 }
                                                 className="size-4 accent-[var(--accent-a)]"
@@ -898,6 +901,20 @@ export function WidgetKeysView() {
                                             <span className="text-muted-foreground text-xs">
                                                 {key.host_tools_enabled ? translateInterface("On") : translateInterface("Off")}
                                             </span>
+                                        </label>
+                                    </td>
+                                    <td>
+                                        <label className="flex items-center gap-2" title={translateInterface('Allow this widget to query the configured API connectors.')}>
+                                            <input
+                                                type="checkbox"
+                                                aria-label={translateInterface('Data agent access for {label}', { label: key.label })}
+                                                data-testid={`admin-widget-keys-${key.id}-data-agent-toggle`}
+                                                checked={key.data_agent_enabled ?? true}
+                                                disabled={toggleCapability.isPending}
+                                                onChange={(event) => toggleCapability.mutate({ id: key.id, enabled: event.target.checked, field: 'data_agent_enabled' })}
+                                                className="size-4 accent-[var(--accent-a)]"
+                                            />
+                                            <span className="text-muted-foreground text-xs">{translateInterface((key.data_agent_enabled ?? true) ? 'On' : 'Off')}</span>
                                         </label>
                                     </td>
                                     <td>

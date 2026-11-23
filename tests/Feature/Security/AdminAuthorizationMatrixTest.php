@@ -156,6 +156,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
+            '/api/admin/widget-setups' => ['super-admin'],                   // manageWidgetKeys
             '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions
 
             // ── Authenticated reader surfaces — NO role gate by design ──

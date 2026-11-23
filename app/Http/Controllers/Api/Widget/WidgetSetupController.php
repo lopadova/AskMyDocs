@@ -57,7 +57,7 @@ final class WidgetSetupController extends Controller
             ], 404);
         }
 
-        $activeApiTools = (bool) config('connector-api.chat_tools.enabled', true)
+        $activeApiTools = $key->data_agent_enabled && (bool) config('connector-api.chat_tools.enabled', true)
             ? $apiTools->activeToolsForTenant((string) $key->tenant_id, (string) $key->project_key)
             : [];
 

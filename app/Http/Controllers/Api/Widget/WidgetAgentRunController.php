@@ -42,6 +42,9 @@ final class WidgetAgentRunController extends Controller
         AgentExecutionContextFactory $contexts,
         AgentRunDispatcher $runs,
     ): JsonResponse {
+        $key = $this->key($request);
+        abort_unless($key->data_agent_enabled, 403);
+
         $data = $request->validate([
             'snapshot' => ['required', 'array'],
             'message' => ['required', 'string', 'max:'.(int) config('widget.max_message_length', 10000)],
@@ -56,7 +59,6 @@ final class WidgetAgentRunController extends Controller
             ], 422);
         }
         $snapshot = $snapshots->enforceSensitiveNull($snapshots->sanitizeSnapshot($data['snapshot']));
-        $key = $this->key($request);
         $identity = $this->identity($request);
         $locale = $this->locale($request, $snapshot);
         $session = $orchestrator->openSession(
@@ -76,6 +78,8 @@ final class WidgetAgentRunController extends Controller
         AgentExecutionContextFactory $contexts,
         AgentRunDispatcher $runs,
     ): JsonResponse {
+        abort_unless($this->key($request)->data_agent_enabled, 403);
+
         $data = $request->validate([
             'message' => ['required', 'string', 'max:'.(int) config('widget.max_message_length', 10000)],
         ]);
@@ -143,6 +147,8 @@ final class WidgetAgentRunController extends Controller
         AgentRunAccess $access,
         AgentRunControl $control,
     ): JsonResponse {
+        abort_unless($this->key($request)->data_agent_enabled, 403);
+
         $data = $request->validate([
             'logical_extension' => ['sometimes', 'integer', 'min:0'],
             'physical_extension' => ['required', 'integer', 'min:1'],

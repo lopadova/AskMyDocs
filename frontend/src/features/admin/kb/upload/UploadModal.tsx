@@ -52,6 +52,8 @@ export interface UploadModalProps {
     seed: { projectKey: string | null; subPath: string; files: File[] } | null;
     defaultProject: string | null;
     projectOptions: string[];
+    projectLocked?: boolean;
+    resume?: UploadBatchResponse;
     onClose: () => void;
     onCommitted: () => void;
 }
@@ -86,15 +88,19 @@ function errMessage(err: unknown, files: File[] = []): string {
     return data?.message ?? error?.message ?? translateUi('Something went wrong.');
 }
 
-export function UploadModal({ seed, defaultProject, projectOptions, onClose, onCommitted }: UploadModalProps): ReactNode {
+export function UploadModal({ seed, defaultProject, projectOptions, projectLocked, resume, onClose, onCommitted }: UploadModalProps): ReactNode {
     const { t: translateInterface } = useUiTranslation();
     const accept = useAuthStore((s) => acceptAttribute(s.kbUploadAcceptedExtensions));
-    const [phase, setPhase] = useState<Phase>('selecting');
-    const [projectKey, setProjectKey] = useState(seed?.projectKey ?? defaultProject ?? '');
-    const [subPath, setSubPath] = useState(seed?.subPath ?? '');
+    const [phase, setPhase] = useState<Phase>(() => {
+        if (!resume) return 'selecting';
+        if (resume.batch.status === 'staged') return 'review';
+        return isTerminalBatch(resume.batch) ? 'done' : 'progress';
+    });
+    const [projectKey, setProjectKey] = useState(resume?.batch.project_key ?? seed?.projectKey ?? defaultProject ?? '');
+    const [subPath, setSubPath] = useState(resume?.batch.sub_path ?? seed?.subPath ?? '');
     const [pickedFiles, setPickedFiles] = useState<File[]>(seed?.files ?? []);
-    const [batchId, setBatchId] = useState<string | null>(null);
-    const [staged, setStaged] = useState<UploadBatchResponse | null>(null);
+    const [batchId, setBatchId] = useState<string | null>(resume?.batch.id ?? null);
+    const [staged, setStaged] = useState<UploadBatchResponse | null>(resume ?? null);
     const transferController = useRef<AbortController | null>(null);
     const [transfer, setTransfer] = useState<TransferProgress>({ loaded: 0 });
     const [uploadStopped, setUploadStopped] = useState(false);
@@ -130,7 +136,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
             ? (progress.data?.items ?? staged?.items ?? [])
             : (staged?.items ?? []);
 
-    const counts = (phase === 'progress' || phase === 'done' ? progress.data?.batch.counts : staged?.batch.counts) ?? null;
+    const counts = (phase === 'progress' || phase === 'done' ? progress.data?.batch.counts : undefined) ?? staged?.batch.counts ?? null;
     const total = displayItems.length;
     const done = counts ? counts.succeeded + counts.failed : 0;
     const failed = counts ? counts.failed : 0;
@@ -319,7 +325,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                                     data-testid="kb-upload-project-select"
                                     aria-label="Target project"
                                     value={projectKey}
-                                    disabled={phase !== 'selecting'}
+                                    disabled={projectLocked || phase !== 'selecting'}
                                     onValueChange={(nextValue) => setProjectKey(nextValue)}
                                     style={fieldStyle}
                                 >

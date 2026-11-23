@@ -445,6 +445,14 @@ Under `/app/admin/widget` (React, `frontend/src/features/admin/widget/*`):
 | Embed code | super-admin | Copy-to-clipboard snippet plus authenticated-host-user setup when enabled. |
 | Sessions browser + detail | admin + super-admin (`viewWidgetSessions`) | Read-only session list + step replay (PII-masked). |
 
+### Set up a widget project
+
+Open **Widget → Widget setup → Set up a new widget**. Create a dedicated project and copy or download the documentation brief for the developers. The brief describes the intended audience, the topics to document and the Markdown and acceptance questions to deliver. Return to the saved setup when the documents are ready.
+
+Use **Documents** to review the upload and check indexing. The wizard requires at least one indexed document before issuing a key. The **Embed** step configures the allowed origins and layout, and includes the host token instructions when access requires a host login. Save the identity credential on the host server when it is issued.
+
+Wizard-created keys start with API data retrieval disabled. A super-admin can enable **Data agent** on the key to allow the configured API connectors. This uses the data agent's conversation path. It applies independently of the **Host tools** setting.
+
 ---
 
 ## 11. Database tables
