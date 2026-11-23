@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "617cb2ad7d96b6e06b4facdcb78f4399",
+    "content-hash": "49ead7c3715ce6324093d7eac4357427",
     "packages": [
         {
             "name": "agents-full-duplex/laravel-realtime-agent",
@@ -4008,16 +4008,16 @@
         },
         {
             "name": "pact-protocol/core",
-            "version": "v0.3.0",
+            "version": "v0.3.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/bramato/pact-php.git",
-                "reference": "3ad4cfd8061d806a1fa486b31578b4a47f7b66ac"
+                "reference": "cb01ad6efb85708fdd1d280a2c491e97e48a94f3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/bramato/pact-php/zipball/3ad4cfd8061d806a1fa486b31578b4a47f7b66ac",
-                "reference": "3ad4cfd8061d806a1fa486b31578b4a47f7b66ac",
+                "url": "https://api.github.com/repos/bramato/pact-php/zipball/cb01ad6efb85708fdd1d280a2c491e97e48a94f3",
+                "reference": "cb01ad6efb85708fdd1d280a2c491e97e48a94f3",
                 "shasum": ""
             },
             "require": {
@@ -4050,21 +4050,21 @@
                 "issues": "https://github.com/bramato/pact-php/issues",
                 "source": "https://github.com/bramato/pact-php"
             },
-            "time": "2026-11-22T10:20:05+00:00",
-            "published-time": "2026-11-22T12:35:58+00:00"
+            "time": "2026-11-23T23:20:15+00:00",
+            "published-time": "2026-11-23T23:20:20+00:00"
         },
         {
             "name": "pact-protocol/laravel",
-            "version": "v0.3.0",
+            "version": "v0.3.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/bramato/pact-laravel.git",
-                "reference": "98be4ebc2e2000afab11f7d7ade558da82f09093"
+                "reference": "170677e5aec924f3393b4564f19174e737d86613"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/bramato/pact-laravel/zipball/98be4ebc2e2000afab11f7d7ade558da82f09093",
-                "reference": "98be4ebc2e2000afab11f7d7ade558da82f09093",
+                "url": "https://api.github.com/repos/bramato/pact-laravel/zipball/170677e5aec924f3393b4564f19174e737d86613",
+                "reference": "170677e5aec924f3393b4564f19174e737d86613",
                 "shasum": ""
             },
             "require": {
@@ -4079,7 +4079,8 @@
                 "laravel/mcp": "^1.1",
                 "laravel/passport": "^13.7.6",
                 "pact-protocol/core": "^0.3",
-                "php": "^8.2"
+                "php": "^8.2",
+                "vlucas/phpdotenv": "^5.6.1"
             },
             "type": "library",
             "extra": {
@@ -4111,8 +4112,8 @@
                 "issues": "https://github.com/bramato/pact-laravel/issues",
                 "source": "https://github.com/bramato/pact-laravel"
             },
-            "time": "2026-11-22T10:20:06+00:00",
-            "published-time": "2026-11-22T12:36:10+00:00"
+            "time": "2026-11-23T23:20:28+00:00",
+            "published-time": "2026-11-23T23:20:33+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-api",

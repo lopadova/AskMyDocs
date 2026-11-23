@@ -1,6 +1,6 @@
 # AskMyDocs PACT Client
 
-AskMyDocs uses the published PACT Laravel and Core packages v0.3.0 and the Core 0.2.0 wire protocol. The master connects by domain through `/.well-known/pact` and public OAuth registration. The client and master must use the same PACT prefix, by default `/pact`.
+AskMyDocs uses the published PACT Laravel and Core packages v0.3.1 and the Core 0.2.0 wire protocol. The master connects by domain through `/.well-known/pact` and public OAuth registration. The client and master must use the same PACT prefix, by default `/pact`.
 
 ## Install
 
@@ -30,6 +30,8 @@ php artisan queue:work pact_client --queue=pact-client --sleep=1 --no-interactio
 ```
 
 The first worker processes the PACT outbox. The second handles AskMyDocs agent runs and uses the application database queue. On Herd, `./ops/launchd/install-local.sh --pact-only` installs both user services.
+
+To also route the PACT handler through the existing local Laravel queue, set `PACT_QUEUE_CONNECTION=pact_client` and `PACT_QUEUE=pact-client`. These values are optional per environment. Rebuild the config cache and restart the workers after changing them.
 
 ## Laravel Cloud
 

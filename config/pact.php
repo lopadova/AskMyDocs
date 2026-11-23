@@ -13,6 +13,10 @@ return [
     'handler' => $diagnostic ? null : \App\Pact\Native\ChatHandler::class,
     'contract_path' => $diagnostic ? null : $contractDirectory.'/contract.json',
     'contract_registry' => $diagnostic ? null : $contractDirectory.'/registry.json',
+    'queue' => [
+        'connection' => env('PACT_QUEUE_CONNECTION'),
+        'name' => env('PACT_QUEUE'),
+    ],
     'state' => [
         'restore' => env('PACT_STATE_RESTORE'),
         'disk' => env('PACT_STATE_DISK'),
