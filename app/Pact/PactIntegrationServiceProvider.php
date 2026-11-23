@@ -29,9 +29,10 @@ final class PactIntegrationServiceProvider extends ServiceProvider
         }
         $this->app['config']->set('pact-agent.coordinator.allowed_insecure_hosts', array_values(array_filter($hosts)));
         $origin = rtrim((string) $this->app['config']->get('app.url'), '/');
-        $this->app['config']->set('pact-agent.agents.askmydocs', new AgentDefinition('askmydocs', 'AskMyDocs', [
+        $this->app->bind('pact-agent.askmydocs', static fn () => new AgentDefinition('askmydocs', 'AskMyDocs', [
             'endpoint' => $origin.'/api/pact/a2a', 'contract' => AgentChatContract::descriptor(), 'registry_path' => AgentChatContract::registry(),
         ]));
+        $this->app['config']->set('pact-agent.agents.askmydocs', 'pact-agent.askmydocs');
         $this->app['config']->set('pact-agent.http_aliases', [
             '/api/pact/a2a' => ['agent' => 'askmydocs', 'kind' => 'a2a'],
             '/.well-known/agent-card.json' => ['agent' => 'askmydocs', 'kind' => 'card'],

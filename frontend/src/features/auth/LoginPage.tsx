@@ -48,7 +48,14 @@ export function LoginPage({ onSuccess, onNavigateForgot, onNavigateRegister }: L
         setFormError(undefined);
         setSubmitting(true);
         try {
-            await login(values.email, values.password, values.remember);
+            const result = await login(values.email, values.password, values.remember);
+            if (result.redirect_to?.startsWith('/')) {
+                const destination = new URL(result.redirect_to, window.location.origin);
+                if (destination.origin === window.location.origin) {
+                    window.location.assign(destination.href);
+                    return;
+                }
+            }
             const mePayload = await me();
             setMe(mePayload);
             onSuccess?.();

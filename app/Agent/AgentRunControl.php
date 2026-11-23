@@ -156,6 +156,7 @@ final readonly class AgentRunControl
 
     public function ensureActive(AgentRun $run): void
     {
+        app(\App\Pact\Native\TaskAccess::class)->assertRun($run);
         $parentId = data_get($run->input_json, 'research_parent_id');
         if ($parentId !== null) {
             $parent = AgentRun::query()->forTenant($run->tenant_id)->find($parentId);

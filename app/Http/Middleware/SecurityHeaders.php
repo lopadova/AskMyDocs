@@ -64,7 +64,7 @@ class SecurityHeaders
         $this->applyStaticHeaders($response);
         $this->applyHsts($request, $response);
         if ($nonce !== null) {
-            $this->applyCsp($response, $nonce);
+            $this->applyCsp($response, $nonce, $request->routeIs('pact.oauth.*'));
         }
         $this->applyRequestId($response, $requestId);
 
@@ -133,7 +133,7 @@ class SecurityHeaders
         $response->headers->set('Strict-Transport-Security', $value);
     }
 
-    private function applyCsp(Response $response, string $nonce): void
+    private function applyCsp(Response $response, string $nonce, bool $pactConsent): void
     {
         // CSP is only meaningful on HTML documents; skip JSON/SSE/binary AND
         // typeless responses (204/empty), which must not carry a CSP header.
@@ -144,6 +144,11 @@ class SecurityHeaders
 
         /** @var array<int, string> $directives */
         $directives = (array) config('security-headers.csp.directives', []);
+        if ($pactConsent) {
+            $directives = array_map(static fn (string $directive): string => str_starts_with($directive, 'style-src ')
+                ? str_replace(" 'unsafe-inline'", '', $directive)." 'nonce-{nonce}'"
+                : $directive, $directives);
+        }
         $socketOrigin = app(\App\Agent\AgentRealtime::class)->websocketOrigin();
         if ($socketOrigin !== null) {
             $directives = array_map(static fn (string $directive): string =>

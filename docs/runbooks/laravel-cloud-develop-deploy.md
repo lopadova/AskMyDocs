@@ -52,6 +52,8 @@ Do not add `php artisan optimize:clear`, `queue:restart`,
 `horizon:terminate`, or `storage:link`: Laravel Cloud either manages those
 concerns or explicitly advises against running them in deploy commands.
 
+When `PACT_STATE_RESTORE=true`, the deploy script reapplies native PACT and its isolated Passport migrations after the application schema is ready. Before enabling restore, seed the environment's private S3 object as described in the [PACT client runbook](../integrations/pact-client.md#laravel-cloud).
+
 ## Commit-message directives
 
 These are markers in the final commit message deployed from `develop`; they

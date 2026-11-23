@@ -83,6 +83,8 @@ else
     php artisan migrate --force --no-interaction
 fi
 
+bash scripts/deploy/pact-client.sh
+
 if [[ "${init_seed}" == true ]]; then
     echo "Directive [init-seed] found: loading deterministic develop fixtures."
     php artisan db:seed '--class=Database\Seeders\DevelopSeeder' --force --no-interaction

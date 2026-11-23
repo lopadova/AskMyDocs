@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Agent\Tools;
 
 use App\Agent\AgentExecutionContext;
+use App\ApiTools\ToolAccess;
 use App\Models\AgentRun;
 use App\Ai\Tools\Sources\McpConnectorChatToolSource;
 use App\Mcp\Client\McpToolAuthorizer;
@@ -12,6 +13,7 @@ use App\Mcp\Client\Registry\McpServerRegistry;
 use App\Mcp\Runtime\McpRuntimeGate;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Pact\Native\ConnectorAccess;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
@@ -76,6 +78,7 @@ final readonly class AgentToolRegistry
     ): array {
         $run = \App\Models\AgentRun::query()->forTenant($context->tenantId)->where('run_id', $context->runId)->first();
         $pact = $pactScope || ($run !== null && is_string(data_get($run->input_json, 'pact_task_id')));
+        $pactClient = $run !== null && is_string(data_get($run->input_json, 'pact_client_task_id'));
         $tools = [
             'search_knowledge_base' => $this->knowledgeTool(),
             'list_knowledge_documents' => $this->catalogTool(),
@@ -109,7 +112,15 @@ final readonly class AgentToolRegistry
             }
         }
         // A PACT delegation has no grant to discover or invoke external tools.
-        if (! $pact) {
+        if ($pactClient) {
+            if ($user !== null && $context->projectKey !== null) {
+                $this->mergeApiTools($tools, $context, pactClient: true);
+                $this->mergeFreshdeskTools($tools, $context, $user);
+                if ($this->mcpRuntime->usesConnector($context->tenantId)) {
+                    $this->mergeConnectorMcpTools($tools, $context, $user, app(ConnectorAccess::class)->mcpTools($context));
+                }
+            }
+        } elseif (! $pact) {
             $this->mergeMcpTools($tools, $context, $user);
             foreach (app(\App\ApiTools\ToolCatalog::class)->forContext($context) as $name => $tool) { $tools[$name] = $tool; }
             $this->mergeApiTools($tools, $context);
@@ -215,7 +226,7 @@ final readonly class AgentToolRegistry
     }
 
     /** @param array<string,AgentToolDefinition> $tools */
-    private function mergeApiTools(array &$tools, AgentExecutionContext $context): void
+    private function mergeApiTools(array &$tools, AgentExecutionContext $context, bool $pactClient = false): void
     {
         if (! (bool) config('connector-api.chat_tools.enabled', true)) {
             return;
@@ -224,17 +235,18 @@ final readonly class AgentToolRegistry
         $scopes = $context->projectKey === null || $context->projectKey === ''
             ? ['']
             : ['', $context->projectKey];
-        $routes = ApiRoute::query()
-            ->forTenant($context->tenantId)
-            ->whereHas('connector', fn ($query) => $query->where('is_active', true))
-            ->where('status', RouteStatus::Active->value)
-            ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
-            ->whereIn('project_key', $scopes)
-            ->with(['connector:id,name,description,project_key', 'listRelations.detailRoute'])
-            ->get()
-            ->sortBy('id');
+        $routes = $pactClient
+            ? app(ToolAccess::class)->routes($context->tenantId, $context->projectKey ?? '')->load('listRelations.detailRoute')
+            : ApiRoute::query()
+                ->forTenant($context->tenantId)
+                ->whereHas('connector', fn ($query) => $query->where('is_active', true))
+                ->where('status', RouteStatus::Active->value)
+                ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
+                ->whereIn('project_key', $scopes)
+                ->with(['connector:id,name,description,project_key', 'listRelations.detailRoute'])
+                ->get();
 
-        foreach ($routes as $route) {
+        foreach ($routes->sortBy('id') as $route) {
             $definition = is_array($route->tool_definition) ? $route->tool_definition : [
                 'name' => $route->slug,
                 'description' => $route->description ?? $route->name,
@@ -362,13 +374,17 @@ final readonly class AgentToolRegistry
         }
     }
 
-    /** @param array<string,AgentToolDefinition> $tools */
+    /** @param array<string,AgentToolDefinition> $tools @param list<string>|null $permittedNames */
     private function mergeConnectorMcpTools(
         array &$tools,
         AgentExecutionContext $context,
         User $user,
+        ?array $permittedNames = null,
     ): void {
         $catalog = $this->connectorMcp->catalog($user, $context->projectKey);
+        if ($permittedNames !== null) {
+            $catalog = array_filter($catalog, static fn (array $definition): bool => in_array($definition['name'] ?? null, $permittedNames, true));
+        }
         $remoteNames = $this->connectorRemoteToolMap($catalog);
 
         foreach ($catalog as $definition) {

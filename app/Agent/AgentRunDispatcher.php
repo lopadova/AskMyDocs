@@ -59,9 +59,12 @@ final class AgentRunDispatcher
         $stage = $run->sessionStage();
         $sessionQueue = $stage !== null && $stage !== 'active'
             ? (string) config('agent.session_queue', 'agent-session') : null;
+        $pactClient = is_string(data_get($run->input_json, 'pact_client_task_id'));
         $span = $diagnostics->begin($run, 'queue.wait', [
-            'wait_for' => 'worker_receipt', 'queue_connection' => $runtime['queue_connection'] ?? null,
-            'queue_driver' => $runtime['queue_driver'] ?? null, 'queue_name' => $sessionQueue ?? ($runtime['queue_name'] ?? null),
+            'wait_for' => 'worker_receipt',
+            'queue_connection' => $pactClient ? 'pact_client' : ($runtime['queue_connection'] ?? null),
+            'queue_driver' => $pactClient ? 'database' : ($runtime['queue_driver'] ?? null),
+            'queue_name' => $pactClient ? 'pact-client' : ($sessionQueue ?? ($runtime['queue_name'] ?? null)),
             'runtime' => $runtime,
         ]);
         try {
@@ -71,7 +74,9 @@ final class AgentRunDispatcher
             if ($sessionQueue !== null) {
                 $pending->onQueue($sessionQueue);
             }
-            if (is_string(data_get($run->input_json, 'pact_task_id'))) {
+            if ($pactClient) {
+                $pending->onConnection('pact_client')->onQueue('pact-client');
+            } elseif (is_string(data_get($run->input_json, 'pact_task_id'))) {
                 $pending->onConnection((string) config('pact-agent.connection', 'pact_agents'))->onQueue((string) config('pact-agent.queue', 'pact-agents'));
             }
             unset($pending);

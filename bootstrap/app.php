@@ -1,11 +1,13 @@
 <?php
 
+use App\Pact\Native\PactInstallationBackup;
+use Illuminate\Foundation\Bootstrap\RegisterProviders;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
-return Application::configure(basePath: dirname(__DIR__))
+$app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
@@ -254,3 +256,11 @@ return Application::configure(basePath: dirname(__DIR__))
         }
     })
     ->create();
+
+$app->beforeBootstrapping(RegisterProviders::class, static function (Application $app): void {
+    if ($app['config']->get('pact.state.restore')) {
+        PactInstallationBackup::forApplication($app)->restore();
+    }
+});
+
+return $app;

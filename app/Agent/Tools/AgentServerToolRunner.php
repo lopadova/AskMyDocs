@@ -7,12 +7,15 @@ namespace App\Agent\Tools;
 use App\Agent\AgentExecutionContext;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Ai\Tools\Sources\McpConnectorChatToolSource;
+use App\ApiTools\ToolAccess;
 use App\Mcp\Client\McpToolAuthorizer;
 use App\Mcp\Client\McpToolInvocationFailed;
 use App\Mcp\Client\ToolInvoker;
 use App\Models\AgentRun;
 use App\Models\McpServer;
 use App\Models\User;
+use App\Pact\Native\ConnectorAccess;
+use App\Pact\Native\TaskAccess;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Padosoft\AskMyDocsConnectorApi\Support\RouteMode;
@@ -44,8 +47,25 @@ final readonly class AgentServerToolRunner
         ?callable $progress = null,
         ?array $waveHandoff = null,
     ): AgentToolActionResult {
+        $pactClient = is_string(data_get($run->input_json, 'pact_client_task_id'));
+        if ($pactClient) {
+            $context->assertMatches($run);
+            app(TaskAccess::class)->assertRun($run);
+            if (! $tool->readOnly || ! $tool->idempotent || ($tool->metadata['confirmation_required'] ?? false)
+                || in_array($tool->executorReference, ['ask_private_session', 'list_private_sessions', 'read_private_session'], true)
+                || ($tool->metadata['source_runtime'] ?? null) === 'api_tool') {
+                throw new \DomainException('pact_connector_read_required');
+            }
+            if ($tool->kind === 'mcp') {
+                if (($tool->metadata['mcp_runtime'] ?? null) !== 'connector') {
+                    throw new \DomainException('pact_connector_read_required');
+                }
+                app(ConnectorAccess::class)->assertMcp($context, $tool->name);
+            }
+        }
+
         return match ($tool->kind) {
-            'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress, $waveHandoff),
+            'api' => $this->executeApi($tool, $arguments, $context, $budget, $progress, $waveHandoff, $pactClient),
             'mcp' => $this->executeMcp($tool, $arguments, $context, $run, $budget),
             'catalog' => match ($tool->executorReference) {
                 'catalog' => $this->executeCatalog($arguments, $context, $budget),
@@ -136,6 +156,7 @@ final readonly class AgentServerToolRunner
         AgentBudgetTracker $budget,
         ?callable $progress,
         ?array $waveHandoff = null,
+        bool $pactClient = false,
     ): AgentToolActionResult {
         if (($tool->metadata['source_runtime'] ?? null) === 'freshdesk') {
             return $this->executeFreshdesk($tool, $arguments, $context, $budget);
@@ -153,17 +174,19 @@ final readonly class AgentServerToolRunner
         $scopes = $context->projectKey === null || $context->projectKey === ''
             ? ['']
             : ['', $context->projectKey];
-        $route = ApiRoute::query()
-            ->forTenant($context->tenantId)
-            ->whereKey((int) $tool->executorReference)
-            ->whereIn('project_key', $scopes)
-            ->where('status', RouteStatus::Active->value)
-            ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
-            ->whereHas('connector', fn ($query) => $query
-                ->where('tenant_id', $context->tenantId)
-                ->where('is_active', true))
-            ->with('parameters')
-            ->first();
+        $route = $pactClient
+            ? app(ToolAccess::class)->route((int) $tool->executorReference, $context)
+            : ApiRoute::query()
+                ->forTenant($context->tenantId)
+                ->whereKey((int) $tool->executorReference)
+                ->whereIn('project_key', $scopes)
+                ->where('status', RouteStatus::Active->value)
+                ->whereIn('mode', [RouteMode::Tool->value, RouteMode::Both->value])
+                ->whereHas('connector', fn ($query) => $query
+                    ->where('tenant_id', $context->tenantId)
+                    ->where('is_active', true))
+                ->with('parameters')
+                ->first();
         if (! $route instanceof ApiRoute) {
             throw new \DomainException('api_tool_scope_mismatch');
         }

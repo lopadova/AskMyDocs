@@ -21,3 +21,6 @@ Run once after changing worker topology:
 Check a service with `launchctl print gui/$(id -u)/com.askmydocsdev.queue-core`.
 Add the session worker to an existing setup with `ops/launchd/install-local.sh --agent-session-only`.
 The standard and error logs are under `storage/logs/launchd-*.log`.
+
+After [installing the PACT client](../../docs/integrations/pact-client.md), start just the
+protocol worker and its AskMyDocs agent queue with `./ops/launchd/install-local.sh --pact-only`.

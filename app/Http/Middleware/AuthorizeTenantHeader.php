@@ -47,7 +47,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class AuthorizeTenantHeader
 {
-    private const ACTIVE_TENANT_SESSION_KEY = 'askmydocs.active_tenant';
+    public const ACTIVE_TENANT_SESSION_KEY = 'askmydocs.active_tenant';
 
     public function __construct(
         private readonly TenantContext $tenants,

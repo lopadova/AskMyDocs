@@ -29,6 +29,13 @@ return [
     */
 
     'connections' => [
+        'pact_client' => [
+            'driver' => 'database',
+            'table' => 'jobs',
+            'queue' => 'pact-client',
+            'retry_after' => max(300, (int) env('AGENT_JOB_TIMEOUT', 120) + 60),
+            'after_commit' => false,
+        ],
         'knowledge' => [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
