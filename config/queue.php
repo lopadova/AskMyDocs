@@ -29,6 +29,7 @@ return [
     */
 
     'connections' => [
+        // Compatibility for installations that already had a dedicated PACT worker.
         'pact_client' => [
             'driver' => 'database',
             'table' => 'jobs',

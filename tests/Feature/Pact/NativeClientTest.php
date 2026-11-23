@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Pact;
 
 use App\Agent\AgentExecutionContext;
+use App\Agent\AgentSessionWorkers;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolRegistry;
@@ -22,6 +23,8 @@ use App\Pact\Native\SubjectResolver;
 use App\Pact\Native\TaskAccess;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Events\Looping;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -37,6 +40,7 @@ use PactLaravel\Models\Task;
 use PactLaravel\PactServiceProvider;
 use PactLaravel\Runtime\TaskService;
 use PactLaravel\Runtime\Worker;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiConnector;
 use Padosoft\AskMyDocsConnectorApi\Models\ApiRoute;
 use Psr\Http\Message\ServerRequestInterface;
@@ -198,6 +202,7 @@ final class NativeClientTest extends TestCase
 
     public function test_scoped_turn_is_idempotent_and_answers_a_correlated_clarification(): void
     {
+        config(['agent.queue' => 'shared-agent']);
         $subject = $this->subject();
         $connection = $this->connection($subject);
         $task = $this->submit($connection, [
@@ -209,7 +214,7 @@ final class NativeClientTest extends TestCase
         $this->assertSame((int) $subject->user_id, (int) $run->user_id);
         $this->assertSame($subject->project_key, $run->project_key);
         $this->assertSame($task->id, $run->input_json['pact_client_task_id']);
-        Queue::assertPushedOn('pact-client', ExecuteAgentRunJob::class);
+        Queue::assertPushedOn('shared-agent', ExecuteAgentRunJob::class);
 
         // Deliver the poll after the initial PACT lease has completed.
         $this->travel(4)->seconds();
@@ -236,6 +241,7 @@ final class NativeClientTest extends TestCase
         $followup = AgentRun::query()->forTenant($subject->tenant_id)->where('id', '!=', $run->id)->sole();
         $this->assertSame($run->conversation_id, $followup->conversation_id);
         $this->assertSame('Guida di installazione', $followup->input_json['question']);
+        Queue::assertPushedOn('shared-agent', ExecuteAgentRunJob::class, fn ($job) => $job->agentRunId === $followup->id);
         $followup->update(['status' => AgentRun::STATUS_COMPLETED, 'result_json' => ['response' => [
             'answer' => 'Consulta il capitolo Installazione.',
             'citations' => [['title' => 'Guida di installazione']],
@@ -249,6 +255,78 @@ final class NativeClientTest extends TestCase
             'text' => 'Consulta il capitolo Installazione.',
             'sources' => [['title' => 'Guida di installazione']],
         ], data_get($task->value, 'artifacts.0.parts.0.data'));
+    }
+
+    public static function sharedQueues(): array
+    {
+        return [
+            'session workers available' => [true, 'shared-session', 'conversation'],
+            'serial fallback' => [false, 'shared-agent', null],
+        ];
+    }
+
+    #[DataProvider('sharedQueues')]
+    public function test_a_new_task_uses_the_shared_queue_after_commit(bool $sessionWorkers, string $queue, ?string $stage): void
+    {
+        config([
+            'queue.default' => 'database',
+            'queue.connections.database.after_commit' => false,
+            'agent.waves.enabled' => true,
+            'agent.concurrent_session' => true,
+            'agent.verify_session_workers' => true,
+            'agent.session_queue' => 'shared-session',
+            'agent.queue' => 'shared-agent',
+        ]);
+        Queue::except(ExecuteAgentRunJob::class);
+        if ($sessionWorkers) {
+            (new AgentSessionWorkers)->observe(new Looping('database', 'shared-session'));
+            (new AgentSessionWorkers)->observe(new Looping('database', 'shared-agent'));
+        }
+
+        $subject = $this->subject();
+        $connection = $this->connection($subject);
+        $this->submit($connection, [
+            'message' => 'Qual è la risposta?',
+            'coordinator' => ['endpoint' => 'https://master.test/pact/mcp', 'federation_id' => $connection->federation_id, 'member_id' => $connection->member_id],
+        ]);
+
+        DB::transaction(function (): void {
+            $this->assertTrue(app(Worker::class)->workOnce());
+            $this->assertDatabaseEmpty('jobs');
+        });
+
+        $run = AgentRun::query()->forTenant($subject->tenant_id)->sole();
+        $message = DB::table('jobs')->sole();
+        $job = unserialize(json_decode($message->payload, true, flags: JSON_THROW_ON_ERROR)['data']['command']);
+        $this->assertSame($queue, $message->queue);
+        $this->assertSame($stage, $job->sessionStage);
+        $this->assertSame($run->id, $job->agentRunId);
+        $this->assertNull($job->connection);
+    }
+
+    public function test_a_failed_queue_publish_does_not_leave_a_pact_run_waiting(): void
+    {
+        Queue::beforePushing(function (object $job): void {
+            if ($job instanceof ExecuteAgentRunJob) {
+                throw new \RuntimeException('Queue unavailable');
+            }
+        });
+
+        $subject = $this->subject();
+        $connection = $this->connection($subject);
+        $task = $this->submit($connection, [
+            'message' => 'Qual è la risposta?',
+            'coordinator' => ['endpoint' => 'https://master.test/pact/mcp', 'federation_id' => $connection->federation_id, 'member_id' => $connection->member_id],
+        ]);
+        $this->assertTrue(app(Worker::class)->workOnce());
+        $run = AgentRun::query()->forTenant($subject->tenant_id)->sole();
+        $this->assertSame(AgentRun::STATUS_FAILED, $run->status);
+        $this->assertSame('session_dispatch_failed', $run->error_code);
+        Queue::assertNotPushed(ExecuteAgentRunJob::class);
+
+        $this->travel(4)->seconds();
+        $this->assertTrue(app(Worker::class)->workOnce());
+        $this->assertSame('TASK_STATE_FAILED', $task->refresh()->state);
     }
 
     public function test_a_foreign_connection_cannot_read_a_task_and_removed_membership_blocks_work(): void

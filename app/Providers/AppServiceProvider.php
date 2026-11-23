@@ -967,7 +967,6 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\QaCampaignCommand::class,
             \App\Console\Commands\IssueChatApiTokenCommand::class,
             \App\Console\Commands\ReconcileTerminalAgentRunCommand::class,
-            \App\Console\Commands\ForwardNativePactJobsCommand::class,
             \App\Console\Commands\PumpEmailTriageCommand::class,
             \App\Console\Commands\PilotEmailTriageCommand::class,
             PruneEmbeddingCacheCommand::class,

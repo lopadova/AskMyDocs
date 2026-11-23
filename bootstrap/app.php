@@ -1,6 +1,5 @@
 <?php
 
-use App\Console\Commands\ForwardNativePactJobsCommand;
 use App\Pact\Native\PactInstallationBackup;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -219,14 +218,6 @@ $app = Application::configure(basePath: dirname(__DIR__))
         (new \App\Connectors\Scheduling\SerializedSyncScheduler)->registerSchedules($schedule);
         (new \App\Connectors\Scheduling\ImapBackfillScheduler)->registerSchedules($schedule);
         $schedule->command('email-triage:pump')->everyMinute()->withoutOverlapping();
-        if (ForwardNativePactJobsCommand::enabled()) {
-            $schedule->command(ForwardNativePactJobsCommand::class)
-                ->everyTenSeconds()
-                ->when(ForwardNativePactJobsCommand::hasJobs(...))
-                ->onOneServer()
-                ->withoutOverlapping(5)
-                ->runInBackground();
-        }
         $schedule->command('mcp-connectors:shadow')
             ->everySixHours()
             ->withoutOverlapping();
