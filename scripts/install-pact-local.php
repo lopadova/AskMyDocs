@@ -11,9 +11,10 @@ $data = json_decode(file_get_contents($root.'/composer.json'), true, 512, JSON_T
 $data['require']['padosoft/laravel-pact-agent'] = 'dev-main';
 $path = $root.'/../laravel-pact-agent';
 if (! is_file($path.'/composer.json')) throw new RuntimeException('Missing local package: '.$path);
+// Resolve only the adapter. All other packages come from the copied app lock.
 $data['repositories'] = [
     ['type' => 'path', 'url' => $path, 'only' => ['padosoft/laravel-pact-agent'], 'options' => ['symlink' => true, 'versions' => ['padosoft/laravel-pact-agent' => 'dev-main']]],
-    ...$data['repositories'],
+    ['packagist.org' => false],
 ];
 file_put_contents($manifest, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
 copy($root.'/composer.lock', $lock);

@@ -1,6 +1,6 @@
 # AskMyDocs PACT Client
 
-AskMyDocs uses the published PACT Laravel and Core packages v0.2.2 and the Core 0.2.0 wire protocol. The master connects by domain through `/.well-known/pact` and public OAuth registration. The client and master must use the same PACT prefix, by default `/pact`.
+AskMyDocs uses the published PACT Laravel and Core packages v0.3.0 and the Core 0.2.0 wire protocol. The master connects by domain through `/.well-known/pact` and public OAuth registration. The client and master must use the same PACT prefix, by default `/pact`.
 
 ## Install
 
