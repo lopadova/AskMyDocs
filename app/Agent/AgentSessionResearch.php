@@ -6,7 +6,6 @@ namespace App\Agent;
 
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Capabilities\AgentCapabilitySnapshotBuilder;
-use App\Agent\Debug\RunDiagnostics;
 use App\Agent\Evidence\AgentEvidenceAccess;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
 use App\Agent\Evidence\AgentEvidenceFactory;
@@ -202,10 +201,7 @@ final readonly class AgentSessionResearch
             $safe = $this->evidence->empty();
             $safe->import(app(AgentEvidenceAccess::class)->current($run, $context, $sources->evidence->jsonSerialize()));
             $sources = new AgentLoopOutcome('partial', $safe, $sources->completedActions, 'synthesis_unavailable');
-            $answer = app(RunDiagnostics::class)->measure($run, 'synthesis.recovery',
-                fn () => app(CollectedEvidenceAnswer::class)->present($question, QuestionUnderstanding::fromArray($understanding ?? []),
-                    $safe->jsonSerialize(), $context->locale),
-                ['operation' => 'render_collected_evidence', 'error_class' => get_class($exception->getPrevious() ?? $exception)]);
+            $answer = app(CollectedEvidenceAnswer::class)->recover($run, $safe->jsonSerialize(), $context->locale, $exception);
         }
 
         return new AgentSessionResearchResult($answer, $sources);

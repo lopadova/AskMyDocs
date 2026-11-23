@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Agent;
 
+use App\Agent\Evidence\AgentEvidenceAccess;
 use App\Agent\Evidence\AgentEvidenceEnvelope;
+use App\Agent\Grounding\CollectedEvidenceAnswer;
 use App\Models\AgentRun;
 use App\Services\Chat\QuestionAction;
 use App\Services\Chat\QuestionUnderstanding;
@@ -49,8 +51,16 @@ final readonly class AgentSessionAgent
             return $input->answer;
         }
 
-        return $this->answers->synthesize(trim((string) data_get($run->input_json, 'question')), $context, $input, $turnContext,
-            $run->result_json['question_understanding'] ?? null, durableRunId: $run->run_id);
+        try {
+            return $this->answers->synthesize(trim((string) data_get($run->input_json, 'question')), $context, $input, $turnContext,
+                $run->result_json['question_understanding'] ?? null, durableRunId: $run->run_id,
+                recoverCollectedEvidence: $input->stopReason === 'context_answer_attempt' && $input->evidence->hasEvidence());
+        } catch (AgentDraftUnavailable $exception) {
+            app(AgentRunControl::class)->ensureActive($run);
+            $safe = app(AgentEvidenceAccess::class)->current($run, $context, $input->evidence->jsonSerialize());
+
+            return app(CollectedEvidenceAnswer::class)->recover($run, $safe, $context->locale, $exception);
+        }
     }
 
     public function needsResearch(AgentRun $run, AgentLoopOutcome $sources, AgentAnswer $answer): bool
