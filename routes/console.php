@@ -45,7 +45,7 @@ Artisan::command('pact-client:deploy {--prepare-only : Prepare the identity befo
         return Command::SUCCESS;
     }
 
-    $installed = $this->call('pact:install', ['--role' => 'client', '--no-interaction' => true]);
+    $installed = $this->call('pact:install', ['--no-interaction' => true]);
     if ($installed !== 0) {
         return $installed;
     }

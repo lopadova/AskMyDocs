@@ -42,6 +42,14 @@ Use `bash scripts/deploy/laravel-cloud-develop.sh` as the `develop` Deploy Comma
 
 Keep the same `APP_KEY`, HTTPS origin, disk and object across deploys. Web and workers restore before Laravel registers PACT routes. Composer package discovery and cache builds can run before the first deploy, keeping key material out of the release image. An unavailable or conflicting bundle stops startup. If the PACT schema already exists and both the local installation and S3 bundle are missing, the deploy reports the missing identity so it can be recovered without breaking existing links. [Laravel Cloud deploy commands](https://laravel.com/cloud/docs/environments#deploy-commands)
 
+### Adopt the database store with PACT 0.3.2
+
+Once Composer can resolve `pact-protocol/core` and `pact-protocol/laravel` at 0.3.2 from the configured repositories, update both packages and the lockfile. The database store is opt-in. Set `PACT_STATE_STORE=database` persistently for the Laravel Cloud environment so the build, deploy, web and workers share the setting. Keep the existing S3 restore enabled, the original `APP_KEY`, the persistent application database and the existing Passport configuration.
+
+On the first upgrade, let one deploy run the usual PACT preparation and application migrations. The deploy restores the verified S3 bundle before calling `php artisan pact:install --no-interaction`. The SDK reuses the recorded identity, encrypts it with the existing PACT and file-based Passport keys in the application database, applies its migrations and invalidates its route cache. The deploy still runs the isolated Passport migration path. Confirm the installer reports that the state is encrypted in the application database.
+
+With web and worker replicas on the new release, run `php artisan pact:doctor`. Reuse an existing connection to check the authenticated master roster and complete a task under its active contract. On a chat connection, send a project-scoped search and verify that the answer includes its sources. Keep the S3 restore active until that continuity check passes. A later switch away from S3 also needs to retain the PACT and isolated Passport migration step currently run by `pact-client:deploy`.
+
 ## Connect and test
 
 From the master's **Collega agente** form enter `askmydocsdev.test` for local Herd testing. Sign in on AskMyDocs, choose a project, approve the two directions, then return to the master to select a team. The master worker activates the connection. Changing account or active tenant before approval requires fresh consent.

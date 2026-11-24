@@ -26,6 +26,7 @@ return [
         'connection' => $queueConnection,
         'name' => $queueName,
     ],
+    'state_store' => env('PACT_STATE_STORE', 'files'),
     'state' => [
         'restore' => env('PACT_STATE_RESTORE'),
         'disk' => env('PACT_STATE_DISK'),
