@@ -10,9 +10,12 @@ use App\Agent\AgentSessionWorkers;
 use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Tools\AgentServerToolRunner;
 use App\Agent\Tools\AgentToolRegistry;
+use App\Ai\AiManager;
+use App\Ai\AiResponse;
 use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Jobs\ExecuteAgentRunJob;
 use App\Models\AgentRun;
+use App\Models\KnowledgeDocument;
 use App\Models\Message;
 use App\Models\ProjectMembership;
 use App\Models\User;
@@ -23,11 +26,17 @@ use App\Pact\Native\PendingConsent;
 use App\Pact\Native\Subject;
 use App\Pact\Native\SubjectResolver;
 use App\Pact\Native\TaskAccess;
+use App\Services\Kb\Chat\ChatRetrievalService;
+use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\Looping;
+use Illuminate\Queue\QueueManager;
+use Illuminate\Queue\Worker as QueueWorker;
+use Illuminate\Queue\WorkerOptions;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -36,6 +45,7 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
+use Mockery;
 use Pact\Pact;
 use Pact\PactError;
 use PactLaravel\Execution\AgentContext;
@@ -57,6 +67,8 @@ final class NativeClientTest extends TestCase
 {
     use RefreshDatabase;
 
+    private QueueManager $queueManager;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -77,6 +89,7 @@ final class NativeClientTest extends TestCase
             'pact.contract_registry' => $sdk.'/resources/contracts/agent-chat/registry.json',
         ]);
         $this->app->register(ClientServiceProvider::class);
+        $this->queueManager = $this->app['queue'];
         Queue::fake();
     }
 
@@ -306,6 +319,115 @@ final class NativeClientTest extends TestCase
             'session workers available' => [true, 'shared-session', 'conversation'],
             'serial fallback' => [false, 'shared-agent', null],
         ];
+    }
+
+    public static function researchQueues(): array
+    {
+        return [
+            'session and research workers' => [true, ['shared-session', 'shared-session', 'shared-agent', 'shared-agent', 'shared-session']],
+            'serial fallback' => [false, ['shared-agent', 'shared-agent']],
+        ];
+    }
+
+    #[DataProvider('researchQueues')]
+    public function test_shared_workers_return_a_scoped_knowledge_search_to_pact(bool $sessionWorkers, array $researchQueues): void
+    {
+        config([
+            'queue.default' => 'database',
+            'queue.connections.database.after_commit' => false,
+            'pact.queue.name' => 'shared-agent',
+            'agent.queue' => 'shared-agent',
+            'agent.waves.enabled' => true,
+            'agent.concurrent_session' => true,
+            'agent.verify_session_workers' => true,
+            'agent.session_queue' => 'shared-session',
+            'agent.planner.mode' => 'classic',
+            'reasoning.enabled' => true,
+            'agent.grounding.enabled' => false,
+            'kb.investigation.enabled' => false,
+        ]);
+        Queue::except([ExecuteTaskJob::class, ExecuteAgentRunJob::class]);
+        if ($sessionWorkers) {
+            (new AgentSessionWorkers)->observe(new Looping('database', 'shared-session'));
+            (new AgentSessionWorkers)->observe(new Looping('database', 'shared-agent'));
+        }
+        $subject = $this->subject();
+        $connection = $this->connection($subject);
+        $question = 'Come si installa il dispositivo?';
+        $fact = 'Collega il dispositivo alla presa di rete.';
+        $document = KnowledgeDocument::query()->create([
+            'tenant_id' => $subject->tenant_id, 'project_key' => $subject->project_key, 'source_type' => 'pdf',
+            'title' => 'Manuale di installazione', 'source_path' => 'manuals/install.pdf', 'mime_type' => 'application/pdf',
+            'status' => 'active', 'document_hash' => hash('sha256', $fact), 'version_hash' => hash('sha256', 'manual-v1'),
+        ]);
+        $chunk = $document->chunks()->create([
+            'tenant_id' => $subject->tenant_id, 'project_key' => $subject->project_key, 'chunk_order' => 0,
+            'chunk_text' => $fact, 'chunk_hash' => hash('sha256', $fact),
+        ]);
+        $search = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $search->shouldReceive('retrieve')->once()->withArgs(fn (string $query, string $project) =>
+            $query === 'installazione dispositivo' && $project === $subject->project_key
+                && app(TenantContext::class)->current() === $subject->tenant_id)
+            ->andReturn(new SearchResult(collect([['chunk_id' => $chunk->id, 'chunk_text' => $fact,
+                'document' => $document->toArray()]]), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $search);
+        $ai = Mockery::mock(AiManager::class);
+        $focus = ['topic' => 'dispositivo', 'identifiers' => [], 'aspect' => 'installazione', 'fields' => []];
+        $ai->shouldReceive('chatWithProvider')->once()->andReturn(new AiResponse(json_encode([
+            'language' => 'it', 'intent' => $question, 'action' => 'research', 'kb_queries' => ['installazione dispositivo'],
+            'mentions' => [], 'references_previous_turn' => false, 'context_mode' => 'new', 'requires_research' => true,
+            'requires_composition' => false, 'follow_up_target' => 'sources',
+            'transition' => 'new', 'focus' => $focus, 'resolved_references' => [], 'needs_clarification' => false, 'clarification' => '',
+            'subquestions' => [[...$focus, 'question' => $question, 'kb_queries' => ['installazione dispositivo'],
+                'context_mode' => 'new', 'requires_research' => true]],
+        ], JSON_THROW_ON_ERROR), 'fixture', 'fixture-interpreter'));
+        $ai->shouldReceive('chatWithHistory')->andReturnUsing(function (string $system, array $messages, array $options) use ($fact): AiResponse {
+            $input = json_decode($messages[0]['content'], true, flags: JSON_THROW_ON_ERROR);
+            $tool = $options['tool_choice']['function']['name'];
+            if ($tool === 'submit_agent_plan') {
+                $arguments = $input['completed_actions'] === [] ? ['decision' => 'tools', 'actions' => [[
+                    'id' => 'lookup', 'tool' => 'search_knowledge_base', 'arguments' => ['query' => 'installazione dispositivo'],
+                    'depends_on' => [], 'purpose' => 'Recupera il manuale di installazione',
+                ]]] : ['decision' => 'answer', 'actions' => []];
+            } else {
+                $this->assertSame('submit_agent_answer', $tool);
+                $source = $input['evidence']['documents'][0];
+                $arguments = ['completeness' => 'complete', 'claims' => [['text' => $fact, 'quote' => $fact,
+                    'document_id' => $source['document_id'], 'tool_execution_id' => null, 'evidence_hash' => $source['evidence'][0]['evidence_hash'],
+                    'subquestion_id' => 0]],
+                    'limitations' => [], 'requires_selection' => false, 'render_table' => false];
+            }
+
+            return new AiResponse('', 'fixture', 'fixture-agent', toolCalls: [['name' => $tool, 'arguments' => $arguments]]);
+        });
+        $this->app->instance(AiManager::class, $ai);
+
+        $task = $this->submit($connection, [
+            'message' => $question,
+            'coordinator' => ['endpoint' => 'https://master.test/pact/mcp', 'federation_id' => $connection->federation_id, 'member_id' => $connection->member_id],
+        ]);
+        $pactWorker = app(Worker::class);
+        $queueWorker = new QueueWorker($this->queueManager, $this->app['events'], app(ExceptionHandler::class), static fn () => false);
+        $options = new WorkerOptions(sleep: 0);
+        $this->assertTrue($pactWorker->workOnce());
+        $this->assertSame('shared-agent', DB::table('jobs')->sole()->queue);
+        $queueWorker->runNextJob('database', 'shared-agent', $options);
+        $run = AgentRun::query()->forTenant($subject->tenant_id)->sole();
+        foreach ($researchQueues as $step => $queue) {
+            $this->assertSame($queue, DB::table('jobs')->sole()->queue, 'Research step '.($step + 1));
+            $queueWorker->runNextJob('database', $queue, $options);
+        }
+        $this->assertSame(AgentRun::STATUS_COMPLETED, $run->refresh()->status, (string) $run->error_code);
+        $this->assertSame('search_knowledge_base', $run->toolExecutions()->where('status', 'completed')->sole()->tool_name);
+
+        $this->travel(4)->seconds();
+        $this->assertTrue($pactWorker->workOnce());
+        $queueWorker->runNextJob('database', 'shared-agent', $options);
+        $returned = $this->rpc($connection, 'GetTask', ['id' => $task->id]);
+        $this->assertSame('TASK_STATE_COMPLETED', data_get($returned, 'status.state'));
+        $this->assertStringContainsString($fact, data_get($returned, 'artifacts.0.parts.0.data.text'));
+        $this->assertSame($document->id, data_get($returned, 'artifacts.0.parts.0.data.sources.0.document_id'));
+        $this->assertDatabaseEmpty('jobs');
     }
 
     #[DataProvider('sharedQueues')]
