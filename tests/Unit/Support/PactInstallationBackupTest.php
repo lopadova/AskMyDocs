@@ -24,10 +24,13 @@ use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Str;
 use Mockery;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+use PactLaravel\Models\Connection;
+use PactLaravel\Support\DatabaseInstallation;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 final class PactInstallationBackupTest extends TestCase
 {
@@ -194,7 +197,77 @@ final class PactInstallationBackupTest extends TestCase
         $this->assertFileDoesNotExist($lost->storagePath('app/pact/installation.json'));
     }
 
-    private function bootCloudApplication(string $replica, string $command, MockHandler $s3): Application
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_database_store_adopts_the_cloud_bundle_and_restores_a_cold_replica(): void
+    {
+        if (! class_exists(DatabaseInstallation::class)) {
+            $this->markTestSkipped('Requires PACT Laravel 0.3.2 or later.');
+        }
+
+        $files = $this->installationFiles();
+        $ciphertext = $this->encrypter->encryptString(json_encode(['version' => 1, 'files' => $files], JSON_THROW_ON_ERROR));
+        $bundle = static fn (Command $command): Result => new Result(['Body' => $ciphertext]);
+        $existing = $this->bootCloudApplication('cloud-existing', 'pact-client:deploy', new MockHandler([$bundle]));
+        $existing['db']->connection()->getSchemaBuilder()->create('oauth_clients', static fn (Blueprint $table) => $table->id());
+        $existing['db']->connection()->getSchemaBuilder()->create('users', static fn (Blueprint $table) => $table->id());
+        $existing['db']->table('users')->insert(['id' => 1]);
+        $kernel = $existing->make(Kernel::class);
+        $this->assertSame(0, $kernel->call('migrate', ['--path' => [
+            'database/migrations/2026_11_21_000001_create_pact_client_subjects.php',
+            'database/migrations/2026_11_23_000001_create_pact_client_consents.php',
+        ], '--force' => true]), $kernel->output());
+        $this->assertSame(0, $kernel->call('pact-client:deploy'), $kernel->output());
+        $existing['db']->table('pact_client_subjects')->insert(['id' => 42, 'user_id' => 1, 'tenant_id' => 'test', 'project_key' => 'manuals']);
+        $connection = Connection::query()->create([
+            'id' => (string) Str::uuid(), 'user_id' => '42', 'federation_id' => (string) Str::uuid(),
+            'member_id' => 'fixture-agent', 'remote_url' => 'https://master.example.test', 'remote_user_id' => 'fixture-user', 'status' => 'active',
+            'credentials' => ['roster' => 'synthetic-roster-credential'],
+        ]);
+        $existing['db']->connection('pact_passport')->table('oauth_access_tokens')->insert([
+            'id' => 'fixture-passport-token', 'user_id' => 42, 'client_id' => (string) Str::uuid(), 'revoked' => false,
+        ]);
+
+        $upgrade = $this->bootCloudApplication('cloud-upgrade', 'pact:install', new MockHandler([$bundle]), 'database');
+        $installer = $upgrade->make(Kernel::class);
+        $output = new BufferedOutput;
+        $status = $installer->call('pact:install', ['--no-interaction' => true], $output);
+        $message = $output->fetch();
+        $this->assertSame(0, $status, $message);
+        $this->assertStringContainsString('encrypted in the application database', $message);
+        $payload = $upgrade['db']->table('pact_installation_state')->where('id', 1)->value('payload');
+        $this->assertStringNotContainsString('PRIVATE KEY', $payload);
+
+        $redeploy = $this->bootCloudApplication('cloud-redeploy', 'pact-client:deploy', new MockHandler([$bundle, $bundle]), 'database');
+        $redeployKernel = $redeploy->make(Kernel::class);
+        $this->assertSame(0, $redeployKernel->call('pact-client:deploy'), $redeployKernel->output());
+        $this->assertSame($payload, $redeploy['db']->table('pact_installation_state')->where('id', 1)->value('payload'));
+
+        $build = $this->bootCloudApplication('database-build', 'route:cache', new MockHandler, 'database');
+        $this->assertSame('database', $build['config']->get('pact.state_store'));
+        $this->assertSame('pact/oauth/select-project', $build['router']->getRoutes()->getByName('pact.oauth.select-project')?->uri());
+        $this->assertFileDoesNotExist($build->storagePath('app/pact/private.pem'));
+        $this->assertFileDoesNotExist($build->storagePath('oauth-private.key'));
+
+        $worker = $this->bootCloudApplication('database-only-worker', 'pact:work', new MockHandler, 'database', false);
+        $this->assertSame('pact/oauth/authorize', $worker['router']->getRoutes()->getByName('pact.oauth.authorize')?->uri());
+        $this->assertSame('pact/oauth/select-project', $worker['router']->getRoutes()->getByName('pact.oauth.select-project')?->uri());
+        foreach ($files as $path => $bytes) {
+            $this->assertSame($bytes, file_get_contents($upgrade->storagePath($path)));
+            if ($path === 'app/pact/installation.json') {
+                $this->assertSame(json_decode($bytes, true), json_decode(file_get_contents($worker->storagePath($path)), true));
+            } else {
+                $this->assertSame($bytes, file_get_contents($worker->storagePath($path)));
+            }
+        }
+        $this->assertSame('manuals', $worker['db']->table('pact_client_subjects')->where('id', 42)->value('project_key'));
+        $this->assertSame(42, (int) $worker['db']->connection('pact_passport')->table('oauth_access_tokens')->where('id', 'fixture-passport-token')->value('user_id'));
+        $sameConnection = Connection::query()->findOrFail($connection->id);
+        $this->assertSame('active', $sameConnection->status);
+        $this->assertSame($connection->credentials, $sameConnection->credentials);
+    }
+
+    private function bootCloudApplication(string $replica, string $command, MockHandler $s3, string $stateStore = 'files', ?bool $restore = null): Application
     {
         $storage = $this->storage.'/'.$replica;
         (new Filesystem)->ensureDirectoryExists($storage.'/framework/views', 0700);
@@ -217,7 +290,7 @@ final class PactInstallationBackupTest extends TestCase
             restore_error_handler();
             restore_exception_handler();
         });
-        $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($s3, $database, $storage): void {
+        $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($s3, $database, $storage, $stateStore, $restore): void {
             CloudBootstrapper::configureDisks($app);
             $app['config']->set([
                 'app.key' => 'base64:'.base64_encode($this->encrypter->getKey()),
@@ -225,7 +298,8 @@ final class PactInstallationBackupTest extends TestCase
                 'view.compiled' => $storage.'/framework/views',
                 'database.default' => 'sqlite',
                 'database.connections.sqlite.database' => $database,
-                'pact.state' => [],
+                'pact.state' => ['restore' => $restore],
+                'pact.state_store' => $stateStore,
                 'passport.connection' => 'pact_passport',
                 'passport.private_key' => null,
                 'passport.public_key' => null,

@@ -259,7 +259,9 @@ $app = Application::configure(basePath: dirname(__DIR__))
     ->create();
 
 $app->beforeBootstrapping(RegisterProviders::class, static function (Application $app): void {
-    if (! PactInstallationBackup::enabled($app)) {
+    $restoreFromS3 = PactInstallationBackup::enabled($app);
+    $useDatabaseState = $app['config']->get('pact.state_store') === 'database';
+    if (! $restoreFromS3 && ! $useDatabaseState) {
         return;
     }
     $arguments = $_SERVER['argv'] ?? [];
@@ -271,17 +273,25 @@ $app->beforeBootstrapping(RegisterProviders::class, static function (Application
     // without fetching signing keys into the release image.
     if (in_array($command, ['package:discover', 'optimize', 'config:cache', 'route:cache', 'event:cache', 'view:cache'], true)) {
         $app['config']->set('pact.role', 'client');
+        if ($useDatabaseState) {
+            // PACT chooses its restore strategy during provider registration.
+            // Preserve the configured store in the cache that the build writes.
+            $app['config']->set('pact.state_store', 'files');
+            $app->afterBootstrapping(RegisterProviders::class, static function (Application $app): void {
+                $app['config']->set('pact.state_store', 'database');
+            });
+        }
 
         return;
     }
-    if (in_array($command, ['pact-client:deploy', 'pact-state:backup'], true)) {
+    if (! $restoreFromS3 || $command === 'pact-state:backup' || ($command === 'pact-client:deploy' && ! $useDatabaseState)) {
         return;
     }
 
     $state = PactInstallationBackup::forApplication($app);
-    if ($command === 'migrate') {
-        // Existing production pipelines may run host migrations before the
-        // PACT deploy command. That command owns first-time provisioning.
+    if (in_array($command, ['migrate', 'pact-client:deploy'], true)) {
+        // Give the original S3 files precedence over database hydration.
+        // The deploy command still owns first-time provisioning.
         $state->restoreIfPresent();
 
         return;
