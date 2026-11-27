@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\KnowledgeDocument;
 use App\Support\LikeEscaper;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -36,6 +38,12 @@ use Illuminate\Routing\Controller;
  */
 final class KbDocumentSearchController extends Controller
 {
+    private const LIMIT = 20;
+
+    private const COLUMNS = ['id', 'project_key', 'title', 'source_path', 'source_type', 'canonical_type'];
+
+    private const TIE_BREAKERS = 'is_canonical DESC, retrieval_priority DESC, indexed_at DESC, title, id';
+
     public function __invoke(Request $request): JsonResponse
     {
         // Trim the query BEFORE validation so a whitespace-only input
@@ -78,11 +86,6 @@ final class KbDocumentSearchController extends Controller
         $prefixPat = $escaped.'%';
         $containsPat = '%'.$escaped.'%';
 
-        $query->where(function ($w) use ($containsPat): void {
-            $w->whereRaw('LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$containsPat])
-                ->orWhereRaw('LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$containsPat]);
-        });
-
         // v8.1 P2 — RELEVANCE ranking first, curation second. A title that
         // exactly equals or starts with the query is a far better @mention
         // hit than one where the query only appears mid-title or buried in
@@ -92,31 +95,47 @@ final class KbDocumentSearchController extends Controller
         // recency, title, id) so results stay stable across dialects and as
         // the table grows. orderByRaw (not selectRaw) keeps the response
         // shape unchanged — the match rank never leaks to the FE.
-        $results = $query
-            ->orderByRaw(
-                'CASE '
-                .'WHEN LOWER(title) = ? THEN 4 '
-                .'WHEN LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 3 '
-                .'WHEN LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 2 '
-                .'WHEN LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 1 '
-                .'ELSE 0 END DESC',
-                [$qLower, $prefixPat, $containsPat, $containsPat],
-            )
-            ->orderByDesc('is_canonical')
-            ->orderByDesc('retrieval_priority')
-            ->orderByDesc('indexed_at')
-            ->orderBy('title')
-            ->orderBy('id')
-            ->limit(20)
-            ->get([
-                'id',
-                'project_key',
-                'title',
-                'source_path',
-                'source_type',
-                'canonical_type',
-            ]);
+        $order = 'CASE '
+            .'WHEN LOWER(title) = ? THEN 4 '
+            .'WHEN LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 3 '
+            .'WHEN LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 2 '
+            .'WHEN LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 1 '
+            .'ELSE 0 END DESC, '.self::TIE_BREAKERS;
+        $orderBindings = [$qLower, $prefixPat, $containsPat, $containsPat];
+        $ranked = $query->orderByRaw($order, $orderBindings)->limit(self::LIMIT);
+        $substring = (clone $ranked)->where(function ($w) use ($containsPat): void {
+            $w->whereRaw('LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$containsPat])
+                ->orWhereRaw('LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$containsPat]);
+        });
+        $results = $query->getConnection()->getDriverName() === 'pgsql'
+            ? $this->searchPostgres($ranked, $substring, $prefixPat, $order, $orderBindings)
+            : $substring->get(self::COLUMNS);
 
         return response()->json(['data' => $results]);
+    }
+
+    private function searchPostgres(Builder $ranked, Builder $substring, string $prefixPattern, string $order, array $orderBindings): Collection
+    {
+        $columns = implode(', ', self::COLUMNS);
+        $rankColumns = [...self::COLUMNS, 'is_canonical', 'retrieval_priority', 'indexed_at'];
+        $limit = self::LIMIT;
+        $prefix = $ranked->whereRaw('LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$prefixPattern])
+            ->select($rankColumns)->toBase();
+        $fallback = $substring->whereRaw('(SELECT count(*) FROM title_prefix_matches) < ?', [$limit])
+            ->select($rankColumns)->toBase();
+        $prefixSql = $prefix->toSql();
+        $fallbackSql = $fallback->toSql();
+
+        // Prefixes outrank all other matches. Keep both branches in one statement
+        // so a short prefix result can fall back without a second round trip.
+        return KnowledgeDocument::fromQuery(<<<SQL
+            WITH title_prefix_matches AS MATERIALIZED ({$prefixSql})
+            SELECT {$columns} FROM (
+                SELECT * FROM title_prefix_matches WHERE (SELECT count(*) FROM title_prefix_matches) = ?
+                UNION ALL
+                ({$fallbackSql})
+            ) AS matches
+            ORDER BY {$order}
+            SQL, [...$prefix->getBindings(), $limit, ...$fallback->getBindings(), ...$orderBindings]);
     }
 }
