@@ -5,14 +5,19 @@ declare(strict_types=1);
 namespace App\Agent\Waves;
 
 use App\Agent\AgentExecutionContext;
+use App\Agent\AgentRunCancelledException;
+use App\Agent\Budget\AgentBudgetTracker;
 use App\Agent\Evidence\AgentEvidenceFactory;
 use App\Agent\Tools\AgentToolActionResult;
 use App\Models\AgentRun;
+use App\Models\KnowledgeDocument;
+use App\Services\Chat\QuestionContextMode;
 use App\Services\Chat\QuestionUnderstanding;
 use App\Services\Chat\Reasoning\EvidenceProjector;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Investigation\KbSourceReader;
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Knowledge\KnowledgeSource;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 
@@ -26,6 +31,13 @@ final class AgentWaveKnowledgeSearch
         $exact = collect();
         $semantic = collect();
         $diagnostics = app(\App\Agent\Debug\RunDiagnostics::class)->observer($run);
+        $alreadyCollected = $this->collectedEvidence($run);
+        if (config('agent.waves.exact_source_fast_path', false)) {
+            $direct = $this->readIdentifiedSource($query, $run, $context, $filters, $understanding, $alreadyCollected, $diagnostics);
+            if ($direct !== null) {
+                return $direct;
+            }
+        }
         try {
             if ($identifiers !== []) {
                 $exact = $diagnostics('kb.exact_lookup', fn () => app(KbSearchService::class)->exactIdentifierCandidates($identifiers, $context->projectKey, $filters),
@@ -47,7 +59,6 @@ final class AgentWaveKnowledgeSearch
         $exact = $wiki->concat($exact)->values();
         $sources = [];
         $provenance = $coordinates = [];
-        $alreadyCollected = $this->collectedEvidence($run);
         $limit = max(1, (int) config('kb.investigation.max_sources_per_round', 5));
         $collect = function ($candidates) use (&$sources, &$provenance, &$coordinates, &$stats, $alreadyCollected, $limit, $diagnostics, $run, $context, $filters): void {
             foreach ($candidates->unique(fn ($c) => ($c['knowledge_observation_id'] ?? '').':'.data_get($c, 'chunk_id')) as $candidate) {
@@ -72,25 +83,13 @@ final class AgentWaveKnowledgeSearch
                     foreach ($source['navigation_coordinates'] as $link) $coordinates[$link['document_id']] = $link;
                     continue;
                 }
-                $candidate['chunk_text'] = $source['excerpt'];
-                $candidate['chunk_hash'] = hash('sha256', $source['excerpt']);
+                $candidate = $this->withReadSource($candidate, $source);
                 $key = $id.':'.$candidate['chunk_hash'];
                 if (isset($sources[$key]) || isset($alreadyCollected[$key])) {
                     continue;
                 }
-                $candidate['document'] = array_merge((array) ($candidate['document'] ?? []), [
-                    'id' => $source['document_id'], 'title' => $source['title'],
-                    'source_path' => $source['source_path'], 'source_type' => $source['source_type'],
-                ]);
-                $candidate['metadata'] = array_merge((array) ($candidate['metadata'] ?? []), [
-                    'investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids'],
-                        'evidence_origin' => $source['evidence_origin'] ?? null, 'coverage' => $source['coverage'] ?? ['partial' => true]],
-                ]);
                 $sources[$key] = $candidate;
-                $provenance[$key] = ['complete_source' => $source['complete_source'],
-                    'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null,
-                    'coverage' => $source['coverage'] ?? ['partial' => ! $source['complete_source']],
-                    ...$run->usesSessionEvidence() ? ['session_document_context' => true] : []];
+                $provenance[$key] = $this->sourceProvenance($source, $run->usesSessionEvidence());
                 if (count($sources) >= $limit) {
                     break;
                 }
@@ -111,6 +110,119 @@ final class AgentWaveKnowledgeSearch
             }
             $collect($semantic);
         }
+        $partial = $stats !== [];
+
+        return new AgentToolActionResult(
+            ['documents' => $this->documents($sources, $provenance), ...$coordinates === [] ? [] : ['document_coordinates' => array_values($coordinates)]],
+            0,
+            ! $partial,
+            $partial ? 'retrieval_partial' : null,
+            [...$stats, 'exact_candidates' => $exact->count(), 'semantic_candidates' => $semantic->count(),
+                'semantic_skipped_full_exact' => $semanticSkipped, 'selected_sources' => count($sources)],
+        );
+    }
+
+    private function readIdentifiedSource(string $query, AgentRun $run, AgentExecutionContext $context, RetrievalFilters $filters,
+        QuestionUnderstanding $understanding, array $alreadyCollected, \Closure $diagnostics): ?AgentToolActionResult
+    {
+        $project = $context->projectKey ?? (count($filters->projectKeys) === 1 ? $filters->projectKeys[0] : null);
+        $mentionedDocuments = array_values(array_unique($filters->docIds));
+        if ($project === null || $run->user === null || ! $understanding->asksToReadSource()
+            || $understanding->requiresCurrentObservation() || $understanding->requiresComposition
+            || $understanding->effectiveContextMode() === QuestionContextMode::Mixed || count($mentionedDocuments) > 1) {
+            return null;
+        }
+
+        $references = $understanding->targetIdentifiers() ?: $understanding->mentionTexts();
+        if (count($references) !== 1 || ! is_string($references[0]) || trim($references[0]) === '') {
+            return null;
+        }
+        $reference = trim($references[0]);
+        $question = (string) data_get($run->input_json, 'question', '');
+        $resolved = $understanding->referencesPreviousTurn && in_array($reference, $understanding->resolvedReferences, true);
+        if ((! EvidenceProjector::contains($question, $reference) && ! $resolved)
+            || (! EvidenceProjector::contains($query, $reference) && ! in_array($query, $understanding->kbQueries, true))) {
+            return null;
+        }
+
+        try {
+            return $diagnostics('kb.exact_source', function () use ($run, $context, $filters, $project, $reference, $mentionedDocuments, $alreadyCollected, $diagnostics): ?AgentToolActionResult {
+                $matchingDocuments = KnowledgeDocument::query()->forTenant($context->tenantId)
+                    ->where('project_key', $project)->where('status', 'active')
+                    ->when($mentionedDocuments !== [], fn ($builder) => $builder->whereKey($mentionedDocuments[0]))
+                    ->where(fn ($builder) => $builder->where('doc_id', $reference)->orWhereRaw('LOWER(title) = ?', [mb_strtolower($reference)]))
+                    ->limit(2)->get(['id', 'project_key', 'slug', 'generation_source', 'is_canonical', 'source_type', 'metadata']);
+                if ($matchingDocuments->count() !== 1) {
+                    return null;
+                }
+
+                $document = $matchingDocuments->first();
+                if (app(KnowledgeSource::class)->navigationOnly($document) || data_get($document->metadata, 'generated_fixture') === true) {
+                    return null;
+                }
+                $chunkId = $document->chunks()->forTenant($context->tenantId)->orderBy('chunk_order')->orderBy('id')->value('id');
+                if ($chunkId === null) {
+                    return null;
+                }
+
+                $candidate = ['chunk_id' => $chunkId, 'document' => $document->only(['id', 'project_key', 'slug', 'generation_source']),
+                    ...$run->usesSessionEvidence() ? ['session_document_context' => true] : []];
+                $source = app(KbSourceReader::class)->readCandidate($candidate, $project, $run->user, $filters, $diagnostics);
+                if (($source['complete_source'] ?? false) !== true || ($source['coverage']['partial'] ?? true)
+                    || ($source['chunk_ids'] ?? []) === []) {
+                    return null;
+                }
+
+                $candidate = $this->withReadSource($candidate, $source);
+                $key = $document->id.':'.$candidate['chunk_hash'];
+                if (isset($alreadyCollected[$key])) {
+                    return null;
+                }
+
+                $documents = $this->documents([$candidate], [$key => $this->sourceProvenance($source, $run->usesSessionEvidence())]);
+                $bytes = strlen(json_encode($documents, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+                if ($documents === [] || ! (new AgentBudgetTracker($run, persist: false))->canFitEvidence($bytes)) {
+                    return null;
+                }
+
+                return new AgentToolActionResult(['documents' => $documents], 0, true, stats: [
+                    'exact_candidates' => 1, 'semantic_candidates' => 0, 'semantic_skipped_full_exact' => false,
+                    'semantic_skipped_exact_source' => true, 'selected_sources' => 1,
+                ]);
+            }, ['wait_reason' => 'local_source_read', 'error_handled' => true]);
+        } catch (AgentRunCancelledException $exception) {
+            throw $exception;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function withReadSource(array $candidate, array $source): array
+    {
+        $candidate['chunk_text'] = $source['excerpt'];
+        $candidate['chunk_hash'] = hash('sha256', $source['excerpt']);
+        $candidate['document'] = array_merge((array) ($candidate['document'] ?? []), [
+            'id' => $source['document_id'], 'title' => $source['title'],
+            'source_path' => $source['source_path'], 'source_type' => $source['source_type'],
+        ]);
+        $candidate['metadata'] = array_merge((array) ($candidate['metadata'] ?? []), [
+            'investigation' => ['complete_source' => $source['complete_source'], 'chunk_ids' => $source['chunk_ids'],
+                'evidence_origin' => $source['evidence_origin'] ?? null, 'coverage' => $source['coverage'] ?? ['partial' => true]],
+        ]);
+
+        return $candidate;
+    }
+
+    private function sourceProvenance(array $source, bool $sessionContext): array
+    {
+        return ['complete_source' => $source['complete_source'],
+            'source_chunk_ids' => $source['chunk_ids'], 'evidence_origin' => $source['evidence_origin'] ?? null,
+            'coverage' => $source['coverage'] ?? ['partial' => ! $source['complete_source']],
+            ...$sessionContext ? ['session_document_context' => true] : []];
+    }
+
+    private function documents(array $sources, array $provenance): array
+    {
         $search = new SearchResult(collect(array_values($sources)), collect(), collect());
         $documents = app(AgentEvidenceFactory::class)->fromSearchResult($search)->documents();
         foreach ($documents as &$document) {
@@ -121,15 +233,8 @@ final class AgentWaveKnowledgeSearch
             unset($evidence);
         }
         unset($document);
-        $partial = $stats !== [];
-        return new AgentToolActionResult(
-            ['documents' => $documents, ...$coordinates === [] ? [] : ['document_coordinates' => array_values($coordinates)]],
-            0,
-            ! $partial,
-            $partial ? 'retrieval_partial' : null,
-            [...$stats, 'exact_candidates' => $exact->count(), 'semantic_candidates' => $semantic->count(),
-                'semantic_skipped_full_exact' => $semanticSkipped, 'selected_sources' => count($sources)],
-        );
+
+        return $documents;
     }
 
     /** Latest updates and a query topic anchor, then distinct documents before extra windows. */

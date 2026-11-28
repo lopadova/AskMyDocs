@@ -9,12 +9,15 @@ use App\Agent\Waves\AgentWaveKnowledgeSearch;
 use App\Models\AgentRun;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Models\User;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class AgentWaveKnowledgeSearchTest extends TestCase
@@ -372,6 +375,108 @@ final class AgentWaveKnowledgeSearchTest extends TestCase
         $this->assertSame([], $result->body['documents']);
         $this->assertFalse($result->complete);
         $this->assertSame('retrieval_partial', $result->stopReason);
+    }
+
+    #[DataProvider('exactSourceCases')]
+    public function test_exact_source_shortcut_respects_intent_and_document_access(bool $eligible, array $case): void
+    {
+        app(TenantContext::class)->set('acme');
+        $this->freezeTime();
+        config(['kb.investigation.full_source_max_chars' => 1000]);
+        $user = User::create(['name' => 'Reader', 'email' => 'reader@example.test', 'password' => 'password']);
+        DB::table('project_memberships')->insert([
+            'tenant_id' => 'acme', 'project_key' => 'orders', 'user_id' => $user->id, 'role' => 'member',
+        ]);
+        $this->actingAs($user);
+
+        $title = $case['title'] ?? 'Manuale ordini';
+        $content = ($case['long'] ?? false) ? str_repeat('Testo', 240) : 'Testo originale del documento.';
+        $wanted = $this->document('acme', 'orders', $title, [$content, ...($case['more_text'] ?? [])]);
+        $wanted->forceFill(['doc_id' => 'MAN-104', ...($case['document'] ?? [])])->save();
+        $this->document('other', 'orders', $title, ['Altro tenant.']);
+        $this->document('acme', 'another-project', $title, ['Altro progetto.']);
+        if ($case['duplicate'] ?? false) {
+            $this->document('acme', 'orders', $title, ['Secondo documento.']);
+        }
+        if ($case['missing'] ?? false) {
+            $wanted->delete();
+        }
+        if ($case['revoked'] ?? false) {
+            DB::table('knowledge_document_acl')->insert([
+                'tenant_id' => 'acme', 'knowledge_document_id' => $wanted->id,
+                'subject_type' => 'user', 'subject_id' => (string) $user->id,
+                'permission' => 'view', 'effect' => 'deny',
+            ]);
+        }
+
+        $reference = $case['reference'] ?? $title;
+        $question = $case['question'] ?? 'Mostrami il testo originale di '.$reference;
+        $run = new AgentRun([
+            'input_json' => ['question' => $question],
+            'result_json' => ['question_understanding' => [
+                'available' => true, 'action' => 'read_source', 'mentions' => [],
+                'focus' => ['identifiers' => [$reference]],
+                ...($case['understanding'] ?? []),
+            ]],
+            'counters_json' => $case['counters'] ?? [],
+        ]);
+        $run->setRelation('user', $user);
+        $context = new AgentExecutionContext('run', 'acme', 'orders', 'chat', 'user', (string) $user->id, 'it', 'UTC');
+        $filters = new RetrievalFilters(projectKeys: ['orders'], docIds: ($case['pick'] ?? false) ? [$wanted->id] : [],
+            folderGlobs: $case['folders'] ?? [], sourceTypes: $case['types'] ?? []);
+        $retrieval = Mockery::mock(ChatRetrievalService::class)->makePartial();
+        $retrieval->shouldReceive('retrieve')->times($eligible ? 1 : 2)->andReturn(new SearchResult(collect(), collect(), collect()));
+        $this->app->instance(ChatRetrievalService::class, $retrieval);
+
+        $service = app(AgentWaveKnowledgeSearch::class);
+        config(['agent.waves.exact_source_fast_path' => false]);
+        $baseline = $service->search($reference, $run, $context, $filters);
+        config(['agent.waves.exact_source_fast_path' => true]);
+        $result = $service->search($reference, $run, $context, $filters);
+
+        $this->assertSame($eligible, $result->stats['semantic_skipped_exact_source'] ?? false);
+        if ($eligible) {
+            $this->assertTrue($result->complete);
+            $this->assertSame([$wanted->id], array_column($result->body['documents'], 'document_id'));
+            $evidence = $result->body['documents'][0]['evidence'][0];
+            $this->assertTrue($evidence['complete_source']);
+            $this->assertTrue(str_contains($evidence['content'], $content));
+        } else {
+            $this->assertSame($baseline->body, $result->body);
+            if (($case['revoked'] ?? false) || ($case['missing'] ?? false)) {
+                $this->assertNotContains($wanted->id, array_column($result->body['documents'], 'document_id'));
+            }
+        }
+    }
+
+    public static function exactSourceCases(): array
+    {
+        return [
+            'unique title' => [true, []],
+            'case insensitive title' => [true, ['reference' => 'manuale ordini']],
+            'canonical code' => [true, ['reference' => 'MAN-104']],
+            'selected exact title' => [true, ['pick' => true]],
+            'selected duplicate title' => [true, ['pick' => true, 'duplicate' => true]],
+            'selected canonical code' => [true, ['pick' => true, 'reference' => 'MAN-104']],
+            'literal special characters' => [true, ['title' => 'Manuale_100%']],
+            'multiple chunks in one document' => [true, ['more_text' => ['Seconda parte.']]],
+            'source filter matches' => [true, ['types' => ['markdown']]],
+            'interpreted mention' => [true, ['understanding' => ['focus' => [], 'mentions' => [['text' => 'Manuale ordini', 'type' => 'name']]]]],
+            'single subquestion' => [true, ['understanding' => ['subquestions' => [['identifiers' => ['Manuale ordini']]]]]],
+            'resolved follow-up' => [true, ['question' => 'Mostrami il testo originale', 'understanding' => ['references_previous_turn' => true, 'resolved_references' => ['Manuale ordini']]]],
+            'duplicate title' => [false, ['duplicate' => true]],
+            'partial document' => [false, ['long' => true]],
+            'revoked access' => [false, ['revoked' => true, 'pick' => true]],
+            'deleted document' => [false, ['missing' => true]],
+            'archived document' => [false, ['document' => ['status' => 'archived']]],
+            'generated summary' => [false, ['document' => ['metadata' => ['autowiki_concept' => true]]]],
+            'selection conflicts with target' => [false, ['pick' => true, 'reference' => 'Altro documento']],
+            'multiple requested sources' => [false, ['understanding' => ['subquestions' => [[], []]]]],
+            'current data requested' => [false, ['understanding' => ['memory_decisions' => [['task_index' => 0, 'refresh_requested' => true]]]]],
+            'folder excludes document' => [false, ['folders' => ['other/**']]],
+            'insufficient evidence budget' => [false, ['counters' => ['evidence_bytes' => 524287]]],
+            'ordinary fact-finding' => [false, ['understanding' => ['action' => 'research']]],
+        ];
     }
 
     private function document(string $tenant, string $project, string $title, array $texts): KnowledgeDocument

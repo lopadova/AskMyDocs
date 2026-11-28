@@ -16,6 +16,7 @@ return [
         // 512 MiB development worker, independently of logical wave width.
         'process_concurrency' => max(1, (int) env('AGENT_WAVE_PROCESS_CONCURRENCY', 2)),
         'timeout_seconds' => max(1, (int) env('AGENT_WAVE_TIMEOUT_SECONDS', 45)),
+        'exact_source_fast_path' => (bool) env('AGENT_EXACT_SOURCE_FAST_PATH', false),
         'exact_embedding_timeout_seconds' => max(1, (int) env('AGENT_EXACT_EMBEDDING_TIMEOUT_SECONDS', 10)),
         'minimum_dispatch_seconds' => max(1, (int) env('AGENT_WAVE_MINIMUM_DISPATCH_SECONDS', 5)),
     ],

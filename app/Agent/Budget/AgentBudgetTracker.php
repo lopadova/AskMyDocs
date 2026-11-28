@@ -130,6 +130,11 @@ final class AgentBudgetTracker
         $this->persist();
     }
 
+    public function canFitEvidence(int $bytes): bool
+    {
+        return $bytes <= $this->limit('evidence_bytes', 524288) - (int) $this->state['evidence_bytes'];
+    }
+
     /**
      * Call after every knowledge-base search (the always-on initial one
      * included) with whether it added at least one document the run didn't

@@ -1,5 +1,35 @@
 # Prestazioni dell'intero servizio AskMyDocs — piano operativo
 
+## Rollback della ricerca e dell’autocompletamento di novembre 2026
+
+La base Git è il tag annotato `rollback/askmydocs-search-perf-20261127`
+(`87e5fdd7a`). Il percorso rapido parte spento. In staging si può confrontare
+`AGENT_EXACT_SOURCE_FAST_PATH=false` con `true` usando gli stessi casi e
+riavviando i worker dopo l’aggiornamento della configurazione.
+
+La migrazione `2026_11_28_000001_add_kb_document_title_prefix_index` aggiunge
+solo l’indice PostgreSQL `idx_kb_documents_title_prefix`. Registrare il suo
+`batch` dalla tabella `migrations` dopo l’applicazione.
+
+1. Spegnere il flag e ricaricare la configurazione dei worker. Tenere disponibile
+   la versione che contiene la migrazione.
+2. Fare il rollback della sola migrazione indicando il suo batch effettivo.
+
+   ```sh
+   php artisan migrate:rollback --batch=<batch> --path=database/migrations/2026_11_28_000001_add_kb_document_title_prefix_index.php
+   ```
+
+3. Verificare che l’indice e la voce della migrazione siano stati rimossi.
+   Avviare il codice del tag e provare ricerca, autocompletamento e lettura di un
+   documento scritto dopo l’applicazione della migrazione.
+
+Se la creazione concorrente si interrompe prima di registrare la migrazione,
+verificare in `pg_index` il residuo e rimuovere solo
+`idx_kb_documents_title_prefix` con `DROP INDEX CONCURRENTLY IF EXISTS`.
+Il rollback ordinario usa il file di migrazione e preserva gli indici precedenti.
+
+## Diagnosi del 22 ottobre 2026
+
 Stato al 22 ottobre 2026, Europe/Rome. Le modifiche e le prove descritte come locali
 sono nella worktree `codex/askmydocs-cloud-performance`. Nessuna modifica Cloud,
 migrazione remota, chiamata AI, invio email, ingestione, push o pubblicazione eseguita.
